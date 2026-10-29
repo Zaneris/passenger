@@ -21,7 +21,7 @@ internal static class ServerCommands
     /// <paramref name="edit"/>, answered for the open files as <paramref name="asked"/> followed them, then the command, which
     /// <paramref name="run"/> sends. What it came to: the files it changed and those left as edited meanwhile, what to say
     /// (that it changed nothing, or is done after a file landed late), why not, and where the server asked a name it wrote
-    /// be renamed. An agent's refusal for files the server had yet to read is told its <paramref name="patience"/>.</summary>
+    /// be renamed. A refusal for files the server had yet to read is told its command's <paramref name="patience"/>.</summary>
     public static async Task<RefactorOutcome> RunAsync(EditorArea editors, string title, string what, JsonElement? edit, Func<CommandRun, Task> run,
         Asked? asked, Patience? patience, Action<string>? waiting)
     {
@@ -41,7 +41,8 @@ internal static class ServerCommands
             }
             DateTime since = answered?.Since ?? DateTime.UtcNow;
             List<string> made = Made(editors, change, since);
-            if (await WorkspaceEdits.StaleAsync(editors, (LspDocument?)null, change, since, patience, made) is { } stale)
+            // Once an edit is made the command is not made again, so a later one refuses at once.
+            if (await WorkspaceEdits.StaleAsync(editors, (LspDocument?)null, change, since, files.Count == 0 ? patience : null, made) is { } stale)
             {
                 Unmake(made, recording);
                 return refused = stale;

@@ -259,11 +259,6 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         OpenDocument cart = window.EditorArea.Active!;
         Ui.WaitFor(() => window.Session.Web?.For(cart) is { Lsp: not null }, "TypeScript's document of cart.ts");
         string items = app.PathOf("Scripts/items.ts");
-        TimeSpan unsettled = File.GetLastWriteTimeUtc(items) + Passenger.App.CSharp.WorkspaceEdits.Catching - DateTime.UtcNow;
-        if (unsettled > TimeSpan.Zero)
-        {
-            Ui.Hold(unsettled + TimeSpan.FromMilliseconds(100), "the moment after the class's reset wrote items.ts, in which a rename refuses it as changed on disk, to pass");
-        }
 
         Ui.PlaceAfter(editor, "import { Item, tot");
         Ui.Run(window, AppActions.Rename);

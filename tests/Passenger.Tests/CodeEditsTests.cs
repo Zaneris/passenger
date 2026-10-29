@@ -335,27 +335,37 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
 
     [Gate]
     [AvaloniaFact]
-    public void A_rename_reaching_a_file_not_open_that_changed_on_disk_a_moment_before_is_refused_and_once_the_server_has_it_lands_right()
+    public void A_rename_reaching_a_file_not_open_that_changed_on_disk_as_the_server_worked_is_refused_and_once_the_server_has_it_lands_right()
     {
         string calc = project.PathOf("Calc.cs");
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
         string program = editor.Document.Snapshot.ToString();
 
-        // An agent, or a checkout, writes Calc.cs, its lines two further down, as the rename is asked for.
+        // An agent, or a checkout, writes Calc.cs, its lines two further down, once the server has worked the rename out.
         string written = "// Checked out again\n// by another program\n" + File.ReadAllText(calc);
         Ui.PlaceAfter(editor, "Calc.Twi");
         Ui.Run(window, AppActions.Rename);
         Ui.Settle();
         window.KeyTextInput("Double");
-        File.WriteAllText(calc, written);
-        Ui.Press(window, "ENTER");
-        Ui.WaitFor(() => window.Status?.StartsWith("Rename was not applied", StringComparison.Ordinal) == true, "the rename to be refused");
+        TaskCompletionSource writing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task answered = window.CSharpService!.Session!.Server.HoldNextAnswer(Passenger.Lsp.LspMethods.Rename, _ => true, writing.Task);
+        try
+        {
+            Ui.Press(window, "ENTER", settle: false);
+            Ui.PumpUntil(() => answered.IsCompleted, "the server's answer to the rename to come and be held");
+            File.WriteAllText(calc, written);
+        }
+        finally
+        {
+            writing.SetResult();
+        }
+        Ui.WaitFor(() => window.Status?.StartsWith("Rename was not applied", StringComparison.Ordinal) == true, () => $"the rename to be refused; the status bar said: {window.Status}");
         Assert.Equal("Rename was not applied: Calc.cs changed on disk as the language server worked this out, so the places it gave there may be where they were before: nothing was changed; try again in a moment", window.Status);
         Assert.Equal(written, File.ReadAllText(calc));
         Assert.Equal(program, editor.Document.Snapshot.ToString());
 
-        // Asked again once the server holds the file as written and a write's moment has passed, it lands where the name is now.
+        // Asked again once the server holds the file as written, it lands where the name is now.
         string held = Passenger.Roslyn.Extension.TextHash.Of(written);
         string served = Passenger.Core.PathNames.Canonical(calc);
         Task<IReadOnlyList<Passenger.Roslyn.Extension.TextHeld>>? asking = null;
@@ -371,11 +381,6 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
             }
             return false;
         }, "the language server to hold Calc.cs as it was written");
-        TimeSpan unsettled = File.GetLastWriteTimeUtc(calc) + Passenger.App.CSharp.WorkspaceEdits.Catching - DateTime.UtcNow;
-        if (unsettled > TimeSpan.Zero)
-        {
-            Ui.Hold(unsettled + TimeSpan.FromMilliseconds(100), "the moment after Calc.cs was written, in which a rename is refused whatever the server holds, to pass");
-        }
         editor.Selections = SelectionSet.Single(editor.Document.Snapshot.ToString().IndexOf("Calc.Twi", StringComparison.Ordinal) + "Calc.Twi".Length);
         Ui.Run(window, AppActions.Rename);
         Ui.Settle();
@@ -386,6 +391,50 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
         Assert.Equal(written.Replace("Twice", "Double", StringComparison.Ordinal), File.ReadAllText(calc));
         Assert.Contains("Calc.Double(2)", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
         window.Close();
+    }
+
+    /// <summary>Undo of a rename writes back the file not open it changed, and a rename at once after it, through that file,
+    /// waits for the server to read what Undo wrote and is made there, never refused for a write the IDE made itself.</summary>
+    [AvaloniaFact]
+    public void A_rename_right_after_undoing_one_is_made_in_the_file_not_open_the_undo_wrote()
+    {
+        string calc = project.PathOf("Calc.cs");
+        string before = File.ReadAllText(calc);
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        List<string> asked = [];
+        window.Confirm = (_, question, _) =>
+        {
+            asked.Add(question);
+            return Task.FromResult(true);
+        };
+        Rename(window, "Calc.Twi", "Double");
+        Ui.WaitFor(() => File.ReadAllText(calc).Contains("Double(int", StringComparison.Ordinal), () => $"Twice renamed in Calc.cs, which is not open; the status bar said: {window.Status}");
+
+        editor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        Assert.True(asked.Count == 1 && asked[0].StartsWith("Undo Rename Twice to Double? It changes ", StringComparison.Ordinal), $"The Undo of the rename asked: {string.Join(" | ", asked)}");
+        Assert.Equal(before, File.ReadAllText(calc));
+
+        Rename(window, "Calc.Twi", "Thrice");
+        Assert.True(File.ReadAllText(calc).Contains("Thrice(int", StringComparison.Ordinal),
+            $"A rename at once after Undo wrote Calc.cs back was not made there, so a person is told to try again about the IDE's own write: {window.Status}");
+        Assert.Equal(before.Replace("Twice", "Thrice", StringComparison.Ordinal), File.ReadAllText(calc));
+        Assert.Contains("Calc.Thrice(2)", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>Renames the name a place in the file shown is after, through the rename box, as a person does with the keys.</summary>
+    private static void Rename(MainWindow window, string after, string name)
+    {
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Selections = SelectionSet.Single(editor.Document.Snapshot.ToString().IndexOf(after, StringComparison.Ordinal) + after.Length);
+        editor.Focus();
+        Ui.Run(window, AppActions.Rename);
+        Ui.Settle();
+        window.KeyTextInput(name);
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
     }
 
     [Gate]

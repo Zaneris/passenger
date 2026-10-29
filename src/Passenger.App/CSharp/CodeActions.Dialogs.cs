@@ -31,7 +31,7 @@ internal sealed partial class CodeActions
                 return;
             }
             await ShowAsync(new ChangeSignatureDialog(signature, (method, returnType, parameters) =>
-                Shown(ChangeSignatureAsync(document, caret.Offset, signature, method, returnType, parameters))));
+                Shown(context.PatientlyAsync(AppActions.ChangeSignature, patience => ChangeSignatureAsync(document, caret.Offset, signature, method, returnType, parameters, patience)))));
         }
     }
 
@@ -50,7 +50,7 @@ internal sealed partial class CodeActions
                 return;
             }
             await ShowAsync(new ExtractInterfaceDialog(source, (interfaceName, file, members) =>
-                Shown(ExtractInterfaceAsync(document, caret.Offset, source, interfaceName, file, members))));
+                Shown(context.PatientlyAsync(AppActions.ExtractInterface, patience => ExtractInterfaceAsync(document, caret.Offset, source, interfaceName, file, members, patience)))));
         }
     }
 
@@ -89,8 +89,8 @@ internal sealed partial class CodeActions
         using (caret)
         {
             await ShowAsync(toFile
-                ? MoveTypeDialog.ToFile(type, file => Shown(MoveTypeToFileAsync(document, caret.Offset, type, file)))
-                : MoveTypeDialog.ToNamespace(type, space => Shown(MoveTypeToNamespaceAsync(document, caret.Offset, type, space))));
+                ? MoveTypeDialog.ToFile(type, file => Shown(context.PatientlyAsync(AppActions.Move, patience => MoveTypeToFileAsync(document, caret.Offset, type, file, patience))))
+                : MoveTypeDialog.ToNamespace(type, space => Shown(context.PatientlyAsync(AppActions.Move, patience => MoveTypeToNamespaceAsync(document, caret.Offset, type, space, patience)))));
         }
     }
 
@@ -111,7 +111,7 @@ internal sealed partial class CodeActions
                 return;
             }
             Func<string, IReadOnlyList<string>, IReadOnlyList<string>, Task<string?>> make = (target, members, made) =>
-                Shown(MoveMembersAsync(document, caret.Offset, hierarchy, up, target, members, made));
+                Shown(context.PatientlyAsync(up ? AppActions.PullMembersUp : AppActions.PushMembersDown, patience => MoveMembersAsync(document, caret.Offset, hierarchy, up, target, members, made, patience)));
             await ShowAsync(up ? MembersMoveDialog.PullUp(hierarchy, make) : MembersMoveDialog.PushDown(hierarchy, make));
         }
     }
@@ -216,8 +216,8 @@ internal sealed partial class CodeActions
     /// <summary>A refactoring computed by Passenger's extension for a file and applied as one command, which Undo takes back
     /// whole: every file it changes, open or not, and every file it makes, once the files come under the projects the symbol
     /// at <paramref name="offset"/> reaches are in them. What it came to once the files not open it wrote have landed (<see
-    /// cref="WorkspaceEdits.LandedAsync"/>): the files it changed and what to say of it, or why it was not made (for an
-    /// agent's call, told its <paramref name="patience"/>).</summary>
+    /// cref="WorkspaceEdits.LandedAsync"/>): the files it changed and what to say of it, or why it was not made, a
+    /// refusal for files the server had yet to read told its command's <paramref name="patience"/>.</summary>
     internal async Task<RefactorOutcome> MakeAsync(string name, OpenDocument document, int offset, Func<LspDocument, Task<Refactored>> ask, Func<int, string> done, Patience? patience)
     {
         try

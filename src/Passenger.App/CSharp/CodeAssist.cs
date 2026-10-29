@@ -27,8 +27,8 @@ public sealed record EditorFix(string Title, string Detail, TextRange Range, str
     public int? Caret { get; init; }
 
     /// <summary>A fix made in another file than the one shown (an AppHost's WithReference, for its service's warning), in
-    /// place of <see cref="Text"/>'s edit: made as it is chosen, given <see cref="Range"/> as it then stands and an agent's
-    /// call's patience, and saying what it came to.</summary>
+    /// place of <see cref="Text"/>'s edit: made as it is chosen, given <see cref="Range"/> as it then stands and its
+    /// command's patience, and saying what it came to.</summary>
     public Func<TextRange, Patience?, Task<RefactorOutcome>>? Elsewhere { get; init; }
 
     /// <summary>A fix that asks for a value before it is made (an AppHost parameter's), in place of <see cref="Text"/>'s
@@ -135,6 +135,11 @@ public sealed class CodeAssist
         get => context.FilesChanging;
         set => context.FilesChanging = value;
     }
+
+    /// <summary>A change of the window's made of a server's edit, worked out again once the server has read a file not open
+    /// written a moment before (<see cref="AssistContext.PatientlyAsync{T}"/>).</summary>
+    public Task<T> PatientlyAsync<T>(string action, Func<Patience, Task<T>> attempt, Func<T, bool> refused) =>
+        context.PatientlyAsync(action, attempt, refused);
 
     /// <summary>A page to open in the browser: an ESLint rule's, an image's registry page.</summary>
     public event EventHandler<Uri>? Browse
@@ -330,17 +335,18 @@ public sealed class CodeAssist
     /// file.</summary>
     public void AddActions(ActionRegistry registry)
     {
+        context.Work = registry.Work;
         WebAssist web = context.Languages.Web;
         Code(AppActions.Complete, "Basic Completion", context => IdeErrors.Observe(completion.Start(null)), new("Code/Code Completion", 0, 0), xaml: true, msbuild: true);
         Code(AppActions.CompleteStatement, "Complete Current Statement", _ => completion.CompleteStatement(), new("Code/Code Completion", 1, 0), server: false, syntax: true);
         // Passenger's own fixes first, which a file the server does not read (a XAML file) may have too.
-        registry.Add(new IdeAction(AppActions.QuickFix, "Show Context Actions", "Code", context => IdeErrors.Observe(actions.ShowFixes()))
+        registry.Add(new IdeAction(AppActions.QuickFix, "Show Context Actions", "Code", context => IdeErrors.Observe(actions.ShowFixes(AppActions.QuickFix)))
         {
             WhyNot = context => actions.OwnFixes(context.File, context.Editor.Selections.Primary.Caret).Count > 0 ? null : WhyNot(context, server: true, xaml: true),
             Menus = [new("Code", 0, 1)],
         });
         // Generate: the server's actions that write code for the type (constructors, equality, members, overrides).
-        Code(AppActions.Generate, "Generate…", context => IdeErrors.Observe(actions.ShowFixes(a => RoslynNames.Generate.Any(w => a.Title.StartsWith(w, StringComparison.Ordinal)), "Generate")),
+        Code(AppActions.Generate, "Generate…", context => IdeErrors.Observe(actions.ShowFixes(AppActions.Generate, a => RoslynNames.Generate.Any(w => a.Title.StartsWith(w, StringComparison.Ordinal)), "Generate")),
             new("Code", 0, 2));
         Code(AppActions.SurroundWith, "Surround With…", _ => completion.ShowSurround(), new("Code", 0, 3), server: false, syntax: true, markup: true);
         // A file Prettier formats (Run on 'Reformat Code' action) needs no language server.
@@ -352,23 +358,23 @@ public sealed class CodeAssist
         web.AddLintingActions(registry);
         Code(AppActions.CodeCleanup, "Code Cleanup", context => IdeErrors.Observe(actions.Cleanup()), new("Code", 1, 1), markup: true);
         Code(AppActions.OptimizeUsings, "Optimize Imports", context => IdeErrors.Observe(actions.OptimizeUsings()), new("Code", 1, 2));
-        Code(AppActions.RefactorThis, "Refactor This…", context => IdeErrors.Observe(actions.ShowFixes(a => a.Kind?.StartsWith("refactor", StringComparison.Ordinal) == true, "Refactor This")),
+        Code(AppActions.RefactorThis, "Refactor This…", context => IdeErrors.Observe(actions.ShowFixes(AppActions.RefactorThis, a => a.Kind?.StartsWith("refactor", StringComparison.Ordinal) == true, "Refactor This")),
             new("Refactor", 0, 0), xaml: true);
         Code(AppActions.ChangeSignature, "Change Signature…", context => IdeErrors.Observe(actions.ChangeSignature()), new("Refactor", 1, 1));
-        Code(AppActions.ExtractMethod, "Extract Method…", context => IdeErrors.Observe(actions.Refactor(a => a.Title == RoslynNames.ExtractMethod, "Extract Method", renameMethod: true)),
+        Code(AppActions.ExtractMethod, "Extract Method…", context => IdeErrors.Observe(actions.Refactor(a => a.Title == RoslynNames.ExtractMethod, "Extract Method", renameMethod: true, AppActions.ExtractMethod)),
             new("Refactor", 1, 2));
         Code(AppActions.IntroduceVariable, "Introduce Variable…",
-            context => IdeErrors.Observe(actions.Refactor(a => a.Title.StartsWith(RoslynNames.IntroduceLocal, StringComparison.Ordinal), "Introduce Variable", renameMethod: false)), new("Refactor", 1, 3));
-        Code(AppActions.IntroduceField, "Introduce Field…", context => IdeErrors.Observe(actions.Refactor(CodeActions.IntroduceField)), new("Refactor", 1, 4));
-        Code(AppActions.IntroduceParameter, "Introduce Parameter…", context => IdeErrors.Observe(actions.Refactor(CodeActions.IntroduceParameter)), new("Refactor", 1, 5));
+            context => IdeErrors.Observe(actions.Refactor(a => a.Title.StartsWith(RoslynNames.IntroduceLocal, StringComparison.Ordinal), "Introduce Variable", renameMethod: false, AppActions.IntroduceVariable)), new("Refactor", 1, 3));
+        Code(AppActions.IntroduceField, "Introduce Field…", context => IdeErrors.Observe(actions.Refactor(CodeActions.IntroduceField, AppActions.IntroduceField)), new("Refactor", 1, 4));
+        Code(AppActions.IntroduceParameter, "Introduce Parameter…", context => IdeErrors.Observe(actions.Refactor(CodeActions.IntroduceParameter, AppActions.IntroduceParameter)), new("Refactor", 1, 5));
         Code(AppActions.ExtractInterface, "Extract Interface…", context => IdeErrors.Observe(actions.ExtractInterface()), new("Refactor", 1, 6));
         Code(AppActions.Inline, "Inline…",
-            context => IdeErrors.Observe(actions.Refactor(a => a.Kind == RoslynNames.InlineKind || a.Title.StartsWith(RoslynNames.Inline, StringComparison.Ordinal), "Inline", renameMethod: false)), new("Refactor", 1, 7));
+            context => IdeErrors.Observe(actions.Refactor(a => a.Kind == RoslynNames.InlineKind || a.Title.StartsWith(RoslynNames.Inline, StringComparison.Ordinal), "Inline", renameMethod: false, AppActions.Inline)), new("Refactor", 1, 7));
         Code(AppActions.Move, "Move…", context => IdeErrors.Observe(actions.Move()), new("Refactor", 2, 0));
         Code(AppActions.SafeDelete, "Safe Delete…", context => IdeErrors.Observe(actions.SafeDelete()), new("Refactor", 2, 1));
         Code(AppActions.PullMembersUp, "Pull Members Up…", context => IdeErrors.Observe(actions.MoveMembers(up: true)), new("Refactor", 3, 0));
         Code(AppActions.PushMembersDown, "Push Members Down…", context => IdeErrors.Observe(actions.MoveMembers(up: false)), new("Refactor", 3, 1));
-        Code(AppActions.EncapsulateField, "Encapsulate Field…", context => IdeErrors.Observe(actions.Refactor(CodeActions.EncapsulateField)), new("Refactor", 3, 2));
+        Code(AppActions.EncapsulateField, "Encapsulate Field…", context => IdeErrors.Observe(actions.Refactor(CodeActions.EncapsulateField, AppActions.EncapsulateField)), new("Refactor", 3, 2));
         registry.Add(new IdeAction(AppActions.ExtractResource, "Extract Resource…", "Code", context => IdeErrors.Observe(actions.ExtractResource()))
         {
             WhyNot = context => WhyNotXaml(context),

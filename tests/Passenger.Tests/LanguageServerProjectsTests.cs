@@ -255,7 +255,6 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         Ui.PumpUntil(() => window.Status?.Contains("to load Caller.cs into its project", StringComparison.Ordinal) == true,
             "the rename to say it waits for App to load its new caller", TimeSpan.FromSeconds(30));
         Assert.Contains("Greeter.Hello()", File.ReadAllText(caller), StringComparison.Ordinal);
-        Ui.Hold(Passenger.App.CSharp.WorkspaceEdits.Catching, "the caller's write to be older than the moment in which a rename refuses a file just written");
         Write(folder, "App/released", string.Empty);
         Ui.WaitFor(() => File.ReadAllText(caller).Contains("Greeter.Greet()", StringComparison.Ordinal), () => $"the rename, once App's build was let go, to reach App's new caller ({window.Status})",
             TimeSpan.FromMinutes(1));

@@ -252,6 +252,7 @@ public partial class MainWindow
         // A file not open is shown to the server for the question alone, never opened in a tab.
         Lsp.LspDocument? shown = null;
         Anchor? at = null;
+        Asked? asked = null;
         BackgroundWork.Begin();
         try
         {
@@ -262,24 +263,35 @@ public partial class MainWindow
             {
                 return $"{type.Name} can't be renamed: the C# language server has no class of {Path.GetFileName(type.Declaring)}";
             }
-            Lsp.LspDocument? document = component is not null ? null
-                : open is not null ? csharp.For(open)?.Lsp ?? throw new Lsp.LanguageServerFailed("the C# language server has not opened the file yet")
-                : shown = server.Open(type.Declaring, new TextDocument(FileText.Load(type.Declaring)?.Text ?? string.Empty));
-            // Held on the type's name through what is typed while it is asked about.
-            at = document?.Text.AnchorAt(type.Offset, AnchorGravity.After);
-            TypeRename.Named? named = component?.Type ?? await TypeRename.NamedAsync(Editors, server.Folder, document!, at!.Offset);
-            using Asked asked = WorkspaceEdits.Track(Editors);
-            System.Text.Json.JsonElement? edit = component is not null ? await server.RenameAsync(component.Name, renamed) : await document!.RenameAsync(at!.Offset, renamed);
-            shown?.Dispose();
-            shown = null;
-            if (edit is not { } made)
+            Lsp.LspDocument? opened = component is null && open is not null
+                ? csharp.For(open)?.Lsp ?? throw new Lsp.LanguageServerFailed("the C# language server has not opened the file yet") : null;
+            // Held on the type's name through what is typed in its open file while it is asked about.
+            at = opened?.Text.AnchorAt(type.Offset, AnchorGravity.After);
+            TypeRename.Named? named = null;
+            TypeRename.Markup markup = new([], null);
+            // Asked again once the server has read a file not open written a moment before (by Undo, another change).
+            (string? refused, System.Text.Json.JsonElement made) = await assist.PatientlyAsync(AppActions.Rename, async patience =>
             {
-                return $"{type.Name} can't be renamed";
-            }
-            TypeRename.Markup markup = named is null ? new([], null) : await TypeRename.MarkupAsync(session.Xaml, named, renamed, renameFiles: true);
-            if (await WorkspaceEdits.StaleAsync(Editors, paths => server.HeldTextsAsync(paths), made, asked.Since) is { } stale)
+                Lsp.LspDocument? document = component is not null ? null
+                    : opened ?? (shown = server.Open(type.Declaring, new TextDocument(FileText.Load(type.Declaring)?.Text ?? string.Empty)));
+                named = component?.Type ?? await TypeRename.NamedAsync(Editors, server.Folder, document!, at?.Offset ?? type.Offset);
+                asked?.Dispose();
+                asked = WorkspaceEdits.Track(Editors);
+                System.Text.Json.JsonElement? edit = component is not null ? await server.RenameAsync(component.Name, renamed)
+                    : await document!.RenameAsync(at?.Offset ?? type.Offset, renamed);
+                shown?.Dispose();
+                shown = null;
+                if (edit is not { } given)
+                {
+                    return ($"{type.Name} can't be renamed", default(System.Text.Json.JsonElement));
+                }
+                markup = named is null ? new([], null) : await TypeRename.MarkupAsync(session.Xaml, named, renamed, renameFiles: true);
+                return await WorkspaceEdits.StaleAsync(Editors, paths => server.HeldTextsAsync(paths), given, asked.Since, patience) is { } stale
+                    ? ($"{type.Name} was not renamed: {stale}", given) : (null, given);
+            }, answer => answer.Item1 is not null);
+            if (refused is not null || asked is null)
             {
-                return $"{type.Name} was not renamed: {stale}";
+                return refused;
             }
             if (markup.ClassFile is { } xaml && named?.FullName is { } fullName
                 && TypeRename.ClassEdit(xaml, WorkspaceEdits.Answered(Editors, asked)(xaml), fullName, renamed) is { } classEdit)
@@ -319,6 +331,7 @@ public partial class MainWindow
         {
             at?.Remove();
             shown?.Dispose();
+            asked?.Dispose();
             BackgroundWork.End();
         }
     }

@@ -36,6 +36,30 @@ public sealed class ActionWork
     /// <summary>The work under way for an action, or null.</summary>
     public Working? Of(string id) => under.Find(w => w.Id == id);
 
+    /// <summary>The stages of a wait within an action's change (a refactoring waiting for its language server), told one by
+    /// one and null as it ends: a work under the action's id from the first stage until then, or, while that action's
+    /// work is under way already, each stage given to <paramref name="otherwise"/>.</summary>
+    public Action<string?> Waits(string id, Action<string> otherwise)
+    {
+        Working? working = null;
+        return stage =>
+        {
+            if (stage is null)
+            {
+                working?.Dispose();
+                working = null;
+            }
+            else if (working is not null)
+            {
+                working.Say(stage);
+            }
+            else if ((working = Begin(id, stage, stoppable: false)) is null)
+            {
+                otherwise(stage);
+            }
+        };
+    }
+
     /// <summary>What a second ask for an action under way is told.</summary>
     public static string Busy(Working work) => $"Already under way: {work.Stage}";
 

@@ -16,11 +16,13 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
 {
     private CodeEditor Editor => context.Editor;
 
-    public async Task ShowFixes(Func<CodeAction, bool>? only = null, string title = "Fixes and refactorings")
+    /// <summary>The fixes and refactorings at the caret (those <paramref name="only"/> takes), listed under
+    /// <paramref name="title"/>, the one chosen made as the work of the action <paramref name="id"/>.</summary>
+    public async Task ShowFixes(string id, Func<CodeAction, bool>? only = null, string title = "Fixes and refactorings")
     {
         using (BackgroundWork.Scope())
         {
-            await ShowFixesCore(only, title);
+            await ShowFixesCore(only, title, id);
         }
     }
 
@@ -48,9 +50,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             context.Say($"{fix.Title} was not applied: the file changed, so it no longer fits");
             return;
         }
-        if (now.Elsewhere is { } elsewhere)
+        if (now.Elsewhere is not null)
         {
-            RefactorOutcome outcome = await elsewhere(now.Range, null);
+            // Worked out again on the text as it stands each time it is made.
+            RefactorOutcome outcome = await context.PatientlyAsync(AppActions.QuickFix, patience => fix.On(document.Text.Snapshot) is { Elsewhere: { } making } again
+                ? making(again.Range, patience)
+                : Task.FromResult(RefactorOutcome.Refused($"{fix.Title} was not applied: the file changed, so it no longer fits")));
             context.Say(outcome.Problem ?? outcome.Said);
             return;
         }
@@ -85,7 +90,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
     }
 
-    private async Task ShowFixesCore(Func<CodeAction, bool>? only, string title)
+    private async Task ShowFixesCore(Func<CodeAction, bool>? only, string title, string id)
     {
         if (context.XamlCurrent is { } xaml)
         {
@@ -143,7 +148,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
                 case EslintFix fix:
                     return context.Languages.Web.RunLintFix(document, fix);
                 case CodeAction chosen:
-                    return Carry(document, chosen, primary.Caret, chosen.Title, null);
+                    return Carry(document, chosen, primary.Caret, chosen.Title, id, null);
                 default:
                     return Task.CompletedTask;
             }
@@ -152,8 +157,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
 
     /// <summary>A code action chosen, carried out: one that offers choices (a fix-all's scopes, the actions nested under
     /// it) offers them as a list at <paramref name="at"/> and applies the one chosen there, or the one choice
-    /// <paramref name="keep"/> leaves; any other is applied at once. <paramref name="applied"/> runs once its change is made.</summary>
-    private async Task Carry(OpenDocument document, CodeAction action, int at, string what, Asked? listed, Action? applied = null, Func<ActionChoice, bool>? keep = null)
+    /// <paramref name="keep"/> leaves; any other is applied at once, as the work of the action <paramref name="id"/>.
+    /// <paramref name="applied"/> runs once its change is made.</summary>
+    private async Task Carry(OpenDocument document, CodeAction action, int at, string what, string id, Asked? listed, Action? applied = null, Func<ActionChoice, bool>? keep = null)
     {
         IReadOnlyList<ActionChoice> offered = ClientCommands.Choices(action);
         IReadOnlyList<ActionChoice> choices = keep is null ? offered : [.. offered.Where(keep)];
@@ -165,7 +171,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         if (choices.Count == 0 || keep is not null && choices.Count == 1)
         {
             (CodeAction chosen, string? scope) = choices.Count == 1 ? (choices[0].Action, choices[0].Scope) : (action, null);
-            if (await Apply(document, chosen, scope, what, choices.Count == 1 ? null : listed))
+            if (await Apply(document, chosen, scope, what, choices.Count == 1 ? null : listed, id))
             {
                 applied?.Invoke();
             }
@@ -173,20 +179,22 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         popups.ShowModal(new ChoicePopup(action.Title, [.. choices.Select(c => new Choice(c.Text, string.Empty, c))]), at, what, async choice =>
         {
-            if (choice?.Value is ActionChoice chosen && await Apply(document, chosen.Action, chosen.Scope, what, null))
+            if (choice?.Value is ActionChoice chosen && await Apply(document, chosen.Action, chosen.Scope, what, null, id))
             {
                 applied?.Invoke();
             }
         });
     }
 
-    /// <summary>A code action's change made: resolved first when the server left it for later (a fix-all's over the scope
-    /// chosen), by the server running now, its edit applied and its command run, or said in the status bar as one
-    /// Passenger cannot run, as is a server that cannot resolve it; a name the server asks be renamed then offered to
-    /// rename. <paramref name="listed"/> follows the files from when the actions were asked for. Whether every file took it.</summary>
-    private async Task<bool> Apply(OpenDocument document, CodeAction action, string? scope, string what, Asked? listed)
+    /// <summary>A code action's change made (<see cref="ApplyAsync"/>), what it came to said in the status bar, and a name the
+    /// server asks be renamed then offered to rename. <paramref name="listed"/> follows the files from when the actions were
+    /// asked for. One whose edit the server works out as it is made waits, as the work of the action <paramref name="id"/>,
+    /// for a file not open written a moment before (<see cref="AssistContext.PatientlyAsync{T}"/>). Whether every file took it.</summary>
+    private async Task<bool> Apply(OpenDocument document, CodeAction action, string? scope, string what, Asked? listed, string? id)
     {
-        (RefactorOutcome made, bool applied) = await ApplyAsync(document, action, scope, what, listed);
+        (RefactorOutcome made, bool applied) = id is not null && (action.Edit is null || scope is not null)
+            ? await context.PatientlyAsync(id, patience => ApplyAsync(document, action, scope, what, listed, patience), done => done.Outcome.Problem is not null)
+            : await ApplyAsync(document, action, scope, what, listed);
         if (made.Problem is not null)
         {
             context.Say(made.Problem);
@@ -212,7 +220,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// the files it changed, those left as edited meanwhile, and what to say beyond its being done (a command it carries that
     /// Passenger cannot run, that it changed nothing, or that it is done after a file landed late); and whether every file
     /// took it. The files come under the projects its edit reaches are waited for, and it is resolved again once they are
-    /// in them. An agent's refusal for files the server had yet to read is told its <paramref name="patience"/>.</summary>
+    /// in them. A refusal for files the server had yet to read is told its command's <paramref name="patience"/>.</summary>
     public async Task<(RefactorOutcome Outcome, bool Applied)> ApplyAsync(OpenDocument document, CodeAction action, string? scope, string what, Asked? listed, Patience? patience = null)
     {
         bool resolve = (action.Edit is null && action.Data is not null) || scope is not null;
@@ -276,8 +284,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     internal static string NotRun(string what, LspCommand command) => $"{what} needs {command.Command}, which Passenger cannot run";
 
     /// <summary>A refactoring by its own key, over the selection: the language server's action of that kind applied at
-    /// once, and for Extract Method its new method's name then offered to rename.</summary>
-    public async Task Refactor(Func<CodeAction, bool> pick, string name, bool renameMethod)
+    /// once, as the work of the action <paramref name="id"/>, and for Extract Method its new method's name then offered to
+    /// rename.</summary>
+    public async Task Refactor(Func<CodeAction, bool> pick, string name, bool renameMethod, string id)
     {
         if (context.Ask(name) is not { } lsp || context.Editors.Active is not { } document)
         {
@@ -296,7 +305,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
                 return;
             }
             // Choices the server nests under the action (Introduce Variable's occurrences) are offered as a list first.
-            await Carry(document, action, primary.Caret, name, asked, () =>
+            await Carry(document, action, primary.Caret, name, id, asked, () =>
             {
                 context.Say($"{name} done");
                 // The call that replaced the selection is where the new name is typed, in the file still shown.
@@ -361,14 +370,20 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             {
                 return;
             }
+            // Held on the name through what is typed while the rename is out, however often it is worked out.
+            Anchor held = HeldAt(document, at);
             try
             {
-                RefactorOutcome made = await RenameSymbolAsync(document, at, name, box.RenamesFiles, null);
+                RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, patience => RenameSymbolAsync(document, held, name, box.RenamesFiles, patience));
                 context.Say(made.Problem ?? made.Said);
             }
             catch (LanguageServerFailed failed)
             {
                 context.Failed("Rename", failed);
+            }
+            finally
+            {
+                held.Remove();
             }
         });
         popups.WhenClosed(opened.Dispose);
@@ -389,7 +404,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// with it when <paramref name="renameFiles"/> and the markup its class is made with following it
     /// (<see cref="TypeRename.MarkupAsync"/>), as one command of global undo: the window's Rename and an agent's alike. Why
     /// not, else the files it changed and moved, those it left as edited meanwhile, and the status bar's words, once the
-    /// files not open it wrote have landed; an agent's call is told its <paramref name="patience"/>.</summary>
+    /// files not open it wrote have landed; a refusal for files the server had yet to read is told its <paramref name="patience"/>.</summary>
     internal async Task<RefactorOutcome> RenameSymbolAsync(OpenDocument document, int offset, string name, bool renameFiles, Patience? patience)
     {
         // Held on the name through what is typed while the rename is out.
@@ -623,7 +638,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return false;
         }
-        return await Apply(document, action, null, title, asked);
+        return await Apply(document, action, null, title, asked, null);
     }
 
     /// <summary>A workspace edit applied, its open files' edits carried through what was typed since the request, as one

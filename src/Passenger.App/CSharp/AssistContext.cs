@@ -136,6 +136,29 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
 
     private void SayWaiting(string? waiting) => Say(waiting is null ? string.Empty : $"Waiting for the C# language server to load {Path.GetFileName(waiting)} into its project…");
 
+    /// <summary>The window's actions' work, which a change says its waits through.</summary>
+    public ActionWork? Work { get; set; }
+
+    /// <summary>A change the window makes of a server's edit, run in a <see cref="Patience"/>: made again once the server has
+    /// read the files not open written a moment before it was asked (by Undo, another change, another program), what it
+    /// waits for said as the work of the <paramref name="action"/> that asked for it.</summary>
+    public Task<RefactorOutcome> PatientlyAsync(string action, Func<Patience, Task<RefactorOutcome>> attempt) =>
+        PatientlyAsync(action, attempt, made => made.Problem is not null);
+
+    /// <summary>As <see cref="PatientlyAsync(string, Func{Patience, Task{RefactorOutcome}})"/>, for an answer
+    /// <paramref name="refused"/> tells a refusal of.</summary>
+    public Task<T> PatientlyAsync<T>(string action, Func<Patience, Task<T>> attempt, Func<T, bool> refused)
+    {
+        Action<string?> waits = Work?.Waits(action, Say) ?? (stage =>
+        {
+            if (stage is not null)
+            {
+                Say(stage);
+            }
+        });
+        return Patience.RunAsync(attempt, refused, stage => waits(stage is null ? null : $"{stage}…"), CancellationToken.None);
+    }
+
     private static string? NotTakenIn(IReadOnlyList<(string Path, string Project)> left) =>
         left.Count == 0 ? null : Refusals.NotTakenIn(Path.GetFileName(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project));
 

@@ -36,8 +36,9 @@ internal sealed partial class CodeActions
 
     /// <summary>A refactoring the server offers under its own words, over the selection: its one action carried out, or
     /// a list of them when it offers several (Encapsulate Field's with and without the property used), then the choices
-    /// nested under the one chosen (Introduce Parameter's into a new overload or an extracted method).</summary>
-    public async Task Refactor(ServerRefactoring refactoring)
+    /// nested under the one chosen (Introduce Parameter's into a new overload or an extracted method), as the work of the
+    /// action <paramref name="id"/>.</summary>
+    public async Task Refactor(ServerRefactoring refactoring, string id)
     {
         string name = refactoring.Name;
         if (context.Ask(name) is not { } lsp || context.Editors.Active is not { } document)
@@ -58,11 +59,11 @@ internal sealed partial class CodeActions
             Action done = () => context.Say($"{name} done");
             if (offered.Count == 1)
             {
-                await Carry(document, offered[0], primary.Caret, name, asked, done, refactoring.Keep);
+                await Carry(document, offered[0], primary.Caret, name, id, asked, done, refactoring.Keep);
                 return;
             }
             popups.ShowModal(new ChoicePopup(name, [.. offered.Select(a => new Choice(a.Title, string.Empty, a))]), primary.Caret, name,
-                choice => choice?.Value is CodeAction chosen ? Carry(document, chosen, primary.Caret, name, null, done, refactoring.Keep) : Task.CompletedTask);
+                choice => choice?.Value is CodeAction chosen ? Carry(document, chosen, primary.Caret, name, id, null, done, refactoring.Keep) : Task.CompletedTask);
         }
         catch (LanguageServerFailed failed)
         {

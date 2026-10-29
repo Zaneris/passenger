@@ -220,8 +220,17 @@ internal sealed partial class CSharpAssist
             {
                 return;
             }
-            RefactorOutcome made = await RenameResourceAsync(document, now, old, name, null);
-            context.Say(made.Problem ?? made.Said);
+            // Held on the name through what is typed while the rename is out, however often it is worked out.
+            Anchor held = actions.HeldAt(document, now);
+            try
+            {
+                RefactorOutcome made = await context.PatientlyAsync(AppActions.Rename, patience => RenameResourceAsync(document, held.Offset, old, name, patience));
+                context.Say(made.Problem ?? made.Said);
+            }
+            finally
+            {
+                held.Remove();
+            }
         });
         popups.WhenClosed(opened.Dispose);
         return true;

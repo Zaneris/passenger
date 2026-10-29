@@ -37,7 +37,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         TestFolders.Write(project, "Order.cs", Order);
         TestFolders.Write(project, "Till.cs", Till);
         TestFolders.Write(project, "Shapes.cs", Shapes);
-        // The files a test renames are the project's from the start: a rename refuses one written a moment before.
+        // The files a test renames are the project's from the start: a rename waits for its server to read one written a moment before.
         TestFolders.Write(project, "Form1.cs", "namespace Shop;\n\npublic partial class Form1\n{\n    public int Width;\n}\n");
         TestFolders.Write(project, "Form1.Designer.cs", "namespace Shop;\n\npublic partial class Form1\n{\n    public int Height;\n}\n");
         TestFolders.Write(project, "Form1.resx", "<root />\n");
@@ -284,7 +284,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
             written.Add(TestFolders.Write(folder, $"Small{i}.cs", $"namespace Shop;\n\npublic static class Small{i}\n{{\n    public static int Use() => Tally.Few({i});\n}}\n"));
             written.Add(TestFolders.Write(folder, $"Large{i}.cs", $"namespace Shop;\n\npublic static class Large{i}\n{{\n    public static int Use() => Tally.Many({i});\n}}\n" + filler));
         }
-        // Long written: a rename refuses a file written a moment before, which its server may not have read.
+        // Long written: a rename waits for its server to read a file written a moment before, which the measure would count.
         foreach (string path in written)
         {
             File.SetLastWriteTimeUtc(path, DateTime.UtcNow - TimeSpan.FromMinutes(1));

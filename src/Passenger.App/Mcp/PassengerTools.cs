@@ -466,7 +466,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         string renamed = moved.Count > 0 ? $"; renamed {string.Join(", ", moved)}" : string.Empty;
         string unrenamed = renaming.Left.Count > 0 ? $"; not in {string.Join(", ", renaming.Left)}, edited meanwhile" : string.Empty;
         return $"Renamed in {Plural.Of(changed.Count, "file")}: {string.Join(", ", changed)}{renamed}{unrenamed}";
-    }, cancel));
+    }, AgentCall.Say, cancel));
 
     [McpServerTool(Name = McpTools.CodeActions, Title = "Fixes and refactorings", ReadOnly = true), Description(
         "The fixes and refactorings offered at a position (Alt+Enter), or over a selection to endLine:endColumn (Extract " +
@@ -602,7 +602,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         await SaveLandedAsync(cancel);
         return $"Applied {what} to {Plural.Of(files, "file")}{unrun}{(dropped.Count > 0 ? $", but not to {string.Join(", ", dropped)}, edited meanwhile" : string.Empty)}";
-    }, cancel));
+    }, AgentCall.Say, cancel));
 
     /// <summary>A code action whose change its server makes by its own command, made as the window makes it
     /// (<see cref="ServerCommands"/>), the files saved: which files it changed and made, and where it put a name to rename.</summary>

@@ -86,7 +86,7 @@ public sealed partial class PassengerTools
             await SaveLandedAsync(cancel);
         }
         return answer;
-    }, cancel));
+    }, AgentCall.Say, cancel));
 
     /// <summary>The file a refactoring works on, which only C# files have: any other language is told what it has instead.</summary>
     private async Task<(OpenDocument Document, LspDocument Lsp)> CSharpOnly(string path, string kind, CancellationToken cancel)

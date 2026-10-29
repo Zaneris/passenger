@@ -32,10 +32,10 @@ public static class WorkspaceEdits
     public static readonly TimeSpan Catching = TimeSpan.FromSeconds(2);
 
     /// <summary>Why an edit the language server worked out must not be applied to the files not open it changes, but those
-    /// it <paramref name="made"/> empty for it: one written since the request was sent (<paramref name="since"/>) or a
+    /// it <paramref name="made"/> empty for it: one written since the request was sent (<paramref name="since"/>), or a
     /// moment before, which the server may not have read again, or one whose text the server holds is not the disk's, where
-    /// its lines and columns would land elsewhere; null when each is as the server read it. An agent's call tells its
-    /// <paramref name="patience"/>, which works the edit out again once the server has read them.</summary>
+    /// its lines and columns would land elsewhere; null when each is as the server read it. A command's
+    /// <paramref name="patience"/> works the edit out again once the server has read those written before the request.</summary>
     public static Task<string?> StaleAsync(EditorArea editors, LspDocument? server, JsonElement edit, DateTime? since, Patience? patience = null,
         IReadOnlyCollection<string>? made = null) =>
         StaleAsync(editors, server is null ? null : paths => server.HeldTextsAsync(paths), edit, since, patience, made);
@@ -47,15 +47,21 @@ public static class WorkspaceEdits
     {
         List<string> closed = [.. Shapes.WorkspaceEdit(edit).Where(c => c.Operation is null).Select(c => DocumentUris.ToPath(c.Uri)).Distinct()
             .Where(p => editors.Documents.All(d => d.Path != p) && File.Exists(p) && made?.Contains(p) != true)];
-        // One the agent's call saw the server hold as the disk has it, unwritten since, has had its moment.
-        List<string> written = [.. closed.Where(p => since is { } sent && File.GetLastWriteTimeUtc(p) > sent - Catching && patience?.Trusts(p) != true)];
+        // One the command saw the server hold as the disk has it, unwritten since, has had its moment.
+        List<(string Path, DateTime At)> written = [.. closed.Select(p => (Path: p, At: File.GetLastWriteTimeUtc(p)))
+            .Where(f => since is { } sent && f.At > sent - Catching && patience?.Trusts(f.Path) != true)];
+        // Written once the server was asked, its answer may be from the text before, whatever it holds by now.
+        if (written.FirstOrDefault(f => patience is null || f.At > since) is { Path: { } meanwhile })
+        {
+            return $"{Path.GetFileName(meanwhile)} changed on disk as the language server worked this out, so the places it gave there "
+                + "may be where they were before: nothing was changed; try again in a moment";
+        }
         if (written.Count > 0)
         {
-            string name = Path.GetFileName(written[0]);
-            string said = $"{name} changed on disk as the language server worked this out, so the places it gave there may be "
-                + "where they were before: nothing was changed; try again in a moment";
-            return patience?.Behind(written, held, said, $"{name} kept changing on disk as the language server worked this out, for "
-                + $"{Patience.Limit.TotalSeconds:0} s, so the places it gave there may be where they were before: nothing was changed") ?? said;
+            string name = Path.GetFileName(written[0].Path);
+            return patience!.Behind([.. written.Select(f => f.Path)], held, $"{name} changed on disk a moment before the language server was asked",
+                $"{name} changed on disk a moment before the language server was asked, which had not read it after {Patience.Limit.TotalSeconds:0} s, "
+                + "so the places it gave there may be where they were before: nothing was changed");
         }
         if (closed.Count == 0 || held is null)
         {
@@ -497,42 +503,58 @@ public sealed class Asked(Dictionary<OpenDocument, ChangeTracker> trackers) : ID
     }
 }
 
-/// <summary>An agent's call that applies a language server's edit across files, which an agent makes a moment after
-/// writing files itself: refused by <see cref="WorkspaceEdits.StaleAsync"/> for files not open the server may not have
-/// read as they are on disk, where a person's command refuses at once, it is worked out again once the server holds each
-/// as the disk has it, for up to <see cref="Limit"/> in all. A file seen so is trusted until it is written again.</summary>
+/// <summary>A command that applies a language server's edit across files, a person's or an agent's, made a moment after
+/// a file not open was written (by Undo, a refactoring, an agent, a checkout): refused by
+/// <see cref="WorkspaceEdits.StaleAsync"/> for files the server may not have read as they are on disk, it is worked out
+/// again once the server holds each as the disk has it, for up to <see cref="Limit"/> in all, saying what it waits for. A
+/// file seen so is trusted until it is written again; one written once the server was asked is refused at once.</summary>
 public sealed class Patience
 {
-    /// <summary>How long a call waits for the server, in all, before it refuses as a person's command does.</summary>
+    /// <summary>How long a command waits for the server, in all, before it refuses.</summary>
     public static readonly TimeSpan Limit = TimeSpan.FromSeconds(10);
 
     private readonly DateTime until = DateTime.UtcNow + Limit;
     private readonly Dictionary<string, (FileStamp Stamp, string Hash)> seen = new(StringComparer.Ordinal);
     private readonly List<string> behind = [];
+    private readonly Action<string?> waiting;
     private Held? held;
 
-    private Patience()
-    {
-    }
+    private Patience(Action<string?> waiting) => this.waiting = waiting;
 
-    /// <summary>The attempt's answer, the attempt made again each time it was refused for files the server had yet to
-    /// read, once it has read them; its refusal once the time is spent says what kept changing. An attempt changes
-    /// nothing before its edit is found fit, so another is as the first.</summary>
-    public static async Task<T> RunAsync<T>(Func<Patience, Task<T>> attempt, CancellationToken cancel)
+    /// <summary>The attempt's answer, the attempt made again each time it threw for files the server had yet to read, once
+    /// it has read them, <paramref name="waiting"/> told what it waits for meanwhile and null once it waits no more.</summary>
+    public static Task<T> RunAsync<T>(Func<Patience, Task<T>> attempt, Action<string?> waiting, CancellationToken cancel) =>
+        RunAsync(attempt, _ => false, waiting, cancel);
+
+    /// <summary>As <see cref="RunAsync{T}(Func{Patience, Task{T}}, Action{string?}, CancellationToken)"/>, the attempt also
+    /// made again when its answer is one it <paramref name="refused"/> for such files. An attempt changes nothing before its
+    /// edit is found fit, so another is as the first; its refusal once the time is spent says what it waited for.</summary>
+    public static async Task<T> RunAsync<T>(Func<Patience, Task<T>> attempt, Func<T, bool> refused, Action<string?> waiting, CancellationToken cancel)
     {
-        Patience patience = new();
-        while (true)
+        Patience patience = new(waiting);
+        try
         {
-            patience.behind.Clear();
-            try
+            while (true)
             {
-                return await attempt(patience);
+                patience.behind.Clear();
+                try
+                {
+                    T answer = await attempt(patience);
+                    if (patience.behind.Count == 0 || !refused(answer))
+                    {
+                        return answer;
+                    }
+                }
+                catch (InvalidOperationException) when (patience.behind.Count > 0)
+                {
+                    // Refused for the files behind, which the server reads in a moment.
+                }
+                await patience.CatchUpAsync(cancel);
             }
-            catch (InvalidOperationException) when (patience.behind.Count > 0)
-            {
-                // Refused for the files behind, which the server reads in a moment.
-            }
-            await patience.CatchUpAsync(cancel);
+        }
+        finally
+        {
+            waiting(null);
         }
     }
 
@@ -561,6 +583,10 @@ public sealed class Patience
     private async Task CatchUpAsync(CancellationToken cancel)
     {
         HashSet<string> untold = new(StringComparer.Ordinal);
+        if (DateTime.UtcNow < until)
+        {
+            waiting($"Waiting for the language server to read {Path.GetFileName(behind[0])} as it is on disk");
+        }
         while (DateTime.UtcNow < until)
         {
             List<string> asking = [.. behind.Where(p => !Trusts(p) && !untold.Contains(p) && File.Exists(p))];
@@ -568,17 +594,12 @@ public sealed class Patience
             {
                 try
                 {
-                    foreach (Roslyn.Extension.TextHeld text in await held(asking))
+                    IReadOnlyList<Roslyn.Extension.TextHeld> texts = await held(asking);
+                    untold.UnionWith(texts.Where(t => t.Hash is null).Select(t => t.Path));
+                    // Each file read off the window's thread, as files of any size may be waited for.
+                    foreach ((string path, FileStamp stamp, string hash) in await BackgroundWork.Run(() => HeldAsOnDisk(texts)))
                     {
-                        FileStamp stamp = FileStamp.Of(text.Path);
-                        if (text.Hash is null)
-                        {
-                            untold.Add(text.Path);
-                        }
-                        else if (WorkspaceEdits.OnDisk(text.Path, text.Hash) == true && FileStamp.Of(text.Path) == stamp)
-                        {
-                            seen[text.Path] = (stamp, text.Hash);
-                        }
+                        seen[path] = (stamp, hash);
                     }
                 }
                 catch (LanguageServerFailed)
@@ -593,6 +614,22 @@ public sealed class Patience
             }
             await Task.Delay(100, cancel);
         }
+    }
+
+    /// <summary>The files the server holds as the disk has them, unwritten while they were read, each with its stamp and the
+    /// fingerprint of the text held.</summary>
+    private static List<(string Path, FileStamp Stamp, string Hash)> HeldAsOnDisk(IReadOnlyList<Roslyn.Extension.TextHeld> texts)
+    {
+        List<(string Path, FileStamp Stamp, string Hash)> unwritten = [];
+        foreach (Roslyn.Extension.TextHeld text in texts)
+        {
+            FileStamp stamp = FileStamp.Of(text.Path);
+            if (text.Hash is { } hash && WorkspaceEdits.OnDisk(text.Path, hash) == true && FileStamp.Of(text.Path) == stamp)
+            {
+                unwritten.Add((text.Path, stamp, hash));
+            }
+        }
+        return unwritten;
     }
 
     /// <summary>When a file was last written and how long it was then.</summary>

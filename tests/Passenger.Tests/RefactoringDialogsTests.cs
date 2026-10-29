@@ -47,7 +47,7 @@ public sealed class RefactoringDialogsTests
 
     /// <summary>Every dialog's refactoring made in one window on one project, each through its own keys or menu item and
     /// its dialog's controls, and each taken back whole by Undo before the next: the project and its language server are
-    /// made once, and no refactoring touches a closed file another wrote a moment before, which a refactoring refuses. Each
+    /// made once, and no refactoring touches a closed file another wrote a moment before, which a refactoring waits for. Each
     /// file a refactoring changes is checked whole.</summary>
     [AvaloniaFact]
     public void Each_refactoring_dialog_changes_every_file_it_must_and_undo_takes_each_back_whole()
