@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using Passenger.Core;
@@ -5,7 +6,7 @@ using Passenger.Text;
 
 namespace Passenger.Workspace;
 
-/// <summary>Add Reference and Remove on a project reference, a package reference added, its items following a file
+/// <summary>Add Reference and Remove on a project reference, a package reference added, its paths following a file
 /// moved, and a property set (Add &gt; Docker Support's container properties), made to the project file's text through
 /// <see cref="XmlText"/>: a reference goes beside the project's others, or in an item group of its own before
 /// &lt;/Project&gt;, written relative with backslashes; taking it out takes the group it leaves empty, so the file is as
@@ -14,6 +15,9 @@ namespace Passenger.Workspace;
 /// cannot be read or written throws.</summary>
 public static class ProjectEdits
 {
+    /// <summary>A condition's Exists('path'), which an Import's condition checks its own path with.</summary>
+    private static readonly Regex ExistsIn = new(@"Exists\(\s*'(?<path>[^']*)'\s*\)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     public static string? AddReference(string project, string referenced) => Change(project, xml =>
     {
         if (References(xml, project).Any(r => PathNames.Same(r.Path, referenced)))
@@ -138,11 +142,11 @@ public static class ProjectEdits
             ? PropertyGroups(xml).SelectMany(g => g.Elements()).FirstOrDefault(e => e.Name.LocalName == name && !e.HasElements)?.Value.Trim()
             : null;
 
-    /// <summary>The project (at its path now) following files and folders that moved or were renamed: an item's Include,
-    /// Update, Remove or Exclude naming a file, or a glob's folder, names where it went (a list or a property stays as
-    /// written), and a DependentUpon or LastGenOutput naming one (relative to its item's file) names it there. A project
-    /// that moved itself reads its paths from where it was, so one naming a file outside it still finds it. Whether it
-    /// changed.</summary>
+    /// <summary>The project (at its path now) following files and folders that moved or were renamed: each path it names
+    /// from its folder (an item's Include, Update, Remove or Exclude, a glob by its folder; an Import's Project and the
+    /// Exists of its Condition, not an SDK's; a HintPath) names where that went, a list or a property staying as written,
+    /// and a DependentUpon or LastGenOutput (from its item's file) names it there. A project that moved reads its paths
+    /// from where it was, so one naming a file outside it still finds it. Whether it changed.</summary>
     public static bool MoveItems(string project, IReadOnlyList<(string From, string To)> moves)
     {
         ProjectText file = new(project);
@@ -156,6 +160,23 @@ public static class ProjectEdits
         List<(int Start, int Length, string With)> edits = [];
         foreach (XElement item in xml.Root.Descendants())
         {
+            switch (item.Name.LocalName)
+            {
+                case "Import" when item.Attribute("Sdk") is null:
+                    Follow(xml.ValueOf(item, "Project"));
+                    if (xml.ValueOf(item, "Condition") is { } condition)
+                    {
+                        foreach (Group exists in ExistsIn.Matches(xml.Written(condition)).Select(m => m.Groups["path"]))
+                        {
+                            Follow((condition.Start + exists.Index, exists.Length));
+                        }
+                    }
+                    continue;
+                case "HintPath" when !item.HasElements:
+                    Follow(xml.InnerOf(item));
+                    continue;
+            }
+            Follow(xml.ValueOf(item, "HintPath"));
             string? own = null;
             foreach (string kind in item.Attributes().Select(a => a.Name.LocalName).Where(n => n is "Include" or "Update" or "Remove" or "Exclude").ToList())
             {
@@ -163,20 +184,9 @@ public static class ProjectEdits
                 {
                     continue;
                 }
-                // Each path names where its file is now, from where the project is now; a glob by the folder it begins in.
                 string items = xml.Written(span);
                 own ??= kind is "Include" or "Update" && OneFile(items) ? items : null;
-                int wild = items.IndexOfAny(['*', '?']);
-                string path = (wild < 0 ? items : items[..Math.Max(0, items.LastIndexOfAny(['\\', '/'], wild))]).TrimEnd('\\', '/');
-                if (path.Trim().Length == 0 || items.IndexOfAny([';', '$', '@', '%']) >= 0)
-                {
-                    continue;
-                }
-                string now = Moved(Full(before, path));
-                if (!PathNames.Same(Full(folder, path), now))
-                {
-                    edits.Add((span.Start, span.Length, Written(Path.GetRelativePath(folder, now), path) + items[path.Length..]));
-                }
+                Follow(span);
             }
             if (own is null)
             {
@@ -204,6 +214,29 @@ public static class ProjectEdits
         xml.Apply(edits);
         file.Write(xml.Text);
         return true;
+
+        // A path named from the project's folder names where that is now; a glob, by the folder it begins in.
+        void Follow((int Start, int Length)? at)
+        {
+            if (at is not { } span)
+            {
+                return;
+            }
+            string written = xml.Written(span);
+            string items = written.Trim();
+            int start = span.Start + written.Length - written.TrimStart().Length;
+            int wild = items.IndexOfAny(['*', '?']);
+            string path = (wild < 0 ? items : items[..Math.Max(0, items.LastIndexOfAny(['\\', '/'], wild))]).TrimEnd('\\', '/');
+            if (path.Length == 0 || items.IndexOfAny([';', '$', '@', '%']) >= 0)
+            {
+                return;
+            }
+            string now = Moved(Full(before, path));
+            if (!PathNames.Same(Full(folder, path), now))
+            {
+                edits.Add((start, items.Length, Written(Path.GetRelativePath(folder, now), path) + items[path.Length..]));
+            }
+        }
 
         static bool OneFile(string items) => items.Trim().Length > 0 && items.IndexOfAny(['*', '?', ';', '$', '@', '%']) < 0;
 

@@ -289,6 +289,67 @@ public sealed class ExplorerFilesTests : IDisposable
         }
     }
 
+    /// <summary>A project cut and pasted a folder deeper: its Import and its reference's HintPath name from there the files
+    /// they named, and another project's Import of a file in its folder names it where it went, so both still build with
+    /// the .NET command line; one Undo puts the folder and both project files back.</summary>
+    [AvaloniaFact]
+    public void A_project_moved_deeper_follows_its_import_and_hint_path_and_another_projects_import_into_it_and_still_builds()
+    {
+        File.Delete(Path.Combine(folder, "Shop.csproj"));
+        string root = PathNames.Canonical(folder);
+        const string Defines = "<Project>\n  <PropertyGroup>\n    <DefineConstants>$(DefineConstants);{0}</DefineConstants>\n  </PropertyGroup>\n</Project>\n";
+        TestFolders.Write(root, "build/common.props", string.Format(System.Globalization.CultureInfo.InvariantCulture, Defines, "COMMON"));
+        TestFolders.Write(root, "native/Native.csproj", TestProjects.Library());
+        TestFolders.Write(root, "native/Greeting.cs", "namespace Native;\n\npublic static class Greeting\n{\n    public const string Text = \"native\";\n}\n");
+        string app = TestProjects.Library().With("  <Import Project=\"..\\..\\build\\common.props\" />\n"
+            + "  <ItemGroup>\n    <Reference Include=\"Native\">\n      <HintPath>..\\..\\lib\\Native.dll</HintPath>\n    </Reference>\n  </ItemGroup>\n");
+        TestFolders.Write(root, "src/App/App.csproj", app);
+        TestFolders.Write(root, "src/App/App.props", string.Format(System.Globalization.CultureInfo.InvariantCulture, Defines, "APP"));
+        TestFolders.Write(root, "src/App/Greeter.cs",
+            "#if !COMMON\n#error build/common.props is not imported\n#endif\nnamespace App;\n\npublic static class Greeter\n{\n    public const string Text = Native.Greeting.Text;\n}\n");
+        string tool = TestProjects.Library().With("  <Import Project=\"..\\App\\App.props\" />\n  <ItemGroup>\n    <ProjectReference Include=\"..\\App\\App.csproj\" />\n  </ItemGroup>\n");
+        TestFolders.Write(root, "src/Tool/Tool.csproj", tool);
+        TestFolders.Write(root, "src/Tool/Uses.cs", "#if !APP\n#error App.props is not imported\n#endif\nnamespace Tool;\n\npublic static class Uses\n{\n    public const string Text = App.Greeter.Text;\n}\n");
+        string apps = Directory.CreateDirectory(Path.Combine(root, "src", "apps")).FullName;
+        Built(Path.Combine(root, "native", "Native.csproj"), "before the test, so App has no Native.dll to reference", "-o", Path.Combine(root, "lib"));
+        MainWindow window = Open();
+        List<string> asked = Answer(window);
+
+        Choose(Path.Combine(root, "src", "App"));
+        Ui.Run(window, EditorActions.Cut);
+        Choose(apps);
+        Ui.Run(window, EditorActions.Paste);
+        Assert.Equal("Moved App to apps", window.Status);
+        string moved = Path.Combine(apps, "App", "App.csproj");
+        string toolProject = Path.Combine(root, "src", "Tool", "Tool.csproj");
+        Assert.Equal(app.Replace("..\\..\\", "..\\..\\..\\", StringComparison.Ordinal), File.ReadAllText(moved));
+        Assert.Equal(tool.Replace("..\\App\\", "..\\apps\\App\\", StringComparison.Ordinal), File.ReadAllText(toolProject));
+        Built(toolProject, "once App moved, so a path one of them names was left behind");
+
+        Choose(apps);
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal(["Undo"], asked);
+        Assert.True(File.Exists(Path.Combine(root, "src", "App", "App.csproj")) && !File.Exists(moved), $"Undo did not move App back: {window.Status}");
+        Assert.Equal(app, File.ReadAllText(Path.Combine(root, "src", "App", "App.csproj")));
+        Assert.Equal(tool, File.ReadAllText(toolProject));
+        window.Close();
+
+        void Choose(string path)
+        {
+            window.ExplorerView.Reveal(path);
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == path));
+        }
+    }
+
+    /// <summary>A project built with the .NET command line, as a person would check it, with the options given.</summary>
+    private static void Built(string project, string when, params string[] options)
+    {
+        ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", project, "-nologo", "-v:q", .. options]), limit: Restore.Limit.Scaled())),
+            $"{Path.GetFileName(project)}'s build", Restore.Limit.Scaled() + TestFolders.Spare);
+        Assert.True(built.Succeeded, $"{Path.GetFileName(project)} does not build {when}:\n{built.Output}{built.Error}");
+    }
+
     [AvaloniaFact]
     public void A_file_renamed_in_the_explorer_keeps_its_tab_in_both_splits_its_undo_its_bookmark_and_its_breakpoint()
     {
