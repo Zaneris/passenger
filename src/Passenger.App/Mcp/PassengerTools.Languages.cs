@@ -155,6 +155,10 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException("Nothing to rename here: JSON's Rename renames a property, so put the place on its name");
         }
         string old = at.Path[^1].Name;
+        if (old == newName)
+        {
+            return $"{newName} is its name already";
+        }
         if (asked.Map(WebAssist.JsonRenameEdits(at.Path, at.Key, lines, newName, WebAssist.IsPackageJson(document))) is not { } placed)
         {
             throw new InvalidOperationException("Rename was not applied: the property was edited meanwhile");

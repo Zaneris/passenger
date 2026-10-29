@@ -264,7 +264,13 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         await Call(client, McpTools.Rename, new(At(sheet, css, "var(--acc")) { ["newName"] = "--brand" });
         Assert.Equal(":root {\n  --brand: #3574f0;\n}\n\n.cart {\n  color: var(--brand);\n}\n", File.ReadAllText(Path.Combine(web, css)));
 
+        // The CSS server's card without its Baseline icon's image, whose data an agent cannot read.
+        string color = (await Call(client, McpTools.SymbolInfo, At(sheet, css, ".cart {\n  col"))).GetString()!;
+        Assert.True(color.Contains("color", StringComparison.Ordinal) && !color.Contains("data:", StringComparison.Ordinal) && !color.Contains("![", StringComparison.Ordinal),
+            $"symbol_info on a CSS property gave an image's data as text:\n{color}");
+
         string manifest = File.ReadAllText(Path.Combine(web, "package.json"));
+        Assert.Equal("Nothing is known about this position", (await Call(client, McpTools.SymbolInfo, At(manifest, "package.json", "\"bui"))).GetString());
         CallToolResult none = await Result(client, McpTools.Usages, At(manifest, "package.json", "\"bui"));
         Assert.True(none.IsError == true && Text(none).Contains("JSON has no usages", StringComparison.Ordinal), $"usages in package.json answered: {Text(none)}");
         JsonElement package = Assert.Single((await Call(client, McpTools.Definition, At(manifest, "package.json", "\"esl"))).EnumerateArray());
@@ -672,6 +678,8 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         JsonElement problem = Assert.Single((await Call(client, McpTools.Diagnostics, new() { ["path"] = "Dockerfile" })).EnumerateArray());
         Assert.Contains("Unknown instruction: FROMM", problem.GetProperty("message").GetString(), StringComparison.Ordinal);
 
+        Assert.Equal("web is its name already", (await Call(client, McpTools.Rename, new(At(Compose, "compose.yaml", "  we")) { ["newName"] = "web" })).GetString());
+        Assert.Equal(Compose, File.ReadAllText(Path.Combine(compose, "compose.yaml")));
         string renamed = (await Call(client, McpTools.Rename, new(At(Compose, "compose.yaml", "[ap")) { ["newName"] = "backend" })).GetString()!;
         Assert.Equal("Renamed the service api to backend in 1 file: compose.yaml", renamed);
         string written = Compose.Replace("api", "backend", StringComparison.Ordinal);

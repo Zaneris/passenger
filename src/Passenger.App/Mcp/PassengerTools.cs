@@ -395,6 +395,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (served is ServerServed { Web.Kind: WebServerKind.Yaml } yaml && ComposeDeclarations.IsCompose(yaml.Document.Path)
             && await ComposeAssist.ComposeRenamingAsync(yaml.Lsp, yaml.Document, offset) is { } composed)
         {
+            if (composed.Name == newName)
+            {
+                return $"{newName} is its name already";
+            }
             RefactorOutcome compose = await window.Assist.Languages.Compose.RenameComposeAsync(yaml.Document, offset, composed.Name, newName);
             if (compose.Problem is { } refused)
             {
@@ -427,6 +431,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 held.Remove();
             }
+        }
+        if (resource == newName)
+        {
+            return $"{newName} is its name already";
         }
         if (resource is not null)
         {
@@ -831,12 +839,20 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }
 
     /// <summary>A hover card's words as an agent reads them: Markdown made plain text, its code fences, backslash escapes,
-    /// entities and line-break spaces taken out, the code in it kept as written.</summary>
+    /// entities and line-break spaces taken out, the code in it kept as written, and no image's data.</summary>
     private static string HoverText(Hover hover) =>
         hover.Contents is { ValueKind: System.Text.Json.JsonValueKind.Object } content && content.TryGetProperty("kind", out System.Text.Json.JsonElement kind)
             && kind.ValueKind == System.Text.Json.JsonValueKind.String && kind.GetString() == "plaintext"
-            ? Shapes.Text(hover.Contents).Trim()
+            ? DataUri().Replace(Shapes.Text(hover.Contents), string.Empty).Trim()
             : Plain(Shapes.Text(hover.Contents));
+
+    /// <summary>A Markdown image (the CSS server's Baseline icon), whose words an agent has beside it and whose data it cannot read.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"!\[[^\]]*\]\([^)]*\)[ \t]*")]
+    private static partial System.Text.RegularExpressions.Regex MarkdownImage();
+
+    /// <summary>A data URI's base64 bytes, as text no agent can read.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"\bdata:[\w.+/-]*(?:;[\w.+=-]+)*;base64,[A-Za-z0-9+/=]+")]
+    private static partial System.Text.RegularExpressions.Regex DataUri();
 
     /// <summary>Markdown as plain text, a run of blank lines kept as one (<see cref="HoverText"/>).</summary>
     private static string Plain(string markdown)
@@ -852,7 +868,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 fenced = !fenced;
                 continue;
             }
-            string plain = fenced ? line : Unescaped(line);
+            string plain = fenced ? line : Unescaped(DataUri().Replace(MarkdownImage().Replace(line, string.Empty), string.Empty));
             if (plain.Trim().Length == 0)
             {
                 gap = text.Length > 0;
