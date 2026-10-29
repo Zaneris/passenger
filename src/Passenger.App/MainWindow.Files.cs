@@ -198,7 +198,9 @@ public partial class MainWindow
 
     /// <summary>Rename on a row: a file named after a type (a C# file declaring it, a XAML or Razor file whose code-behind
     /// declares its class, <see cref="TypeRename.NamedAfterFile"/>) offers to rename the type too (Rename type 'Foo' to
-    /// match the new file name), checked as it was left (on until turned off).</summary>
+    /// match the new file name), checked as it was left (on until turned off). The type's name is held in its open file
+    /// from the popup's opening, through what changes the file meanwhile (an agent's edit, a fix), and found again in a
+    /// file not open as the rename begins.</summary>
     private void AskRename(string path)
     {
         if (TypeRename.NamedAfterFile(Editors, path) is not { } type)
@@ -206,12 +208,27 @@ public partial class MainWindow
             AskName("Rename", Path.GetFileName(path), name => RenameAsync(path, name));
             return;
         }
+        OpenDocument? declaring = Editors.Find(type.Declaring);
+        Anchor? held = declaring?.Text.AnchorAt(type.Offset, AnchorGravity.After);
         Vcs.NamePopup? popup = null;
-        popup = new Vcs.NamePopup("Rename", Path.GetFileName(path), name => RenameWithTypeAsync(path, name, type, popup?.Option?.IsChecked == true),
+        popup = new Vcs.NamePopup("Rename", Path.GetFileName(path), Attempt,
             option: ($"Rename type '{type.Name}' to match the new file name", assist.RenameSettings.RenameType));
         popup.OptionChanged += (_, on) => assist.RenameSettings = assist.RenameSettings with { RenameType = on };
+        popup.DetachedFromVisualTree += (_, _) => held?.Remove();
         popups.Show(popup, _ => { });
+
+        Task<string?> Attempt(string name) =>
+            popup?.Option?.IsChecked != true || TypeRename.Stem(name) == type.Name ? RenameAsync(path, name)
+            : TypeNow(path, type, declaring, held) is { } now ? RenameWithTypeAsync(path, name, now, renameType: true)
+            : Task.FromResult<string?>($"{Path.GetFileName(type.Declaring)} no longer declares {type.Name}: turn renaming the type off to rename the file alone");
     }
+
+    /// <summary>The type a popup's rename offers as it stands now: at its name's place held in the open file that declares
+    /// it, else found again where the file declares it; null when the file no longer declares a type of its name.</summary>
+    private TypeRename.FileType? TypeNow(string path, TypeRename.FileType type, OpenDocument? declaring, Anchor? held) =>
+        held is { IsLive: true } && declaring is not null && Editors.Find(type.Declaring) == declaring ? type with { Offset = held.Offset }
+        : TypeRename.NamedAfterFile(Editors, path) is { } found && found.Name == type.Name && PathNames.Same(found.Declaring, type.Declaring) ? found
+        : null;
 
     /// <summary>Renames a file and, when asked, the type it is named after: the language server renames the type
     /// everywhere it is used, from its declaration (a markup file's in its code-behind, a Razor component's with none

@@ -439,6 +439,32 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         window.Close();
     }
 
+    /// <summary>A line written above a class in its open file while the Solution view's Rename popup for the file is open, as
+    /// an agent's edit writes it: the rename still lands on the class, its uses and its file, the line kept above it, where
+    /// the place read as the popup opened was inside the new line and the rename was refused.</summary>
+    [AvaloniaFact]
+    public void A_line_written_above_a_class_while_the_solution_views_rename_popup_is_open_still_renames_the_class_and_its_file()
+    {
+        const string Written = "// written by an agent while the popup was open\n";
+        MainWindow window = Open("Order.cs");
+        OpenDocument document = window.EditorArea.Active!;
+        Choose(window, OrderPath);
+        Ui.Run(window, AppActions.Rename);
+        NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+        Assert.True(popup.Option?.IsChecked == true, "Renaming Order.cs did not offer to rename the class Order with it");
+        window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(0, 0, Written)]);
+        Ui.Settle();
+        Assert.True(window.Popup == popup, "The rename popup closed as its file was written");
+        window.KeyTextInput("Purchase.cs");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => !window.IsPopupOpen, $"the rename to finish: {popup.Problem}");
+
+        Assert.Equal(PurchasePath, document.Path);
+        Assert.Equal(Written + Order.Replace("Order", "Purchase", StringComparison.Ordinal), document.Text.Snapshot.ToString());
+        Assert.Equal(Till.Replace("Order", "Purchase", StringComparison.Ordinal), File.ReadAllText(Path.Combine(folder, "Till.cs")));
+        window.Close();
+    }
+
     private MainWindow Open(string file)
     {
         MainWindow window = Ui.OpenFolder(folder, autosaves: false);
