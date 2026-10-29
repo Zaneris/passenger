@@ -13,10 +13,14 @@ using Passenger.Workspace;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>A package as the NuGet window lists it: what the feeds say of it, the feeds that have it, the versions
-/// the solution's projects have of it, and the known vulnerabilities of those versions.</summary>
-public sealed record PackageRow(string Id, string Version, string Description, string Authors, long Downloads, IReadOnlyDictionary<string, string?> Installed)
+/// the solution's projects have of it (by project, each framework's), and the known vulnerabilities of those versions.</summary>
+public sealed record PackageRow(string Id, string Version, string Description, string Authors, long Downloads,
+    IReadOnlyDictionary<string, IReadOnlyList<InstalledVersion>> Installed)
 {
     public bool IsInstalled => Installed.Count > 0;
+
+    /// <summary>The versions in force in the projects, each once.</summary>
+    public IEnumerable<string> InstalledVersions => Installed.Values.SelectMany(v => v).Select(v => v.Version).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase);
 
     public IReadOnlyList<string> Feeds { get; init; } = [];
 
@@ -293,7 +297,7 @@ public sealed class NuGetView : DockPanel
         asking?.Cancel();
         CancellationTokenSource cancel = asking = new();
         string? chosen = Selected?.Id;
-        Dictionary<string, Dictionary<string, string?>> installed = model.Installed();
+        Dictionary<string, Dictionary<string, IReadOnlyList<InstalledVersion>>> installed = model.Installed();
         // The feed's answer is the list shown next, so a screenshot waits for it rather than for "Searching".
         using IDisposable held = BackgroundWork.Scope();
         if (!model.IsCurrent && model.Given is null)
@@ -309,7 +313,8 @@ public sealed class NuGetView : DockPanel
             if (Query.Trim().Length == 0)
             {
                 found = [.. installed.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase)
-                    .Select(p => new PackageRow(p.Key, p.Value.Values.FirstOrDefault(v => v is not null) ?? string.Empty, string.Empty, string.Empty, 0, p.Value))];
+                    .Select(p => new PackageRow(p.Key, p.Value.Values.SelectMany(v => v).Select(v => v.Version).FirstOrDefault(v => v is not null) ?? string.Empty,
+                        string.Empty, string.Empty, 0, p.Value))];
                 status.Text = Counted(found, null);
             }
             else
@@ -319,7 +324,8 @@ public sealed class NuGetView : DockPanel
                     ? await set.SearchEachAsync(Query.Trim(), prerelease.IsChecked == true, cancel.Token)
                     : new FeedSearch(await feed.SearchAsync(Query.Trim(), prerelease.IsChecked == true, cancel.Token), [], 0);
                 found = [.. answer.Packages.Select(h => new PackageRow(h.Id, h.Version, h.Description, h.Authors, h.Downloads,
-                    installed.TryGetValue(h.Id, out Dictionary<string, string?>? have) ? have : new Dictionary<string, string?>()) { Feeds = h.Feeds })];
+                    installed.TryGetValue(h.Id, out Dictionary<string, IReadOnlyList<InstalledVersion>>? have) ? have : new Dictionary<string, IReadOnlyList<InstalledVersion>>())
+                { Feeds = h.Feeds })];
                 status.Text = Said(answer, feed);
                 if (answer.Failed.Count > 0)
                 {
@@ -401,7 +407,7 @@ public sealed class NuGetView : DockPanel
 
     /// <summary>Rows with the advisories that affect the versions their projects have.</summary>
     private static IReadOnlyList<PackageRow> Marked(IReadOnlyList<PackageRow> found, VulnerabilityData known) =>
-        [.. found.Select(r => r with { Advisories = [.. r.Installed.Values.OfType<string>().Distinct().SelectMany(v => known.Of(r.Id, v)).Distinct().OrderByDescending(a => a.Severity)] })];
+        [.. found.Select(r => r with { Advisories = [.. r.InstalledVersions.SelectMany(v => known.Of(r.Id, v)).Distinct().OrderByDescending(a => a.Severity)] })];
 
     /// <summary>The status over the installed packages: how many, how many have a known vulnerability, and the audit's
     /// feeds that did not say.</summary>
@@ -553,7 +559,7 @@ public sealed class NuGetView : DockPanel
         }
         versions = found;
         VulnerabilityData known = Known;
-        string? vulnerable = row.Installed.Values.OfType<string>().Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault();
+        string? vulnerable = row.InstalledVersions.Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault();
         string? fix = vulnerable is null ? null : known.FixedVersion(row.Id, vulnerable, versions);
         ChosenVersion = fix ?? versions.FirstOrDefault() ?? row.Version;
         ComboBox picker = new() { Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, MinWidth = 140 };
@@ -648,15 +654,19 @@ public sealed class NuGetView : DockPanel
         panel.Children.Add(new TextBlock { Text = "Projects", FontWeight = FontWeight.SemiBold });
         foreach (ProjectModel project in model.Projects.Where(p => p.Exists).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
         {
-            bool has = row.Installed.TryGetValue(project.Path, out string? at);
-            IReadOnlyList<Advisory> affecting = at is null ? [] : Known.Of(row.Id, at);
-            TextBlock version = new() { Text = has ? at ?? "installed" : string.Empty, Width = 110, VerticalAlignment = VerticalAlignment.Center };
-            version.Bind(TextBlock.ForegroundProperty, version.GetResourceObservable(affecting.Count > 0 ? TokenKeys.Warning : TokenKeys.TextMuted));
+            IReadOnlyList<InstalledVersion> at = row.Installed.GetValueOrDefault(project.Path) ?? [];
+            bool has = at.Count > 0;
+            InstalledVersion? vulnerable = at.FirstOrDefault(v => v.Version is { } known && Known.Of(row.Id, known).Count > 0);
+            TextBlock version = new() { Text = Shown(at), Width = 110, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            ToolTip.SetTip(version, at.Count > 1 ? string.Join("\n", at.Select(v => $"{v.Framework}: {v.Version ?? "installed"}")) : null);
+            version.Bind(TextBlock.ForegroundProperty, version.GetResourceObservable(vulnerable is not null ? TokenKeys.Warning : TokenKeys.TextMuted));
             // A slot of its own, so the buttons stand in one column whichever lines have the mark.
             Panel mark = new() { Width = 14, VerticalAlignment = VerticalAlignment.Center };
-            if (affecting.Count > 0)
+            if (vulnerable is { Version: { } affected })
             {
-                mark.Children.Add(Warning($"Known security vulnerability in {at}: {affecting[0].Severity} severity ({affecting[0].Address})"));
+                Advisory gravest = Known.Of(row.Id, affected)[0];
+                string where = at.Count > 1 ? $" for {vulnerable.Framework}" : string.Empty;
+                mark.Children.Add(Warning($"Known security vulnerability in {affected}{where}: {gravest.Severity} severity ({gravest.Address})"));
             }
             StackPanel line = new()
             {
@@ -670,15 +680,19 @@ public sealed class NuGetView : DockPanel
             }
             else
             {
-                if (ChosenVersion is { } chosen && at is not null && VersionOrder.Instance.Compare(chosen, at) is int order && order != 0)
+                if (ChosenVersion is { } chosen && InstalledVersion.Move(chosen, at) is PackageMove move and not PackageMove.None)
                 {
-                    line.Children.Add(Action(order > 0 ? "Update" : "Downgrade", () => InstallAsync(project)));
+                    line.Children.Add(Action(move.ToString(), () => InstallAsync(project)));
                 }
                 line.Children.Add(Action("Remove", () => RemoveAsync(project)));
             }
             panel.Children.Add(line);
         }
     }
+
+    /// <summary>A project's versions of a package as its line says them: each once, in its frameworks' order.</summary>
+    private static string Shown(IReadOnlyList<InstalledVersion> at) =>
+        string.Join(", ", at.Select(v => v.Version ?? "installed").Distinct(StringComparer.OrdinalIgnoreCase));
 
     private Button Action(string label, Func<Task<bool>> run)
     {

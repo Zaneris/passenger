@@ -9,7 +9,8 @@ using Passenger.Workspace;
 namespace Passenger.Tests;
 
 /// <summary>The NuGet window over two projects and a stand-in feed whose VulnerabilityInfo the audit reads, so nothing
-/// reaches nuget.org: a change runs one at a time, the projects' actions disabled meanwhile, and one refused says why.</summary>
+/// reaches nuget.org: a package is shown, compared and audited at each of a project's frameworks' versions; a change runs
+/// one at a time, the projects' actions disabled meanwhile, and one refused says why.</summary>
 public sealed class NuGetTests : IDisposable
 {
     private const string Id = "Passenger.Vulnerable";
@@ -43,14 +44,40 @@ public sealed class NuGetTests : IDisposable
               </config>
             </configuration>
             """);
-        lib = Project("Lib", string.Empty);
-        Project("App", string.Empty);
+        lib = Project("Lib", TestProjects.Framework, string.Empty);
+        Project("App", TestProjects.Framework, string.Empty);
     }
 
     public void Dispose()
     {
         feed.Dispose();
         TestFolders.Delete(folder);
+    }
+
+    /// <summary>A project built for two frameworks, the package at 1.1.0 for its first and at a vulnerable 1.0.0 for its
+    /// second, shows both versions on its line, marked, the package's row and the status counting it vulnerable, and
+    /// offers the version that fixes it as an Update.</summary>
+    [AvaloniaFact]
+    public void A_package_whose_version_differs_by_framework_shows_each_and_is_marked_vulnerable_when_any_is()
+    {
+        Project("Lib", $"net11.0;{TestProjects.Framework}",
+            $"  <ItemGroup Condition=\"'$(TargetFramework)' == 'net11.0'\">\n    <PackageReference Include=\"{Id}\" Version=\"1.1.0\" />\n  </ItemGroup>\n"
+            + $"  <ItemGroup Condition=\"'$(TargetFramework)' == '{TestProjects.Framework}'\">\n    <PackageReference Include=\"{Id}\" Version=\"1.0.0\" />\n  </ItemGroup>\n");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Landed(() => nuget.Selected?.Id == Id && nuget.Versions.Count == 3, $"{Id} listed as installed, and its versions: {nuget.Status}");
+        Assert.True(nuget.Selected!.IsVulnerable && nuget.Status == "1 package installed, 1 vulnerable",
+            $"With {TestProjects.Framework}'s 1.0.0 vulnerable, the package's row is {(nuget.Selected.IsVulnerable ? "marked" : "unmarked")} and the status says \"{nuget.Status}\"");
+        Assert.True(ShownVersion(nuget, "Lib") == "1.1.0, 1.0.0", $"Lib's line shows {ShownVersion(nuget, "Lib")}, not each framework's version");
+        Assert.True(nuget.ChosenVersion == "1.0.1" && Action(nuget, "Lib", "Update") is not null,
+            $"The window offers {nuget.ChosenVersion} as [{string.Join(", ", Labels(nuget, "Lib"))}], not 1.0.1, which fixes {TestProjects.Framework}'s 1.0.0, as an Update");
+
+        // The second framework's version alone changed on disk, as a person edits the project.
+        File.WriteAllText(lib, File.ReadAllText(lib).Replace("Version=\"1.0.0\"", "Version=\"1.0.1\"", StringComparison.Ordinal));
+        Ui.WaitFor(() => ShownVersion(nuget, "Lib") == "1.1.0, 1.0.1",
+            () => $"Lib's line to show {TestProjects.Framework}'s 1.0.1 written on disk once the project is evaluated again (it shows {ShownVersion(nuget, "Lib")})");
+        Assert.False(nuget.Selected?.IsVulnerable, $"With {TestProjects.Framework} at 1.0.1, which fixes 1.0.0, the package is still marked vulnerable");
+        window.Close();
     }
 
     /// <summary>While another asker's change of Lib (an agent's, Migrations') runs, the NuGet window's Install on App is
@@ -109,12 +136,13 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A project of the folder's own, with the item group given.</summary>
-    private string Project(string name, string items)
+    /// <summary>A project of the folder's own for its frameworks, with the item groups given.</summary>
+    private string Project(string name, string frameworks, string items)
     {
         Directory.CreateDirectory(Path.Combine(folder, name));
         string path = Path.Combine(folder, name, $"{name}.csproj");
-        File.WriteAllText(path, $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n{items}</Project>\n");
+        string property = frameworks.Contains(';', StringComparison.Ordinal) ? "TargetFrameworks" : "TargetFramework";
+        File.WriteAllText(path, $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <{property}>{frameworks}</{property}>\n  </PropertyGroup>\n{items}</Project>\n");
         return path;
     }
 
@@ -138,9 +166,18 @@ public sealed class NuGetTests : IDisposable
 
     private static ProjectModel Named(MainWindow window, string name) => window.Projects.Single(p => p.Name == name);
 
-    /// <summary>The button of a label on a project's line among the chosen package's projects.</summary>
-    private static Button? Action(NuGetView nuget, string project, string label) => nuget.GetLogicalDescendants().OfType<StackPanel>()
-        .Where(line => line.Children.FirstOrDefault() is TextBlock { Text: { } text } && text == project)
-        .SelectMany(line => line.Children.OfType<Button>())
-        .FirstOrDefault(button => (string?)button.Content == label);
+    /// <summary>A project's line among the chosen package's projects.</summary>
+    private static StackPanel? Line(NuGetView nuget, string project) => nuget.GetLogicalDescendants().OfType<StackPanel>()
+        .FirstOrDefault(line => line.Children.FirstOrDefault() is TextBlock { Text: { } text } && text == project);
+
+    /// <summary>The button of a label on a project's line.</summary>
+    private static Button? Action(NuGetView nuget, string project, string label) =>
+        Line(nuget, project)?.Children.OfType<Button>().FirstOrDefault(button => (string?)button.Content == label);
+
+    /// <summary>The words on a project's line's buttons.</summary>
+    private static IEnumerable<string> Labels(NuGetView nuget, string project) =>
+        Line(nuget, project)?.Children.OfType<Button>().Select(b => b.Content).OfType<string>() ?? [];
+
+    /// <summary>The version a project's line shows for the chosen package: the one in force there, or nothing.</summary>
+    private static string? ShownVersion(NuGetView nuget, string project) => Line(nuget, project)?.Children.OfType<TextBlock>().Skip(1).FirstOrDefault()?.Text;
 }

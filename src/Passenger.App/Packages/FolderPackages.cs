@@ -164,24 +164,29 @@ public sealed class FolderPackages
     /// <summary>The vulnerabilities as far as they are known: none until they are read, or when they could not be.</summary>
     public VulnerabilityData Known => audit is { IsCompletedSuccessfully: true } read ? read.Result : VulnerabilityData.None;
 
-    /// <summary>The packages the projects reference: by package, each project's version (null where only central
-    /// management would know and it does not say).</summary>
-    public Dictionary<string, Dictionary<string, string?>> Installed()
+    /// <summary>The packages the projects reference: by package, each project's reference for each of its frameworks.</summary>
+    public Dictionary<string, Dictionary<string, IReadOnlyList<InstalledVersion>>> Installed()
     {
-        Dictionary<string, Dictionary<string, string?>> installed = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, Dictionary<string, IReadOnlyList<InstalledVersion>>> installed = new(StringComparer.OrdinalIgnoreCase);
         foreach (ProjectModel project in Projects)
         {
-            foreach ((string name, string? version) in project.Packages)
+            foreach (IGrouping<string, InstalledVersion> package in References(project).GroupBy(r => r.Id, r => r.Version, StringComparer.OrdinalIgnoreCase))
             {
-                if (!installed.TryGetValue(name, out Dictionary<string, string?>? byProject))
+                if (!installed.TryGetValue(package.Key, out Dictionary<string, IReadOnlyList<InstalledVersion>>? byProject))
                 {
-                    installed[name] = byProject = [];
+                    installed[package.Key] = byProject = [];
                 }
-                byProject[project.Path] = version;
+                byProject[project.Path] = [.. package];
             }
         }
         return installed;
     }
+
+    /// <summary>A project's package references, each framework's as evaluated (but those the SDK adds of itself).</summary>
+    private static IEnumerable<(string Id, InstalledVersion Version)> References(ProjectModel project) =>
+        project.Evaluated is { Dependencies.Count: > 0 } evaluated
+            ? evaluated.Dependencies.SelectMany(d => d.Packages.Where(p => !p.Implicit).Select(p => (p.Name, new InstalledVersion(d.Framework, p.Version))))
+            : project.Packages.Select(p => (p.Name, new InstalledVersion(null, p.Version)));
 
     /// <summary>Adds a package to a project at a version, or moves it to that version: the one way a package goes in
     /// (<see cref="ChangeAsync"/>).</summary>
