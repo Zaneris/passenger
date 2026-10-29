@@ -138,12 +138,13 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   `EditorArea.LandedAsync(paths, …)`), every command waiting inside its recording (`Recording.LandedAsync`,
   `WorkspaceEdits.LandedAsync(recording, …)`: the open files' changes taken first, a file never written left out;
   `TypeRename.Apply` and `ApplyAsCommand` take the caller's), the window's words through `UnlandedAsync`; a command that
-  waits between its writes records with `Commands.RecordWrites`, so only what it wrote is its own; a closed file changes
-  through `Recording.Change` (or `Wrote` for texts it holds), written off the window's thread by `Recording.WriteAsync`,
-  the window following once they are written (`AssistContext.ChangeFilesAsync`, `MainWindow.FollowingAsync`); Undo and
-  Redo put closed files back off it (`CommandHistory.BlockedAsync`, `PutAsync`). A file shown
-  read-only refuses every change to its text (`TextDocument.IsReadOnly`, set only by `OpenDocument`), and an action on
-  it greys with `Refusals.ReadOnly`.
+  waits between its writes records with `Commands.RecordWrites`, so only what it wrote is its own; its moves go through
+  `Recording.Move`, never a bare `EditorArea.MoveFile`, which no recording follows; every write of closed files goes in
+  turn through `CommandHistory.InTurnAsync`; a closed file changes through `Recording.Change` (or `Wrote` for texts it
+  holds), written off the window's thread by `Recording.WriteAsync`, the window following once they are written
+  (`AssistContext.ChangeFilesAsync`, `MainWindow.FollowingAsync`); Undo and Redo put closed files back off it
+  (`CommandHistory.BlockedAsync`, `PutAsync`). A file shown read-only refuses every change to its text
+  (`TextDocument.IsReadOnly`, set only by `OpenDocument`), and an action on it greys with `Refusals.ReadOnly`.
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
   `workspaces/<name>-<hash>/` and is made in `ProjectSession`. A new setting: an `AppSettings` property, its row and
