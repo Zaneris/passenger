@@ -113,6 +113,14 @@ public sealed class AvaloniaDialect : XamlDialect
                 }
             }
         }
+        // The compiler reads a compiled binding's ElementName and RelativeSource as a reflection binding's, as where its path starts.
+        if (type.FullName == "Avalonia.Markup.Xaml.MarkupExtensions.CompiledBindingExtension" && types.Find("Avalonia.Data.Binding") is { } binding)
+        {
+            foreach (XamlProperty borrowed in PropertiesOf(types, binding).Where(p => p.Name is "ElementName" or "RelativeSource"))
+            {
+                found.TryAdd(borrowed.Name, borrowed);
+            }
+        }
         // A direct property whose wrapper cannot be set is read-only to XAML.
         return [.. found.Values.Where(p => !(p.Kind == XamlPropertyKind.Direct && p.ClrProperty is { CanWrite: false } && !p.IsCollection))
             .OrderBy(p => p.Name, StringComparer.Ordinal)];

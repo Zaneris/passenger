@@ -52,6 +52,20 @@ public enum XamlAttributeKind
     Unknown,
 }
 
+/// <summary>What Avalonia's compiler takes the data context a compiled binding starts from to be.</summary>
+public enum CompiledContext
+{
+    /// <summary>Nothing gives it a type: the compiler refuses a binding from it (AVLN2100; AVLN2101 for a DataContext's).</summary>
+    None,
+
+    /// <summary>Something gives it a type, which may be one Passenger cannot tell.</summary>
+    Typed,
+
+    /// <summary>One the compiler has no type for, a reflection binding's or a data template's whose items say none: it
+    /// refuses any step of a path from it (AVLN2000).</summary>
+    Untyped,
+}
+
 /// <summary>What an attribute means: its kind, the property or event it sets, and for an attached property its owner.</summary>
 public sealed record XamlAttributeMeaning(XamlAttributeKind Kind, XamlProperty? Property = null, ClrMember? Event = null, ClrType? Owner = null);
 
@@ -204,9 +218,13 @@ public sealed class XamlFile
     };
 
     /// <summary>The type an object element makes; null for a property element, an x: directive's element, or a name
-    /// nothing resolves.</summary>
+    /// nothing resolves. A <c>&lt;Binding&gt;</c> makes what the compiler makes of it: a compiled binding where bindings
+    /// compile, a reflection binding where they do not.</summary>
     public ClrType? TypeOf(XmlElement element) =>
-        element.IsPropertyElement ? null : types.GetOrAdd(element, e => ResolveType(e, e.Name));
+        element.IsPropertyElement ? null : types.GetOrAdd(element, e => (IsBindingElement(e) ? ResolveType(e, BindingMade(e), extension: true) : null) ?? ResolveType(e, e.Name));
+
+    private string BindingMade(XmlElement binding) =>
+        (binding.Prefix.Length > 0 ? binding.Prefix + ":" : string.Empty) + (CompilesBindingsAt(binding) ? "CompiledBinding" : "ReflectionBinding");
 
     /// <summary>A property element's owner and the property it sets (<c>&lt;Grid.RowDefinitions&gt;</c>).</summary>
     public (ClrType? Owner, XamlProperty? Property) PropertyElement(XmlElement element)
@@ -327,10 +345,10 @@ public sealed class XamlFile
     }
 
     /// <summary>The type a binding at an element resolves its path against: the nearest <c>x:DataType</c> above it (a data
-    /// template's <c>DataType</c> too), or what a compiled <c>DataContext</c> binding gives. In a dialect that compiles no
-    /// binding (WPF's), unless <paramref name="hints"/> says otherwise, also <c>d:DataContext</c>'s
-    /// <c>d:DesignInstance</c>, a <c>DataContext</c> property element's object, a <c>DataContext</c> bound to a path of the
-    /// one above, and a template's items, from its control's <c>ItemsSource</c>.</summary>
+    /// template's <c>DataType</c> too), or what a compiled <c>DataContext</c> binding gives, or where bindings compile the
+    /// items a data template presents. In a dialect that compiles no binding (WPF's), unless <paramref name="hints"/> says
+    /// otherwise, also <c>d:DataContext</c>'s <c>d:DesignInstance</c>, a <c>DataContext</c> property element's object, a
+    /// <c>DataContext</c> bound to a path of the one above, and a template's items, from its control's <c>ItemsSource</c>.</summary>
     public ClrType? DataTypeAt(XmlElement element, bool inherit = true, bool stopAtTemplates = false, bool? hints = null)
     {
         bool reading = hints ?? !Dialect.CompilesBindings;
@@ -347,6 +365,18 @@ public sealed class XamlFile
             {
                 return item;
             }
+            // A data template's bindings, its own included, start from the items it presents, where the compiler infers their type.
+            if (!reading && Dialect.CompilesBindings && DataTypeNamed(at) is null && IsDataTemplate(at))
+            {
+                if (TemplateItems(at, stopAtTemplates) is { Inferred: true } presented)
+                {
+                    return presented.Type;
+                }
+                if (stopAtTemplates)
+                {
+                    return null;
+                }
+            }
             // A template with no data type of its own is bound to what it is applied to, which no x:DataType above it says.
             if (stopAtTemplates && template)
             {
@@ -357,12 +387,7 @@ public sealed class XamlFile
             {
                 return null;
             }
-            XmlAttribute? named = at.Attributes.FirstOrDefault(a => a.LocalName == "DataType" && a.Prefix.Length > 0 && KindOf(UriOf(at, a.Prefix)) == XamlNamespaceKind.Language);
-            if (named is null && !at.IsPropertyElement && at.LocalName is "DataTemplate" or "TreeDataTemplate" or "HierarchicalDataTemplate")
-            {
-                named = at.Attribute("DataType");
-            }
-            if (named is not null)
+            if (DataTypeNamed(at) is { } named)
             {
                 return TypeFromValue(at, named.Value);
             }
@@ -370,7 +395,7 @@ public sealed class XamlFile
             {
                 return context.Type;
             }
-            if (Dialect.CompilesBindings && !at.IsPropertyElement && CompiledDataContextOf(at, stopAtTemplates) is { Says: true } compiled)
+            if (Dialect.CompilesBindings && !at.IsPropertyElement && CompiledDataContextOf(at, stopAtTemplates) is { Context: not CompiledContext.None } compiled)
             {
                 return compiled.Type;
             }
@@ -378,10 +403,48 @@ public sealed class XamlFile
         return null;
     }
 
+    /// <summary>What names an element's data type: its <c>x:DataType</c>, or a data template's <c>DataType</c>.</summary>
+    private XmlAttribute? DataTypeNamed(XmlElement element) =>
+        element.Attributes.FirstOrDefault(a => a.LocalName == "DataType" && a.Prefix.Length > 0 && KindOf(UriOf(element, a.Prefix)) == XamlNamespaceKind.Language)
+        ?? (!element.IsPropertyElement && element.LocalName is "DataTemplate" or "TreeDataTemplate" or "HierarchicalDataTemplate" ? element.Attribute("DataType") : null);
+
     /// <summary>The type a binding in an attribute resolves against: its element's, but for the element's own
-    /// <c>DataContext</c>, which binds against the one above.</summary>
+    /// <c>DataContext</c>, which binds against the one above, and for a property that takes its type from the items its
+    /// control presents (<c>[InheritDataTypeFromItems]</c>, a <c>DisplayMemberBinding</c>), theirs where the compiler infers it.</summary>
     public ClrType? DataTypeOf(XmlAttribute attribute, bool stopAtTemplates = false) =>
-        BoundAgainst(attribute.Owner, attribute.Name == "DataContext", stopAtTemplates);
+        Dialect.CompilesBindings && attribute.Name != "DataContext" && MeaningOf(attribute).Property is { } property && PresentedItems(attribute.Owner, property, stopAtTemplates) is { Inferred: true } items
+            ? items.Type
+            : BoundAgainst(attribute.Owner, attribute.Name == "DataContext", stopAtTemplates);
+
+    /// <summary>The type a binding in an attribute starts its path from: the data type it names (see
+    /// <see cref="DataTypeNamedBy(XmlElement, MarkupExtension, bool)"/>), else its attribute's.</summary>
+    public ClrType? DataTypeOf(XmlAttribute attribute, MarkupExtension binding, bool stopAtTemplates = false) =>
+        DataTypeNamedBy(attribute.Owner, binding, attribute.Name == "DataContext") ?? DataTypeOf(attribute, stopAtTemplates);
+
+    /// <summary>The data type a compiled binding names for its path to start from (<c>DataType=vm:Person</c>, over any
+    /// source it names), as the compiler reads it: not an element's own DataContext's (<paramref name="dataContext"/>),
+    /// which starts above whatever it names, nor one whose path starts at an element or a relative source. Null where it
+    /// names none, or bindings do not compile.</summary>
+    public ClrType? DataTypeNamedBy(XmlElement element, MarkupExtension binding, bool dataContext)
+    {
+        if (!Dialect.CompilesBindings || dataContext || !(binding.LocalName == "CompiledBinding" || (binding.LocalName == "Binding" && CompilesBindingsAt(element)))
+            || binding.Argument("DataType") is not { } named || binding.Arguments.Any(a => a.Key == "ElementName" || (a.Key == "RelativeSource" && !IsDataContextSource(a.Nested))))
+        {
+            return null;
+        }
+        return named.Nested is { } nested
+            ? nested.LocalName == "Type" && nested.Argument(null) is { Nested: null } type ? ResolveType(element, type.Value.Trim()) : null
+            : TypeFromValue(element, named.Value);
+    }
+
+    /// <summary>The data type a <c>&lt;Binding&gt;</c> element names for its path to start from, as
+    /// <see cref="DataTypeNamedBy(XmlElement, MarkupExtension, bool)"/> reads a binding's.</summary>
+    public ClrType? DataTypeNamedBy(XmlElement binding, bool dataContext) =>
+        dataContext || !CompilesBindingsAt(binding) || binding.Attribute("DataType") is not { } named
+        || binding.Attributes.Any(a => a.Name == "ElementName" || (a.Name == "RelativeSource" && !IsDataContextSource(MarkupExtension.Parse(Text, a.ValueStart, a.ValueEnd))))
+        || binding.Children.Any(c => c.IsPropertyElement && c.LocalName[(c.LocalName.LastIndexOf('.') + 1)..] is "ElementName" or "RelativeSource")
+            ? null
+            : TypeFromValue(binding, named.Value);
 
     /// <summary>The type a binding element (<c>&lt;Binding Path="Name"/&gt;</c>) resolves against: that of the element
     /// whose property it sets, or of a multi-binding's, but for an element's own <c>DataContext</c>, which binds against
@@ -395,37 +458,138 @@ public sealed class XamlFile
         ? owner.Parent is { } parent ? DataTypeAt(parent, stopAtTemplates: stopAtTemplates) : null
         : DataTypeAt(owner, stopAtTemplates: stopAtTemplates);
 
-    /// <summary>Whether an element sets its data context so that the compiler takes a type for it, where bindings compile:
-    /// see <see cref="CompiledDataContextOf"/>.</summary>
-    public bool SetsDataContext(XmlElement element) => CompiledDataContextOf(element, stopAtTemplates: false).Says;
+    /// <summary>What the compiler takes the data context a compiled binding of an element's property starts from to be,
+    /// and the element that settles it (null for none): the items the property presents where it takes its type from them
+    /// and the compiler infers it, else the nearest <c>x:DataType</c>, data template or <c>DataContext</c> a markup
+    /// extension sets, an element's own <c>DataContext</c> binding (<paramref name="dataContext"/>) looking above it. An
+    /// element nothing resolves gives a type, unknown.</summary>
+    public (CompiledContext Context, XmlElement? At) CompiledContextOf(XmlElement element, XamlProperty? property, bool dataContext)
+    {
+        if (!dataContext && property is not null && PresentedItems(element, property, stopAtTemplates: true) is { Inferred: true })
+        {
+            return (CompiledContext.Typed, element);
+        }
+        for (XmlElement? at = dataContext ? element.Parent : element; at is not null; at = at.Parent)
+        {
+            if (at.IsPropertyElement)
+            {
+                continue;
+            }
+            if (DataTypeNamed(at) is not null || TypeOf(at) is null)
+            {
+                return (CompiledContext.Typed, at);
+            }
+            if (IsDataTemplate(at))
+            {
+                return (TemplateItems(at, stopAtTemplates: true).Inferred ? CompiledContext.Typed : CompiledContext.Untyped, at);
+            }
+            if (CompiledDataContextOf(at, stopAtTemplates: true).Context is not CompiledContext.None and var set)
+            {
+                return (set, at);
+            }
+        }
+        return (CompiledContext.None, null);
+    }
 
-    /// <summary>What an element's own <c>DataContext</c> says its data context's type is where bindings compile, as the
-    /// compiler infers it: a compiled binding's, its path's type from the type above (unknown, null, where it names a
-    /// source of its own or a path that is not followed), any other markup extension of the framework's an unknown one. Text,
-    /// an object, XAML's own extensions (<c>x:Static</c>, <c>x:Null</c>) and a binding element of another kind than
-    /// <c>Binding</c> say nothing, leaving it to the type above.</summary>
-    private (bool Says, ClrType? Type) CompiledDataContextOf(XmlElement element, bool stopAtTemplates)
+    private bool IsDataTemplate(XmlElement element) =>
+        !element.IsPropertyElement && TypeOf(element) is { } type && Types.IsA(type, "Avalonia.Controls.Templates.IDataTemplate");
+
+    /// <summary>The items a data template presents, where the property it is the value of takes its type from them: see
+    /// <see cref="PresentedItems"/>.</summary>
+    private (bool Inferred, ClrType? Type) TemplateItems(XmlElement template, bool stopAtTemplates) =>
+        template.Parent is { IsPropertyElement: true } holder && holder.Parent is { } owner && PropertyElement(holder).Property is { } property
+            ? PresentedItems(owner, property, stopAtTemplates)
+            : (false, null);
+
+    /// <summary>Whether the compiler infers the type of the items an element's <c>[InheritDataTypeFromItems]</c> property
+    /// presents, and that type where it is known: from a compiled binding with a data context to start from, its path's
+    /// element type; from an object, its element type; not from a binding that does not compile, a dynamic or static
+    /// resource, nor where the items are not given. What else gives them (text, <c>x:Static</c>, another extension) is
+    /// taken as inferred, its type unknown.</summary>
+    private (bool Inferred, ClrType? Type) PresentedItems(XmlElement element, XamlProperty property, bool stopAtTemplates)
+    {
+        if (property.ClrProperty?.Attributes.FirstOrDefault(a => a.ShortName == "InheritDataTypeFromItems") is not { } inherit
+            || inherit.StringArgument(0) is not { Length: > 0 } itemsProperty)
+        {
+            return (false, null);
+        }
+        string? ancestor = inherit.Named.FirstOrDefault(n => n.Key == "AncestorType").Value as string;
+        XmlElement? items = element;
+        while (ancestor is not null && items is not null && !(TypeOf(items) is { } type && Types.IsA(type, ancestor)))
+        {
+            items = items.Parent;
+        }
+        if (items is null)
+        {
+            return (false, null);
+        }
+        if (items.Attribute(itemsProperty) is { } given)
+        {
+            if (MarkupExtension.Parse(Text, given.ValueStart, given.ValueEnd) is not { Name.Length: > 0 } extension
+                || (extension.Prefix.Length > 0 && KindOf(UriOf(items, extension.Prefix)) == XamlNamespaceKind.Language))
+            {
+                return (true, null);
+            }
+            if (extension.LocalName == "CompiledBinding" || (extension.LocalName == "Binding" && CompilesBindingsAt(items)))
+            {
+                if (CompiledContextOf(items, property: null, dataContext: false).Context == CompiledContext.None)
+                {
+                    return (false, null);
+                }
+                MarkupArgument? path = extension.Argument(null) ?? extension.Argument("Path");
+                return (true, NamesSource(extension) || path is not { Nested: null, Value.Length: > 0 } || DataTypeAt(items, stopAtTemplates: stopAtTemplates) is not { } context
+                    || PathType(context, path.Value.Trim()) is not { } collection ? null : ItemTypeOf(collection));
+            }
+            return ResolveType(items, extension.Name, extension: true) is { } made && (IsBinding(made) || made.FullName == "Avalonia.Markup.Xaml.MarkupExtensions.StaticResourceExtension")
+                ? (false, null)
+                : (true, null);
+        }
+        if (items.Children.FirstOrDefault(c => c.IsPropertyElement && c.LocalName.EndsWith("." + itemsProperty, StringComparison.Ordinal)) is not { } holder)
+        {
+            return (false, null);
+        }
+        return (true, holder.Children.FirstOrDefault(c => !c.IsPropertyElement) is { } presented && !IsBindingElement(presented) && TypeOf(presented) is { } presentedType
+            ? ItemTypeOf(TypeRef.Named(presentedType.FullName))
+            : null);
+    }
+
+    /// <summary>The type of the items a collection holds, where one type argument says it (a dictionary's items are pairs).</summary>
+    private ClrType? ItemTypeOf(TypeRef collection) => collection.Arguments.Count > 1 ? null : ElementTypeOf(collection);
+
+    /// <summary>Whether a type is one of the framework's bindings, whose result the compiler takes no type from.</summary>
+    private bool IsBinding(ClrType type) => Types.IsA(type, "Avalonia.Data.BindingBase") || Types.IsA(type, "Avalonia.Data.IBinding");
+
+    /// <summary>What an element's own <c>DataContext</c> says its data context is where bindings compile, as the compiler
+    /// infers it: a compiled binding's path's type from the type above, whatever data type or source it names (unknown where
+    /// it starts at an element or a relative source, or is not followed); another binding's (a reflection binding's, a
+    /// dynamic resource's) no type; another markup extension's that extension's own type. Text, an object, XAML's own
+    /// extensions and a binding element but <c>Binding</c> say nothing, leaving it to the type above.</summary>
+    private (CompiledContext Context, ClrType? Type) CompiledDataContextOf(XmlElement element, bool stopAtTemplates)
     {
         if (element.Attribute("DataContext") is { } set)
         {
             if (MarkupExtension.Parse(Text, set.ValueStart, set.ValueEnd) is not { Name.Length: > 0 } extension
                 || (extension.Prefix.Length > 0 && KindOf(UriOf(element, extension.Prefix)) == XamlNamespaceKind.Language))
             {
-                return (false, null);
+                return (CompiledContext.None, null);
             }
-            if (!(extension.LocalName == "CompiledBinding" || (extension.LocalName == "Binding" && CompilesBindingsAt(element))) || NamesSource(extension)
-                || (extension.Argument(null) ?? extension.Argument("Path")) is { Nested: not null })
+            if (extension.LocalName == "CompiledBinding" || (extension.LocalName == "Binding" && CompilesBindingsAt(element)))
             {
-                return (true, null);
+                MarkupArgument? path = extension.Argument(null) ?? extension.Argument("Path");
+                return (CompiledContext.Typed, NamesSource(extension, dataContext: true) || path is { Nested: not null } ? null : PathTypeAbove(element, path?.Value, stopAtTemplates));
             }
-            return (true, PathTypeAbove(element, (extension.Argument(null) ?? extension.Argument("Path"))?.Value, stopAtTemplates));
+            return ResolveType(element, extension.Name, extension: true) is not { } made ? (CompiledContext.Typed, null)
+                : IsBinding(made) ? (CompiledContext.Untyped, null)
+                : (CompiledContext.Typed, made);
         }
         XmlElement? holder = element.Children.FirstOrDefault(c => c.IsPropertyElement && c.LocalName.EndsWith(".DataContext", StringComparison.Ordinal));
         if (holder?.Children.FirstOrDefault(c => !c.IsPropertyElement) is not { } held || !IsBindingElement(held))
         {
-            return (false, null);
+            return (CompiledContext.None, null);
         }
-        return (true, CompilesBindingsAt(held) && !NamesSource(held) ? PathTypeAbove(element, held.Attribute("Path")?.Value, stopAtTemplates) : null);
+        return CompilesBindingsAt(held)
+            ? (CompiledContext.Typed, NamesSource(held, dataContext: true) ? null : PathTypeAbove(element, held.Attribute("Path")?.Value, stopAtTemplates))
+            : (CompiledContext.Untyped, null);
     }
 
     /// <summary>The type a path has, read from the type above an element; the type itself for no path or ".".</summary>
@@ -459,16 +623,20 @@ public sealed class XamlFile
         Dialect.CompilesBindings && !element.IsPropertyElement && element.LocalName == "Binding" && UriOf(element, element.Prefix) == Dialect.PresentationUri;
 
     /// <summary>Whether a binding names where its path starts other than its data context: an element, a source, a data
-    /// type, or a relative source but the data context's own (<c>{RelativeSource DataContext}</c>).</summary>
-    public static bool NamesSource(MarkupExtension binding) =>
-        binding.Arguments.Any(a => a.Key is "ElementName" or "Source" or "DataType" || (a.Key == "RelativeSource" && !IsDataContextSource(a.Nested)));
+    /// type, or a relative source but the data context's own (<c>{RelativeSource DataContext}</c>). An element's own
+    /// <c>DataContext</c> binding (<paramref name="dataContext"/>) starts at the data context above whatever source or data
+    /// type it names, as the compiler reads it.</summary>
+    public static bool NamesSource(MarkupExtension binding, bool dataContext = false) =>
+        binding.Arguments.Any(a => (a.Key is "Source" or "DataType" && !dataContext) || a.Key == "ElementName"
+            || (a.Key == "RelativeSource" && !IsDataContextSource(a.Nested)));
 
     /// <summary>Whether a binding element names where its path starts other than its data context, as
-    /// <see cref="NamesSource(MarkupExtension)"/> reads its attributes; any such property given as an element does.</summary>
-    public bool NamesSource(XmlElement binding) =>
-        binding.Attributes.Any(a => a.Name is "ElementName" or "Source" or "DataType"
+    /// <see cref="NamesSource(MarkupExtension, bool)"/> reads its attributes; any such property given as an element does.</summary>
+    public bool NamesSource(XmlElement binding, bool dataContext = false) =>
+        binding.Attributes.Any(a => (a.Name is "Source" or "DataType" && !dataContext) || a.Name == "ElementName"
             || (a.Name == "RelativeSource" && !IsDataContextSource(MarkupExtension.Parse(Text, a.ValueStart, a.ValueEnd))))
-        || binding.Children.Any(c => c.IsPropertyElement && c.LocalName[(c.LocalName.LastIndexOf('.') + 1)..] is "ElementName" or "Source" or "DataType" or "RelativeSource");
+        || binding.Children.Any(c => c.IsPropertyElement && c.LocalName[(c.LocalName.LastIndexOf('.') + 1)..] is var name
+            && ((name is "Source" or "DataType" && !dataContext) || name is "ElementName" or "RelativeSource"));
 
     /// <summary>Whether a relative source is the data context's own: <c>{RelativeSource DataContext}</c>, or its
     /// <c>Mode=DataContext</c>.</summary>

@@ -712,7 +712,7 @@ public static class XamlCompletion
         }
         if (argument is { Key: { } key } named)
         {
-            return ArgumentValue(file, attribute, type, key, named.ValueStart, offset);
+            return ArgumentValue(file, attribute, extension, type, key, named.ValueStart, offset);
         }
         bool first = argument?.Index == 0 || (argument is null && !extension.Arguments.Any(a => a.Key is null));
         List<XamlItem> items = [];
@@ -722,7 +722,7 @@ public static class XamlCompletion
                 items.AddRange(ResourceKeys(file, dynamic: local == "DynamicResource"));
                 return new XamlCompletionList(valueStart, items, ".");
             case "Binding" or "CompiledBinding" or "ReflectionBinding" or "TemplateBinding" when positional:
-                ClrType? source = local == "TemplateBinding" ? file.StyleTargetAt(element) : file.DataTypeOf(attribute);
+                ClrType? source = local == "TemplateBinding" ? file.StyleTargetAt(element) : file.DataTypeOf(attribute, extension);
                 XamlCompletionList? path = BindingPath(file, element, source, valueStart, offset, local == "TemplateBinding");
                 if (path is null)
                 {
@@ -779,7 +779,7 @@ public static class XamlCompletion
             .Select(n => new XamlItem(n + "=", XamlItemKind.Property, n + "=", type.Name, Reopen: true))];
     }
 
-    private static XamlCompletionList? ArgumentValue(XamlFile file, XmlAttribute attribute, ClrType? type, string key, int start, int offset)
+    private static XamlCompletionList? ArgumentValue(XamlFile file, XmlAttribute attribute, MarkupExtension extension, ClrType? type, string key, int start, int offset)
     {
         if (type is null)
         {
@@ -791,7 +791,7 @@ public static class XamlCompletion
         }
         if (key == "Path" && type.Name is "Binding" or "CompiledBindingExtension" or "ReflectionBindingExtension")
         {
-            return BindingPath(file, attribute.Owner, file.DataTypeOf(attribute), start, offset, template: false);
+            return BindingPath(file, attribute.Owner, file.DataTypeOf(attribute, extension), start, offset, template: false);
         }
         if (key is "AncestorType" or "DataType")
         {

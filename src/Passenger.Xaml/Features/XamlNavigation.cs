@@ -273,7 +273,7 @@ public static class XamlNavigation
     /// a <c>#name</c> step, the element named so.</summary>
     private static XamlSymbol? BindingStep(XamlFile file, XmlAttribute attribute, MarkupExtension binding, MarkupArgument path, int offset)
     {
-        ClrType? type = binding.LocalName == "TemplateBinding" ? file.StyleTargetAt(attribute.Owner) : file.DataTypeOf(attribute);
+        ClrType? type = binding.LocalName == "TemplateBinding" ? file.StyleTargetAt(attribute.Owner) : file.DataTypeOf(attribute, binding);
         string text = path.Value;
         int at = 0;
         while (at < text.Length && text[at] == '!')

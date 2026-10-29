@@ -882,6 +882,199 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A <c>&lt;Binding&gt;</c> element is the compiled binding Avalonia's compiler makes of it: its DataType is
+    /// taken, not marked, and starts its path, so a step that type lacks is marked; a <c>&lt;CompiledBinding&gt;</c>
+    /// element's path given as text, which the build refuses, is marked, and its fix makes it a Binding. Put right, the
+    /// view builds.</summary>
+    [AvaloniaFact]
+    public void A_binding_elements_data_type_starts_its_path_and_a_compiled_binding_elements_text_path_is_marked_and_made_a_binding()
+    {
+        const string Elements = """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         xmlns:vm="using:Gallery.ViewModels"
+                         x:DataType="vm:MainViewModel">
+                <StackPanel>
+                    <TextBlock>
+                        <TextBlock.Text>
+                            <Binding Path="Greeting" DataType="vm:MainViewModel" Mode="OneWay" />
+                        </TextBlock.Text>
+                    </TextBlock>
+                    <TextBlock>
+                        <TextBlock.Text>
+                            <Binding Path="Nickname" DataType="vm:Person" />
+                        </TextBlock.Text>
+                    </TextBlock>
+                    <TextBlock>
+                        <TextBlock.Text>
+                            <CompiledBinding Path="Owner.Name" />
+                        </TextBlock.Text>
+                    </TextBlock>
+                </StackPanel>
+            </UserControl>
+
+            """;
+        MainWindow window = app.Open(app.Write("ElementsView.axaml", Elements));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => document.Markers.Count == 2, () => $"the two elements the build refuses marked, and the DataType it takes not: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        Assert.Equal("Cannot resolve property 'Nickname' on Person", MarkerOn(editor, document, "Nickname").Message);
+        Assert.Equal("A CompiledBinding element takes no Path as text", MarkerOn(editor, document, "Owner.Name").Message);
+
+        Ui.PlaceAfter(editor, "<CompiledBinding Path=\"Own");
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the fix offered on the compiled binding element's line");
+        Assert.Equal("Use Binding", window.Assist.Offered[0]);
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        Assert.Contains("<Binding Path=\"Owner.Name\" />", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Replace(editor, "Path=\"Nickname\"", "Path=\"Name\"");
+        Ui.WaitFor(() => document.Markers.Count == 0, () => $"every binding resolved once put right: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        string said = $"{Ui.Said(window)}: {string.Join("; ", window.BottomPanel.Problems.Problems.Select(p => $"{p.Code} {p.Where} {p.Message}"))}";
+        Assert.True(window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true, $"The view Passenger finds right did not build: {said}");
+        Assert.True(!window.BottomPanel.Problems.Problems.Any(p => p.Path?.EndsWith("ElementsView.axaml", StringComparison.Ordinal) == true), $"The build said something of the view: {said}");
+        window.Close();
+    }
+
+    /// <summary>A compiled binding under a data context Avalonia's compiler has no type for is marked as it refuses it: one a
+    /// ReflectionBinding sets, and a data template's whose property takes no type from items; a template of an items
+    /// control's items and a DisplayMemberBinding start from their type, a step it lacks marked, and <c>?.</c> is a step.
+    /// The fix gives the element where the type is missing the x:DataType of the class that has the step; Go to
+    /// Declaration takes the items' type too. Put right, the view builds.</summary>
+    [AvaloniaFact]
+    public void A_compiled_binding_under_a_data_context_of_no_type_is_marked_and_one_under_items_starts_from_their_type()
+    {
+        const string Shelf = """
+            using System.Collections.Generic;
+
+            namespace Gallery.ViewModels;
+
+            public class ShelfViewModel
+            {
+                public Person Owner { get; } = new();
+
+                public List<Person> People { get; } = [];
+            }
+
+            """;
+        const string Untyped = """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         xmlns:vm="using:Gallery.ViewModels"
+                         x:DataType="vm:ShelfViewModel">
+                <StackPanel>
+                    <Border DataContext="{ReflectionBinding Owner}">
+                        <TextBlock Text="{Binding Name}" />
+                    </Border>
+                    <ContentControl Content="{Binding Owner}">
+                        <ContentControl.ContentTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Age}" />
+                            </DataTemplate>
+                        </ContentControl.ContentTemplate>
+                    </ContentControl>
+                    <ItemsControl ItemsSource="{Binding People}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Nickname}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ListBox ItemsSource="{Binding People}" DisplayMemberBinding="{Binding Name}" />
+                    <TextBlock Text="{Binding Owner?.Name}" />
+                </StackPanel>
+            </UserControl>
+
+            """;
+        const string NoDataType = "No x:DataType gives this compiled binding the type it binds to";
+        app.Write([("ViewModels/ShelfViewModel.cs", Shelf), ("ShelfView.axaml", Untyped)]);
+        MainWindow window = app.Open(app.PathOf("ShelfView.axaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => document.Markers.Count == 3, () => $"the three bindings the build refuses marked, and none it takes: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        TextSnapshot snapshot = editor.Document.Snapshot;
+        Assert.Equal([(6, NoDataType), (11, NoDataType), (18, "Cannot resolve property 'Nickname' on Person")],
+            document.Markers.Select(m => (snapshot.GetLineFromOffset(m.Range.Start), m.Message)).Order());
+
+        Ui.PlaceAfter(editor, "DisplayMemberBinding=\"{Binding Na");
+        Ui.Run(window, AppActions.GoToDeclaration);
+        Ui.Settle();
+        Assert.Equal("MainViewModel.cs", window.EditorArea.Active?.Name);
+        Assert.Contains("public string |Name", CaretLine(window.EditorArea.CodeEditor), StringComparison.Ordinal);
+        window.OpenFile(app.PathOf("ShelfView.axaml"));
+        Ui.Settle();
+        editor = window.EditorArea.CodeEditor;
+        document = window.EditorArea.Active!;
+
+        Ui.PlaceAfter(editor, "<TextBlock Text=\"{Binding Na");
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the fixes offered on the reflection-bound Border's binding");
+        Assert.Equal(["Add x:DataType 'Person' to Border", "Use ReflectionBinding"], window.Assist.Offered.Take(2));
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        Assert.Contains("<Border DataContext=\"{ReflectionBinding Owner}\" x:DataType=\"vm:Person\">", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Ui.PlaceAfter(editor, "{Binding Ag");
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the fixes offered on the data template's binding");
+        Assert.Equal(["Add x:DataType 'Person' to DataTemplate", "Use ReflectionBinding"], window.Assist.Offered.Take(2));
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        Replace(editor, "{Binding Nickname}", "{Binding Age}");
+        Ui.WaitFor(() => document.Markers.Count == 0, () => $"every binding resolved once put right: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        string said = $"{Ui.Said(window)}: {string.Join("; ", window.BottomPanel.Problems.Problems.Select(p => $"{p.Code} {p.Where} {p.Message}"))}";
+        Assert.True(window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true, $"The view Passenger finds right did not build: {said}");
+        Assert.True(!window.BottomPanel.Problems.Problems.Any(p => p.Path?.EndsWith("ShelfView.axaml", StringComparison.Ordinal) == true), $"The build said something of the view: {said}");
+        window.Close();
+    }
+
+    /// <summary>A step after a cast is read against the cast's type, and an element's own DataContext binding starts from
+    /// the type above it whatever DataType it names, as Avalonia's compiler reads them: each step the build refuses is
+    /// marked on the type it names, and none it takes. Put right, the view builds.</summary>
+    [AvaloniaFact]
+    public void A_step_after_a_cast_and_a_data_context_binding_naming_a_data_type_are_read_as_the_build_reads_them()
+    {
+        const string Steps = """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         xmlns:vm="using:Gallery.ViewModels"
+                         x:DataType="vm:MainViewModel">
+                <StackPanel>
+                    <TextBlock Text="{Binding ((vm:Person)Owner).Nickname}" />
+                    <TextBlock Text="{Binding ((vm:Person)Owner).Name.Length}" />
+                    <Border DataContext="{Binding Owner, DataType=vm:MainViewModel}">
+                        <TextBlock Text="{Binding Greeting}" />
+                    </Border>
+                    <Border DataContext="{Binding Name, DataType=vm:Person}" />
+                </StackPanel>
+            </UserControl>
+
+            """;
+        MainWindow window = app.Open(app.Write("StepsView.axaml", Steps));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => document.Markers.Count == 3, () => $"the three steps the build refuses marked, and none it takes: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        Assert.Equal("Cannot resolve property 'Nickname' on Person", MarkerOn(editor, document, "Nickname").Message);
+        Assert.Equal("Cannot resolve property 'Greeting' on Person", MarkerOn(editor, document, "Greeting").Message);
+        Assert.Equal("Cannot resolve property 'Name' on MainViewModel", MarkerOn(editor, document, "Name").Message);
+
+        Replace(editor, ").Nickname}", ").Age}");
+        Replace(editor, "{Binding Greeting}", "{Binding Name}");
+        Replace(editor, "{Binding Name, DataType=vm:Person}", "{Binding Owner, DataType=vm:Person}");
+        Ui.WaitFor(() => document.Markers.Count == 0, () => $"every binding resolved once put right: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        string said = $"{Ui.Said(window)}: {string.Join("; ", window.BottomPanel.Problems.Problems.Select(p => $"{p.Code} {p.Where} {p.Message}"))}";
+        Assert.True(window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true, $"The view Passenger finds right did not build: {said}");
+        Assert.True(!window.BottomPanel.Problems.Problems.Any(p => p.Path?.EndsWith("StepsView.axaml", StringComparison.Ordinal) == true), $"The build said something of the view: {said}");
+        window.Close();
+    }
+
     /// <summary>After a build the XAML compiler's error (a number only it reads) is marked on its line and listed with its
     /// code. Avalonia's XAML compiler counts lines as an XML reader does, ending one at the lone '\r' in the window's tag,
     /// which the editor reads inside its line, so below it the compiler's line runs one ahead of the editor's: its error is
