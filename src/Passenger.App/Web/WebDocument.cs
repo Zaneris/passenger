@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
 using Passenger.App.CSharp;
@@ -60,6 +61,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
         diagnostics.Adopt(document.Markers);
         document.Text.Changed += OnChanged;
         document.Saved += OnSaved;
+        document.PropertyChanged += OnDocumentChanged;
         waiting = document.Checking(Checker);
     }
 
@@ -144,6 +146,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
         session = started;
         Lsp = started.Open(document.Path, document.Text, LanguageId);
         Lsp.DiagnosticsPushed += OnPushed;
+        TellIndentation();
         AwaitPush();
         Refresh();
         Unreached();
@@ -217,6 +220,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
         Unreached();
         document.Text.Changed -= OnChanged;
         document.Saved -= OnSaved;
+        document.PropertyChanged -= OnDocumentChanged;
         if (Lsp is { } lsp)
         {
             lsp.DiagnosticsPushed -= OnPushed;
@@ -238,6 +242,41 @@ public sealed class WebDocument : IServerDocument, IDisposable
     }
 
     private void OnSaved(object? sender, EventArgs e) => Lsp?.Saved();
+
+    private void OnDocumentChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(OpenDocument.Indentation))
+        {
+            TellIndentation();
+        }
+    }
+
+    /// <summary>Tells TypeScript's tsserver how the file indents, as Reformat Code lays it out (<see cref="FormattingOptions.Of"/>),
+    /// as it opens and whenever that changes: tsserver lays out all it writes from the file (a quick fix, a refactoring's
+    /// new file and every other file it edits) by what it was told of the file, else by its own default of four spaces.</summary>
+    private void TellIndentation()
+    {
+        if (Kind != WebServerKind.TypeScript || Lsp is not { } lsp || session is not { } running)
+        {
+            return;
+        }
+        FormattingOptions laid = FormattingOptions.Of(document.Indentation.Options, document.Conventions, document.Text.Snapshot);
+        object told = new { file = lsp.Uri, formatOptions = new { tabSize = laid.TabSize, indentSize = laid.TabSize, convertTabsToSpaces = laid.InsertSpaces } };
+        LspCommand request = new("configure", TsServerRequest, [JsonSerializer.SerializeToElement("configure"), JsonSerializer.SerializeToElement(told)]);
+        IdeErrors.Observe(TellAsync(running.Server, request));
+    }
+
+    private static async Task TellAsync(LanguageServer server, LspCommand request)
+    {
+        try
+        {
+            await server.ExecuteCommandAsync(request);
+        }
+        catch (LanguageServerFailed failed) when (failed.Ended)
+        {
+            // The server started in its place is told as the file connects to it.
+        }
+    }
 
     /// <summary>A push from the server, on its thread: taken on the window's, if it answers the text as it stands (the
     /// version it answers told as it arrived, <see cref="LspDocument.Pushed"/>), which lets the file's checks go unless it

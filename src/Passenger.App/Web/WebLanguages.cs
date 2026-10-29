@@ -590,7 +590,9 @@ public sealed class WebLanguages : IAsyncDisposable
 
     /// <summary>What a server's <c>workspace/configuration</c> is answered: the CSS server's validation on for each of its
     /// languages, the HTML server's for its styles and scripts, the YAML server's settings (<see cref="YamlSettings"/>),
-    /// the rest left to its defaults (the Dockerfile server's checks and layout among them).</summary>
+    /// the rest left to its defaults (the Dockerfile server's checks and layout among them). TypeScript's
+    /// <c>formattingOptions</c> stays unanswered: its server keeps a file's first answer while it runs, so each file tells
+    /// its tsserver how it indents itself, again as that changes (<see cref="WebDocument"/>).</summary>
     private static object? Section(WebServerKind kind, string? section) => (kind, section) switch
     {
         (WebServerKind.Css, "css" or "scss" or "less") => new { validate = true },

@@ -180,6 +180,73 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
+    /// <summary>TypeScript lays out what it writes in the indentation of the file it is asked in, as its .editorconfig gives
+    /// it: Move to a new file, from a file of two spaces under an .editorconfig that gives its scripts two, writes the
+    /// class's new file in two spaces, and Implement interface writes the members in two; the .editorconfig changed to
+    /// four, the next class moved goes to a file of four.</summary>
+    [AvaloniaFact]
+    public void TypeScript_writes_a_moved_classs_new_file_and_a_quick_fix_in_the_indentation_the_editorconfig_gives_as_it_changes_too()
+    {
+        SkipWithoutNode(typescript: true);
+        string folder = PathNames.Canonical(TestFolders.Create("ts-indent-"));
+        TestFolders.Write(folder, "tsconfig.json", "{\n  \"compilerOptions\": { \"target\": \"ES2022\", \"module\": \"ES2022\", \"strict\": true },\n  \"include\": [\"src\"]\n}\n");
+        TestFolders.Write(folder, ".editorconfig", "root = true\n\n[*.ts]\nindent_style = space\nindent_size = 2\n");
+        TestFolders.Write(folder, "src/shapes.ts", TwoSpaced);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
+        try
+        {
+            window.OpenFile(Path.Combine(folder, "src", "shapes.ts"));
+            Ui.Settle();
+            OpenDocument shapes = window.EditorArea.Active!;
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.WaitFor(() => window.Session.Web?.For(shapes) is { Lsp: not null }, "TypeScript's document of shapes.ts");
+            string circle = MoveToANewFile(window, folder, "Circle");
+            Assert.True(circle.Contains("\n  area(): number {\n    if (this.radius < 0) {\n      return 0;\n    }\n", StringComparison.Ordinal),
+                $"Circle's new file is not indented with the two spaces its .editorconfig gives, as shapes.ts is:\n{circle}");
+
+            Ui.WaitFor(() => shapes.Markers.Any(m => m.Kind == MarkerKind.Error && m.Message.StartsWith("TS2420:", StringComparison.Ordinal)),
+                () => $"the squiggle under the class that implements none of its interface:\n{string.Join("\n", shapes.Markers.Select(m => m.Message))}");
+            Ui.PlaceAfter(editor, "export class He");
+            Ui.Run(window, AppActions.QuickFix);
+            ChooseOffered(window, "Implement interface 'Shape'");
+            Ui.WaitFor(() => shapes.Text.Snapshot.ToString().Contains("throw new Error(", StringComparison.Ordinal), () => $"Hex's members written:\n{shapes.Text.Snapshot}");
+            string implemented = shapes.Text.Snapshot.ToString();
+            Assert.True(implemented.Contains("export class Hex implements Shape {\n  area(): number {\n    throw new Error(", StringComparison.Ordinal),
+                $"Hex's members are not indented with the two spaces the .editorconfig gives:\n{implemented}");
+
+            TestFolders.Write(folder, ".editorconfig", "root = true\n\n[*.ts]\nindent_style = space\nindent_size = 4\n");
+            Ui.WaitFor(() => shapes.Indentation.Options is { Size: 4, UseTabs: false }, () => $"shapes.ts to indent by the .editorconfig changed to four spaces, where it indents by {shapes.Indentation.Shown}");
+            Ui.Settle();
+            string square = MoveToANewFile(window, folder, "Square");
+            Assert.True(square.Contains("\n    area(): number {\n        if (this.side < 0) {\n            return 0;\n        }\n", StringComparison.Ordinal),
+                $"Square's new file is not indented with the four spaces the .editorconfig gives now:\n{square}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Moves the class of the name given in the file shown to a new file of its name, as a person does with the
+    /// keys, and returns what the new file says.</summary>
+    private static string MoveToANewFile(MainWindow window, string folder, string type)
+    {
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, $"export class {type[..^1]}");
+        Ui.Run(window, AppActions.QuickFix);
+        ChooseOffered(window, "Move to a new file");
+        string moved = Path.Combine(folder, "src", $"{type}.ts");
+        Ui.WaitFor(() => File.Exists(moved) && File.ReadAllText(moved).Contains($"export class {type}", StringComparison.Ordinal),
+            () => $"{type} in a file of its own; the status bar said: {window.Status}");
+        return File.ReadAllText(moved);
+    }
+
+    /// <summary>A module of shapes indented with two spaces, with a class that implements none of its interface.</summary>
+    private const string TwoSpaced = "export interface Shape {\n  area(): number;\n}\n\nexport class Circle implements Shape {\n  constructor(public radius: number) {}\n\n"
+        + "  area(): number {\n    if (this.radius < 0) {\n      return 0;\n    }\n    return Math.PI * this.radius * this.radius;\n  }\n}\n\n"
+        + "export class Square implements Shape {\n  constructor(public side: number) {}\n\n"
+        + "  area(): number {\n    if (this.side < 0) {\n      return 0;\n    }\n    return this.side * this.side;\n  }\n}\n\n"
+        + "export class Hex implements Shape {}\n\nexport const shapes: Shape[] = [new Circle(1), new Square(2), new Hex()];\n";
+
     /// <summary>A TypeScript rename at an imported name, or at a use of one, renames the name where it is declared and
     /// everywhere it is used, as a rename from its declaration does: the file that declares it changed on disk while it is
     /// not open, and in its editor once it is, the importing file never given an alias in its place.</summary>
