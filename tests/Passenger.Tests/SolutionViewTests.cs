@@ -791,6 +791,60 @@ public sealed class SolutionViewTests : IDisposable
         }
     }
 
+    /// <summary>A project added while a solution filter is open goes in the filter's list as well as the solution, so the
+    /// filter opened again loads it rather than leaving it out; one Undo takes it out of both and Redo puts it back, the
+    /// project the person loaded that the filter leaves out staying loaded throughout.</summary>
+    [AvaloniaFact]
+    public void A_project_added_under_an_open_solution_filter_joins_its_list_so_the_filter_opened_again_loads_it()
+    {
+        const string Filter = "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [\n      \"Shop.App\\\\Shop.App.csproj\"\n    ]\n  }\n}\n";
+        string filter = PathNames.Canonical(Path.Combine(folder, "Shop.App.slnf"));
+        string solution = Path.Combine(folder, "Shop.slnx");
+        Write("Shop.App.slnf", Filter);
+        Write("Shop.Tools/Shop.Tools.csproj", Library);
+        string listed = File.ReadAllText(solution);
+        string added = Filter.Replace("\"Shop.App\\\\Shop.App.csproj\"\n", "\"Shop.App\\\\Shop.App.csproj\",\n      \"Shop.Tools\\\\Shop.Tools.csproj\"\n", StringComparison.Ordinal);
+        const string All = "Shop.App loaded, Shop.Core loaded, Shop.Tools loaded";
+        MainWindow window = Ui.OpenFolder(filter, languageServer: false);
+        try
+        {
+            List<string> asked = Answer(window);
+            window.SetUnloaded(PathNames.Canonical(Path.Combine(folder, "Shop.Core", "Shop.Core.csproj")), unloaded: false);
+            window.PickFiles = (_, _, _) => Task.FromResult<IReadOnlyList<string>>([Path.Combine(folder, "Shop.Tools", "Shop.Tools.csproj")]);
+            Ui.ChooseFromRowMenu(window, Row(window, NodeKind.Solution, "Shop"), "Add", "Existing Project…");
+            Ui.WaitFor(() => Loaded(window) == All, () => $"Shop.Tools to be added, the rest as they were ({Loaded(window)}): {window.Status}");
+            Assert.True(File.ReadAllText(filter) == added, $"Shop.Tools went in the solution but not in the filter open, which leaves it out once opened again:\n{File.ReadAllText(filter)}");
+            Assert.Contains("Shop.Tools/Shop.Tools.csproj", File.ReadAllText(solution), StringComparison.Ordinal);
+
+            Ui.ClickRow(window, Row(window, NodeKind.Project, "Shop.Tools"));
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => Loaded(window) == "Shop.App loaded, Shop.Core loaded", () => $"Undo to take Shop.Tools out, the rest as they were ({Loaded(window)}): {window.Status}");
+            Assert.True((File.ReadAllText(filter), File.ReadAllText(solution)) == (Filter, listed), $"Undo left the filter or the solution changed: {window.Status}\n{File.ReadAllText(filter)}");
+
+            Ui.ClickRow(window, Row(window, NodeKind.Project, "Shop.App"));
+            Ui.Run(window, EditorActions.Redo);
+            Ui.WaitFor(() => Loaded(window) == All, () => $"Redo to add Shop.Tools again ({Loaded(window)}): {window.Status}");
+            Assert.Equal(added, File.ReadAllText(filter));
+            Assert.Equal(["Undo", "Redo"], asked);
+        }
+        finally
+        {
+            window.Close();
+        }
+        window = Ui.OpenFolder(filter, languageServer: false);
+        try
+        {
+            Assert.Equal("Shop.App loaded, Shop.Core unloaded, Shop.Tools loaded", Loaded(window));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string Loaded(MainWindow shown) =>
+            string.Join(", ", shown.ExplorerView.Tree.Rows.Where(r => r.Kind == NodeKind.Project).Select(r => $"{r.Name} {(r.IsDimmed ? "unloaded" : "loaded")}"));
+    }
+
     /// <summary>A file deleted takes its own row out, and Unload Project and Reload Project make the project's row again,
     /// dimmed and then open to open: every other row shown stays the row it was, rather than every row of the tree being
     /// made again for one.</summary>

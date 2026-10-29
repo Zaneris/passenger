@@ -10,7 +10,7 @@ namespace Passenger.App;
 /// solution folder in the Solution view, and its keys), both in <see cref="NewProjectDialog"/> from the templates
 /// dotnet new has installed and those of the known packages it can install (<see cref="TemplatePacks"/>). A new
 /// solution opens as the workspace through <see cref="Open"/>, kept in Recent Solutions, and builds in the window it
-/// opens in; a new project goes into the open solution, in the solution folder chosen, by
+/// opens in; a new project goes into the open solution, in the solution folder chosen, and the solution filter open, by
 /// <see cref="SolutionEdits"/>, as one command Undo takes back whole. A service is set up to run as the dialog chose
 /// (<see cref="SetUpAsync"/>) once it is open.</summary>
 public partial class MainWindow
@@ -80,8 +80,7 @@ public partial class MainWindow
         async Task<string?> AddMadeAsync(CreatedProjects made)
         {
             using CommandHistory.Recording recording = Editors.Commands.RecordWrites($"New Project {Path.GetFileNameWithoutExtension(made.Projects[0])}");
-            recording.Watch(solution.Path);
-            if (await AddEachAsync(made.Projects, (file, project) => SolutionEdits.AddProject(file, into, project), Path.GetFileNameWithoutExtension) is not { } last)
+            if (await AddEachAsync(made.Projects, (file, project) => SolutionEdits.AddProject(file, into, project), Path.GetFileNameWithoutExtension, recording, projects: true) is not { } last)
             {
                 return status.Text;
             }

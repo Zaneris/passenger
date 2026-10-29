@@ -5,8 +5,9 @@ using System.Text.Json.Nodes;
 namespace Passenger.Workspace;
 
 /// <summary>A JSON file changed as text where its values stand (launchSettings.json's profiles, an AppHost's appsettings.json
-/// and user secrets): a value replaced where it is, a member added after its object's last, indented as they are, one taken
-/// out with its line, the comments and trailing commas .NET's readers take kept, every other character as it was.</summary>
+/// and user secrets, a solution filter's projects): a value replaced where it is, a member added after its object's last
+/// and an item after its array's last, indented as they are, one taken out with its line, the comments and trailing commas
+/// .NET's readers take kept, every other character as it was.</summary>
 public static class JsonText
 {
     internal static readonly JsonSerializerOptions Written = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
@@ -71,6 +72,51 @@ public static class JsonText
                 return (null, $"{string.Join(':', path.Take(i + 1))} is a value there, not a section");
             }
             holder = section.Value;
+        }
+        return (text, null);
+    }
+
+    /// <summary>The text with an item put after the last of an array a path of members from its root names (a solution
+    /// filter's <c>solution</c>, <c>projects</c>), as its items are laid out; a member the path lacks made, with the rest under
+    /// it, as the file indents. Null with why when the text does not read as JSON, its root or a member on the path is no
+    /// object, or the last no array.</summary>
+    public static (string? Text, string? Problem) AddToArray(string text, IReadOnlyList<string> path, JsonNode item)
+    {
+        Node root;
+        try
+        {
+            root = new Reader(text).Document();
+        }
+        catch (FormatException unreadable)
+        {
+            return (null, $"it does not read as JSON: {unreadable.Message}");
+        }
+        if (root.Kind != Kind.Object)
+        {
+            return (null, "its root is not an object");
+        }
+        Layout layout = new(text, Unit(text, root));
+        Node holder = root;
+        for (int i = 0; i < path.Count; i++)
+        {
+            if (holder.Member(path[i]) is not { } member)
+            {
+                JsonNode made = new JsonArray(item.DeepClone());
+                for (int j = path.Count - 1; j > i; j--)
+                {
+                    made = new JsonObject { [path[j]] = made };
+                }
+                return (layout.Add(holder, path[i], made), null);
+            }
+            if (i == path.Count - 1)
+            {
+                return member.Value.Kind == Kind.Array ? (layout.Append(member.Value, item), null) : (null, $"its {path[i]} is not a list");
+            }
+            if (member.Value.Kind != Kind.Object)
+            {
+                return (null, $"its {path[i]} is not an object");
+            }
+            holder = member.Value;
         }
         return (text, null);
     }
@@ -175,6 +221,28 @@ public static class JsonText
                 return Replace(holder.Start + 1, holder.Close, $"{eol}{outer}{unit}{Quoted(name)}: {Laid(value, unit, eol, outer + unit)}{eol}{outer}");
             }
             return Insert(holder, name, Lined(holder) ? Laid(value, unit, eol, MemberIndent(holder)) : value.ToJsonString(Written));
+        }
+
+        /// <summary>An item put after the array's last, on a line of its own indented as the others where they have lines
+        /// of their own, else on the array's line; the last's trailing comma, if it has one, kept as the new one's. An empty
+        /// array on one line holds it on a line of its own, a level in from the array's line.</summary>
+        public string Append(Node array, JsonNode item)
+        {
+            string written = item.ToJsonString(Written);
+            if (array.Items.Count == 0)
+            {
+                string outer = IndentOf(text, array.Start);
+                return SameLine(text, array.Start, array.Close)
+                    ? Replace(array.Start + 1, array.Close, $"{eol}{outer}{unit}{written}{eol}{outer}")
+                    : Replace(array.Start + 1, array.Start + 1, $"{eol}{outer}{unit}{written}");
+            }
+            Node last = array.Items[^1];
+            int after = last.Comma >= 0 ? last.Comma + 1 : last.End;
+            string comma = last.Comma >= 0 ? string.Empty : ",";
+            string trailing = last.Comma >= 0 ? "," : string.Empty;
+            return SameLine(text, array.Start, array.Items[0].Start)
+                ? Replace(after, after, $"{comma} {written}{trailing}")
+                : Replace(after, after, $"{comma}{eol}{IndentOf(text, last.Start)}{written}{trailing}");
         }
 
         /// <summary>A member put after the object's last, on a line of its own indented as the others where they have
@@ -289,6 +357,9 @@ public static class JsonText
 
         /// <summary>An array's items, in order.</summary>
         public List<Node> Items { get; } = [];
+
+        /// <summary>Where the comma after it stands, as an array's item; -1 for none.</summary>
+        public int Comma { get; set; } = -1;
 
         /// <summary>The last member of that name, the one a reader takes.</summary>
         public Member? Member(string name) => Members.LastOrDefault(m => m.Name == name);
@@ -406,11 +477,12 @@ public static class JsonText
                     node.End = at;
                     return node;
                 }
-                node.Items.Add(Value());
+                Node item = Value();
+                node.Items.Add(item);
                 Trivia();
                 if (at < text.Length && text[at] == ',')
                 {
-                    at++;
+                    item.Comma = at++;
                 }
                 else if (at >= text.Length || text[at] != ']')
                 {

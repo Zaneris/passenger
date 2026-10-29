@@ -277,18 +277,23 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary>Takes the solution filter a read of the folder has: the solution's projects it leaves out are unloaded in
-    /// place of those the one before left out, and those the person loaded since stay loaded while it keeps the same
-    /// projects. The programs beside the solution are none of its projects, so no filter unloads them.</summary>
+    /// place of those the one before left out, and those the person loaded since stay loaded while it is the same filter
+    /// of the same solution (one a project added was put in, say). The programs beside the solution are none of its
+    /// projects, so no filter unloads them.</summary>
     private void TakeFilter(WorkspaceModel read)
     {
         if (read.Filter is { } now ? now.Keeps(filter) : filter is null)
         {
             return;
         }
+        HashSet<string> loaded = filter is { } before && read.Filter is { } after
+            && PathNames.Same(before.Path, after.Path) && PathNames.Same(before.Solution, after.Solution)
+            ? [.. (Workspace?.Projects ?? []).Where(p => !p.IsProgram && !before.Projects.Contains(p.Path) && !Unloaded.Contains(p.Path)).Select(p => p.Path)]
+            : [];
         Unloaded.ExceptWith(filteredOut);
         filteredOut.Clear();
         filter = read.Filter;
-        foreach (ProjectModel project in filter is { } kept ? read.Projects.Where(p => !p.IsProgram && !kept.Projects.Contains(p.Path)) : [])
+        foreach (ProjectModel project in filter is { } kept ? read.Projects.Where(p => !p.IsProgram && !kept.Projects.Contains(p.Path) && !loaded.Contains(p.Path)) : [])
         {
             if (Unloaded.Add(project.Path))
             {

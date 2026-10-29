@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Passenger.Core;
@@ -6,10 +8,10 @@ using Passenger.Text;
 namespace Passenger.Workspace;
 
 /// <summary>The Solution view's edits to a solution's file, a .sln or a .slnx: solution folders added, renamed and
-/// removed with all they hold, projects and files put in a folder, taken out again and followed where they moved. Each
-/// changes only the lines or elements it is about, the rest kept in its encoding, line endings and indentation. A
-/// folder is named by its path in the solution, <see cref="SolutionFolder.Path"/>. An edit returns null when done, else
-/// why not; a file that cannot be read or written throws.</summary>
+/// removed with all they hold, projects and files put in a folder, taken out again and followed where they moved, and a
+/// project put in a solution filter's list. Each changes only the lines or elements it is about, the rest kept in its
+/// encoding, line endings and indentation. A folder is named by its path in the solution, <see cref="SolutionFolder.Path"/>.
+/// An edit returns null when done, else why not; a file that cannot be read or written throws.</summary>
 public static class SolutionEdits
 {
     public static string? AddFolder(string solution, string? parent, string name) =>
@@ -26,6 +28,48 @@ public static class SolutionEdits
         Edit(solution, file => file.AddProject(folder, project));
 
     public static string? RemoveProject(string solution, string project) => Edit(solution, file => file.RemoveProject(project));
+
+    /// <summary>Puts a project of the solution (a canonical path) in a solution filter's list of those it keeps, from the
+    /// solution's folder with the separator the list's first is written with (a backslash, as dotnet sln writes it, when
+    /// it has none), the rest of the file as it was. Null once the filter keeps it, else why not.</summary>
+    public static string? AddToFilter(string filter, string project)
+    {
+        string name = Path.GetFileName(filter);
+        if (SolutionFilter.Read(filter) is not { } read)
+        {
+            return $"{name} does not read as a solution filter";
+        }
+        if (read.Projects.Contains(project))
+        {
+            return null;
+        }
+        FileText file = FileText.Load(filter) ?? throw new IOException($"{name} is not a text file");
+        string relative = Path.GetRelativePath(Path.GetDirectoryName(read.Solution)!, project);
+        relative = Slashed(file.Text) ? relative.Replace('\\', '/') : relative.Replace('/', '\\');
+        (string? text, string? problem) = JsonText.AddToArray(file.Text, ["solution", "projects"], JsonValue.Create(relative));
+        if (text is null)
+        {
+            return $"{name} cannot keep {Path.GetFileNameWithoutExtension(project)}: {problem}";
+        }
+        FileText.Save(filter, text, file.Encoding, file.HasBom, file.CrBreaks);
+        return null;
+
+        static bool Slashed(string text)
+        {
+            try
+            {
+                using JsonDocument read = JsonDocument.Parse(text, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+                return read.RootElement.ValueKind == JsonValueKind.Object && read.RootElement.TryGetProperty("solution", out JsonElement solution)
+                    && solution.ValueKind == JsonValueKind.Object && solution.TryGetProperty("projects", out JsonElement projects)
+                    && projects.ValueKind == JsonValueKind.Array && projects.EnumerateArray().FirstOrDefault() is { ValueKind: JsonValueKind.String } first
+                    && first.GetString() is { } written && written.Contains('/') && !written.Contains('\\');
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+    }
 
     /// <summary>Puts a file (a canonical path) in a folder, as a Solution Item.</summary>
     public static string? AddFile(string solution, string folder, string path) => Edit(solution, file => file.AddFile(folder, path));

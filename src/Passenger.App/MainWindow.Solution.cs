@@ -1,4 +1,5 @@
 using Avalonia.Platform.Storage;
+using Passenger.App.Editors;
 using Passenger.App.Explorer;
 using Passenger.Core;
 using Passenger.Workspace;
@@ -103,13 +104,18 @@ public partial class MainWindow
     }
 
     /// <summary>Add Existing Project: the projects the person picks, put in a solution folder, or at the solution's top
-    /// with none.</summary>
+    /// with none, and in the solution filter open, as one command Undo takes back whole.</summary>
     public async Task AddExistingProjectsAsync(string? into)
     {
         string where = into is null ? "the Solution" : $"Solution Folder '{FolderName(into)}'";
         IReadOnlyList<string> picked = await PickFiles($"Add Existing Project to {where}",
             [new FilePickerFileType("Projects") { Patterns = ["*.csproj", "*.fsproj", "*.vbproj"] }], true);
-        if (await AddEachAsync(picked, (solution, project) => SolutionEdits.AddProject(solution, into, project), Path.GetFileNameWithoutExtension) is { } last)
+        if (picked.Count == 0)
+        {
+            return;
+        }
+        using CommandHistory.Recording recording = Editors.Commands.RecordWrites($"Add Existing Project {Together([.. picked.Select(Path.GetFileNameWithoutExtension).OfType<string>()])}");
+        if (await AddEachAsync(picked, (solution, project) => SolutionEdits.AddProject(solution, into, project), Path.GetFileNameWithoutExtension, recording, projects: true) is { } last)
         {
             Reveal(into, last);
         }
@@ -126,17 +132,26 @@ public partial class MainWindow
     }
 
     /// <summary>Adds each path picked, then, once the solution's file has landed, reads the solution once: the last one
-    /// added, or null with none, the status bar saying what was added or why one was not.</summary>
-    private async Task<string?> AddEachAsync(IReadOnlyList<string> picked, Func<string, string, string?> add, Func<string, string> named)
+    /// added, or null with none, the status bar saying what was added or why one was not. Projects go in the solution
+    /// filter open too; the files it writes are watched first by a command's recording, for its undo.</summary>
+    private async Task<string?> AddEachAsync(IReadOnlyList<string> picked, Func<string, string, string?> add, Func<string, string> named,
+        CommandHistory.Recording? recording = null, bool projects = false)
     {
         if (Solution is not { } solution || picked.Count == 0)
         {
             return null;
         }
-        if (SaveBeforeWriting([solution.Path]) is { } unsaved)
+        // Reopened, the filter would leave out a project it does not list.
+        string? filter = projects ? session.Workspace?.Filter?.Path : null;
+        string[] writing = filter is null ? [solution.Path] : [solution.Path, filter];
+        if (SaveBeforeWriting(writing) is { } unsaved)
         {
             status.Text = $"{solution.Name} could not be changed: {unsaved}";
             return null;
+        }
+        foreach (string path in writing)
+        {
+            recording?.Watch(path);
         }
         List<string> added = [];
         List<string> refused = [];
@@ -145,18 +160,20 @@ public partial class MainWindow
             if (Change(() => add(solution.Path, path), solution.Name) is { } problem)
             {
                 refused.Add(problem);
+                continue;
             }
-            else
+            added.Add(path);
+            if (filter is not null && Change(() => SolutionEdits.AddToFilter(filter, path), Path.GetFileName(filter)) is { } unfiltered)
             {
-                added.Add(path);
+                refused.Add(unfiltered);
             }
         }
-        if (added.Count > 0 && await UnlandedAsync([solution.Path]) is { } unlanded)
+        if (added.Count > 0 && await UnlandedAsync(writing) is { } unlanded)
         {
             added.Clear();
             refused = [$"{solution.Name} could not be changed: {unlanded.Message}"];
         }
-        FollowWritten([solution.Path]);
+        FollowWritten(writing);
         if (added.Count > 0)
         {
             ReloadSolution();
