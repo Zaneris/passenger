@@ -536,17 +536,17 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
-    /// <summary>The Aspire window over the AppHost's resources, driven by clicks: a resource's row has its state's dot,
-    /// its health's tag and its address as a link to the browser; its Details are framed tables, a secret's value
-    /// masked (by its name, a connection string's password, an argument after its flag); its toolbar's icon buttons each
-    /// run an action, showing its work; its commands are a menu; its console merges every resource's lines, a toggle each
-    /// ending that resource's stream, with Find; and at the window's least width nothing overflows its room.</summary>
+    /// <summary>The Aspire window over the AppHost's resources, driven by clicks: a resource's row has its state's dot, its
+    /// health's tag and its address as a link to the browser; its Details are framed tables, a secret's value masked (by its
+    /// name, a connection string's password, an argument after its flag or marked sensitive, the others shown); its toolbar's
+    /// icon buttons each run an action, showing its work; its commands are a menu; its console merges every resource's lines,
+    /// a toggle each ending that resource's stream, with Find; and at the window's least width nothing overflows its room.</summary>
     [AvaloniaFact]
     public void The_window_shows_a_resources_row_details_commands_and_merged_console_as_Containers_shows_a_services()
     {
         project.Reset();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
-        backend.PushResource(new Resource
+        Resource service = new()
         {
             Name = "apiservice", DisplayName = "apiservice", Uid = "api", ResourceType = "Project", State = "Running",
             HealthReports = { new HealthReport { Key = "ready", Status = HealthStatus.Healthy, Description = "It answers" } },
@@ -557,17 +557,11 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
                 new Passenger.App.Aspire.Protocol.EnvironmentVariable { Name = "API_KEY", Value = "key-never-shown" },
                 new Passenger.App.Aspire.Protocol.EnvironmentVariable { Name = "DATABASE_URL", Value = "postgres://app:pass-never-shown@db/shop" },
             },
-            Properties =
-            {
-                new ResourceProperty { Name = "project.path", Value = Google.Protobuf.WellKnownTypes.Value.ForString(project.ProjectFile) },
-                new ResourceProperty
-                {
-                    Name = "resource.appArgs",
-                    Value = Google.Protobuf.WellKnownTypes.Value.ForList([.. ((string[])["--api-key", "arg-never-shown", "--port", "5310"]).Select(Google.Protobuf.WellKnownTypes.Value.ForString)]),
-                },
-            },
+            Properties = { new ResourceProperty { Name = "project.path", Value = Google.Protobuf.WellKnownTypes.Value.ForString(project.ProjectFile) } },
             Commands = { new ResourceCommand { Name = "resource-restart", DisplayName = "Restart", State = ResourceCommandState.Enabled } },
-        });
+        };
+        // As the AppHost sends arguments one of which it marks sensitive: both lists marked sensitive, the marks numbers.
+        backend.PushResource(WithArguments(service, ["--api-key", "arg-never-shown", "--port", "5310", "positional-never-shown"], [0, 0, 0, 0, 1], marked: true));
         backend.PushResource(new Resource { Name = "cache", DisplayName = "cache", Uid = "cache", ResourceType = "Container", State = "Starting" });
         MainWindow window = OpenRunning(backend);
         try
@@ -591,10 +585,17 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Assert.Contains(Passenger.App.Containers.ContainerSecrets.Masked, shown);
             Assert.DoesNotContain(shown, text => text.Contains("never-shown", StringComparison.Ordinal));
             Assert.Contains(shown, text => text.StartsWith("postgres://app:", StringComparison.Ordinal) && text.EndsWith("@db/shop", StringComparison.Ordinal));
-            Assert.Contains($"--api-key, {Passenger.App.Containers.ContainerSecrets.Masked}, --port, 5310", shown);
+            string masked = Passenger.App.Containers.ContainerSecrets.Masked;
+            Assert.Contains($"--api-key, {masked}, --port, 5310, {masked}", shown);
             Assert.Contains(shown, text => text.Contains("It answers", StringComparison.Ordinal));
             Assert.True(details.GetVisualDescendants().OfType<Border>().Count(border => border.Classes.Contains("framed")) >= 4,
                 "The details are not framed tables as Containers' are");
+            // Marks sent with lists not marked sensitive themselves still mask the argument they mark.
+            backend.PushResource(WithArguments(service, ["--port", "5311", "second-never-shown"], [0, 0, 1], marked: false));
+            string[] Shown() => [.. details.GetVisualDescendants().OfType<SelectableTextBlock>().Select(text => text.Text ?? string.Empty)];
+            Ui.WaitFor(() => Shown().Any(text => text.Contains("5311", StringComparison.Ordinal)), "the API's details to show its arguments again");
+            Assert.Contains($"--port, 5311, {masked}", Shown());
+            Assert.DoesNotContain(Shown(), text => text.Contains("never-shown", StringComparison.Ordinal));
 
             foreach ((string action, Button button) in window.AspireWindow.Tools)
             {
@@ -646,6 +647,24 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             window.Close();
             Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
         }
+    }
+
+    /// <summary>A resource with its arguments and the AppHost's marks of which are sensitive (a number an argument), as two
+    /// properties, each marked sensitive as a whole or not.</summary>
+    private static Resource WithArguments(Resource resource, string[] words, int[] marks, bool marked)
+    {
+        Resource given = resource.Clone();
+        given.Properties.Add(new ResourceProperty
+        {
+            Name = "resource.appArgs", IsSensitive = marked,
+            Value = Google.Protobuf.WellKnownTypes.Value.ForList([.. words.Select(Google.Protobuf.WellKnownTypes.Value.ForString)]),
+        });
+        given.Properties.Add(new ResourceProperty
+        {
+            Name = "resource.appArgsSensitivity", IsSensitive = marked,
+            Value = Google.Protobuf.WellKnownTypes.Value.ForList([.. marks.Select(mark => Google.Protobuf.WellKnownTypes.Value.ForNumber(mark))]),
+        });
+        return given;
     }
 
     /// <summary>A click on a resource's address, in its row or its Details, or on its commands lands while the AppHost

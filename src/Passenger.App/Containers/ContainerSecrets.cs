@@ -146,11 +146,18 @@ public static partial class ContainerSecrets
         word.Length > 0 && SecretFlag(before) ? Masked : masking(word);
 
     /// <summary>A program's arguments given one by one (an Aspire resource's), each masked as
-    /// <see cref="CommandLine(System.Diagnostics.ProcessStartInfo)"/> masks a child's.</summary>
-    public static IReadOnlyList<string> Arguments(IReadOnlyList<string> words) => Arguments(words, Masking());
+    /// <see cref="CommandLine(System.Diagnostics.ProcessStartInfo)"/> masks a child's, and one its sender marks sensitive
+    /// (<paramref name="sensitive"/>, a mark an argument) as the dots whatever is before it; marks that are not one an
+    /// argument mask them all. An empty one shows as it is.</summary>
+    public static IReadOnlyList<string> Arguments(IReadOnlyList<string> words, IReadOnlyList<bool>? sensitive = null) =>
+        Arguments(words, sensitive, Masking());
 
-    private static string[] Arguments(IReadOnlyList<string> words, Func<string, string> masking) =>
-        [.. words.Select((word, i) => Argument(word, i == 0 ? null : words[i - 1], masking))];
+    private static string[] Arguments(IReadOnlyList<string> words, IReadOnlyList<bool>? sensitive, Func<string, string> masking)
+    {
+        bool all = sensitive is not null && sensitive.Count != words.Count;
+        return [.. words.Select((word, i) => word.Length > 0 && (all || sensitive?[i] == true) ? Masked
+            : Argument(word, i == 0 ? null : words[i - 1], masking))];
+    }
 
     /// <summary>A variable's value as it is shown.</summary>
     public static string Shown(string name, string value) => value.Length > 0 && Secret(name) ? Masked : InValue(value);
@@ -487,7 +494,7 @@ public static partial class ContainerSecrets
 
     /// <summary>Masks, in place, every environment list and command line in what <c>docker inspect</c> said, anywhere in it
     /// (a container's and an image's Config, an older image's ContainerConfig): each <c>Env</c> array of "NAME=value"
-    /// strings, and a program's words as <see cref="Arguments(IReadOnlyList{string})"/> masks them,
+    /// strings, and a program's words as <see cref="Arguments(IReadOnlyList{string}, IReadOnlyList{bool})"/> masks them,
     /// one array read on from the other as the engine runs them: a container's <c>Path</c> then <c>Args</c>, a Config's
     /// <c>Entrypoint</c> then <c>Cmd</c>, and a health check's <c>Test</c>.</summary>
     public static void Mask(JsonNode? node) => Mask(node, Masking());
@@ -553,7 +560,7 @@ public static partial class ContainerSecrets
                 }
             }
         }
-        string[] shown = Arguments(words, masking);
+        string[] shown = Arguments(words, null, masking);
         for (int i = 0; i < shown.Length; i++)
         {
             if (string.Equals(shown[i], words[i], StringComparison.Ordinal))

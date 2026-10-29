@@ -410,9 +410,10 @@ public sealed partial class AspireInteractions
         }
         // A secret masked by ContainerSecrets' rule, and one the AppHost marks sensitive whatever its name.
         Resource resource = incoming.Clone();
+        ResourceProperty? arguments = MaskArguments(resource);
         foreach (ResourceProperty property in resource.Properties)
         {
-            if (property.IsSensitive)
+            if (property.IsSensitive && !ReferenceEquals(property, arguments))
             {
                 property.Value = Google.Protobuf.WellKnownTypes.Value.ForString(ContainerSecrets.Masked);
             }
@@ -447,6 +448,33 @@ public sealed partial class AspireInteractions
             throw new InvalidDataException("The AppHost sent duplicate resource commands.");
         }
         target[resource.Name] = (resource, ToSnapshot(resource));
+    }
+
+    /// <summary>A resource's arguments (<c>resource.appArgs</c>) masked in place by ContainerSecrets' rule where the AppHost
+    /// sends its marks with them (<c>resource.appArgsSensitivity</c>: a number an argument, other than 0 for one it marks
+    /// sensitive, which shows as the dots; a mark of another kind read as sensitive). The property so masked, or null where
+    /// it holds no list of words or comes with no marks.</summary>
+    private static ResourceProperty? MaskArguments(Resource resource)
+    {
+        if (resource.Properties.FirstOrDefault(property => property.Name == "resource.appArgs") is not { } arguments
+            || arguments.Value?.KindCase != Google.Protobuf.WellKnownTypes.Value.KindOneofCase.ListValue
+            || arguments.Value.ListValue.Values.Any(word => word.KindCase != Google.Protobuf.WellKnownTypes.Value.KindOneofCase.StringValue)
+            || resource.Properties.FirstOrDefault(property => property.Name == "resource.appArgsSensitivity")?.Value is not { } said
+            || said.KindCase == Google.Protobuf.WellKnownTypes.Value.KindOneofCase.NullValue)
+        {
+            return null;
+        }
+        // Marks that are no list match no argument, so every argument is masked.
+        bool[] marks = said.KindCase != Google.Protobuf.WellKnownTypes.Value.KindOneofCase.ListValue ? []
+            : [.. said.ListValue.Values.Select(mark => mark.KindCase switch
+            {
+                Google.Protobuf.WellKnownTypes.Value.KindOneofCase.NumberValue => mark.NumberValue != 0,
+                Google.Protobuf.WellKnownTypes.Value.KindOneofCase.BoolValue => mark.BoolValue,
+                _ => true,
+            })];
+        IReadOnlyList<string> shown = ContainerSecrets.Arguments([.. arguments.Value.ListValue.Values.Select(word => word.StringValue)], marks);
+        arguments.Value = Google.Protobuf.WellKnownTypes.Value.ForList([.. shown.Select(Google.Protobuf.WellKnownTypes.Value.ForString)]);
+        return arguments;
     }
 
     private static ResourceCommand SafeCommand(ResourceCommand incoming)

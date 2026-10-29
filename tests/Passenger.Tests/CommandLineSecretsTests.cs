@@ -70,6 +70,17 @@ public sealed class CommandLineSecretsTests
         Assert.Equal(arguments, ContainerSecrets.Arguments(["run", "--api-key", "sk-live-123", "--port", "5000", "--password", ""]));
     }
 
+    /// <summary>An argument its sender marks sensitive (an Aspire resource's) is masked whatever is before it, the word after
+    /// a flag naming a secret still masked and the rest shown; an empty one shows as it is, and marks that are not one an
+    /// argument mask every argument.</summary>
+    [Fact]
+    public void An_argument_marked_sensitive_is_masked_whatever_is_before_it()
+    {
+        Assert.Equal(["run", Masked, "--port", "5000", "--token", Masked, ""],
+            ContainerSecrets.Arguments(["run", "hunter2", "--port", "5000", "--token", "sk-live-123", ""], [false, true, false, false, false, false, true]));
+        Assert.Equal([Masked, Masked, ""], ContainerSecrets.Arguments(["run", "hunter2", ""], [true]));
+    }
+
     /// <summary>Inspect's command lines are masked as a program's arguments are, an array read on from the one it continues
     /// (a container's Args from its Path, a Config's Cmd from its Entrypoint) and a health check's Test on its own, and a
     /// copy written so comes back as it was.</summary>
