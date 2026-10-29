@@ -322,7 +322,9 @@ site-shots` retakes its images.
   in the profile whatever the environment says (those tests skip there). An Aspire service's replicas share
   `OTEL_SERVICE_NAME` and its display name: a start's own resource is found by `service.instance.id`
   (`AspireResourceRun.ResourceIn`), never by name alone; a service action takes the start chosen, and a start's hold,
-  attach and recording are kept by `ServiceRun.KeyOf`.
+  attach and recording are kept by `ServiceRun.KeyOf`. DCP names each replica with a random suffix every AppHost run,
+  and its index never reaches the IDE: a replica's identity lasts one run, so a choice for one replica is every
+  replica's next run.
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
