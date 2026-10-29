@@ -7,6 +7,7 @@ using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Docking;
 using Passenger.App.Settings;
+using Passenger.App.State;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
@@ -251,6 +252,60 @@ public sealed class StateTests : IDisposable
         Assert.Single(second.Debugger.Breakpoints.All);
         Assert.Equal(2, second.Bookmarks.All.Count);
         second.Close();
+    }
+
+    /// <summary>A folder's documents are held in the store only while a window has the folder open: left again and again, by
+    /// Close Solution and by another folder's open, the store keeps none of them, what the window kept of the folder written
+    /// as it goes; two windows on the folder share them until the last lets them go.</summary>
+    [AvaloniaFact]
+    public void A_folders_documents_leave_the_store_once_no_window_has_the_folder_open()
+    {
+        string other = TestFolders.Create("other-");
+        File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
+        string open = PathNames.Canonical(folder);
+        string workspace = Path.Combine(ProjectState.FolderOf(settings, open), "workspace.json");
+        MainWindow first = Keeping();
+        StateStore store = StateStore.Open(settings);
+        try
+        {
+            for (int round = 1; round <= 4; round++)
+            {
+                first.OpenFolder(folder);
+                Ui.Settle();
+                Assert.True(store.Folders.Contains(open), $"The folder open in round {round} has no documents in the store");
+                first.OpenFile(Path.Combine(folder, "One.cs"));
+                Ui.Settle();
+                string leaving = round % 2 == 1 ? "Close Solution" : "another folder's open";
+                if (round % 2 == 1)
+                {
+                    Assert.Null(first.CloseSolution());
+                }
+                else
+                {
+                    first.OpenFolder(other);
+                }
+                Assert.True(Ui.Shared(workspace).Contains("One.cs", StringComparison.Ordinal),
+                    $"The folder left by {leaving} in round {round} had its editors written a moment later at best, so a close then loses them:\n{Ui.Shared(workspace)}");
+                Ui.Settle();
+                Assert.True(!store.Folders.Contains(open),
+                    $"The folder left by {leaving} in round {round} still has its documents in the store: [{string.Join(", ", store.Folders)}]");
+            }
+
+            MainWindow second = Keeping(folder);
+            first.OpenFolder(folder);
+            Ui.Settle();
+            Assert.Null(first.CloseSolution());
+            Ui.Settle();
+            Assert.True(store.Folders.Contains(open), "The folder's documents left the store while another window still has it open");
+            second.Close();
+            Ui.Settle();
+            Assert.True(!store.Folders.Contains(open), $"The folder's documents stay in the store with no window left on it: [{string.Join(", ", store.Folders)}]");
+        }
+        finally
+        {
+            store.Release();
+            first.Close();
+        }
     }
 
     /// <summary>A folder's kept documents are read off the window's thread as it opens, so their size never holds the

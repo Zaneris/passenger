@@ -658,6 +658,9 @@ public partial class MainWindow : Window
     /// something; null in a headless one.</summary>
     private State.StateStore? state;
 
+    /// <summary>The folder whose documents the window holds in the store, open or being opened, and those documents.</summary>
+    private (string Folder, State.ProjectState Documents)? heldFolder;
+
     private bool keepsWorkspace;
 
     /// <summary>Whether the window keeps its layout and its folders' state (the person's windows), which a window opened
@@ -687,11 +690,37 @@ public partial class MainWindow : Window
             Closed += (_, _) =>
             {
                 State.StateFile.SetAsideNow -= setAside;
+                LetGoFolder();
                 state.Release();
             };
             SayWhatWasSetAside();
         }
         return state;
+    }
+
+    /// <summary>The documents of the folder open or being opened, held in the store for this window, those of another held
+    /// before let go.</summary>
+    private State.ProjectState Hold(string folder)
+    {
+        if (heldFolder is { } now && now.Folder == folder)
+        {
+            return now.Documents;
+        }
+        State.StateStore store = Store();
+        LetGoFolder();
+        State.ProjectState documents = store.Hold(folder);
+        heldFolder = (folder, documents);
+        return documents;
+    }
+
+    /// <summary>The window's hold on its folder's documents let go: written, and dropped once no window holds them.</summary>
+    private void LetGoFolder()
+    {
+        if (heldFolder is { } was)
+        {
+            heldFolder = null;
+            state!.LetGo(was.Folder);
+        }
     }
 
     /// <summary>A file of the window's state that did not read and was set aside (its settings, a folder's breakpoints)
@@ -730,15 +759,16 @@ public partial class MainWindow : Window
         {
             return;
         }
-        State.ProjectState opening = state!.Project(folder);
+        State.StateStore store = Store();
+        State.ProjectState opening = Hold(folder);
         // The folder's own layout, else the one changed last in any window, which a folder new to Passenger opens on.
         if (opening.Layout.IsKept)
         {
             Dock.Apply(opening.Layout.Value);
         }
-        else if (state.Layout.IsKept)
+        else if (store.Layout.IsKept)
         {
-            Dock.Apply(state.Layout.Value);
+            Dock.Apply(store.Layout.Value);
         }
         // Before the folder's documents are this window's, so what restoring them changes is not written back.
         RestoreUnitTests(opening.UnitTests.Value);

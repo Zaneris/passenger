@@ -15,9 +15,9 @@ namespace Passenger.App.State;
 
 /// <summary>The IDE's own state, in one folder: the app's documents at its top (the settings, the layout a folder
 /// without its own opens on, the recent solutions, the release last announced, Find in Files' mask, Rename's options),
-/// and each folder's under <c>workspaces/&lt;name&gt;-&lt;hash&gt;/</c>. Only the windows a person uses keep one, all of a
-/// process's windows over the same folder sharing it (<see cref="Open"/>), so each document is held once and what one
-/// window keeps another reads at once; a headless IDE starts on the defaults.</summary>
+/// and each folder's under <c>workspaces/&lt;name&gt;-&lt;hash&gt;/</c>, held only while a window has the folder open. Only
+/// the windows a person uses keep one, all of a process's windows over the same folder sharing it (<see cref="Open"/>), so
+/// each document is held once and what one window keeps another reads at once; a headless IDE starts on the defaults.</summary>
 public sealed class StateStore
 {
     /// <summary>The settings' file at the store's top.</summary>
@@ -27,7 +27,8 @@ public sealed class StateStore
     /// thread only.</summary>
     private static readonly Dictionary<string, StateStore> Shared = new(StringComparer.Ordinal);
 
-    private readonly Dictionary<string, ProjectState> projects = new(StringComparer.Ordinal);
+    /// <summary>The documents of each folder a window has open or is opening, with how many windows hold them. UI thread only.</summary>
+    private readonly Dictionary<string, (ProjectState Documents, int Holds)> projects = new(StringComparer.Ordinal);
     private readonly string key;
     private int users;
 
@@ -115,16 +116,36 @@ public sealed class StateStore
     /// <summary>Which kinds of file show their preview beside their editor, as the person left them.</summary>
     public StateDocument<PreviewsState> Previews { get; }
 
-    /// <summary>A folder's own documents.</summary>
-    public ProjectState Project(string folder)
+    /// <summary>A folder's own documents, held for a window that has the folder open or is opening it until it lets them go
+    /// (<see cref="LetGo"/>); every window holding the folder shares them.</summary>
+    public ProjectState Hold(string folder)
     {
-        if (!projects.TryGetValue(folder, out ProjectState? project))
-        {
-            project = new ProjectState(Root, folder);
-            projects[folder] = project;
-        }
-        return project;
+        UiThread.Check();
+        ProjectState documents = projects.TryGetValue(folder, out (ProjectState Documents, int Holds) held) ? held.Documents : new ProjectState(Root, folder);
+        projects[folder] = (documents, held.Holds + 1);
+        return documents;
     }
+
+    /// <summary>A window's hold on a folder's documents let go: the last one writes what is waiting and drops them, so a
+    /// folder no window has open keeps nothing here.</summary>
+    public void LetGo(string folder)
+    {
+        UiThread.Check();
+        if (!projects.TryGetValue(folder, out (ProjectState Documents, int Holds) held))
+        {
+            return;
+        }
+        if (held.Holds > 1)
+        {
+            projects[folder] = (held.Documents, held.Holds - 1);
+            return;
+        }
+        projects.Remove(folder);
+        held.Documents.Flush();
+    }
+
+    /// <summary>The folders whose documents the store holds now.</summary>
+    public IReadOnlyCollection<string> Folders => projects.Keys;
 
     /// <summary>Writes every change still waiting, now.</summary>
     public void Flush()
@@ -136,9 +157,9 @@ public sealed class StateStore
         Find.Flush();
         Refactorings.Flush();
         Previews.Flush();
-        foreach (ProjectState project in projects.Values)
+        foreach ((ProjectState documents, _) in projects.Values)
         {
-            project.Flush();
+            documents.Flush();
         }
     }
 

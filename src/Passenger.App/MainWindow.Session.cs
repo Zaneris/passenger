@@ -119,7 +119,7 @@ public partial class MainWindow
         Task none = session.LeaveAsync();
         ending = ending.IsCompleted ? none : Task.WhenAll(ending, none);
         // The folder's documents read off the window's thread meanwhile, so its restore takes them in with no read.
-        Task reading = keepsWorkspace ? Store().Project(opening).ReadAsync() : Task.CompletedTask;
+        Task reading = keepsWorkspace ? Hold(opening).ReadAsync() : Task.CompletedTask;
         int open = ++opens;
         if (ending.IsCompleted && reading.IsCompleted)
         {
@@ -171,7 +171,7 @@ public partial class MainWindow
         opening = null;
         WorkspaceModel? withSolution = WorkspaceModel.ReadSolution(folder, named);
         // The projects as MSBuild last evaluated them, from the folder's cache, before any is evaluated again.
-        ProjectSession opened = ProjectSession.Open(Setup(), folder, named, withSolution, keepsWorkspace ? Store().Project(folder) : null);
+        ProjectSession opened = ProjectSession.Open(Setup(), folder, named, withSolution, keepsWorkspace ? Hold(folder) : null);
         // The head start is this first folder's: one opened later, this one again too, is read and evaluated afresh.
         headStart = null;
         // The consoles are another folder's: what it ran said its last there before its end landed.
@@ -206,7 +206,7 @@ public partial class MainWindow
 
     /// <summary>Ends the session left: programs and builds at once, the debugger, the tests and the folder's terminals as
     /// asked, then its language server; a session with no folder takes its place, the window's views of the folder
-    /// emptied, and its end is what the next folder waits for.</summary>
+    /// emptied and its documents in the store let go, and its end is what the next folder waits for.</summary>
     private void EndSession()
     {
         ProjectSession leaving = session;
@@ -218,6 +218,7 @@ public partial class MainWindow
             terminals = terminal.CloseAllAsync();
         }
         ending = leaving.LeaveAsync(("the terminal", terminals));
+        LetGoFolder();
         Bind(ProjectSession.None(Setup()));
         localHistoryView?.CloseAll();
         Explorer.Unload();
