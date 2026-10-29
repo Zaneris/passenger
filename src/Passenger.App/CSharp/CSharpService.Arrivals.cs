@@ -187,6 +187,18 @@ public sealed partial class CSharpService
         return ReachOf(HolderOf(declared) is { } project ? [project] : null, withDependents: true);
     }
 
+    /// <summary>The folder's projects that can use what a C# file declares, by their files: the one holding it and every one
+    /// that references it, through others too; none for a file no project of the folder's holds.</summary>
+    public IReadOnlyList<string> ProjectsUsing(string path)
+    {
+        UiThread.Check();
+        if (workspace is not { } opened || HolderOf(PathNames.Canonical(path)) is not { } project)
+        {
+            return [];
+        }
+        return [project, .. ProjectModel.Dependents(ProjectsNow?.Invoke() ?? opened.Projects, project)];
+    }
+
     /// <summary>Waits, for an edit the server worked out, until it holds in their projects the C# files come under the
     /// projects of the C# files the edit reaches, for up to <paramref name="within"/>: the rest when the time is up, else
     /// none; and whether any was waited for, which the edit went without.</summary>

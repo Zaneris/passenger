@@ -52,10 +52,25 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         string[] uses = [.. Used(await Call(client, McpTools.Usages, At(window, "MainWindow.axaml", "Name=\"G"))).Select(u => $"{u.Path}:{u.Line}")];
         Assert.True(uses.Contains("MainWindow.axaml:12") && uses.Contains("MainWindow.axaml:13") && uses.Contains("MainWindow.axaml.cs:10"),
             $"The button's name was not found where its file and its code-behind use it: {string.Join(", ", uses)}");
-        // A binding's path is not what XAML's Find Usages finds, and the agent hears what it does find.
-        CallToolResult path = await Result(client, McpTools.Usages, At(window, "MainWindow.axaml", "{Binding Gree"));
-        Assert.True(path.IsError == true && Text(path).Contains("finds an element's name or a resource's key", StringComparison.Ordinal),
-            $"usages on a binding's path did not say what XAML's Find Usages finds: {Text(path)}");
+        // A bound property and a handler have their XAML among their usages, which Safe Delete names before deleting either.
+        string viewModel = Path.Combine("ViewModels", "MainViewModel.cs");
+        Dictionary<string, object?> property = At(XamlTests.Gallery.MainViewModel, viewModel, "string Gree");
+        Dictionary<string, object?>[] boundAt = [property, At(window, "MainWindow.axaml", "{Binding Gree")];
+        foreach (Dictionary<string, object?> asked in boundAt)
+        {
+            string[] bound = [.. Used(await Call(client, McpTools.Usages, asked)).Select(u => $"{u.Path}:{u.Line}")];
+            Assert.True(bound.Contains("MainWindow.axaml:11") && bound.Contains($"{viewModel}:5"),
+                $"The bound property's usages from {asked["path"]} are not its declaration and the binding: {string.Join(", ", bound)}");
+        }
+        Dictionary<string, object?> handler = At(XamlTests.Gallery.HandlingCodeBehind, "MainWindow.axaml.cs", "void On");
+        Assert.Contains("MainWindow.axaml:12", Used(await Call(client, McpTools.Usages, handler)).Select(u => $"{u.Path}:{u.Line}"));
+        JsonElement described = await Call(client, McpTools.Refactor, new(property) { ["kind"] = "safe_delete", ["describe"] = true });
+        Assert.Equal($"Safe Delete would take the property 'Greeting' out of {viewModel}, leaving 1 usage that would no longer compile",
+            described.GetProperty("said").GetString());
+        CallToolResult refused = await Result(client, McpTools.Refactor, new(handler) { ["kind"] = "safe_delete" });
+        Assert.True(refused.IsError == true && Text(refused).Contains("MainWindow.axaml:12: <Button Name=\"Go\" Content=\"Go\" Click=\"OnGo\"", StringComparison.Ordinal),
+            $"Safe Delete of the handler did not refuse naming the XAML that uses it: {Text(refused)}");
+        Assert.Contains("void OnGo", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml.cs")), StringComparison.Ordinal);
 
         JsonElement missing = Assert.Single((await Call(client, McpTools.Diagnostics, new() { ["path"] = "MainWindow.axaml" })).EnumerateArray());
         Assert.Contains("'Subtitle'", missing.GetProperty("message").GetString(), StringComparison.Ordinal);
@@ -154,6 +169,11 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         string[] named = [.. Used(await Call(client, McpTools.Usages, At(window, "MainWindow.xaml", "x:Name=\"G"))).Select(u => u.Text)];
         Assert.True(named.Any(u => u.Contains("Go.Content = \"Start\";", StringComparison.Ordinal)) && named.Any(u => u.Contains("ElementName=Go", StringComparison.Ordinal)),
             $"The button's name was not found where its file and its code-behind use it: {string.Join(" | ", named)}");
+        // A binding WPF resolves at run time is found where the XAML says its data context's type: here its d:DataContext.
+        string[] bound = [.. Used(await Call(client, McpTools.Usages, At(WpfXamlTests.Gallery.MainViewModel, Path.Combine("ViewModels", "MainViewModel.cs"), "string Gree")))
+            .Select(u => $"{u.Path}:{u.Line}")];
+        Assert.True(bound.Contains("MainWindow.xaml:29"), $"The property bound under the window's design-time data context was not found where it is bound: {string.Join(", ", bound)}");
+        Assert.Contains("MainWindow.xaml:30", Used(await Call(client, McpTools.Usages, At(WpfXamlTests.Gallery.CodeBehind, "MainWindow.xaml.cs", "void On"))).Select(u => $"{u.Path}:{u.Line}"));
 
         Dictionary<string, object?> margin = At(window, "MainWindow.xaml", "<StackPanel Margin=\"1");
         Assert.Contains("Extract Resource… [refactor.extract], choices: MainWindow.xaml <Window.Resources>; App.xaml <Application.Resources>; Brushes.xaml <ResourceDictionary>",
@@ -412,10 +432,10 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
             File.WriteAllText(Path.Combine(made, "App.axaml.cs"),
                 "using Avalonia;\nusing Avalonia.Markup.Xaml;\n\nnamespace Gallery;\n\npublic partial class App : Application\n{\n    public override void Initialize() => AvaloniaXamlLoader.Load(this);\n}\n");
             File.WriteAllText(Path.Combine(made, "Program.cs"), "namespace Gallery;\n\npublic static class Program\n{\n    public static void Main()\n    {\n    }\n}\n");
-            // The gallery's window, with a caption bound to a property its view model lacks.
-            File.WriteAllText(Path.Combine(made, "MainWindow.axaml"), XamlTests.Gallery.Window.Replace(
+            // The gallery's window, its button's Click handled, with a caption bound to a property its view model lacks.
+            File.WriteAllText(Path.Combine(made, "MainWindow.axaml"), XamlTests.Gallery.Handled(XamlTests.Gallery.Window).Replace(
                 "<TextBlock Text=\"{Binding #Go.Content}\" />", "<TextBlock Text=\"{Binding #Go.Content}\" />\n        <TextBlock Text=\"{Binding Subtitle}\" />", StringComparison.Ordinal));
-            File.WriteAllText(Path.Combine(made, "MainWindow.axaml.cs"), XamlTests.Gallery.CodeBehind);
+            File.WriteAllText(Path.Combine(made, "MainWindow.axaml.cs"), XamlTests.Gallery.HandlingCodeBehind);
             return Task.CompletedTask;
         }
 

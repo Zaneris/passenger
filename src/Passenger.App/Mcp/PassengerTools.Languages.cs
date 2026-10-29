@@ -295,17 +295,17 @@ public sealed partial class PassengerTools
         {
             return [];
         }
-        if (symbol.Named is not null)
+        if (symbol.Targets is not [{ Kind: XamlTargetKind.Resource }, ..])
         {
             await CodeBehindRead(cancel);
         }
         return await window.Assist.Languages.Xaml.XamlUsesAsync(xaml.File, symbol) is { } uses
             ? await Places(uses, cancel)
-            : throw new InvalidOperationException($"{XamlAssist.XamlUsesWhat}; {symbol.Name} is neither");
+            : throw new InvalidOperationException($"{XamlAssist.XamlUsesWhat}; {symbol.Name} is none of them");
     }
 
     /// <summary>Waits for the C# server to load the workspace, when one runs: an element's field is found in the code-behind
-    /// through it, and before it has loaded none are.</summary>
+    /// through it, as a C# symbol's usages are, and before it has loaded none are.</summary>
     private Task CodeBehindRead(CancellationToken cancel) => When(() => Session.CSharp is not { } csharp || csharp.IsReady, ServerLimit, cancel, ServerState());
 
     /// <summary>Rename in XAML: an element's name, in its file and where its code-behind uses its field, saved.</summary>

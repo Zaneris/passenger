@@ -3,6 +3,7 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Run;
@@ -868,6 +869,79 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A view model's property the window binds and the window's handler of its button's Click each have that XAML
+    /// among their usages: Find Usages from the C# lists it, as Find Usages from the XAML lists the C#, and Safe Delete
+    /// refuses each naming it, the app still building once refused. Deleted anyway, the handler breaks the build at the
+    /// line Safe Delete named.</summary>
+    [AvaloniaFact]
+    public void A_bound_property_and_a_handler_have_their_xaml_among_their_usages_and_safe_delete_names_it_before_breaking_the_build()
+    {
+        app.Rewrite("MainWindow.axaml", Gallery.Handled(Gallery.Window));
+        app.Rewrite("MainWindow.axaml.cs", Gallery.HandlingCodeBehind);
+        MainWindow window = app.Open(app.PathOf("ViewModels/MainViewModel.cs"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "string Gree");
+        Assert.Contains("MainWindow.axaml:11 <TextBlock Name=\"Title\" Text=\"{Binding Greeting}\" />", FoundUsages(window));
+        Ui.Run(window, AppActions.SafeDelete);
+        AssertListed(window, "The property 'Greeting' has 1 usage", "MainWindow.axaml:11", "<TextBlock Name=\"Title\" Text=\"{Binding Greeting}\" />");
+        Assert.Contains("public string Greeting", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Equal("Safe Delete left the property 'Greeting' where it is", window.Status);
+
+        window.OpenFile(app.PathOf("MainWindow.axaml"));
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "{Binding Gree");
+        Assert.Contains("MainViewModel.cs:5 public string Greeting { get; set; } = \"Hello\";", FoundUsages(window));
+
+        window.OpenFile(app.PathOf("MainWindow.axaml.cs"));
+        Ui.Settle();
+        editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "void On");
+        const string Clicked = "<Button Name=\"Go\" Content=\"Go\" Click=\"OnGo\" Background=\"{StaticResource Accent}\" />";
+        Assert.Contains($"MainWindow.axaml:12 {Clicked}", FoundUsages(window));
+        Ui.Run(window, AppActions.SafeDelete);
+        AssertListed(window, "The method 'OnGo' has 1 usage", "MainWindow.axaml:12", Clicked);
+        Built(window);
+
+        Ui.Run(window, AppActions.SafeDelete);
+        Ui.ClickButton(Listed(window), "Delete Anyway");
+        Ui.WaitFor(() => !editor.Document.Snapshot.ToString().Contains("OnGo", StringComparison.Ordinal), "the handler to be deleted anyway");
+        window.Perform(AppActions.Build);
+        Ui.WaitFor(() => !window.IsBuilding, "the build without the handler", TimeSpan.FromMinutes(2));
+        Assert.Contains(window.BottomPanel.Problems.Problems, p => p.Code == "AVLN3000" && Path.GetFileName(p.Path) == "MainWindow.axaml" && p.Position.Line == 11);
+        window.Close();
+
+        static void AssertListed(MainWindow window, string said, string where, string code)
+        {
+            ConfirmDialog asked = Listed(window);
+            string[] shown = [.. asked.GetVisualDescendants().OfType<Avalonia.Controls.TextBlock>().Select(t => t.Text ?? string.Empty)];
+            Assert.True(shown.Contains($"{said} that would no longer compile once it is deleted:") && shown.Contains(where) && shown.Contains(code),
+                $"Safe Delete did not name the XAML that would no longer compile, {where}: {string.Join(" | ", shown)}");
+            Ui.ClickButton(asked, "Cancel");
+        }
+
+        static ConfirmDialog Listed(MainWindow window)
+        {
+            Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), "Safe Delete to list the usages");
+            return DialogButtonsTests.Check(window.OwnedWindows.OfType<ConfirmDialog>().Single());
+        }
+
+        static void Built(MainWindow window)
+        {
+            window.Perform(AppActions.Build);
+            Ui.WaitFor(() => !window.IsBuilding, "the build", TimeSpan.FromMinutes(2));
+            Assert.True(window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true, $"The app did not build once Safe Delete was refused: {Ui.Said(window)}");
+        }
+    }
+
+    /// <summary>The usages Find Usages lists from the caret, each as its file's name, its line and its code.</summary>
+    private static IReadOnlyList<string> FoundUsages(MainWindow window)
+    {
+        int searches = window.Find.Searches.Count;
+        Ui.Run(window, AppActions.FindUsages);
+        Ui.WaitFor(() => window.Find.Searches.Count > searches, "the usages in the Find window");
+        return [.. window.Find.Rows.Where(r => r.Usage is not null).Select(r => $"{Path.GetFileName(r.Usage!.Path)}:{r.Usage.Line + 1} {r.Label}")];
+    }
+
     [AvaloniaFact]
     public void A_key_one_theme_variant_lacks_is_warned_of_where_defined_and_used_and_the_fix_adds_it_to_that_variant()
     {
@@ -1524,6 +1598,15 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             }
 
             """;
+
+        /// <summary>A window of the gallery's with its button's Click handled by OnGo, which <see cref="HandlingCodeBehind"/>
+        /// declares.</summary>
+        public static string Handled(string window) =>
+            window.Replace("<Button Name=\"Go\" Content=\"Go\"", "<Button Name=\"Go\" Content=\"Go\" Click=\"OnGo\"", StringComparison.Ordinal);
+
+        /// <summary>The window's code-behind with the handler of its button's Click below what <see cref="CodeBehind"/> has.</summary>
+        public static readonly string HandlingCodeBehind = CodeBehind.Replace("        Go.Content = \"Start\";\n    }\n",
+            "        Go.Content = \"Start\";\n    }\n\n    private void OnGo(object? sender, Avalonia.Interactivity.RoutedEventArgs e)\n    {\n    }\n", StringComparison.Ordinal);
 
         public const string Window = """
             <Window xmlns="https://github.com/avaloniaui"

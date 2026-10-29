@@ -177,14 +177,18 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
         }
     }
 
-    /// <summary>Find Usages through the language server: the usages of the name at an offset, for the Find window, which
-    /// names the files come under the projects that could use it that the server has not taken in yet.</summary>
+    /// <summary>Find Usages through the language server: the usages of the name at an offset, with a C# symbol's in XAML,
+    /// for the Find window, which names the files come under the projects that could use it that the server has not taken
+    /// in yet.</summary>
     public async Task ServerUsagesAsync(int offset)
     {
-        IReadOnlyList<(string Path, string Project)> untaken = [];
-        if (context.Editors.Active is { } shown)
+        if (context.Editors.Active is not { } shown)
         {
-            using ChangeTracker waited = new(shown.Text);
+            return;
+        }
+        IReadOnlyList<(string Path, string Project)> untaken;
+        using (ChangeTracker waited = new(shown.Text))
+        {
             untaken = await context.UntakenAsync(shown, () => waited.MapOffset(offset));
             offset = waited.MapOffset(offset);
         }
@@ -194,7 +198,7 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
         }
         try
         {
-            IReadOnlyList<LspLocation> usages = await lsp.ReferencesAsync(offset);
+            IReadOnlyList<LspLocation> usages = [.. await lsp.ReferencesAsync(offset), .. await context.Languages.Xaml.CodeUsesAsync(shown, lsp, offset)];
             if (usages.Count == 0)
             {
                 context.Say("No usages found");

@@ -371,6 +371,28 @@ public static class XamlNavigation
         return null;
     }
 
+    /// <summary>Where a file names what <paramref name="isIt"/> picks out of what a name leads to, written as one of
+    /// <paramref name="names"/>: each whole word of one resolved as <see cref="At"/> resolves it, so a use is a place Go to
+    /// Declaration goes from to it.</summary>
+    public static IReadOnlyList<TextRange> Uses(XamlFile file, IReadOnlyCollection<string> names, Func<XamlTarget, bool> isIt)
+    {
+        string text = file.Text;
+        SortedDictionary<int, TextRange> uses = [];
+        foreach (string name in names.Where(n => n.Length > 0))
+        {
+            for (int at = text.IndexOf(name, StringComparison.OrdinalIgnoreCase); at >= 0; at = text.IndexOf(name, at + name.Length, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!IsWordPart(text, at - 1) && !IsWordPart(text, at + name.Length) && At(file, at) is { } symbol && symbol.Targets.Any(isIt))
+                {
+                    uses.TryAdd(symbol.Range.Start, symbol.Range);
+                }
+            }
+        }
+        return [.. uses.Values];
+    }
+
+    private static bool IsWordPart(string text, int at) => at >= 0 && at < text.Length && (char.IsLetterOrDigit(text[at]) || text[at] == '_');
+
     /// <summary>Where a file names an element: its <c>x:Name</c> (or <c>Name</c>) value, a binding's
     /// <c>ElementName</c> and <c>#name</c>, and a selector's <c>#name</c>; what renaming the element changes.</summary>
     public static IReadOnlyList<TextRange> NameUses(XamlFile file, string name)

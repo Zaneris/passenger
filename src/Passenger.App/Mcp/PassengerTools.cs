@@ -305,9 +305,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     [McpServerTool(Name = McpTools.Usages, Title = "Find usages", ReadOnly = true), Description(
-        "Every place the symbol at a position is used, its declaration included, as Find Usages finds them, by file, each as " +
-        "line:column and its line's text, after the C# symbol the place took; in XAML, an element's name in its file and " +
-        "code-behind, or a resource's key across the project. JSON and MSBuild files have none.")]
+        "Every place the symbol at a position is used, its declaration included, as Find Usages finds them (a C# symbol's in " +
+        "XAML too), by file, each as line:column and its line's text, after the C# symbol the place took; in XAML, an " +
+        "element's name in its file and code-behind, a resource's key across the project, or a C# type or member as from its " +
+        "declaration. JSON and MSBuild files have none.")]
     public Task<UsagesFound> Usages(string? path = null, int? line = null, int? column = null, string? symbol = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
@@ -318,7 +319,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             case XamlServed xaml:
                 return ByFile(null, await XamlUsages(xaml, offset, cancel) is { Count: > 0 } uses ? uses
-                    : throw new InvalidOperationException($"No name or resource key at {place}: {XamlAssist.XamlUsesWhat}"));
+                    : throw new InvalidOperationException($"No name, resource key or C# symbol at {place}: {XamlAssist.XamlUsesWhat}"));
             case MSBuildServed:
                 throw Lacks(served, "Find Usages", MSBuildHas);
             case ServerServed unfound when !unfound.Provides("referencesProvider"):
@@ -336,7 +337,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new InvalidOperationException($"No symbol at {place}: {server.Language}'s language server finds no usages there");
         }
         // Passenger's extension reads a C# file's symbols, not a Razor file's.
-        string? taken = served.Document.Language == Languages.Language.CSharp && await server.Lsp.SymbolAtAsync(offset, cancel) is { } named ? $"{named.Shown} ({named.Kind})" : null;
+        Roslyn.Extension.NamedSymbol? named = served.Document.Language == Languages.Language.CSharp ? await server.Lsp.SymbolAtAsync(offset, cancel) : null;
+        string? taken = named is null ? null : $"{named.Shown} ({named.Kind})";
+        found = [.. found, .. await window.Assist.Languages.Xaml.CodeUsesAsync(named)];
         // Answered now, saying which files that could use it the server has yet to take in.
         IReadOnlyList<(string Path, string Project)> untaken = server.Web is null && Session.CSharp is { } csharp ? await csharp.UntakenAsync(served.Document, offset, cancel) : [];
         return ByFile(taken, await Places(found, cancel)) with { Note = untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Relative(u.Path))]) : null };

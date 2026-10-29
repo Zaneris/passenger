@@ -10,6 +10,7 @@ using Passenger.Text;
 using Passenger.Xaml;
 using Passenger.Xaml.Features;
 using Passenger.Xaml.Localization;
+using Passenger.Xaml.Metadata;
 using Passenger.Xaml.Syntax;
 using Avalonia.Media;
 
@@ -452,7 +453,8 @@ internal sealed partial class XamlAssist : LanguageAssist
     }
 
     /// <summary>Find Usages in XAML: an element's name where the file names it and where its code-behind uses the field
-    /// Avalonia or WPF makes for it; a resource key where any of the project's XAML uses it.</summary>
+    /// Avalonia or WPF makes for it; a resource key where any of the project's XAML uses it; a type or member of the
+    /// folder's C# where its C# and XAML use it.</summary>
     private async Task XamlUsages(XamlDocument xaml, int offset)
     {
         if (await XamlSymbolAt(xaml, offset, "No usages found") is not { } found)
@@ -474,10 +476,11 @@ internal sealed partial class XamlAssist : LanguageAssist
     }
 
     /// <summary>What Find Usages finds in XAML, said where it finds nothing else.</summary>
-    internal const string XamlUsesWhat = "Find Usages in XAML finds an element's name or a resource's key";
+    internal const string XamlUsesWhat = "Find Usages in XAML finds an element's name, a resource's key, or a type or member of the folder's C#";
 
     /// <summary>Where a XAML name is used: an element's name where the file names it and where its code-behind uses its
-    /// field; a resource key where any of the project's XAML uses it, its definitions included. Null for any other name.</summary>
+    /// field; a resource key where any of the project's XAML uses it, its definitions included; a type or member the
+    /// folder's C# declares where Find Usages from its declaration finds it. Null for any other name.</summary>
     internal async Task<IReadOnlyList<LspLocation>?> XamlUsesAsync(XamlFile file, XamlSymbol symbol)
     {
         List<LspLocation> usages = [];
@@ -502,11 +505,66 @@ internal sealed partial class XamlAssist : LanguageAssist
             }
             usages.AddRange(symbol.Targets.Where(t => t.Path is not null && t.Range is not null).Select(t => Location(t.Path!, t.Range!.Value.Start, t.Range.Value.End)));
         }
+        else if (symbol.Targets.FirstOrDefault(t => t.Kind is XamlTargetKind.Type or XamlTargetKind.Member && t.Place is not null) is { Place: { } declared })
+        {
+            usages.AddRange(await DeclaredUsesAsync(declared));
+        }
         else
         {
             return null;
         }
         return usages;
+    }
+
+    /// <summary>The usages of the C# symbol declared at a place of the folder's code, as Find Usages finds them from its
+    /// declaration: the server's, from the file as the editor has it, with XAML's; none from a server not loaded.</summary>
+    private async Task<IReadOnlyList<LspLocation>> DeclaredUsesAsync(SourcePlace declared)
+    {
+        if (context.CSharp?.Session is not { IsLoaded: true } session || context.Editors.TextOf(declared.Path) is not { } text)
+        {
+            return [];
+        }
+        OpenDocument? open = context.Editors.Find(declared.Path);
+        LspDocument? shown = null;
+        try
+        {
+            LspDocument server = open is not null && context.CSharp?.For(open)?.Lsp is { } attached ? attached : shown = session.Open(declared.Path, new TextDocument(text.ToString()));
+            int offset = server.OffsetOf(new LspPosition(declared.Line, declared.Column));
+            return [.. await server.ReferencesAsync(offset), .. await CodeUsesAsync(await server.SymbolAtAsync(offset))];
+        }
+        catch (LanguageServerFailed)
+        {
+            return [];
+        }
+        finally
+        {
+            shown?.Dispose();
+        }
+    }
+
+    /// <summary>Where XAML uses the C# symbol at an offset of a C# file (<see cref="CodeUsesAsync(Roslyn.Extension.NamedSymbol?)"/>);
+    /// none for any other file.</summary>
+    internal async Task<IReadOnlyList<LspLocation>> CodeUsesAsync(OpenDocument document, LspDocument lsp, int offset) =>
+        document.Language == Languages.Language.CSharp ? await CodeUsesAsync(await lsp.SymbolAtAsync(offset)) : [];
+
+    /// <summary>Where the XAML of the projects that can use it uses a C# symbol the server named, its declaration in the
+    /// folder's code, as places for the Find window (<see cref="XamlService.UsesAsync"/>): a binding's path, a handler, a
+    /// type in a tag or a value, <c>x:Static</c>'s member, an attribute's property or event. None for a symbol XAML never
+    /// names, or with no XAML Passenger reads.</summary>
+    internal async Task<IReadOnlyList<LspLocation>> CodeUsesAsync(Roslyn.Extension.NamedSymbol? named)
+    {
+        if (named is not { Id: { } id, Path: { } declared, At: { } at } || context.Xaml?.Invoke() is not { } xaml || context.CSharp is not { } csharp
+            || CodeSymbol.Of(id, new SourcePlace(PathNames.Canonical(declared), at.Line, at.Character)) is not { } symbol
+            || csharp.ProjectsUsing(declared) is not { Count: > 0 } projects)
+        {
+            return [];
+        }
+        return [.. (await xaml.UsesAsync(projects, symbol)).SelectMany(file =>
+        {
+            ServerLines lines = ServerLines.Of(file.Text);
+            string uri = DocumentUris.FromPath(file.Path);
+            return file.Uses.Select(use => new LspLocation(uri, lines.RangeOf(use)));
+        })];
     }
 
     /// <summary>The code-behind's uses of the field Avalonia's generator or WPF's MarkupCompile makes for a named element:

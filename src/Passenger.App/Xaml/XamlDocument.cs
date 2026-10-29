@@ -121,7 +121,7 @@ public sealed class XamlDocument : IDisposable
     }
 
     /// <summary>A parse made a file of the project, the project's summary of it taken from this text.</summary>
-    private static XamlFile Read(string path, string text, XamlProject project, string? variant)
+    internal static XamlFile Read(string path, string text, XamlProject project, string? variant)
     {
         XmlTree tree = XmlTree.Parse(text);
         return new XamlFile(path, tree, project.With(XamlFileSummary.Of(path, tree, project.ResolveSource))) { Variant = variant };

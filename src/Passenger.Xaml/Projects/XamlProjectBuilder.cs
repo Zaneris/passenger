@@ -294,6 +294,12 @@ public sealed class XamlProjectBuilder
         return keys;
     }
 
+    /// <summary>Whether a project's own folders hold a file of a dialect's XAML, by its name, read from the disk alone: one
+    /// that holds none has no XAML to read.</summary>
+    public static bool HoldsXaml(string projectPath) =>
+        ProjectInputs.OwnFolders(Path.GetDirectoryName(projectPath)!).SelectMany(f => ProjectInputs.FilesIn(f, "*"))
+            .Any(f => AvaloniaDialect.Instance.Extensions.Concat(WpfDialect.Instance.Extensions).Contains(Path.GetExtension(f).ToLowerInvariant()));
+
     /// <summary>The project's own XAML files: under its folder, but for bin, obj, hidden folders and another project's.</summary>
     private IEnumerable<string> XamlFilesUnder(string folder) =>
         ProjectInputs.OwnFolders(folder).SelectMany(f => ProjectInputs.FilesIn(f, "*")).Where(f => Dialect.Extensions.Contains(Path.GetExtension(f).ToLowerInvariant()));

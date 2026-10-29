@@ -8,6 +8,7 @@ using Passenger.Languages.CSharp;
 using Passenger.Text;
 using Passenger.Workspace;
 using Passenger.Xaml;
+using Passenger.Xaml.Features;
 using Passenger.Xaml.Projects;
 
 namespace Passenger.App.Xaml;
@@ -37,7 +38,7 @@ public sealed class XamlService : IDisposable
         }
     });
 
-    private readonly Dictionary<string, XamlLoading> projects = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, XamlLoading> projects = new(PathNames.Comparer);
     private readonly Dictionary<OpenDocument, XamlDocument> documents = [];
     private readonly Dictionary<OpenDocument, TypedSource> sources = [];
     private bool disposed;
@@ -252,13 +253,11 @@ public sealed class XamlService : IDisposable
 
     /// <summary>The load of the project a XAML file is in, begun if it has not been; null for a file in no C# project.
     /// Whether the project's XAML is one Passenger reads is learned off the UI thread, as the load begins.</summary>
-    private XamlLoading? ProjectOf(string path)
+    private XamlLoading? ProjectOf(string path) => ProjectFile(path) is { } project ? LoadingOf(project) : null;
+
+    /// <summary>The load of a project by its file, begun if it has not been.</summary>
+    private XamlLoading LoadingOf(string project)
     {
-        string? project = ProjectFile(path);
-        if (project is null)
-        {
-            return null;
-        }
         if (projects.TryGetValue(project, out XamlLoading? loading))
         {
             return loading;
@@ -322,12 +321,12 @@ public sealed class XamlService : IDisposable
         return (RestoredFor(path) ?? Loaded(path)) is { } owner ? [owner] : [];
     }
 
-    /// <summary>The projects whose XAML may read a C# file: each whose folder or a referenced project's holds it (an app's
-    /// XAML binding to App.Core's view models), and each still loading, whose references are not known yet. Each builder
-    /// says off the UI thread whether it compiles the file.</summary>
+    /// <summary>The projects whose XAML may read a C# file: each read whose folder or a referenced project's holds it (an
+    /// app's XAML binding to App.Core's view models), and each still loading, whose references are not known yet; none
+    /// whose XAML Passenger does not read. Each builder says off the UI thread whether it compiles the file.</summary>
     private IEnumerable<XamlLoading> Reading(string path) =>
-        projects.Values.Where(l => PathNames.Within(path, l.Folder) || !l.Loaded.IsCompleted
-            || (l.Loaded.IsCompletedSuccessfully && l.Loaded.Result is { } project && project.Referenced.Any(r => PathNames.Within(path, r.Folder))));
+        projects.Values.Where(l => !l.Loaded.IsCompleted || (l.Loaded.IsCompletedSuccessfully && l.Loaded.Result is { } project
+            && (PathNames.Within(path, l.Folder) || project.Referenced.Any(r => PathNames.Within(path, r.Folder)))));
 
     /// <summary>The project a restore's assets under an artifacts folder are of (UseArtifactsOutput's
     /// artifacts/obj/Project/project.assets.json), under no project's folder: the project of that name below the folder
@@ -424,6 +423,81 @@ public sealed class XamlService : IDisposable
         {
             IdeErrors.Report(error);
         }
+    }
+
+    /// <summary>Where the XAML of the projects given uses a symbol of their C# (<see cref="CodeSymbol"/>): each project's
+    /// XAML read first where no open file has had it read and its folders hold XAML, and the C# typed in that it has yet to
+    /// read taken in. By file, its text as the editor has it, else as on disk, with the ranges of the uses in it, read off
+    /// the UI thread.</summary>
+    public async Task<IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextRange> Uses)>> UsesAsync(IEnumerable<string> projectFiles, CodeSymbol symbol)
+    {
+        UiThread.Check();
+        if (disposed)
+        {
+            return [];
+        }
+        List<string> given = [.. projectFiles.Where(p => p.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)).Distinct(PathNames.Comparer)];
+        List<string> unread = [.. given.Where(p => !projects.ContainsKey(p))];
+        HashSet<string> holding = await BackgroundWork.Run(() => unread.Where(XamlProjectBuilder.HoldsXaml).ToHashSet(PathNames.Comparer));
+        if (disposed)
+        {
+            return [];
+        }
+        List<XamlLoading> loadings = [.. given.Where(p => projects.ContainsKey(p) || holding.Contains(p)).Select(LoadingOf)];
+        await TypedNowAsync();
+        List<XamlProject> read = [];
+        foreach (XamlLoading loading in loadings)
+        {
+            if (await loading.Builder is not { } builder)
+            {
+                continue;
+            }
+            if (!loading.Loaded.IsCompleted)
+            {
+                Say($"Reading the types {Path.GetFileNameWithoutExtension(loading.ProjectPath)}'s XAML can use…");
+            }
+            if (await loading.Loaded is not null)
+            {
+                read.Add(builder.Current);
+            }
+        }
+        Func<string, TextSnapshot?> open = OpenSnapshots();
+        return read.Count == 0 ? [] : await BackgroundWork.Run(() => Uses(read, symbol, open));
+    }
+
+    private static List<(string Path, TextSnapshot Text, IReadOnlyList<TextRange> Uses)> Uses(IReadOnlyList<XamlProject> read, CodeSymbol symbol, Func<string, TextSnapshot?> open)
+    {
+        List<(string, TextSnapshot, IReadOnlyList<TextRange>)> found = [];
+        HashSet<string> seen = new(PathNames.Comparer);
+        foreach (XamlProject project in read)
+        {
+            IReadOnlyList<string> names = symbol.NamesIn(project.Types);
+            foreach (string path in project.Files.Keys.Order(StringComparer.Ordinal))
+            {
+                if (!seen.Add(path) || (open(path) ?? EditorArea.Read(path)) is not { } text)
+                {
+                    continue;
+                }
+                string written = text.ToString();
+                if (names.Any(n => written.Contains(n, StringComparison.OrdinalIgnoreCase))
+                    && XamlNavigation.Uses(XamlDocument.Read(path, written, project, null), names, symbol.Is) is { Count: > 0 } uses)
+                {
+                    found.Add((path, text, uses));
+                }
+            }
+        }
+        return found;
+    }
+
+    /// <summary>The C# typed in that the projects reading it are still to read once typing pauses, read by them now.</summary>
+    private Task TypedNowAsync()
+    {
+        List<OpenDocument> typed = [.. sources.Where(s => s.Value.Wait.IsWaiting).Select(s => s.Key)];
+        foreach (OpenDocument document in typed)
+        {
+            sources[document].Wait.Stop();
+        }
+        return Task.WhenAll(typed.Select(SourceTypedAsync));
     }
 
     /// <summary>The XAML file whose <c>x:Class</c> is a class, in the project of a C# file of it: an open one's text first,

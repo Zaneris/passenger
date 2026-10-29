@@ -12,6 +12,9 @@ public sealed class Debounce(TimeSpan delay, Func<Task> work, Func<IDisposable>?
 {
     private CancellationTokenSource? waiting;
 
+    /// <summary>Whether the work waits for a pause to begin.</summary>
+    public bool IsWaiting => waiting is not null;
+
     /// <summary>Puts the work off until the delay from now, in place of the wait under way.</summary>
     public void Restart()
     {

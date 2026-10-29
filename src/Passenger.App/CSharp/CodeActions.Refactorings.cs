@@ -11,8 +11,8 @@ using Passenger.Text;
 namespace Passenger.App.CSharp;
 
 /// <summary>Optimize Imports and refactorings beyond Refactor This: Safe Delete, built from the server's definition and
-/// usages and the file's syntax, and Introduce Field, Introduce Parameter and Encapsulate Field, the server's own code
-/// actions under names of their own.</summary>
+/// usages, XAML's uses and the file's syntax, and Introduce Field, Introduce Parameter and Encapsulate Field, the
+/// server's own code actions under names of their own.</summary>
 internal sealed partial class CodeActions
 {
     /// <summary>A refactoring the server offers as code actions in words of its own: which of its actions are it, which
@@ -134,9 +134,9 @@ internal sealed partial class CodeActions
     }
 
     /// <summary>Safe Delete of the symbol at the caret (its declaration or a use of it): the server's definition says
-    /// where it is declared, the file's syntax what deleting it takes out, and the server's usages what would break.
-    /// With no usage outside the declaration it is deleted at once; with some, they are listed first and it is deleted
-    /// only if the person says Delete Anyway.</summary>
+    /// where it is declared, the file's syntax what deleting it takes out, and the server's usages with the XAML that names
+    /// it what would break. With no usage outside the declaration it is deleted at once; with some, they are listed first
+    /// and it is deleted only if the person says Delete Anyway.</summary>
     public async Task SafeDelete()
     {
         if (context.Ask("Safe Delete") is null || context.Editors.Active is not { } document)
@@ -228,9 +228,11 @@ internal sealed partial class CodeActions
         {
             // What uses it from inside what goes with it (a recursive call, a constructor of a type) goes too.
             IReadOnlyList<LspLocation> referenced = await lsp.ReferencesAsync(caret);
-            Dictionary<string, string> paths = DocumentUris.ToPaths(referenced.Select(r => r.Uri));
+            IReadOnlyList<LspLocation> inXaml = await context.Languages.Xaml.CodeUsesAsync(document, lsp, caret);
+            Dictionary<string, string> paths = DocumentUris.ToPaths([.. referenced.Select(r => r.Uri), .. inXaml.Select(r => r.Uri)]);
             List<LspLocation> uses = [.. referenced
                 .Where(r => paths[r.Uri] != path || !removal.Range.Contains(lines.OffsetOf(r.Range.Start)))
+                .Concat(inXaml)
                 .OrderBy(r => paths[r.Uri], StringComparer.Ordinal).ThenBy(r => r.Range.Start.Line).ThenBy(r => r.Range.Start.Character)];
             return (new Doomed(path, open, tracker, syntax.Text, at, removal, uses), null);
         }
