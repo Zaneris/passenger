@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using Avalonia.Threading;
+using Passenger.Core;
 using Porta.Pty;
 
 namespace Passenger.Terminal;
@@ -45,6 +46,10 @@ public sealed class TerminalSession : IAsyncDisposable
     /// that the shell's last output is in once it has exited.</summary>
     private long lastRead;
     private volatile bool readEnded;
+    private readonly ManualResetEventSlim readDone = new();
+
+    /// <summary>The shell's end and its pseudo-terminal's close, once asked for (<see cref="End"/>).</summary>
+    private Task? ending;
 
     /// <summary>Whether the shell's end has been told: Porta.Pty's watcher and the start's own look may both find it.</summary>
     private int endTold;
@@ -54,6 +59,10 @@ public sealed class TerminalSession : IAsyncDisposable
 
     /// <summary>The longest the end is told after the shell has exited, its output still coming.</summary>
     private static readonly TimeSpan LastOutputLimit = TimeSpan.FromSeconds(2);
+
+    /// <summary>How long a shell killed has to go, what it wrote read out, before its pseudo-terminal closes on it all the
+    /// same.</summary>
+    private static readonly TimeSpan EndingLimit = TimeSpan.FromSeconds(2);
 
     public TerminalSession(int columns = 80, int rows = 24)
     {
@@ -199,30 +208,46 @@ public sealed class TerminalSession : IAsyncDisposable
         }
     }
 
-    public void Kill()
-    {
-        try
-        {
-            pty?.Kill();
-        }
-        catch (Exception failed) when (failed is IOException or InvalidOperationException)
-        {
-            // Already gone.
-        }
-    }
-
+    /// <summary>Ends the shell, killed if it runs, and closes its pseudo-terminal, off the window's thread, since both may
+    /// wait on the shell (<see cref="End"/>); what it writes from now on is read and left off the screen.</summary>
     public ValueTask DisposeAsync()
     {
-        closed = true;
-        outgoing.CompleteAdding();
-        room.Release();
-        if (IsRunning)
+        if (ending is null)
         {
-            Kill();
+            closed = true;
+            outgoing.CompleteAdding();
+            room.Release();
+            IPtyConnection? connection = pty;
+            pty = null;
+            bool running = IsRunning;
+            // Unheld: a shell that will not go holds it for EndingLimit, and nothing the window shows waits for it.
+            ending = connection is null ? Task.CompletedTask : BackgroundWork.UnheldThread(() => End(connection, running));
         }
-        pty?.Dispose();
-        pty = null;
-        return ValueTask.CompletedTask;
+        return new ValueTask(ending);
+    }
+
+    /// <summary>Kills the shell and closes its pseudo-terminal once the shell has gone: a shell leading its session waits as
+    /// it exits for the terminal to take what it wrote, and the close waits for a write still going (a paste the program
+    /// never read), which only the shell's going ends. ConPTY keeps its output open until it closes, so Windows waits for
+    /// none of it.</summary>
+    private void End(IPtyConnection connection, bool running)
+    {
+        if (running)
+        {
+            try
+            {
+                connection.Kill();
+            }
+            catch (Exception failed) when (failed is IOException or InvalidOperationException)
+            {
+                // Already gone.
+            }
+        }
+        if (!OperatingSystem.IsWindows())
+        {
+            readDone.Wait(Waits.Of(EndingLimit));
+        }
+        connection.Dispose();
     }
 
     /// <summary>The user's shell as a login shell: $SHELL (zsh where unset on macOS, bash on Linux); PowerShell on
@@ -322,18 +347,23 @@ public sealed class TerminalSession : IAsyncDisposable
     }
 
     /// <summary>Reads the shell's output as it comes and hands it to the window's thread, each read in an array of the
-    /// pool's about its size, waiting while the screen has <see cref="MostHeld"/> still to take.</summary>
+    /// pool's about its size, waiting while the screen has <see cref="MostHeld"/> still to take; once the session is
+    /// closed, to the end, the shell's end waiting for it (<see cref="End"/>).</summary>
     private void Read(Stream reader)
     {
         byte[] buffer = new byte[64 * 1024];
         try
         {
-            while (!closed)
+            while (true)
             {
                 int read = reader.Read(buffer);
                 if (read <= 0)
                 {
                     break;
+                }
+                if (closed)
+                {
+                    continue;
                 }
                 Interlocked.Exchange(ref lastRead, Stopwatch.GetTimestamp());
                 byte[] piece = ArrayPool<byte>.Shared.Rent(read);
@@ -357,6 +387,7 @@ public sealed class TerminalSession : IAsyncDisposable
         finally
         {
             readEnded = true;
+            readDone.Set();
         }
     }
 

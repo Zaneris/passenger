@@ -179,15 +179,16 @@ public sealed class TerminalPanel : DockPanel
     }
 
     /// <summary>Ends every shell, and every program with all it started, as the IDE closes.</summary>
-    public async Task CloseAllAsync()
+    public Task CloseAllAsync()
     {
-        foreach (TerminalTab tab in tabs.ToArray())
-        {
-            tab.Run?.Stop();
-            await tab.Session.DisposeAsync();
-        }
+        TerminalTab[] closing = [.. tabs];
         tabs.Clear();
         view.Session = null;
+        foreach (TerminalTab tab in closing)
+        {
+            tab.Run?.Stop();
+        }
+        return Task.WhenAll(closing.Select(tab => tab.Session.DisposeAsync().AsTask()));
     }
 
     private void Show(TerminalTab tab)
@@ -236,14 +237,7 @@ public sealed class TerminalPanel : DockPanel
             {
                 return;
             }
-            if (tab.Run is { } run)
-            {
-                run.Stop();
-            }
-            else
-            {
-                tab.Session.Kill();
-            }
+            tab.Run?.Stop();
             Close(tab);
         }, "Close Session");
         // A press on the open tab leaves it open, where the toggle would let it go.

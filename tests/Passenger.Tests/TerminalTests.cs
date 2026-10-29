@@ -952,7 +952,8 @@ public sealed class TerminalResponsivenessTests
             string go = Path.Combine(folder, "go");
             window.KeyTextInput($"while [ ! -e '{go}' ]; do sleep 0.1; done");
             Ui.Press(window, "ENTER");
-            TerminalTests.WaitForScreen(window, shell, s => s.CursorRow > 0 && s.Lines[s.CursorRow - 1].Text().Contains("sleep 0.1", StringComparison.Ordinal), "the loop to start");
+            // The cursor past the command: macOS's bash may write a line of its own after it (child setpgid … not permitted).
+            TerminalTests.WaitForScreen(window, shell, s => AboveCursor(s, "sleep 0.1"), "the loop to start");
 
             // Far more than the pseudo-terminal holds, while the loop reads none of it.
             TerminalTests.Copy(window, string.Concat(Enumerable.Range(0, 2000).Select(i => $"echo pasted {i}\n")));
@@ -983,6 +984,55 @@ public sealed class TerminalResponsivenessTests
         {
             TestFolders.Delete(folder);
         }
+    }
+
+    /// <summary>A terminal ended while its program writes on and has read none of a paste ends without holding the window:
+    /// Close Solution comes back, and the shell and its program end.</summary>
+    [AvaloniaFact]
+    public void A_terminal_whose_program_read_none_of_a_paste_ends_without_holding_the_window()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(),
+            "A Unix pseudo-terminal's input queue holds a kilobyte or so, past which a write waits for the program; ConPTY's has no such limit to hold");
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = TerminalTests.Open(folder, "/bin/sh");
+            int shellId = shell.ProcessId!.Value;
+            // A loop that reads none of its input until the test lets it go, then yes, which reads none either and writes on.
+            string go = Path.Combine(folder, "go");
+            window.KeyTextInput($"while [ ! -e '{go}' ]; do sleep 0.1; done; yes tick");
+            Ui.Press(window, "ENTER");
+            TerminalTests.WaitForScreen(window, shell, s => AboveCursor(s, "yes tick"), "the loop to start");
+            TerminalTests.Copy(window, string.Concat(Enumerable.Range(0, 2000).Select(i => $"echo pasted {i}\n")));
+            Ui.Press(window, TerminalTests.PasteKey);
+            Ui.WaitFor(() => TerminalTests.Screen(shell).Contains("echo pasted 0", StringComparison.Ordinal), "the start of the paste echoed", TimeSpan.FromSeconds(10));
+            File.WriteAllText(go, string.Empty);
+            int[] started = [];
+            Ui.WaitFor(() => (started = [.. Processes.Descendants(shellId)]).Length > 0 && shell.Screen.Lines.Count(l => l.Text() == "tick") > 2,
+                "yes to write on");
+
+            Assert.Null(window.CloseSolution());
+            Ui.WaitFor(() => !Processes.IsRunning(shellId) && !started.Any(Processes.IsRunning),
+                () => $"the shell and what it ran to end: {string.Join(", ", started.Prepend(shellId).Where(Processes.IsRunning).Select(Processes.Describe))}");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>Whether a line above the cursor, on the screen or in the scrollback, holds the text.</summary>
+    private static bool AboveCursor(TerminalScreen screen, string text)
+    {
+        for (long line = screen.FirstLine; line < screen.ScreenTop + screen.CursorRow; line++)
+        {
+            if (screen.LineAt(line).Text().Contains(text, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     [AvaloniaFact]

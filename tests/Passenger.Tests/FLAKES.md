@@ -30,6 +30,23 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-28
 
+- `TerminalResponsivenessTests`' `A_paste_into_a_program_that_reads_nothing_leaves_the_window_taking_keys`, this Mac
+  (#653): on main 1 pass and 2 hangs until the 10-minute blame dump, with #644 2 passes, 3 hangs and a failure after
+  90 s with "sh: child setpgid (N to N): Operation not permitted" on the screen. Two causes. The hangs: the test closes the
+  window while the shell is still taking the 30 KB paste, and closing a terminal stopped reading its output, killed the
+  shell and closed the pseudo-terminal on the window's thread. A shell leading its session waits as it exits for its
+  terminal to take what it wrote, which nothing read any more, and the close waited for the paste's write still in the
+  kernel, which only the shell's going ends: the window's thread waited in `close` for good (its stack: Window.Close,
+  TerminalPanel.CloseAllAsync, TerminalSession.DisposeAsync, Porta.Pty's Dispose, `pty_close`; the shell `?Es`). A
+  person closing the window or the solution while a program read none of a paste and wrote on met it every time.
+  **The IDE**: a closed terminal reads its output to the end, and kills the shell and closes it off the window's
+  thread once the shell has gone (in this commit, with a test that closes the solution while `yes` writes on and has
+  read none of a paste, which hangs on main every time). The failure: macOS's bash 3.2 with job control at times says a
+  child's own `setpgid` was refused, the child running all the same (Python's `forkpty` running `/bin/sh` complained in
+  4 of 30 rounds of 20 `sleep`s, and `bash -c 'set -m; …'` with no terminal in 3 of 40), and the test's wait for the
+  loop to start took only the line just above the cursor for the loop's command, so a complaint there held it to its
+  90 s. **The test** looks for the command in every line above the cursor.
+
 - `ServerWatchTests`' `A_thousand_files_deleted_side_by_side_in_obj_each_reach_the_server_as_gone`, the Mac in three
   processes beside FolderWatchTests, ProblemsTests and LanguageServerProjectsTests under 20 burners, 1 round in 10
   (#617): "Of the 1000 sources deleted side by side in obj, the language server was told 827 went". A watcher's record
