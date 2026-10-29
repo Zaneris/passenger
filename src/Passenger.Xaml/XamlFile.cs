@@ -503,10 +503,10 @@ public sealed class XamlFile
             : (false, null);
 
     /// <summary>Whether the compiler infers the type of the items an element's <c>[InheritDataTypeFromItems]</c> property
-    /// presents, and that type where it is known: from a compiled binding with a data context to start from, its path's
-    /// element type; from an object, its element type; not from a binding that does not compile, a dynamic or static
-    /// resource, nor where the items are not given. What else gives them (text, <c>x:Static</c>, another extension) is
-    /// taken as inferred, its type unknown.</summary>
+    /// presents, and that type where it is known: from a compiled binding with a data context to start from, in an
+    /// attribute or as an element, its path's element type, but none from an array; from an object, its element type; not
+    /// from a binding that does not compile, a dynamic or static resource, nor where the items are not given. What else
+    /// gives them (text, <c>x:Static</c>, another extension) is taken as inferred, its type unknown.</summary>
     private (bool Inferred, ClrType? Type) PresentedItems(XmlElement element, XamlProperty property, bool stopAtTemplates)
     {
         if (property.ClrProperty?.Attributes.FirstOrDefault(a => a.ShortName == "InheritDataTypeFromItems") is not { } inherit
@@ -533,13 +533,8 @@ public sealed class XamlFile
             }
             if (extension.LocalName == "CompiledBinding" || (extension.LocalName == "Binding" && CompilesBindingsAt(items)))
             {
-                if (CompiledContextOf(items, property: null, dataContext: false).Context == CompiledContext.None)
-                {
-                    return (false, null);
-                }
                 MarkupArgument? path = extension.Argument(null) ?? extension.Argument("Path");
-                return (true, NamesSource(extension) || path is not { Nested: null, Value.Length: > 0 } || DataTypeAt(items, stopAtTemplates: stopAtTemplates) is not { } context
-                    || PathType(items, context, path.Value) is not { } collection ? null : ItemTypeOf(collection));
+                return BoundItems(items, NamesSource(extension), path is { Nested: null } ? path.Value : null, stopAtTemplates);
             }
             return ResolveType(items, extension.Name, extension: true) is { } made && (IsBinding(made) || made.FullName == "Avalonia.Markup.Xaml.MarkupExtensions.StaticResourceExtension")
                 ? (false, null)
@@ -549,9 +544,28 @@ public sealed class XamlFile
         {
             return (false, null);
         }
-        return (true, holder.Children.FirstOrDefault(c => !c.IsPropertyElement) is { } presented && !IsBindingElement(presented) && TypeOf(presented) is { } presentedType
-            ? ItemTypeOf(TypeRef.Named(presentedType.FullName))
-            : null);
+        XmlElement? presented = holder.Children.FirstOrDefault(c => !c.IsPropertyElement);
+        if (presented is not null && IsBindingElement(presented))
+        {
+            return CompilesBindingsAt(presented) ? BoundItems(items, NamesSource(presented), PathOf(presented)?.Text, stopAtTemplates) : (false, null);
+        }
+        return (true, presented is not null && TypeOf(presented) is { } presentedType ? ItemTypeOf(TypeRef.Named(presentedType.FullName)) : null);
+    }
+
+    /// <summary>The items a compiled binding of an items control gives, as <see cref="PresentedItems"/> reads them: none
+    /// where nothing gives its data context a type, none typed from an array, else its path's element type where known.</summary>
+    private (bool Inferred, ClrType? Type) BoundItems(XmlElement items, bool namesSource, string? path, bool stopAtTemplates)
+    {
+        if (CompiledContextOf(items, property: null, dataContext: false).Context == CompiledContext.None)
+        {
+            return (false, null);
+        }
+        if (namesSource || path is not { Length: > 0 } || DataTypeAt(items, stopAtTemplates: stopAtTemplates) is not { } context
+            || PathType(items, context, path) is not { } collection)
+        {
+            return (true, null);
+        }
+        return CompiledBindings.TypesItemsOf(collection) ? (true, ItemTypeOf(collection)) : (false, null);
     }
 
     /// <summary>The type of the items a collection holds, where one type argument says it (a dictionary's items are pairs).</summary>

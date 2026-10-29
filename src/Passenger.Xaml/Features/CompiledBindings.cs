@@ -69,6 +69,11 @@ public static class CompiledBindings
         return binding.Parent is { } parent ? file.CompiledContextOf(parent, property: null, dataContext: false) : (CompiledContext.Typed, null);
     }
 
+    /// <summary>Whether the compiler takes the type of the items a collection of a type holds, for the templates that
+    /// present them: not from an array, whose type shows it no <c>IEnumerable&lt;T&gt;</c> (AVLN2000 "on type
+    /// XamlPseudoType"), else from the <c>IEnumerable&lt;T&gt;</c> it is.</summary>
+    public static bool TypesItemsOf(TypeRef collection) => !collection.IsArray;
+
     /// <summary>Whether a property element sets its element's own <c>DataContext</c>.</summary>
     public static bool IsDataContextOf(XmlElement holder) => holder.IsPropertyElement && holder.LocalName.EndsWith(".DataContext", StringComparison.Ordinal);
 

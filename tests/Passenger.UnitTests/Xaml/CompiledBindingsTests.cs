@@ -180,5 +180,13 @@ public class CompiledBindingsTests
     public void A_paths_type_is_its_last_steps_as_written_an_indexers_its_items(string path, string type) =>
         Assert.True(Read(path).Type?.Name == type, $"'{path}' has the type {Read(path).Type?.Name}, so what its items are is read from the wrong type");
 
+    [Fact]
+    public void An_arrays_items_are_given_no_type_where_a_lists_a_collection_classs_and_an_enumerables_are()
+    {
+        Assert.False(CompiledBindings.TypesItemsOf(Read("Array").Type!), "An array's items were typed, so a template over them goes unmarked where the build refuses each step of it");
+        Assert.All(["People", "Crowd", "Children"], path => Assert.True(CompiledBindings.TypesItemsOf(Read(path).Type!),
+            $"{path}'s items were left untyped, so a template over them is marked where the build takes it"));
+    }
+
     private static MarkupExtension Parse(string text) => MarkupExtension.Parse(text, 0, text.Length) ?? throw new ArgumentException($"{text} is no markup extension");
 }
