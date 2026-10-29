@@ -109,7 +109,8 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
         Assert.Equal((OpenProjectIn.CurrentWindow, OpenProjectIn.CurrentWindow), (window.Settings.OpenProjectIn, other.Settings.OpenProjectIn));
         Assert.Null(other.Open(beta));
         Assert.Null(other.Asking);
-        Assert.Equal(PathNames.Canonical(beta), other.Folder);
+        Ui.WaitFor(() => other.Folder == PathNames.Canonical(beta),
+            () => $"the other window to open {beta} itself, unasked, as Current window says: it has {other.Folder ?? "nothing"} open, its status \"{other.Status}\"");
         Assert.Equal(2, PassengerApp.Windows.Count);
 
         SettingsDialog dialog = window.ShowSettings();
@@ -126,7 +127,8 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
         Ui.Settle();
         Assert.Null(window.Open(alpha));
         Assert.Equal(3, PassengerApp.Windows.Count);
-        Assert.Equal(PathNames.Canonical(alpha), PassengerApp.Front?.Folder);
+        Ui.WaitFor(() => PassengerApp.Front?.Folder == PathNames.Canonical(alpha),
+            () => $"a new window in front to open {alpha}, as New window says: the one in front has {PassengerApp.Front?.Folder ?? "nothing"} open, its status \"{PassengerApp.Front?.Status}\"");
         foreach (MainWindow each in PassengerApp.Windows.ToList())
         {
             each.Close();
