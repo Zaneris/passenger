@@ -700,6 +700,31 @@ public sealed class ProjectSession : IAsyncDisposable
         }
     }
 
+    /// <summary>Files or folders made, moved or deleted, by the IDE or another program, followed: what was kept of a project
+    /// that could not be evaluated where one came is let go (<see cref="ProjectModels.Came"/>), the solution is read again
+    /// given <paramref name="readAgain"/>, a project shown missing whose file stands there now is taken as it is, and each
+    /// project is evaluated that needs it.</summary>
+    public void CameOrWent(IReadOnlyCollection<string> paths, bool readAgain = false)
+    {
+        if (IsEnded)
+        {
+            return;
+        }
+        Models.Came(paths);
+        if (readAgain)
+        {
+            ReadAgain();
+            return;
+        }
+        HashSet<string> back = [.. (Workspace?.Projects ?? []).Where(p => !p.Exists && paths.Any(c => PathNames.Within(p.Path, c)) && File.Exists(p.Path)).Select(p => p.Path)];
+        if (back.Count > 0)
+        {
+            Reload(Workspace!.WithProjects(p => back.Contains(p.Path) ? ProjectModel.Unevaluated(p.Path) : p));
+            return;
+        }
+        Evaluate();
+    }
+
     /// <summary><see cref="ActiveProjects"/> once the evaluation has said what each of them references (the file shown's
     /// project is evaluated first), which the language server waits a few seconds for at most, the folder's first round
     /// waited for even before it has begun.</summary>

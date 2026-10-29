@@ -45,16 +45,18 @@ public partial class MainWindow
         session.DesignTimeBuilds.FolderChanged(changes);
         session.FilesChanged(changes);
         (bool programsMade, bool programsWritten) = ProgramsChanged(changes.Paths);
+        // Lost changes may have made or moved anything in the folder.
+        IReadOnlyCollection<string> cameOrWent = changes.Lost ? [folder] : changes.ComeOrGone;
         if (changes.Projects || changes.Lost || programsMade)
         {
             // Lost changes may have been a project's or the solution's: read again, which shows the whole Explorer anew.
-            ReloadSolution();
+            session.CameOrWent(cameOrWent, readAgain: true);
         }
         else if (changes.Structure)
         {
             Explorer.RefreshFolders(changes.Paths.Select(Path.GetDirectoryName).OfType<string>());
-            // A file come or gone may be one a project's wildcards take in: its folder's stamp says which.
-            session.Evaluate();
+            // A file come or gone may be one a project's wildcards take in (its folder's stamp says which), or a project's own.
+            session.CameOrWent(cameOrWent);
         }
         else if (changes.Restored.Count > 0 || programsWritten)
         {

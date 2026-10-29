@@ -612,14 +612,19 @@ public partial class MainWindow
     }
 
     /// <summary>Follows a change of files once it is done: what came or went along <paramref name="stood"/>'s paths, with the
-    /// ends of the moves it made, as <see cref="CameOrWent"/> does; with none, the projects whose evaluation read one of
-    /// <paramref name="texts"/> are evaluated again. The XAML reading a C# file among them or the moves' reads it again either way.</summary>
-    private void Followed(Dictionary<string, bool> stood, IReadOnlyCollection<string> moved, IReadOnlyCollection<string> texts)
+    /// ends of the moves it made, as <see cref="CameOrWent"/> does, the solution read again given <paramref name="readAgain"/>;
+    /// with none, the projects whose evaluation read one of <paramref name="texts"/> are evaluated again. The XAML reading
+    /// a C# file among them or the moves' reads it again either way.</summary>
+    private void Followed(Dictionary<string, bool> stood, IReadOnlyCollection<string> moved, IReadOnlyCollection<string> texts, bool readAgain = false)
     {
         List<string> cameOrWent = [.. moved, .. stood.Where(s => s.Value != Stands(s.Key)).Select(s => s.Key)];
         if (cameOrWent.Count > 0)
         {
-            CameOrWent(cameOrWent);
+            CameOrWent(cameOrWent, readAgain);
+        }
+        else if (readAgain)
+        {
+            ReloadSolution();
         }
         else if (session.Models.Read(texts))
         {
@@ -632,13 +637,14 @@ public partial class MainWindow
 
     /// <summary>Files or folders the IDE itself made, moved or deleted, followed at once rather than when the folder watcher
     /// hears of them: the Explorer reads again only the folders that held or hold them, keeping the rows still there, Go to
-    /// File's index takes them in or out in place, the projects are checked for what their wildcards take in, and Git's
-    /// colours follow.</summary>
-    private void CameOrWent(IReadOnlyCollection<string> paths)
+    /// File's index takes them in or out in place, the projects are checked for what their wildcards take in and for one
+    /// come back (<see cref="ProjectSession.CameOrWent"/>, the solution read again given <paramref name="readAgain"/>), and
+    /// Git's colours follow.</summary>
+    private void CameOrWent(IReadOnlyCollection<string> paths, bool readAgain = false)
     {
         HashSet<string> named = new(paths.Select(PathNames.Canonical), StringComparer.Ordinal);
         Explorer.RefreshFolders(named.Select(Path.GetDirectoryName).OfType<string>());
-        session.Evaluate();
+        session.CameOrWent(named, readAgain);
         session.MSBuild.FilesCameOrWent();
         session.CSharp?.FilesCameOrWent(named);
         session.Xaml.CameOrWent(named);

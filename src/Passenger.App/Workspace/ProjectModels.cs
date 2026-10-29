@@ -161,6 +161,23 @@ public sealed class ProjectModels
 
     public WorkspaceModel Apply(WorkspaceModel workspace) => workspace.WithProjects(Apply);
 
+    /// <summary>Files or folders come: the evaluation that failed of a project at or under one, and the model made of it
+    /// (shown missing when its file was), are let go once its file stands there, so the project is taken as it is there
+    /// and evaluated again rather than kept as missing.</summary>
+    public void Came(IReadOnlyCollection<string> paths)
+    {
+        UiThread.Check();
+        if (paths.Count == 0)
+        {
+            return;
+        }
+        foreach (string path in known.Where(k => k.Value.Problem is not null && paths.Any(p => PathNames.Within(k.Key, p)) && File.Exists(k.Key)).Select(k => k.Key).ToList())
+        {
+            known.Remove(path);
+            made.Remove(path);
+        }
+    }
+
     /// <summary>Whether an evaluation known read one of these files: a project's own, or one it imports.</summary>
     public bool Read(IReadOnlyCollection<string> paths)
     {

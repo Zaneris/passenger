@@ -1178,6 +1178,82 @@ public sealed class SolutionViewTests : IDisposable
         }
     }
 
+    /// <summary>A project moved into a folder, its move taken back and made again, then taken back and the project moved
+    /// into that folder once more, and last moved out and back by another program, is shown where it went as soon as each
+    /// move is done, never dimmed as missing, and loaded there as MSBuild evaluates it.</summary>
+    [AvaloniaFact]
+    public void A_project_moved_into_a_folder_and_back_by_Undo_Redo_and_a_move_again_is_loaded_where_it_went_each_time()
+    {
+        string src = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(folder, "src")).FullName);
+        string home = PathNames.Canonical(Path.Combine(folder, "Shop.App", "Shop.App.csproj"));
+        string moved = Path.Combine(src, "Shop.App", "Shop.App.csproj");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            List<string> asked = Answer(window);
+            LoadedAt(home, "the folder opened");
+            MoveIntoSrc();
+            ShownAt(moved, "Shop.App moved into src");
+
+            Put(EditorActions.Undo, "Undone");
+            ShownAt(home, "Undo of the move");
+            Put(EditorActions.Redo, "Redone");
+            ShownAt(moved, "Redo of the move");
+
+            Put(EditorActions.Undo, "Undone");
+            ShownAt(home, "Undo of the move made again");
+            MoveIntoSrc();
+            ShownAt(moved, "Shop.App moved into src again, where Undo took it from");
+            Assert.Equal(["Undo", "Redo", "Undo"], asked);
+
+            Directory.Move(Path.GetDirectoryName(moved)!, Path.GetDirectoryName(home)!);
+            Ui.WaitFor(() => window.Projects.SingleOrDefault(p => p.Name == "Shop.App") is { Problem: not null, Path: var path } && path == moved,
+                () => $"Shop.App moved out of src by another program to fail to load there: {window.Status}");
+            Directory.Move(Path.GetDirectoryName(home)!, Path.GetDirectoryName(moved)!);
+            LoadedAt(moved, "Shop.App moved back into src by another program");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // Cut and pasted in the File System view, where a project's folder is a row of its own.
+        void MoveIntoSrc()
+        {
+            Button views = window.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) is string tip && tip.StartsWith("Switch between the solution", StringComparison.Ordinal));
+            Ui.Click(views);
+            Ui.ClickRow(window, Show(window, Path.Combine(folder, "Shop.App")));
+            Ui.Run(window, EditorActions.Cut);
+            Ui.ClickRow(window, Show(window, src));
+            Ui.Run(window, EditorActions.Paste);
+            Assert.Equal("Moved Shop.App to src", window.Status);
+            Ui.Click(views);
+        }
+
+        void Put(string action, string said)
+        {
+            Ui.ClickRow(window, Row(window, NodeKind.Project, "Shop.Core"));
+            Ui.Run(window, action);
+            Ui.WaitFor(() => window.Status?.StartsWith(said, StringComparison.Ordinal) == true, () => $"{action} of the move: {window.Status}");
+        }
+
+        // As soon as the move says it is done, then once evaluated there.
+        void ShownAt(string path, string after)
+        {
+            Assert.True(Row(window, NodeKind.Project, "Shop.App") is { IsDimmed: false } row && row.Path == path,
+                $"Once {after}, the Solution view shows Shop.App {Shown()} rather than at {Path.GetRelativePath(folder, path)}: {window.Status}");
+            LoadedAt(path, after);
+        }
+
+        void LoadedAt(string path, string after) => Ui.WaitFor(
+            () => window.Projects.SingleOrDefault(p => p.Name == "Shop.App") is { IsEvaluated: true, Exists: true } project && project.Path == path
+                && Row(window, NodeKind.Project, "Shop.App") is { IsDimmed: false } row && row.Path == path,
+            () => $"Shop.App to be loaded at {Path.GetRelativePath(folder, path)} after {after}, where the Solution view shows it {Shown()}: {window.Status}");
+
+        string Shown() => string.Join(", ", window.ExplorerView.Tree.Rows.Where(r => r.Kind == NodeKind.Project && r.Name == "Shop.App")
+            .Select(r => $"{(r.IsDimmed ? "dimmed" : "loaded")} at {Path.GetRelativePath(folder, r.Path!)} {r.Detail}"));
+    }
+
     private MainWindow Open() => Ui.OpenFolder(folder);
 
     /// <summary>Opens the Explorer's folders down to a file or folder, as a person does to get to it, and gives its row.</summary>

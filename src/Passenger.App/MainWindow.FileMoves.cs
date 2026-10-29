@@ -278,7 +278,7 @@ public partial class MainWindow
         if (reread)
         {
             // At once, not when the folder watcher hears of it, so the Solution view shows a project renamed under its new name.
-            ReloadSolution();
+            session.CameOrWent([.. moved.Select(m => m.To)], readAgain: true);
         }
         return null;
     }
@@ -465,15 +465,18 @@ public partial class MainWindow
         Dictionary<string, bool> stood = Standing(command.Moves.SelectMany(m => new[] { m.From, m.To }).Concat(command.Created.Select(c => c.Path)));
         List<string> moved = [];
         IReadOnlyList<string> written = Editors.Commands.Writes(command, redo);
+        bool rereads = command.Texts.Any(t => WorkspaceModel.IsSolution(t.Path))
+            || command.Moves.Any(m => (session.Workspace?.Projects ?? []).Any(p => PathNames.Within(p.Path, m.From) || PathNames.Within(p.Path, m.To)));
         // Asked again, as a file may have changed while the question was open; its moves followed with the rest once it is done.
         (string? failed, bool began) = await Editors.Commands.PutAsync(command, redo, change => Gathering(moved, change));
-        if (began)
-        {
-            Followed(stood, moved, [.. command.Texts.Select(t => t.Document?.Path ?? (redo ? command.Moved(t.Path) : t.Path))]);
-        }
         if (failed is null && await EditorArea.LandedAsync(written, waiting => status.Text = waiting) is [(string path, Exception why), ..])
         {
             failed = WorkspaceEdits.Unwritten(path, why);
+        }
+        if (began)
+        {
+            // Once its moves and writes have both landed: a solution it changed, or that holds a project it moved, is read as they left it.
+            Followed(stood, moved, [.. command.Texts.Select(t => t.Document?.Path ?? (redo ? command.Moved(t.Path) : t.Path))], readAgain: rereads);
         }
         status.Text = failed is null ? $"{(redo ? "Redone" : "Undone")}: {command.Name}" : $"Cannot {verb.ToLowerInvariant()} {command.Name}: {failed}";
     }
