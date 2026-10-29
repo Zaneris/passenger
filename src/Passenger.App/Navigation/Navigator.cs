@@ -404,9 +404,7 @@ public sealed class Navigator
     {
         if (Editors.Active is not { } active || Session.OutlineOf(active) is null)
         {
-            parts.Status.Text = Editors.Active is { } file
-                ? $"File Structure needs a file a language server has open, and none has {file.Name}"
-                : "File Structure needs a file a language server has open";
+            parts.Status.Text = Editors.Active is { } file ? Refusals.NoOutline(file.Name) : Refusals.NoFile;
             return;
         }
         Outline<SymbolRow>? outline = null;
@@ -414,7 +412,7 @@ public sealed class Navigator
         SymbolPopup popup = new($"File Structure: {active.Name}", "Filter by name, CamelHumps too", async (query, cancel) =>
         {
             // The server's document now: one started again while the popup is open has a new one.
-            Lsp.LspDocument lsp = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed($"no language server has {active.Name} open");
+            Lsp.LspDocument lsp = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed(Refusals.NoOutline(active.Name));
             if (outline is null)
             {
                 IReadOnlyList<Lsp.DocumentSymbol> symbols = await lsp.OutlineAsync(cancel);

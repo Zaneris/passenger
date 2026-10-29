@@ -255,6 +255,30 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The Structure window over a plain text file, which no language server outlines, names the file and says
+    /// why it lists nothing, in the words File Structure says for it; with no file shown it says how to open one.</summary>
+    [AvaloniaFact]
+    public void Structure_over_a_text_file_says_why_it_has_no_outline_in_the_words_file_structure_says()
+    {
+        Write("notes.txt", "Nothing here is outlined.");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.Run(window, AppActions.ShowStructure);
+        Passenger.App.ToolWindows.StructureView structure = window.StructureView;
+        Ui.Settle();
+        Assert.True(structure.Said?.StartsWith("The open file's outline shows here: open one with Go to File", StringComparison.Ordinal) == true,
+            $"Structure with no file shown said: {structure.Said}");
+
+        window.OpenFile("notes.txt");
+        Ui.Settle();
+        Assert.Empty(structure.Rows);
+        Assert.True(structure.Said == "notes.txt has no outline: no language server has it open",
+            $"Structure over notes.txt said: {structure.Said}");
+        Ui.Run(window, AppActions.FileStructure);
+        Assert.False(window.IsPopupOpen, "File Structure opened over a file with no outline");
+        Assert.Equal(structure.Said, window.Status);
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Go_to_line_takes_a_line_and_column_counted_from_one()

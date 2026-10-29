@@ -13,15 +13,16 @@ namespace Passenger.App.ToolWindows;
 /// <summary>The Structure window: the active file's outline (a C# file's types and members, a JSON file's keys),
 /// indented, from its language server, asked as it is shown and, while it is, following the editor (a moment after
 /// typing stops) and choosing the member the caret is in. A click or Enter goes to a member. The rows are made off the
-/// window's thread, the list kept as it is where the outline did not change.</summary>
+/// window's thread, the list kept as it is where the outline did not change; a file with none says why.</summary>
 public sealed class StructureView : DockPanel
 {
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(600);
 
     private readonly ListBox list;
     private readonly TextBlock placeholder;
+    private readonly TextBlock unoutlined;
     private readonly Debounce settle;
-    private Func<(string Path, LspDocument? Lsp, int CaretLine)?>? source;
+    private Func<(string Path, string Name, LspDocument? Lsp, int CaretLine)?>? source;
     private CancellationTokenSource? asking;
     private bool choosing;
 
@@ -64,6 +65,7 @@ public sealed class StructureView : DockPanel
         };
         placeholder = new TextBlock { Classes = { "emptyText" } };
         ActionTips.SetWords(placeholder, AppActions.GoToFile, keys => $"The open file's outline shows here: open one with {ActionTips.Named("Go to File", keys)}");
+        unoutlined = new TextBlock { Classes = { "emptyText" }, IsVisible = false };
         settle = new Debounce(Pause, Refresh);
         ListMenus.Attach(list, () => list.SelectedItem is not SymbolRow chosen ? [] :
         [
@@ -71,7 +73,7 @@ public sealed class StructureView : DockPanel
             ListMenus.Item("Find Usages", null, () => UsagesRequested?.Invoke(this, chosen)),
             ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Name))),
         ]);
-        Children.Add(new Panel { Children = { list, placeholder } });
+        Children.Add(new Panel { Children = { list, placeholder, unoutlined } });
         this.Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Panel));
     }
 
@@ -85,8 +87,12 @@ public sealed class StructureView : DockPanel
 
     public SymbolRow? Selected => list.SelectedItem as SymbolRow;
 
-    /// <summary>What the window shows: the active file, its language server document, the caret's line.</summary>
-    public void Follow(Func<(string Path, LspDocument? Lsp, int CaretLine)?> active) => source = active;
+    /// <summary>What the window says over its rows when it lists none: no file is shown, or why the file shown has no
+    /// outline.</summary>
+    public string? Said => unoutlined.IsVisible ? unoutlined.Text : placeholder.IsVisible ? placeholder.Text : null;
+
+    /// <summary>What the window shows: the active file, its name as shown, its language server document, the caret's line.</summary>
+    public void Follow(Func<(string Path, string Name, LspDocument? Lsp, int CaretLine)?> active) => source = active;
 
     /// <summary>The file changed, or a C# file is shown: while the window is shown the outline is asked again once typing
     /// pauses; a hidden one asks as it is shown.</summary>
@@ -158,9 +164,10 @@ public sealed class StructureView : DockPanel
     {
         asking?.Cancel();
         asking = null;
-        if (source?.Invoke() is not { Lsp: { } lsp } now)
+        (string Path, string Name, LspDocument? Lsp, int CaretLine)? active = source?.Invoke();
+        if (active is not { Lsp: { } lsp } now)
         {
-            Show(Outline<SymbolRow>.Empty, null);
+            Show(Outline<SymbolRow>.Empty, null, active is { } file ? Refusals.NoOutline(file.Name) : null);
             return;
         }
         CancellationTokenSource mine = asking = new CancellationTokenSource();
@@ -180,7 +187,7 @@ public sealed class StructureView : DockPanel
             {
                 return;
             }
-            Show(made, now.Path);
+            Show(made, now.Path, made.Rows.Count == 0 ? $"{now.Name} has nothing to outline" : null);
             Choose(source?.Invoke() is { } shown && shown.Path == now.Path ? shown.CaretLine : now.CaretLine);
         }
         catch (OperationCanceledException)
@@ -201,8 +208,8 @@ public sealed class StructureView : DockPanel
     }
 
     /// <summary>A file's outline listed (none for <paramref name="path"/> null), the list handed its rows only when they are
-    /// not those it has.</summary>
-    private void Show(Outline<SymbolRow> rows, string? path)
+    /// not those it has, and why it lists none when it says.</summary>
+    private void Show(Outline<SymbolRow> rows, string? path, string? why)
     {
         outlined = path;
         if (!ReferenceEquals(rows, outline))
@@ -210,7 +217,9 @@ public sealed class StructureView : DockPanel
             outline = rows;
             list.ItemsSource = rows.Rows;
         }
-        placeholder.IsVisible = rows.Rows.Count == 0;
+        unoutlined.Text = why;
+        unoutlined.IsVisible = why is not null;
+        placeholder.IsVisible = path is null && why is null;
     }
 
     private void Choose(int line)

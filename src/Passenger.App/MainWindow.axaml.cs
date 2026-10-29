@@ -799,7 +799,7 @@ public partial class MainWindow : Window
     {
         structure = new ToolWindows.StructureView();
         structure.Follow(() => Editors.Active is { } shown
-            ? (shown.Path, session.OutlineOf(shown), Editors.CodeEditor.CaretPosition.Line)
+            ? (shown.Path, shown.Name, session.OutlineOf(shown), Editors.CodeEditor.CaretPosition.Line)
             : null);
         structure.GoToRequested += (_, row) => NavigateTo(row.Path, row.Position);
         structure.UsagesRequested += (_, row) =>

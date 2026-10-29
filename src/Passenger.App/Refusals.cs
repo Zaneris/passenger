@@ -52,6 +52,10 @@ public static class Refusals
     public static string NothingTo(string verb, MissingSdk? missing, string? folder) =>
         missing is null ? $"Nothing to {verb}: no executable project" : NoSdk(missing, folder);
 
+    /// <summary>Why a file shown has no outline for Structure and File Structure: they list what its language server
+    /// outlines, and none has it open.</summary>
+    public static string NoOutline(string file) => $"{file} has no outline: no language server has it open";
+
     /// <summary>Go to Declaration found nothing to go to where it was asked.</summary>
     public const string NoDeclaration = "Cannot find a declaration to go to";
 
