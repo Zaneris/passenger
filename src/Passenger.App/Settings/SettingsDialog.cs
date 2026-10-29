@@ -345,6 +345,13 @@ public sealed partial class SettingsDialog : Window
         Add(Declared.BuildKitChecks);
 
         Add(Declared.TerminalFontSize);
+        TextBox terminalFont = new() { Classes = { "search" }, Text = Working.TerminalFontFamily ?? string.Empty, PlaceholderText = "JetBrains Mono", Width = 320 };
+        terminalFont.TextChanged += (_, _) => Change(s => s with { TerminalFontFamily = terminalFont.Text });
+        Add(TerminalPage, "Font family", terminalFont, "font family name typeface shell",
+            "An installed monospace font. Blank, unavailable or proportional fonts use bundled JetBrains Mono.");
+        Add(Declared.TerminalCopyOnSelection);
+        Add(Declared.TerminalCursorBlinking);
+        Add(Declared.TerminalCursorStyle);
         (string shell, _) = Passenger.Terminal.TerminalSession.DefaultShell();
         TextBox path = new() { Classes = { "search" }, Text = Working.TerminalShell ?? string.Empty, PlaceholderText = shell, Width = 320 };
         path.TextChanged += (_, _) => Change(s => s with { TerminalShell = string.IsNullOrWhiteSpace(path.Text) ? null : path.Text.Trim() });

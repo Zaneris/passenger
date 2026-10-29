@@ -305,7 +305,11 @@ public sealed partial class TerminalView
             context.DrawRectangle(null, PenOf(cursor), new Rect(x + 0.5, y + 0.5, width - 1, cellHeight - 1));
             return;
         }
-        switch (screen.CursorShape)
+        if (!cursorOn)
+        {
+            return;
+        }
+        switch (screen.RequestedCursorShape ?? CursorStyle)
         {
             case CursorShape.Bar:
                 context.FillRectangle(cursor, new Rect(x, y, 2, cellHeight));

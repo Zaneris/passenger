@@ -72,6 +72,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// scrolls.</summary>
     public bool WheelZoom { get; init; }
     public double TerminalFontSize { get; init; } = 13;
+    public string? TerminalFontFamily { get; init; }
+    public bool TerminalCopyOnSelection { get; init; }
+    public bool TerminalCursorBlinking { get; init; }
+    public Passenger.Terminal.CursorShape TerminalCursorStyle { get; init; } = Passenger.Terminal.CursorShape.Block;
 
     /// <summary>Code Folding, Fold by default: the comments a file begins with fold as it opens (a file keeps the folds
     /// it closed with instead, once it has some).</summary>
@@ -323,6 +327,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
         AppSettings defaults = new();
         AppSettings clamped = this with
         {
+            TerminalFontFamily = string.IsNullOrWhiteSpace(TerminalFontFamily) ? null : TerminalFontFamily.Trim(),
             Shortcuts = Readable(Shortcuts),
             VSCodeShortcuts = Readable(VSCodeShortcuts),
             LiveTemplates = (LiveTemplates ?? []).Where(t => t.Value is not null).ToDictionary(t => t.Key, t => t.Value.Clamped()),

@@ -229,6 +229,16 @@ public static class Declared
     public static readonly NumberSetting TerminalFontSize = new(s => s.TerminalFontSize, (s, v) => s with { TerminalFontSize = v },
         AppSettings.MinFontSize, AppSettings.MaxFontSize, 1, new(D.TerminalPage, "Font size", "font size shell"));
 
+    public static readonly ToggleSetting TerminalCopyOnSelection = new(s => s.TerminalCopyOnSelection, (s, v) => s with { TerminalCopyOnSelection = v },
+        new(D.TerminalPage, "Copy on selection", "copy selection clipboard mouse drag word"));
+
+    public static readonly ToggleSetting TerminalCursorBlinking = new(s => s.TerminalCursorBlinking, (s, v) => s with { TerminalCursorBlinking = v },
+        new(D.TerminalPage, "Cursor blinking", "cursor caret blink blinking", "Programs can override this setting until the terminal is reset."));
+
+    public static readonly ChoiceSetting<Passenger.Terminal.CursorShape> TerminalCursorStyle = new(s => s.TerminalCursorStyle, (s, v) => s with { TerminalCursorStyle = v },
+        [(Passenger.Terminal.CursorShape.Block, "Block"), (Passenger.Terminal.CursorShape.Bar, "Line"), (Passenger.Terminal.CursorShape.Underline, "Underline")],
+        new(D.TerminalPage, "Cursor style", "cursor caret type style shape block line bar underline", "Programs can override this setting until the terminal is reset."));
+
     public static readonly ToggleSetting McpServer = new(s => s.McpServer, (s, v) => s with { McpServer = v },
         new(D.McpPage, "Enable MCP Server", D.McpWords,
             "Agents started with passenger --mcp-attach can use this window without asking to: read and change files, build, run and "

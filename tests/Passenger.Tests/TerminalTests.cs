@@ -5,10 +5,13 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.Media;
 using Passenger.App;
 using Passenger.App.Docking;
 using Passenger.App.Run;
+using Passenger.App.Settings;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Terminal;
 
 namespace Passenger.Tests;
@@ -22,6 +25,241 @@ namespace Passenger.Tests;
 /// comes from the TerminalCases debuggee, the same bytes on every system, so Windows checks what ConPTY makes of them.</summary>
 public sealed class TerminalTests
 {
+    [AvaloniaFact]
+    public void A_program_receives_the_mouse_release_when_Shift_changes_after_the_press()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            // cat prints the mouse reports it reads from the terminal.
+            return;
+        }
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = Open(folder, "/bin/sh");
+            Run(window, "printf '\\033[?1000h\\033[?1006h'; cat -v");
+            WaitForScreen(window, shell, s => s.MouseTracking == MouseTracking.Press, "cat to receive mouse reports");
+            TerminalView view = window.TerminalPanel.View;
+            Point at = view.TranslatePoint(view.PointOf(shell.Screen.ScreenTop, 0), window)!.Value;
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left, RawInputModifiers.Shift);
+            Ui.Press(window, "ENTER");
+            WaitForLine(shell, text => text.Contains("^[[<0;1;1M", StringComparison.Ordinal), "the reported mouse press");
+            Assert.Contains(Lines(shell.Screen), text => text.Contains("^[[<0;1;1M^[[<0;1;1m", StringComparison.Ordinal));
+            Ui.Press(window, "control C");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(CursorShape.Block, true, true, true)]
+    [InlineData(CursorShape.Bar, false, true, false)]
+    [InlineData(CursorShape.Underline, false, false, true)]
+    public void The_terminal_draws_the_configured_cursor_shape(CursorShape style, bool centre, bool left, bool bottom)
+    {
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = Open(folder, OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh");
+            window.ApplySettings(window.Settings with { TerminalCursorStyle = style });
+            Ui.Settle();
+            TerminalView view = window.TerminalPanel.View;
+            long row = shell.Screen.ScreenTop + shell.Screen.CursorRow;
+            int column = shell.Screen.CursorColumn;
+            Point cell = view.PointOf(row, column);
+            double width = view.PointOf(row, column + 1).X - cell.X;
+            double height = view.PointOf(row + 1, column).Y - cell.Y;
+            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Background)!).Color;
+            bool Drawn(Point at) => Ui.Pixel(window, view.TranslatePoint(at, window)!.Value) != background;
+            Assert.Equal(centre, Drawn(cell));
+            Assert.Equal(left, Drawn(cell + new Point(1 - width / 2, 0)));
+            Assert.Equal(bottom, Drawn(cell + new Point(0, height / 2 - 1)));
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Copy_on_selection_copies_a_finished_drag_only_when_enabled()
+    {
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = Open(folder, OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh");
+            Run(window, "echo selection-marker");
+            long line = WaitForLine(shell, "selection-marker", "the text to select");
+            Copy(window, "clipboard kept");
+            Drag(window, line, 0, line, 8);
+            Assert.Equal("clipboard kept", Ui.Clipboard(window));
+            SettingsDialog dialog = SettingsTests.TerminalDialog(window);
+            Assert.Contains("Copy on selection", dialog.Shown);
+            CheckBox copy = SettingsTests.Editor<CheckBox>(dialog, "Copy on selection");
+            Ui.Click(copy);
+            dialog.Ok();
+            Ui.Settle();
+            TerminalView view = window.TerminalPanel.View;
+            Ui.Click(view, view.PointOf(line, 13));
+            Assert.Equal("clipboard kept", Ui.Clipboard(window));
+            Drag(window, line, 0, line, 8);
+            Assert.Equal("selection", Ui.Clipboard(window));
+            Copy(window, "waiting for release");
+            Ui.Click(view, view.PointOf(line, 13));
+            Point from = view.TranslatePoint(view.PointOf(line, 0), window)!.Value;
+            Point to = view.TranslatePoint(view.PointOf(line, 8), window)!.Value;
+            window.MouseDown(from, MouseButton.Left);
+            window.MouseMove(to, RawInputModifiers.LeftMouseButton);
+            Ui.Settle();
+            Assert.Equal("waiting for release", Ui.Clipboard(window));
+            window.MouseUp(to, MouseButton.Left);
+            Ui.Settle();
+            Assert.Equal("selection", Ui.Clipboard(window));
+            Ui.DoubleClick(view, view.PointOf(line, 3));
+            Assert.Equal("selection-marker", Ui.Clipboard(window));
+            if (!OperatingSystem.IsWindows())
+            {
+                Run(window, "printf '\\033[?1000h\\033[?1006h'; read x; printf '\\033[?1000l\\033[?1006l'");
+                WaitForScreen(window, shell, s => s.MouseTracking == MouseTracking.Press, "the program to request mouse reports");
+                Copy(window, "program owns the mouse");
+                Drag(window, line, 0, line, 8);
+                Assert.Equal("program owns the mouse", Ui.Clipboard(window));
+                Ui.Click(view, view.PointOf(line, 13));
+                window.MouseDown(from, MouseButton.Left, RawInputModifiers.Shift);
+                window.MouseMove(to, RawInputModifiers.LeftMouseButton | RawInputModifiers.Shift);
+                window.MouseUp(to, MouseButton.Left, RawInputModifiers.Shift);
+                Ui.Settle();
+                Assert.Equal("selection", Ui.Clipboard(window));
+                Ui.Press(window, "ENTER");
+                WaitForScreen(window, shell, s => s.MouseTracking == MouseTracking.None, "the program to release the mouse");
+            }
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("\\033[!p")]
+    [InlineData("\\033c")]
+    [InlineData("\\033[0 q")]
+    public void Programs_override_the_configured_cursor_and_reset_restores_it(string reset)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            // sh's printf writes the bytes.
+            return;
+        }
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = Open(folder, "/bin/sh");
+            SettingsDialog dialog = SettingsTests.TerminalDialog(window);
+            Assert.Contains("Cursor style", dialog.Shown);
+            ComboBox style = SettingsTests.Editor<ComboBox>(dialog, "Cursor style");
+            style.SelectedIndex = 2;
+            dialog.Ok();
+            Ui.Settle();
+            window.TerminalPanel.FocusView();
+            Ui.Settle();
+            TerminalView view = window.TerminalPanel.View;
+            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Background)!).Color;
+            Assert.Equal(background, Ui.Pixel(window, CursorCentre(window)));
+            Run(window, $"printf '\\033[2 q'; read x; printf '{reset}'");
+            WaitForScreen(window, shell, s => s.CursorColumn == 0, "the program waiting with its block cursor");
+            Assert.NotEqual(background, Ui.Pixel(window, CursorCentre(window)));
+            Ui.Press(window, "ENTER");
+            WaitForScreen(window, shell, s => s.CursorColumn > 0, "the prompt after the program resets the terminal");
+            Assert.Equal(background, Ui.Pixel(window, CursorCentre(window)));
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Cursor_blinking_changes_the_drawn_cursor_and_focus_loss_leaves_an_outline()
+    {
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = Open(folder, OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh");
+            SettingsDialog dialog = SettingsTests.TerminalDialog(window);
+            Assert.Contains("Cursor blinking", dialog.Shown);
+            CheckBox blinking = SettingsTests.Editor<CheckBox>(dialog, "Cursor blinking");
+            Ui.Click(blinking);
+            dialog.Ok();
+            Ui.Settle();
+            TerminalView view = window.TerminalPanel.View;
+            window.TerminalPanel.FocusView();
+            Ui.Settle();
+            Point centre = CursorCentre(window);
+            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Background)!).Color;
+            Ui.WaitFor(() => Ui.Pixel(window, centre) == background, "the blinking cursor to disappear");
+            Ui.WaitFor(() => Ui.Pixel(window, centre) != background, "the blinking cursor to reappear");
+            SettingsDialog other = window.ShowSettings();
+            Ui.Settle();
+            Assert.False(view.IsFocused);
+            Assert.Equal(background, Ui.Pixel(window, centre));
+            double width = view.PointOf(shell.Screen.ScreenTop + shell.Screen.CursorRow, shell.Screen.CursorColumn + 1).X
+                - view.PointOf(shell.Screen.ScreenTop + shell.Screen.CursorRow, shell.Screen.CursorColumn).X;
+            Assert.NotEqual(background, Ui.Pixel(window, centre - new Point(width / 2, 0)));
+            other.Close();
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_program_can_enable_blinking_then_disable_it_and_reset_to_the_persons_default()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            // sh's printf writes the bytes.
+            return;
+        }
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            (MainWindow window, TerminalSession shell) = Open(folder, "/bin/sh");
+            TerminalView view = window.TerminalPanel.View;
+            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Background)!).Color;
+            Run(window, "printf '\\033[1 q'; read x; printf '\\033[?12l'; read x; printf '\\033[?12h'; read x; printf '\\033[0 q'");
+            WaitForScreen(window, shell, s => s.CursorColumn == 0 && s.RequestedCursorBlinking == true, "the program to request a blinking cursor");
+            Ui.WaitFor(() => Ui.Pixel(window, CursorCentre(window)) == background, "the program's cursor to blink off");
+            Ui.WaitFor(() => Ui.Pixel(window, CursorCentre(window)) != background, "the program's cursor to blink on");
+            Ui.Press(window, "ENTER");
+            WaitForScreen(window, shell, s => s.RequestedCursorBlinking == false, "the program to disable blinking with DEC mode 12");
+            Ui.Hold(TimeSpan.FromMilliseconds(650), "a steady cursor to remain visible past its blink interval");
+            Assert.NotEqual(background, Ui.Pixel(window, CursorCentre(window)));
+            Ui.Press(window, "ENTER");
+            WaitForScreen(window, shell, s => s.RequestedCursorBlinking == true, "the program to enable blinking with DEC mode 12");
+            Ui.WaitFor(() => Ui.Pixel(window, CursorCentre(window)) == background, "DEC mode 12 to blink the cursor off");
+            Ui.Press(window, "ENTER");
+            WaitForScreen(window, shell, s => s.RequestedCursorBlinking is null && s.CursorColumn > 0, "the program to restore the configured cursor");
+            Ui.Hold(TimeSpan.FromMilliseconds(650), "the configured steady cursor to remain visible past its blink interval");
+            Assert.NotEqual(background, Ui.Pixel(window, CursorCentre(window)));
+            Assert.False(window.Settings.TerminalCursorBlinking);
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
     [AvaloniaFact]
     public void What_a_full_screen_program_draws_lands_where_it_puts_it_and_the_shells_screen_comes_back_after()
     {
@@ -654,12 +892,16 @@ public sealed class TerminalTests
     /// <summary>The terminal's links: an address is a link a click opens (a drag from it selects instead) and so does
     /// Cmd+click (Ctrl+click elsewhere), wrapped across rows or not; a file's path is text until Cmd or Ctrl is held over
     /// it, and Cmd+click opens it at its line.</summary>
-    [AvaloniaFact]
-    public void An_address_in_the_terminal_opens_with_a_click_or_cmd_click_and_a_files_path_with_cmd_click()
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void An_address_in_the_terminal_opens_with_a_click_or_cmd_click_and_a_files_path_with_cmd_click(bool copyOnSelection)
     {
         string folder = TestFolders.Create("terminal-");
         File.WriteAllText(Path.Combine(folder, "notes.txt"), "first\nsecond\nthird\n");
         (MainWindow window, TerminalSession shell) = Open(folder);
+        window.ApplySettings(window.Settings with { TerminalCopyOnSelection = copyOnSelection });
+        Copy(window, "clipboard kept");
         TerminalView view = window.TerminalPanel.View;
         RawInputModifiers command = OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control;
         Run(window, "echo see https://example.com/terminal/docs. now");
@@ -671,6 +913,7 @@ public sealed class TerminalTests
 
         Drag(window, line, 12, line, 22);
         Assert.Equal("example.com", view.SelectedText);
+        Assert.Equal(copyOnSelection ? "example.com" : "clipboard kept", Ui.Clipboard(window));
         Assert.Empty(window.Browsed);
         window.MouseMove(at);
         window.MouseDown(at, MouseButton.Left);
@@ -711,6 +954,13 @@ public sealed class TerminalTests
         Assert.Equal(PathNames.Canonical(Path.Combine(folder, "notes.txt")), window.EditorArea.Active?.Path);
         Assert.Equal(1, window.EditorArea.CodeEditor.CaretPosition.Line);
         Assert.Equal(3, window.Browsed.Count);
+        Assert.Equal(copyOnSelection ? "example.com" : "clipboard kept", Ui.Clipboard(window));
+        window.TerminalPanel.FocusView();
+        Ui.Settle();
+        Run(window, "echo https://example.com/double-click");
+        long doubleClick = WaitForLine(shell, "https://example.com/double-click", "the address to double-click");
+        Ui.DoubleClick(view, view.PointOf(doubleClick, 13));
+        Assert.Equal(copyOnSelection ? "example.com" : "clipboard kept", Ui.Clipboard(window));
         window.Close();
     }
 
@@ -819,6 +1069,13 @@ public sealed class TerminalTests
             }
         }
         return lines;
+    }
+
+    private static Point CursorCentre(MainWindow window)
+    {
+        TerminalView view = window.TerminalPanel.View;
+        TerminalScreen screen = view.Session!.Screen;
+        return view.TranslatePoint(view.PointOf(screen.ScreenTop + screen.CursorRow, screen.CursorColumn), window)!.Value;
     }
 
     /// <summary>A drag with the mouse from one cell to another, as a person chooses text.</summary>

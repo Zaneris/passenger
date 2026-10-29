@@ -17,6 +17,98 @@ namespace Passenger.Tests;
 /// settings opens on them again, and another Passenger's change to them is followed even where the watcher lost it.</summary>
 public sealed class SettingsTests : IDisposable
 {
+    [AvaloniaFact]
+    public void Terminal_preferences_apply_to_the_view_and_are_kept_for_the_next_window()
+    {
+        string font = OtherTerminalFont();
+        MainWindow window = Open();
+        window.KeepSettings();
+        SettingsDialog dialog = TerminalDialog(window);
+        Assert.Contains("Font family", dialog.Shown);
+        Assert.False(Editor<CheckBox>(dialog, "Copy on selection").IsChecked);
+        Assert.False(Editor<CheckBox>(dialog, "Cursor blinking").IsChecked);
+        Assert.Equal("Block", Editor<ComboBox>(dialog, "Cursor style").SelectedItem);
+        Editor<TextBox>(dialog, "Font family").Text = font;
+        Ui.Click(Editor<CheckBox>(dialog, "Copy on selection"));
+        Ui.Click(Editor<CheckBox>(dialog, "Cursor blinking"));
+        Editor<ComboBox>(dialog, "Cursor style").SelectedIndex = 1;
+        dialog.Ok();
+        Ui.Settle();
+        Assert.Equal(font, window.TerminalPanel.View.FontFamily.Name);
+        window.Close();
+
+        MainWindow again = Open();
+        again.KeepSettings();
+        Assert.Equal(font, again.TerminalPanel.View.FontFamily.Name);
+        SettingsDialog kept = TerminalDialog(again);
+        Assert.True(Editor<CheckBox>(kept, "Copy on selection").IsChecked);
+        Assert.True(Editor<CheckBox>(kept, "Cursor blinking").IsChecked);
+        Assert.Equal("Line", Editor<ComboBox>(kept, "Cursor style").SelectedItem);
+        kept.Close();
+        again.Close();
+    }
+
+    [AvaloniaFact]
+    public void Terminal_font_changes_wait_for_apply_and_a_blank_name_restores_the_bundled_font()
+    {
+        string font = OtherTerminalFont();
+        MainWindow window = Open();
+        string bundled = window.TerminalPanel.View.FontFamily.Name;
+        SettingsDialog dialog = TerminalDialog(window);
+        Assert.Contains("Font family", dialog.Shown);
+        Editor<TextBox>(dialog, "Font family").Text = font;
+        dialog.Close();
+        Assert.Equal(bundled, window.TerminalPanel.View.FontFamily.Name);
+
+        dialog = TerminalDialog(window);
+        Editor<TextBox>(dialog, "Font family").Text = "  " + font + "  ";
+        Ui.Settle();
+        dialog.Apply();
+        Ui.Settle();
+        Assert.Equal(font, window.TerminalPanel.View.FontFamily.Name);
+        Editor<TextBox>(dialog, "Font family").Text = "   ";
+        Ui.Settle();
+        dialog.Apply();
+        Ui.Settle();
+        Assert.Equal(bundled, window.TerminalPanel.View.FontFamily.Name);
+        dialog.Close();
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Old_terminal_settings_and_an_unavailable_font_keep_a_usable_default()
+    {
+        File.WriteAllText(Path.Combine(settings, "settings.json"), """
+            { "version": 1, "terminalFontSize": 15, "terminalFontFamily": "Passenger Missing Font", "terminalCursorStyle": 99 }
+            """);
+        MainWindow window = Open();
+        window.KeepSettings();
+        Assert.Equal(15, window.TerminalPanel.View.FontSize);
+        Assert.Equal(Passenger.Terminal.TerminalView.DefaultFontFamily, window.TerminalPanel.View.FontFamily);
+        Assert.Equal("Passenger Missing Font", window.Settings.TerminalFontFamily);
+        SettingsDialog dialog = TerminalDialog(window);
+        Assert.Contains("Cursor style", dialog.Shown);
+        Assert.Equal("Passenger Missing Font", Editor<TextBox>(dialog, "Font family").Text);
+        Assert.Equal("Block", Editor<ComboBox>(dialog, "Cursor style").SelectedItem);
+        Assert.False(Editor<CheckBox>(dialog, "Copy on selection").IsChecked);
+        Assert.False(Editor<CheckBox>(dialog, "Cursor blinking").IsChecked);
+        dialog.Close();
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_proportional_terminal_font_keeps_the_cell_grid_in_the_bundled_font()
+    {
+        FontFamily? proportional = FontManager.Current.SystemFonts.FirstOrDefault(f => !new Typeface(f).GlyphTypeface.Metrics.IsFixedPitch);
+        Assert.SkipWhen(proportional is null, "No proportional system font is installed");
+        MainWindow window = Open();
+        window.ApplySettings(window.Settings with { TerminalFontFamily = proportional!.Name });
+        Ui.Settle();
+        Assert.Equal(Passenger.Terminal.TerminalView.DefaultFontFamily, window.TerminalPanel.View.FontFamily);
+        Assert.Equal(proportional.Name, window.Settings.TerminalFontFamily);
+        window.Close();
+    }
+
     private readonly string folder = TestFolders.Create("folder-");
     private readonly string settings = TestFolders.Create("settings-");
 
@@ -292,7 +384,23 @@ public sealed class SettingsTests : IDisposable
     }
 
     /// <summary>What edits an option, beside its label in the page shown.</summary>
-    private static T Editor<T>(SettingsDialog dialog, string label) where T : Control =>
+    private static string OtherTerminalFont()
+    {
+        FontFamily? font = FontManager.Current.SystemFonts.FirstOrDefault(f => f.Name != Passenger.Terminal.TerminalView.DefaultFontFamily.Name
+            && new Typeface(f).GlyphTypeface.Metrics.IsFixedPitch);
+        Assert.SkipWhen(font is null, "No other monospace system font is installed");
+        return font!.Name;
+    }
+
+    internal static SettingsDialog TerminalDialog(MainWindow window)
+    {
+        SettingsDialog dialog = window.ShowSettings();
+        dialog.Page = SettingsDialog.TerminalPage;
+        Ui.Settle();
+        return dialog;
+    }
+
+    internal static T Editor<T>(SettingsDialog dialog, string label) where T : Control =>
         ((Visual)dialog.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == label).Parent!).GetVisualDescendants().OfType<T>().First();
 
     private MainWindow Open()
