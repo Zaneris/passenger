@@ -255,6 +255,20 @@ public sealed partial class EditorArea : UserControl
     /// go.</summary>
     public bool Close(OpenDocument document) => Close(document, forGood: false);
 
+    /// <summary>A file's own undo step (or redo step, given true): through the editor when it is the file shown there, so
+    /// its carets go back as a key's would, else to the document.</summary>
+    public void Step(OpenDocument document, bool redo)
+    {
+        if (document == Active)
+        {
+            CodeEditor.TryExecute(redo ? EditorActions.Redo : EditorActions.Undo);
+        }
+        else if ((redo ? document.Text.Redo() : document.Text.Undo()) is { } carets)
+        {
+            document.Selections = carets;
+        }
+    }
+
     /// <summary>Closes a file deleted from disk, its edits with it, even while held: what held it hears it closed.</summary>
     public void CloseDeleted(OpenDocument document)
     {

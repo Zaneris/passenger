@@ -50,7 +50,7 @@ public sealed partial class PassengerTools
         int? endColumn = null,
         JsonElement? options = null,
         bool describe = false,
-        CancellationToken cancel = default) => OnUi(cancel, () => Patience.RunAsync(async patience =>
+        CancellationToken cancel = default) => OnUi(cancel, () => Patience.RunAsync(Editors.Commands, async patience =>
     {
         string named = kind.Trim().ToLowerInvariant().Replace(' ', '_').Replace('-', '_');
         JsonElement? given = Options(options);

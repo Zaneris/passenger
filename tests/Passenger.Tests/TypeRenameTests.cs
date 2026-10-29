@@ -334,6 +334,86 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         }
     }
 
+    /// <summary>Undo pressed in the open file as soon as a rename across closed files shows there, while those files are
+    /// still being written, waits for the rename and then takes all of it back, asked once: the open file's change is
+    /// never undone on its own, which would leave the rename's Undo refused and the solution half renamed.</summary>
+    [AvaloniaFact]
+    public void Undo_pressed_while_a_rename_writes_its_closed_files_waits_for_it_and_takes_the_whole_rename_back()
+    {
+        IReadOnlyList<string> uses = WriteTally(6);
+        MainWindow window = Open("Tally.cs");
+        List<(string Title, string Text)> asked = Answer(window);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Task held = window.EditorArea.Commands.HoldNextWrite(release.Task);
+            OpenRenameBox(window, "int Ma", "More");
+            Ui.Press(window, "ENTER", settle: false);
+            Ui.PumpUntil(() => held.IsCompleted, "the rename's writes of its closed files to be held");
+            Assert.Contains("int More(int value)", Text(window), StringComparison.Ordinal);
+
+            Ui.Run(window, EditorActions.Undo, settle: false);
+            Ui.Hold(TimeSpan.FromMilliseconds(300), "a moment in which Undo would take the open file's step on its own");
+            Assert.True(Text(window).Contains("int More(int value)", StringComparison.Ordinal),
+                $"Undo took the open file's part of the rename on its own while its closed files were written: {window.Status}");
+            release.SetResult();
+            Ui.WaitFor(() => window.Status == "Undone: Rename Many to More", () => $"Undo of the whole rename once it was made; the status says '{window.Status}'");
+            (string title, string text) = Assert.Single(asked);
+            Assert.Equal("Undo", title);
+            Assert.StartsWith("Undo Rename Many to More? It changes ", text, StringComparison.Ordinal);
+            Assert.Contains("int Many(int value)", Text(window), StringComparison.Ordinal);
+            foreach (string use in uses)
+            {
+                Assert.True(File.ReadAllText(use).Contains("Tally.Many(", StringComparison.Ordinal), $"{Path.GetFileName(use)} kept the rename after its Undo: {File.ReadAllText(use)}");
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            window.Close();
+        }
+    }
+
+    /// <summary>A rename asked for while an Undo's writes of closed files are held waits for them, then is worked out on the
+    /// files as Undo left them: never made on the text before the Undo, nor only in the open file while Undo puts the
+    /// closed files back, either of which leaves the solution half renamed.</summary>
+    [AvaloniaFact]
+    public void A_rename_asked_for_while_an_undos_writes_are_held_waits_for_them_and_renames_every_use_as_undo_left_it()
+    {
+        IReadOnlyList<string> uses = WriteTally(4);
+        MainWindow window = Open("Tally.cs");
+        Answer(window);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            RenameAt(window, "int Ma", "More", offered: false);
+            Assert.True(window.Status == "Renamed in 5 files", $"The first rename: {window.Status}");
+            Task held = window.EditorArea.Commands.HoldNextWrite(release.Task);
+            Ui.Run(window, EditorActions.Undo, settle: false);
+            Ui.PumpUntil(() => held.IsCompleted, "Undo's writes of the closed files to be held");
+            Assert.Contains("int Many(int value)", Text(window), StringComparison.Ordinal);
+
+            OpenRenameBox(window, "int Ma", "Most");
+            Ui.Press(window, "ENTER", settle: false);
+            Ui.Hold(TimeSpan.FromMilliseconds(500), "a moment in which the rename would be asked of the files before Undo wrote them");
+            release.SetResult();
+            Ui.WaitFor(() => window.Status == "Renamed in 5 files" || window.Status?.StartsWith("Rename was not applied", StringComparison.Ordinal) == true,
+                () => $"the second rename to be made or refused; the status says '{window.Status}'");
+            string name = window.Status == "Renamed in 5 files" ? "Most" : "Many";
+            Assert.Contains($"int {name}(int value)", Text(window), StringComparison.Ordinal);
+            foreach (string use in uses)
+            {
+                Assert.True(File.ReadAllText(use).Contains($"Tally.{name}(", StringComparison.Ordinal),
+                    $"{Path.GetFileName(use)} does not call Tally.{name} as Tally.cs declares it ({window.Status}): {File.ReadAllText(use)}");
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            window.Close();
+        }
+    }
+
     /// <summary>A line typed at the top of a partial class's open file while the Solution view renames the file with its
     /// class goes in above it, and the class's other part named after it is renamed with it all the same.</summary>
     [AvaloniaFact]
@@ -367,6 +447,36 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
         return window;
     }
+
+    /// <summary>Tally.cs declaring Few and Many, and closed files each calling Tally.Many, long written: a rename refuses a
+    /// file written a moment before, which its server may not have read. The closed files.</summary>
+    private IReadOnlyList<string> WriteTally(int count)
+    {
+        List<string> uses = [];
+        string tally = TestFolders.Write(folder, "Tally.cs", "namespace Shop;\n\npublic static class Tally\n{\n    public static int Few(int value) => value;\n\n    public static int Many(int value) => value;\n}\n");
+        for (int i = 0; i < count; i++)
+        {
+            uses.Add(TestFolders.Write(folder, $"Use{i}.cs", $"namespace Shop;\n\npublic static class Use{i}\n{{\n    public static int Call() => Tally.Many({i});\n}}\n"));
+        }
+        foreach (string path in uses.Append(tally))
+        {
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow - TimeSpan.FromMinutes(1));
+        }
+        return uses;
+    }
+
+    /// <summary>Rename's box opened at the end of a piece of the active file and the new name typed, Enter left to the
+    /// caller; nothing waited for but the box, so writes held meanwhile stay held.</summary>
+    private static void OpenRenameBox(MainWindow window, string after, string name)
+    {
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, AppActions.Rename, settle: false);
+        Ui.PumpUntil(() => window.Assist.Renaming is not null, "Rename's box");
+        window.KeyTextInput(name);
+    }
+
+    private static string Text(MainWindow window) => window.EditorArea.Active?.Text.Snapshot.ToString() ?? string.Empty;
 
     /// <summary>Rename at the end of a piece of the active file, the new name typed into its box and Enter pressed, once
     /// the box has offered the files named after the type (or, when none is to be, once it has had the chance); the

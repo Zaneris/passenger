@@ -109,6 +109,7 @@ public partial class MainWindow
     private void AddActions()
     {
         actions = new ActionRegistry(Context, () => keys.Keymap, work);
+        Editors.Commands.Work = work;
         Dock.Actions = actions;
         Dock.Request = Request;
         foreach ((Button button, string id) in (ReadOnlySpan<(Button, string)>)[(BuildButton, A.Build), (RunButton, A.RunProgram), (DebugButton, A.Debug),

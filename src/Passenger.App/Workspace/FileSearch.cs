@@ -197,8 +197,12 @@ public static class FileSearch
     }
 
     /// <summary>What replacing a query's matches in one file comes to, worked out off the UI thread: an open file's edits
-    /// of the text searched, or a closed file as read and its text replaced; or why it is left as it was.</summary>
-    public sealed record Replacing(string Path, TextSnapshot? Searched, IReadOnlyList<TextEdit> Edits, FileText? Closed, string? After, string? Why);
+    /// of the text searched, or a closed file as read and its text replaced, with its length and last write time as it was
+    /// read; or why it is left as it was.</summary>
+    public sealed record Replacing(string Path, TextSnapshot? Searched, IReadOnlyList<TextEdit> Edits, FileText? Closed, string? After, string? Why)
+    {
+        public (long Length, DateTime Written)? Read { get; init; }
+    }
 
     /// <summary>Replaces every match in a file, an open one's text as the editor has it (<paramref name="open"/>), else
     /// its own read from disk, a regex's groups ($1, ${name}) filled in from each match as the Find bar's Replace fills
@@ -214,13 +218,15 @@ public static class FileSearch
         }
         try
         {
+            // Taken before the read: a write as it reads moves it.
+            (long Length, DateTime Written)? read = Stamp(path);
             if (FileText.Load(path) is not { } file)
             {
                 return new Replacing(path, null, [], null, null, null);
             }
             SearchResult found = TextSearch.FindAll(file.Text, pattern, int.MaxValue);
             return Unreplaced(found, replacement) is { } why ? new Replacing(path, null, [], null, null, why)
-                : new Replacing(path, null, [], file, Applied(file.Text, found.Replacements(replacement)), null);
+                : new Replacing(path, null, [], file, Applied(file.Text, found.Replacements(replacement)), null) { Read = read };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -234,7 +240,7 @@ public static class FileSearch
     public sealed record Written(string Path, TextSnapshot? Before, TextSnapshot? After, string? Converted, string? Refused);
 
     /// <summary>Writes a closed file's replaced text in its own encoding, off the UI thread: null when the replace leaves its
-    /// text as it was.</summary>
+    /// text as it was; left as it is, with why, when it was written since it was read.</summary>
     public static Written? Write(Replacing plan)
     {
         if (plan is not { Closed: { } file, After: { } after } || after == file.Text)
@@ -243,6 +249,10 @@ public static class FileSearch
         }
         try
         {
+            if (Stamp(plan.Path) != plan.Read)
+            {
+                return new Written(plan.Path, null, null, null, ChangedWhy);
+            }
             string? converted = FileText.Save(plan.Path, after, file.Encoding, file.HasBom, file.CrBreaks).Converted;
             return new Written(plan.Path, TextSnapshot.From(file.Text), TextSnapshot.From(after), converted, null);
         }
@@ -265,6 +275,16 @@ public static class FileSearch
         FileNotFoundException or DirectoryNotFoundException => "gone",
         _ => error.Message,
     };
+
+    /// <summary>Why a file written since it was searched is left as it was.</summary>
+    public const string ChangedWhy = "edited while it was searched";
+
+    /// <summary>A file's length and last write time, or null when it is not there.</summary>
+    private static (long Length, DateTime Written)? Stamp(string path)
+    {
+        FileInfo info = new(path);
+        return info.Exists ? (info.Length, info.LastWriteTimeUtc) : null;
+    }
 
     /// <summary>Why a read-only file is left as it was: one marked so on disk, or one the editor shows read-only.</summary>
     public const string ReadOnlyWhy = "read-only";

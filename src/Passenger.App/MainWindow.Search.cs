@@ -242,7 +242,7 @@ public partial class MainWindow
                 {
                     if (Editors.Find(plan.Path) is not { HoldsText: true } open || !ReferenceEquals(open.Text.Snapshot, searched))
                     {
-                        refused.Add((plan.Path, "edited while it was searched"));
+                        refused.Add((plan.Path, FileSearch.ChangedWhy));
                     }
                     else if (plan.Edits.Count > 0)
                     {
@@ -257,7 +257,20 @@ public partial class MainWindow
                 }
             }
             recording.TakeOpen();
-            foreach (FileSearch.Written write in await BackgroundWork.Run(() => closed.Select(FileSearch.Write).OfType<FileSearch.Written>().ToList()))
+            List<FileSearch.Written> writes = closed.Count == 0 ? [] : await Editors.Commands.InTurnAsync(name, [.. closed.Select(c => c.Path)], wrote =>
+            {
+                List<FileSearch.Written> made = [];
+                foreach (FileSearch.Replacing plan in closed)
+                {
+                    if (FileSearch.Write(plan) is { } write)
+                    {
+                        made.Add(write);
+                    }
+                    wrote(plan.Path);
+                }
+                return made;
+            });
+            foreach (FileSearch.Written write in writes)
             {
                 if (write.Refused is { } why)
                 {

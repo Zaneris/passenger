@@ -45,7 +45,9 @@ public static class WorkspaceEdits
     public static async Task<string?> StaleAsync(EditorArea editors, Held? held, JsonElement edit, DateTime? since, Patience? patience = null,
         IReadOnlyCollection<string>? made = null)
     {
-        List<string> closed = [.. Shapes.WorkspaceEdit(edit).Where(c => c.Operation is null).Select(c => DocumentUris.ToPath(c.Uri)).Distinct()
+        // With the files written for the command to wait for, which the server must have read as they are, in the edit or not.
+        List<string> closed = [.. Shapes.WorkspaceEdit(edit).Where(c => c.Operation is null).Select(c => DocumentUris.ToPath(c.Uri))
+            .Concat(patience?.Awaited ?? []).Distinct()
             .Where(p => editors.Documents.All(d => d.Path != p) && File.Exists(p) && made?.Contains(p) != true)];
         // One the command saw the server hold as the disk has it, unwritten since, has had its moment.
         List<(string Path, DateTime At)> written = [.. closed.Select(p => (Path: p, At: File.GetLastWriteTimeUtc(p)))
@@ -53,8 +55,7 @@ public static class WorkspaceEdits
         // Written once the server was asked, its answer may be from the text before, whatever it holds by now.
         if (written.FirstOrDefault(f => patience is null || f.At > since) is { Path: { } meanwhile })
         {
-            return $"{Path.GetFileName(meanwhile)} changed on disk as the language server worked this out, so the places it gave there "
-                + "may be where they were before: nothing was changed; try again in a moment";
+            return ChangedMeanwhile(meanwhile);
         }
         if (written.Count > 0)
         {
@@ -88,6 +89,35 @@ public static class WorkspaceEdits
                 + "nothing was changed; try again once the server has read it";
             return patience?.Behind(unread, held, said, $"{name} on disk was still not the text the language server read after "
                 + $"{Patience.Limit.TotalSeconds:0} s, so the places it gave there would be the wrong ones: nothing was changed") ?? said;
+        }
+        return null;
+    }
+
+    /// <summary>Why an edit is not made in a file not open written once its server was asked.</summary>
+    private static string ChangedMeanwhile(string path) =>
+        $"{Path.GetFileName(path)} changed on disk as the language server worked this out, so the places it gave there "
+        + "may be where they were before: nothing was changed; try again in a moment";
+
+    /// <summary>Why the files not open an edit changes must not take it now, asked before anything changes: one a write of
+    /// is asked for or under way (an Undo's), or one written since its server was asked (<paramref name="asked"/>), where the
+    /// places it gave may be where they were before; null when none is. One the command made or wrote itself is its own.</summary>
+    private static string? Overtaken(EditorArea editors, IReadOnlyList<FileEdits> changes, CommandHistory.Recording recording, Asked? asked)
+    {
+        foreach (string path in changes.Where(c => c.Operation is null).Select(c => DocumentUris.ToPath(c.Uri)).Distinct())
+        {
+            if (editors.Find(path) is not null || recording.Owns(path))
+            {
+                continue;
+            }
+            if (editors.Commands.IsWriting(path))
+            {
+                return $"{Path.GetFileName(path)} is being written ({editors.Commands.WritingNow}), so the places the language server gave there "
+                    + "may be where they were before: nothing was changed; try again once it is written";
+            }
+            if (asked is { } sent && File.GetLastWriteTimeUtc(path) > sent.Since)
+            {
+                return ChangedMeanwhile(path);
+            }
         }
         return null;
     }
@@ -141,14 +171,18 @@ public static class WorkspaceEdits
     internal static string Unwritten(string path, Exception error) => $"{Path.GetFileName(path)} could not be written: {error.Message}";
 
     /// <summary>The edit applied within a command its caller records, which writes the files not open off the window's thread
-    /// and waits for them before it ends (<see cref="LandedAsync(CommandHistory.Recording, Action{string}?)"/>): the open
-    /// files edited and the operations made now, each file not open queued (<see cref="CommandHistory.Recording.Change"/>),
-    /// so Undo takes all of it back at once. The number of files changed. Throws <see cref="WorkspaceEditFailed"/> when its
-    /// file operations cannot all be made, found before anything changed, or when the disk refuses one on the way.</summary>
+    /// and waits for them (<see cref="LandedAsync(CommandHistory.Recording, Action{string}?)"/>): the open files edited and
+    /// the operations made now, each file not open queued (<see cref="CommandHistory.Recording.Change"/>), one step of Undo.
+    /// The number of files changed. Throws <see cref="WorkspaceEditFailed"/> when its operations cannot all be made or a file
+    /// not open was overtaken (<see cref="Overtaken"/>), before anything changed, or when the disk refuses an operation.</summary>
     public static int ApplyAsCommand(EditorArea editors, JsonElement edit, CommandHistory.Recording recording, Asked? asked = null, List<string>? dropped = null)
     {
-        recording.Naming(editors.Recording?.Invoke());
         IReadOnlyList<FileEdits> changes = Shapes.WorkspaceEdit(edit);
+        if (Overtaken(editors, changes, recording, asked) is { } overtaken)
+        {
+            throw new WorkspaceEditFailed(overtaken);
+        }
+        recording.Naming(editors.Recording?.Invoke());
         if (Refusal(editors, changes) is { } refused)
         {
             throw new WorkspaceEditFailed(refused);
@@ -516,26 +550,37 @@ public sealed class Patience
     private readonly DateTime until = DateTime.UtcNow + Limit;
     private readonly Dictionary<string, (FileStamp Stamp, string Hash)> seen = new(StringComparer.Ordinal);
     private readonly List<string> behind = [];
+    private readonly HashSet<string> awaited = new(StringComparer.Ordinal);
     private readonly Action<string?> waiting;
     private Held? held;
 
     private Patience(Action<string?> waiting) => this.waiting = waiting;
 
     /// <summary>The attempt's answer, the attempt made again each time it threw for files the server had yet to read, once
-    /// it has read them, <paramref name="waiting"/> told what it waits for meanwhile and null once it waits no more.</summary>
-    public static Task<T> RunAsync<T>(Func<Patience, Task<T>> attempt, Action<string?> waiting, CancellationToken cancel) =>
-        RunAsync(attempt, _ => false, waiting, cancel);
+    /// it has read them, <paramref name="waiting"/> told what it waits for meanwhile and null once it waits no more. Each
+    /// attempt waits first for the writes of files not open asked for before it (<paramref name="writes"/>' Undo, another
+    /// change), so its server is asked of the files as they leave them.</summary>
+    public static Task<T> RunAsync<T>(CommandHistory writes, Func<Patience, Task<T>> attempt, Action<string?> waiting, CancellationToken cancel) =>
+        RunAsync(writes, attempt, _ => false, waiting, cancel);
 
-    /// <summary>As <see cref="RunAsync{T}(Func{Patience, Task{T}}, Action{string?}, CancellationToken)"/>, the attempt also
-    /// made again when its answer is one it <paramref name="refused"/> for such files. An attempt changes nothing before its
-    /// edit is found fit, so another is as the first; its refusal once the time is spent says what it waited for.</summary>
-    public static async Task<T> RunAsync<T>(Func<Patience, Task<T>> attempt, Func<T, bool> refused, Action<string?> waiting, CancellationToken cancel)
+    /// <summary>As <see cref="RunAsync{T}(CommandHistory, Func{Patience, Task{T}}, Action{string?}, CancellationToken)"/>, the
+    /// attempt also made again when its answer is one it <paramref name="refused"/> for such files. An attempt changes nothing
+    /// before its edit is found fit, so another is as the first; its refusal once the time is spent says what it waited for.</summary>
+    public static async Task<T> RunAsync<T>(CommandHistory writes, Func<Patience, Task<T>> attempt, Func<T, bool> refused, Action<string?> waiting,
+        CancellationToken cancel)
     {
         Patience patience = new(waiting);
         try
         {
             while (true)
             {
+                if (writes.WritingNow is { } other)
+                {
+                    patience.awaited.UnionWith(writes.PathsWriting());
+                    waiting($"Waiting for {other} to write its files");
+                    await writes.WrittenAsync().WaitAsync(cancel);
+                    waiting(null);
+                }
                 patience.behind.Clear();
                 try
                 {
@@ -557,6 +602,10 @@ public sealed class Patience
             waiting(null);
         }
     }
+
+    /// <summary>The files not open written for the command to wait for before it was asked (an Undo's), which its server is to
+    /// have read as they are on disk whether its edit changes them or not.</summary>
+    internal IReadOnlyCollection<string> Awaited => awaited;
 
     /// <summary>Whether the server was seen holding a file as the disk has it, unwritten since: what it works out now is
     /// from that text, so the moment after the write is past.</summary>

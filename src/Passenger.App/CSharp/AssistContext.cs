@@ -156,7 +156,7 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
                 Say(stage);
             }
         });
-        return Patience.RunAsync(attempt, refused, stage => waits(stage is null ? null : $"{stage}…"), CancellationToken.None);
+        return Patience.RunAsync(Editors.Commands, attempt, refused, stage => waits(stage is null ? null : $"{stage}…"), CancellationToken.None);
     }
 
     private static string? NotTakenIn(IReadOnlyList<(string Path, string Project)> left) =>

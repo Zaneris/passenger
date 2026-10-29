@@ -11,15 +11,27 @@ namespace Passenger.App.Editors;
 /// of its files, or the Solution view) takes all of it back at once, the files it moved going back, every file's text
 /// as it was and the files it made gone, and Redo makes all of it again, each only while every file is still as the
 /// command left it. One that changed one open file's text alone is that file's own undo step; one file not open, with
-/// no undo of its own, is one. The files not open are read and written off the window's thread.</summary>
+/// no undo of its own, is one. The files not open are read and written off the window's thread, every write of them (a
+/// command's, Replace in Files', Undo's and Redo's) in one order (<see cref="InTurnAsync"/>).</summary>
 public sealed class CommandHistory
 {
     /// <summary>The most commands kept, the oldest going first.</summary>
     public const int Limit = 10;
 
+    /// <summary>The id the window's work of writing files not open is told under, saying which are left.</summary>
+    public const string WritingFiles = "edit.writeFiles";
+
     private readonly EditorArea editors;
     private readonly List<Command> done = [];
     private readonly List<Command> undone = [];
+    /// <summary>The commands being made, from their recording's start until it is disposed.</summary>
+    private readonly List<Recording> making = [];
+    /// <summary>The writes of files not open asked for and not yet ended, in their order.</summary>
+    private readonly List<Turn> turns = [];
+    /// <summary>Done once every write of files not open asked for so far has ended; it never faults.</summary>
+    private Task written = Task.CompletedTask;
+    private Working? writing;
+    private (Task Until, TaskCompletionSource Reached)? holdNext;
     /// <summary>The last look at a command's files not open, for taking it back or making it again (true), by path, with how
     /// many puts had begun as it looked: a later look of the same reads only a file whose length or write time moved.</summary>
     private (Command Command, bool Redo, Dictionary<string, Look> Files, int Puts)? looked;
@@ -42,6 +54,123 @@ public sealed class CommandHistory
     /// what the person types meanwhile, in any file, stays the person's own.</summary>
     public Recording RecordWrites(string name) => new(this, editors, name, ownWrites: true);
 
+    /// <summary>Where the writes of files not open are told as the window's work (<see cref="WritingFiles"/>); null tells
+    /// none.</summary>
+    public ActionWork? Work { get; set; }
+
+    /// <summary>The command being made that Undo or Redo there waits for: in a file's editor, one whose change is what that
+    /// file's next undo step would take; in the Solution view (no file), the first being made that has changed anything.</summary>
+    public Recording? Making(OpenDocument? document) => making.FirstOrDefault(r => r.Changed(document));
+
+    /// <summary>Whether a write of a file not open is asked for or under way and has yet to end.</summary>
+    public bool IsWriting(string path) => turns.Any(t => !t.Ended && t.Paths.Contains(path));
+
+    /// <summary>The files not open the writes asked for or under way write.</summary>
+    public IReadOnlyList<string> PathsWriting() => [.. turns.Where(t => !t.Ended).SelectMany(t => t.Paths)];
+
+    /// <summary>What writes files not open now, as its work says it ("Undo Rename Foo to Bar"); null when nothing does.</summary>
+    public string? WritingNow => turns.FirstOrDefault(t => !t.Ended)?.What;
+
+    /// <summary>Done once every write of files not open asked for so far has ended, whether or not it was refused.</summary>
+    public Task WrittenAsync() => written;
+
+    /// <summary>The next write of files not open waits until <paramref name="until"/> has ended before it begins, as a slow
+    /// disk keeps it, for a test of what goes on meanwhile: done once that write is waiting.</summary>
+    public Task HoldNextWrite(Task until)
+    {
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        holdNext = (until, reached);
+        return reached.Task;
+    }
+
+    /// <summary>Writes files not open off the window's thread once every write asked for before it has ended, the window's
+    /// work saying which of <paramref name="paths"/> are left under <paramref name="what"/> until it ends; the write is
+    /// told of each file it has written, from its own thread. What it answers.</summary>
+    internal Task<T> InTurnAsync<T>(string what, IReadOnlyCollection<string> paths, Func<Action<string>, T> write)
+    {
+        UiThread.Check();
+        Turn turn = new(what, new HashSet<string>(paths, PathNames.Comparer), [.. paths]);
+        turns.Add(turn);
+        Say();
+        Task before = written;
+        (Task Until, TaskCompletionSource Reached)? hold = holdNext;
+        holdNext = null;
+        Task<T> work = BackgroundWork.Run(async () =>
+        {
+            await before;
+            if (hold is { } held)
+            {
+                held.Reached.TrySetResult();
+                await held.Until;
+            }
+            return write(path => UiThread.Post(() => Wrote(turn, path)));
+        });
+        turn.Work = work;
+        written = work.ContinueWith(static _ => { }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return EndedAsync(work, turn);
+    }
+
+    private async Task<T> EndedAsync<T>(Task<T> work, Turn turn)
+    {
+        try
+        {
+            return await work;
+        }
+        finally
+        {
+            turns.Remove(turn);
+            Say();
+        }
+    }
+
+    private void Wrote(Turn turn, string path)
+    {
+        if (turn.Left.Remove(path) && turns.Contains(turn))
+        {
+            Say();
+        }
+    }
+
+    /// <summary>The window's work while files not open are written: the first write under way and the files it has left.</summary>
+    private void Say()
+    {
+        if (turns.Count == 0)
+        {
+            // Its words go with it: what the change says once written is said after.
+            writing?.Say(string.Empty);
+            writing?.Dispose();
+            writing = null;
+            return;
+        }
+        Turn first = turns[0];
+        List<string> left = [.. first.Left.Select(Path.GetFileName).OfType<string>()];
+        string stage = left.Count == 0 ? $"{first.What}: writing…"
+            : $"{first.What}: writing {string.Join(", ", left.Take(3))}{(left.Count > 3 ? $" and {left.Count - 3} more" : string.Empty)}…";
+        if (writing is null)
+        {
+            writing = Work?.Begin(WritingFiles, stage, stoppable: false);
+        }
+        else if (writing.Stage != stage)
+        {
+            writing.Say(stage);
+        }
+    }
+
+    /// <summary>A write of files not open asked for: what it is, the files it writes, those it has yet to, and the work
+    /// writing them, ended once its last write has (before the window has heard).</summary>
+    private sealed class Turn(string what, HashSet<string> paths, List<string> left)
+    {
+        public string What { get; } = what;
+
+        public HashSet<string> Paths { get; } = paths;
+
+        public List<string> Left { get; } = left;
+
+        public Task? Work { get; set; }
+
+        public bool Ended => Work?.IsCompleted == true;
+    }
+
     /// <summary>The command Undo takes back there: in a file's editor, the one whose change is that file's next undo
     /// step; in the Solution view (no file), the latest. Null when Undo is the file's own.</summary>
     public Command? ToUndo(OpenDocument? document) => Find(done, document, redo: false);
@@ -60,12 +189,24 @@ public sealed class CommandHistory
     /// <summary>Why a command cannot be taken back (or made again) now, naming the first file changed or moved since, or
     /// saying the history has let it go; null when it can. What its parts read of the disk at length (<see cref="Part.Read"/>)
     /// and its files not open are looked at off the window's thread, a file read only when its length or last write time
-    /// moved since the last look at it; an Undo or Redo under way is waited out first.</summary>
+    /// moved since the last look at it; an Undo or Redo under way, and the writes asked for of its files, are waited out
+    /// first.</summary>
     public async Task<string?> BlockedAsync(Command command, bool redo)
     {
-        while (putting is { } other)
+        while (true)
         {
-            await other.Ended;
+            if (putting is { } other)
+            {
+                await other.Ended;
+            }
+            else if (Closed(command, redo).Any(f => IsWriting(f.Path)))
+            {
+                await written;
+            }
+            else
+            {
+                break;
+            }
         }
         foreach (Part part in command.Parts)
         {
@@ -99,8 +240,9 @@ public sealed class CommandHistory
             {
                 return (changed, false);
             }
-            // Another put begun since the look may have written what it found.
-            if (putting is null && looked is { } look && look.Command == command && look.Redo == redo && look.Puts == puts)
+            // Another put begun since the look, or a write of its files asked for since, may have written what it found.
+            if (putting is null && looked is { } look && look.Command == command && look.Redo == redo && look.Puts == puts
+                && !Closed(command, redo).Any(f => IsWriting(f.Path)))
             {
                 looks = look.Files;
                 break;
@@ -232,7 +374,7 @@ public sealed class CommandHistory
         {
             return unmoved;
         }
-        if (writes.Count > 0 && await BackgroundWork.Run(() => Write(writes)) is { } unwritten)
+        if (writes.Count > 0 && await InTurnAsync($"Undo {command.Name}", [.. writes.Select(w => w.Path)], wrote => Write(writes, wrote)) is { } unwritten)
         {
             return unwritten;
         }
@@ -260,7 +402,7 @@ public sealed class CommandHistory
             .. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => (t.Path, t.After, (Look?)looks[t.Path])),
         ];
         Step(command, redo: true);
-        if (writes.Count > 0 && await BackgroundWork.Run(() => Write(writes)) is { } unwritten)
+        if (writes.Count > 0 && await InTurnAsync($"Redo {command.Name}", [.. writes.Select(w => w.Path)], wrote => Write(writes, wrote)) is { } unwritten)
         {
             return unwritten;
         }
@@ -328,15 +470,7 @@ public sealed class CommandHistory
     {
         foreach (TextChange text in command.Texts.Where(t => IsOpen(t.Document)))
         {
-            OpenDocument document = text.Document!;
-            if (document == editors.Active)
-            {
-                editors.CodeEditor.TryExecute(redo ? EditorActions.Redo : EditorActions.Undo);
-            }
-            else if ((redo ? document.Text.Redo() : document.Text.Undo()) is { } carets)
-            {
-                document.Selections = carets;
-            }
+            editors.Step(text.Document!, redo);
         }
     }
 
@@ -400,15 +534,17 @@ public sealed class CommandHistory
         return info.Exists ? (info.Length, info.LastWriteTimeUtc) : null;
     }
 
-    /// <summary>Writes files not open, off the window's thread, in order: each stored as a look found it, or as UTF-8 for
-    /// one a command made. Null once each is written, else the first that could not be, with why.</summary>
-    private static string? Write(IReadOnlyList<(string Path, TextSnapshot Text, Look? Stored)> files)
+    /// <summary>Writes files not open, off the window's thread, in order, <paramref name="wrote"/> told of each: each stored
+    /// as a look found it, or as UTF-8 for one a command made. Null once each is written, else the first that could not be,
+    /// with why.</summary>
+    private static string? Write(IReadOnlyList<(string Path, TextSnapshot Text, Look? Stored)> files, Action<string> wrote)
     {
         foreach ((string path, TextSnapshot text, Look? stored) in files)
         {
             try
             {
                 FileText.Save(path, text.ToString(), stored?.Encoding ?? new UTF8Encoding(false), stored?.HasBom ?? false, stored?.CrBreaks ?? false);
+                wrote(path);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
@@ -532,6 +668,7 @@ public sealed class CommandHistory
         private readonly Dictionary<string, string> madeAt = new(PathNames.Comparer);
         /// <summary>What names its writes to files not open in Local History, held until they are made.</summary>
         private readonly List<IDisposable> naming = [];
+        private readonly TaskCompletionSource ending = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly List<(string From, string To)> moves = [];
         private readonly List<Part> parts = [];
         private List<TextChange>? openTaken;
@@ -547,7 +684,39 @@ public sealed class CommandHistory
             this.ownWrites = ownWrites;
             open = ownWrites ? [] : editors.Documents.ToDictionary(d => d, d => (d.Path, d.Text.NextUndo, d.Text.Snapshot));
             editors.Moved += OnMoved;
+            history.making.Add(this);
         }
+
+        /// <summary>The command's name, as Undo names it.</summary>
+        public string Name => name;
+
+        /// <summary>Done once the recording is disposed, the command kept when it is one.</summary>
+        public Task Ended => ending.Task;
+
+        /// <summary>Whether a file not open is one the command has made, watched or written: a change of it the command
+        /// makes later is on its own text.</summary>
+        public bool Owns(string path) => closed.ContainsKey(Began(path)) || madeAt.ContainsKey(path);
+
+        /// <summary>Whether it has changed what Undo there would take: in a file's editor (<paramref name="document"/>), the
+        /// change that file's next undo step takes; with no file, anything.</summary>
+        internal bool Changed(OpenDocument? document)
+        {
+            if (document is null)
+            {
+                return moves.Count > 0 || closed.Count > 0 || queued.Count > 0 || madeAt.Count > 0 || parts.Count > 0
+                    || (ownWrites ? wrote.Count > 0 || writing.Any(w => w.Key.Text.NextUndo != w.Value.Step) : Steps().Count > 0);
+            }
+            object? next = document.Text.NextUndo;
+            if (ownWrites)
+            {
+                return (wrote.TryGetValue(document, out TextChange? made) && made.Step == next)
+                    || (writing.TryGetValue(document, out (string Path, object? Step, TextSnapshot Text) watched) && watched.Step != next);
+            }
+            return Steps().Any(t => t.Document == document && t.Step == next);
+        }
+
+        /// <summary>The open files' changes as it stands: those taken, unless it has said it writes another since.</summary>
+        private List<TextChange> Steps() => writes || openTaken is null ? OpenChanges() : openTaken;
 
         /// <summary>A file not open the command is about to write, at its path now: its text now, for the undo to put back;
         /// or one not there yet that it is about to make, for the undo to take away. One the command moved is kept by the
@@ -669,7 +838,8 @@ public sealed class CommandHistory
             queued.Clear();
             try
             {
-                (List<ChangeMade> made, (string Path, Exception Refused)? refused) = await BackgroundWork.Run(() => Make(files));
+                (List<ChangeMade> made, (string Path, Exception Refused)? refused) =
+                    await history.InTurnAsync(name, [.. files.Select(f => f.At).Distinct(PathNames.Comparer)], wrote => Make(files, wrote));
                 Took(made);
                 return refused;
             }
@@ -691,10 +861,24 @@ public sealed class CommandHistory
             }
             ended = true;
             editors.Moved -= OnMoved;
+            history.making.Remove(this);
+            try
+            {
+                Finish();
+            }
+            finally
+            {
+                ending.SetResult();
+            }
+        }
+
+        /// <summary>Makes what it queued and never wrote, and keeps the command when it is one.</summary>
+        private void Finish()
+        {
             if (queued.Count > 0)
             {
                 // Changes the command queued but never wrote, as when it stopped on a refusal after them, made as it ends.
-                Took(Make([.. queued.Select(q => (q.Began, Now(q.Began), q.Change))]).Made);
+                Took(Make([.. queued.Select(q => (q.Began, Now(q.Began), q.Change))], _ => { }).Made);
                 queued.Clear();
             }
             Unname();
@@ -765,9 +949,10 @@ public sealed class CommandHistory
         }
 
         /// <summary>Makes queued changes of files not open on the calling thread, in order: each file read once, its changes
-        /// run over its text in turn and written once, in its encoding, where it changed. The first the disk refused, with
-        /// why, ends it.</summary>
-        private static (List<ChangeMade> Made, (string Path, Exception Refused)? Refused) Make(IReadOnlyList<(string Began, string At, Func<string, string> Change)> files)
+        /// run over its text in turn and written once, in its encoding, where it changed, <paramref name="wrote"/> told. The
+        /// first the disk refused, with why, ends it.</summary>
+        private static (List<ChangeMade> Made, (string Path, Exception Refused)? Refused) Make(IReadOnlyList<(string Began, string At, Func<string, string> Change)> files,
+            Action<string> wrote)
         {
             List<ChangeMade> made = [];
             foreach (IGrouping<string, (string Began, string At, Func<string, string> Change)> file in files.GroupBy(f => f.Began, PathNames.Comparer))
@@ -787,6 +972,7 @@ public sealed class CommandHistory
                     }
                     TextSnapshot before = TextSnapshot.From(loaded.Text);
                     made.Add(new ChangeMade(file.Key, at, before, changed ? TextSnapshot.From(text) : before, changed));
+                    wrote(at);
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {

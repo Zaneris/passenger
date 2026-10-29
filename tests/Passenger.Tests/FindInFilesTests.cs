@@ -539,6 +539,61 @@ public sealed class FindInFilesTests : IDisposable
         }
     }
 
+    /// <summary>Two Undo presses made before the first one's question shows give one question, for the latest replace, and
+    /// once it is answered the next, for the replace before it: never two questions about one replace, the second then
+    /// refused as taken back already.</summary>
+    [AvaloniaFact]
+    public void Two_undo_presses_before_the_first_asks_give_one_question_then_the_one_for_the_replace_before()
+    {
+        string alpha = Path.Combine(folder, "Alpha.cs");
+        string alphaBefore = File.ReadAllText(alpha);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            string first = Replace("count", "total");
+            string second = Replace("total", "sum");
+            List<string> asked = [];
+            TaskCompletionSource<bool> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            window.Confirm = (_, text, _) =>
+            {
+                asked.Add(text);
+                return answer.Task;
+            };
+            string row = PathNames.Canonical(alpha);
+            window.ExplorerView.Reveal(row);
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == row));
+            Ui.Run(window, EditorActions.Undo, settle: false);
+            Ui.Run(window, EditorActions.Undo, settle: false);
+            Ui.WaitFor(() => asked.Count > 0, "Undo's question");
+            Ui.Hold(TimeSpan.FromMilliseconds(300), "a moment in which the second press would ask too");
+            Assert.True(asked.Count == 1, $"Two Undo presses asked {asked.Count} questions at once: [{string.Join(" | ", asked)}]");
+            Assert.StartsWith($"Undo {second}?", asked[0], StringComparison.Ordinal);
+
+            TaskCompletionSource<bool> answered = answer;
+            answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            answered.SetResult(true);
+            Ui.WaitFor(() => asked.Count == 2, () => $"the second press's question once the first Undo was made; the status says '{window.Status}'");
+            Assert.StartsWith($"Undo {first}?", asked[1], StringComparison.Ordinal);
+            answer.SetResult(true);
+            Ui.WaitFor(() => window.Status == $"Undone: {first}", () => $"the second Undo; the status says '{window.Status}'");
+            Assert.Equal(alphaBefore, File.ReadAllText(alpha));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // A replace across the folder's files: its name in Undo.
+        string Replace(string what, string with)
+        {
+            SearchQuery query = new(what, WholeWords: true);
+            FilesFound found = Ui.Await(window.FindInFilesAsync(query, new SearchScope(SearchScopeKind.Directory, null, folder, true, null, null), CancellationToken.None), $"the search for {what}");
+            Assert.Empty(Ui.Await(window.ReplaceInFilesAsync(query, with, found), $"the replace of {what}").Refused);
+            return FilesReplaced.Title(query, with);
+        }
+    }
+
     /// <summary>Undo of a replace across closed files is refused, naming the file, when one changed while its question was
     /// open, every file left as it was; once that file is as the replace left it again, Undo takes the replace back.</summary>
     [AvaloniaFact]

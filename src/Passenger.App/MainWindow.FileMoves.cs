@@ -377,15 +377,57 @@ public partial class MainWindow
 
     /// <summary>Undo or Redo that reaches a command of several files or of a file moved (a rename) takes all of it back
     /// or makes all of it again, once the person agrees, said done once the files not open it wrote have landed; in an
-    /// editor, only when that command is its file's next step. False when Undo there is the file's own.</summary>
+    /// editor, only when that command is its file's next step. One pressed while another is under way, or while a command
+    /// it would take is being made, waits for it and then takes what it reaches then. False when Undo there is the file's
+    /// own.</summary>
     private bool UndoCommand(bool redo, OpenDocument? document)
     {
-        if ((redo ? Editors.Commands.ToRedo(document) : Editors.Commands.ToUndo(document)) is not { } command)
+        if (undoing.IsCompleted && Editors.Commands.Making(document) is null)
         {
-            return false;
+            if ((redo ? Editors.Commands.ToRedo(document) : Editors.Commands.ToUndo(document)) is not { } command)
+            {
+                return false;
+            }
+            undoing = UndoCommandAsync(command, redo);
         }
-        IdeErrors.Observe(UndoCommandAsync(command, redo));
+        else
+        {
+            undoing = UndoInTurnAsync(undoing, redo, document);
+        }
+        IdeErrors.Observe(undoing);
         return true;
+    }
+
+    /// <summary>The Undo or Redo of a command under way, its question and its writes, which the next waits for.</summary>
+    private Task undoing = Task.CompletedTask;
+
+    /// <summary>Undo or Redo pressed while another was under way (<paramref name="before"/>) or while a command it would take
+    /// was being made: once those have ended, the command it reaches then, else the file's own step.</summary>
+    private async Task UndoInTurnAsync(Task before, bool redo, OpenDocument? document)
+    {
+        string verb = redo ? "Redo" : "Undo";
+        if (!before.IsCompleted)
+        {
+            status.Text = $"{verb} waits for the one under way…";
+            await Task.WhenAny(before);
+        }
+        while (Editors.Commands.Making(document) is { } making)
+        {
+            status.Text = $"{verb} waits for {making.Name} to be made…";
+            await making.Ended;
+        }
+        if (document is not null && !Editors.Documents.Contains(document))
+        {
+            return;
+        }
+        if ((redo ? Editors.Commands.ToRedo(document) : Editors.Commands.ToUndo(document)) is { } command)
+        {
+            await UndoCommandAsync(command, redo);
+        }
+        else if (document is not null)
+        {
+            Editors.Step(document, redo);
+        }
     }
 
     private async Task UndoCommandAsync(CommandHistory.Command command, bool redo)
