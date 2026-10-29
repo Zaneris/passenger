@@ -147,11 +147,10 @@ public static partial class ContainerSecrets
 
     /// <summary>A program's arguments given one by one (an Aspire resource's), each masked as
     /// <see cref="CommandLine(System.Diagnostics.ProcessStartInfo)"/> masks a child's.</summary>
-    public static IReadOnlyList<string> Arguments(IReadOnlyList<string> words)
-    {
-        Func<string, string> masking = Masking();
-        return [.. words.Select((word, i) => Argument(word, i == 0 ? null : words[i - 1], masking))];
-    }
+    public static IReadOnlyList<string> Arguments(IReadOnlyList<string> words) => Arguments(words, Masking());
+
+    private static string[] Arguments(IReadOnlyList<string> words, Func<string, string> masking) =>
+        [.. words.Select((word, i) => Argument(word, i == 0 ? null : words[i - 1], masking))];
 
     /// <summary>A variable's value as it is shown.</summary>
     public static string Shown(string name, string value) => value.Length > 0 && Secret(name) ? Masked : InValue(value);
@@ -486,13 +485,20 @@ public static partial class ContainerSecrets
         return equals <= 0 ? entry : $"{entry[..(equals + 1)]}{Shown(entry[..equals], entry[(equals + 1)..])}";
     }
 
-    /// <summary>Masks, in place, every environment list in what <c>docker inspect</c> said: each <c>Env</c> array of
-    /// "NAME=value" strings anywhere in it (a container's and an image's Config, an older image's ContainerConfig).</summary>
-    public static void Mask(JsonNode? node)
+    /// <summary>Masks, in place, every environment list and command line in what <c>docker inspect</c> said, anywhere in it
+    /// (a container's and an image's Config, an older image's ContainerConfig): each <c>Env</c> array of "NAME=value"
+    /// strings, and a program's words as <see cref="Arguments(IReadOnlyList{string})"/> masks them,
+    /// one array read on from the other as the engine runs them: a container's <c>Path</c> then <c>Args</c>, a Config's
+    /// <c>Entrypoint</c> then <c>Cmd</c>, and a health check's <c>Test</c>.</summary>
+    public static void Mask(JsonNode? node) => Mask(node, Masking());
+
+    private static void Mask(JsonNode? node, Func<string, string> masking)
     {
         switch (node)
         {
             case JsonObject holder:
+                InCommand(holder, masking, "Path", "Args");
+                InCommand(holder, masking, "Entrypoint", "Cmd");
                 foreach ((string name, JsonNode? value) in holder.ToList())
                 {
                     if (name == "Env" && value is JsonArray entries)
@@ -504,19 +510,65 @@ public static partial class ContainerSecrets
                                 entries[i] = Entry(entry);
                             }
                         }
+                        continue;
                     }
-                    else
+                    if (name == "Healthcheck" && value is JsonObject check)
                     {
-                        Mask(value);
+                        InCommand(check, masking, "Test");
                     }
+                    Mask(value, masking);
                 }
                 break;
             case JsonArray items:
                 foreach (JsonNode? item in items)
                 {
-                    Mask(item);
+                    Mask(item, masking);
                 }
                 break;
+        }
+    }
+
+    /// <summary>Masks, in place, the words of one command line that an object's members hold in turn (a string as one
+    /// word, an array's strings each), each with the word before it, even where that word is the member before's.</summary>
+    private static void InCommand(JsonObject holder, Func<string, string> masking, params ReadOnlySpan<string> members)
+    {
+        List<(string Member, int At)> places = [];
+        List<string> words = [];
+        foreach (string member in members)
+        {
+            if (holder[member] is JsonValue alone && alone.TryGetValue(out string? one))
+            {
+                places.Add((member, -1));
+                words.Add(one);
+            }
+            else if (holder[member] is JsonArray items)
+            {
+                for (int i = 0; i < items.Count; i++)
+                {
+                    if (items[i] is JsonValue item && item.TryGetValue(out string? word))
+                    {
+                        places.Add((member, i));
+                        words.Add(word);
+                    }
+                }
+            }
+        }
+        string[] shown = Arguments(words, masking);
+        for (int i = 0; i < shown.Length; i++)
+        {
+            if (string.Equals(shown[i], words[i], StringComparison.Ordinal))
+            {
+                continue;
+            }
+            (string member, int at) = places[i];
+            if (at < 0)
+            {
+                holder[member] = shown[i];
+            }
+            else
+            {
+                holder[member]!.AsArray()[at] = shown[i];
+            }
         }
     }
 
@@ -527,8 +579,9 @@ public static partial class ContainerSecrets
     private static readonly HashSet<string> Looked = new(StringComparer.Ordinal);
 
     /// <summary>Inspect's copies an earlier Passenger wrote before it masked them, deleted, once a process for each state
-    /// folder: each copy whose masking would change it (a secret written whole), so a copy written masked, which masking
-    /// leaves as it is, stays. Reads the disk, so off the UI thread. The paths deleted, canonical; none the second time.</summary>
+    /// folder: each copy whose masking (<see cref="Mask(JsonNode)"/>) would change it, a secret written whole in its
+    /// environment or its command line, so a copy written masked, which masking leaves as it is, stays. Reads the disk, so
+    /// off the UI thread. The paths deleted, canonical; none the second time.</summary>
     public static IReadOnlyList<string> ForgetUnmasked(string stateFolder)
     {
         lock (Looked)

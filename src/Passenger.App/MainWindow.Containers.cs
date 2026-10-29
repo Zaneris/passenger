@@ -281,7 +281,8 @@ public partial class MainWindow
     }
 
     /// <summary>Inspect: what the engine says of a container, image, volume or network, as JSON in a read-only tab, each
-    /// secret's value in its environment masked (<see cref="ContainerSecrets"/>), so no copy of it is written to disk.</summary>
+    /// secret in its environment and its command lines masked
+    /// (<see cref="ContainerSecrets.Mask(System.Text.Json.Nodes.JsonNode)"/>), so no copy of it is written to disk.</summary>
     private async Task InspectAsync(ContainerRow row)
     {
         IReadOnlyList<string> words = row.Container is { } container ? ["inspect", container.Id]

@@ -14,12 +14,15 @@ namespace Passenger.Tests;
 /// <summary>The Containers window's Details tab and Inspect, as a person reads a container whose health check fails: a
 /// Compose service's row shows its container's environment with each secret masked (a secret's variable, a URL's password,
 /// a connection string's), its health check's last outputs (so "unhealthy" says why), its port as a link, its volume,
-/// network and the service it waits for; and Inspect's JSON masks the secrets too, in its tab and in the copy it writes,
-/// a copy an earlier Passenger wrote unmasked removed. The engine's test skips, saying why, where no Linux engine runs;
-/// everything it makes carries the run's label.</summary>
+/// network and the service it waits for; and Inspect's JSON masks the secrets too, its environment's and its command
+/// line's, in its tab and in the copy it writes, a copy an earlier Passenger wrote unmasked removed. The engine's test
+/// skips, saying why, where no Linux engine runs; everything it makes carries the run's label.</summary>
 public sealed class ContainerDetailsTests
 {
     private const string Secret = "hunter2";
+
+    /// <summary>A secret the app's command line gives as the word after its flag.</summary>
+    private const string FlagSecret = "swordfish";
 
     [AvaloniaFact]
     public void A_services_details_mask_its_secrets_say_why_it_is_unhealthy_and_inspect_never_writes_the_secret()
@@ -38,7 +41,8 @@ public sealed class ContainerDetailsTests
                 healthcheck: { test: ["CMD", "true"], interval: 1s, retries: 30 }
               app:
                 image: {{Docker.Image}}
-                command: ["sleep", "600"]
+                entrypoint: ["sh", "-c", "exec sleep 600", "app", "--Password={{Secret}}", "--password"]
+                command: ["{{FlagSecret}}", "--port", "8080"]
                 labels: { {{label}} }
                 environment: { DB_PASSWORD: {{Secret}}, GREETING: hello, DATABASE_URL: "postgres://app:{{Secret}}@db/shop", SHOP_DB: "Host=db;Password={{Secret}}" }
                 ports: ["8080"]
@@ -85,7 +89,8 @@ public sealed class ContainerDetailsTests
         Assert.Contains(details.Mounts, m => m.Type == "volume" && m.Destination == "/data" && m.Source == $"{project}_data");
         Assert.Contains(details.Networks, n => n.Name == $"{project}_default" && n.Address is not null);
         string[] shown = Words(view.Details);
-        Assert.True(!shown.Any(w => w.Contains(Secret, StringComparison.Ordinal)), $"The Details tab shows the password: {string.Join(" | ", shown)}");
+        Assert.True(!shown.Any(w => w.Contains(Secret, StringComparison.Ordinal) || w.Contains(FlagSecret, StringComparison.Ordinal)),
+            $"The Details tab shows a password: {string.Join(" | ", shown)}");
         Assert.Contains(ContainerSecrets.Masked, shown);
         Assert.True(shown.Any(w => w.Contains("probe-said-no", StringComparison.Ordinal)), $"The Details tab does not say what the failing health check printed: {string.Join(" | ", shown)}");
 
@@ -106,16 +111,24 @@ public sealed class ContainerDetailsTests
         Assert.Contains($"\"DB_PASSWORD={ContainerSecrets.Masked}\"", text, StringComparison.Ordinal);
         Assert.Contains("\"GREETING=hello\"", text, StringComparison.Ordinal);
         Assert.True(!text.Contains(Secret, StringComparison.Ordinal), "Inspect's tab shows the password");
+        Assert.True(!text.Contains(FlagSecret, StringComparison.Ordinal), "Inspect's tab shows the password given after --password");
+        System.Text.Json.Nodes.JsonNode said = System.Text.Json.Nodes.JsonNode.Parse(text)![0]!;
+        Assert.Equal(["-c", "exec sleep 600", "app", $"--Password={ContainerSecrets.Masked}", "--password", ContainerSecrets.Masked, "--port", "8080"],
+            said["Args"]!.AsArray().Select(word => word!.GetValue<string>()));
+        Assert.Equal([ContainerSecrets.Masked, "--port", "8080"], said["Config"]!["Cmd"]!.AsArray().Select(word => word!.GetValue<string>()));
         foreach (string file in Directory.EnumerateFiles(Path.Combine(window.StateFolder, "cache", "containers"), "*", SearchOption.AllDirectories))
         {
-            Assert.True(!File.ReadAllText(file).Contains(Secret, StringComparison.Ordinal), $"{file}, which Passenger wrote, holds the password");
+            string written = File.ReadAllText(file);
+            Assert.True(!written.Contains(Secret, StringComparison.Ordinal) && !written.Contains(FlagSecret, StringComparison.Ordinal),
+                $"{file}, which Passenger wrote, holds a password");
         }
         window.Close();
     }
 
-    /// <summary>Inspect's copies an earlier Passenger wrote before it masked them hold secrets whole: the window's first use of
-    /// the Containers window removes them (a tab that showed one closes, the status bar saying why), and keeps a copy written
-    /// masked, which still opens. No engine is needed: the copies are only files under the state's cache.</summary>
+    /// <summary>Inspect's copies an earlier Passenger wrote before it masked them hold secrets whole, in their environment or
+    /// only in their command line: the window's first use of the Containers window removes them (a tab that showed one
+    /// closes, the status bar saying why), and keeps a copy written masked, which still opens. No engine is needed: the
+    /// copies are only files under the state's cache.</summary>
     [AvaloniaFact]
     public void Inspect_copies_written_before_secrets_were_masked_are_removed_and_those_written_masked_kept()
     {
@@ -124,8 +137,10 @@ public sealed class ContainerDetailsTests
         Directory.CreateDirectory(copies);
         string old = Path.Combine(copies, "shop-db-1.json");
         string masked = Path.Combine(copies, "shop-web-1.json");
+        string command = Path.Combine(copies, "shop-api-1.json");
         File.WriteAllText(old, $"[{{ \"Config\": {{ \"Env\": [\"POSTGRES_PASSWORD={Secret}\", \"PGDATA=/data\"] }} }}]\n");
-        File.WriteAllText(masked, $"[{{ \"Config\": {{ \"Env\": [\"DB_PASSWORD={ContainerSecrets.Masked}\", \"DATABASE_URL=postgres://app:{ContainerSecrets.Masked}@db/shop\", \"GREETING=hello\"] }} }}]\n");
+        File.WriteAllText(masked, $"[{{ \"Path\": \"/app/web\", \"Args\": [\"--password\", \"{ContainerSecrets.Masked}\", \"--port\", \"8080\"], \"Config\": {{ \"Entrypoint\": [\"/app/web\", \"--Password={ContainerSecrets.Masked}\"], \"Cmd\": null, \"Env\": [\"DB_PASSWORD={ContainerSecrets.Masked}\", \"DATABASE_URL=postgres://app:{ContainerSecrets.Masked}@db/shop\", \"GREETING=hello\"] }} }}]\n");
+        File.WriteAllText(command, $"[{{ \"Path\": \"/app/api\", \"Args\": [\"--password\", \"{FlagSecret}\"], \"Config\": {{ \"Cmd\": [\"--password\", \"{FlagSecret}\"], \"Env\": [\"DB_PASSWORD={ContainerSecrets.Masked}\"] }} }}]\n");
         string engineFolder = Directory.CreateDirectory(Path.Combine(state, "engine")).FullName;
         string cli;
         if (OperatingSystem.IsWindows())
@@ -152,9 +167,10 @@ public sealed class ContainerDetailsTests
             window.ShowToolWindow(ToolWindowIds.Containers);
             Ui.Settle();
             Assert.False(File.Exists(old), "Inspect's copy written before masking, holding a password, is still on disk");
-            Assert.True(File.Exists(masked), "Inspect's copy written masked was removed with the old one");
+            Assert.False(File.Exists(command), "Inspect's copy written before its command line was masked, holding a password, is still on disk");
+            Assert.True(File.Exists(masked), "Inspect's copy written masked was removed with the old ones");
             Assert.DoesNotContain(window.EditorArea.Documents, d => d.Path == PathNames.Canonical(old));
-            Assert.Equal("Removed shop-db-1.json, Inspect's copy written before Passenger masked the secrets in it", window.Status);
+            Assert.Equal("Removed 2 of Inspect's copies written before Passenger masked the secrets in them", window.Status);
 
             window.OpenFile(masked);
             Ui.Settle();

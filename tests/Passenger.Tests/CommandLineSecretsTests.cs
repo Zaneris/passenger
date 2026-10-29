@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Passenger.App.Containers;
 using Passenger.Core;
 
@@ -5,8 +6,9 @@ namespace Passenger.Tests;
 
 /// <summary>A command line shown to a person or an agent through the one mask: a running program's as the system gives it
 /// (<see cref="ContainerSecrets.CommandLines"/>), one Passenger starts (<see cref="ContainerSecrets.CommandLine"/>), one a
-/// program echoes (<see cref="ContainerSecrets.InSaid"/>) and an Aspire resource's arguments: each word on its own, so a
-/// secret's value goes and the words after it stay, and the word after a flag naming a secret goes too.</summary>
+/// program echoes (<see cref="ContainerSecrets.InSaid"/>), an Aspire resource's arguments and Inspect's command lines: each
+/// word on its own, so a secret's value goes and the words after it stay, and the word after a flag naming a secret goes
+/// too.</summary>
 [Collection(Beside.Name)]
 public sealed class CommandLineSecretsTests
 {
@@ -66,6 +68,31 @@ public sealed class CommandLineSecretsTests
             ContainerSecrets.InSaid("tool --password-stdin --token 'two words' --verbose\nnext --api-key sk-live-123"));
         string[] arguments = ["run", "--api-key", Masked, "--port", "5000", "--password", ""];
         Assert.Equal(arguments, ContainerSecrets.Arguments(["run", "--api-key", "sk-live-123", "--port", "5000", "--password", ""]));
+    }
+
+    /// <summary>Inspect's command lines are masked as a program's arguments are, an array read on from the one it continues
+    /// (a container's Args from its Path, a Config's Cmd from its Entrypoint) and a health check's Test on its own, and a
+    /// copy written so comes back as it was.</summary>
+    [Fact]
+    public void Inspects_command_lines_are_masked_as_a_programs_arguments_are()
+    {
+        JsonNode said = JsonNode.Parse("""
+            [{ "Path": "/app/shop", "Args": ["--password", "hunter2", "--port", "5000"],
+               "Config": { "Entrypoint": ["/app/shop", "--api-key"], "Cmd": ["sk-live-123", "--Password=hunter2", "--verbose"],
+                           "Healthcheck": { "Test": ["CMD", "redis-cli", "--pass", "hunter2", "ping"] } } }]
+            """)!;
+        ContainerSecrets.Mask(said);
+        JsonNode container = said[0]!;
+        Assert.Equal("/app/shop", (string?)container["Path"]);
+        Assert.Equal(["--password", Masked, "--port", "5000"], Words(container["Args"]));
+        Assert.Equal(["/app/shop", "--api-key"], Words(container["Config"]!["Entrypoint"]));
+        Assert.Equal([Masked, $"--Password={Masked}", "--verbose"], Words(container["Config"]!["Cmd"]));
+        Assert.Equal(["CMD", "redis-cli", "--pass", Masked, "ping"], Words(container["Config"]!["Healthcheck"]!["Test"]));
+        string masked = said.ToJsonString();
+        ContainerSecrets.Mask(said);
+        Assert.Equal(masked, said.ToJsonString());
+
+        static string[] Words(JsonNode? array) => [.. array!.AsArray().Select(word => (string)word!)];
     }
 
     /// <summary>A password, an API key, a connection string's password and a URL's are masked where they stand in the line,
