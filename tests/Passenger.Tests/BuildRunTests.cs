@@ -249,9 +249,29 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     {
         string started = Path.Combine(Folder, "program.pid");
         string asked = Path.Combine(Folder, "asked");
-        Write("src/Hello/Program.cs", $"File.WriteAllText(@\"{started}\", Environment.ProcessId.ToString());\n"
-            + $"while (true)\n{{\n    Console.WriteLine(Talk.Say());\n    if (File.Exists(@\"{asked}\"))\n    {{\n        Console.WriteLine(Talk.Later());\n    }}\n    Thread.Sleep(200);\n}}\n\n"
-            + "static class Talk\n{\n    public static string Say() => \"before the edit\";\n\n    public static string Later() => \"asked later\";\n}\n");
+        // Later, once asked, only after dotnet watch hooks its deleted body: called before, it ends the program instead.
+        Write("src/Hello/Program.cs", $$"""
+            File.WriteAllText(@"{{started}}", Environment.ProcessId.ToString());
+            while (true)
+            {
+                Console.WriteLine(Talk.Say());
+                if (File.Exists(@"{{asked}}") && Talk.Hooked())
+                {
+                    Console.WriteLine(Talk.Later());
+                }
+                Thread.Sleep(200);
+            }
+
+            static class Talk
+            {
+                public static string Say() => "before the edit";
+
+                public static string Later() => "asked later";
+
+                public static bool Hooked() => {{DeletedBodyHooks}}.Any(hook => hook.GetValue(null) is not null);
+            }
+
+            """);
         MainWindow window = Open();
         window.ApplySettings(window.Settings with { HotReload = true });
         bool ending = false;
@@ -296,10 +316,10 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
                 && Output(window) is { } output && output.LastIndexOf("Waiting for changes", StringComparison.Ordinal) > output.LastIndexOf("Restarting application", StringComparison.Ordinal),
                 "dotnet watch to start the program again and watch it", TimeSpan.FromMinutes(1));
 
-            // The window kept from drawing until the restart, as a slow machine's falls behind.
+            // The window kept from drawing from the Apply to the restart, as a slow machine's falls behind: both words come at once.
             int second = Processes.ReadId(started);
-            at = program.Text.Snapshot.ToString().IndexOf("Say() =>", StringComparison.Ordinal);
-            window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(at, "Say() =>".Length, "Say(int times = 1) =>")]);
+            at = program.Text.Snapshot.ToString().IndexOf("Later(int times = 1) =>", StringComparison.Ordinal);
+            window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(at, "Later(int times = 1) =>".Length, "Later(int times = 1, bool again = true) =>")]);
             Assert.True(window.Perform(AppActions.ApplyHotReloadChanges), $"Apply Hot Reload Changes could not run: {window.Status}");
             Assert.Equal("Hot Reload: saved for dotnet watch to apply", window.Status);
             if (!Waiting.Until(() => Processes.ReadId(started) is int again && again > 0 && again != second, TimeSpan.FromMinutes(1)))
@@ -327,6 +347,12 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     }
 
     private static string Output(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
+
+    /// <summary>A test program's expression of the static delegates of the exception a body an update deleted throws (none
+    /// before an update deletes one), one of which dotnet watch sets to hear of the call and restart the program.</summary>
+    private const string DeletedBodyHooks = "(typeof(Talk).Assembly.GetType(\"System.Runtime.CompilerServices.HotReloadException\")"
+        + "?.GetFields(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic) ?? [])"
+        + ".Where(field => typeof(Delegate).IsAssignableFrom(field.FieldType))";
 
     /// <summary>Waits as <see cref="Ui.WaitFor"/> does for what the window says of a program under dotnet watch; one that
     /// never comes says what the status bar and the Run window said by the end of the wait, not as it began.</summary>
