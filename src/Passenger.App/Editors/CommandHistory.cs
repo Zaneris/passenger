@@ -901,6 +901,9 @@ public sealed class CommandHistory
         /// for it however few files it changed.</summary>
         public void Also(Part part) => parts.Add(part);
 
+        /// <summary>Ends the recording, keeping the command when it is one. Changes it queued and never wrote (a command
+        /// stopped on a refusal after them) are made first, in turn, off the window's thread, as <see cref="WriteAsync"/>
+        /// makes them, the command still being made until they are; a file the disk refuses there goes to the IDE's log.</summary>
         public void Dispose()
         {
             if (ended)
@@ -908,6 +911,31 @@ public sealed class CommandHistory
                 return;
             }
             ended = true;
+            if (queued.Count > 0)
+            {
+                IdeErrors.Observe(WrittenThenEndAsync());
+                return;
+            }
+            End();
+        }
+
+        private async Task WrittenThenEndAsync()
+        {
+            try
+            {
+                if (await WriteAsync() is (string path, Exception refused))
+                {
+                    IdeLog.Write(IdeLog.Ide, $"{name} ended with changes it had not written, and {Path.GetFileName(path)} could not be written: {refused.Message}");
+                }
+            }
+            finally
+            {
+                End();
+            }
+        }
+
+        private void End()
+        {
             history.making.Remove(this);
             try
             {
@@ -919,15 +947,9 @@ public sealed class CommandHistory
             }
         }
 
-        /// <summary>Makes what it queued and never wrote, and keeps the command when it is one.</summary>
+        /// <summary>Keeps the command when it is one.</summary>
         private void Finish()
         {
-            if (queued.Count > 0)
-            {
-                // Changes the command queued but never wrote, as when it stopped on a refusal after them, made as it ends.
-                Took(Make([.. queued.Select(q => (q.Began, Now(q.Began), q.Change))], _ => { }).Made);
-                queued.Clear();
-            }
             Unname();
             Command made = new(name, [], [.. moves]);
             if (ownWrites)

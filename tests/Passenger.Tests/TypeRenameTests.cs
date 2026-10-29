@@ -414,6 +414,87 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         }
     }
 
+    /// <summary>A class whose file the disk will not rename (held open by another program on Windows, its folder read-only
+    /// elsewhere) is renamed in the code all the same, and the rename says which file it could not rename rather than that
+    /// it failed; the closed files it changes are written in turn, off the window's thread, never as the command ends.</summary>
+    [AvaloniaFact]
+    public void A_class_whose_file_cannot_be_renamed_is_renamed_in_the_code_saying_so_its_closed_files_written_in_turn()
+    {
+        string ledger = TestFolders.Write(folder, "Ledgers/Ledger.cs", "namespace Shop;\n\npublic class Ledger\n{\n    public int Lines;\n}\n");
+        List<string> uses = [];
+        for (int i = 0; i < 3; i++)
+        {
+            uses.Add(TestFolders.Write(folder, $"Book{i}.cs", $"namespace Shop;\n\npublic static class Book{i}\n{{\n    public static int Count(Ledger ledger) => ledger.Lines + {i};\n}}\n"));
+        }
+        foreach (string path in uses.Append(ledger))
+        {
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow - TimeSpan.FromMinutes(1));
+        }
+        MainWindow window = Open(Path.Combine("Ledgers", "Ledger.cs"));
+        Answer(window);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IDisposable held = Unrenamable(ledger);
+        try
+        {
+            Task holding = window.EditorArea.Commands.HoldNextWrite(release.Task);
+            OpenRenameBox(window, "class Led", "Journal");
+            Ui.PumpUntil(() => window.Assist.RenameOffersFiles.Count > 0, "the rename box to offer to rename Ledger.cs with its class");
+            Ui.Press(window, "ENTER", settle: false);
+            Ui.PumpUntil(() => holding.IsCompleted || window.Status?.StartsWith("Rename failed", StringComparison.Ordinal) == true,
+                "the rename's writes of its closed files to be held, or the rename to end");
+            Assert.True(holding.IsCompleted, $"The rename wrote its closed files without waiting its turn, on the window's thread as it ended: {window.Status}");
+            foreach (string use in uses)
+            {
+                Assert.True(File.ReadAllText(use).Contains("(Ledger ledger)", StringComparison.Ordinal), $"{Path.GetFileName(use)} was written while the rename's writes were held");
+            }
+            release.SetResult();
+            Ui.WaitFor(() => window.Status?.StartsWith("Renamed", StringComparison.Ordinal) == true || window.Status?.StartsWith("Rename failed", StringComparison.Ordinal) == true,
+                () => $"the rename to say what it made; the status says '{window.Status}'");
+            Assert.True(window.Status?.StartsWith("Renamed in 4 files, but Ledger.cs could not be renamed to Journal.cs: ", StringComparison.Ordinal) == true,
+                $"A rename whose file could not be renamed said '{window.Status}', not that it renamed the code but not the file");
+            Assert.True(File.Exists(ledger) && !File.Exists(Path.Combine(folder, "Ledgers", "Journal.cs")), "Ledger.cs was renamed though the disk refused it");
+            Assert.Contains("public class Journal", Text(window), StringComparison.Ordinal);
+            foreach (string use in uses)
+            {
+                Assert.True(File.ReadAllText(use).Contains("(Journal ledger)", StringComparison.Ordinal), $"{Path.GetFileName(use)} was left calling Ledger: {File.ReadAllText(use)}");
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            held.Dispose();
+            window.Close();
+        }
+    }
+
+    /// <summary>A file the disk will not rename until disposed: on Windows held open by another program, elsewhere in a
+    /// folder made read-only.</summary>
+    private static IDisposable Unrenamable(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        }
+        return new ReadOnlyFolder(Path.GetDirectoryName(path)!);
+    }
+
+    /// <summary>A folder made read-only, its own mode given back once disposed.</summary>
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private sealed class ReadOnlyFolder : IDisposable
+    {
+        private readonly string folder;
+        private readonly UnixFileMode was;
+
+        public ReadOnlyFolder(string folder)
+        {
+            this.folder = folder;
+            was = File.GetUnixFileMode(folder);
+            File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute);
+        }
+
+        public void Dispose() => File.SetUnixFileMode(folder, was);
+    }
+
     /// <summary>A line typed at the top of a partial class's open file while the Solution view renames the file with its
     /// class goes in above it, and the class's other part named after it is renamed with it all the same.</summary>
     [AvaloniaFact]

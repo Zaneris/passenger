@@ -326,14 +326,18 @@ public partial class MainWindow
             List<string> dropped = [];
             string command = $"Rename {type.Name} to {renamed}";
             using CommandHistory.Recording recording = Editors.Commands.Record(command);
-            int files = 0;
+            TypeRename.Applied? applied = null;
             await FollowingAsync([.. moves.SelectMany(m => new[] { m.From, m.To }), .. WorkspaceEdits.Paths(made)], recording,
-                () => files = TypeRename.Apply(Editors, made, moves, asked, dropped, recording,
-                    moving => FollowMoved([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], moving)));
-            Explorer.Reveal(PathNames.Canonical(target));
+                () => applied = TypeRename.Apply(Editors, made, moves, asked, dropped, recording,
+                    (moving, moved) => FollowMoved([.. moved.Select(m => (m.From, PathNames.Canonical(m.To)))], moving)));
+            int files = applied?.Files ?? 0;
+            Explorer.Reveal(PathNames.Canonical(applied?.Moved.Any(m => PathNames.Same(m.From, path)) == true ? target : path));
             await WorkspaceEdits.LandedAsync(recording, waiting => status.Text = waiting);
-            status.Text = $"Renamed {Path.GetFileName(path)} to {name}, and {type.Name} to {renamed} in {Plural.Of(files, "file")}"
-                + (dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty);
+            string unchanged = dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty;
+            // The code renamed with a file left unmoved is said as made: the box closes, and Undo takes it back whole.
+            status.Text = applied?.Unmoved is { } unmoved
+                ? $"Renamed {type.Name} to {renamed} in {Plural.Of(files, "file")}{unchanged}{(unchanged.Length > 0 ? "; and" : ", but")} {unmoved}"
+                : $"Renamed {Path.GetFileName(path)} to {name}, and {type.Name} to {renamed} in {Plural.Of(files, "file")}{unchanged}";
             return null;
         }
         catch (Lsp.LanguageServerFailed failed)

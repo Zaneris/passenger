@@ -248,13 +248,17 @@ public static class TypeRename
         return Path.Combine(Path.GetDirectoryName(path)!, type + name[Stem(path).Length..]);
     }
 
+    /// <summary>What a rename's <see cref="Apply"/> made: the number of files it changed, the files it moved, and why the
+    /// next could not be moved, the moves after it left unmade (null once each was made).</summary>
+    public sealed record Applied(int Files, IReadOnlyList<(string From, string To)> Moved, string? Unmoved);
+
     /// <summary>Applies a rename's edit and then moves the files it renames, within the caller's command, which writes the
-    /// files not open and waits for them before it ends (<see cref="WorkspaceEdits.LandedAsync(CommandHistory.Recording, Action{string}?)"/>),
-    /// with what else the command does once they have moved (the projects following them). A file the moves would put where
-    /// another file is stops the whole before anything changes, with why (<see cref="WorkspaceEditFailed"/>), as does the
-    /// edit's own refusal. The number of files changed.</summary>
-    public static int Apply(EditorArea editors, JsonElement edit, IReadOnlyList<(string From, string To)> moves, Asked? asked, List<string> dropped,
-        CommandHistory.Recording recording, Action<CommandHistory.Recording>? moved = null)
+    /// files not open and waits for them before it ends, a move refused or not (<see cref="WorkspaceEdits.LandedAsync(CommandHistory.Recording, Action{string}?)"/>),
+    /// with what else the command does once they have moved (the projects following the moves made). A file the moves would
+    /// put where another file is stops the whole before anything changes, with why (<see cref="WorkspaceEditFailed"/>), as
+    /// does the edit's own refusal; a move the disk refuses once the edit is made (a file another program holds) is said.</summary>
+    public static Applied Apply(EditorArea editors, JsonElement edit, IReadOnlyList<(string From, string To)> moves, Asked? asked, List<string> dropped,
+        CommandHistory.Recording recording, Action<CommandHistory.Recording, IReadOnlyList<(string From, string To)>>? moved = null)
     {
         foreach ((string from, string to) in moves)
         {
@@ -264,15 +268,22 @@ public static class TypeRename
             }
         }
         int files = WorkspaceEdits.ApplyAsCommand(editors, edit, recording, asked, dropped);
+        List<(string From, string To)> made = [];
+        string? unmoved = null;
         foreach ((string from, string to) in moves.Where(m => m.From != m.To && File.Exists(m.From)))
         {
             if (recording.Move(from, to) is { } failed)
             {
-                throw new WorkspaceEditFailed($"{Path.GetFileName(from)} could not be renamed: {failed}");
+                unmoved = $"{Path.GetFileName(from)} could not be renamed to {Path.GetFileName(to)}: {failed}";
+                break;
             }
+            made.Add((from, to));
         }
-        moved?.Invoke(recording);
-        return files;
+        if (made.Count > 0)
+        {
+            moved?.Invoke(recording, made);
+        }
+        return new Applied(files, made, unmoved);
     }
 
     /// <summary>The type whose name is at an offset of a file's syntax: a class, struct, interface, record, enum or

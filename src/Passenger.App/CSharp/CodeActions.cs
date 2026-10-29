@@ -459,9 +459,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         List<string> dropped = [];
         string command = $"Rename {old} to {name}";
         using CommandHistory.Recording recording = context.Editors.Commands.Record(command);
+        TypeRename.Applied applied;
         try
         {
-            TypeRename.Apply(context.Editors, edit, moves, asked, dropped, recording);
+            applied = TypeRename.Apply(context.Editors, edit, moves, asked, dropped, recording);
+            // Written whether or not every file moved: the code is renamed either way.
             await WorkspaceEdits.LandedAsync(recording, context.Say);
         }
         catch (WorkspaceEditFailed failed)
@@ -469,10 +471,14 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             return RefactorOutcome.Refused($"Rename failed: {failed.Message}");
         }
         List<RefactoredFile> changed = [.. edited.Where(f => !(context.Editors.Find(f.Path) is { } open && dropped.Contains(open.Name)))];
-        string movedSaid = moves.Count > 0 ? $"; {string.Join(", ", moves.Select(m => $"{Path.GetFileName(m.From)} to {Path.GetFileName(m.To)}"))}" : string.Empty;
+        string movedSaid = applied.Moved.Count > 0 ? $"; {string.Join(", ", applied.Moved.Select(m => $"{Path.GetFileName(m.From)} to {Path.GetFileName(m.To)}"))}" : string.Empty;
         string said = dropped.Count > 0 ? $"Renamed, but not in {string.Join(", ", dropped)}: it was edited meanwhile"
             : (changed.Count > 1 ? $"Renamed in {changed.Count} files" : "Renamed") + movedSaid;
-        return new RefactorOutcome(said, null, [.. changed, .. moves.Select(m => new RefactoredFile(m.From, "moved", [], m.To))], dropped);
+        if (applied.Unmoved is { } unmoved)
+        {
+            said += $"{(dropped.Count > 0 ? "; and" : ", but")} {unmoved}";
+        }
+        return new RefactorOutcome(said, null, [.. changed, .. applied.Moved.Select(m => new RefactoredFile(m.From, "moved", [], m.To))], dropped);
     }
 
     /// <summary>Also rename files to reflect this change, offered in the open rename box once the server says the name
