@@ -28,6 +28,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-10-29
+
+- `BuildRunTests`' `With_hot_reload_edits_reach_the_running_program_a_signature_change_restarts_it_and_it_ends_with_the_window`,
+  CI Linux, run 40921064516 (7358d411), gate: "dotnet watch did not start the program again, for the signature changed
+  while the window was held". Its last step changed the signature of `Say`, which the program's loop calls every 200 ms;
+  the program called the deleted body before dotnet watch's restart and ended on the unhandled `HotReloadException`, and
+  dotnet watch waited for a file to change rather than restarting. Neither race in the IDE: **the test** relied on dotnet
+  watch's own timing; it left the gate, to be rewritten (#701).
+
 ## 2026-10-28
 
 - `TerminalResponsivenessTests`' `A_paste_into_a_program_that_reads_nothing_leaves_the_window_taking_keys`, this Mac
