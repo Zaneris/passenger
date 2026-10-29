@@ -511,17 +511,18 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
   MenuItem its look (`Passenger.ControlHeight` 28; radii `ControlRadius` 4, `ToolRadius` 6, `PopupRadius` 8); a class style
   says only how it differs. A style on a template part Fluent sets under a property trigger (`^[AllowAutoHide=True]`)
   needs a trigger of its own, or it ranks below Fluent's.
-- A visual inconsistency is fixed once, in a shared place (a token, a base style, a helper), never per control: Passenger's
-  own consistency settles a design question. The shared pieces: dialogs `DialogFooter` (`Of`, `Listed`, `Answers`, `Bar`,
-  `Page`) in a `Border.footerBar`; lists in a page `Border.framed`; rules `Passenger.Separator` (`Passenger.Divider`
-  between panels); menus' value in force `MenuChoice`; tool window tabs `ToolTabs.Tab`; popups' widths `PopupFrame`,
-  titles `popupTitle`; every row `ListRow.Height` (24); empty states `TextBlock.emptyText`; toolbar icon buttons
-  `ToolButtons.Of`/`Toggle` (never focusable); muted words `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`;
-  rounded borders `Border.kindBadge`, `tag` or `box`, never a literal radius; lists of what runs `RunRows`, Details tabs
-  `DetailsTables`, merged consoles `MergedLog` (a console's Find `OutputView.Find`); a tree window's Expand and Collapse All
-  `ToolWindow.ExpandAll`/`CollapseAll`; a toolbar down a side `ToolColumn`; scrollbars `ControlThemes.axaml`; the
-  focus ring `FocusRing`; a list's rows `ReusedRows` (`Use`, `Showing`), their icons `RowIcon` (a tree row's chevron and
-  icon `RowGlyphs`), drawn as `PathIcon` draws for a fraction of its cost, never `PathIcon` (UiRulesTests). A row hears
-  its item only while shown (`Observable.FollowWhileShown`).
+- A visual inconsistency is fixed once, in a shared place (a token, a base style, a helper), never per control:
+  Passenger's own consistency settles a design question. The shared pieces: dialogs `DialogFooter` (`Of`, `Listed`,
+  `Answers`, `Bar`, `Page`) in a `Border.footerBar`; lists in a page `Border.framed`; rules `Passenger.Separator`
+  (`Passenger.Divider` between panels); menus' value in force `MenuChoice`; tool window tabs `ToolTabs.Tab`; popups'
+  widths `PopupFrame`, titles `popupTitle`; every row `ListRow.Height` (24); empty states `TextBlock.emptyText`; toolbar
+  icon buttons `ToolButtons.Of`/`Toggle` (never focusable); muted words `MutedText`; list keys `ListKeys.Move`; counts
+  `Plural.Of`; rounded borders `Border.kindBadge`, `tag` or `box`, never a literal radius; lists of what runs `RunRows`,
+  Details tabs `DetailsTables`, merged consoles `MergedLog` (a console's Find `OutputView.Find`); a tree window's Expand
+  and Collapse All `ToolWindow.ExpandAll`/`CollapseAll`; a toolbar down a side `ToolColumn`; scrollbars
+  `ControlThemes.axaml`; the focus ring `FocusRing`; a window's icon `AppIcon`; a list's rows `ReusedRows` (`Use`,
+  `Showing`), their icons `RowIcon` (a tree row's chevron and icon `RowGlyphs`), drawn as `PathIcon` draws for a
+  fraction of its cost, never `PathIcon` (UiRulesTests). A row hears its item only while shown
+  (`Observable.FollowWhileShown`).
 - `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, and new windows fit the screen's
   working area (`FitToScreen`).
