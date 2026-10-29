@@ -405,11 +405,11 @@ public partial class ManagedDebugger
             int token = old.Token;
             if (FindModule(old.Module) is { } module && old is ICorDebugFunction2 oldVersion && oldVersion.TryGetVersionNumber(out uint from) is Cor.S_OK
                 && remap.NewFunction is ICorDebugFunction2 newVersion && newVersion.TryGetVersionNumber(out uint to) is Cor.S_OK
-                && RemapTarget(module, token, (int)from, (int)to, (int)remap.OldILOffset, stepping: _stepping is (int steppingThread, _) && steppingThread == remap.Thread.Id) is { Document: not null } there
+                && RemapTarget(module, token, (int)from, (int)to, (int)remap.OldILOffset, stepping: Stepping is (int steppingThread, _) && steppingThread == remap.Thread.Id) is { Document: not null } there
                 && remap.Thread.ActiveFrame is ICorDebugILFrame2 frame)
             {
                 // A step's stepper is the old frame's: it goes first, and is made again at FunctionRemapComplete.
-                if (_stepper is not null && _stepping is (int stepping, _) && stepping == remap.Thread.Id)
+                if (_stepper is not null && Stepping is (int stepping, _) && stepping == remap.Thread.Id)
                 {
                     _stepper.TryDeactivate();
                     _stepper = null;

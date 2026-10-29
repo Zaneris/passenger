@@ -342,6 +342,61 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
         }
     }
 
+    /// <summary>After a step and a resume, an edit to the loop the program runs, applied as it runs, takes the loop's frame to
+    /// the new code at the first statement the update left as it was: the next greeting is the edited one, its number
+    /// following on, and the runtime offers the new code a few times, never at every statement of another pass through the
+    /// old code.</summary>
+    [AvaloniaFact]
+    public void After_a_step_an_edit_applied_as_the_program_runs_goes_on_in_the_new_code_from_the_next_iteration()
+    {
+        string engineLog = Path.Combine(TestFolders.Create("hotreload-engine-"), "engine.log");
+        string? kept = Environment.GetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable);
+        Environment.SetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable, engineLog);
+        MainWindow window = Open();
+        try
+        {
+            window.OpenFile(ProgramPath);
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.GoTo(new TextPosition(2, 4));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Debug);
+            Paused(window, "the program to stop at the greeting");
+            Ui.Run(window, AppActions.StepOver);
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && editor.LineMarks.Contains(new LineMark(3, LineMarkKind.ExecutionPoint)),
+                $"the step to stop at the sleep (marks {string.Join(", ", editor.LineMarks)})");
+            editor.GoTo(new TextPosition(2, 4));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => Output(window).Contains("Hello 3", StringComparison.Ordinal), $"the program to greet on ({Output(window)})");
+
+            Replace(window, "Greeter.Greet(i);", "Greeter.Greet(-i);");
+            HotReloadOutcome outcome = Ui.Await(window.Debugger.ApplyChangesAsync(), "Hot Reload to apply the edit to the loop", TimeSpan.FromMinutes(1));
+            Assert.True(outcome.Result == HotReloadResult.Applied, $"The edit to the loop should apply: {outcome.Said}");
+            Ui.WaitFor(() => Greeted(window).Any(g => g < 0), $"the program to greet as edited ({Output(window)})");
+            List<int> greetings = Greeted(window);
+            int edited = greetings.FindIndex(g => g < 0);
+            Assert.True(edited > 0 && greetings[edited - 1] == -greetings[edited] - 1,
+                $"The first greeting of the new code should follow on from the last of the old: {string.Join(", ", greetings)}");
+
+            string log = Ui.Shared(engineLog);
+            string[] offers = [.. log.Split('\n').Where(l => l.Contains("The old code runs on from", StringComparison.Ordinal) || l.Contains("Remap of", StringComparison.Ordinal))];
+            int offered = log.Split('\n').Count(l => l.Contains("Event: FunctionRemapOpportunity", StringComparison.Ordinal));
+            TestContext.Current.TestOutputHelper?.WriteLine($"{offered} remap opportunities:\n{string.Join('\n', offers)}");
+            // At the update the loop's frame is in Sleep, rarely in Greet: three offers, or five, before the loop's i++ takes it.
+            Assert.True(offered is > 0 and <= 5,
+                $"The runtime offered the new code {offered} times: the frame went on through the old code, its thread taken as still stepping:\n{string.Join('\n', offers)}");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable, kept);
+            End(window);
+        }
+    }
+
+    /// <summary>The number of each greeting the program printed, in order.</summary>
+    private static List<int> Greeted(MainWindow window) =>
+        [.. Output(window).Split('\n').Select(l => l.Trim().Split(' ')).Where(w => w is ["Hello", _]).Select(w => int.Parse(w[1], System.Globalization.CultureInfo.InvariantCulture))];
+
     /// <summary>What each spin the program printed returned, in order.</summary>
     private static List<int> Ticks(MainWindow window) =>
         [.. Output(window).Split('\n').Select(l => l.Trim().Split(' ')).Where(w => w is ["tick", _, _, _]).Select(w => int.Parse(w[2], System.Globalization.CultureInfo.InvariantCulture))];

@@ -684,9 +684,13 @@ public partial class ManagedDebugger
     /// handler outside that code which caught it, until the program runs on: a step from the stop steps out of it.</summary>
     private (int ThreadId, StackRange Handler)? _unhandledByUser;
 
-    /// <summary>The thread the step in progress steps, and the stack range of the frame it steps from (none for a thread
-    /// stepped out to managed code).</summary>
+    /// <summary>The thread the stepper in <see cref="_stepper"/> steps, and the stack range of the frame it steps from (none
+    /// for a thread stepped out to managed code), set with the stepper and read through <see cref="Stepping"/>.</summary>
     private (int ThreadId, StackRange? Frame)? _stepping;
+
+    /// <summary>The thread the step in progress steps and the frame it steps from, while its stepper stands: none once the
+    /// step has ended, wherever it ended.</summary>
+    private (int ThreadId, StackRange? Frame)? Stepping => _stepper is null ? null : _stepping;
 
     /// <summary>Where a frame lies on its thread's stack: its identity while it lives, as the stack's memory does not move.</summary>
     internal readonly record struct StackRange(CORDB_ADDRESS Start, CORDB_ADDRESS End);
@@ -720,7 +724,7 @@ public partial class ManagedDebugger
     /// the step's frame on the stack, leaves the step as it is.</summary>
     private void StepPastHandler(ICorDebugThread thread, ICorDebugFrame handler)
     {
-        if (_stepper is null || _stepping is not (int steppingThread, StackRange stepped) || steppingThread != thread.Id || RangeOf(handler) is not { } caught)
+        if (_stepper is null || Stepping is not (int steppingThread, StackRange stepped) || steppingThread != thread.Id || RangeOf(handler) is not { } caught)
         {
             return;
         }

@@ -256,7 +256,7 @@ public partial class ManagedDebugger
         }
 
         ICorDebugThread corThread = breakpointCorDebugManagedCallbackEventArgs.Thread;
-        if (_stepper is { IsActive: false } && _stepping is (int stepping, _))
+        if (_stepper is { IsActive: false } && Stepping is (int stepping, _))
         {
             if (stepping == corThread.Id)
             {
