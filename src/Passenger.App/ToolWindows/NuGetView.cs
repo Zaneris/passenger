@@ -297,12 +297,16 @@ public sealed class NuGetView : DockPanel
         asking?.Cancel();
         CancellationTokenSource cancel = asking = new();
         string? chosen = Selected?.Id;
-        Dictionary<string, Dictionary<string, IReadOnlyList<InstalledVersion>>> installed = model.Installed();
         // The feed's answer is the list shown next, so a screenshot waits for it rather than for "Searching".
         using IDisposable held = BackgroundWork.Scope();
         if (!model.IsCurrent && model.Given is null)
         {
             await ReloadSourcesAsync();
+            return;
+        }
+        Dictionary<string, Dictionary<string, IReadOnlyList<InstalledVersion>>> installed = await model.InstalledAsync();
+        if (cancel.IsCancellationRequested)
+        {
             return;
         }
         IPackageFeed feed = Feed;
@@ -313,7 +317,7 @@ public sealed class NuGetView : DockPanel
             if (Query.Trim().Length == 0)
             {
                 found = [.. installed.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase)
-                    .Select(p => new PackageRow(p.Key, p.Value.Values.SelectMany(v => v).Select(v => v.Version).FirstOrDefault(v => v is not null) ?? string.Empty,
+                    .Select(p => new PackageRow(p.Key, p.Value.Values.SelectMany(v => v).Select(v => v.Shown).FirstOrDefault(v => v is not null) ?? string.Empty,
                         string.Empty, string.Empty, 0, p.Value))];
                 status.Text = Counted(found, null);
             }
@@ -658,7 +662,7 @@ public sealed class NuGetView : DockPanel
             bool has = at.Count > 0;
             InstalledVersion? vulnerable = at.FirstOrDefault(v => v.Version is { } known && Known.Of(row.Id, known).Count > 0);
             TextBlock version = new() { Text = Shown(at), Width = 110, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-            ToolTip.SetTip(version, at.Count > 1 ? string.Join("\n", at.Select(v => $"{v.Framework}: {v.Version ?? "installed"}")) : null);
+            ToolTip.SetTip(version, Told(at));
             version.Bind(TextBlock.ForegroundProperty, version.GetResourceObservable(vulnerable is not null ? TokenKeys.Warning : TokenKeys.TextMuted));
             // A slot of its own, so the buttons stand in one column whichever lines have the mark.
             Panel mark = new() { Width = 14, VerticalAlignment = VerticalAlignment.Center };
@@ -692,7 +696,18 @@ public sealed class NuGetView : DockPanel
 
     /// <summary>A project's versions of a package as its line says them: each once, in its frameworks' order.</summary>
     private static string Shown(IReadOnlyList<InstalledVersion> at) =>
-        string.Join(", ", at.Select(v => v.Version ?? "installed").Distinct(StringComparer.OrdinalIgnoreCase));
+        string.Join(", ", at.Select(v => v.Shown ?? "installed").Distinct(StringComparer.OrdinalIgnoreCase));
+
+    /// <summary>What a project's line tells of its versions on hover: each framework's, and the range the project gives
+    /// where it shows another version; null where the line says it all.</summary>
+    private static string? Told(IReadOnlyList<InstalledVersion> at)
+    {
+        bool ranged = at.Any(v => v.Given is { } given && given != v.Shown);
+        return at.Count > 1 || ranged
+            ? string.Join("\n", at.Select(v => (at.Count > 1 ? $"{v.Framework}: " : string.Empty) + (v.Shown ?? "installed")
+                + (v.Given is { } given && given != v.Shown ? $", given as {given}" : string.Empty)))
+            : null;
+    }
 
     private Button Action(string label, Func<Task<bool>> run)
     {

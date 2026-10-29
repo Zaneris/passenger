@@ -93,36 +93,7 @@ public sealed record EfRestore(string? Runtime, string? Design, IReadOnlyList<Ef
 
     /// <summary>Whether a version is in a NuGet range as a restore writes it: "10.0.12" (that or later), "[9.0.1, 10.0.0)",
     /// "[10.0.0]".</summary>
-    public static bool InRange(string range, string version)
-    {
-        string given = range.Trim();
-        if (!given.StartsWith('[') && !given.StartsWith('('))
-        {
-            return VersionOrder.Instance.Compare(version, given) >= 0;
-        }
-        bool fromIncluded = given[0] == '[';
-        bool toIncluded = given[^1] == ']';
-        string[] ends = given[1..^1].Split(',');
-        string from = ends[0].Trim();
-        string to = ends.Length > 1 ? ends[1].Trim() : from;
-        if (from.Length > 0)
-        {
-            int order = VersionOrder.Instance.Compare(version, from);
-            if (order < 0 || (order == 0 && !fromIncluded))
-            {
-                return false;
-            }
-        }
-        if (to.Length > 0)
-        {
-            int order = VersionOrder.Instance.Compare(version, to);
-            if (order > 0 || (order == 0 && !toIncluded))
-            {
-                return false;
-            }
-        }
-        return true;
-    }
+    public static bool InRange(string range, string version) => VersionRange.Parse(range)?.Contains(version) == true;
 
     /// <summary>The EF Core versions a range speaks of, said as a person would: "EF Core 9" for [9.0.1, 10.0.0).</summary>
     public static string Supports(string range)

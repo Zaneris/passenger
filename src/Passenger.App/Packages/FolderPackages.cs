@@ -182,23 +182,71 @@ public sealed class FolderPackages
         return installed;
     }
 
+    /// <summary>The packages the projects reference (<see cref="Installed"/>), a version given as a range or floating
+    /// taken as its project's restore resolved it, read off the window's thread from that project's project.assets.json.</summary>
+    public async Task<Dictionary<string, Dictionary<string, IReadOnlyList<InstalledVersion>>>> InstalledAsync()
+    {
+        Dictionary<string, Dictionary<string, IReadOnlyList<InstalledVersion>>> installed = Installed();
+        ProjectModel[] ranged = [.. Projects.Where(p => installed.Values.Any(byProject => byProject.TryGetValue(p.Path, out IReadOnlyList<InstalledVersion>? at)
+            && at.Any(v => v.IsRanged)))];
+        if (ranged.Length == 0)
+        {
+            return installed;
+        }
+        Dictionary<string, RestoredVersions> restored = await BackgroundWork.Run(() => ranged.ToDictionary(p => p.Path, Restored, PathNames.Comparer));
+        foreach ((string id, Dictionary<string, IReadOnlyList<InstalledVersion>> byProject) in installed)
+        {
+            foreach ((string path, RestoredVersions versions) in restored)
+            {
+                if (byProject.TryGetValue(path, out IReadOnlyList<InstalledVersion>? at))
+                {
+                    byProject[path] = [.. at.Select(v => v.IsRanged ? v with { Resolved = versions.Of(v.Framework, id) } : v)];
+                }
+            }
+        }
+        return installed;
+    }
+
+    /// <summary>What a project's restore resolved: its project.assets.json, where its evaluation says, else in its obj
+    /// folder or an artifacts folder above it; none before it is restored, or while its file does not read.</summary>
+    private static RestoredVersions Restored(ProjectModel project)
+    {
+        if ((project.Property(Passenger.Host.CarriedProperties.ProjectAssetsFile) ?? Passenger.Xaml.Projects.ProjectInputs.FindAssets(project.Path)) is not { } assets)
+        {
+            return RestoredVersions.None;
+        }
+        try
+        {
+            using FileStream stream = new(assets, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return RestoredVersions.Read(stream);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return RestoredVersions.None;
+        }
+    }
+
     /// <summary>A project's package references, each framework's as evaluated (but those the SDK adds of itself).</summary>
     private static IEnumerable<(string Id, InstalledVersion Version)> References(ProjectModel project) =>
         project.Evaluated is { Dependencies.Count: > 0 } evaluated
             ? evaluated.Dependencies.SelectMany(d => d.Packages.Where(p => !p.Implicit).Select(p => (p.Name, new InstalledVersion(d.Framework, p.Version))))
             : project.Packages.Select(p => (p.Name, new InstalledVersion(null, p.Version)));
 
-    /// <summary>Adds a package to a project at a version, or moves it to that version: the one way a package goes in
-    /// (<see cref="ChangeAsync"/>).</summary>
+    /// <summary>The version a change of a package in a project writes (<see cref="InstalledVersion.Written"/>): a pin kept a pin.</summary>
+    private static string Written(ProjectModel project, string id, string version) =>
+        InstalledVersion.Written(version, [.. References(project).Where(r => r.Id.Equals(id, StringComparison.OrdinalIgnoreCase)).Select(r => r.Version)]);
+
+    /// <summary>Adds a package to a project at a version, or moves it to that version, a pin kept a pin: the one way a
+    /// package goes in (<see cref="ChangeAsync"/>).</summary>
     public Task<PackageOutcome> InstallAsync(ProjectModel project, string id, string version, CommandHistory.Recording? within = null) =>
         ChangeAsync($"Installing {id} {version} in {project.Name}…", $"Install {id} {version} in {project.Name}", project, within,
-            () => manager.InstallAsync(project.Path, id, version));
+            () => manager.InstallAsync(project.Path, id, Written(project, id, version)));
 
     /// <summary>Moves several packages of a project to their versions together, as one change (<see cref="ChangeAsync"/>):
-    /// EF Core's packages with the provider that supports them. One that fails is restored again once put back.</summary>
+    /// EF Core's packages with the provider that supports them, pins kept pins. One that fails is restored again once put back.</summary>
     public Task<PackageOutcome> InstallSetAsync(ProjectModel project, IReadOnlyList<(string Id, string Version)> packages, CommandHistory.Recording? within = null) =>
         ChangeAsync($"Moving {Moves(packages)} in {project.Name}…", $"Move {Moves(packages)} in {project.Name}", project, within,
-            () => manager.InstallSetAsync(project.Path, packages), () => manager.RestoreAsync(project.Path));
+            () => manager.InstallSetAsync(project.Path, [.. packages.Select(p => (p.Id, Written(project, p.Id, p.Version)))]), () => manager.RestoreAsync(project.Path));
 
     /// <summary>Takes a package out of a project.</summary>
     public Task<PackageOutcome> RemoveAsync(ProjectModel project, string id, CommandHistory.Recording? within = null) =>

@@ -55,5 +55,5 @@ public static class EfProviders
     }
 
     /// <summary>A range's lower end: "9.0.1" of "[9.0.1, 10.0.0)" or of "9.0.1".</summary>
-    private static string Lower(string range) => range.Trim().TrimStart('[', '(').Split(',')[0].Trim().TrimEnd(']', ')');
+    private static string Lower(string range) => VersionRange.Parse(range)?.Min ?? string.Empty;
 }

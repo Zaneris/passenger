@@ -21,33 +21,18 @@ public sealed record Advisory(AdvisorySeverity Severity, string Address, string 
     /// <summary>The advisory's page to open, only where its address is http or https: a feed may name any scheme.</summary>
     public Uri? Link { get; } = WebAddress.Of(Address);
 
-    /// <summary>Whether a version is in the range, in NuGet's notation: a bare version is the least version, a bracket
-    /// includes its end and a parenthesis leaves it out, an end left empty is unbounded, and "[1.0]" is that version alone.
-    /// A version that is not plain (a floating "1.*") is in none.</summary>
+    /// <summary>Whether a version is in the range (<see cref="VersionRange"/>): a bare version, or one pinned alone
+    /// ("[1.0.0]"), which is that version; any other range or a floating version ("1.*") is in none, its version in
+    /// force unknown here.</summary>
     public bool Affects(string version)
     {
-        string range = Versions.Trim();
-        if (range.Length == 0 || version.Contains('*', StringComparison.Ordinal) || version.StartsWith('[') || version.StartsWith('('))
+        string? one = VersionRange.Parse(version) switch
         {
-            return false;
-        }
-        VersionOrder order = VersionOrder.Instance;
-        if (range[0] is not ('[' or '('))
-        {
-            return order.Compare(version, range) >= 0;
-        }
-        bool fromIncluded = range[0] == '[';
-        bool toIncluded = range[^1] == ']';
-        string[] ends = range[1..^1].Split(',');
-        if (ends.Length == 1)
-        {
-            return order.Compare(version, ends[0].Trim()) == 0;
-        }
-        string from = ends[0].Trim();
-        string to = ends[1].Trim();
-        int above = from.Length == 0 ? 1 : order.Compare(version, from);
-        int below = to.Length == 0 ? -1 : order.Compare(version, to);
-        return (above > 0 || (above == 0 && fromIncluded)) && (below < 0 || (below == 0 && toIncluded));
+            { Bare: true } bare => bare.Min,
+            { IsExact: true } pinned => pinned.Min,
+            _ => null,
+        };
+        return one is not null && VersionRange.Parse(Versions) is { } range && range.Contains(one);
     }
 }
 

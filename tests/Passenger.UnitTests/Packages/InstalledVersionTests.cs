@@ -3,7 +3,8 @@ using Passenger.Packages;
 namespace Passenger.UnitTests.Packages;
 
 /// <summary>What the NuGet window offers on a project's line for the version chosen, against every framework's reference
-/// of the package: Update where any would move up, Downgrade where one would only move down, nothing where each has it.</summary>
+/// of the package: Update where any would move up, Downgrade where one would only move down, nothing where each has it; a
+/// range read as the version its restore resolved, else its least, and a pin kept a pin by a change.</summary>
 public class InstalledVersionTests
 {
     private static InstalledVersion[] Of(params string?[] versions) => [.. versions.Select((v, i) => new InstalledVersion($"net{10 + i}.0", v))];
@@ -35,5 +36,48 @@ public class InstalledVersionTests
     {
         Assert.Equal(PackageMove.None, InstalledVersion.Move("1.0.0", Of((string?)null)));
         Assert.Equal(PackageMove.Downgrade, InstalledVersion.Move("1.0.0", Of(null, "2.0.0")));
+    }
+
+    [Fact]
+    public void A_range_is_shown_compared_and_audited_as_its_restore_resolved_it_else_as_its_least()
+    {
+        Assert.Equal("8.0.0", new InstalledVersion(null, "[8.0.0]").Version);
+        Assert.Equal("1.0.0", new InstalledVersion(null, "[1.0.0, 2.0.0)").Version);
+        Assert.Equal("1.2.0", new InstalledVersion(null, "[1.0.0, 2.0.0)", "1.2.0").Version);
+        Assert.Equal("8.0.11", new InstalledVersion(null, "8.*", "8.0.11").Version);
+        Assert.True(new InstalledVersion(null, "8.*") is { Version: null, Shown: "8.*" }, "A floating version not restored was given a version in force");
+        Assert.True(new InstalledVersion(null, null) is { Version: null, Shown: null });
+        Assert.True(new InstalledVersion(null, "[1.0.0, 2.0.0)").IsRanged && new InstalledVersion(null, "8.*").IsRanged,
+            "A range or floating version is not taken for one whose version in force its restore says");
+        Assert.False(new InstalledVersion(null, "[8.0.0]").IsRanged || new InstalledVersion(null, "8.0.0").IsRanged || new InstalledVersion(null, null).IsRanged,
+            "A pin, a bare version or none is taken for one whose version in force only its restore says");
+    }
+
+    [Fact]
+    public void A_pinned_version_is_offered_no_change_to_itself_and_a_downgrade_below_it()
+    {
+        Assert.Equal(PackageMove.None, InstalledVersion.Move("8.0.0", [new InstalledVersion(null, "[8.0.0]")]));
+        Assert.Equal(PackageMove.Downgrade, InstalledVersion.Move("7.0.0", [new InstalledVersion(null, "[8.0.0]")]));
+        Assert.Equal(PackageMove.Update, InstalledVersion.Move("8.0.1", [new InstalledVersion(null, "[8.0.0]")]));
+    }
+
+    [Fact]
+    public void A_range_is_compared_at_the_version_restored_and_a_floating_one_not_restored_at_its_least()
+    {
+        Assert.Equal(PackageMove.None, InstalledVersion.Move("1.0.0", [new InstalledVersion(null, "[1.0.0, 2.0.0)")]));
+        Assert.Equal(PackageMove.Downgrade, InstalledVersion.Move("1.0.0", [new InstalledVersion(null, "[1.0.0, 2.0.0)", "1.5.0")]));
+        Assert.Equal(PackageMove.Update, InstalledVersion.Move("8.0.5", [new InstalledVersion(null, "8.*")]));
+        Assert.Equal(PackageMove.None, InstalledVersion.Move("8.0.5", [new InstalledVersion(null, "8.*", "8.0.5")]));
+    }
+
+    [Fact]
+    public void A_change_of_a_project_that_pins_every_framework_writes_a_pin_and_of_any_other_the_version_as_given()
+    {
+        Assert.Equal("[9.0.0]", InstalledVersion.Written("9.0.0", [new InstalledVersion(null, "[8.0.0]")]));
+        Assert.Equal("[9.0.0]", InstalledVersion.Written("9.0.0", Of("[8.0.0]", "[8.0.1]")));
+        Assert.Equal("9.0.0", InstalledVersion.Written("9.0.0", Of("[8.0.0]", "8.0.1")));
+        Assert.Equal("9.0.0", InstalledVersion.Written("9.0.0", [new InstalledVersion(null, "[1.0.0, 10.0.0)")]));
+        Assert.Equal("9.0.0", InstalledVersion.Written("9.0.0", []));
+        Assert.Equal("[9.0.0, )", InstalledVersion.Written("[9.0.0, )", [new InstalledVersion(null, "[8.0.0]")]));
     }
 }

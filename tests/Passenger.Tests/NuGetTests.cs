@@ -9,8 +9,9 @@ using Passenger.Workspace;
 namespace Passenger.Tests;
 
 /// <summary>The NuGet window over two projects and a stand-in feed whose VulnerabilityInfo the audit reads, so nothing
-/// reaches nuget.org: a package is shown, compared and audited at each of a project's frameworks' versions; a change runs
-/// one at a time, the projects' actions disabled meanwhile, and one refused says why.</summary>
+/// reaches nuget.org: a package is shown, compared and audited at each of a project's frameworks' versions, a range at the
+/// version its restore resolved, else its least, and a change of a pinned version keeps it pinned; a change runs one at a
+/// time, the projects' actions disabled meanwhile, and one refused says why.</summary>
 public sealed class NuGetTests : IDisposable
 {
     private const string Id = "Passenger.Vulnerable";
@@ -52,6 +53,48 @@ public sealed class NuGetTests : IDisposable
     {
         feed.Dispose();
         TestFolders.Delete(folder);
+    }
+
+    /// <summary>A project pinning the vulnerable 1.0.0 ("[1.0.0]") has it shown as 1.0.0 and marked, is offered the fix as
+    /// an Update and nothing for 1.0.0 itself, and the Update pins 1.0.1, never turning the pin into a minimum.</summary>
+    [AvaloniaFact]
+    public void A_pinned_version_is_shown_audited_and_compared_as_that_version_and_an_update_keeps_it_pinned()
+    {
+        Project("Lib", TestProjects.Framework, $"  <ItemGroup>\n    <PackageReference Include=\"{Id}\" Version=\"[1.0.0]\" />\n  </ItemGroup>\n");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Landed(() => nuget.Selected?.Id == Id && nuget.Versions.Count == 3, $"{Id} listed as installed, and its versions: {nuget.Status}");
+        Assert.True(nuget.Selected!.IsVulnerable && ShownVersion(nuget, "Lib") == "1.0.0",
+            $"Lib's pinned [1.0.0] is shown as {ShownVersion(nuget, "Lib")}, {(nuget.Selected.IsVulnerable ? "marked" : "unmarked")}, not as the vulnerable 1.0.0");
+        Assert.True(nuget.ChosenVersion == "1.0.1" && Labels(nuget, "Lib").SequenceEqual(["Update", "Remove"]),
+            $"The window offers {nuget.ChosenVersion} as [{string.Join(", ", Labels(nuget, "Lib"))}], not 1.0.1, which fixes 1.0.0, as an Update");
+
+        Choose(nuget, "1.0.0");
+        Assert.True(Labels(nuget, "Lib").SequenceEqual(["Remove"]), $"The version Lib pins is offered as [{string.Join(", ", Labels(nuget, "Lib"))}]");
+        Choose(nuget, "1.0.1");
+        Ui.Click(Action(nuget, "Lib", "Update")!, settle: false);
+        Ui.Landed(() => !nuget.IsBusy && ShownVersion(nuget, "Lib") == "1.0.1", $"Lib updated to 1.0.1:\n{nuget.Log}");
+        Assert.True(File.ReadAllText(lib).Contains($"Include=\"{Id}\" Version=\"[1.0.1]\"", StringComparison.Ordinal),
+            $"The update of a pinned version did not pin the new one:\n{File.ReadAllText(lib)}");
+        Assert.False(nuget.Selected?.IsVulnerable, "The package pinned to 1.0.1, which fixes 1.0.0, is still marked vulnerable");
+        window.Close();
+    }
+
+    /// <summary>A range whose least no feed holds ("[0.9.0, 2.0.0)") is shown and audited as the 1.0.0 its restore
+    /// resolved, read from the project's project.assets.json, and offered the fix as an Update.</summary>
+    [AvaloniaFact]
+    public void A_range_is_shown_and_audited_as_the_version_its_restore_resolved()
+    {
+        Project("Lib", TestProjects.Framework, $"  <ItemGroup>\n    <PackageReference Include=\"{Id}\" Version=\"[0.9.0, 2.0.0)\" />\n  </ItemGroup>\n");
+        Restore.Run(lib);
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Landed(() => nuget.Selected?.Id == Id && nuget.Versions.Count == 3, $"{Id} listed as installed, and its versions: {nuget.Status}");
+        Assert.True(ShownVersion(nuget, "Lib") == "1.0.0" && nuget.Selected!.IsVulnerable,
+            $"Lib's [0.9.0, 2.0.0), restored as 1.0.0, is shown as {ShownVersion(nuget, "Lib")}, {(nuget.Selected!.IsVulnerable ? "marked" : "unmarked")}");
+        Assert.True(nuget.ChosenVersion == "1.0.1" && Action(nuget, "Lib", "Update") is not null,
+            $"The window offers {nuget.ChosenVersion} as [{string.Join(", ", Labels(nuget, "Lib"))}], not 1.0.1 as an Update");
+        window.Close();
     }
 
     /// <summary>A project built for two frameworks, the package at 1.1.0 for its first and at a vulnerable 1.0.0 for its
@@ -162,6 +205,14 @@ public sealed class NuGetTests : IDisposable
         nuget.Query = "vulnerable";
         Task searched = nuget.RefreshAsync();
         Ui.Landed(() => searched.IsCompleted && nuget.Selected?.Id == Id && nuget.Versions.Count == 3, $"{Id} and its versions: {nuget.Status}");
+    }
+
+    /// <summary>A version chosen in the package's version picker, as a person picks it.</summary>
+    private static void Choose(NuGetView nuget, string version)
+    {
+        ComboBox picker = nuget.GetLogicalDescendants().OfType<ComboBox>().Single(c => c.Name == "Versions");
+        picker.SelectedItem = version;
+        Ui.Settle();
     }
 
     private static ProjectModel Named(MainWindow window, string name) => window.Projects.Single(p => p.Name == name);
