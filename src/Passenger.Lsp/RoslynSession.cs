@@ -292,6 +292,27 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
     public Task<Roslyn.Extension.SymbolsFound> SymbolsNamedAsync(string name, int limit, CancellationToken cancel = default) =>
         ExtensionAsync<Roslyn.Extension.SymbolsFound>(Roslyn.Extension.Handlers.SymbolsNamed, new Roslyn.Extension.SymbolsAsked(name, limit), cancel);
 
+    /// <summary>Places the server named, a source generator's document's each taken to the file its code was written in (a
+    /// Razor component's C# to its .razor, as the server takes a reference's), the rest as they were; all as they were when
+    /// the server has no extension to ask.</summary>
+    public async Task<IReadOnlyList<LspLocation>> WrittenAsync(IReadOnlyList<LspLocation> places, CancellationToken cancel = default)
+    {
+        int[] generated = [.. places.Index().Where(p => DocumentUris.GeneratedName(p.Item.Uri) is not null).Select(p => p.Index)];
+        if (generated.Length == 0 || Server.ExtensionProblem is not null)
+        {
+            return places;
+        }
+        Roslyn.Extension.WrittenSpans asked = new([.. generated.Select(i => new Roslyn.Extension.UriSpan(places[i].Uri,
+            new Roslyn.Extension.Place(places[i].Range.Start.Line, places[i].Range.Start.Character), new Roslyn.Extension.Place(places[i].Range.End.Line, places[i].Range.End.Character)))]);
+        Roslyn.Extension.WrittenSpans written = await ExtensionAsync<Roslyn.Extension.WrittenSpans>(Roslyn.Extension.Handlers.WrittenPlaces, asked, cancel).ConfigureAwait(false);
+        LspLocation[] all = [.. places];
+        foreach ((int i, Roslyn.Extension.UriSpan span) in generated.Zip(written.Spans))
+        {
+            all[i] = new LspLocation(span.Uri, new LspRange(new LspPosition(span.Start.Line, span.Start.Character), new LspPosition(span.End.Line, span.End.Character)));
+        }
+        return all;
+    }
+
     /// <summary>Closes the documents, on the caller's thread as they are its, then ends the server without holding it.</summary>
     public async ValueTask DisposeAsync()
     {

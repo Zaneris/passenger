@@ -360,7 +360,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             return [.. (await Places(await lsp.ImplementationAsync(offset), cancel)).Select(p => new HierarchyEntry(null, null, p.Path, p.Line, p.Column, p.Text))];
         }
-        LanguageServer server = Session.CSharp?.Session?.Server ?? throw new InvalidOperationException("C# is not ready");
+        RoslynSession csharp = Session.CSharp?.Session ?? throw new InvalidOperationException("C# is not ready");
+        LanguageServer server = csharp.Server;
         bool calls = direction is "callers" or "callees";
         if (!calls && direction is not ("supertypes" or "subtypes"))
         {
@@ -375,7 +376,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             "supertypes" => [.. (await server.SupertypesAsync(item)).Select(t => (t, t.SelectionRange))],
             _ => [.. (await server.SubtypesAsync(item)).Select(t => (t, t.SelectionRange))],
         };
-        IReadOnlyList<Place> places = await Places([.. found.Select(f => new LspLocation(f.Item.Uri, f.At))], cancel);
+        IReadOnlyList<Place> places = await Places(await csharp.WrittenAsync([.. found.Select(f => new LspLocation(f.Item.Uri, f.At))], cancel), cancel);
         return [.. found.Select((f, i) => new HierarchyEntry(f.Item.Name, f.Item.Detail, places[i].Path, places[i].Line, places[i].Column, places[i].Text))];
     });
 

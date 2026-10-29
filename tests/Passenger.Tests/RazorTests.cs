@@ -3,9 +3,11 @@ using System.Net.Sockets;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Dap;
@@ -17,9 +19,10 @@ namespace Passenger.Tests;
 /// <summary>Razor through the window, on a Blazor app made by <c>dotnet new blazor</c> with components of its own (one
 /// with its code in a code-behind, Tally.razor.cs, and no <c>@code</c>) and a Razor Page: a component's colours and its
 /// errors, completion of components, their parameters, HTML's elements and the C#, go to declaration from a tag, rename
-/// across markup and code, the code-behind's members completed, checked, found and renamed from the markup and back, and a
-/// Razor Page's errors and completion. Each test opens its own window, on the server the last one left running, warm,
-/// and on the app as written (<see cref="SharedProject"/>).</summary>
+/// across markup and code, the code-behind's members completed, checked, found and renamed from the markup and back, a
+/// caller in a component's code block placed in its .razor by Call Hierarchy, and a Razor Page's errors and completion.
+/// Each test opens its own window, on the server the last one left running, warm, and on the app as written (<see
+/// cref="SharedProject"/>).</summary>
 public sealed class RazorTests : IClassFixture<BlazorShop>
 {
     private readonly BlazorShop app;
@@ -263,6 +266,35 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
         Ui.WaitFor(() => code.Text.Snapshot.ToString().Contains("private void Tap()", StringComparison.Ordinal),
             "the code-behind to declare the method by the name given in the markup");
         Assert.Contains("@onclick=\"Tap\"", markup.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>Call Hierarchy of a method a component's code block calls lists the component's method as its caller, at
+    /// the call in the .razor, and going to the caller opens the .razor at that line.</summary>
+    [AvaloniaFact]
+    public void Call_hierarchy_of_a_method_a_components_code_block_calls_goes_to_the_call_in_its_razor_file()
+    {
+        MainWindow window = app.Open("Components/Greeting.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string razor = app.Named("Components/Greeting.razor");
+        Ui.PlaceAfter(editor, "public int Times { get; set; }");
+        string call = "new Shop.Pages.HelloModel().OnGet();";
+        editor.ApplyEdits([new TextEdit(editor.Selections.Primary.Caret, 0, $"\n\n    private void Greet()\n    {{\n        {call}\n    }}")]);
+        int line = editor.Document.Snapshot.GetLineFromOffset(editor.Document.Snapshot.ToString().IndexOf(call, StringComparison.Ordinal));
+
+        window.OpenFile(app.PathOf("Pages/Hello.cshtml.cs"));
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "public void OnG");
+        Assert.Null(Ui.Await(window.ShowCallHierarchyAsync(), "the call hierarchy"));
+        HierarchyRow caller = window.Hierarchy.Rows.FirstOrDefault(r => r.Depth == 1 && r.Node.Item.Name.Contains("Greet", StringComparison.Ordinal))
+            ?? throw new Xunit.Sdk.XunitException($"The component's method is not among OnGet's callers: {string.Join(", ", window.Hierarchy.Rows.Select(r => r.Node.Item.Name))}");
+        Assert.True(caller.Node.Path == razor && caller.Node.Where.Line == line,
+            $"The caller in Greeting.razor is placed at {caller.Node.Path}, line {caller.Node.Where.Line + 1}, not at its call on line {line + 1} of the .razor, so going to it opens no file");
+        Avalonia.Controls.ListBox callers = window.Hierarchy.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single();
+        callers.SelectedItem = caller;
+        Ui.ChooseFromMenu(callers, "Go to");
+        Assert.True(window.EditorArea.Active?.Path == razor, $"Go to on the caller opened {window.EditorArea.Active?.Path}; the status bar said: {window.Status}");
+        Assert.Equal(line, window.EditorArea.CodeEditor.CaretPosition.Line);
         window.Close();
     }
 

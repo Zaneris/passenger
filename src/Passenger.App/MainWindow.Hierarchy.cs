@@ -44,36 +44,36 @@ public partial class MainWindow
     /// <summary>Call Hierarchy: who calls the symbol at the caret, and whom it calls; null when shown, else why not.</summary>
     public async Task<string?> ShowCallHierarchyAsync()
     {
-        (HierarchyItem? item, string? why) = await Prepare("Call Hierarchy", "No method, property or event at the caret", (lsp, offset) => lsp.PrepareCallHierarchyAsync(offset));
-        if (item is null)
+        (HierarchyNode? top, string? why) = await Prepare("Call Hierarchy", "No method, property or event at the caret", (lsp, offset) => lsp.PrepareCallHierarchyAsync(offset));
+        if (top is null)
         {
             return why;
         }
         ShowToolWindow(ToolWindowIds.Hierarchy);
-        await Hierarchy.ShowAsync($"Calls of {item.Name}", Node(item, ServerPlaces.Texts(Editors)), new HierarchyDirection("Callers", async of =>
-            Nodes(await RunningServer().IncomingCallsAsync(of), (call, texts) => Node(call.From, texts, call.FromRanges.FirstOrDefault()))),
-            new HierarchyDirection("Callees", async of => Nodes(await RunningServer().OutgoingCallsAsync(of), (call, texts) => Node(call.To, texts))));
+        await Hierarchy.ShowAsync($"Calls of {top.Item.Name}", top, new HierarchyDirection("Callers", async of =>
+            await NodesAsync([.. (await Running().Server.IncomingCallsAsync(of)).Select(call => (call.From, call.FromRanges.FirstOrDefault() ?? call.From.SelectionRange))])),
+            new HierarchyDirection("Callees", async of => await NodesAsync([.. (await Running().Server.OutgoingCallsAsync(of)).Select(call => (call.To, call.To.SelectionRange))])));
         return null;
     }
 
     /// <summary>Type Hierarchy: the type at the caret's base types and interfaces, and the types that derive from it.</summary>
     public async Task<string?> ShowTypeHierarchyAsync()
     {
-        (HierarchyItem? item, string? why) = await Prepare("Type Hierarchy", "No type at the caret", (lsp, offset) => lsp.PrepareTypeHierarchyAsync(offset));
-        if (item is null)
+        (HierarchyNode? top, string? why) = await Prepare("Type Hierarchy", "No type at the caret", (lsp, offset) => lsp.PrepareTypeHierarchyAsync(offset));
+        if (top is null)
         {
             return why;
         }
         ShowToolWindow(ToolWindowIds.Hierarchy);
-        await Hierarchy.ShowAsync($"Hierarchy of {item.Name}", Node(item, ServerPlaces.Texts(Editors)),
-            new HierarchyDirection("Supertypes", async of => Nodes(await RunningServer().SupertypesAsync(of), (t, texts) => Node(t, texts))),
-            new HierarchyDirection("Subtypes", async of => Nodes(await RunningServer().SubtypesAsync(of), (t, texts) => Node(t, texts))));
+        await Hierarchy.ShowAsync($"Hierarchy of {top.Item.Name}", top,
+            new HierarchyDirection("Supertypes", async of => await NodesAsync([.. (await Running().Server.SupertypesAsync(of)).Select(t => (t, t.SelectionRange))])),
+            new HierarchyDirection("Subtypes", async of => await NodesAsync([.. (await Running().Server.SubtypesAsync(of)).Select(t => (t, t.SelectionRange))])));
         return null;
     }
 
     /// <summary>The symbol at the caret as a hierarchy's root, or why there is none, said in the status bar: nothing
     /// there, the server not ready, or its failure.</summary>
-    private async Task<(HierarchyItem? Item, string? Why)> Prepare(string what, string none, Func<LspDocument, int, Task<HierarchyItem?>> prepare)
+    private async Task<(HierarchyNode? Top, string? Why)> Prepare(string what, string none, Func<LspDocument, int, Task<HierarchyItem?>> prepare)
     {
         if (Editors.Active is not { } active || session.CSharp?.For(active) is not { } features)
         {
@@ -85,7 +85,7 @@ public partial class MainWindow
         }
         try
         {
-            return await prepare(lsp, Editors.CodeEditor.Selections.Primary.Caret) is { } item ? (item, null) : (null, Said(none));
+            return await prepare(lsp, Editors.CodeEditor.Selections.Primary.Caret) is { } item ? ((await NodesAsync([(item, item.SelectionRange)]))[0], null) : (null, Said(none));
         }
         catch (LanguageServerFailed failed)
         {
@@ -95,8 +95,8 @@ public partial class MainWindow
 
     /// <summary>The server running now, asked for as each level of a hierarchy opens: the window may have been shown by
     /// one since started again.</summary>
-    private LanguageServer RunningServer() =>
-        session.CSharp?.Session?.Server ?? throw new LanguageServerFailed("the C# language server is not running");
+    private RoslynSession Running() =>
+        session.CSharp?.Session ?? throw new LanguageServerFailed("the C# language server is not running");
 
     private string Said(string why)
     {
@@ -104,17 +104,16 @@ public partial class MainWindow
         return why;
     }
 
-    /// <summary>A level's rows, each file read once for it.</summary>
-    private IReadOnlyList<HierarchyNode> Nodes<T>(IEnumerable<T> found, Func<T, Func<string, TextSnapshot?>, HierarchyNode> node)
+    /// <summary>A level's rows, each landing at its place (a call, or the item's name) in the editor's lines of the file
+    /// its code was written in (<see cref="RoslynSession.WrittenAsync"/>), each file read once for it.</summary>
+    private async Task<IReadOnlyList<HierarchyNode>> NodesAsync(IReadOnlyList<(HierarchyItem Item, LspRange At)> found)
     {
+        IReadOnlyList<LspLocation> places = await Running().WrittenAsync([.. found.Select(f => new LspLocation(f.Item.Uri, f.At))]);
         Func<string, TextSnapshot?> texts = ServerPlaces.Texts(Editors);
-        return [.. found.Select(f => node(f, texts))];
-    }
-
-    /// <summary>An item as a row, landing at a place in it (a call) or at its name, in the editor's lines of its file.</summary>
-    private static HierarchyNode Node(HierarchyItem item, Func<string, TextSnapshot?> texts, LspRange? at = null)
-    {
-        string path = DocumentUris.ToPath(item.Uri);
-        return new HierarchyNode(item, path, ServerPlaces.PositionOf(texts(path), (at ?? item.SelectionRange).Start));
+        return [.. found.Select((f, i) =>
+        {
+            string path = DocumentUris.ToPath(places[i].Uri);
+            return new HierarchyNode(f.Item, path, ServerPlaces.PositionOf(texts(path), places[i].Range.Start));
+        })];
     }
 }

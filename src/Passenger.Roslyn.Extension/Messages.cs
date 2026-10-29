@@ -29,12 +29,13 @@ public static class Handlers
     public const string LocalizedReads = "Passenger.Roslyn.Extension.LocalizedReads";
     public const string SymbolsNamed = "Passenger.Roslyn.Extension.SymbolsNamed";
     public const string SymbolAt = "Passenger.Roslyn.Extension.SymbolAt";
+    public const string WrittenPlaces = "Passenger.Roslyn.Extension.WrittenPlaces";
 
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
-        AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt,
+        AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
     ];
 }
 
@@ -81,6 +82,16 @@ public sealed record NamedSymbol(
 
 /// <summary>A place in a document as the server counts it: a line and a UTF-16 column, from zero.</summary>
 public sealed record Place([property: JsonPropertyName("line")] int Line, [property: JsonPropertyName("character")] int Character);
+
+/// <summary>A span of a document as the server names it: its URI (a source generator's document's own) and its two ends.</summary>
+public sealed record UriSpan(
+    [property: JsonPropertyName("uri")] string Uri,
+    [property: JsonPropertyName("start")] Place Start,
+    [property: JsonPropertyName("end")] Place End);
+
+/// <summary>Spans whose places in the files their code was written in are asked for, and the answer: each in order, a
+/// generated document's in the file its generator wrote it from, any other as it was.</summary>
+public sealed record WrittenSpans([property: JsonPropertyName("spans")] IReadOnlyList<UriSpan> Spans);
 
 /// <summary>Where the caret is: what a describing message asks about.</summary>
 public sealed record Caret([property: JsonPropertyName("at")] Place At);
