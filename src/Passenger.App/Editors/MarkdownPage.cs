@@ -56,15 +56,19 @@ internal sealed class MarkdownPage(Action<Uri> follow)
 }
 
 /// <summary>A picture of a file in a page, no wider than the page and never enlarged; its words in its place until its
-/// decode lands off the window's thread, and should it fail.</summary>
+/// decode lands off the window's thread, and should it fail. It holds the picture only while it is shown, and asks for it
+/// again as it comes back.</summary>
 public sealed class MarkdownPicture : Panel
 {
     private readonly Image image;
     private readonly TextBlock alt;
+    private readonly Func<string, Task<Bitmap?>>? load;
+    private bool onScreen;
 
     internal MarkdownPicture(string file, string words, Func<string, Task<Bitmap?>>? load)
     {
         File = file;
+        this.load = load;
         Classes.Add("mdPicture");
         image = new Image
         {
@@ -78,10 +82,6 @@ public sealed class MarkdownPicture : Panel
         AutomationProperties.SetName(this, alt.Text);
         Children.Add(image);
         Children.Add(alt);
-        if (load is not null)
-        {
-            IdeErrors.Observe(ShowAsync(load(file)));
-        }
     }
 
     /// <summary>The file it draws.</summary>
@@ -90,9 +90,29 @@ public sealed class MarkdownPicture : Panel
     /// <summary>The picture drawn, null until it is read and when it could not be.</summary>
     public Bitmap? Shown => image.Source as Bitmap;
 
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        onScreen = true;
+        if (load is not null)
+        {
+            IdeErrors.Observe(ShowAsync(load(File)));
+        }
+    }
+
+    /// <summary>Off screen it is its words again: the page lets its pictures go.</summary>
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        onScreen = false;
+        image.Source = null;
+        image.IsVisible = false;
+        alt.IsVisible = true;
+    }
+
     private async Task ShowAsync(Task<Bitmap?> loading)
     {
-        if (await loading is { } bitmap)
+        if (await loading is { } bitmap && onScreen)
         {
             image.Source = bitmap;
             image.IsVisible = true;

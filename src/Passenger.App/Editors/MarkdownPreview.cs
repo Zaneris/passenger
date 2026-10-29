@@ -12,11 +12,11 @@ using Passenger.Text;
 namespace Passenger.App.Editors;
 
 /// <summary>A Markdown file's preview beside its editor, a group's own (each split and editor window has one), drawn by
-/// <see cref="Markdown"/>. It follows the text as typing pauses, read off the window's thread, and keeps the control of
-/// every block whose lines did not change, so a key in a long README costs the window the blocks it changed; and it
-/// follows the editor's scroll, the block at the editor's top line at its own top. Its web links open through the
-/// window's browser, a link to a file beside it opens that file, a <c>#heading</c> scrolls to the heading, and it draws
-/// the images of files inside the open folder alone, the rest as their words.</summary>
+/// <see cref="Markdown"/> as a page of the blocks in sight (<see cref="MarkdownBlocks"/>), each file's page kept while its
+/// tab is open. It follows the text as typing pauses, read off the window's thread, keeping the control of every block
+/// whose lines did not change, and follows the editor's scroll, the block at the editor's top line at its own top. Its
+/// web links open through the window's browser, a link to a file beside it opens that file, a <c>#heading</c> scrolls to
+/// the heading, and it draws the images of files inside the open folder alone, the rest as their words.</summary>
 public sealed class MarkdownPreview : ScrollViewer
 {
     /// <summary>How long typing pauses before the text is read again.</summary>
@@ -24,11 +24,11 @@ public sealed class MarkdownPreview : ScrollViewer
 
     private readonly CodeEditor editor;
     private readonly EditorArea area;
-    private readonly StackPanel page;
     private readonly MarkdownPage links;
     private readonly Debounce typing;
+    private readonly Dictionary<OpenDocument, MarkdownBlocks> pages = [];
     private OpenDocument? document;
-    private List<Entry> entries = [];
+    private MarkdownBlocks? page;
     private int generation;
 
     /// <summary>Each picture's decode by its file, kept while the preview is shown and let go as it goes.</summary>
@@ -43,51 +43,95 @@ public sealed class MarkdownPreview : ScrollViewer
         Classes.Add("markdownPreview");
         Focusable = true;
         HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
-        page = new StackPanel { Classes = { "mdPage" } };
-        Content = page;
         links = new MarkdownPage(Follow) { LocalLinks = true, ImageFile = ImageFile, Load = LoadAsync };
         typing = new Debounce(Pause, RenderAsync);
         editor.ScrollChanged += (_, _) => FollowEditor();
-        // A block that grew (a picture read) moves those under it: they follow once laid out, the scroll's extent with them.
-        page.SizeChanged += (_, _) => FollowLaidOut();
     }
-
-    /// <summary>A top-level block drawn: the lines it was read from, its control and, for a heading, its anchor.</summary>
-    private sealed record Entry(Markdown.Placed Placed, Control Control, string? Anchor);
 
     /// <summary>The file it previews, null for none.</summary>
     public OpenDocument? Document => document;
 
-    /// <summary>The top-level blocks' controls, in order.</summary>
-    public IReadOnlyList<Control> Blocks => [.. entries.Select(e => e.Control)];
+    /// <summary>The controls of the top-level blocks drawn now, in order.</summary>
+    public IReadOnlyList<Control> Blocks => page is null ? [] : [.. page.Shown.Select(e => e.Control!)];
 
-    /// <summary>The words drawn, a block of words a line.</summary>
-    public string Text => string.Join('\n', page.GetLogicalDescendants().OfType<MarkdownText>().Select(b => b.Shown));
+    /// <summary>The words drawn now, a block of words a line.</summary>
+    public string Text => page is null ? "" : string.Join('\n', page.GetLogicalDescendants().OfType<MarkdownText>().Select(b => b.Shown));
 
-    /// <summary>The control of the block whose lines hold a line of the file (from zero), null for a line of none.</summary>
-    public Control? BlockAt(int line) => entries.FirstOrDefault(e => line >= e.Placed.Line && line < e.Placed.End)?.Control;
+    /// <summary>The control of the block drawn whose lines hold a line of the file (from zero), null for a line of none
+    /// or of a block not drawn now.</summary>
+    public Control? BlockAt(int line) => page?.Shown.FirstOrDefault(e => line >= e.Placed.Line && line < e.Placed.End)?.Control;
 
     /// <summary>The first line (from zero) of the block a control draws.</summary>
-    public int LineOf(Control block) => entries.First(e => e.Control == block).Placed.Line;
+    public int LineOf(Control block) => page!.Shown.First(e => e.Control == block).Placed.Line;
 
-    /// <summary>The heading of an anchor (GitHub's: its words in lower case, hyphens for spaces), null for none.</summary>
-    public Control? Heading(string anchor) => entries.FirstOrDefault(e => e.Anchor == anchor)?.Control;
+    /// <summary>The heading drawn of an anchor (GitHub's: its words in lower case, hyphens for spaces), null for none.</summary>
+    public Control? Heading(string anchor) => page?.Shown.FirstOrDefault(e => e.Anchor == anchor)?.Control;
 
     /// <summary>Where the preview's scroll stands with a block at its top.</summary>
-    public double TopOf(Control block) => block.TranslatePoint(default, page) is { } at ? Offset.Y + page.Bounds.Top + at.Y : 0;
+    public double TopOf(Control block) => page is not null && block.TranslatePoint(default, page) is { } at ? Offset.Y + page.Bounds.Top + at.Y : 0;
 
-    /// <summary>Shows a file's text rendered, or nothing; a file shown again is read again only as its text changes.</summary>
+    /// <summary>Shows a file's text rendered, or nothing: its page as it was left, read again only as its text changed.</summary>
     internal void Show(OpenDocument? next)
     {
         if (next == document)
         {
             return;
         }
-        Clear();
+        typing.Stop();
+        generation++;
         document = next;
+        if (next is null)
+        {
+            page = null;
+        }
+        else if (pages.TryGetValue(next, out MarkdownBlocks? kept))
+        {
+            page = kept;
+            kept.Arrive();
+        }
+        else
+        {
+            page = NewPage();
+            pages[next] = page;
+        }
+        Content = page;
+        if (page is not null && page.From is null)
+        {
+            Offset = default;
+        }
+        LetPicturesGo();
         if (onScreen)
         {
             Hear(next);
+            ReadAgain();
+        }
+    }
+
+    /// <summary>Lets go of a file's page, its tab closed: shown, it goes as the next file is.</summary>
+    internal void Forget(OpenDocument closed) => pages.Remove(closed);
+
+    /// <summary>Lets go of every page but the one shown, previews turned off.</summary>
+    internal void Forget()
+    {
+        foreach (OpenDocument kept in pages.Keys.Where(d => d != document).ToList())
+        {
+            pages.Remove(kept);
+        }
+    }
+
+    private MarkdownBlocks NewPage()
+    {
+        MarkdownBlocks blocks = new(block => Markdown.Control(block, links), FollowEditor) { Classes = { "mdPage" } };
+        // A block that grew (a picture read, a narrower page) moves those under it: they follow once laid out.
+        blocks.Moved += (_, _) => FollowLaidOut();
+        return blocks;
+    }
+
+    /// <summary>Reads the text shown again where its page was drawn from another version of it.</summary>
+    private void ReadAgain()
+    {
+        if (document is { } shown && page is { } drawn && drawn.From != (shown.Text, shown.Text.Version))
+        {
             IdeErrors.Observe(RenderAsync());
         }
     }
@@ -122,40 +166,36 @@ public sealed class MarkdownPreview : ScrollViewer
         base.OnAttachedToVisualTree(e);
         onScreen = true;
         Hear(document);
-        if (document is not null && entries.Count == 0)
-        {
-            IdeErrors.Observe(RenderAsync());
-        }
+        ReadAgain();
     }
 
-    /// <summary>Off screen it holds nothing it drew: its controls, highlighters and pictures go, the file it shows kept to
-    /// read again as it comes back.</summary>
+    /// <summary>Off screen it hears nothing of its file and holds no picture; its pages keep the blocks they drew, to show
+    /// as it comes back.</summary>
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
         onScreen = false;
         Hear(null);
-        Clear();
+        typing.Stop();
+        generation++;
+        LetPicturesGo();
     }
 
     private void OnTextChanged(object? sender, DocumentChangedEventArgs e) => typing.Restart();
 
-    /// <summary>A file moved or renamed is read again, since its links and pictures are found from where it is.</summary>
+    /// <summary>A file moved or renamed is drawn again, since its links and pictures are found from where it is.</summary>
     private void OnDocumentChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(OpenDocument.Path))
+        if (e.PropertyName == nameof(OpenDocument.Path) && document is { } moved)
         {
-            Clear();
-            IdeErrors.Observe(RenderAsync());
+            pages.Remove(moved);
+            document = null;
+            Show(moved);
         }
     }
 
-    private void Clear()
+    private void LetPicturesGo()
     {
-        typing.Stop();
-        generation++;
-        page.Children.Clear();
-        entries = [];
         Dictionary<string, Task<AssetPreview?>> drawn = pictures;
         pictures = new(PathNames.Comparer);
         foreach (Task<AssetPreview?> picture in drawn.Values)
@@ -167,82 +207,56 @@ public sealed class MarkdownPreview : ScrollViewer
         }
     }
 
-    /// <summary>Reads the text off the window's thread, then puts in the controls of the blocks that changed.</summary>
+    /// <summary>Reads the text off the window's thread, then has the page take its blocks, those that did not change kept.</summary>
     private async Task RenderAsync()
     {
-        if (document is not { } shown || !onScreen)
+        if (document is not { } shown || page is not { } into || !onScreen)
         {
             return;
         }
         int asked = ++generation;
         TextSnapshot text = shown.Text.Snapshot;
-        string[] kept = [.. entries.Select(e => e.Placed.Source)];
-        Reading read = await BackgroundWork.Run(() => Read(text.ToString(), kept));
-        if (asked != generation || document != shown)
+        int version = shown.Text.Version;
+        IReadOnlyList<MarkdownBlocks.Entry> drawn = into.Entries;
+        MarkdownBlocks.Entry[] read = await BackgroundWork.Run(() => Read(text.ToString(), drawn));
+        if (asked != generation || document != shown || page != into)
         {
             return;
         }
-        Apply(read);
+        into.Take(read, shown.Text, version);
+        FollowLaidOut();
     }
 
-    /// <summary>A text's blocks, the block drawn that each may keep (by its lines as written, in order; -1 for none), and
-    /// each heading's anchor.</summary>
-    private sealed record Reading(IReadOnlyList<Markdown.Placed> Placed, int[] Kept, string?[] Anchors);
-
-    private static Reading Read(string text, string[] drawn)
+    /// <summary>A text's blocks, each taking the block drawn it is (by its lines as written, in order), and each heading's
+    /// anchor.</summary>
+    private static MarkdownBlocks.Entry[] Read(string text, IReadOnlyList<MarkdownBlocks.Entry> drawn)
     {
         IReadOnlyList<Markdown.Placed> placed = Markdown.ParsePlaced(text);
-        Dictionary<string, Queue<int>> byLines = new(StringComparer.Ordinal);
-        for (int i = 0; i < drawn.Length; i++)
+        Dictionary<string, Queue<MarkdownBlocks.Entry>> byLines = new(StringComparer.Ordinal);
+        foreach (MarkdownBlocks.Entry entry in drawn)
         {
-            if (!byLines.TryGetValue(drawn[i], out Queue<int>? same))
+            if (!byLines.TryGetValue(entry.Placed.Source, out Queue<MarkdownBlocks.Entry>? same))
             {
-                byLines[drawn[i]] = same = new Queue<int>();
+                byLines[entry.Placed.Source] = same = new Queue<MarkdownBlocks.Entry>();
             }
-            same.Enqueue(i);
+            same.Enqueue(entry);
         }
-        int[] kept = new int[placed.Count];
-        string?[] anchors = new string?[placed.Count];
+        MarkdownBlocks.Entry[] read = new MarkdownBlocks.Entry[placed.Count];
         Dictionary<string, int> taken = new(StringComparer.Ordinal);
         for (int i = 0; i < placed.Count; i++)
         {
-            kept[i] = byLines.TryGetValue(placed[i].Source, out Queue<int>? same) && same.TryDequeue(out int at) ? at : -1;
+            MarkdownBlocks.Entry? kept = byLines.TryGetValue(placed[i].Source, out Queue<MarkdownBlocks.Entry>? same) && same.TryDequeue(out MarkdownBlocks.Entry? at) ? at : null;
+            string? anchor = null;
             if (placed[i].Block is Markdown.Heading heading)
             {
                 // A second heading of the same words is GitHub's "-1", a third "-2".
                 string slug = Markdown.Slug(Markdown.Plain(Markdown.Inlines(heading.Text)));
-                anchors[i] = taken.TryGetValue(slug, out int count) ? $"{slug}-{count}" : slug;
+                anchor = taken.TryGetValue(slug, out int count) ? $"{slug}-{count}" : slug;
                 taken[slug] = count + 1;
             }
+            read[i] = new MarkdownBlocks.Entry(i, placed[i], anchor, kept);
         }
-        return new Reading(placed, kept, anchors);
-    }
-
-    /// <summary>The page's controls as the text's blocks are: a kept block's own, a changed block's made now, and only the
-    /// stretch between what stands as it was before and after changed in the page.</summary>
-    private void Apply(Reading read)
-    {
-        List<Entry> next = new(read.Placed.Count);
-        for (int i = 0; i < read.Placed.Count; i++)
-        {
-            Control control = read.Kept[i] >= 0 ? entries[read.Kept[i]].Control : Markdown.Control(read.Placed[i].Block, links);
-            next.Add(new Entry(read.Placed[i], control, read.Anchors[i]));
-        }
-        Controls children = page.Children;
-        int before = 0;
-        while (before < children.Count && before < next.Count && children[before] == next[before].Control)
-        {
-            before++;
-        }
-        int after = 0;
-        while (after < children.Count - before && after < next.Count - before && children[^(after + 1)] == next[^(after + 1)].Control)
-        {
-            after++;
-        }
-        children.RemoveRange(before, children.Count - before - after);
-        children.InsertRange(before, next.Skip(before).Take(next.Count - before - after).Select(e => e.Control));
-        entries = next;
-        FollowLaidOut();
+        return read;
     }
 
     private bool following;
@@ -263,52 +277,47 @@ public sealed class MarkdownPreview : ScrollViewer
     }
 
     /// <summary>The preview scrolled so the block at the editor's top line stands at its top, a long block's part as far
-    /// down it as the line is.</summary>
-    private void FollowEditor()
+    /// down it as the line is; whether it moved.</summary>
+    private bool FollowEditor()
     {
-        if (document is null || editor.Document != document.Text || entries.Count == 0 || !editor.IsEffectivelyVisible)
+        if (document is null || page is not { } shown || editor.Document != document.Text || shown.Entries.Count == 0 || !editor.IsEffectivelyVisible)
         {
-            return;
+            return false;
         }
         int top = editor.LinesShown.First;
-        if (top == 0)
-        {
-            Offset = default;
-            return;
-        }
-        int low = 0;
-        int high = entries.Count - 1;
-        int found = -1;
-        while (low <= high)
-        {
-            int middle = (low + high) / 2;
-            if (entries[middle].Placed.Line <= top)
-            {
-                found = middle;
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle - 1;
-            }
-        }
+        int found = top == 0 ? -1 : shown.IndexAtLine(top);
         if (found < 0)
         {
-            Offset = default;
-            return;
+            return ScrollWithin(0);
         }
-        Entry entry = entries[found];
-        double y;
-        if (top < entry.Placed.End)
+        Markdown.Placed placed = shown.Entries[found].Placed;
+        (double at, double height) = shown.Drawn(found);
+        // The page's top in the preview's scroll: its margin.
+        double y = Offset.Y + shown.Bounds.Top;
+        if (top < placed.End)
         {
-            y = TopOf(entry.Control) + (entry.Control.Bounds.Height * (top - entry.Placed.Line) / Math.Max(1, entry.Placed.End - entry.Placed.Line));
+            y += at + (height * (top - placed.Line) / Math.Max(1, placed.End - placed.Line));
         }
         else
         {
             // A blank line after a block: the next block comes up to the top.
-            y = found + 1 < entries.Count ? TopOf(entries[found + 1].Control) : TopOf(entry.Control) + entry.Control.Bounds.Height;
+            y += found + 1 < shown.Entries.Count ? shown.Drawn(found + 1).Top : at + height;
         }
-        Offset = new Vector(0, Math.Max(0, Math.Min(y, Extent.Height - Viewport.Height)));
+        return ScrollWithin(y);
+    }
+
+    /// <summary>Scrolls the preview to a place, as far as the page reaches; whether it moved.</summary>
+    private bool ScrollWithin(double y)
+    {
+        Vector to = new(0, Math.Max(0, Math.Min(y, Extent.Height - Viewport.Height)));
+        if (to == Offset)
+        {
+            return false;
+        }
+        Vector before = Offset;
+        page?.Jump();
+        Offset = to;
+        return Offset != before;
     }
 
     /// <summary>A link clicked: a web address in the person's browser, a heading of this file scrolled to, another file
@@ -338,11 +347,25 @@ public sealed class MarkdownPreview : ScrollViewer
     /// <summary>Scrolls to a heading by its anchor, as written or as GitHub makes one of the words written.</summary>
     public bool ScrollTo(string anchor)
     {
-        if ((Heading(anchor) ?? Heading(Markdown.Slug(anchor))) is not { } heading)
+        if (page is not { } shown)
         {
             return false;
         }
-        Offset = new Vector(0, Math.Max(0, Math.Min(TopOf(heading), Extent.Height - Viewport.Height)));
+        string made = Markdown.Slug(anchor);
+        int index = -1;
+        for (int i = 0; i < shown.Entries.Count && index < 0; i++)
+        {
+            index = shown.Entries[i].Anchor == anchor ? i : -1;
+        }
+        for (int i = 0; i < shown.Entries.Count && index < 0; i++)
+        {
+            index = shown.Entries[i].Anchor == made ? i : -1;
+        }
+        if (index < 0)
+        {
+            return false;
+        }
+        ScrollWithin(Offset.Y + shown.Bounds.Top + shown.Drawn(index).Top);
         return true;
     }
 

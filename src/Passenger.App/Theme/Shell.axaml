@@ -1,6 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:app="using:Passenger.App">
+        xmlns:app="using:Passenger.App"
+        xmlns:editors="using:Passenger.App.Editors">
     <!-- The shell's controls over the Fluent theme. Fluent paints a button's hover and press on its
          content presenter, so each state is restyled there. A later style wins over an earlier one, so the base
          styles come first and a class's style after them says only how it differs. -->
@@ -1336,7 +1337,7 @@
         <Setter Property="Background" Value="{DynamicResource Passenger.Editor.Background}" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
-    <Style Selector="StackPanel.mdPage">
+    <Style Selector="editors|MarkdownBlocks.mdPage">
         <Setter Property="MaxWidth" Value="880" />
         <Setter Property="Margin" Value="24,20" />
         <Setter Property="Spacing" Value="12" />

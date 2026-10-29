@@ -247,6 +247,10 @@ public sealed class EditorGroup : DockPanel
                 Side = null;
             }
             markdown?.Show(null);
+            if (!area.ShowsMarkdownPreview)
+            {
+                markdown?.Forget();
+            }
         }
     }
 
@@ -482,6 +486,7 @@ public sealed class EditorGroup : DockPanel
         }
         tabs.Remove(tab);
         document.Text.Changed -= OnTabTextChanged;
+        markdown?.Forget(document);
         if (tab == active)
         {
             ClearPreview();

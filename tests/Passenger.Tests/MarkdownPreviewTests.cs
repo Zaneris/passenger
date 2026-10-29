@@ -274,6 +274,87 @@ public sealed class MarkdownPreviewTests
         window.Close();
     }
 
+    /// <summary>A preview draws the blocks near its sight alone, so showing a 600 KB changelog's costs the window's thread
+    /// about what a 60 KB one's does, and its page is kept with its tab: shown again deep in the file, it makes no block
+    /// again.</summary>
+    [AvaloniaFact]
+    public void A_long_changelogs_preview_costs_the_window_what_a_short_ones_does_and_its_tab_shown_again_makes_no_block()
+    {
+        string folder = TestFolders.Create("markdown-long-");
+        File.WriteAllText(Path.Combine(folder, "WARM.md"), Changelog(2_000));
+        File.WriteAllText(Path.Combine(folder, "SHORT.md"), Changelog(60_000));
+        File.WriteAllText(Path.Combine(folder, "LONG.md"), Changelog(600_000));
+        MainWindow window = Ui.OpenFolder(folder, width: 1200, height: 800, languageServer: false);
+        Assert.Null(window.OpenFile("WARM.md"));
+        Ui.Settle();
+        Assert.True(window.Perform(AppActions.MarkdownPreview));
+        Previewed(window, "WARM.md");
+        Assert.True(window.Perform(AppActions.MarkdownPreview));
+        (long shortCost, int shortDrawn) = Previewed(window, "SHORT.md");
+        Assert.True(window.Perform(AppActions.MarkdownPreview));
+        (long longCost, int longDrawn) = Previewed(window, "LONG.md");
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"Turning the preview on allocated {shortCost >> 10} KB on the window's thread and drew {shortDrawn} blocks for 60 KB, {longCost >> 10} KB and {longDrawn} for 600 KB");
+        Assert.True(longDrawn <= shortDrawn,
+            $"The 600 KB changelog's preview drew {longDrawn} blocks where the 60 KB one's, of the same first page, drew {shortDrawn}: it draws blocks out of its sight");
+        Assert.True(longCost < shortCost * 3 / 2,
+            $"The preview of a 600 KB changelog allocated {longCost >> 10} KB on the window's thread, of a 60 KB one {shortCost >> 10} KB: the window pays for what is off screen");
+
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        MarkdownPreview preview = Shown(group);
+        CodeEditor editor = group.Editor;
+        int line = editor.Document.Snapshot.ToString().Split('\n').ToList().FindIndex(l => l.StartsWith("## [7.0.0]", StringComparison.Ordinal));
+        Scroll(editor, line);
+        Control seven = preview.BlockAt(line) ?? throw new Xunit.Sdk.XunitException($"With the editor's top at line {line} the preview draws no block of it");
+        Assert.True(Math.Abs(preview.Offset.Y - preview.TopOf(seven)) < 1,
+            $"With the editor's top at version 7.0.0 the preview stands at {preview.Offset.Y:0}, not that heading's {preview.TopOf(seven):0}");
+        Control[] drawn = [.. preview.Blocks];
+        Assert.Null(window.OpenFile("SHORT.md"));
+        Ui.Settle();
+        Assert.Null(window.OpenFile("LONG.md"));
+        Ui.Settle();
+        Assert.Same(preview, Shown(group));
+        Control[] made = [.. preview.Blocks.Where(b => !drawn.Contains(b))];
+        Assert.True(made.Length == 0, $"Showing the long changelog's tab again made {made.Length} blocks' controls, where its page had them drawn");
+        Assert.True(Math.Abs(preview.Offset.Y - preview.TopOf(seven)) < 1,
+            $"Shown again, the preview stands at {preview.Offset.Y:0}, not version 7.0.0's {preview.TopOf(seven):0}, where the editor's top is");
+        window.Close();
+
+        // Markdown Preview turned on over a file open in the editor: what the preview alone costs.
+        static (long Cost, int Drawn) Previewed(MainWindow window, string name)
+        {
+            Assert.Null(window.OpenFile(name));
+            Ui.Settle();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            Assert.True(window.Perform(AppActions.MarkdownPreview));
+            Ui.Settle();
+            long cost = GC.GetAllocatedBytesForCurrentThread() - before;
+            return (cost, Shown(window.EditorArea.ActiveGroup).Blocks.Count);
+        }
+    }
+
+    /// <summary>A changelog of about a size, as a long project's grows: each version a heading, its fixes in a list, and now
+    /// and then a fence of code and a table.</summary>
+    private static string Changelog(int size)
+    {
+        StringBuilder text = new("# Changelog\n\n");
+        for (int version = 999; text.Length < size; version--)
+        {
+            text.Append($"## [{version / 100}.{version / 10 % 10}.{version % 10}] - 2026-01-{(version % 28) + 1:00}\n\n### Fixed\n\n");
+            for (int item = 0; item < 5; item++)
+            {
+                int issue = (version * 10) + item;
+                text.Append($"- Fixed issue #{issue} where the **widget** would sometimes not render on `resize` ([#{issue}](https://example.com/pull/{issue}))\n");
+            }
+            if (version % 10 == 0)
+            {
+                text.Append("\n```csharp\npublic sealed class Widget\n{\n    public void Resize(int width) => Width = width;\n}\n```\n\n| Platform | Fixed |\n| :--- | ---: |\n| macOS | yes |\n| Windows | yes |\n");
+            }
+            text.Append('\n');
+        }
+        return text.ToString();
+    }
+
     /// <summary>A window keeping its state in the test's folder, on the folder.</summary>
     private static MainWindow Started(string state, string folder)
     {
