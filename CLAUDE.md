@@ -143,8 +143,9 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   turn through `CommandHistory.InTurnAsync`; a closed file changes through `Recording.Change` (or `Wrote` for texts it
   holds), written off the window's thread by `Recording.WriteAsync`, the window following once they are written
   (`AssistContext.ChangeFilesAsync`, `MainWindow.FollowingAsync`); Undo and Redo put closed files back off it
-  (`CommandHistory.BlockedAsync`, `PutAsync`). A file shown read-only refuses every change to its text
-  (`TextDocument.IsReadOnly`, set only by `OpenDocument`), and an action on it greys with `Refusals.ReadOnly`.
+  (`CommandHistory.BlockedAsync`, `PutAsync`), a command's `Part` saying why it could not be put and one the disk may
+  refuse going `First`. A file shown read-only refuses every change to its text (`TextDocument.IsReadOnly`, set only by
+  `OpenDocument`), and an action on it greys with `Refusals.ReadOnly`.
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
   `workspaces/<name>-<hash>/` and is made in `ProjectSession`. A new setting: an `AppSettings` property, its row and
