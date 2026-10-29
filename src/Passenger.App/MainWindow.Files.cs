@@ -620,6 +620,7 @@ public partial class MainWindow
         session.Evaluate();
         session.MSBuild.FilesCameOrWent();
         session.CSharp?.FilesCameOrWent(named);
+        session.Xaml.CameOrWent(named);
         if (Folder is { } folder)
         {
             session.Index.Apply(folder, named);

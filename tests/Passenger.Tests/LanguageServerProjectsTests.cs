@@ -638,6 +638,42 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
     private static bool Missing(MainWindow window, OpenDocument document) =>
         window.CSharpService?.For(document)?.Diagnostics.Any(d => d.Code?.ToString() == "CS0103" && d.Message.Contains("Missing", StringComparison.Ordinal)) == true;
 
+    /// <summary>Find Usages in a solution with no XAML looks for XAML in the folders of the projects that can use the symbol
+    /// once: a second Find Usages walks no file of them again, and a XAML file come into one has that project looked in
+    /// again.</summary>
+    [AvaloniaFact]
+    public void Find_usages_in_a_solution_with_no_xaml_looks_for_xaml_in_its_projects_once_until_a_xaml_file_comes()
+    {
+        MainWindow window = Keeping();
+        window.OpenFile(Path.Combine(folder, "Lib", "Greeter.cs"));
+        OpenDocument greeter = window.EditorArea.Active!;
+        Ui.WaitFor(() => window.CSharpService?.IsReady == true && window.CSharpService.For(greeter)?.Lsp is not null, "the language server to load the projects", TimeSpan.FromMinutes(2));
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "string Hel");
+        FoundUsages(window);
+        int walked = window.XamlService.FilesWalked;
+        Assert.True(walked > 0, "Find Usages looked in neither project's folders for the XAML that may use Lib's method");
+        FoundUsages(window);
+        Assert.True(window.XamlService.FilesWalked == walked,
+            $"A second Find Usages walked {window.XamlService.FilesWalked - walked} files again for XAML the projects were found without, as every Find Usages and Safe Delete would");
+
+        HashSet<string> heard = new(StringComparer.Ordinal);
+        EventHandler<FolderChanges> hear = (_, changes) => heard.UnionWith(changes.ComeOrGone.Select(Path.GetFileName).OfType<string>());
+        window.FolderWatcher!.Changed += hear;
+        Write(folder, "App/View.axaml", "<UserControl xmlns=\"https://github.com/avaloniaui\" />\n");
+        Ui.PumpUntil(() => heard.Contains("View.axaml"), "the folder's watcher to hear of App's XAML file");
+        window.FolderWatcher.Changed -= hear;
+        FoundUsages(window);
+        Assert.True(window.XamlService.FilesWalked > walked, "A XAML file come into App was never looked for, App still taken for a project with no XAML");
+        window.Close();
+
+        static void FoundUsages(MainWindow window)
+        {
+            int searches = window.Find.Searches.Count;
+            Ui.Run(window, AppActions.FindUsages);
+            Ui.WaitFor(() => window.Find.Searches.Count > searches, "the usages in the Find window");
+        }
+    }
+
     private MainWindow Keeping(string? root = null)
     {
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };

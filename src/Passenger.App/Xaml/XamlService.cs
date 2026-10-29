@@ -42,6 +42,14 @@ public sealed class XamlService : IDisposable
     private readonly Dictionary<OpenDocument, XamlDocument> documents = [];
     private readonly Dictionary<OpenDocument, TypedSource> sources = [];
     private readonly List<SourcesPending> pending = [];
+
+    /// <summary>The projects whose folders were found holding no XAML, not looked in again until a XAML file comes.</summary>
+    private readonly HashSet<string> withoutXaml = new(PathNames.Comparer);
+
+    /// <summary>How many times files came that may be XAML where a project was found without any.</summary>
+    private int xamlMayHaveCome;
+
+    private int filesWalked;
     private bool disposed;
 
     /// <summary>The next text of an open C# file held by a test (<see cref="HoldNextText"/>): what it waits for, and done
@@ -161,6 +169,29 @@ public sealed class XamlService : IDisposable
             document.Parsed -= OnParsed;
             source.Wait.Stop();
         }
+    }
+
+    /// <summary>How many files Find Usages and Safe Delete have looked at for XAML in projects not yet read, for a test.</summary>
+    public int FilesWalked => Volatile.Read(ref filesWalked);
+
+    /// <summary>Files or folders came or went (<paramref name="every"/>: changes the watcher lost): a project found holding
+    /// no XAML is looked in again once a XAML file, or what may be a folder holding one, came or went in or above its
+    /// folder.</summary>
+    public void CameOrWent(IEnumerable<string> paths, bool every = false)
+    {
+        UiThread.Check();
+        List<string> named = every ? [] : [.. paths.Where(p => IsXaml(p) || Languages.Language.ForPath(p) == Languages.Language.PlainText)];
+        if (!every && named.Count == 0)
+        {
+            return;
+        }
+        xamlMayHaveCome++;
+        if (every)
+        {
+            withoutXaml.Clear();
+            return;
+        }
+        withoutXaml.RemoveWhere(project => Path.GetDirectoryName(project) is { } folder && named.Any(p => PathNames.Within(p, folder) || PathNames.Within(folder, p)));
     }
 
     /// <summary>Files changed on disk: a project's C# or XAML read again where it changed, and a project file or restore
@@ -444,11 +475,21 @@ public sealed class XamlService : IDisposable
             return [];
         }
         List<string> given = [.. projectFiles.Where(p => p.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)).Distinct(PathNames.Comparer)];
-        List<string> unread = [.. given.Where(p => !projects.ContainsKey(p))];
-        HashSet<string> holding = await BackgroundWork.Run(() => unread.Where(XamlProjectBuilder.HoldsXaml).ToHashSet(PathNames.Comparer));
+        List<string> unread = [.. given.Where(p => !projects.ContainsKey(p) && !withoutXaml.Contains(p))];
+        int came = xamlMayHaveCome;
+        HashSet<string> holding = await BackgroundWork.Run(() => unread.Where(p =>
+        {
+            (bool holds, int walked) = XamlProjectBuilder.HoldsXaml(p);
+            Interlocked.Add(ref filesWalked, walked);
+            return holds;
+        }).ToHashSet(PathNames.Comparer));
         if (disposed)
         {
             return [];
+        }
+        if (came == xamlMayHaveCome)
+        {
+            withoutXaml.UnionWith(unread.Where(p => !holding.Contains(p)));
         }
         List<XamlLoading> loadings = [.. given.Where(p => projects.ContainsKey(p) || holding.Contains(p)).Select(LoadingOf)];
         await TypedNowAsync();
