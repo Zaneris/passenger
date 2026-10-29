@@ -99,6 +99,52 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A file the person saves while an agent's Replace in Files writes its closed files is their own change in Local
+    /// History, where it was filed under the agent's replace, whose change set keeps only the replace's own writes.</summary>
+    [AvaloniaFact]
+    public void A_save_the_person_makes_while_an_agents_replace_writes_is_their_own_change_in_local_history()
+    {
+        string root = PathNames.Canonical(TestFolders.Create("mcp-replace-history-"));
+        DeleteAtEnd(root);
+        string notes = TestFolders.Write(root, "Notes.txt", "a tally of things\n");
+        string shop = TestFolders.Write(root, "Shop.cs", "class Shop\n{\n}\n");
+        MainWindow window = AgentsWindow(root, languageServer: false);
+        window.OpenFile(shop);
+        Ui.Settle();
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Task held = window.EditorArea.Commands.HoldNextWrite(release.Task);
+            Task<JsonElement> replacing = Waiting.Apart(() => Call(client, McpTools.ReplaceInFiles,
+                new() { ["text"] = "tally", ["replacement"] = "count", ["wholeWords"] = true, ["scope"] = "directory", ["directory"] = "." }));
+            ConfirmDialog asked = Question(window, "the question for the agent's replace");
+            // Pumped, not settled: the replace holds the window's background work while its write of Notes.txt is held.
+            Ui.Click(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(asked).OfType<Avalonia.Controls.Button>().First(b => (string?)b.Content == "Allow"), settle: false);
+            Ui.PumpUntil(() => held.IsCompleted, "the agent's write of Notes.txt to be held", AgentLimit);
+            window.EditorArea.CodeEditor.Focus();
+            window.KeyTextInput("// saved meanwhile ");
+            Ui.Run(window, AppActions.Save, settle: false);
+            Ui.PumpUntil(() => window.EditorArea.Active?.IsModified == false, "Shop.cs saved");
+            release.SetResult();
+            Await(replacing, "the agent's replace");
+            Assert.Equal("a count of things\n", File.ReadAllText(notes));
+
+            JsonElement saved = Await(Waiting.Apart(() => Call(client, McpTools.LocalHistory, new() { ["path"] = "Shop.cs" })), "Shop.cs's history").GetProperty("rows")[0];
+            Assert.True(saved.GetProperty("title").GetString() == "Change",
+                $"The save made while the agent's replace wrote is filed as '{saved.GetProperty("title").GetString()}', not as the person's own change");
+            JsonElement replaced = Await(Waiting.Apart(() => Call(client, McpTools.LocalHistory, new() { ["path"] = "Notes.txt" })), "Notes.txt's history").GetProperty("rows")[0];
+            Assert.Equal(global::Passenger.App.Workspace.FilesReplaced.Title(new global::Passenger.Text.SearchQuery("tally", WholeWords: true), "count"),
+                replaced.GetProperty("title").GetString());
+        }
+        finally
+        {
+            release.TrySetResult();
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>An agent searches the folder's feeds and installs a package with the NuGet window never built, its view
     /// made only as the person opens it, where the package is listed installed.</summary>
     [AvaloniaFact]

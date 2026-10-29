@@ -292,7 +292,7 @@ public partial class MainWindow
             }
         }
         refused.AddRange(unlanded.Select(u => (u.Path, FileSearch.Refusal(u.Refused))));
-        return new FilesReplaced([.. written.Where(w => !unlanded.Any(u => u.Path == w.Path)).Select(w => w.Note).OfType<string>()], refused);
+        return new FilesReplaced([.. written.Where(w => !unlanded.Any(u => u.Path == w.Path)).Select(w => w.Note).OfType<string>()], refused) { Named = activity };
     }
 
     /// <summary>Recent Files (Ctrl+,): the files opened last, the latest first, narrowed as a name is typed; a file

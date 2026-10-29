@@ -219,15 +219,17 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException($"More than {FileSearch.MostMatches - 1} matches: narrow the scope or the mask, as Replace in Files lists no more");
         }
         List<string> files = [.. found.Select(m => m.Path).Distinct()];
-        // The open files' saves are the replace's too: one change set of Local History with what it wrote.
-        using IDisposable? activity = window.LocalHistory?.During(FilesReplaced.Title(query, replacement));
         FilesReplaced done = await window.ReplaceInFilesAsync(query, replacement, searched);
         List<string> said = [.. done.Converted];
-        foreach (OpenDocument open in Editors.Documents.Where(d => d.IsModified && files.Contains(d.Path)).ToList())
+        // The open files' saves are the replace's, in its change set; what the person saves meanwhile stays theirs.
+        using (done.Named?.Own())
         {
-            if (!Editors.Save(open))
+            foreach (OpenDocument open in Editors.Documents.Where(d => d.IsModified && files.Contains(d.Path)).ToList())
             {
-                said.Add($"{Relative(open.Path)} is changed in the editor but could not be saved");
+                if (!Editors.Save(open))
+                {
+                    said.Add($"{Relative(open.Path)} is changed in the editor but could not be saved");
+                }
             }
         }
         if (await Passenger.App.Editors.EditorArea.LandedAsync(null, cancel) is { } unlanded)

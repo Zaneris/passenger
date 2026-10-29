@@ -33,6 +33,10 @@ public sealed record FilesReplaced(IReadOnlyList<string> Converted, IReadOnlyLis
     /// <summary>What a replace is named as one command of Undo and one change set of Local History.</summary>
     public static string Title(SearchQuery query, string replacement) => $"Replace '{query.Text}' with '{replacement}'";
 
+    /// <summary>The change set Local History keeps the replace's writes in, which a save of what it changed in the open
+    /// files joins when made within its <see cref="History.LocalHistory.Activity.Own"/>; null without a history.</summary>
+    public History.LocalHistory.Activity? Named { get; init; }
+
     /// <summary>The matches in files that were replaced, the refused files' left out.</summary>
     public IReadOnlyList<SearchMatch> Replaced(IEnumerable<SearchMatch> matches) => [.. matches.Where(m => !Refused.Any(r => r.Path == m.Path))];
 
