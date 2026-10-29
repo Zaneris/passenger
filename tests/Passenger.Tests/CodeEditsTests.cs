@@ -333,6 +333,7 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
         window.Close();
     }
 
+    [Gate]
     [AvaloniaFact]
     public void A_rename_reaching_a_file_not_open_that_changed_on_disk_as_the_server_worked_is_refused_and_once_the_server_has_it_lands_right()
     {

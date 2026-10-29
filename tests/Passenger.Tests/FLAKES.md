@@ -61,7 +61,8 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   the program called the deleted body before dotnet watch's restart and ended on the unhandled `HotReloadException`, and
   dotnet watch waited for a file to change rather than restarting. Neither race in the IDE: **the test** relied on dotnet
   watch's own timing; it left the gate and was rewritten to change a method the program calls only once dotnet watch has
-  hooked the deleted body's exception (189eee22, #701).
+  hooked the deleted body's exception (189eee22, #701), and is back in the gate, the release run its first CI record
+  (the owner's choice).
 
 ## 2026-10-28
 

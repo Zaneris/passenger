@@ -244,6 +244,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// which leaves the callers calling the method the update deletes, is said as the restart dotnet watch makes, however
     /// long after the Apply the program calls it and however far the window fell behind; and the program dotnet watch
     /// started again, and dotnet watch, end with the window.</summary>
+    [Gate]
     [AvaloniaFact]
     public void With_hot_reload_edits_reach_the_running_program_a_signature_change_restarts_it_and_it_ends_with_the_window()
     {
