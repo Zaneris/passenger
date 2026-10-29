@@ -57,14 +57,18 @@ public sealed class VcsController : IDisposable
     /// <summary>The working tree the open folder is in, or null when it is in none.</summary>
     public Git? Repository => git;
 
-    /// <summary>Why git refused the repository the folder is in (one another user owns, until safe.directory names it), in
-    /// git's words; null when it took it or found none. Each read looks again, so the window follows once git lets it in.</summary>
+    /// <summary>Why git cannot read the folder's repository: it refused the one the folder is in (one another user owns,
+    /// until safe.directory names it), in git's words, or it is not installed (<see cref="GitMissing"/>); null when it
+    /// took one or found none. Each read looks again, so the window follows once git lets it in or is installed.</summary>
     public string? Refused { get; private set; }
 
-    /// <summary>What is said where Git is asked for and the window has none: git's refusal, where it refused one.</summary>
+    /// <summary>Whether git is not installed, so whether the folder is in a repository is not known.</summary>
+    public bool GitMissing { get; private set; }
+
+    /// <summary>What is said where Git is asked for and the window has none: why git cannot read one, where it cannot.</summary>
     public string NoRepository => Refused ?? Refusals.NoRepository;
 
-    /// <summary>The folder whose repository git refused, looked in again by each read.</summary>
+    /// <summary>The folder whose repository git refused or could not look for, looked in again by each read.</summary>
     private string? refusedIn;
 
     /// <summary>The branch checked out, or null on a detached head or outside a working tree.</summary>
@@ -185,6 +189,7 @@ public sealed class VcsController : IDisposable
     {
         git = found.Tree;
         Refused = found.Refused;
+        GitMissing = found.Missing;
         refusedIn = found.Refused is null ? null : folder;
         historyHeard = git is not null && PathNames.Same(git.GitDir, Path.Join(folder, ".git"));
         heads.Clear();
@@ -202,6 +207,7 @@ public sealed class VcsController : IDisposable
         opened++;
         git = null;
         Refused = null;
+        GitMissing = false;
         refusedIn = null;
         heads.Clear();
         textsOf = null;

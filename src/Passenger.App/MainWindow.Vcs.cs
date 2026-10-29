@@ -203,9 +203,9 @@ public partial class MainWindow
         {
             if (session.Vcs.Refused is { } refused)
             {
-                // Git's reason names what lets it in; a new repository in the folder would not.
+                // Git's reason names what lets it in, or installs it; a new repository in the folder would not.
                 status.Text = refused;
-                menu.Items.Add(new MenuItem { Header = "Git refuses this folder's repository", IsEnabled = false });
+                menu.Items.Add(new MenuItem { Header = session.Vcs.GitMissing ? "Git is not installed" : "Git refuses this folder's repository", IsEnabled = false });
             }
             else if (Folder is { } open)
             {

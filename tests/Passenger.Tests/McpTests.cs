@@ -585,6 +585,39 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("main", (await Call(client, McpTools.VcsStatus)).GetProperty("branch").GetString());
     }
 
+    /// <summary>With no git on the PATH, a folder's repository is never taken for none: the Version control menu greys "Git is
+    /// not installed" where Create Git Repository… would be, the status bar saying why and how to install it, and
+    /// vcs_status answers that git is not installed.</summary>
+    [Fact]
+    public async Task With_no_git_on_the_path_a_repository_is_said_to_need_git_in_the_version_control_menu_never_taken_for_none()
+    {
+        string repository = TestFolders.Create("mcp-no-git-");
+        string bare = TestFolders.Create("mcp-no-git-path-");
+        DeleteAtEnd(repository);
+        DeleteAtEnd(bare);
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\n");
+        await TestGit.InitAsync(repository);
+
+        // macOS's /bin holds no git, as an empty folder holds none elsewhere; a terminal's TERM, so no login shell's PATH is read.
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false,
+            environment: new() { ["PATH"] = OperatingSystem.IsMacOS() ? "/bin" : bare, ["TERM"] = "dumb" });
+        CallToolResult status = await Result(client, McpTools.VcsStatus);
+        Assert.True(status.IsError == true && Text(status).Contains("git is not installed", StringComparison.Ordinal),
+            $"vcs_status over a repository with no git on the PATH answered, rather than that git is not installed: {Text(status)}");
+
+        await Call(client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#BranchButton" });
+        Dictionary<string, object?> items = new() { ["app"] = "ide", ["filter"] = "MenuItem" };
+        string menu = string.Empty;
+        await Waiting.UntilAsync(async () => (menu = Text(await Call(client, McpTools.AppTree, items))).StartsWith("MenuItem", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(10), Cancel, TimeSpan.FromMilliseconds(200));
+        Assert.True(menu.Contains("MenuItem \"Git is not installed\"", StringComparison.Ordinal) && menu.Contains("[disabled]", StringComparison.Ordinal)
+            && !menu.Contains("Create Git Repository", StringComparison.Ordinal),
+            $"The Version control menu over a repository with no git on the PATH holds, rather than \"Git is not installed\" greyed: {menu}");
+        string bar = Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide", ["control"] = "#StatusText" }));
+        Assert.True(bar.Contains("git is not installed", StringComparison.Ordinal),
+            $"The status bar, once the Version control menu greyed Git with no git on the PATH, does not say why: {bar}");
+    }
+
     /// <summary>vcs_stash lists each stash with its commit, and an agent's drop by that commit takes that stash wherever it
     /// now is, though another program stashed after the list was read; asked again, it is refused as gone.</summary>
     [Fact]
@@ -653,7 +686,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             // As `some-daemon &` in a profile: the job keeps the shell's output open long after the shell has ended.
-            string used = ProfileGit(home, "sleep 300 &\n");
+            string used = await ProfileGitAsync(home, "sleep 300 &\n");
             await TestGit.RunAsync(repository, "init", "-q");
             await using McpClient client = await Start(["--mcp", repository], environment: Launchd(home));
             await Call(client, McpTools.VcsStatus);
@@ -822,13 +855,13 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A home whose login profile (zsh's and sh's) puts a git of its own first on the PATH, as Homebrew's shellenv
     /// does, and then does <paramref name="more"/>; the git notes that it ran in the file whose path this returns.</summary>
     [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
-    private static string ProfileGit(string home, string more = "")
+    private static async Task<string> ProfileGitAsync(string home, string more = "")
     {
         string tools = Path.Combine(home, "tools");
         Directory.CreateDirectory(tools);
         string git = Path.Combine(tools, "git");
         string used = Path.Combine(home, "used");
-        string real = global::Passenger.Core.Programs.Git()!;
+        string real = (await global::Passenger.Core.Programs.GitAsync())!;
         File.WriteAllText(git, $"#!/bin/sh\ntouch \"{used}\"\nexec {real} \"$@\"\n");
         File.SetUnixFileMode(git, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         File.WriteAllText(Path.Combine(home, ".zprofile"), $"export PATH=\"{tools}:$PATH\"\n{more}");

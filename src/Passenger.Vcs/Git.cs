@@ -133,9 +133,10 @@ public sealed record GitConflict(string Path, bool HasBase, bool HasOurs, bool H
 /// was made.</summary>
 public sealed record StashInfo(int Index, string Commit, string Message, DateTimeOffset Time);
 
-/// <summary>What looking for a folder's working tree found: the tree, or none; and, where git refused the one it found (a
-/// repository another user owns, as on a FAT or network drive, until safe.directory names it), why, in its words.</summary>
-public sealed record GitLookup(Git? Tree, string? Refused);
+/// <summary>What looking for a folder's working tree found: the tree, or none; and why there is none where git cannot say:
+/// it refused the one it found (a repository another user owns, as on a FAT or network drive, until safe.directory names
+/// it), in its words, or it is not installed (<paramref name="Missing"/>), which leaves a repository there unread.</summary>
+public sealed record GitLookup(Git? Tree, string? Refused, bool Missing = false);
 
 /// <summary>What `git` says, and whether it said it without failing.</summary>
 public sealed record GitResult(int Code, string Output, string Error)
@@ -164,11 +165,15 @@ public sealed class Git
     /// rebase's state.</summary>
     public string GitDir { get; }
 
-    /// <summary>The working tree a folder is in; none when it is in none (or git is not there), with git's reason when git
-    /// refused the one it found.</summary>
+    /// <summary>The working tree a folder is in; none when it is in none, with git's reason when git refused the one it
+    /// found, or why git is not there to look.</summary>
     public static async Task<GitLookup> OpenAsync(string folder)
     {
         GitResult top = await RunAsync(folder, ["rev-parse", "--show-toplevel", "--absolute-git-dir"], answers: [NotThere]);
+        if (top.Code == Absent)
+        {
+            return new GitLookup(null, top.Error, Missing: true);
+        }
         string[] lines = top.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (top.Succeeded && lines.Length == 2)
         {
@@ -210,7 +215,7 @@ public sealed class Git
         string parent = System.IO.Path.GetDirectoryName(destination)!;
         Directory.CreateDirectory(parent);
         // After "--" a URL that begins with a dash is a URL, never an option such as --upload-pack.
-        if (Start(parent, ["clone", "--progress", "--", url, destination]) is not { } start)
+        if (await StartAsync(parent, ["clone", "--progress", "--", url, destination]) is not { } start)
         {
             return NotInstalled;
         }
@@ -223,7 +228,7 @@ public sealed class Git
         }
         catch (System.ComponentModel.Win32Exception missing)
         {
-            return new GitResult(127, string.Empty, $"git is not installed: {missing.Message}");
+            return new GitResult(Absent, string.Empty, $"git is not installed: {missing.Message}");
         }
         using (process)
         {
@@ -443,7 +448,7 @@ public sealed class Git
     private static async Task<byte[]?> BytesAsync(string folder, IReadOnlyList<string> arguments)
     {
         using IDisposable held = BackgroundWork.Scope();
-        if (Start(folder, arguments) is not { } start)
+        if (await StartAsync(folder, arguments) is not { } start)
         {
             return null;
         }
@@ -1415,7 +1420,7 @@ public sealed class Git
     {
         // What git answers is what the window shows next (the branch, the bars, the log, a blame): a screenshot waits for it.
         using IDisposable held = BackgroundWork.Scope();
-        if (Start(folder, arguments) is not { } start)
+        if (await StartAsync(folder, arguments) is not { } start)
         {
             return NotInstalled;
         }
@@ -1430,7 +1435,7 @@ public sealed class Git
         }
         catch (System.ComponentModel.Win32Exception missing)
         {
-            return new GitResult(127, string.Empty, $"git is not installed: {missing.Message}");
+            return new GitResult(Absent, string.Empty, $"git is not installed: {missing.Message}");
         }
     }
 
@@ -1439,9 +1444,9 @@ public sealed class Git
     private static async Task<GitOutput> OutputOfAsync(string folder, IReadOnlyList<string> arguments)
     {
         using IDisposable held = BackgroundWork.Scope();
-        if (Start(folder, arguments) is not { } start)
+        if (await StartAsync(folder, arguments) is not { } start)
         {
-            return new GitOutput(127, [], 0);
+            return new GitOutput(Absent, [], 0);
         }
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
@@ -1472,7 +1477,7 @@ public sealed class Git
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            return new GitOutput(127, [], 0);
+            return new GitOutput(Absent, [], 0);
         }
         finally
         {
@@ -1509,7 +1514,7 @@ public sealed class Git
     private static async Task<byte[]> OutputAsync(string folder, IReadOnlyList<string> arguments, string input)
     {
         using IDisposable held = BackgroundWork.Scope();
-        if (Start(folder, arguments) is not { } start)
+        if (await StartAsync(folder, arguments) is not { } start)
         {
             return [];
         }
@@ -1536,17 +1541,20 @@ public sealed class Git
         }
     }
 
+    /// <summary>What a call gives in place of git's exit code when git is not there to run, as a shell does.</summary>
+    private const int Absent = 127;
+
     private static GitResult NotInstalled =>
-        new(127, string.Empty, OperatingSystem.IsMacOS() ? "git is not installed: xcode-select --install installs it" : "git is not installed");
+        new(Absent, string.Empty, OperatingSystem.IsMacOS() ? "git is not installed: xcode-select --install installs it" : "git is not installed");
 
     /// <summary>What git exits with when what it is asked for is not there (a file at a revision, an upstream, a first
     /// commit, a working tree): the answer no to a question, which the log leaves out.</summary>
     private const int NotThere = 128;
 
     /// <summary>How git is started for every call, or null when it is not installed.</summary>
-    private static ProcessStartInfo? Start(string folder, IReadOnlyList<string> arguments)
+    private static async Task<ProcessStartInfo?> StartAsync(string folder, IReadOnlyList<string> arguments)
     {
-        if (Programs.Git() is not { } git)
+        if (await Programs.GitAsync() is not { } git)
         {
             return null;
         }
