@@ -121,7 +121,11 @@ public partial class MainWindow
         JsonObject? after = configurations.EditOf(name);
         made.Also(new CommandHistory.Part($"the run configuration {name}",
             redo => JsonNode.DeepEquals(configurations.EditOf(name), redo ? before : after) ? null : $"{name} has been changed since",
-            redo => configurations.SetEdit(name, redo ? after : before)));
+            redo =>
+            {
+                configurations.SetEdit(name, redo ? after : before);
+                return null;
+            }));
         return (now, null);
     }
 
@@ -276,9 +280,17 @@ public partial class MainWindow
             // Redo makes it again with the file; Undo, the file gone, takes it away if nothing else is in it.
             made.Also(new CommandHistory.Part("the Properties folder", _ => null, redo =>
             {
-                if (!redo && Directory.Exists(properties) && !Directory.EnumerateFileSystemEntries(properties).Any())
+                try
                 {
-                    Directory.Delete(properties);
+                    if (!redo && Directory.Exists(properties) && !Directory.EnumerateFileSystemEntries(properties).Any())
+                    {
+                        Directory.Delete(properties);
+                    }
+                    return null;
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    return $"the Properties folder could not be deleted: {error.Message}";
                 }
             }));
         }
@@ -298,12 +310,10 @@ public partial class MainWindow
             {
                 if (redo)
                 {
-                    configurations.Share(mine.Name, project.Path, profile);
+                    return configurations.Share(mine.Name, project.Path, profile) is null ? $"The launch profile {profile} makes no run configuration" : null;
                 }
-                else
-                {
-                    configurations.Unshare(mine, at, now.Name, before, chosen);
-                }
+                configurations.Unshare(mine, at, now.Name, before, chosen);
+                return null;
             }));
         return (now, $"Saved as the launch profile {profile} in {project.Name}'s {LaunchProfile.SettingsShown(project.Path)}{(madeFile ? ", made for it" : string.Empty)}: "
             + $"it is now {now.Name}, generated from that profile");

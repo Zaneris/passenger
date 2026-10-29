@@ -63,8 +63,10 @@ public static class MadeFolders
     public static string Aside(string state, string folder) =>
         Path.Combine(state, Undone, Environment.ProcessId.ToString(CultureInfo.InvariantCulture), Guid.NewGuid().ToString("N"), Path.GetFileName(folder));
 
-    /// <summary>Moves a folder aside, or back: at once on one volume, else copied whole, its files' times kept and what
-    /// builds write left out, before the folder goes.</summary>
+    /// <summary>Moves a folder aside, or back: at once on one volume; else renamed beside itself first, which a folder a
+    /// process holds a file in or works in refuses with nothing changed, then copied whole, its files' times kept and what
+    /// builds write left out, and only then deleted. A copy or delete refused puts the folder back as it was (but what
+    /// builds wrote that the delete took) and throws: nothing is lost unless the whole folder moved.</summary>
     public static void Move(string from, string to)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(to)!);
@@ -77,16 +79,64 @@ public static class MadeFolders
         {
             // A rename moves nothing when it fails, so the folder is copied, as it must be from one volume to another.
         }
+        string beside = Path.Join(Path.GetDirectoryName(from), $".{Path.GetFileName(from)}.{Guid.NewGuid():N}");
+        Directory.Move(from, beside);
         try
         {
-            Copy(from, to);
+            Copy(beside, to);
+            // What was copied goes first: a delete refused there has touched nothing the copy cannot give back.
+            foreach (string file in PathNames.FilesUnder(PathNames.Canonical(beside), OutsideBuilds).SelectMany(f => f.Files).ToList())
+            {
+                File.Delete(file);
+            }
+            Directory.Delete(beside, recursive: true);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            Delete(to);
-            throw;
+            throw PutBack(beside, from, to, error);
         }
-        Directory.Delete(from, recursive: true);
+    }
+
+    /// <summary>A folder renamed beside itself to be moved put back where it was, once a copy or delete was refused: what
+    /// the delete took copied back from the copy made, then the copy deleted. The refusal to throw, naming the folder by
+    /// its own path, or, where it could not be put back, where its files are.</summary>
+    private static IOException PutBack(string beside, string from, string copy, Exception refused)
+    {
+        string why = refused.Message.Replace(PathNames.Canonical(beside), from, StringComparison.Ordinal).Replace(beside, from, StringComparison.Ordinal);
+        try
+        {
+            if (Directory.Exists(copy))
+            {
+                Restore(copy, beside);
+            }
+            Directory.Move(beside, from);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return new IOException($"{why}; it could not be put back ({error.Message}): its files are in {beside} and {copy}", refused);
+        }
+        Delete(copy);
+        return new IOException(why, refused);
+    }
+
+    /// <summary>Each file of a copy that its folder no longer has copied back into it, its time kept.</summary>
+    private static void Restore(string copy, string into)
+    {
+        string root = PathNames.Canonical(copy);
+        foreach ((string folder, IReadOnlyList<string> files) in PathNames.FilesUnder(root, _ => true))
+        {
+            string back = Path.Join(into, Path.GetRelativePath(root, folder));
+            Directory.CreateDirectory(back);
+            foreach (string file in files)
+            {
+                string restored = Path.Join(back, Path.GetFileName(file));
+                if (!File.Exists(restored))
+                {
+                    File.Copy(file, restored);
+                    File.SetLastWriteTimeUtc(restored, File.GetLastWriteTimeUtc(file));
+                }
+            }
+        }
     }
 
     /// <summary>Lets go of a folder set aside, with the place made for it, off the window's thread.</summary>

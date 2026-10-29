@@ -353,11 +353,15 @@ public sealed class CommandHistory
         return null;
     }
 
-    /// <summary>Takes a command back: the files it moved go back and the open files take their undo steps, then the files
-    /// not open are written as they were, off the window's thread, and the files it made go. Null once done, else why
-    /// not.</summary>
+    /// <summary>Takes a command back: its parts put first (<see cref="Part.First"/>), the files it moved go back and the open
+    /// files take their undo steps, then the files not open are written as they were, off the window's thread, the files it
+    /// made go and its other parts are put. Null once done, else why not.</summary>
     private async Task<string?> UndoAsync(Command command, IReadOnlyDictionary<string, Look> looks, Func<Func<string?>, string?> moving)
     {
+        if (PutFirst(command, redo: false) is { } unput)
+        {
+            return unput;
+        }
         List<(string Path, TextSnapshot Text, Look? Stored)> writes = [.. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => (t.Path, t.Before, (Look?)looks[command.Moved(t.Path)]))];
         string? unmoved = moving(() =>
         {
@@ -386,17 +390,25 @@ public sealed class CommandHistory
                 return failed;
             }
         }
-        foreach (Part part in command.Parts.Reverse())
+        foreach (Part part in command.Parts.Reverse().Where(p => !p.First))
         {
-            part.Put(false);
+            if (part.Put(false) is { } refused)
+            {
+                return refused;
+            }
         }
         return null;
     }
 
-    /// <summary>Makes a command again: the open files take their redo steps, the files it made and the files not open are
-    /// written as it left them, off the window's thread, then the files it moved move again.</summary>
+    /// <summary>Makes a command again: its parts put first (<see cref="Part.First"/>), the open files take their redo steps,
+    /// the files it made and the files not open are written as it left them, off the window's thread, then the files it
+    /// moved move again and its other parts are put.</summary>
     private async Task<string?> RedoAsync(Command command, IReadOnlyDictionary<string, Look> looks, Func<Func<string?>, string?> moving)
     {
+        if (PutFirst(command, redo: true) is { } unput)
+        {
+            return unput;
+        }
         List<(string Path, TextSnapshot Text, Look? Stored)> writes =
         [
             .. command.Created.Select(c => (c.Path, c.Text, (Look?)null)),
@@ -422,9 +434,28 @@ public sealed class CommandHistory
         {
             return unmoved;
         }
-        foreach (Part part in command.Parts)
+        foreach (Part part in command.Parts.Where(p => !p.First))
         {
-            part.Put(true);
+            if (part.Put(true) is { } failed)
+            {
+                return failed;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Puts a command's parts that go first (<see cref="Part.First"/>), in the order taking it back (or making it
+    /// again, given true) takes them: the first refused puts back those before it, so nothing of the command has changed.
+    /// Why it was refused, null once each is put.</summary>
+    private static string? PutFirst(Command command, bool redo)
+    {
+        List<Part> first = [.. (redo ? command.Parts : command.Parts.Reverse()).Where(p => p.First)];
+        for (int at = 0; at < first.Count; at++)
+        {
+            if (first[at].Put(redo) is { } failed)
+            {
+                return string.Join("; ", first.Take(at).Reverse().Select(p => p.Put(!redo)).OfType<string>().Prepend(failed));
+            }
         }
         return null;
     }
@@ -627,9 +658,13 @@ public sealed class CommandHistory
 
     /// <summary>Something besides files a command changed (a run configuration's changes kept with the folder), named as the
     /// question before Undo names it: why it cannot be taken back (or made again, given true) now, null when it can; and
-    /// how it is put as it was before the command (false) or after it (true).</summary>
-    public sealed record Part(string Name, Func<bool, string?> Blocked, Action<bool> Put)
+    /// how it is put as it was before the command (false) or after it (true), null once put, else why it could not be.</summary>
+    public sealed record Part(string Name, Func<bool, string?> Blocked, Func<bool, string?> Put)
     {
+        /// <summary>Put before the command's files and moves, whichever way it goes, so that its failure leaves the rest of
+        /// the command as it was: a part the disk may refuse (a folder moved).</summary>
+        public bool First { get; init; }
+
         /// <summary>Why it cannot be taken back (or made again, given true) now, from what it reads of the disk at length,
         /// read off the window's thread; null when it can.</summary>
         public Func<bool, Task<string?>>? Read { get; init; }

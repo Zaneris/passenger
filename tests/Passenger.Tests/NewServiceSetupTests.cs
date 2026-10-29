@@ -325,6 +325,60 @@ public sealed class NewServiceSetupTests : IDisposable
         }
     }
 
+    /// <summary>Undo of New Project whose folder the disk will not let it set aside (a file in it held open on Windows, the
+    /// folder read-only elsewhere) says it could not, leaves the folder whole and the solution as New Project left it, and
+    /// keeps the command for Undo: asked again once the folder can move, it takes the project away.</summary>
+    [AvaloniaFact]
+    public void Undo_of_New_Project_whose_folder_cannot_be_set_aside_says_so_leaves_the_folder_whole_and_can_be_asked_again()
+    {
+        TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
+        TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
+        TestFolders.Write(place, "Shop.slnx", "<Solution>\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
+        string solution = Path.Combine(PathNames.Canonical(place), "Shop.slnx");
+        byte[] before = File.ReadAllBytes(solution);
+        string lib = Path.Combine(PathNames.Canonical(place), "Lib");
+        MainWindow window = Ui.OpenFolder(place, languageServer: false);
+        IDisposable? held = null;
+        try
+        {
+            Ui.Run(window, AppActions.NewProject);
+            NewProjectDialog dialog = Opened(window);
+            Choose(dialog, "classlib");
+            dialog.ProjectName = "Lib";
+            dialog.Framework = TestProjects.Framework;
+            Created(dialog, "the class library");
+            Assert.Null(SetUp(window));
+            byte[] added = File.ReadAllBytes(solution);
+            Dictionary<string, byte[]> made = Made(lib);
+
+            held = Unmovable(lib);
+            List<string> asked = Answer(window);
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Undo);
+            Assert.Equal(["Undo"], asked);
+            Assert.True(window.Status?.StartsWith("Cannot undo New Project Lib: Lib could not be set aside: ", StringComparison.Ordinal) == true,
+                $"Undo of New Project whose folder could not be set aside said '{window.Status}'");
+            Dictionary<string, byte[]> left = Made(lib);
+            Assert.True(left.Count == made.Count && made.All(f => left.TryGetValue(f.Key, out byte[]? now) && now.AsSpan().SequenceEqual(f.Value)),
+                $"Undo refused left the new project's folder with [{string.Join(", ", left.Keys)}] of [{string.Join(", ", made.Keys)}]");
+            Assert.True(added.AsSpan().SequenceEqual(File.ReadAllBytes(solution)), $"Undo refused changed the solution file to {File.ReadAllText(solution)}");
+            Assert.True(Undoes(window), "Undo refused left New Project out of the history, so it cannot be asked again");
+
+            held.Dispose();
+            held = null;
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Undo);
+            Assert.Equal("Undone: New Project Lib", window.Status);
+            Assert.False(Directory.Exists(lib), $"Undo asked again left the new project's folder: {window.Status}");
+            Assert.True(before.AsSpan().SequenceEqual(File.ReadAllBytes(solution)), $"Undo asked again left the solution file as {File.ReadAllText(solution)}");
+        }
+        finally
+        {
+            held?.Dispose();
+            window.Close();
+        }
+    }
+
     /// <summary>New Solution of a web API with Docker Compose: the solution's compose.yaml has it as a service built from its
     /// Dockerfile, the Compose configuration is chosen, and the first Run brings it up in its container (where a Linux
     /// container engine runs).</summary>
@@ -465,6 +519,34 @@ public sealed class NewServiceSetupTests : IDisposable
         Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
             .Where(f => !Path.GetRelativePath(folder, f).Split(Path.DirectorySeparatorChar).Any(part => part is "bin" or "obj" || PathNames.IsSystemFile(part)))
             .ToDictionary(f => Path.GetRelativePath(folder, f), File.ReadAllBytes, StringComparer.Ordinal);
+
+    /// <summary>A folder the disk will not move to another folder until disposed: on Windows a file in it held open, as a
+    /// program working there holds one; elsewhere the folder read-only, as a move to another folder writes in it.</summary>
+    private static IDisposable Unmovable(string folder)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return new FileStream(Directory.EnumerateFiles(folder, "*.csproj").First(), FileMode.Open, FileAccess.Read, FileShare.Read);
+        }
+        return new ReadOnlyFolder(folder);
+    }
+
+    /// <summary>A folder made read-only, its own mode given back once disposed.</summary>
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private sealed class ReadOnlyFolder : IDisposable
+    {
+        private readonly string folder;
+        private readonly UnixFileMode was;
+
+        public ReadOnlyFolder(string folder)
+        {
+            this.folder = folder;
+            was = File.GetUnixFileMode(folder);
+            File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute);
+        }
+
+        public void Dispose() => File.SetUnixFileMode(folder, was);
+    }
 
     private static List<string> Answer(MainWindow window)
     {
