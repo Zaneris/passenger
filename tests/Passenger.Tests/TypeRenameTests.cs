@@ -414,13 +414,15 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         }
     }
 
-    /// <summary>A class whose file the disk will not rename (held open by another program on Windows, its folder read-only
-    /// elsewhere) is renamed in the code all the same, and the rename says which file it could not rename rather than that
-    /// it failed; the closed files it changes are written in turn, off the window's thread, never as the command ends.</summary>
+    /// <summary>Rename of a class whose file the disk will not rename (held open by another program on Windows, its folder
+    /// read-only elsewhere) is refused before anything changes, naming the file: no file's code renamed, none written, no
+    /// command left for Undo; asked again once the file is let go, it renames the code and the file.</summary>
     [AvaloniaFact]
-    public void A_class_whose_file_cannot_be_renamed_is_renamed_in_the_code_saying_so_its_closed_files_written_in_turn()
+    public void Rename_of_a_class_whose_file_cannot_be_renamed_is_refused_before_anything_changes_and_made_once_the_file_is_let_go()
     {
-        string ledger = TestFolders.Write(folder, "Ledgers/Ledger.cs", "namespace Shop;\n\npublic class Ledger\n{\n    public int Lines;\n}\n");
+        const string Declared = "namespace Shop;\n\npublic class Ledger\n{\n    public int Lines;\n}\n";
+        string ledger = TestFolders.Write(folder, "Ledgers/Ledger.cs", Declared);
+        string journal = Path.Combine(folder, "Ledgers", "Journal.cs");
         List<string> uses = [];
         for (int i = 0; i < 3; i++)
         {
@@ -430,29 +432,29 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         {
             File.SetLastWriteTimeUtc(path, DateTime.UtcNow - TimeSpan.FromMinutes(1));
         }
+        Dictionary<string, string> before = uses.ToDictionary(u => u, File.ReadAllText);
         MainWindow window = Open(Path.Combine("Ledgers", "Ledger.cs"));
         Answer(window);
-        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        IDisposable held = Unrenamable(ledger);
+        IDisposable? held = Unrenamable(ledger);
         try
         {
-            Task holding = window.EditorArea.Commands.HoldNextWrite(release.Task);
-            OpenRenameBox(window, "class Led", "Journal");
-            Ui.PumpUntil(() => window.Assist.RenameOffersFiles.Count > 0, "the rename box to offer to rename Ledger.cs with its class");
-            Ui.Press(window, "ENTER", settle: false);
-            Ui.PumpUntil(() => holding.IsCompleted || window.Status?.StartsWith("Rename failed", StringComparison.Ordinal) == true,
-                "the rename's writes of its closed files to be held, or the rename to end");
-            Assert.True(holding.IsCompleted, $"The rename wrote its closed files without waiting its turn, on the window's thread as it ended: {window.Status}");
+            RenameAt(window, "class Led", "Journal");
+            Assert.True(window.Status?.StartsWith("Rename failed: Ledger.cs ", StringComparison.Ordinal) == true && window.Status.EndsWith(": nothing was changed", StringComparison.Ordinal),
+                $"A rename whose file the disk would not let go said '{window.Status}', not that it was refused before anything changed");
+            Assert.Equal(Declared, Text(window));
+            Assert.Equal(Declared, File.ReadAllText(ledger));
+            Assert.False(File.Exists(journal), "Ledger.cs was renamed though the disk refused it");
             foreach (string use in uses)
             {
-                Assert.True(File.ReadAllText(use).Contains("(Ledger ledger)", StringComparison.Ordinal), $"{Path.GetFileName(use)} was written while the rename's writes were held");
+                Assert.True(File.ReadAllText(use) == before[use], $"{Path.GetFileName(use)} was changed by a rename refused: {File.ReadAllText(use)}");
             }
-            release.SetResult();
-            Ui.WaitFor(() => window.Status?.StartsWith("Renamed", StringComparison.Ordinal) == true || window.Status?.StartsWith("Rename failed", StringComparison.Ordinal) == true,
-                () => $"the rename to say what it made; the status says '{window.Status}'");
-            Assert.True(window.Status?.StartsWith("Renamed in 4 files, but Ledger.cs could not be renamed to Journal.cs: ", StringComparison.Ordinal) == true,
-                $"A rename whose file could not be renamed said '{window.Status}', not that it renamed the code but not the file");
-            Assert.True(File.Exists(ledger) && !File.Exists(Path.Combine(folder, "Ledgers", "Journal.cs")), "Ledger.cs was renamed though the disk refused it");
+            Assert.True(window.EditorArea.Commands.ToUndo(null) is null, "The rename refused left a command for Undo to take back");
+
+            held.Dispose();
+            held = null;
+            RenameAt(window, "class Led", "Journal");
+            Assert.Equal("Renamed in 4 files; Ledger.cs to Journal.cs", window.Status);
+            Assert.True(File.Exists(journal) && !File.Exists(ledger), "Ledger.cs was not renamed with its class once the disk let it go");
             Assert.Contains("public class Journal", Text(window), StringComparison.Ordinal);
             foreach (string use in uses)
             {
@@ -461,8 +463,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         }
         finally
         {
-            release.TrySetResult();
-            held.Dispose();
+            held?.Dispose();
             window.Close();
         }
     }

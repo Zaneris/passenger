@@ -254,9 +254,9 @@ public static class TypeRename
 
     /// <summary>Applies a rename's edit and then moves the files it renames, within the caller's command, which writes the
     /// files not open and waits for them before it ends, a move refused or not (<see cref="WorkspaceEdits.LandedAsync(CommandHistory.Recording, Action{string}?)"/>),
-    /// with what else the command does once they have moved (the projects following the moves made). A file the moves would
-    /// put where another file is stops the whole before anything changes, with why (<see cref="WorkspaceEditFailed"/>), as
-    /// does the edit's own refusal; a move the disk refuses once the edit is made (a file another program holds) is said.</summary>
+    /// with what else the command does once they have moved (the projects following the moves made). A move to where another
+    /// file is, or of a file the disk will not let go (<see cref="Unmovable"/>), stops the whole before anything changes, with
+    /// why (<see cref="WorkspaceEditFailed"/>), as does the edit's own refusal; a move refused all the same is said.</summary>
     public static Applied Apply(EditorArea editors, JsonElement edit, IReadOnlyList<(string From, string To)> moves, Asked? asked, List<string> dropped,
         CommandHistory.Recording recording, Action<CommandHistory.Recording, IReadOnlyList<(string From, string To)>>? moved = null)
     {
@@ -265,6 +265,10 @@ public static class TypeRename
             if ((File.Exists(to) || Directory.Exists(to)) && !PathNames.Same(from, to))
             {
                 throw new WorkspaceEditFailed($"{Path.GetFileName(to)} is already there");
+            }
+            if (from != to && File.Exists(from) && Unmovable.Why(from) is { } held)
+            {
+                throw new WorkspaceEditFailed($"{held}: nothing was changed");
             }
         }
         int files = WorkspaceEdits.ApplyAsCommand(editors, edit, recording, asked, dropped);
