@@ -10,6 +10,9 @@ public sealed record PackageOutcome(bool Done, IReadOnlyList<string> Changed, IR
 {
     public string? Refused { get; init; }
 
+    /// <summary>The change as Undo names it: "Install Passenger.Sample 1.0.0 in Lib".</summary>
+    public string Name { get; init; } = string.Empty;
+
     /// <summary>The files the change wrote, those of one that failed among them, which it put back where it could.</summary>
     public IReadOnlyList<string> Written { get; init; } = [];
 

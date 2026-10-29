@@ -1,3 +1,4 @@
+using Passenger.App.Packages;
 using Passenger.App.Workspace;
 using Passenger.Packages;
 
@@ -28,17 +29,22 @@ public partial class MainWindow
             Tools = () => nuget?.Tabs,
             Menus = [new MenuPlace("Tools", 0, 0)],
         });
-        actions!.Add(new IdeAction(AppActions.NuGetRefresh, "Refresh NuGet", "NuGet", _ => IdeErrors.Observe(NuGet.ReloadSourcesAsync())) { WhyNot = NeedsFolder });
+        actions!.Add(new IdeAction(AppActions.NuGetRefresh, "Refresh NuGet", "NuGet", _ => IdeErrors.Observe(NuGet.RefreshAskedAsync())) { WhyNot = NeedsFolder });
     }
 
-    /// <summary>The session's packages followed while it is the window's: a change's files taken from disk and the solution
-    /// read again before whoever asked for the change is answered, the nuget.config files the Sources tab wrote taken
-    /// too, wherever they are; and the NuGet window, once built, shows them.</summary>
+    /// <summary>The session's packages followed while it is the window's: a change's end said in the status bar, its files
+    /// taken from disk and the solution read again before whoever asked for the change is answered, the nuget.config files
+    /// the Sources tab wrote taken too, wherever they are; and the NuGet window, once built, shows them.</summary>
     private void BindPackages(ProjectSession next)
     {
         next.Packages.Changed += (_, outcome) =>
         {
-            if (session == next && outcome.Refused is null)
+            if (session != next)
+            {
+                return;
+            }
+            SayChanged(outcome);
+            if (outcome.Refused is null)
             {
                 // dotnet add package wrote the project, its lock file, and Directory.Packages.props under central management.
                 FollowWritten(outcome.Written);
@@ -53,6 +59,25 @@ public partial class MainWindow
             }
         };
         nuget?.Bind(next.Packages);
+    }
+
+    /// <summary>How a package change ended, in the status bar in place of its stage: one that failed with what became of
+    /// its files, a click opening the NuGet window.</summary>
+    private void SayChanged(PackageOutcome outcome)
+    {
+        if (outcome.Done)
+        {
+            Say($"{outcome.Name}: done");
+        }
+        else if (outcome.Refused is { } why)
+        {
+            Say($"{outcome.Name}: {why}");
+        }
+        else
+        {
+            Say($"{outcome.Name} failed{(outcome.Left is { } left ? $", {left}" : string.Empty)}; the NuGet window's log says why",
+                StatusPlace.Window(Dock, ToolWindowIds.NuGet));
+        }
     }
 
     /// <summary>A nuget.config written, made or deleted on disk: the folder's sources read again, once they have been, and

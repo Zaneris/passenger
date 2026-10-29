@@ -280,7 +280,7 @@ public sealed class FolderPackages
     {
         if (IsBusy)
         {
-            return new PackageOutcome(false, [], []) { Refused = Work?.Of(Changing) is { } under ? ActionWork.Busy(under) : $"Already under way: {changing}" };
+            return new PackageOutcome(false, [], []) { Name = name, Refused = Work?.Of(Changing) is { } under ? ActionWork.Busy(under) : $"Already under way: {changing}" };
         }
         IsBusy = true;
         changing = stage;
@@ -299,7 +299,7 @@ public sealed class FolderPackages
             {
                 if (SaveFirst is { } save && await save(working, CancellationToken.None) is { } unsaved)
                 {
-                    outcome = new PackageOutcome(false, [], []) { Refused = unsaved };
+                    outcome = new PackageOutcome(false, [], []) { Name = name, Refused = unsaved };
                 }
                 else
                 {
@@ -325,7 +325,7 @@ public sealed class FolderPackages
                         await again();
                     }
                     IReadOnlyList<string> written = [.. wrote.Select(i => files[i])];
-                    outcome = new(done, done ? written : [.. Unlike(files, before).Select(i => files[i])], said) { Written = written };
+                    outcome = new(done, done ? written : [.. Unlike(files, before).Select(i => files[i])], said) { Name = name, Written = written };
                 }
             }
             finally

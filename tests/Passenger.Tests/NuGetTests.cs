@@ -11,7 +11,8 @@ namespace Passenger.Tests;
 /// <summary>The NuGet window over two projects and a stand-in feed whose VulnerabilityInfo the audit reads, so nothing
 /// reaches nuget.org: a package is shown, compared and audited at each of a project's frameworks' versions, a range at the
 /// version its restore resolved, else its least, and a change of a pinned version keeps it pinned; a change runs one at a
-/// time, the projects' actions disabled meanwhile, and one refused says why.</summary>
+/// time, the projects' actions disabled meanwhile, one refused says why, and one that failed says so until the person
+/// next asks for a list.</summary>
 public sealed class NuGetTests : IDisposable
 {
     private const string Id = "Passenger.Vulnerable";
@@ -176,6 +177,33 @@ public sealed class NuGetTests : IDisposable
         Assert.True(Action(nuget, "Lib", "Install") is { IsEnabled: true }, "Lib's Install is left disabled after the refused install");
         Assert.Equal(before, File.ReadAllText(lib));
         nuget.Packages.SaveFirst = saves;
+        window.Close();
+    }
+
+    /// <summary>A change that fails part way (moves together, as Migrations' alignment makes them, one to a package no feed
+    /// holds, so their restore fails) puts Lib back, and the window's status keeps saying so once its refresh has listed the
+    /// packages again, until the person asks for a list (Refresh); the status bar says it too, a click opening the window.</summary>
+    [AvaloniaFact]
+    public void A_failed_changes_words_stay_in_the_status_after_the_refresh_until_the_person_asks_for_a_list()
+    {
+        const string Failed = "The change failed, Lib.csproj put back as before; the log says why";
+        Project("Lib", TestProjects.Framework, $"  <ItemGroup>\n    <PackageReference Include=\"{Id}\" Version=\"1.0.0\" />\n  </ItemGroup>\n");
+        byte[] before = File.ReadAllBytes(lib);
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Landed(() => nuget.Selected?.Id == Id && nuget.Status == "1 package installed, 1 vulnerable", $"{Id} listed as installed and vulnerable: {nuget.Status}");
+        IReadOnlyList<PackageRow> listed = nuget.Rows;
+
+        PackageOutcome outcome = Ui.Landed(nuget.Packages.InstallSetAsync(Named(window, "Lib"), [(Id, "1.0.1"), ("Passenger.Missing", "1.0.0")]), "the moves whose restore fails");
+        Assert.True(!outcome.Done && File.ReadAllBytes(lib).AsSpan().SequenceEqual(before),
+            $"The moves to a package no feed holds {(outcome.Done ? "were done" : "failed")}, leaving Lib.csproj as:\n{File.ReadAllText(lib)}\n{nuget.Log}");
+        Ui.Landed(() => !ReferenceEquals(nuget.Rows, listed) && nuget.Rows is [{ Id: Id }], $"the window's refresh after the failed change to list {Id} again");
+        Assert.True(nuget.Status == Failed, $"Once the window's refresh had landed its status said \"{nuget.Status}\", not that the change failed and Lib was put back");
+        Assert.True(window.Status == $"Move {Id} to 1.0.1, Passenger.Missing to 1.0.0 in Lib failed, Lib.csproj put back as before; the NuGet window's log says why"
+            && window.StatusPlace?.Name == "open the NuGet window", $"The status bar says \"{window.Status}\", a click to {window.StatusPlace?.Name ?? "nowhere"}");
+
+        window.Perform(AppActions.NuGetRefresh);
+        Ui.Landed(() => nuget.Status == "1 package installed, 1 vulnerable", $"the list's own words once the person asked for a list (it says \"{nuget.Status}\")");
         window.Close();
     }
 

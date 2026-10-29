@@ -58,6 +58,14 @@ public sealed class NuGetView : DockPanel
     private FolderPackages model;
     private bool choosing;
 
+    /// <summary>What the list says of itself (what was found, why a feed did not answer) and its tip, shown in the status
+    /// unless a change's words hold it.</summary>
+    private (string Words, string? Tip) listed = (string.Empty, null);
+
+    /// <summary>What a package change came to, or that one is under way: held in the status over the list's words until
+    /// the person next asks for a list or another change begins.</summary>
+    private string? outcome;
+
     /// <param name="folder">The folder's packages, which the window lists and changes.</param>
     public NuGetView(FolderPackages folder)
     {
@@ -69,6 +77,7 @@ public sealed class NuGetView : DockPanel
         {
             if (!choosing)
             {
+                Hold(null);
                 IdeErrors.Observe(RefreshAsync());
             }
         };
@@ -78,8 +87,16 @@ public sealed class NuGetView : DockPanel
         Button refresh = ToolButtons.Of(AppActions.NuGetRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action));
         refresh.Margin = new Thickness(6, 0, 0, 0);
         typing = new Debounce(Pause, RefreshAsync);
-        search.TextChanged += (_, _) => typing.Restart();
-        prerelease.IsCheckedChanged += (_, _) => IdeErrors.Observe(RefreshAsync());
+        search.TextChanged += (_, _) =>
+        {
+            Hold(null);
+            typing.Restart();
+        };
+        prerelease.IsCheckedChanged += (_, _) =>
+        {
+            Hold(null);
+            IdeErrors.Observe(RefreshAsync());
+        };
         // In a narrow window the search and the count give way, so the feed chooser, Prerelease and Refresh keep their room.
         Grid row = new() { ColumnDefinitions = new ColumnDefinitions("3*,Auto,Auto,Auto,2*"), VerticalAlignment = VerticalAlignment.Center };
         row.ColumnDefinitions[0].MaxWidth = 276;
@@ -151,6 +168,7 @@ public sealed class NuGetView : DockPanel
         model.ChangeBegun -= OnChangeBegun;
         model.Changed -= OnChanged;
         model = next;
+        Hold(null);
         Follow(next);
         if (next.Sources == PackageSourceSet.None && read)
         {
@@ -181,21 +199,44 @@ public sealed class NuGetView : DockPanel
     /// <summary>A package change begun, whoever asked for it: said, and the projects' actions disabled until it ends.</summary>
     private void OnChangeBegun(object? sender, string stage)
     {
-        status.Text = "Working…";
+        Hold("Working…");
         EnableActions();
     }
 
-    /// <summary>A package change ended, whoever asked for it: said, and the list read again; one refused changed nothing.</summary>
-    private void OnChanged(object? sender, PackageOutcome outcome)
+    /// <summary>A package change ended, whoever asked for it: said, and the list read again under its words; one refused
+    /// changed nothing.</summary>
+    private void OnChanged(object? sender, PackageOutcome ended)
     {
         EnableActions();
-        if (outcome.Refused is { } why)
+        if (ended.Refused is { } why)
         {
-            status.Text = why;
+            Hold(why);
             return;
         }
-        status.Text = outcome.Done ? "Done" : $"The change failed{(outcome.Left is { } left ? $", {left}" : string.Empty)}; the log says why";
+        Hold(ended.Done ? "Done" : $"The change failed{(ended.Left is { } left ? $", {left}" : string.Empty)}; the log says why");
         IdeErrors.Observe(RefreshAsync());
+    }
+
+    /// <summary>A change's words held in the status over the list's, or, with null, the list's own shown again.</summary>
+    private void Hold(string? words)
+    {
+        outcome = words;
+        ShowStatus();
+    }
+
+    /// <summary>The list's words, shown in the status unless a change's are held there.</summary>
+    private void Tell(string words, string? tip = null)
+    {
+        listed = (words, tip);
+        ShowStatus();
+    }
+
+    /// <summary>The status: a change's words while held, whole on hover (a narrow window cuts them) with the list's after
+    /// them, else the list's.</summary>
+    private void ShowStatus()
+    {
+        status.Text = outcome ?? listed.Words;
+        ToolTip.SetTip(status, outcome is null ? listed.Tip : string.Join("\n", new[] { outcome, listed.Words }.Where(w => w.Length > 0)));
     }
 
     /// <summary>The projects' Install, Update, Downgrade and Remove, enabled only while no package change is under way.</summary>
@@ -262,7 +303,8 @@ public sealed class NuGetView : DockPanel
         set => search.Text = value;
     }
 
-    /// <summary>What the status beside the search says: what was found, or why a feed did not answer.</summary>
+    /// <summary>What the status beside the search says: what the last package change came to, else what was found, or why
+    /// a feed did not answer.</summary>
     public string Status => status.Text ?? string.Empty;
 
     public string Log => log.Text ?? string.Empty;
@@ -291,6 +333,14 @@ public sealed class NuGetView : DockPanel
         }
     }
 
+    /// <summary>Refresh, as the person asks for it: the last change's words give way to the list's, and the sources are
+    /// read again and listed.</summary>
+    public Task RefreshAskedAsync()
+    {
+        Hold(null);
+        return ReloadSourcesAsync();
+    }
+
     /// <summary>Lists again: the installed packages with nothing typed, else the chosen feeds' search.</summary>
     public async Task RefreshAsync()
     {
@@ -313,28 +363,23 @@ public sealed class NuGetView : DockPanel
         try
         {
             IReadOnlyList<PackageRow> found;
-            ToolTip.SetTip(status, null);
             if (Query.Trim().Length == 0)
             {
                 found = [.. installed.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase)
                     .Select(p => new PackageRow(p.Key, p.Value.Values.SelectMany(v => v).Select(v => v.Shown).FirstOrDefault(v => v is not null) ?? string.Empty,
                         string.Empty, string.Empty, 0, p.Value))];
-                status.Text = Counted(found, null);
+                Tell(Counted(found, null));
             }
             else
             {
-                status.Text = $"Searching {feed.Name}…";
+                Tell($"Searching {feed.Name}…");
                 FeedSearch answer = feed is FeedSet set
                     ? await set.SearchEachAsync(Query.Trim(), prerelease.IsChecked == true, cancel.Token)
                     : new FeedSearch(await feed.SearchAsync(Query.Trim(), prerelease.IsChecked == true, cancel.Token), [], 0);
                 found = [.. answer.Packages.Select(h => new PackageRow(h.Id, h.Version, h.Description, h.Authors, h.Downloads,
                     installed.TryGetValue(h.Id, out Dictionary<string, IReadOnlyList<InstalledVersion>>? have) ? have : new Dictionary<string, IReadOnlyList<InstalledVersion>>())
                 { Feeds = h.Feeds })];
-                status.Text = Said(answer, feed);
-                if (answer.Failed.Count > 0)
-                {
-                    ToolTip.SetTip(status, string.Join("\n", answer.Failed.Select(f => $"{f.Feed}: {f.Problem}")));
-                }
+                Tell(Said(answer, feed), answer.Failed.Count > 0 ? string.Join("\n", answer.Failed.Select(f => $"{f.Feed}: {f.Problem}")) : null);
             }
             if (cancel.IsCancellationRequested)
             {
@@ -346,7 +391,7 @@ public sealed class NuGetView : DockPanel
                 found = Marked(found, auditing.Result);
                 if (Query.Trim().Length == 0)
                 {
-                    status.Text = Counted(found, auditing.Result);
+                    Tell(Counted(found, auditing.Result));
                 }
             }
             List(found, chosen);
@@ -363,7 +408,7 @@ public sealed class NuGetView : DockPanel
         {
             if (!cancel.IsCancellationRequested)
             {
-                status.Text = $"{feed.Name} did not answer: {failed.Message}";
+                Tell($"{feed.Name} did not answer: {failed.Message}");
             }
         }
     }
@@ -405,7 +450,7 @@ public sealed class NuGetView : DockPanel
         List(Marked(rows, known), Selected?.Id);
         if (Query.Trim().Length == 0)
         {
-            status.Text = Counted(rows, known);
+            Tell(Counted(rows, known));
         }
     }
 
@@ -465,13 +510,13 @@ public sealed class NuGetView : DockPanel
 
     /// <summary>Whether a change the window asked for was done, its status saying why when it was refused (another change
     /// under way, which no change's end then tells).</summary>
-    private bool Said(PackageOutcome outcome)
+    private bool Said(PackageOutcome ended)
     {
-        if (outcome.Refused is { } why)
+        if (ended.Refused is { } why)
         {
-            status.Text = why;
+            Hold(why);
         }
-        return outcome.Done;
+        return ended.Done;
     }
 
     /// <summary>Reads the sources the first time the window is shown, or lists again once they are read.</summary>

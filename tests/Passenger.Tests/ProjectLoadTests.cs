@@ -155,7 +155,7 @@ public sealed class ProjectLoadTests : IDisposable
         Assert.True(window.Status == $"{Path.Combine("Web", "Web.csproj")} loaded without problems" && window.StatusSeverity is null,
             $"Once the project loaded without its warning the status bar says \"{window.Status}\" ({window.StatusSeverity})");
         Ui.Landed(() => nuget.Selected is { Id: "Passenger.Vulnerable", IsVulnerable: false }, "the updated package no longer marked vulnerable");
-        Assert.True(nuget.Status == "1 package installed", $"The NuGet window's status says \"{nuget.Status}\" after the update");
+        Assert.True(nuget.Status == "Done", $"The NuGet window's status says \"{nuget.Status}\" after the update, not that it was done");
         Assert.DoesNotContain(Descendants<Border>(nuget), b => b.Name == "Vulnerability");
         window.Close();
     }
