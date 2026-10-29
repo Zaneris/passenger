@@ -10,8 +10,8 @@ namespace Passenger.App.Containers;
 /// <summary>Passenger's one rule for what is a secret, and its one mask: a value whose name says it is one
 /// (<see cref="Secret(string)"/>) shows as the same dots whatever its length; in any other value, a URL's password
 /// (<c>postgres://app:••••••@db</c>) and a connection string's part so named (<c>Password=••••••</c>); on a command line,
-/// the word after a flag so named (<c>--password ••••••</c>, <see cref="SecretFlag"/>). An empty value hides nothing and
-/// shows as it is.</summary>
+/// the word after a flag so named (<c>--password ••••••</c>, <see cref="SecretFlag"/>) but one itself a flag. An empty
+/// value hides nothing and shows as it is; a secret's file, name or address shows (<c>--key-file deploy/id</c>).</summary>
 public static partial class ContainerSecrets
 {
     public const string Masked = "••••••";
@@ -35,6 +35,19 @@ public static partial class ContainerSecrets
     private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> Folders =
         new HashSet<string>(StringComparer.Ordinal) { "PWD", "OLDPWD" }.GetAlternateLookup<ReadOnlySpan<char>>();
 
+    /// <summary>The last words of a name that say what its value is, a secret's file, name or address and no secret itself
+    /// (KEY_FILE, SECRET_NAME, TOKEN_URL, ACCESS_KEY_ID), or their plurals.</summary>
+    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> Kinds = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "FILE", "PATH", "DIR", "DIRECTORY", "FOLDER", "NAME", "URL", "URI", "ID", "TYPE", "KIND",
+    }.GetAlternateLookup<ReadOnlySpan<char>>();
+
+    /// <summary>The words that make a KEY after them a key into data, no secret (PARTITION_KEY, sortKey, PUBLICKEY).</summary>
+    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> DataKeys = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "PARTITION", "SORT", "ROW", "RANGE", "SHARD", "FOREIGN", "CACHE", "IDEMPOTENCY", "LOOKUP", "PUBLIC",
+    }.GetAlternateLookup<ReadOnlySpan<char>>();
+
     /// <summary>What every mask but a Bearer's or Basic's credentials and a flag's word needs in a line to find anything
     /// there.</summary>
     private static readonly SearchValues<char> Marks = SearchValues.Create("=:@");
@@ -49,10 +62,11 @@ public static partial class ContainerSecrets
     /// <summary>The longest name read on the stack; a longer one is read in a rented buffer.</summary>
     private const int OnStack = 128;
 
-    /// <summary>Whether a name's value is a secret: it holds one of <see cref="Anywhere"/>, or a word of it (between
-    /// underscores, dashes or dots, or where its case turns, as apiKey's Key) is one of <see cref="Whole"/> or its plural,
-    /// or ends in KEY but for <see cref="Ordinary"/>'s words; so DBPASSWORD, APIKEY and DB_PASS are and MONKEY is not,
-    /// nor the shell's own PWD and OLDPWD (<see cref="Folders"/>).</summary>
+    /// <summary>Whether a name's value is a secret: it holds one of <see cref="Anywhere"/>, or a word of it (<see cref="NextWord"/>)
+    /// is one of <see cref="Whole"/> or its plural, or ends in KEY but for <see cref="Ordinary"/>'s and <see cref="DataKeys"/>'
+    /// words; so DBPASSWORD, APIKEY and DB_PASS are, and MONKEY, SORT_KEY, the shell's PWD (<see cref="Folders"/>) and a name
+    /// whose last word says what its value is (<see cref="Kinds"/>: KEY_FILE, SECRET_NAME) are not, but a connection string's,
+    /// whose last word names the connection, and SECRET_ID, a credential (Vault's AppRole).</summary>
     public static bool Secret(string name) => Secret(name.AsSpan());
 
     /// <inheritdoc cref="Secret(string)"/>
@@ -78,7 +92,8 @@ public static partial class ContainerSecrets
                     squeezed[length++] = c;
                 }
             }
-            return squeezed[..length].ContainsAny(Anywhere) || AnyWord(name, upper);
+            return squeezed[..length].Contains("CONNECTIONSTRING", StringComparison.Ordinal)
+                || (!SaysWhatItHolds(name, upper) && (squeezed[..length].ContainsAny(Anywhere) || AnyWord(name, upper)));
         }
         finally
         {
@@ -89,26 +104,53 @@ public static partial class ContainerSecrets
         }
     }
 
-    /// <summary>Whether a word of the name is a secret's (<see cref="Secret(string)"/>): its words end at a run of
+    /// <summary>The next word of a name from <paramref name="at"/>, false past its last: its words end at a run of
     /// underscores, dashes and dots, before a capital after a small letter or digit, and before a capital that begins a
-    /// word after capitals (APIKey's Key); each is read in <paramref name="upper"/>, the name in capitals.</summary>
+    /// word after capitals (APIKey's Key).</summary>
+    private static bool NextWord(ReadOnlySpan<char> name, ref int at, out Range word)
+    {
+        while (at < name.Length && name[at] is '_' or '-' or '.')
+        {
+            at++;
+        }
+        int start = at;
+        while (at < name.Length && (at == start || (name[at] is not ('_' or '-' or '.') && !Turns(name, at))))
+        {
+            at++;
+        }
+        word = start..at;
+        return at > start;
+    }
+
+    /// <summary>Whether a word of the name (<see cref="NextWord"/>) is a secret's (<see cref="Secret(string)"/>), each read
+    /// in <paramref name="upper"/>, the name in capitals, with the word before it.</summary>
     private static bool AnyWord(ReadOnlySpan<char> name, ReadOnlySpan<char> upper)
     {
-        int start = 0;
-        for (int i = 0; i <= name.Length; i++)
+        ReadOnlySpan<char> before = [];
+        for (int at = 0; NextWord(name, ref at, out Range word);)
         {
-            bool apart = i < name.Length && name[i] is '_' or '-' or '.';
-            if (!apart && i < name.Length && !Turns(name, i))
-            {
-                continue;
-            }
-            if (i > start && Names(upper[start..i]))
+            if (Names(upper[word], before))
             {
                 return true;
             }
-            start = apart ? i + 1 : i;
+            before = upper[word];
         }
         return false;
+    }
+
+    /// <summary>Whether the name's last word (<see cref="NextWord"/>, read in <paramref name="upper"/>), or its singular, says
+    /// what its value is (<see cref="Kinds"/>), but SECRET_ID's.</summary>
+    private static bool SaysWhatItHolds(ReadOnlySpan<char> name, ReadOnlySpan<char> upper)
+    {
+        Range last = default;
+        Range before = default;
+        for (int at = 0; NextWord(name, ref at, out Range word);)
+        {
+            (before, last) = (last, word);
+        }
+        ReadOnlySpan<char> kind = upper[last];
+        ReadOnlySpan<char> single = kind.Length > 1 && kind[^1] == 'S' ? kind[..^1] : kind;
+        return (Kinds.Contains(kind) || Kinds.Contains(single)) && !(single is "ID" && upper[before] is "SECRET" or "SECRETS");
     }
 
     /// <summary>Whether a word begins at a place where the name's case turns: a capital after a small letter or digit,
@@ -119,31 +161,59 @@ public static partial class ContainerSecrets
                 || (char.IsAsciiLetterUpper(name[at - 1]) && at + 1 < name.Length && char.IsAsciiLetterLower(name[at + 1])));
 
     /// <summary>Whether a word, in capitals, names a secret: it or its singular is one of <see cref="Whole"/>, or ends
-    /// in KEY but for <see cref="Ordinary"/>'s words.</summary>
-    private static bool Names(ReadOnlySpan<char> word)
+    /// in KEY but for <see cref="Ordinary"/>'s words; a KEY after a word of <see cref="DataKeys"/> (<paramref name="before"/>),
+    /// or ending one of them as one word, names none.</summary>
+    private static bool Names(ReadOnlySpan<char> word, ReadOnlySpan<char> before)
     {
         ReadOnlySpan<char> single = word.Length > 1 && word[^1] == 'S' ? word[..^1] : word;
-        return Whole.Contains(word) || Whole.Contains(single)
-            || (word.EndsWith("KEY", StringComparison.Ordinal) && !Ordinary.Contains(word))
-            || (single.EndsWith("KEY", StringComparison.Ordinal) && !Ordinary.Contains(single));
+        if (single is "KEY" && DataKeys.Contains(before))
+        {
+            return false;
+        }
+        return Whole.Contains(word) || Whole.Contains(single) || Keyed(word) || Keyed(single);
+
+        static bool Keyed(ReadOnlySpan<char> word) =>
+            word.EndsWith("KEY", StringComparison.Ordinal) && !Ordinary.Contains(word) && !DataKeys.Contains(word[..^3]);
     }
 
     /// <summary>Whether a word of a command line is a flag naming a secret, so the word after it is one (<c>--password</c>,
-    /// <c>--api-key</c>, <c>-pwd</c>): one or two dashes before a name of two characters or more that is a secret's and does
-    /// not say it takes no value (<c>--no-password</c>, <c>--password-stdin</c>). One letter names nothing this rule can
-    /// read: <c>-p</c> is a port to one program, a Compose project to another and a password to a third.</summary>
+    /// <c>--api-key</c>, <c>-pwd</c>): one or two dashes before a name of two characters or more that is a secret's
+    /// (<see cref="FlagSecret"/>). One letter names nothing this rule can read: <c>-p</c> is a port to one program, a
+    /// Compose project to another and a password to a third.</summary>
     private static bool SecretFlag(ReadOnlySpan<char> word)
     {
         ReadOnlySpan<char> name = word.StartsWith("--", StringComparison.Ordinal) ? word[2..] : word.StartsWith('-') ? word[1..] : [];
-        return name.Length > 1 && char.IsAsciiLetter(name[0]) && !name.ContainsAnyExcept(FlagName)
-            && !name.StartsWith("no-", StringComparison.OrdinalIgnoreCase) && !name.EndsWith("-stdin", StringComparison.OrdinalIgnoreCase)
-            && Secret(name);
+        return name.Length > 1 && char.IsAsciiLetter(name[0]) && !name.ContainsAnyExcept(FlagName) && FlagSecret(name);
+    }
+
+    /// <summary>Whether a flag's name, its dashes aside, is a secret's (<see cref="Secret(ReadOnlySpan{char})"/>) and does
+    /// not say it is a switch taking no secret: <c>no-password</c>, <c>use-secrets</c>, <c>ask-become-pass</c>,
+    /// <c>store-password-in-clear-text</c>, <c>password-stdin</c>.</summary>
+    private static bool FlagSecret(ReadOnlySpan<char> name) =>
+        !name.StartsWith("no-", StringComparison.OrdinalIgnoreCase) && !name.StartsWith("use-", StringComparison.OrdinalIgnoreCase)
+        && !name.StartsWith("ask-", StringComparison.OrdinalIgnoreCase) && !name.StartsWith("store-", StringComparison.OrdinalIgnoreCase)
+        && !name.EndsWith("-stdin", StringComparison.OrdinalIgnoreCase) && Secret(name);
+
+    /// <summary>Whether a word of a command line is itself a flag, so no flag's value: two dashes and a name, with its own
+    /// value or not (<c>--environment</c>, <c>--port=5000</c>), one dash and a letter (<c>-h</c>), or the two dashes that
+    /// end a program's flags. One dash before more (<c>-sk-live-123</c>) may begin a secret.</summary>
+    private static bool Flag(ReadOnlySpan<char> word)
+    {
+        if (word is "--" || (word.Length == 2 && word[0] == '-' && char.IsAsciiLetter(word[1])))
+        {
+            return true;
+        }
+        ReadOnlySpan<char> name = word.StartsWith("--", StringComparison.Ordinal) ? word[2..] : [];
+        int equals = name.IndexOf('=');
+        name = equals < 0 ? name : name[..equals];
+        return name.Length > 0 && char.IsAsciiLetter(name[0]) && !name.ContainsAnyExcept(FlagName);
     }
 
     /// <summary>A word of a command line given on its own, masked: the dots for one after a flag naming a secret
-    /// (<see cref="SecretFlag"/>) but an empty one, else as <paramref name="masking"/> masks it.</summary>
+    /// (<see cref="SecretFlag"/>) but an empty one and one itself a flag (<see cref="Flag"/>), else as
+    /// <paramref name="masking"/> masks it.</summary>
     private static string Argument(string word, string? before, Func<string, string> masking) =>
-        word.Length > 0 && SecretFlag(before) ? Masked : masking(word);
+        word.Length > 0 && SecretFlag(before) && !Flag(word) ? Masked : masking(word);
 
     /// <summary>A program's arguments given one by one (an Aspire resource's), each masked as
     /// <see cref="CommandLine(System.Diagnostics.ProcessStartInfo)"/> masks a child's, and one its sender marks sensitive
@@ -172,8 +242,17 @@ public static partial class ContainerSecrets
         }
         string bare = AuthorizationCredentials().Replace(value, $"${{scheme}} {Masked}");
         bare = UrlPassword().Replace(bare, $"${{head}}{Masked}@");
-        return ConnectionPart().Replace(bare, part => Secret(part.Groups["name"].Value.Trim()) && part.Groups["value"].Length > 0
+        return ConnectionPart().Replace(bare, part => PartSecret(part.Groups["name"].ValueSpan.Trim()) && part.Groups["value"].Length > 0
             ? $"{part.Groups["head"].Value}{Masked}" : part.Value);
+    }
+
+    /// <summary>Whether a connection string's part, or a <c>NAME=value</c> read as one, holds a secret by its name: one whose
+    /// last word is a flag (<c>--use-secrets=true</c>) as <see cref="FlagSecret"/> reads it, any other as
+    /// <see cref="Secret(ReadOnlySpan{char})"/> does.</summary>
+    private static bool PartSecret(ReadOnlySpan<char> name)
+    {
+        ReadOnlySpan<char> last = name[(name.LastIndexOfAny(" \t") + 1)..];
+        return last.StartsWith('-') ? FlagSecret(last.TrimStart('-')) : Secret(name);
     }
 
     /// <summary>Whether <see cref="InValue"/> may mask something in a value; when not, it gives the value back as it is.</summary>
@@ -193,7 +272,7 @@ public static partial class ContainerSecrets
             ReadOnlySpan<char> found = value.Slice(part.Index, part.Length);
             int from = found[0] == ';' ? 1 : 0;
             int equals = found[from..].IndexOf('=') + from;
-            if (equals + 1 < found.Length && Secret(found[from..equals].Trim()))
+            if (equals + 1 < found.Length && PartSecret(found[from..equals].Trim()))
             {
                 return true;
             }
@@ -272,7 +351,7 @@ public static partial class ContainerSecrets
             }
             string word = line[start..at];
             bool whole = word.Length > 1 && word[0] == '"' && word[^1] == '"';
-            string bare = !SecretFlag(before) ? InWord(word, whole, masking)
+            string bare = !SecretFlag(before) || Flag(whole ? word.AsSpan(1, word.Length - 2) : word) ? InWord(word, whole, masking)
                 : whole ? (word.Length == 2 ? word : $"\"{Masked}\"") : Masked;
             if (shown is null && !string.Equals(bare, word, StringComparison.Ordinal))
             {
@@ -350,15 +429,23 @@ public static partial class ContainerSecrets
     private static string InLine(string line)
     {
         // A Bearer's token first, which a NAME=value would otherwise leave after the scheme it masked.
-        string bare = InValue(line);
-        bare = Assignment().Replace(bare, pair => Secret(pair.Groups["name"].Value) ? $"{pair.Groups["head"].Value}{Quoted(pair.Groups["value"].Value)}" : pair.Value);
+        string valued = InValue(line);
+        string bare = Assignment().Replace(valued, pair => Assigned(valued, pair.Index, pair.Groups["name"].ValueSpan)
+            ? $"{pair.Groups["head"].Value}{Quoted(pair.Groups["value"].Value)}" : pair.Value);
         bare = Member().Replace(bare, pair => Secret(pair.Groups["name"].Value) ? $"{pair.Groups["head"].Value}{Quoted(pair.Groups["value"].Value)}" : pair.Value);
-        bare = FlagValue().Replace(bare, value => SecretFlag(value.Groups["flag"].ValueSpan) && value.Value is not ("\"\"" or "''") ? Quoted(value.Value) : value.Value);
+        bare = FlagValue().Replace(bare, value => SecretFlag(value.Groups["flag"].ValueSpan) && value.Value is not ("\"\"" or "''") && !Flag(value.ValueSpan)
+            ? Quoted(value.Value) : value.Value);
         bare = AuthorizationHeader().Replace(bare, $"${{head}}{Masked}");
         return UrlUser().Replace(bare, $"${{scheme}}{Masked}@");
 
         static string Quoted(string value) => value.Length > 1 && value[0] is '"' or '\'' && value[^1] == value[0] ? $"{value[0]}{Masked}{value[0]}" : Masked;
     }
+
+    /// <summary>Whether a <c>NAME=value</c> at <paramref name="at"/> in a line holds a secret: a flag's
+    /// (<c>--use-secrets=true</c>, a dash before its name) as <see cref="FlagSecret"/> reads it, any other's as
+    /// <see cref="Secret(ReadOnlySpan{char})"/> does.</summary>
+    private static bool Assigned(ReadOnlySpan<char> line, int at, ReadOnlySpan<char> name) =>
+        at > 0 && line[at - 1] == '-' ? FlagSecret(name) : Secret(name);
 
     /// <summary>Whether <see cref="InLine"/> may mask something in a line: one with none of <see cref="Marks"/> only a
     /// Bearer's or Basic's credentials or a flag's word, any other only where one of its masks finds what it masks, a name
@@ -371,7 +458,7 @@ public static partial class ContainerSecrets
             {
                 // Its flag is the word before the spaces before it.
                 ReadOnlySpan<char> flag = line[..value.Index].TrimEnd(" \t");
-                if (SecretFlag(flag[(flag.LastIndexOfAny(BeforeFlag) + 1)..]))
+                if (SecretFlag(flag[(flag.LastIndexOfAny(BeforeFlag) + 1)..]) && !Flag(line.Slice(value.Index, value.Length)))
                 {
                     return true;
                 }
@@ -394,7 +481,7 @@ public static partial class ContainerSecrets
             {
                 end++;
             }
-            if (Secret(found[..end]))
+            if (Assigned(line, pair.Index, found[..end]))
             {
                 return true;
             }
