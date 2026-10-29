@@ -291,6 +291,41 @@ public sealed class StateTests : IDisposable
         second.Close();
     }
 
+    /// <summary>A folder's tabs, splits and carets come back when it opens again after another, read anew from what was
+    /// written as it was left: in the window that left it, and in a new window while that one has the other open.</summary>
+    [AvaloniaFact]
+    public void A_folders_tabs_splits_and_carets_come_back_when_it_opens_again_after_another_in_the_same_window_and_a_new_one()
+    {
+        string other = TestFolders.Create("other-");
+        File.WriteAllText(Path.Combine(folder, "One.cs"), "class One\n{\n    int x;\n}\n");
+        File.WriteAllText(Path.Combine(folder, "Two.cs"), "class Two\n{\n    int y;\n}\n");
+        MainWindow window = Keeping(folder);
+        window.OpenFile(Path.Combine(folder, "One.cs"));
+        window.OpenFile(Path.Combine(folder, "Two.cs"));
+        Ui.Settle();
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(2, 8));
+        window.Perform(AppActions.SplitDown);
+        window.OpenFile(Path.Combine(folder, "One.cs"));
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(1, 0));
+        Ui.Settle();
+        string left = Editors(window);
+        Assert.True(window.EditorArea.Groups.Count == 2, $"Split Down made no second split, so the test shows nothing of splits: {left}");
+
+        window.OpenFolder(other);
+        Ui.Settle();
+        Assert.Empty(window.EditorArea.Documents);
+        window.OpenFolder(folder);
+        Ui.Settle();
+        Assert.True(Editors(window) == left, $"Opened again after another folder in the same window, the folder has {Editors(window)}, not the {left} it was left with");
+
+        window.OpenFolder(other);
+        Ui.Settle();
+        MainWindow fresh = Keeping(folder);
+        Assert.True(Editors(fresh) == left, $"Opened in a new window while the first has another folder open, the folder has {Editors(fresh)}, not the {left} it was left with");
+        fresh.Close();
+        window.Close();
+    }
+
     /// <summary>A folder's documents are held in the store only while a window has the folder open: left again and again, by
     /// Close Solution and by another folder's open, the store keeps none of them, what the window kept of the folder written
     /// as it goes; two windows on the folder share them until the last lets them go.</summary>
@@ -537,6 +572,11 @@ public sealed class StateTests : IDisposable
     {
         public void Dispose() => File.SetUnixFileMode(folder, was);
     }
+
+    /// <summary>The editors as a person sees them: each split's tabs, the one shown and its caret, the split with the keys
+    /// marked.</summary>
+    private static string Editors(MainWindow window) => string.Join(" | ", window.EditorArea.Groups.Select(g =>
+        $"{(g == window.EditorArea.ActiveGroup ? "*" : string.Empty)}[{string.Join(", ", g.Tabs.Select(t => t.Document.Name))}] {g.Active?.Name} at {g.Editor.CaretPosition}"));
 
     /// <summary>Every tab's file name, group after group, as the strips show them.</summary>
     private static string[] Tabs(MainWindow window) => [.. window.EditorArea.Groups.SelectMany(g => g.Tabs).Select(t => t.Document.Name)];

@@ -258,6 +258,7 @@ public sealed class EditorSplitTests : IDisposable
         second.OpenFolder(other);
         Assert.Empty(area.Documents);
         second.OpenFolder(folder);
+        Ui.Settle();
         Assert.Equal(3, area.Documents.Count);
         second.Close();
     }
