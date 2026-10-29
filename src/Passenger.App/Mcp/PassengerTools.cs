@@ -197,9 +197,15 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         if (await DocumentAsync(path, cancel) is { Language.Service: not Languages.LanguageService.CSharp } marked)
         {
-            // Its own checks only; the rest of the IDE's work (a build, a test run, a busy console) is not waited for.
-            await When(() => !marked.IsChecking, MarkersLimit, cancel, On(h => marked.Checked += h, h => marked.Checked -= h));
+            await Checked(marked, cancel);
             List<Finding> missing = [];
+            if (marked.Unanswered is { Count: > 0 } unanswered)
+            {
+                // Each check that has not answered for the text as it stands, within the wait or its own.
+                string who = unanswered.Count == 1 ? "it" : "they";
+                missing.Add(new Finding("info", null, $"Not yet checked as it stands by {string.Join(", ", unanswered)}: what {who} found before is listed",
+                    Relative(marked.Path), 1, 1));
+            }
             if (Session.Web is { } web && web.For(marked) is { Lsp: null })
             {
                 if (Languages.Language.ForPath(marked.Path) != Languages.Language.Dockerfile && !ComposeDeclarations.IsCompose(marked.Path))
@@ -232,6 +238,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 Relative(document.Path), at.Line + 1, at.Column + 1);
         })];
     });
+
+    /// <summary>Waits, within <see cref="MarkersLimit"/>, for a file's own checks of its text as it stands (<see
+    /// cref="OpenDocument.IsChecking"/>), which its markers and the fixes for them answer from; the rest of the IDE's work
+    /// (a build, a test run, a busy console) is not waited for.</summary>
+    private static Task Checked(OpenDocument document, CancellationToken cancel) =>
+        When(() => !document.IsChecking, MarkersLimit, cancel, On(h => document.Checked += h, h => document.Checked -= h));
 
     [McpServerTool(Name = McpTools.SymbolInfo, Title = "What a symbol is", ReadOnly = true), Description(
         "What the symbol at a position is, as the hover card says: its declaration and documentation (a JSON property's " +

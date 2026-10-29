@@ -41,6 +41,7 @@ public sealed class XamlService : IDisposable
     private readonly Dictionary<string, XamlLoading> projects = new(PathNames.Comparer);
     private readonly Dictionary<OpenDocument, XamlDocument> documents = [];
     private readonly Dictionary<OpenDocument, TypedSource> sources = [];
+    private readonly List<SourcesPending> pending = [];
     private bool disposed;
 
     /// <summary>The next text of an open C# file held by a test (<see cref="HoldNextText"/>): what it waits for, and done
@@ -121,14 +122,19 @@ public sealed class XamlService : IDisposable
         {
             if (ProjectOf(document.Path) is { } loading)
             {
-                documents[document] = new XamlDocument(this, document, loading);
+                XamlDocument xaml = new(this, document, loading);
+                documents[document] = xaml;
+                foreach (SourcesPending change in pending)
+                {
+                    change.Hold(xaml);
+                }
             }
             return;
         }
         if (document.Language == Languages.Language.CSharp)
         {
             // Only a file a XAML project may read waits for a pause: each wait holds background work half a second.
-            Debounce wait = new(SourceSettle, () => SourceTypedAsync(document));
+            Debounce wait = new(SourceSettle, () => SourceTypedAsync(document), () => Pending(Reading(document.Path)));
             EventHandler<DocumentChangedEventArgs> handler = (_, _) =>
             {
                 if (Reading(document.Path).Any())
@@ -402,6 +408,7 @@ public sealed class XamlService : IDisposable
     /// <summary>A change made to a loaded project off the UI thread; its open XAML files read against the result.</summary>
     private async Task UpdateAsync(XamlLoading loading, Func<XamlProjectBuilder, XamlProject?> change)
     {
+        using SourcesPending checking = Pending([loading]);
         try
         {
             if (await loading.Loaded is null || await loading.Builder is not { } builder)
@@ -565,6 +572,45 @@ public sealed class XamlService : IDisposable
             Detach(document);
         }
         projects.Clear();
+    }
+
+    /// <summary>Holds the checks of the open XAML files of the projects a change of their C# reaches, those opened meanwhile
+    /// too, until it ends: the XAML is read against the new code (<see cref="XamlDocument.ProjectChanged"/>) before an agent's
+    /// diagnostics answer.</summary>
+    private SourcesPending Pending(IEnumerable<XamlLoading> reading)
+    {
+        SourcesPending change = new(this, [.. reading.Select(l => l.ProjectPath)]);
+        pending.Add(change);
+        foreach (XamlDocument document in documents.Values)
+        {
+            change.Hold(document);
+        }
+        return change;
+    }
+
+    /// <summary>A change of C# on its way to the XAML of some projects, holding their open files' checks (<see cref="Pending"/>).</summary>
+    private sealed class SourcesPending(XamlService service, HashSet<string> projects) : IDisposable
+    {
+        private readonly List<IDisposable> held = [];
+
+        public void Hold(XamlDocument document)
+        {
+            if (projects.Contains(document.Loading.ProjectPath))
+            {
+                held.Add(document.Document.Checking(XamlDocument.Checker));
+            }
+        }
+
+        public void Dispose()
+        {
+            if (service.pending.Remove(this))
+            {
+                foreach (IDisposable hold in held)
+                {
+                    hold.Dispose();
+                }
+            }
+        }
     }
 
     /// <summary>An open C# file a XAML project may read, followed as it is typed: its texts given to each project's builder

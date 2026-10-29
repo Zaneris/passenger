@@ -78,6 +78,15 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         Assert.Contains("Create property 'Subtitle' [quickfix]", Strings(await Call(client, McpTools.CodeActions, subtitle)));
         await Call(client, McpTools.ApplyCodeAction, new(subtitle) { ["title"] = "Create property 'Subtitle'" });
         Assert.Contains("public string? Subtitle { get; set; }", File.ReadAllText(Path.Combine(gallery, "ViewModels", "MainViewModel.cs")), StringComparison.Ordinal);
+        // The view model written or edited, the window's XAML is read against it before its diagnostics answer.
+        Assert.True(Problems(await Call(client, McpTools.Diagnostics, new() { ["path"] = "MainWindow.axaml" })) is [],
+            "diagnostics at once after Create property still said the binding's property is missing");
+        Dictionary<string, object?> renaming = new() { ["path"] = Path.Combine("ViewModels", "MainViewModel.cs"), ["oldText"] = "public string Greeting", ["newText"] = "public string Salutation" };
+        await Call(client, McpTools.Edit, renaming);
+        string[] unbound = Problems(await Call(client, McpTools.Diagnostics, new() { ["path"] = "MainWindow.axaml" }));
+        Assert.True(unbound is [{ } lacking] && lacking.Contains("'Greeting'", StringComparison.Ordinal),
+            $"diagnostics at once after the view model's Greeting was renamed did not say the window binds a property it lacks: {string.Join(" | ", unbound)}");
+        await Call(client, McpTools.Edit, new(renaming) { ["oldText"] = renaming["newText"], ["newText"] = renaming["oldText"] });
 
         Dictionary<string, object?> margin = At(window, "MainWindow.axaml", "<StackPanel Margin=\"1");
         Assert.Equal(["Extract Resource… [refactor.extract], choices: MainWindow.axaml <Window.Resources>; App.axaml <Application.Resources>; Palette.axaml <ResourceDictionary>",
@@ -203,13 +212,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         await EslintPrettierTests.Project.SkipWithoutNodeAsync();
         string web = Made("mcpweb-", made =>
         {
-            string packages = Path.Combine(AppContext.BaseDirectory, "node-packages", "node_modules");
-            foreach (string file in Directory.EnumerateFiles(packages, "*", SearchOption.AllDirectories))
-            {
-                string target = Path.Combine(made, "node_modules", Path.GetRelativePath(packages, file));
-                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                File.Copy(file, target);
-            }
+            CopyPackages(made);
             File.WriteAllText(Path.Combine(made, "package.json"), "{\n  \"name\": \"shop-client\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \"type\": \"module\",\n"
                 + "  \"scripts\": {\n    \"build\": \"node src/app.js\",\n    \"all\": \"npm run build\"\n  },\n"
                 + $"  \"devDependencies\": {{\n    \"eslint\": \"{EslintPrettierTests.Project.VersionOf("eslint")}\",\n    \"prettier\": \"{EslintPrettierTests.Project.VersionOf("prettier")}\"\n  }}\n}}\n");
@@ -268,6 +271,36 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         manifest = File.ReadAllText(Path.Combine(web, "package.json"));
         Assert.True(manifest.Contains("\"compile\": \"node src/app.js\"", StringComparison.Ordinal) && manifest.Contains("\"all\": \"npm run compile\"", StringComparison.Ordinal),
             $"The script's rename did not reach package.json on disk:\n{manifest}");
+    }
+
+    /// <summary>An agent's diagnostics answer from the checks of the text as it stands: TypeScript's problem in a file just
+    /// opened, then the edited text's own, and ESLint's in its first call as its server starts. Skipped without a Node.js.</summary>
+    [Fact]
+    public async Task An_agents_diagnostics_wait_for_typescript_and_eslint_to_check_the_text_as_it_stands()
+    {
+        await WebLanguagesTests.SkipWithoutNodeAsync(typescript: true);
+        await EslintPrettierTests.Project.SkipWithoutNodeAsync();
+        string web = Made("mcpchecks-", made =>
+        {
+            CopyPackages(made);
+            File.WriteAllText(Path.Combine(made, "package.json"), EslintPrettierTests.Project.Package);
+            File.WriteAllText(Path.Combine(made, "eslint.config.js"), EslintPrettierTests.Project.Config);
+            Directory.CreateDirectory(Path.Combine(made, "src"));
+            File.WriteAllText(Path.Combine(made, "src", "app.js"), "let total = 1\nconsole.log(total)\n");
+            File.WriteAllText(Path.Combine(made, "src", "main.ts"), "const count: number = \"two\";\nconsole.log(count);\n");
+        });
+        await using McpClient client = await Start(["--mcp", web], languageServer: false);
+        string app = Path.Combine("src", "app.js");
+        string main = Path.Combine("src", "main.ts");
+
+        string[] linted = Problems(await Call(client, McpTools.Diagnostics, new() { ["path"] = app }));
+        Assert.True(linted.Any(p => p.Contains("(prefer-const)", StringComparison.Ordinal)), $"ESLint's first call, its server starting, missed its problem: {string.Join(" | ", linted)}");
+
+        string[] opened = Problems(await Call(client, McpTools.Diagnostics, new() { ["path"] = main }));
+        Assert.True(opened is ["1: TS2322: Type 'string' is not assignable to type 'number'."], $"diagnostics of a TypeScript file just opened: {string.Join(" | ", opened)}");
+        await Call(client, McpTools.Edit, new() { ["path"] = main, ["oldText"] = "const count: number = \"two\";", ["newText"] = "const count: number = 2;\nconst label: string = count;" });
+        string[] edited = Problems(await Call(client, McpTools.Diagnostics, new() { ["path"] = main }));
+        Assert.True(edited is ["2: TS2322: Type 'number' is not assignable to type 'string'."], $"diagnostics right after an edit did not answer the edited text: {string.Join(" | ", edited)}");
     }
 
     /// <summary>A project whose property comes from its Directory.Build.props and whose target another names: what MSBuild's
@@ -342,6 +375,22 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         JsonElement order = routes.EnumerateArray().First(r => r.GetProperty("route").GetString() == "PUT /orders/{id:guid}");
         Assert.Equal(("Orders.Update", "Order"), (order.GetProperty("handler").GetString(), order.GetProperty("body").GetString()));
     }
+
+    /// <summary>The tests' own npm packages (eslint and prettier) copied into a folder's node_modules.</summary>
+    private static void CopyPackages(string made)
+    {
+        string packages = Path.Combine(AppContext.BaseDirectory, "node-packages", "node_modules");
+        foreach (string file in Directory.EnumerateFiles(packages, "*", SearchOption.AllDirectories))
+        {
+            string target = Path.Combine(made, "node_modules", Path.GetRelativePath(packages, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target);
+        }
+    }
+
+    /// <summary>A file's errors and warnings as diagnostics lists them, each as "line: message".</summary>
+    private static string[] Problems(JsonElement found) =>
+        [.. found.EnumerateArray().Select(d => $"{d.GetProperty("line").GetInt32()}: {d.GetProperty("message").GetString()}")];
 
     /// <summary>A folder of the test's own, written by <paramref name="write"/>, removed with the test.</summary>
     private string Made(string name, Action<string> write)

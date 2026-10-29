@@ -539,7 +539,7 @@ public partial class MainWindow
 
     /// <summary>Follows a change of files once it is done: what came or went along <paramref name="stood"/>'s paths, with the
     /// ends of the moves it made, as <see cref="CameOrWent"/> does; with none, the projects whose evaluation read one of
-    /// <paramref name="texts"/> are evaluated again.</summary>
+    /// <paramref name="texts"/> are evaluated again. The XAML reading a C# file among them or the moves' reads it again either way.</summary>
     private void Followed(Dictionary<string, bool> stood, IReadOnlyCollection<string> moved, IReadOnlyCollection<string> texts)
     {
         List<string> cameOrWent = [.. moved, .. stood.Where(s => s.Value != Stands(s.Key)).Select(s => s.Key)];
@@ -552,6 +552,8 @@ public partial class MainWindow
             // Only texts changed, a project's or an import's among them: the projects that read it are evaluated again.
             session.Evaluate();
         }
+        // Now, rather than once the watcher hears of it.
+        session.Xaml.FilesChanged([.. texts.Concat(moved).Where(p => p.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)).Distinct(PathNames.Comparer)]);
     }
 
     /// <summary>Files or folders the IDE itself made, moved or deleted, followed at once rather than when the folder watcher

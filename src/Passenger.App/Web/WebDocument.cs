@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text.Json;
 using Passenger.App.CSharp;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
@@ -23,15 +25,26 @@ public sealed class WebDocument : IServerDocument, IDisposable
     private LanguageSession? session;
 
     /// <summary>The file's checks held while its server starts: until it is connected, or cannot start.</summary>
-    private IDisposable? waiting;
+    private OpenDocument.CheckHold? waiting;
 
-    /// <summary>The file's checks held, for the Dockerfile and YAML servers, which push a file's diagnostics after each
-    /// change of it, from the change until that push lands or <see cref="PushLimit"/> passes: what an agent's diagnostics
-    /// and a screenshot wait for.</summary>
-    private IDisposable? awaitingPush;
+    /// <summary>The file's checks held, for the Dockerfile, YAML and TypeScript servers, which push a file's diagnostics
+    /// after each change of it, from the change until a push answering it lands or TypeScript finds the text clean
+    /// (<see cref="QuietAsync"/>): what an agent's diagnostics and a screenshot wait for. Given up once its limit passes
+    /// (<see cref="PushLimit"/>), the file is said to lack the server's answer until one lands.</summary>
+    private OpenDocument.CheckHold? awaitingPush;
     private CancellationTokenSource? pushLimit;
 
-    private static readonly TimeSpan PushLimit = TimeSpan.FromSeconds(5);
+    /// <summary>When the text a push is awaited for was sent, as a Stopwatch timestamp.</summary>
+    private long sentAt;
+
+    /// <summary>How long a push is waited for: longer for TypeScript, which reads its project before its first.</summary>
+    private TimeSpan PushLimit => Kind == WebServerKind.TypeScript ? Waits.Of(TimeSpan.FromSeconds(15)) : TimeSpan.FromSeconds(5);
+
+    /// <summary>Who checks the file, as an agent is told while its check is under way.</summary>
+    private string Checker => $"the {WebLanguages.Name(Kind)} language server";
+
+    /// <summary>The command of TypeScript's server that hands a request to its tsserver as it stands.</summary>
+    private const string TsServerRequest = "typescript.tsserverRequest";
 
     /// <summary>The file's markers from the container engine's checks (BuildKit's of a Dockerfile, Compose's of a compose
     /// file), which the editor shows with its own server's and ESLint's.</summary>
@@ -40,14 +53,14 @@ public sealed class WebDocument : IServerDocument, IDisposable
     internal WebDocument(OpenDocument document, WebServerKind kind, string languageId)
     {
         this.document = document;
-        diagnostics = new ServerDiagnostics(document, holdsChecks: true);
         Kind = kind;
         LanguageId = languageId;
+        diagnostics = new ServerDiagnostics(document, Checker);
         // What a server before this one marked moves with the text until this one says otherwise.
         diagnostics.Adopt(document.Markers);
         document.Text.Changed += OnChanged;
         document.Saved += OnSaved;
-        waiting = document.Checking();
+        waiting = document.Checking(Checker);
     }
 
     /// <summary>The server cannot start (no Node.js, too old, missing): the file waits for no checks of its.</summary>
@@ -139,13 +152,15 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// <summary>Holds the file's checks until its server's push for the text as it stands (<see cref="awaitingPush"/>).</summary>
     private void AwaitPush()
     {
-        if (Lsp is null || Kind is not (WebServerKind.Dockerfile or WebServerKind.Yaml))
+        if (Lsp is null || Kind is not (WebServerKind.Dockerfile or WebServerKind.Yaml or WebServerKind.TypeScript))
         {
             return;
         }
-        if (awaitingPush is null)
+        sentAt = Stopwatch.GetTimestamp();
+        if (awaitingPush is not { Lapsed: false })
         {
-            awaitingPush = document.Checking();
+            awaitingPush?.Dispose();
+            awaitingPush = document.Checking(Checker);
             BackgroundWork.Begin();
         }
         pushLimit?.Cancel();
@@ -158,7 +173,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
                 {
                     if (pushLimit == limit)
                     {
-                        PushLanded();
+                        PushLapsed();
                     }
                 });
             }
@@ -172,7 +187,21 @@ public sealed class WebDocument : IServerDocument, IDisposable
         if (awaitingPush is { } held)
         {
             awaitingPush = null;
+            if (!held.Lapsed)
+            {
+                BackgroundWork.End();
+            }
             held.Dispose();
+        }
+    }
+
+    /// <summary>The push waited for its limit and never came: the file no longer waits for it, but lacks it.</summary>
+    private void PushLapsed()
+    {
+        pushLimit = null;
+        if (awaitingPush is { Lapsed: false } held)
+        {
+            held.Lapse();
             BackgroundWork.End();
         }
     }
@@ -211,12 +240,14 @@ public sealed class WebDocument : IServerDocument, IDisposable
     private void OnSaved(object? sender, EventArgs e) => Lsp?.Saved();
 
     /// <summary>A push from the server, on its thread: taken on the window's, if it answers the text as it stands (the
-    /// version it answers told as it arrived, <see cref="LspDocument.Pushed"/>), which lets the file's checks go; one for
-    /// a text typed over leaves them held for the next.</summary>
+    /// version it answers told as it arrived, <see cref="LspDocument.Pushed"/>), which lets the file's checks go unless it
+    /// came sooner after the text than its server answers one (a clean push is shown for any text); one for a text typed
+    /// over leaves them held for the next.</summary>
     private void OnPushed(object? sender, EventArgs e)
     {
         if (sender is LspDocument lsp)
         {
+            long arrived = Stopwatch.GetTimestamp();
             UiThread.Post(() =>
             {
                 if (lsp == Lsp)
@@ -225,7 +256,10 @@ public sealed class WebDocument : IServerDocument, IDisposable
                     if (version == document.Text.Version)
                     {
                         Show(pushed);
-                        PushLanded();
+                        if (Stopwatch.GetElapsedTime(sentAt, arrived) >= (session?.Pushes.Rest ?? TimeSpan.Zero))
+                        {
+                            PushLanded();
+                        }
                     }
                 }
             });
@@ -234,12 +268,49 @@ public sealed class WebDocument : IServerDocument, IDisposable
 
     private void Pull(TimeSpan delay)
     {
-        // A server that pushes its diagnostics and finds no colours (TypeScript's) has nothing to be asked.
-        if (Lsp is not { } lsp || !(Provides("diagnosticProvider") || Provides("colorProvider")))
+        if (Lsp is not { } lsp)
         {
             return;
         }
-        diagnostics.Pull(delay, cancel => PullAsync(lsp, cancel));
+        // TypeScript's server pushes its diagnostics and finds no colours: it is asked only whether a text is clean.
+        if (Kind == WebServerKind.TypeScript)
+        {
+            if (awaitingPush is { Lapsed: false })
+            {
+                diagnostics.Pull(delay, cancel => QuietAsync(lsp, cancel));
+            }
+            return;
+        }
+        if (Provides("diagnosticProvider") || Provides("colorProvider"))
+        {
+            diagnostics.Pull(delay, cancel => PullAsync(lsp, cancel));
+        }
+    }
+
+    /// <summary>Whether TypeScript finds nothing in the text as it stands, asked of its tsserver, as its server pushes nothing
+    /// for a clean text after a clean one: the file is then answered clean, else the push its problems make is waited for.</summary>
+    private async Task QuietAsync(LspDocument lsp, CancellationToken cancel)
+    {
+        int version = document.Text.Version;
+        foreach (string asked in (string[])["syntacticDiagnosticsSync", "semanticDiagnosticsSync", "suggestionDiagnosticsSync"])
+        {
+            if (session is not { } running)
+            {
+                return;
+            }
+            LspCommand request = new(asked, TsServerRequest, [JsonSerializer.SerializeToElement(asked), JsonSerializer.SerializeToElement(new { file = lsp.Uri })]);
+            JsonElement answer = await running.Server.ExecuteCommandAsync(request, cancel);
+            if (!(answer.ValueKind == JsonValueKind.Object && answer.TryGetProperty("body", out JsonElement found)
+                && found.ValueKind == JsonValueKind.Array && found.GetArrayLength() == 0))
+            {
+                return;
+            }
+        }
+        if (!cancel.IsCancellationRequested && lsp == Lsp && version == document.Text.Version && awaitingPush is not null)
+        {
+            Show([]);
+            PushLanded();
+        }
     }
 
     /// <summary>The file's diagnostics where its server is asked for them (the rest push theirs), then its colours where it

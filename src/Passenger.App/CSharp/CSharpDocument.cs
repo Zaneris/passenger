@@ -31,7 +31,7 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     {
         this.service = service;
         this.document = document;
-        diagnostics = new ServerDiagnostics(document, holdsChecks: false);
+        diagnostics = new ServerDiagnostics(document, checker: null);
         // What the server before this one reported, until this one does.
         diagnostics.Adopt(document.Markers);
         document.Text.Changed += OnChanged;

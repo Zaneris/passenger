@@ -343,36 +343,72 @@ public sealed class OpenDocument : Observable
 
     private int checks;
 
-    /// <summary>Whether the file's own checks are under way, or waiting for typing to pause or for their server to start
-    /// (XAML's, an MSBuild file's, a web language server's, ESLint's), which an agent's diagnostics waits out rather than
-    /// all of the IDE's work.</summary>
+    /// <summary>The checks held under way, and those whose answer for the text never came (<see cref="CheckHold.Lapse"/>).</summary>
+    private readonly List<CheckHold> holds = [];
+
+    /// <summary>Whether the file's own checks of the text as it stands are under way, or waiting for typing to pause, for
+    /// their server to start or for its answer (XAML's, an MSBuild file's, a web language server's, ESLint's), which an
+    /// agent's diagnostics waits out rather than all of the IDE's work.</summary>
     public bool IsChecking => checks > 0;
+
+    /// <summary>Who has yet to answer for the text as it stands, each named once: the checks under way, and those that gave
+    /// up waiting for their answer.</summary>
+    public IReadOnlyList<string> Unanswered => [.. holds.Select(h => h.By).Distinct(StringComparer.Ordinal)];
 
     /// <summary>The file's own checks are all done again (<see cref="IsChecking"/> false), on the UI thread: what an agent's
     /// diagnostics waits on.</summary>
     public event EventHandler? Checked;
 
-    /// <summary>Holds <see cref="IsChecking"/> until the scope ends, on the UI thread.</summary>
-    public IDisposable Checking()
+    /// <summary>Holds <see cref="IsChecking"/> until the scope ends, on the UI thread, for the check <paramref name="by"/>
+    /// names as an agent is told of it (the TypeScript language server, ESLint).</summary>
+    public CheckHold Checking(string by)
     {
         UiThread.Check();
         checks++;
-        return new CheckHeld(this);
+        CheckHold hold = new(this, by);
+        holds.Add(hold);
+        return hold;
     }
 
-    private sealed class CheckHeld(OpenDocument document) : IDisposable
+    /// <summary>One check of the file held (<see cref="Checking"/>), ended when its answer has come.</summary>
+    public sealed class CheckHold(OpenDocument document, string by) : IDisposable
     {
         private bool released;
+
+        public string By { get; } = by;
+
+        /// <summary>Whether its wait for its answer was given up (<see cref="Lapse"/>).</summary>
+        public bool Lapsed { get; private set; }
+
+        /// <summary>Gives up waiting for the answer: the file is no longer checking for it, but is said to lack it until the
+        /// hold ends.</summary>
+        public void Lapse()
+        {
+            if (!released && !Lapsed)
+            {
+                Lapsed = true;
+                Release();
+            }
+        }
 
         public void Dispose()
         {
             if (!released)
             {
                 released = true;
-                if (--document.checks == 0)
+                document.holds.Remove(this);
+                if (!Lapsed)
                 {
-                    document.Checked?.Invoke(document, EventArgs.Empty);
+                    Release();
                 }
+            }
+        }
+
+        private void Release()
+        {
+            if (--document.checks == 0)
+            {
+                document.Checked?.Invoke(document, EventArgs.Empty);
             }
         }
     }

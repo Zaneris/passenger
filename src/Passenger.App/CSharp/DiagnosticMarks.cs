@@ -80,8 +80,9 @@ internal static class DiagnosticMarks
 
 /// <summary>An open file's diagnostics from one server (C#'s, a web language's, ESLint's): pulled after a pause, each
 /// pull ending the one before it and held as background work, or taken as pushed, and carried with the text between
-/// reports by anchored ranges, so a squiggle never drifts off its code. What each asks of its server is its own.</summary>
-internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
+/// reports by anchored ranges, so a squiggle never drifts off its code. What each asks of its server is its own; a pull
+/// holds the file's checks for <c>checker</c>, as an agent is told of it, unless that is null.</summary>
+internal sealed class ServerDiagnostics(OpenDocument document, string? checker)
 {
     private CancellationTokenSource? pulling;
 
@@ -221,7 +222,7 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
 
     /// <summary>Asks the server again after <paramref name="delay"/>, ending the ask under way: <paramref name="ask"/> pulls
     /// (<see cref="PulledAsync"/>) and shows what answers, a server that fails or a later ask leaving the markers as they
-    /// stand; when it <c>holdsChecks</c>, the file's checks are held until the ask ends, as is <paramref name="held"/>.</summary>
+    /// stand; the file's checks are held for its checker until the ask ends, as is <paramref name="held"/>.</summary>
     public void Pull(TimeSpan delay, Func<CancellationToken, Task> ask, IDisposable? held = null)
     {
         pulling?.Cancel();
@@ -229,7 +230,7 @@ internal sealed class ServerDiagnostics(OpenDocument document, bool holdsChecks)
         pulling = cancel;
         pausing = delay > TimeSpan.Zero ? cancel : null;
         BackgroundWork.Begin();
-        IdeErrors.Observe(PullAsync(delay, ask, cancel, holdsChecks ? document.Checking() : null, held));
+        IdeErrors.Observe(PullAsync(delay, ask, cancel, checker is null ? null : document.Checking(checker), held));
     }
 
     /// <summary>The server's diagnostics of the file from the sources <paramref name="part"/> names, when they answer the

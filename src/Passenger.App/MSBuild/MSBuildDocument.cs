@@ -19,6 +19,9 @@ public sealed class MSBuildDocument : IDisposable
     /// <summary>How long typing pauses before the project is evaluated again with the text as typed.</summary>
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(400);
 
+    /// <summary>Who checks the file, as an agent is told while its check is under way.</summary>
+    private const string Checker = "the project's MSBuild evaluation";
+
     private readonly MSBuildService service;
     private readonly Debounce inspecting;
     private (int Version, XmlTree Tree)? parsed;
@@ -29,7 +32,7 @@ public sealed class MSBuildDocument : IDisposable
     {
         this.service = service;
         Document = document;
-        inspecting = new Debounce(Settle, InspectAsync, document.Checking);
+        inspecting = new Debounce(Settle, InspectAsync, () => document.Checking(Checker));
         document.Text.Changed += OnChanged;
         First = InspectAsync();
     }
@@ -171,7 +174,7 @@ public sealed class MSBuildDocument : IDisposable
     private async Task InspectAsync()
     {
         using IDisposable held = BackgroundWork.Scope();
-        using IDisposable checking = Document.Checking();
+        using IDisposable checking = Document.Checking(Checker);
         if (disposed || service.ProjectFor(Document.Path) is not { } project)
         {
             return;
@@ -210,7 +213,7 @@ public sealed class MSBuildDocument : IDisposable
     internal async Task AdoptAsync(MSBuildInsight insight, IReadOnlyDictionary<string, string> texts)
     {
         using IDisposable held = BackgroundWork.Scope();
-        using IDisposable checking = Document.Checking();
+        using IDisposable checking = Document.Checking(Checker);
         int version = Document.Text.Version;
         bool same = Document.IsModified
             ? texts.TryGetValue(Document.Path, out string? read) && read == Document.Text.Snapshot.ToString()

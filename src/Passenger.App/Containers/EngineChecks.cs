@@ -263,6 +263,9 @@ internal abstract class EngineCheck : IDisposable
     /// <summary>How long typing must pause before a file is checked again.</summary>
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>Who checks the file, as an agent is told while its check is under way.</summary>
+    private const string Checker = "the container engine";
+
     private readonly WebDocument web;
     private readonly Debounce later;
     private readonly AnchoredList<(TextRange Range, Func<TextSnapshot, IReadOnlyList<CSharp.EditorFix>> Fixes)> faults =
@@ -279,7 +282,7 @@ internal abstract class EngineCheck : IDisposable
         {
             Run();
             return Task.CompletedTask;
-        }, document.Checking);
+        }, () => document.Checking(Checker));
         document.Text.Changed += OnChanged;
         document.Saved += OnSaved;
     }
@@ -335,7 +338,7 @@ internal abstract class EngineCheck : IDisposable
         CancellationTokenSource cancel = new();
         running = cancel;
         Starting();
-        IdeErrors.Observe(RunAsync(Document.Text.Snapshot, Document.Text.Version, cancel, Document.Checking()));
+        IdeErrors.Observe(RunAsync(Document.Text.Snapshot, Document.Text.Version, cancel, Document.Checking(Checker)));
     }
 
     /// <summary>Checks the text again once typing (or another program's writes) pauses.</summary>

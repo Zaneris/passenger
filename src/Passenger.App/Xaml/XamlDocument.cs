@@ -22,6 +22,9 @@ public sealed class XamlDocument : IDisposable
     /// <summary>How long typing pauses before the file is checked again.</summary>
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(300);
 
+    /// <summary>Who checks the file, as an agent is told while its check is under way.</summary>
+    internal const string Checker = "Passenger's XAML";
+
     private readonly XamlService service;
     private readonly Debounce analysing;
     private (int Version, XamlProject Project, XamlFile File)? last;
@@ -40,7 +43,7 @@ public sealed class XamlDocument : IDisposable
         this.service = service;
         Document = document;
         Loading = loading;
-        analysing = new Debounce(Settle, AnalyseAsync, document.Checking);
+        analysing = new Debounce(Settle, AnalyseAsync, () => document.Checking(Checker));
         document.Text.Changed += OnChanged;
         IdeErrors.Observe(AnalyseAsync());
     }
@@ -159,7 +162,7 @@ public sealed class XamlDocument : IDisposable
     private async Task CheckAsync()
     {
         using IDisposable held = BackgroundWork.Scope();
-        using IDisposable checking = Document.Checking();
+        using IDisposable checking = Document.Checking(Checker);
         int version = Document.Text.Version;
         XamlFile? file = await FileAsync();
         if (file is null || disposed)

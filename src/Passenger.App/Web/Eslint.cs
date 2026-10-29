@@ -96,7 +96,12 @@ public sealed class EslintService : IAsyncDisposable
         {
             Connect(document, lint, running, server.Runtime!);
         }
-        // Else the start under way connects it with the rest, or the server cannot run.
+        else if (server.Problem is not null)
+        {
+            // A server that cannot run, or was left stopped, holds none of its files' checks.
+            lint.Unreached();
+        }
+        // Else the start under way connects it with the rest.
     }
 
     /// <summary>Connects a file to the server unless its eslint needs a later Node.js than the server runs on, which is
@@ -110,6 +115,7 @@ public sealed class EslintService : IAsyncDisposable
             {
                 Message?.Invoke(this, $"ESLint cannot check {document.Name}: {old}");
             }
+            lint.Unreached();
             return;
         }
         lint.Connect(running);
@@ -184,6 +190,10 @@ public sealed class EslintService : IAsyncDisposable
             },
             Unavailable = () =>
             {
+                foreach (EslintDocument lint in documents.Values)
+                {
+                    lint.Unreached();
+                }
                 if (!made.WithoutNode)
                 {
                     Message?.Invoke(this, $"ESLint cannot run: {made.Problem}");
@@ -403,18 +413,26 @@ public sealed class EslintDocument : IDisposable
     /// <summary>How long typing must pause before the file is checked again.</summary>
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(400);
 
+    /// <summary>Who checks the file, as an agent is told while its check is under way.</summary>
+    private const string Checker = "ESLint";
+
     private readonly OpenDocument document;
     private readonly ServerDiagnostics diagnostics;
     private LanguageSession? session;
     private bool disposed;
 
+    /// <summary>The file's checks held from its attaching until its server has connected it, which pulls its problems then,
+    /// or cannot.</summary>
+    private OpenDocument.CheckHold? waiting;
+
     internal EslintDocument(OpenDocument document, WebDocument web)
     {
         this.document = document;
-        diagnostics = new ServerDiagnostics(document, holdsChecks: true);
+        diagnostics = new ServerDiagnostics(document, Checker);
         Web = web;
         document.Text.Changed += OnChanged;
         document.Saved += OnSaved;
+        waiting = document.Checking(Checker);
     }
 
     public WebDocument Web { get; }
@@ -436,6 +454,14 @@ public sealed class EslintDocument : IDisposable
         session = started;
         Lsp = started.Open(document.Path, document.Text, Web.LanguageId);
         Refresh();
+        Unreached();
+    }
+
+    /// <summary>The server cannot check the file (it cannot run, or not this file's eslint): its checks wait for nothing of its.</summary>
+    internal void Unreached()
+    {
+        waiting?.Dispose();
+        waiting = null;
     }
 
     /// <summary>The problems asked for again (the server's refresh).</summary>
@@ -512,6 +538,7 @@ public sealed class EslintDocument : IDisposable
         }
         disposed = true;
         diagnostics.Stop();
+        Unreached();
         document.Text.Changed -= OnChanged;
         document.Saved -= OnSaved;
         Lsp?.Dispose();
