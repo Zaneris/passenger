@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Explorer;
@@ -87,6 +88,77 @@ public sealed class NewServiceSetupTests : IDisposable
         }
         finally
         {
+            window.Close();
+        }
+    }
+
+    /// <summary>New Project with a Dockerfile while the person types in another open file as its set-up waits for the new
+    /// project's evaluation: Undo in that file takes back only the typing, the new project staying, and New Project's own
+    /// Undo names no such file, the typing kept.</summary>
+    [AvaloniaFact]
+    public void Typing_in_another_file_while_New_Project_sets_its_service_up_stays_out_of_its_Undo()
+    {
+        TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
+        TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
+        const string Had = "static class Greeting\n{\n}\n";
+        TestFolders.Write(place, "Tool/Greeting.cs", Had);
+        TestFolders.Write(place, "Shop.slnx", "<Solution>\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
+        string greeting = Path.Combine(PathNames.Canonical(place), "Tool", "Greeting.cs");
+        string api = Path.Combine(PathNames.Canonical(place), "Api");
+        TaskCompletionSource evaluated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        MainWindow window = Ui.OpenFolder(place, languageServer: false);
+        try
+        {
+            window.OpenFile(greeting);
+            Ui.Settle();
+            Task held = window.Session.Models.HoldEvaluation(Path.Combine(api, "Api.csproj"), evaluated.Task);
+            Ui.Run(window, AppActions.NewProject);
+            NewProjectDialog dialog = Opened(window);
+            Choose(dialog, "web");
+            dialog.ProjectName = "Api";
+            dialog.Framework = TestProjects.Framework;
+            dialog.SetupChooser.SelectedIndex = (int)ProjectSetup.Dockerfile;
+            Ui.Settle();
+            // Pumped, not settled: the set-up holds the window's background work while it waits for the evaluation held.
+            Ui.Click(dialog.CreateButton, settle: false);
+            Ui.PumpUntil(() => held.IsCompleted || dialog.Problem is not null, "the new project's evaluation to be held", TimeSpan.FromMinutes(5));
+            Assert.True(dialog.Problem is null, $"The web project was not made: {dialog.Problem}");
+            Assert.True(window.ServiceSetUp is { IsCompleted: false }, $"The set-up did not wait for the project's evaluation: {window.Status}");
+
+            window.EditorArea.CodeEditor.Focus();
+            Assert.Equal(greeting, window.EditorArea.Active?.Path);
+            window.KeyTextInput("Typed");
+            Assert.Equal("Typed" + Had, window.EditorArea.CodeEditor.Document.Snapshot.ToString());
+            evaluated.SetResult();
+            Assert.Null(SetUp(window));
+            Assert.True(File.Exists(Path.Combine(api, "Dockerfile")), $"The new project has no Dockerfile: {window.Status}");
+
+            List<(string Title, string Message)> asked = [];
+            window.Confirm = (title, message, _) =>
+            {
+                asked.Add((title, message));
+                return Task.FromResult(true);
+            };
+            window.OpenFile(greeting);
+            Ui.Settle();
+            Ui.Run(window, EditorActions.Undo);
+            Assert.True(asked.Count == 0, $"Undo in Greeting.cs asked {string.Join("; ", asked.Select(a => a.Message))}, as though the typing were New Project's");
+            Assert.Equal(Had, window.EditorArea.CodeEditor.Document.Snapshot.ToString());
+            Assert.True(Directory.Exists(api), $"Undo of the typing took the new project away: {window.Status}");
+
+            Ui.Run(window, EditorActions.Redo);
+            Assert.Equal("Typed" + Had, window.EditorArea.CodeEditor.Document.Snapshot.ToString());
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Undo);
+            (string title, string message) = Assert.Single(asked);
+            Assert.Equal("Undo", title);
+            Assert.DoesNotContain("Greeting.cs", message, StringComparison.Ordinal);
+            Assert.False(Directory.Exists(api), $"Undo left the new project's folder: {window.Status}");
+            Assert.Equal("Typed" + Had, window.EditorArea.Find(greeting)?.Text.Snapshot.ToString());
+        }
+        finally
+        {
+            evaluated.TrySetResult();
             window.Close();
         }
     }

@@ -79,7 +79,7 @@ public partial class MainWindow
 
         async Task<string?> AddMadeAsync(CreatedProjects made)
         {
-            using CommandHistory.Recording recording = Editors.Commands.Record($"New Project {Path.GetFileNameWithoutExtension(made.Projects[0])}");
+            using CommandHistory.Recording recording = Editors.Commands.RecordWrites($"New Project {Path.GetFileNameWithoutExtension(made.Projects[0])}");
             recording.Watch(solution.Path);
             if (await AddEachAsync(made.Projects, (file, project) => SolutionEdits.AddProject(file, into, project), Path.GetFileNameWithoutExtension) is not { } last)
             {
@@ -137,7 +137,7 @@ public partial class MainWindow
     private async Task<string?> SetUpNewAsync(string project, ProjectSetup setup)
     {
         string? problem;
-        using (CommandHistory.Recording recording = Editors.Commands.Record($"Set Up {Path.GetFileNameWithoutExtension(project)} with {SetupWords(setup)}"))
+        using (CommandHistory.Recording recording = Editors.Commands.RecordWrites($"Set Up {Path.GetFileNameWithoutExtension(project)} with {SetupWords(setup)}"))
         {
             problem = await SetUpAsync(project, setup, recording);
             if (problem is null && await UnlandedAsync(recording) is { } unlanded)

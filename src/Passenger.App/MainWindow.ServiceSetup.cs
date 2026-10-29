@@ -33,6 +33,8 @@ public partial class MainWindow
         using IDisposable held = BackgroundWork.Scope();
         string name = Path.GetFileNameWithoutExtension(project);
         status.Text = $"Setting {name} up to run with {SetupWords(setup)}…";
+        // What the command wrote so far is taken before it waits for the project's read, through which the person types.
+        made.TakeOpen();
         if (await ReadProjectAsync(project) is not { } model)
         {
             return status.Text = $"{name} was not set up to run with {SetupWords(setup)}: it was not read within {Waits.Of(SetUpRead).TotalMinutes:0} minutes";

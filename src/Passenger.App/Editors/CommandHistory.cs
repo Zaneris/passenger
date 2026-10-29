@@ -26,7 +26,12 @@ public sealed class CommandHistory
     /// <summary>Follows what a command changes from now until the recording is disposed: the open files' text, the files
     /// not open it is told it writes or makes (<see cref="Recording.Watch"/>) and the files moved. Kept as a command of its
     /// own when it changed more than one file or one not open, moved one or made one.</summary>
-    public Recording Record(string name) => new(this, editors, name);
+    public Recording Record(string name) => new(this, editors, name, ownWrites: false);
+
+    /// <summary>A command that waits between its writes (a project's read, a program it runs), followed as <see cref="Record"/>
+    /// follows one but taking of the open files only those it writes (<see cref="Recording.Watch"/>), each as it wrote it:
+    /// what the person types meanwhile, in any file, stays the person's own.</summary>
+    public Recording RecordWrites(string name) => new(this, editors, name, ownWrites: true);
 
     /// <summary>The command Undo takes back there: in a file's editor, the one whose change is that file's next undo
     /// step; in the Solution view (no file), the latest. Null when Undo is the file's own.</summary>
@@ -310,18 +315,23 @@ public sealed class CommandHistory
         private readonly EditorArea editors;
         private readonly string name;
         private readonly Dictionary<OpenDocument, (string Path, object? Step, TextSnapshot Text)> open;
+        private readonly bool ownWrites;
+        // Taking only what it writes: each open file it watched, as it was then, and the change it made in each taken so far.
+        private readonly Dictionary<OpenDocument, (string Path, object? Step, TextSnapshot Text)> writing = [];
+        private readonly Dictionary<OpenDocument, TextChange> wrote = [];
         private readonly Dictionary<string, TextSnapshot?> closed = [];
         private readonly List<(string From, string To)> moves = [];
         private readonly List<Part> parts = [];
         private List<TextChange>? openTaken;
         private bool ended;
 
-        internal Recording(CommandHistory history, EditorArea editors, string name)
+        internal Recording(CommandHistory history, EditorArea editors, string name, bool ownWrites)
         {
             this.history = history;
             this.editors = editors;
             this.name = name;
-            open = editors.Documents.ToDictionary(d => d, d => (d.Path, d.Text.NextUndo, d.Text.Snapshot));
+            this.ownWrites = ownWrites;
+            open = ownWrites ? [] : editors.Documents.ToDictionary(d => d, d => (d.Path, d.Text.NextUndo, d.Text.Snapshot));
             editors.Moved += OnMoved;
         }
 
@@ -331,7 +341,15 @@ public sealed class CommandHistory
         public void Watch(string path)
         {
             string began = Began(path);
-            if (!editors.Documents.Any(d => d.Path == path) && !closed.ContainsKey(began))
+            if (editors.Documents.FirstOrDefault(d => d.Path == path) is { } document)
+            {
+                if (ownWrites)
+                {
+                    writing.TryAdd(document, (path, document.Text.NextUndo, document.Text.Snapshot));
+                }
+                return;
+            }
+            if (!closed.ContainsKey(began))
             {
                 closed[began] = File.Exists(path) && FileText.Load(path) is { } file ? TextSnapshot.From(file.Text) : null;
             }
@@ -340,19 +358,42 @@ public sealed class CommandHistory
         /// <summary>A file not open the command watched left out of it: its write never landed, so it changed nothing.</summary>
         public void Unwritten(string path) => closed.Remove(Began(path));
 
-        /// <summary>The files not open it watched under a folder the command made whole, which a part of its own takes
-        /// away and makes again (<see cref="Also"/>), left out of its texts and the files it made.</summary>
+        /// <summary>The files it watched under a folder the command made whole, which a part of its own takes away and
+        /// makes again (<see cref="Also"/>), left out of its texts and the files it made.</summary>
         public void Leave(string folder)
         {
             foreach (string path in closed.Keys.Where(p => PathNames.IsUnder(p, folder)).ToList())
             {
                 closed.Remove(path);
             }
+            foreach (OpenDocument document in writing.Keys.Concat(wrote.Keys).Where(d => PathNames.IsUnder(d.Path, folder)).ToList())
+            {
+                writing.Remove(document);
+                wrote.Remove(document);
+            }
         }
 
         /// <summary>What the command changed in the open files, taken as it stands now: what is typed later, while it waits
-        /// for its writes to files not open to land, is no part of it.</summary>
-        public void TakeOpen() => openTaken = OpenChanges();
+        /// for its writes to files not open to land, is no part of it. Taking only what it writes, the open files it wrote
+        /// since the last take are taken, and those it writes later are taken from what they hold then.</summary>
+        public void TakeOpen()
+        {
+            if (!ownWrites)
+            {
+                openTaken = OpenChanges();
+                return;
+            }
+            foreach ((OpenDocument document, (string path, object? step, TextSnapshot text)) in writing)
+            {
+                if (editors.Documents.Contains(document) && document.Text.NextUndo is { } now && now != step)
+                {
+                    wrote[document] = wrote.TryGetValue(document, out TextChange? first)
+                        ? first with { After = document.Text.Snapshot, Step = now }
+                        : new TextChange(document, path, text, document.Text.Snapshot, now);
+                }
+            }
+            writing.Clear();
+        }
 
         /// <summary>Waits for the saves still landing of the files not open it watched (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>,
         /// <paramref name="waiting"/> told which), the open files' changes taken first (<see cref="TakeOpen"/>) and each file
@@ -381,7 +422,11 @@ public sealed class CommandHistory
             ended = true;
             editors.Moved -= OnMoved;
             Command made = new(name, [], [.. moves]);
-            List<TextChange> texts = openTaken ?? OpenChanges();
+            if (ownWrites)
+            {
+                TakeOpen();
+            }
+            List<TextChange> texts = ownWrites ? [.. wrote.Values] : openTaken ?? OpenChanges();
             List<Creation> created = [];
             foreach ((string path, TextSnapshot? before) in closed)
             {

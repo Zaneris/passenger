@@ -38,6 +38,9 @@ public sealed class ProjectModels
 
     private int posting;
 
+    /// <summary>A project whose next evaluation waits for a task, as a slow MSBuild keeps it (<see cref="HoldEvaluation"/>).</summary>
+    private (string Project, Task Until, TaskCompletionSource Reached)? held;
+
     /// <summary>Projects evaluated (or evaluated again) landed, by path; raised on the UI thread, a batch at a time.</summary>
     public event EventHandler<IReadOnlyCollection<string>>? Changed;
 
@@ -63,6 +66,15 @@ public sealed class ProjectModels
 
     /// <summary>Done while no round runs: what an agent's Open waits for before it says what the projects are.</summary>
     public Task Idle => idle.Task;
+
+    /// <summary>The next round that evaluates a project waits until <paramref name="until"/> has ended before it asks the
+    /// host, as a slow evaluation keeps the project unread meanwhile: done once that round is waiting.</summary>
+    public Task HoldEvaluation(string project, Task until)
+    {
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        held = (project, until, reached);
+        return reached.Task;
+    }
 
     private static TaskCompletionSource Done()
     {
@@ -284,6 +296,12 @@ public sealed class ProjectModels
             if (stale.Count == 0)
             {
                 return;
+            }
+            if (held is { } hold && stale.Any(p => PathNames.Same(p, hold.Project)))
+            {
+                held = null;
+                hold.Reached.TrySetResult();
+                await hold.Until;
             }
             EvaluateDone done;
             try
