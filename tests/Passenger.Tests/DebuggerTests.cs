@@ -1594,12 +1594,12 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>Attach to Process lists the .NET programs running and nothing else: not a program with no .NET in it, not
     /// Passenger itself, and not a process that took the number of a .NET program which crashed and left its debugger
-    /// pipes behind; what the search finds of none says so.</summary>
+    /// pipes behind; a program's command line shows with its secrets masked, and what the search finds of none says so.</summary>
     [AvaloniaFact]
     public void Attach_to_process_lists_dotnet_programs_alone()
     {
         using Process other = Debugging.Helpers.Debuggees.NotDotnet();
-        ProcessStartInfo start = ChildProcesses.Command(Debugging.Helpers.Debuggees.Apphost("LoopingConsoleApp"), ["sleep"]);
+        ProcessStartInfo start = ChildProcesses.Command(Debugging.Helpers.Debuggees.Apphost("LoopingConsoleApp"), ["sleep", "--Password=hunter2-in-a-row", "--ApiKey=sk-live-123456"]);
         start.RedirectStandardOutput = true;
         using Process looping = ChildProcesses.Start(start);
         // What a .NET program that crashed would leave in the temporary folder, under a number the other has since.
@@ -1623,6 +1623,17 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             dialog.KeyTextInput(other.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
             Ui.Settle();
             Assert.DoesNotContain(dialog.Shown, p => p.Id == other.Id);
+
+            dialog.Search.SelectAll();
+            dialog.KeyTextInput("--ApiKey");
+            Ui.Settle();
+            Control row = Ui.Row(dialog.GetVisualDescendants().OfType<ListBox>().Single(), Assert.Single(dialog.Rows, r => r.Process?.Id == looping.Id));
+            TextBlock line = row.GetVisualDescendants().OfType<TextBlock>().Single(t => Grid.GetColumn(t) == 3);
+            string masked = $" sleep --Password={Passenger.App.Containers.ContainerSecrets.Masked} --ApiKey={Passenger.App.Containers.ContainerSecrets.Masked}";
+            string shown = $"{line.Text}\n{ToolTip.GetTip(line)}";
+            Assert.True(line.Text?.Contains(masked, StringComparison.Ordinal) == true && ToolTip.GetTip(line) is string tip && tip.Contains(masked, StringComparison.Ordinal)
+                && !shown.Contains("hunter2", StringComparison.Ordinal) && !shown.Contains("sk-live", StringComparison.Ordinal),
+                $"Attach to Process showed the program's command line in its row and tip as:\n{shown}");
             string nothing = $"no-program-{Guid.NewGuid():N}";
             dialog.Search.SelectAll();
             dialog.KeyTextInput(nothing);

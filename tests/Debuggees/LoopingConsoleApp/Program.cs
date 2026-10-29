@@ -85,7 +85,7 @@ if (args is ["race"] or ["race", "throws"])
     }
 }
 long turns = 0;
-bool sleeps = args is ["sleep"];
+bool sleeps = args is ["sleep", ..];
 // Shown by its own ToString, which a thread paused in the sleep cannot run.
 TimeSpan nap = TimeSpan.FromMilliseconds(20);
 Console.WriteLine("looping");

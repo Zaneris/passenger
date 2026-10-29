@@ -178,6 +178,76 @@ public static partial class ContainerSecrets
     public static string CommandLine(System.Diagnostics.ProcessStartInfo start) =>
         ChildProcesses.Display(start, Masking(known: [.. start.Environment.Where(v => v.Value is { Length: > 0 } && Secret(v.Key)).Select(v => v.Value!)]));
 
+    /// <summary>Command lines as the system gives them (a running program's, as Attach to Process and debug_state list it),
+    /// shown with each word masked on its own as <see cref="CommandLine(System.Diagnostics.ProcessStartInfo)"/> masks a
+    /// child's, a word in double quotes inside them. A line comes back as it was when nothing in it is masked; the secrets
+    /// known are read once, for many lines.</summary>
+    public static Func<string, string> CommandLines()
+    {
+        Func<string, string> masking = Masking();
+        return line => InWords(line, masking);
+    }
+
+    /// <summary>A command line with each of its words masked: words are apart at white space outside double quotes, a quote
+    /// after an odd run of backslashes being the word's own; copied only from the first word masked.</summary>
+    private static string InWords(string line, Func<string, string> masking)
+    {
+        StringBuilder? shown = null;
+        int at = 0;
+        while (at < line.Length)
+        {
+            int start = at;
+            if (char.IsWhiteSpace(line[at]))
+            {
+                while (at < line.Length && char.IsWhiteSpace(line[at]))
+                {
+                    at++;
+                }
+                shown?.Append(line, start, at - start);
+                continue;
+            }
+            bool quoted = false;
+            while (at < line.Length && (quoted || !char.IsWhiteSpace(line[at])))
+            {
+                int backslashes = 0;
+                while (at < line.Length && line[at] == '\\')
+                {
+                    backslashes++;
+                    at++;
+                }
+                if (at < line.Length && line[at] == '"' && backslashes % 2 == 0)
+                {
+                    quoted = !quoted;
+                }
+                if (backslashes == 0 || (at < line.Length && line[at] == '"'))
+                {
+                    at++;
+                }
+            }
+            string word = line[start..at];
+            string bare = InWord(word, masking);
+            if (shown is null && !string.Equals(bare, word, StringComparison.Ordinal))
+            {
+                shown = new StringBuilder(line.Length).Append(line, 0, start);
+            }
+            shown?.Append(bare);
+        }
+        return shown?.ToString() ?? line;
+    }
+
+    /// <summary>A word of a command line masked: one in double quotes whole is masked inside them, its escaped quotes read
+    /// as quotes, and quoted again only when something in it was masked.</summary>
+    private static string InWord(string word, Func<string, string> masking)
+    {
+        if (word.Length < 2 || word[0] != '"' || word[^1] != '"')
+        {
+            return masking(word);
+        }
+        string inside = word[1..^1].Replace("\\\"", "\"", StringComparison.Ordinal);
+        string bare = masking(inside);
+        return string.Equals(bare, inside, StringComparison.Ordinal) ? word : ChildProcesses.Quote(bare);
+    }
+
     /// <summary><see cref="InSaid"/> for much that is said a piece at a time (a CLI's output streamed into a console),
     /// the secrets it knows read once. What it is given comes back as it was when nothing in it is masked.</summary>
     public static Func<string, string> Masking(string? folder = null, IEnumerable<string>? known = null)

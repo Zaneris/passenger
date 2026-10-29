@@ -7,6 +7,7 @@ using Avalonia.Headless.XUnit;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Passenger.App;
+using Passenger.App.Containers;
 using Passenger.App.Mcp;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
@@ -624,6 +625,36 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains($" - cannot run: {Refusals.NoCSharp}", restart, StringComparison.Ordinal);
 
         Assert.Equal($"Ran {AppActions.ShowLiveTree}", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ShowLiveTree })).GetString());
+    }
+
+    /// <summary>debug_state of processes says each program's command line as Attach to Process shows it, its secrets masked:
+    /// a program given a password and an API key on its command line is listed by its name with neither.</summary>
+    [Fact]
+    public async Task An_agents_list_of_running_programs_masks_the_secrets_their_command_lines_hold()
+    {
+        const string Password = "hunter2-on-the-command-line";
+        const string ApiKey = "sk-live-123456";
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-processes-"));
+        DeleteAtEnd(folder);
+        ProcessStartInfo start = ChildProcesses.Command(Debugging.Helpers.Debuggees.Apphost("LoopingConsoleApp"), ["sleep", $"--Password={Password}", $"--ApiKey={ApiKey}"]);
+        start.RedirectStandardOutput = true;
+        using Process looping = ChildProcesses.Start(start);
+        try
+        {
+            Assert.Equal("looping", looping.StandardOutput.ReadLine());
+            await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+            JsonElement program = Assert.Single((await Call(client, McpTools.DebugState, new() { ["of"] = "processes" })).EnumerateArray(),
+                p => p.GetProperty("processId").GetInt32() == looping.Id);
+            Assert.Equal("LoopingConsoleApp", program.GetProperty("program").GetString());
+            string line = program.GetProperty("commandLine").GetString()!;
+            Assert.True(line.EndsWith($" sleep --Password={ContainerSecrets.Masked} --ApiKey={ContainerSecrets.Masked}", StringComparison.Ordinal)
+                && !line.Contains(Password, StringComparison.Ordinal) && !line.Contains(ApiKey, StringComparison.Ordinal),
+                $"debug_state gave an agent the program's secrets: {line}");
+        }
+        finally
+        {
+            Processes.Kill(looping.Id);
+        }
     }
 
     /// <summary>An agent's Passenger started on a solution filter beside a file-based program, then given the solution and the

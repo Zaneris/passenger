@@ -1444,9 +1444,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             : started;
     }
 
+    /// <summary>The programs the debugger can attach to, each command line's secrets masked as Attach to Process shows them.</summary>
     private Task<IReadOnlyList<ProcessInfo>> DebugProcesses(CancellationToken cancel) => OnUi(cancel, async () =>
-        (IReadOnlyList<ProcessInfo>)[.. (await window.AttachableAsync()).Where(p => p.WhyNot is null)
-            .Select(p => new ProcessInfo(p.Id, p.Name, p.Program, p.User, p.CommandLine, p.Container))]);
+    {
+        Func<string, string> masked = Passenger.App.Containers.ContainerSecrets.CommandLines();
+        return (IReadOnlyList<ProcessInfo>)[.. (await window.AttachableAsync()).Where(p => p.WhyNot is null)
+            .Select(p => new ProcessInfo(p.Id, p.Name, p.Program, p.User, masked(p.CommandLine), p.Container))];
+    });
 
     [McpServerTool(Name = McpTools.DebugAttach, Title = "Attach to a running program", Destructive = true), Description(
         "Attaches the debugger to a running .NET program, as Attach to Process does: processId, or program when one has that " +
@@ -2430,7 +2434,7 @@ public sealed record BreakpointInfo(string? Path, int? Line, bool Enabled, strin
 
 public sealed record VariableInfo(string Name, string Value, string? Type, int Reference);
 
-/// <summary>A .NET program the debugger can attach to, as Attach to Process lists it.</summary>
+/// <summary>A .NET program the debugger can attach to, as Attach to Process lists it, its command line's secrets masked.</summary>
 public sealed record ProcessInfo(int ProcessId, string Executable, string Program, string User, string CommandLine, string? Container = null);
 
 /// <summary>Where the debugger is in a program, as the debug tools answer: its session's state (<see cref="Debugged"/>, null

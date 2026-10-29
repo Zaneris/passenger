@@ -221,7 +221,8 @@ public sealed class AttachToProcessDialog : Window
     }
 
     /// <summary>A row for whichever heading or program the list hands its container: a group's heading, or a program's
-    /// name, id, user and command line (why it cannot be attached to, or what to know first, after it and in its tip).</summary>
+    /// name, id, user and command line, its secrets masked (why it cannot be attached to, or what to know first, after it
+    /// and in its tip).</summary>
     private static Control Row()
     {
         TextBlock heading = new() { Classes = { "muted" }, FontSize = 11, FontWeight = FontWeight.SemiBold, Margin = new Thickness(4, 6, 0, 2) };
@@ -229,6 +230,7 @@ public sealed class AttachToProcessDialog : Window
         TextBlock id = Cell(1, muted: false);
         TextBlock user = Cell(2, muted: true);
         TextBlock line = Cell(3, muted: true);
+        Func<string, string> masked = Containers.ContainerSecrets.CommandLines();
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions(Columns), Height = ListRow.Height, Children = { name, id, user, line } };
         Panel row = new() { Children = { heading, grid } };
         return row.Showing<AttachRow>(shown =>
@@ -244,8 +246,9 @@ public sealed class AttachToProcessDialog : Window
             id.Text = process.Id == 0 ? string.Empty : process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
             user.Text = process.User;
             string? said = process.WhyNot ?? process.Note;
-            line.Text = said is null ? process.CommandLine : $"{process.CommandLine}  ({said})";
-            ToolTip.SetTip(line, said is null ? process.CommandLine : $"{process.CommandLine}\n{said}");
+            string shownLine = masked(process.CommandLine);
+            line.Text = said is null ? shownLine : $"{shownLine}  ({said})";
+            ToolTip.SetTip(line, said is null ? shownLine : $"{shownLine}\n{said}");
         });
     }
 
