@@ -109,6 +109,53 @@ public sealed class SettingsTests : IDisposable
         }
     }
 
+    /// <summary>A shortcut kept under an action's former id, reset in the keymap, stays reset: settings.json is written with
+    /// the former id gone, so the next window, reading it again, gives the action nothing.</summary>
+    [AvaloniaFact]
+    public void A_shortcut_kept_under_an_actions_former_id_stays_reset_once_reset_and_read_again()
+    {
+        string file = Path.Combine(settings, StateStore.SettingsFile);
+        string keys = OperatingSystem.IsMacOS() ? "meta alt shift K" : "control alt shift K";
+        File.WriteAllText(file, new JsonObject
+        {
+            ["version"] = AppSettings.Upgrades.Count,
+            ["shortcuts"] = new JsonObject { ["app.aspire.debug"] = new JsonArray(keys) },
+        }.ToJsonString());
+        try
+        {
+            MainWindow window = Open();
+            window.KeepSettings();
+            Assert.True(Binds(window, keys), "The shortcut kept under app.aspire.debug did not bind Debug Service, so the test showed nothing");
+            SettingsDialog dialog = window.ShowSettings();
+            Ui.Settle();
+            dialog.Query = "debug service";
+            Ui.Settle();
+            dialog.Page = SettingsDialog.KeymapPage;
+            Ui.Settle();
+            Ui.ChooseFromMenu(dialog.KeymapRow(AppActions.ServiceDebug), "Reset Shortcuts");
+            dialog.Ok();
+            Ui.Settle();
+            Assert.False(Binds(window, keys), "Reset Shortcuts left Debug Service the shortcut kept under app.aspire.debug");
+            window.Close();
+            string written = File.ReadAllText(file);
+            Assert.True(!written.Contains("app.aspire.debug", StringComparison.Ordinal), $"settings.json still keeps the shortcut under the former id once reset:\n{written}");
+
+            MainWindow again = Open();
+            again.KeepSettings();
+            Assert.False(Binds(again, keys), $"Read again, settings.json gives Debug Service back the shortcut reset:\n{written}");
+            again.Close();
+        }
+        finally
+        {
+            // The keymap in force is the process's; the next test starts on the platform's own.
+            AppActions.Choose(new AppSettings().Keymap, new Dictionary<string, string[]>());
+        }
+    }
+
+    /// <summary>Whether a window's keymap gives Debug Service the keys.</summary>
+    private static bool Binds(MainWindow window, string keys) =>
+        window.Actions.Keymap.ShortcutsFor(AppActions.ServiceDebug).Any(s => s.First.Notation() == Passenger.Editor.Shortcut.Parse(keys).First.Notation());
+
     /// <summary>Toolset and Build, Presentation, with Rider's names and defaults: the Build window opens as an explicit build
     /// starts, not an implicit one, and comes forward only for errors; the implicit build's option is for changing only while
     /// the explicit build's is on. What is chosen is kept, by name.</summary>

@@ -22,6 +22,13 @@ public interface IStateDocument<TSelf> where TSelf : class, IStateDocument<TSelf
     /// taken whole from the side that changed it, as its order may matter.</summary>
     static virtual IReadOnlyList<string> Sets => [];
 
+    /// <summary>Gives what a file of any version keeps under a name since replaced (an action's former id) the name it has
+    /// now, so a change is written under that name alone, the former one dropped: a build that still writes the former may
+    /// share the file.</summary>
+    static virtual void Renamed(JsonObject document)
+    {
+    }
+
     /// <summary>The value with whatever this build cannot use brought into range, or back to its default.</summary>
     TSelf Clamped();
 }
@@ -387,7 +394,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
         }
     }
 
-    /// <summary>A file's text as a document of this build's version, with the version it was written at.</summary>
+    /// <summary>A file's text as a document of this build's version and names, with the version it was written at.</summary>
     private static (JsonObject Document, int Version) Upgraded(string text)
     {
         if (JsonNode.Parse(text, documentOptions: StateFile.HandEdited) is not JsonObject document)
@@ -404,6 +411,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
         {
             T.Upgrades[step](document);
         }
+        T.Renamed(document);
         return (document, version);
     }
 }

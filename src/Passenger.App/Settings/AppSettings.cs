@@ -303,6 +303,29 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// back a different one stays let in.</summary>
     public static IReadOnlyList<string> Sets { get; } = [nameof(AgentFolders)];
 
+    /// <summary>A shortcut kept under an action's former id is kept under its id now, unless one is there already, as
+    /// <see cref="Clamped"/> reads them: written so, the former id leaves the file, and an action's shortcuts reset stay so.</summary>
+    public static void Renamed(JsonObject settings)
+    {
+        foreach (string property in new[] { nameof(Shortcuts), nameof(VSCodeShortcuts) })
+        {
+            if (settings[StateFile.Options.PropertyNamingPolicy!.ConvertName(property)] is not JsonObject shortcuts)
+            {
+                continue;
+            }
+            HashSet<string> own = [.. shortcuts.Where(s => s.Value is not null && !AppActions.Formerly.ContainsKey(s.Key)).Select(s => s.Key)];
+            foreach (string former in shortcuts.Select(s => s.Key).Where(AppActions.Formerly.ContainsKey).ToList())
+            {
+                JsonNode? keys = shortcuts[former];
+                shortcuts.Remove(former);
+                if (keys is not null && !own.Contains(AppActions.Formerly[former]))
+                {
+                    shortcuts[AppActions.Formerly[former]] = keys;
+                }
+            }
+        }
+    }
+
     /// <summary>Version 1 to 2, Discord's activity on at first and naming nothing of the work: a file whose activity was not
     /// turned on holds the old defaults (off, the solution and the file), written with whatever else was changed, so it
     /// comes up on, naming only Passenger; one the person had turned on keeps what they chose.</summary>
