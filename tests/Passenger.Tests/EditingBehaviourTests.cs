@@ -19,8 +19,8 @@ public sealed class EditingBehaviourTests
     public void Carets_cloned_down_the_lines_type_together_and_undo_as_one()
     {
         EditorRig rig = new("one\ntwo\nthree");
-        rig.Press("alt shift DOWN");
-        rig.Press("alt shift DOWN");
+        rig.Press("control shift DOWN");
+        rig.Press("control shift DOWN");
         Assert.Equal(3, rig.Editor.Selections.Count);
         rig.Type("//");
         Assert.Equal("//one\n//two\n//three", rig.Text);

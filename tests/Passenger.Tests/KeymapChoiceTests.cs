@@ -19,7 +19,7 @@ namespace Passenger.Tests;
 /// runs its keys in the editor, the IDE and the terminal at once, is kept in settings.json and after a restart, and a
 /// settings.json without one keeps Visual Studio's keys and the person's own over them. Shortcuts set over one keymap
 /// stay with it, Reset Shortcuts gives back the chosen keymap's own, a shortcut another action has is warned of as ever,
-/// and no key of either keymap runs two actions.</summary>
+/// no key of either keymap runs two actions, and the keys checked against Rider's keymaps are those they resolve to.</summary>
 public sealed class KeymapChoiceTests : IDisposable
 {
     private const string Source = "class One { int item; int Two() => item + item; }\n";
@@ -528,6 +528,91 @@ public sealed class KeymapChoiceTests : IDisposable
     {
         string[] tips = [.. console.GetLogicalDescendants().OfType<Button>().Select(b => ToolTip.GetTip(b) as string).OfType<string>()];
         return [.. ((string[])["Rerun", "Stop", "Apply Hot Reload Changes"]).Select(words => tips.Single(tip => tip == words || tip.StartsWith($"{words} (", StringComparison.Ordinal)))];
+    }
+
+    /// <summary>Duplicate, Compare Files, Show Diff, Parameter Info, Toggle Case, Generate, Clone Caret and the moves by a
+    /// character, a line and to the text's ends have, in each keymap, the keys Rider's keymap of that preset on this
+    /// platform resolves them to (<see cref="RiderKeymaps"/>), and the Mac's Cmd+Up and Down besides in Visual Studio's.
+    /// A key Rider gives several of them, told apart by where it is pressed, has one action and the rest take it where
+    /// they are (<see cref="AppActions.KeysIn"/>); Rider's New, which Passenger leaves out, keeps its keys from Generate.</summary>
+    [AvaloniaFact]
+    public void Each_keymaps_keys_for_Duplicate_Parameter_Info_Toggle_Case_and_Generate_are_those_Riders_keymap_resolves_them_to()
+    {
+        bool mac = OperatingSystem.IsMacOS();
+        foreach (KeymapPreset preset in (KeymapPreset[])[KeymapPreset.VisualStudio, KeymapPreset.VSCode])
+        {
+            AppActions.Choose(preset, new Dictionary<string, string[]>());
+            Keymap keymap = AppActions.Keymap();
+            string rider = RiderKeymaps.Of(preset);
+            bool visualStudio = preset == KeymapPreset.VisualStudio;
+            (string Action, string Riders, string[] Besides)[] checks =
+            [
+                (EditorActions.Duplicate, visualStudio ? "EditorDuplicate" : "EditorDuplicateLines", []), (AppActions.CompareFiles, "CompareTwoFiles", []),
+                (AppActions.ShowDiff, "Diff.ShowDiff", []), (AppActions.ParameterInfo, "ParameterInfo", []), (EditorActions.ToggleCase, "EditorToggleCase", []),
+                (AppActions.Generate, "Generate", []), (EditorActions.Up, "EditorUp", []), (EditorActions.Down, "EditorDown", []),
+                (EditorActions.Left, "EditorLeft", []), (EditorActions.Right, "EditorRight", []),
+                (EditorActions.CloneCaretAbove, visualStudio ? "CloneCaretAboveWithVirtualSpace" : "EditorCloneCaretAbove", []),
+                (EditorActions.CloneCaretBelow, visualStudio ? "CloneCaretBelowWithVirtualSpace" : "EditorCloneCaretBelow", []),
+                (EditorActions.TextStart, "EditorTextStart", mac && visualStudio ? ["meta UP"] : []),
+                (EditorActions.TextEnd, "EditorTextEnd", mac && visualStudio ? ["meta DOWN"] : []),
+            ];
+            foreach ((string action, string riders, string[] besides) in checks)
+            {
+                string[] ours = [.. keymap.ShortcutsFor(AppActions.KeysIn(action)).Select(s => s.Notation()).Order(StringComparer.Ordinal)];
+                string[] theirs = [.. RiderKeymaps.Resolve(rider, riders).Concat(besides.Select(Shortcut.Parse)).Select(s => s.Notation()).Distinct().Order(StringComparer.Ordinal)];
+                Assert.True(ours.SequenceEqual(theirs),
+                    $"In {DefaultKeymaps.NameOf(preset)}'s keymap {action} runs from [{string.Join("; ", ours)}], where Rider's {rider} gives {riders} [{string.Join("; ", theirs)}]");
+            }
+            foreach (string shared in (string[])[AppActions.CompareFiles, AppActions.ShowDiff])
+            {
+                Assert.True(keymap.ShortcutsFor(shared).Count == 0,
+                    $"In {DefaultKeymaps.NameOf(preset)}'s keymap {shared} has keys of its own, [{string.Join("; ", keymap.ShortcutsFor(shared).Select(s => s.Notation()))}], where it takes another's where it is pressed");
+            }
+            foreach (Shortcut key in RiderKeymaps.Resolve(rider, "NewElement").Except(RiderKeymaps.Resolve(rider, "Generate")))
+            {
+                Assert.True(keymap.ActionFor(key) is null, $"In {DefaultKeymaps.NameOf(preset)}'s keymap {key.Notation()}, Rider's New, runs {keymap.ActionFor(key)}");
+            }
+        }
+    }
+
+    /// <summary>Duplicate's key in Visual Studio's keymap (Cmd+D on the Mac, Ctrl+D elsewhere) duplicates the caret's line in
+    /// the editor and, pressed in the Explorer on a file, compares it with the file chosen, leaving the editor's text as it
+    /// was: Rider gives the key both, told apart by where it is pressed.</summary>
+    [AvaloniaFact]
+    public void Duplicates_key_duplicates_the_line_in_the_editor_and_compares_files_in_the_Explorer()
+    {
+        string lines = Path.Combine(folder, "lines.txt");
+        string other = Path.Combine(folder, "other.txt");
+        File.WriteAllText(lines, "alpha\nbeta\n");
+        File.WriteAllText(other, "alpha\ngamma\n");
+        const string Duplicated = "alpha\nalpha\nbeta\n";
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(lines);
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            editor.Selections = Passenger.Text.SelectionSet.Single(0);
+            Ui.Press(window, $"{Cmd} D");
+            Assert.True(Text(window) == Duplicated,
+                $"{Cmd} D in the editor left \"{Text(window)}\" (the status saying \"{window.Status}\"), where Duplicate makes the caret's line twice");
+
+            window.PickFiles = (_, _, _) => Task.FromResult<IReadOnlyList<string>>([other]);
+            window.ExplorerView.Reveal(Passenger.Core.PathNames.Canonical(lines));
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == Passenger.Core.PathNames.Canonical(lines)));
+            Ui.Press(window, $"{Cmd} D");
+            Ui.Landed(() => window.Frontmost is Passenger.App.Vcs.DiffWindow, "the diff of lines.txt and other.txt");
+            Assert.Equal("lines.txt vs other.txt", window.Frontmost.Title);
+            window.Frontmost.Close();
+            Ui.Settle();
+            Assert.True(Text(window) == Duplicated, $"{Cmd} D in the Explorer changed the editor's text to \"{Text(window)}\", where it compares files there");
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     /// <summary>The mouse's caret and column gestures are those of the keymap in force, each keymap's resolved as its keys

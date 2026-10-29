@@ -48,9 +48,8 @@ public sealed record IdeAction(string Id, string Title, string Group, Action<Act
     public string WorkId => Works ?? Id;
 
     /// <summary>For an action whose keys are another's where it applies, one key running two actions told apart by
-    /// where it is pressed (the Explorer's Compare Files takes the editor's Duplicate keys in Visual Studio's keymap
-    /// off macOS): that action, whose keys its menu items and Find Action show. Null with keys of its own, or
-    /// none.</summary>
+    /// where it is pressed (the Explorer's Compare Files takes the editor's Duplicate keys in Visual Studio's keymap):
+    /// that action, whose keys its menu items and Find Action show. Null with keys of its own, or none.</summary>
     public Func<string?>? KeysOf { get; init; }
 
     public bool CanRun(ActionContext context) => WhyNot(context) is null;

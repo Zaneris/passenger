@@ -107,13 +107,14 @@ public enum KeymapPreset
     VSCode,
 }
 
-/// <summary>The keymaps Passenger has: Rider's Visual Studio keymap on Windows and its Visual Studio OSX keymap on macOS,
-/// for the actions Passenger has, plus the few platform staples those leave out (Cmd+/ to comment, with the keypad's / as
-/// $default has it, Cmd+W to close); and Rider's VSCode and VSCode OSX keymaps, a key IntelliJ gives two actions told
-/// apart by where it is pressed given to one (the editor's own). The keypad's keys (DIVIDE, SUBTRACT) are bound where
-/// Rider binds them, beside the main keys'. The mouse's gestures are theirs too, the Mac's from $default with its Ctrl as
-/// Cmd; Shift+Alt-click, which they give a column from the caret and a column drag both, is the first, a drag going on
-/// with it, and Alt-click's Quick Evaluate Expression (the debugger's) and Linux's middle-click paste are left out.</summary>
+/// <summary>The keymaps Passenger has: Rider's Visual Studio keymap on Windows and its Visual Studio OSX keymap on
+/// macOS, for the actions Passenger has, plus the few platform staples those leave out (Cmd+/ to comment, with the
+/// keypad's / as $default has it, Cmd+W to close, Cmd+Up and Down to the text's ends); and Rider's VSCode and VSCode
+/// OSX keymaps. A key IntelliJ gives two actions told apart by where it is pressed is given to one (the editor's own).
+/// The keypad's keys (DIVIDE, SUBTRACT) are bound where Rider binds them, beside the main keys'. The mouse's gestures
+/// are theirs too, the Mac's from $default with its Ctrl as Cmd; Shift+Alt-click, which they give a column from the
+/// caret and a column drag both, is the first, a drag going on with it, and Alt-click's Quick Evaluate Expression (the
+/// debugger's) and Linux's middle-click paste are left out.</summary>
 public static class DefaultKeymaps
 {
     public static Keymap ForPlatform() => OperatingSystem.IsMacOS() ? VisualStudioMac() : VisualStudio();
@@ -134,17 +135,20 @@ public static class DefaultKeymaps
         _ => "Visual Studio",
     };
 
+    // Rider's Visual Studio OSX keymap with what it takes from Mac OS X 10.5+ (Ctrl+B, F, P, N, A and E move as macOS's
+    // text does) and from $default, its Ctrl as Cmd (Cmd+D to Duplicate, Cmd+Home to the text's start); Clone Caret's
+    // keys are those Rider's own descriptor gives its CloneCaretAboveWithVirtualSpace and Below there.
     public static Keymap VisualStudioMac() => new Keymap("Visual Studio (macOS)")
-        .Bind(EditorActions.Left, "LEFT")
-        .Bind(EditorActions.Right, "RIGHT")
-        .Bind(EditorActions.Up, "UP")
-        .Bind(EditorActions.Down, "DOWN")
+        .Bind(EditorActions.Left, "LEFT", "control B")
+        .Bind(EditorActions.Right, "RIGHT", "control F")
+        .Bind(EditorActions.Up, "UP", "control P")
+        .Bind(EditorActions.Down, "DOWN", "control N")
         .Bind(EditorActions.WordLeft, "alt LEFT")
         .Bind(EditorActions.WordRight, "alt RIGHT")
         .Bind(EditorActions.LineStart, "meta LEFT", "HOME", "control A")
         .Bind(EditorActions.LineEnd, "meta RIGHT", "END", "control E")
-        .Bind(EditorActions.TextStart, "meta UP", "control HOME")
-        .Bind(EditorActions.TextEnd, "meta DOWN", "control END")
+        .Bind(EditorActions.TextStart, "meta UP", "meta HOME")
+        .Bind(EditorActions.TextEnd, "meta DOWN", "meta END")
         .Bind(EditorActions.PageUp, "PAGE_UP")
         .Bind(EditorActions.PageDown, "PAGE_DOWN")
         .Bind(EditorActions.Backspace, "BACK_SPACE")
@@ -156,7 +160,7 @@ public static class DefaultKeymaps
         .Bind(EditorActions.StartNewLineBefore, "meta ENTER")
         .Bind(EditorActions.Indent, "TAB")
         .Bind(EditorActions.Outdent, "shift TAB")
-        .Bind(EditorActions.Duplicate, "control D")
+        .Bind(EditorActions.Duplicate, "meta D")
         .Bind(EditorActions.DeleteLine, "meta shift L")
         .Bind(EditorActions.MoveLineUp, "alt UP")
         .Bind(EditorActions.MoveLineDown, "alt DOWN")
@@ -166,7 +170,7 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Comment, "meta K , C", "meta K , meta C")
         .Bind(EditorActions.Uncomment, "meta K , U", "meta K , meta U")
         .Bind(EditorActions.JoinLines, "control shift J")
-        .Bind(EditorActions.ToggleCase, "control shift U")
+        .Bind(EditorActions.ToggleCase, "meta shift U")
         .Bind(EditorActions.CutToLineEnd, "control K")
         .Bind(EditorActions.Undo, "meta Z")
         .Bind(EditorActions.Redo, "meta shift Z", "meta Y")
@@ -178,8 +182,8 @@ public static class DefaultKeymaps
         .Bind(EditorActions.UnselectOccurrence, "alt shift COMMA")
         .Bind(EditorActions.SelectAllOccurrences, "alt shift SEMICOLON")
         .Bind(EditorActions.CaretPerLine, "shift alt G")
-        .Bind(EditorActions.CloneCaretAbove, "alt shift UP")
-        .Bind(EditorActions.CloneCaretBelow, "alt shift DOWN")
+        .Bind(EditorActions.CloneCaretAbove, "control shift UP")
+        .Bind(EditorActions.CloneCaretBelow, "control shift DOWN")
         .Bind(EditorActions.ToggleFold, "control M , M", "control M , control M")
         .Bind(EditorActions.Fold, "control M , S", "control M , control S")
         .Bind(EditorActions.Unfold, "control M , E", "control M , control E")

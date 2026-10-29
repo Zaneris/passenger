@@ -1,7 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Passenger.App.Explorer;
-using Passenger.Editor;
 using E = Passenger.Editor.EditorActions;
 using A = Passenger.App.AppActions;
 
@@ -12,8 +11,7 @@ namespace Passenger.App;
 /// on the row chosen while the Explorer has them. One key runs two actions told apart by where it is pressed, so the
 /// editor's own Cut, Copy, Paste, Delete, Undo and Redo act on the Explorer's rows (Rider's $Cut, $Delete and the rest;
 /// MainWindow.FileMoves.cs), Rename renames a row (RenameElement), and the editor's Duplicate keys compare files where
-/// Rider's Visual Studio keymap gives Compare Files (CompareTwoFiles) the same Ctrl+D (Cmd+D on macOS, apart from
-/// Duplicate's Ctrl+D).</summary>
+/// Rider's Visual Studio keymap gives Compare Files (CompareTwoFiles) the same Ctrl+D (Cmd+D on macOS).</summary>
 public partial class MainWindow
 {
     private const string ExplorerGroup = "Explorer";
@@ -58,8 +56,7 @@ public partial class MainWindow
         {
             WhyNot = c => RowOf(c) is not { } row ? NoRow : row is { Kind: NodeKind.File, IsSolutionItem: false, Path: not null } ? null : "Choose a file in the Explorer",
             TitleIn = c => RowOf(c) is { } row && Explorer.SelectedNodes.Contains(row) && Explorer.SelectedNodes.Count(n => n.IsFile) == 2 ? "Compare Files" : "Compare With…",
-            // CompareTwoFiles is $default's Ctrl+D: the editor's Duplicate keys in Visual Studio's keymap off macOS.
-            KeysOf = () => AppActions.Preset == KeymapPreset.VisualStudio && !OperatingSystem.IsMacOS() ? E.Duplicate : null,
+            KeysOf = () => AppActions.KeysIn(A.CompareFiles) is var keys && keys != A.CompareFiles ? keys : null,
         });
         // The path of what is chosen in the Explorer, else of the file shown.
         OnDisk(A.CopyPath, "Copy Path", path => IdeErrors.Observe(CopyPathAsync(path)));
@@ -329,7 +326,7 @@ public partial class MainWindow
     }
 
     /// <summary>The editor's keys the Explorer takes while it has them: Cut, Copy, Paste, Delete, Backspace, Undo and
-    /// Redo act on its chosen row, and the keys Compare Files shares (Duplicate's in Visual Studio's keymap off macOS)
+    /// Redo act on its chosen row, and the keys Compare Files shares (Duplicate's in Visual Studio's keymap)
     /// compare files. True once taken.</summary>
     private bool ExplorerTakes(string action)
     {

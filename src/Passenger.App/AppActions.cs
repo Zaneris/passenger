@@ -171,9 +171,9 @@ public static class AppActions
 
     // The Explorer's own actions, on the row its menu opened on or the one chosen while it has the keys: NewFile, NewDir,
     // Class/Interface, the solution's own, Add Reference, Docker Support and Compose, Aspire Orchestration, NuGet, Manage
-    // User Secrets (no keys of Rider's), Edit Project File, Unload and Reload Project, Compare Files (CompareTwoFiles, off
-    // macOS sharing the editor's Duplicate keys), Copy Path (CopyPaths), Reveal in Finder (RevealIn) and Open in Terminal.
-    // Rename and Delete are Rename's and the editor's Delete, one action wherever they are pressed.
+    // User Secrets (no keys of Rider's), Edit Project File, Unload and Reload Project, Compare Files (CompareTwoFiles, by
+    // Duplicate's keys: KeysIn), Copy Path (CopyPaths), Reveal in Finder (RevealIn) and Open in Terminal. Rename and
+    // Delete are Rename's and the editor's Delete, one action wherever they are pressed.
     public const string NewFile = "app.explorer.newFile";
     public const string NewFolder = "app.explorer.newFolder";
     public const string NewType = "app.explorer.newType";
@@ -484,14 +484,14 @@ public static class AppActions
     /// change, since every tip and menu reads it; a caller reads it and never binds into it.</summary>
     public static Keymap Keymap() => inForce ??= Keymap(Preset, UserShortcuts);
 
-    /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two actions told
-    /// apart by where it is pressed and the keymap gives it to the other: Show Diff in the Commit window and the Git log
-    /// takes Compare Files' keys in Visual Studio's keymap (Duplicate's off macOS; none in VS Code's), and the Debug
-    /// window's evaluate box adds a watch by Complete Statement's keys (Start New Line Before's in VS Code's). The
-    /// action's own once the person gives it some.</summary>
+    /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two actions
+    /// told apart by where it is pressed and the keymap gives it to the other: Show Diff in the Commit window and the
+    /// Git log, and Compare Files in the Explorer, take Duplicate's keys in Visual Studio's keymap ($default's Ctrl+D,
+    /// Cmd+D on macOS; none in VS Code's), and the Debug window's evaluate box adds a watch by Complete Statement's
+    /// keys (Start New Line Before's in VS Code's). The action's own once the person gives it some.</summary>
     public static string KeysIn(string id) => UserShortcuts.ContainsKey(id) ? id : id switch
     {
-        ShowDiff when Preset == KeymapPreset.VisualStudio => OperatingSystem.IsMacOS() ? CompareFiles : EditorActions.Duplicate,
+        ShowDiff or CompareFiles when Preset == KeymapPreset.VisualStudio => EditorActions.Duplicate,
         AddToWatches => Preset == KeymapPreset.VisualStudio ? CompleteStatement : EditorActions.StartNewLineBefore,
         _ => id,
     };
@@ -568,9 +568,8 @@ public static class AppActions
                 .Bind(FindNext, "F3", "meta alt PAGE_DOWN")
                 .Bind(FindPrevious, "shift F3", "meta alt PAGE_UP")
                 .Bind(FocusExplorer, "meta 1", "meta alt L")
-                // CopyPaths and CompareTwoFiles: $default's Ctrl+Shift+C and Ctrl+D as Mac OS X 10.5+ takes them; RevealIn has none.
+                // CopyPaths: $default's Ctrl+Shift+C as Mac OS X 10.5+ takes it; RevealIn has none.
                 .Bind(CopyPath, "meta shift C")
-                .Bind(CompareFiles, "meta D")
                 .Bind(OpenInBrowser, "alt F2")
                 .Bind(Build, "meta shift B")
                 .Bind(RunProgram, "control F5")
@@ -636,10 +635,11 @@ public static class AppActions
                 .Bind(FindUsages, "shift F12")
                 .Bind(HighlightUsages, "shift alt F11")
                 .Bind(Reformat, "meta alt ENTER", "meta K , F", "meta K , meta F", "meta K , D", "meta K , meta D")
-                .Bind(ParameterInfo, "control P")
+                .Bind(ParameterInfo, "meta P")
                 .Bind(CodeCleanup, "meta E , C", "meta E , meta C", "meta E , F", "meta E , meta F")
                 .Bind(RefactorThis, "meta shift R")
-                .Bind(Generate, "meta N")
+                // Visual Studio OSX's own, which gives Cmd+N to New (NewElement).
+                .Bind(Generate, "control meta N")
                 .Bind(ExtractMethod, "meta R , M", "meta R , meta M")
                 .Bind(IntroduceVariable, "meta R , V", "meta R , meta V")
                 .Bind(Inline, "meta R , I", "meta R , meta I")
@@ -764,7 +764,8 @@ public static class AppActions
             .Bind(ParameterInfo, "shift control SPACE")
             .Bind(CodeCleanup, "control E , C", "control E , control C", "control E , F", "control E , control F")
             .Bind(RefactorThis, "control shift R")
-            .Bind(Generate, "alt INSERT", "control N")
+            // Ctrl+N is New's (NewElement), and Alt+Insert, which Rider gives both, is Generate's in the editor.
+            .Bind(Generate, "alt INSERT")
             .Bind(ExtractMethod, "control R , M", "control R , control M")
             .Bind(IntroduceVariable, "control R , V", "control R , control V")
             .Bind(Inline, "control R , I", "control R , control I")
