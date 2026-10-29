@@ -80,9 +80,10 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   licence. MIT first.
 - **Every program Passenger starts goes through `ChildProcesses`** (`Command`/`DotnetCommand`, then `Start`,
   `StartAsync`, `RunAsync`, or `AnswerAsync` for a question one line answers; `Kill` ends it with all it started), so
-  none outlives the IDE (`Lifeline`), each given its folder as the disk names it, PWD too. Started elsewhere: the
-  terminal's shell (Porta.Pty), vstest.console, Velopack's Update.exe and an agent's `--mcp-attach` Passenger
-  (`StartApart`); a program run in the terminal is `Adopt`ed.
+  none outlives the IDE (`Lifeline`), each given its folder as the disk names it, PWD too; a child's lines are heard
+  through `ChildProcesses.Hear`, never Process's `Begin*ReadLine` (banned: its disposal faults a read under it). Started
+  elsewhere: the terminal's shell (Porta.Pty), vstest.console, Velopack's Update.exe and an agent's `--mcp-attach`
+  Passenger (`StartApart`); a program run in the terminal is `Adopt`ed.
 - **No secret on a command line** (any process can read it): give it through the environment, or don't make it. Secrets
   everywhere (Details, logs, consoles, hints, agents' answers, `ChildProcesses.Shown`'s echoes) are masked by one rule,
   `ContainerSecrets`.
