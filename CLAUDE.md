@@ -251,11 +251,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   runs one tsserver (`useSyntaxServer` never): a syntax server answers rename and usages from the open files alone.
   typescript-language-server keeps a file's first `formattingOptions` answer while it runs, so each open file tells
   tsserver how it indents itself (`WebDocument`'s `configure`).
-- **Build and run.** `BuildRunController` (partials), `ConsoleSink` (every console through one `PumpAsync`),
-  `RunConfiguration` (data, edited in place as `ConfigurationEdit`s), `LaunchPlan` (one resolution for Run, Debug,
-  Profile, Hot Reload and a debugged test host; a Passenger it launches keeps its state in the launcher's `sandbox/`),
-  `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build under way waited out
-  first), `TogetherBuild`.
+- **Build and run.** A folder with no usable .NET SDK is `ProjectModels.MissingSdk`, said through `Refusals.NoSdk`.
+  `BuildRunController` (partials), `ConsoleSink` (every console through one `PumpAsync`), `RunConfiguration` (data,
+  edited in place as `ConfigurationEdit`s), `LaunchPlan` (one resolution for Run, Debug, Profile, Hot Reload and a
+  debugged test host; a Passenger it launches keeps its state in the launcher's `sandbox/`), `UpToDate` (a launch's
+  build skipped while what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`.
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach,
   Restart and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time
   (`TakeStartAsync`); Stop ends every session and recording before the programs go.
