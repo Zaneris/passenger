@@ -374,7 +374,7 @@ public static class WorkspaceEdits
                     Delete(editors, to, recursive: false);
                 }
                 Directory.CreateDirectory(Path.GetDirectoryName(to)!);
-                if (editors.MoveFile(resource.Path, to) is { } failed)
+                if (recording.Move(resource.Path, to) is { } failed)
                 {
                     throw new WorkspaceEditFailed(failed);
                 }

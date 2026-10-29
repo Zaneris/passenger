@@ -266,7 +266,7 @@ public static class TypeRename
         int files = WorkspaceEdits.ApplyAsCommand(editors, edit, recording, asked, dropped);
         foreach ((string from, string to) in moves.Where(m => m.From != m.To && File.Exists(m.From)))
         {
-            if (editors.MoveFile(from, to) is { } failed)
+            if (recording.Move(from, to) is { } failed)
             {
                 throw new WorkspaceEditFailed($"{Path.GetFileName(from)} could not be renamed: {failed}");
             }

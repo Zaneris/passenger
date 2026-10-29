@@ -176,6 +176,71 @@ public sealed class NewServiceSetupTests : IDisposable
         }
     }
 
+    /// <summary>New Project with a Dockerfile while the person renames a file of their own as its set-up waits for the new
+    /// project's evaluation: New Project's Undo neither names nor moves that file, and the rename's own Undo then names it
+    /// back, where New Project's took the rename as its own and moved the file back, its own Undo then refused.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_file_while_New_Project_sets_its_service_up_stays_out_of_its_Undo()
+    {
+        TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
+        TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
+        TestFolders.Write(place, "notes.md", "# Notes\n");
+        TestFolders.Write(place, "Shop.slnx", "<Solution>\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
+        string notes = Path.Combine(PathNames.Canonical(place), "notes.md");
+        string guide = Path.Combine(PathNames.Canonical(place), "guide.md");
+        string api = Path.Combine(PathNames.Canonical(place), "Api");
+        TaskCompletionSource evaluated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        MainWindow window = Ui.OpenFolder(place, languageServer: false);
+        try
+        {
+            Task held = window.Session.Models.HoldEvaluation(Path.Combine(api, "Api.csproj"), evaluated.Task);
+            Ui.Run(window, AppActions.NewProject);
+            NewProjectDialog dialog = Opened(window);
+            Choose(dialog, "web");
+            dialog.ProjectName = "Api";
+            dialog.Framework = TestProjects.Framework;
+            dialog.SetupChooser.SelectedIndex = (int)ProjectSetup.Dockerfile;
+            Ui.Settle();
+            // Pumped, not settled: the set-up holds the window's background work while it waits for the evaluation held.
+            Ui.Click(dialog.CreateButton, settle: false);
+            Ui.PumpUntil(() => held.IsCompleted || dialog.Problem is not null, "the new project's evaluation to be held", TimeSpan.FromMinutes(5));
+            Assert.True(dialog.Problem is null, $"The web project was not made: {dialog.Problem}");
+            Assert.True(window.ServiceSetUp is { IsCompleted: false }, $"The set-up did not wait for the project's evaluation: {window.Status}");
+
+            Assert.Null(Ui.AwaitPumped(window.RenameAsync(notes, "guide.md"), "the rename of notes.md as the set-up waits"));
+            Assert.True(File.Exists(guide), $"notes.md was not renamed: {window.Status}");
+            evaluated.SetResult();
+            Assert.Null(SetUp(window));
+            Assert.True(File.Exists(Path.Combine(api, "Dockerfile")), $"The new project has no Dockerfile: {window.Status}");
+
+            List<(string Title, string Message)> asked = [];
+            window.Confirm = (title, message, _) =>
+            {
+                asked.Add((title, message));
+                return Task.FromResult(true);
+            };
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Undo);
+            (string title, string message) = Assert.Single(asked);
+            Assert.Equal("Undo", title);
+            Assert.StartsWith("Undo New Project Api?", message, StringComparison.Ordinal);
+            Assert.DoesNotContain("guide.md", message, StringComparison.Ordinal);
+            Assert.False(Directory.Exists(api), $"Undo left the new project's folder: {window.Status}");
+            Assert.True(File.Exists(guide) && !File.Exists(notes), $"New Project's Undo moved guide.md, renamed meanwhile, back to notes.md: {window.Status}");
+
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Undo);
+            Assert.Equal(2, asked.Count);
+            Assert.Equal("Undo Rename notes.md to guide.md? It changes guide.md.", asked[1].Message);
+            Assert.True(File.Exists(notes) && !File.Exists(guide), $"The rename's own Undo did not name guide.md back: {window.Status}");
+        }
+        finally
+        {
+            evaluated.TrySetResult();
+            window.Close();
+        }
+    }
+
     /// <summary>New Project of an MVC app, a folder of megabytes (its scripts and styles): its Undo keeps the folder as each
     /// file's length and time, not its bytes, so the undo history grows by a small part of the folder; Undo takes the folder
     /// away and Redo puts every file back as it was.</summary>

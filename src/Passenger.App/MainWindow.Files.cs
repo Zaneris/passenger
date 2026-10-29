@@ -369,7 +369,7 @@ public partial class MainWindow
         {
             foreach ((string from, string to) in moves)
             {
-                if (Editors.MoveFile(from, to) is { } refused)
+                if (recording.Move(from, to) is { } refused)
                 {
                     return refused;
                 }

@@ -136,7 +136,7 @@ public partial class MainWindow
                 .Where(d => !PathNames.Same(d.Item1, d.Item2))];
             foreach ((string from, string to) in going)
             {
-                if (await PutOneAsync(from, to, into, copy, came) is { } problem)
+                if (await PutOneAsync(from, to, into, recording, came) is { } problem)
                 {
                     if (problem.Length > 0)
                     {
@@ -175,10 +175,10 @@ public partial class MainWindow
         return put;
     }
 
-    /// <summary>Moves or copies one file or folder to where it goes, replacing what has its name there once the person
-    /// agrees, a move's ends gathered into <paramref name="came"/>; null once it is there, else why not ("" when they would
-    /// not replace).</summary>
-    private async Task<string?> PutOneAsync(string source, string target, string into, bool copy, List<string> came)
+    /// <summary>Moves one file or folder to where it goes within the move's command (<paramref name="moving"/>), or copies
+    /// it where there is none, replacing what has its name there once the person agrees, a move's ends gathered into
+    /// <paramref name="came"/>; null once it is there, else why not ("" when they would not replace).</summary>
+    private async Task<string?> PutOneAsync(string source, string target, string into, CommandHistory.Recording? moving, List<string> came)
     {
         string name = Path.GetFileName(source);
         if (!PathNames.Same(target, source) && (File.Exists(target) || Directory.Exists(target)))
@@ -189,8 +189,8 @@ public partial class MainWindow
                 return string.Empty;
             }
         }
-        return (copy ? CopyOnDisk(source, target) : Gathering(came, () => Editors.MoveFile(source, target))) is { } problem
-            ? $"{name} could not be {(copy ? "copied" : "moved")}: {problem}"
+        return (moving is null ? CopyOnDisk(source, target) : Gathering(came, () => moving.Move(source, target))) is { } problem
+            ? $"{name} could not be {(moving is null ? "copied" : "moved")}: {problem}"
             : null;
     }
 

@@ -682,8 +682,13 @@ public sealed partial class EditorArea : UserControl
     /// <summary>Moves a file or folder on disk with its open files, which keep their tabs in every split, their undo
     /// and carets: each is saved first, so what moves is what the editor shows. Null when it moved, else why not, with
     /// nothing moved.</summary>
-    public string? MoveFile(string from, string to)
+    public string? MoveFile(string from, string to) => MoveFile(from, to, out _);
+
+    /// <summary>Moves a file or folder as <see cref="MoveFile(string, string)"/> does, <paramref name="made"/> the move as
+    /// <see cref="Moved"/> told it, null when nothing moved.</summary>
+    public string? MoveFile(string from, string to, out FileMove? made)
     {
+        made = null;
         string source = PathNames.Canonical(from);
         List<OpenDocument> moving = [.. documents.Where(d => PathNames.Within(d.Path, source))];
         foreach (OpenDocument document in moving)
@@ -708,7 +713,8 @@ public sealed partial class EditorArea : UserControl
         {
             return error.Message;
         }
-        Relocate(new FileMove(source, PathNames.Canonical(to), moving), Moved);
+        made = new FileMove(source, PathNames.Canonical(to), moving);
+        Relocate(made, Moved);
         return null;
     }
 

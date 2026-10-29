@@ -46,8 +46,8 @@ public sealed class CommandHistory
 
     /// <summary>Follows what a command changes from now until the recording is disposed: the open files' text, the files
     /// not open it is told it writes or makes (<see cref="Recording.Watch"/>, or with their texts <see cref="Recording.Wrote"/>)
-    /// and the files moved. Kept as a command of its own when it changed more than one file or one not open, moved one or
-    /// made one.</summary>
+    /// and the files it moves (<see cref="Recording.Move"/>). Kept as a command of its own when it changed more than one
+    /// file or one not open, moved one or made one.</summary>
     public Recording Record(string name) => new(this, editors, name, ownWrites: false);
 
     /// <summary>A command that waits between its writes (a project's read, a program it runs), followed as <see cref="Record"/>
@@ -685,7 +685,6 @@ public sealed class CommandHistory
             this.name = name;
             this.ownWrites = ownWrites;
             open = ownWrites ? [] : editors.Documents.ToDictionary(d => d, d => (d.Path, d.Text.NextUndo, d.Text.Snapshot));
-            editors.Moved += OnMoved;
             history.making.Add(this);
         }
 
@@ -739,6 +738,19 @@ public sealed class CommandHistory
             {
                 closed[began] = (File.Exists(path) && FileText.Load(path) is { } file ? TextSnapshot.From(file.Text) : null, null);
             }
+        }
+
+        /// <summary>Moves a file or folder with its open files as part of the command (<see cref="EditorArea.MoveFile(string, string)"/>),
+        /// which its Undo moves back: the moves it takes are those it makes here alone, never one made meanwhile by the
+        /// person, another command or an Undo. Null once moved, else why not, nothing moved.</summary>
+        public string? Move(string from, string to)
+        {
+            string? failed = editors.MoveFile(from, to, out FileMove? made);
+            if (made is not null)
+            {
+                moves.Add((made.From, made.To));
+            }
+            return failed;
         }
 
         /// <summary>A file not open that the command, or its language server a moment before, made empty for the command to
@@ -861,7 +873,6 @@ public sealed class CommandHistory
                 return;
             }
             ended = true;
-            editors.Moved -= OnMoved;
             history.making.Remove(this);
             try
             {
@@ -922,7 +933,6 @@ public sealed class CommandHistory
             }
         }
 
-        private void OnMoved(object? sender, FileMove move) => moves.Add((move.From, move.To));
 
         /// <summary>Where a file was as the command began, before the moves it made since.</summary>
         private string Began(string path) => Enumerable.Reverse(moves).Aggregate(path, (at, move) => PathNames.Moved(at, move.To, move.From));
