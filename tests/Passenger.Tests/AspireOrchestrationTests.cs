@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Passenger.App;
 using Passenger.App.Aspire;
+using Passenger.App.Explorer;
 using Passenger.App.Templates;
 using Passenger.Core;
 using Passenger.Editor;
@@ -343,6 +344,60 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
                 $"The AppHost's Aspire.Hosting.PostgreSQL names a version, or is not there:\n{host}");
             Assert.True(pinned.Contains($"<PackageVersion Include=\"Aspire.Hosting.PostgreSQL\" Version=\"{AspireApp.TemplatesVersion}\" />", StringComparison.Ordinal),
                 $"Directory.Packages.props does not pin Aspire.Hosting.PostgreSQL at the AppHost's Aspire version:\n{pinned}");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>Add Aspire Orchestration with a solution filter open puts the AppHost and ServiceDefaults it makes in the
+    /// filter's list as well as the solution's, in its one command of Undo, so the filter opened again loads them, the
+    /// project it leaves out still unloaded.</summary>
+    [AvaloniaFact]
+    public void Orchestration_added_under_an_open_solution_filter_puts_the_projects_it_makes_in_the_filter_so_the_filter_opened_again_loads_them()
+    {
+        const string Filter = "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [\n      \"Api\\\\Api.csproj\"\n    ]\n  }\n}\n";
+        string folder = PathNames.Canonical(TestFolders.Create("aspire-filter-"));
+        TestFolders.Write(folder, "Directory.Build.props", "<Project><PropertyGroup><AspireUseCliBundle>false</AspireUseCliBundle></PropertyGroup></Project>");
+        TestFolders.Write(folder, "Shop.slnx", "<Solution><Project Path=\"Api/Api.csproj\" /><Project Path=\"Tools/Tools.csproj\" /></Solution>");
+        TestFolders.Write(folder, "Shop.Api.slnf", Filter);
+        TestFolders.Write(folder, "Api/Api.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk.Web\"><PropertyGroup><TargetFramework>{TestProjects.Framework}</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup></Project>");
+        TestFolders.Write(folder, "Api/Program.cs", "var builder = WebApplication.CreateBuilder(args);\nvar app = builder.Build();\napp.MapGet(\"/\", () => \"Hello\");\napp.Run();\n");
+        TestFolders.Write(folder, "Tools/Tools.csproj", TestProjects.Library());
+        AspireApp.UseFeed(folder);
+        string filter = Path.Combine(folder, "Shop.Api.slnf");
+        string listed = Filter.Replace("\"Api\\\\Api.csproj\"\n", "\"Api\\\\Api.csproj\",\n      \"Shop.AppHost\\\\Shop.AppHost.csproj\",\n"
+            + "      \"Shop.ServiceDefaults\\\\Shop.ServiceDefaults.csproj\"\n", StringComparison.Ordinal);
+        MainWindow window = Ui.OpenFolder(filter, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.WorkspaceModel!.Projects.Any(p => p.Name == "Api" && p.TargetFrameworks.Count > 0), "Api to be evaluated");
+            Assert.Equal("Added Aspire orchestration", Add(window, "Api", existing: false));
+            Assert.True(File.ReadAllText(filter) == listed, $"The AppHost and ServiceDefaults made went in the solution but not in the filter open, which leaves them out once opened again:\n{File.ReadAllText(filter)}");
+
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Undo);
+            Ui.Run(window, AppActions.SaveAll);
+            Assert.True(File.ReadAllText(filter) == Filter, $"Undo took the orchestration back but left the filter listing what it made: {window.Status}\n{File.ReadAllText(filter)}");
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Redo);
+            Ui.Run(window, AppActions.SaveAll);
+            Assert.True(File.ReadAllText(filter) == listed, $"Redo made the orchestration again but not the filter's list: {window.Status}\n{File.ReadAllText(filter)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+        window = Ui.OpenFolder(filter, languageServer: false);
+        try
+        {
+            string Loaded() => string.Join(", ", window.ExplorerView.Tree.Rows.Where(r => r.Kind == NodeKind.Project)
+                .Select(r => $"{r.Name} {(r.IsDimmed ? "unloaded" : "loaded")}").Order(StringComparer.Ordinal));
+            Ui.WaitFor(() => Loaded() == "Api loaded, Shop.AppHost loaded, Shop.ServiceDefaults loaded, Tools unloaded",
+                () => $"the filter opened again to load what orchestration made and leave Tools out ({Loaded()})");
         }
         finally
         {

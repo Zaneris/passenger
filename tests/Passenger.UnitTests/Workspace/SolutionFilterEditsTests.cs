@@ -4,8 +4,8 @@ using Passenger.Workspace;
 namespace Passenger.UnitTests.Workspace;
 
 /// <summary>A solution filter's list changed as its solution's projects are: a project moved or renamed named where it went,
-/// the filter or its solution moved still naming each, and a project removed taken out, each path in the separator its
-/// list writes and the rest of the file as it was.</summary>
+/// the filter or its solution moved still naming each, a project removed taken out and one added to a copy of the filter
+/// named from the filter's own place, each path in the separator its list writes and the rest of the file as it was.</summary>
 public sealed class SolutionFilterEditsTests : IDisposable
 {
     private const string Filter = "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [\n      \"App\\\\App.csproj\",\n"
@@ -55,6 +55,16 @@ public sealed class SolutionFilterEditsTests : IDisposable
         DateTime written = File.GetLastWriteTimeUtc(filter);
         Assert.Null(SolutionEdits.RemoveFromFilter(filter, [At("Docs", "Docs.csproj")]));
         Assert.Equal(written, File.GetLastWriteTimeUtc(filter));
+    }
+
+    [Fact]
+    public void A_project_added_to_a_copy_of_a_filter_outside_its_solutions_folder_is_named_from_the_solutions_folder()
+    {
+        string filter = Write(Path.Combine("filters", "Shop.slnf"), Filter.Replace("\"Shop.slnx\"", "\"../src/Shop.slnx\"", StringComparison.Ordinal));
+        string copy = Write(Path.Combine("staging", "outside", "0", "Shop.slnf"), File.ReadAllText(filter));
+        Assert.Null(SolutionEdits.AddToFilter(filter, At("src", "Api", "Api.csproj"), copy));
+        Assert.Equal(File.ReadAllText(filter).Replace("\"Tools\\\\Tools.csproj\"\n", "\"Tools\\\\Tools.csproj\",\n      \"Api\\\\Api.csproj\"\n", StringComparison.Ordinal),
+            File.ReadAllText(copy));
     }
 
     private string At(params string[] parts) => Path.Combine([root, .. parts]);

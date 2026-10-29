@@ -32,9 +32,11 @@ public static class SolutionEdits
 
     /// <summary>Puts a project of the solution (a canonical path) in a solution filter's list of those it keeps, from the
     /// solution's folder with the separator the list's first is written with (a backslash, as dotnet sln writes it, when
-    /// it has none), the rest of the file as it was. Null once the filter keeps it, else why not.</summary>
-    public static string? AddToFilter(string filter, string project) =>
-        EditFilter(filter, filter, filter, (text, read) =>
+    /// it has none), the rest of the file as it was; a <paramref name="copy"/> given holds the filter's text in its place
+    /// (a change prepared apart), its paths still taken from where the filter is. Null once the filter keeps it, else why
+    /// not.</summary>
+    public static string? AddToFilter(string filter, string project, string? copy = null) =>
+        EditFilter(filter, copy ?? filter, filter, (text, read) =>
         {
             if (read.Projects.Contains(project))
             {

@@ -46,9 +46,9 @@ public partial class MainWindow
     }
 
     /// <summary>Aspire orchestration of the services chosen, prepared away from the solution and then written whole: their
-    /// AppHost (the one chosen, else one made) referencing and starting them, their ServiceDefaults, the solution listing
-    /// what was made. What the status bar then says; part of the command given (<paramref name="into"/>), else one of its
-    /// own.</summary>
+    /// AppHost (the one chosen, else one made) referencing and starting them, their ServiceDefaults, the solution and the
+    /// solution filter open listing what was made. What the status bar then says; part of the command given
+    /// (<paramref name="into"/>), else one of its own.</summary>
     public async Task<string?> AddAspireOrchestrationAsync(AspireOrchestrationChoice choice, CommandHistory.Recording? into = null)
     {
         if (Solution is not { } solution)
@@ -59,10 +59,11 @@ public partial class MainWindow
         void WindowClosed(object? sender, EventArgs args) => cancel.Cancel();
         Closed += WindowClosed;
         string staging = Path.Combine(StateFolder, "aspire-staging", Guid.NewGuid().ToString("N"));
+        string? filter = session.Workspace?.Filter?.Path;
         IReadOnlyList<AspireOrchestration.Write> writes = [];
         try
         {
-            string[] existing = [solution.Path, .. choice.Services.SelectMany(p => new[] { p.Path, Path.Combine(p.Folder, "Program.cs") }),
+            string[] existing = [solution.Path, .. filter is null ? [] : new[] { filter }, .. choice.Services.SelectMany(p => new[] { p.Path, Path.Combine(p.Folder, "Program.cs") }),
                 .. choice.AppHost is { } host ? (string[])[host.Path, .. AspireOrchestration.AppHostSources(host.Path)] : [],
                 .. choice.ServiceDefaults is { } defaults ? new[] { defaults.Path } : [],
                 .. AspireOrchestration.PackagesPropsOver([Path.GetDirectoryName(solution.Path)!, .. choice.AppHost is { } chosen ? new[] { chosen.Folder } : []])];
@@ -71,7 +72,7 @@ public partial class MainWindow
                 return status.Text = unsaved;
             }
             status.Text = "Preparing Aspire orchestration…";
-            Task<IReadOnlyList<AspireOrchestration.Write>> preparing = AspireOrchestration.PrepareAsync(solution.Path, staging, choice, cancel.Token);
+            Task<IReadOnlyList<AspireOrchestration.Write>> preparing = AspireOrchestration.PrepareAsync(solution.Path, filter, staging, choice, cancel.Token);
             BackgroundWork.Track(preparing);
             writes = await preparing;
             cancel.Token.ThrowIfCancellationRequested();
@@ -94,7 +95,8 @@ public partial class MainWindow
                 }
                 try
                 {
-                    foreach (AspireOrchestration.Write write in writes.OrderBy(w => w.Before is null ? 0 : PathNames.Same(w.Path, solution.Path) ? 2 : 1))
+                    bool Lists(string path) => PathNames.Same(path, solution.Path) || filter is not null && PathNames.Same(path, filter);
+                    foreach (AspireOrchestration.Write write in writes.OrderBy(w => w.Before is null ? 0 : Lists(w.Path) ? 2 : 1))
                     {
                         Directory.CreateDirectory(Path.GetDirectoryName(write.Path)!);
                         FileText.Save(write.Path, write.Text.Text, write.Text.Encoding, write.Text.HasBom, write.Text.CrBreaks);

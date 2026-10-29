@@ -15,12 +15,13 @@ namespace Passenger.App.Aspire;
 public sealed record AspireOrchestrationChoice(IReadOnlyList<ProjectModel> Services, ProjectModel? AppHost, ProjectModel? ServiceDefaults);
 
 /// <summary>Prepares the complete change away from the workspace. Nothing in the solution is written until every
-/// template, reference and source edit has succeeded.</summary>
+/// template, reference and source edit has succeeded. The projects made join the solution and the solution filter
+/// open.</summary>
 public static class AspireOrchestration
 {
     public sealed record Write(string Path, FileText Text, byte[]? Before);
 
-    public static async Task<IReadOnlyList<Write>> PrepareAsync(string solution, string staging,
+    public static async Task<IReadOnlyList<Write>> PrepareAsync(string solution, string? filter, string staging,
         AspireOrchestrationChoice choice, CancellationToken cancel)
     {
         string root = Path.GetDirectoryName(solution)!;
@@ -216,9 +217,15 @@ public static class AspireOrchestration
                 Save(props, CentralPackages.Pinned(Read(props).Text, pinned));
             }
         }
+        // Opened again, the filter would leave out a project it does not list.
+        string? filtered = filter is null ? null : Copy(filter, outside: true);
         foreach (string project in new[] { choice.AppHost is null ? host : null, choice.ServiceDefaults is null ? defaults : null }.OfType<string>())
         {
             Check(SolutionEdits.AddProject(Staged(solution), null, Staged(project)));
+            if (filter is not null)
+            {
+                Check(SolutionEdits.AddToFilter(filter, project, filtered));
+            }
         }
         cancel.ThrowIfCancellationRequested();
         return [.. files.Select(f => new Write(f.Key, Read(f.Value.Staged), f.Value.Before))
