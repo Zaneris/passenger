@@ -277,7 +277,7 @@ public sealed class HotReload
                 u.UpdatedMethods, u.UpdatedTypes,
                 [.. u.Lines.Select(l => new DapLineUpdates(l.Document, [.. l.Updates.Select(x => new DapLineUpdate(x.OldLine, x.NewLine))]))],
                 [.. u.ActiveStatements.Select(a => new DapStatementUpdate(a.Token, a.Version, a.ILOffset, a.StartLine, a.StartColumn, a.EndLine, a.EndColumn))],
-                [.. u.FirstChanges.Select(c => new DapFirstChange(c.Document, c.Line))]))]);
+                [.. u.FirstChanges.Select(c => new DapFirstChange(c.Document, c.Line, c.TailWas, c.TailNow))]))]);
         }
         catch (DapException failed)
         {

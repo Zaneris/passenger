@@ -6,10 +6,10 @@ namespace Passenger.Debugger;
 
 /// <summary>A module's code as Hot Reload has changed it: each update applied (a generation) brings the debug
 /// information of the methods it changed (its PDB delta, whose debug tables name a method by its row among the delta's
-/// own), their new IL, and the lines that moved in methods it did not change. A method's code at a version (the
-/// runtime's EnC version, 1 for the build's) is that of the last generation before it that changed the method; its
-/// sequence points' lines are carried through each later generation's moves, so they are where its code now
-/// is.</summary>
+/// own), their new IL, the lines that moved in methods it did not change, and how it changed each document's text. A
+/// method's code at a version (the runtime's EnC version, 1 for the build's) is that of the last generation before it
+/// that changed the method; its sequence points' lines are carried through each later generation's moves, or its text's
+/// change where it changed the method, so they are where its code now is, but for a point whose lines it rewrote.</summary>
 public partial class ModuleMetadataReader
 {
     /// <summary>A sequence point of a method's code as the program now has it, lines and columns from one as the PDB has
@@ -17,6 +17,10 @@ public partial class ModuleMetadataReader
     internal readonly record struct Point(int Offset, int StartLine, int StartColumn, int EndLine, int EndColumn, string? Document)
     {
         public bool IsHidden => StartLine == SequencePoint.HiddenLine;
+
+        /// <summary>Whether a later update rewrote this point's lines: the code it marks is no longer in the text, and its
+        /// lines are those it had before.</summary>
+        public bool Rewritten { get; init; }
     }
 
     /// <summary>A method's debug information at a version: the reader it is in (the build's PDB or a delta's) and the handle
@@ -45,6 +49,9 @@ public partial class ModuleMetadataReader
         /// move to the new line's, up to the next.</summary>
         public Dictionary<string, (int Old, int New)[]> Lines { get; } = new(StringComparer.Ordinal);
 
+        /// <summary>How the update changed each document's text, by document name.</summary>
+        public Dictionary<string, TextChange> Texts { get; } = new(StringComparer.Ordinal);
+
         public void Dispose() => Pdb?.Dispose();
     }
 
@@ -57,9 +64,9 @@ public partial class ModuleMetadataReader
     internal int Generations => _generations.Count;
 
     /// <summary>Takes an update the runtime applied: its metadata and IL deltas (the new bodies at their RVAs in the IL),
-    /// its PDB delta, the methods it changed, and the lines it moved in each document.</summary>
+    /// its PDB delta, the methods it changed, the lines it moved in each document, and how it changed their text.</summary>
     internal void AddGeneration(byte[] metadataDelta, byte[] ilDelta, byte[] pdbDelta, IReadOnlyList<int> updatedMethods,
-        IReadOnlyList<(string Document, IReadOnlyList<(int Old, int New)> Updates)> lines)
+        IReadOnlyList<(string Document, IReadOnlyList<(int Old, int New)> Updates)> lines, IReadOnlyList<TextChange> texts)
     {
         MetadataReaderProvider? pdb = null;
         MetadataReader? pdbReader = null;
@@ -102,6 +109,10 @@ public partial class ModuleMetadataReader
         foreach ((string document, IReadOnlyList<(int Old, int New)> updates) in lines)
         {
             generation.Lines[document] = [.. updates.OrderBy(u => u.Old)];
+        }
+        foreach (TextChange text in texts)
+        {
+            generation.Texts[text.Document] = text;
         }
         _generations.Add(generation);
         _points.Clear();
@@ -185,7 +196,7 @@ public partial class ModuleMetadataReader
         }
         if (!_points.TryGetValue((methodToken, debug.Generation), out IReadOnlyList<Point>? points))
         {
-            points = _points[(methodToken, debug.Generation)] = Moved(Read(debug), debug.Generation);
+            points = _points[(methodToken, debug.Generation)] = Moved(Read(debug), methodToken, debug.Generation);
         }
         return points;
     }
@@ -219,12 +230,19 @@ public partial class ModuleMetadataReader
         return points;
     }
 
-    /// <summary>Points read from a generation, their lines moved by each later generation's moves of their documents.</summary>
-    private List<Point> Moved(List<Point> points, int generation)
+    /// <summary>A method's points read from a generation, their lines moved by each later generation's moves of their
+    /// documents, or, by one that changed the method, by its change to their text.</summary>
+    private List<Point> Moved(List<Point> points, int methodToken, int generation)
     {
         for (int g = generation + 1; g <= _generations.Count; g++)
         {
-            Dictionary<string, (int Old, int New)[]> moves = _generations[g - 1].Lines;
+            Generation later = _generations[g - 1];
+            if (later.Methods.Contains(methodToken))
+            {
+                Rewrite(points, later.Texts);
+                continue;
+            }
+            Dictionary<string, (int Old, int New)[]> moves = later.Lines;
             if (moves.Count == 0)
             {
                 continue;
@@ -252,6 +270,25 @@ public partial class ModuleMetadataReader
             }
         }
         return points;
+    }
+
+    /// <summary>Points of a method's code an update replaced, carried through its change to their documents' text: a point
+    /// above the change stays, one below it moves with the text, and one the change reaches is marked rewritten.</summary>
+    private static void Rewrite(List<Point> points, Dictionary<string, TextChange> texts)
+    {
+        for (int i = 0; i < points.Count; i++)
+        {
+            Point point = points[i];
+            if (point.IsHidden || point.Rewritten || point.Document is not { } document || !texts.TryGetValue(document, out TextChange? text)
+                || point.EndLine - 1 < text.Line)
+            {
+                continue;
+            }
+            int moved = text.TailNow - text.TailWas;
+            points[i] = point.StartLine - 1 >= text.TailWas
+                ? point with { StartLine = point.StartLine + moved, EndLine = point.EndLine + moved }
+                : point with { Rewritten = true };
+        }
     }
 
     /// <summary>Every method with debug information: the build's, then those updates added.</summary>

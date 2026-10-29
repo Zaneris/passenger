@@ -393,6 +393,52 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
         }
     }
 
+    /// <summary>Paused at the sleep, two lines typed above the greeting and applied leave the loop's frame in its code from
+    /// before: Set Next Statement onto a line the edit added is refused, saying why, and onto the greeting, two lines down
+    /// now, stops there, the program then greeting again, whole, before going on in the new code.</summary>
+    [AvaloniaFact]
+    public void After_lines_applied_above_while_paused_set_next_statement_goes_to_a_moved_line_which_runs_whole()
+    {
+        MainWindow window = Open();
+        try
+        {
+            window.OpenFile(ProgramPath);
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.GoTo(new TextPosition(3, 4));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Debug);
+            Paused(window, "the program to stop at the sleep");
+            Ui.WaitFor(() => Greeted(window).Count == 1, () => $"the first greeting ({Output(window)})");
+
+            Replace(window, "Greeter.Greet(i);", "Console.WriteLine(\"first\");\nConsole.WriteLine(\"second\");\nGreeter.Greet(i);");
+            HotReloadOutcome outcome = Ui.Await(window.Debugger.ApplyChangesAsync(), "Hot Reload to apply the lines added", TimeSpan.FromMinutes(1));
+            Assert.True(outcome.Result == HotReloadResult.Applied, $"The lines added should apply: {outcome.Said}");
+            Assert.Contains(new LineMark(5, LineMarkKind.ExecutionPoint), editor.LineMarks);
+
+            editor.GoTo(new TextPosition(2, 4));
+            Ui.Run(window, AppActions.SetNextStatement);
+            Ui.WaitFor(() => window.Status?.Contains("Hot Reload changed the method", StringComparison.Ordinal) == true,
+                () => $"Set Next Statement onto a line the old code lacks to be refused, saying why (status: {window.Status})");
+            Assert.Contains(new LineMark(5, LineMarkKind.ExecutionPoint), editor.LineMarks);
+
+            editor.GoTo(new TextPosition(4, 4));
+            Ui.Run(window, AppActions.SetNextStatement);
+            Ui.WaitFor(() => editor.LineMarks.Contains(new LineMark(4, LineMarkKind.ExecutionPoint)),
+                () => $"the arrow at the greeting Set Next Statement went back to (marks {string.Join(", ", editor.LineMarks)}; status: {window.Status})");
+            editor.GoTo(new TextPosition(5, 4));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => Greeted(window).Count >= 3, () => $"the program to greet on ({Output(window)})");
+            Assert.True(Greeted(window).Take(3).SequenceEqual([1, 1, 2]),
+                $"The greeting Set Next Statement went back to should run whole, then the new code: {Output(window)}");
+            Assert.Contains("Hello 1\nfirst\nsecond\nHello 2", Output(window).Replace("\r\n", "\n", StringComparison.Ordinal), StringComparison.Ordinal);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>The number of each greeting the program printed, in order.</summary>
     private static List<int> Greeted(MainWindow window) =>
         [.. Output(window).Split('\n').Select(l => l.Trim().Split(' ')).Where(w => w is ["Hello", _]).Select(w => int.Parse(w[1], System.Globalization.CultureInfo.InvariantCulture))];

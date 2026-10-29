@@ -46,8 +46,9 @@ public partial class ModuleMetadataReader
 
     /// <summary>Where a line, or a place given a column, of a source file binds: with no column, the statement that starts
     /// first on it, a lambda's body only where it starts the line; with <paramref name="inMethod"/>, a place in that method
-    /// alone.</summary>
-    public ResolvedBreakpoint? ResolveBreakpoint(string sourceFilePath, int line, int? column = null, int? inMethod = null)
+    /// alone; with <paramref name="running"/>, that method's code at a version (a frame's) where it is, the newest
+    /// elsewhere.</summary>
+    public ResolvedBreakpoint? ResolveBreakpoint(string sourceFilePath, int line, int? column = null, int? inMethod = null, (int Method, int? Version)? running = null)
     {
         if (_pdbMetadataReader is null || BestDocument(sourceFilePath).Document is not { } document)
         {
@@ -56,7 +57,7 @@ public partial class ModuleMetadataReader
 
         List<MethodCandidate> candidates = MethodsWithPoints(document)
             .Where(token => inMethod is null || token == inMethod)
-            .Select(token => CollectCandidate(token, document, line, column))
+            .Select(token => CollectCandidate(token, running is { } code && code.Method == token ? code.Version : null, document, line, column))
             .OfType<MethodCandidate>()
             .ToList();
         bool rewritten = IsRewrittenDocument(document);
@@ -242,14 +243,14 @@ public partial class ModuleMetadataReader
         return NewResolvedBreakpoint(outer.Token, outer.CoveringSp!.Value, outer.DocPath);
     }
 
-    private MethodCandidate? CollectCandidate(int token, string document, int line, int? column)
+    private MethodCandidate? CollectCandidate(int token, int? version, string document, int line, int? column)
     {
         Point? firstSP = null;
         Point? lastSP = null;
         Point? coveringSP = null;
         string? docPath = null;
 
-        foreach (Point sp in Points(token))
+        foreach (Point sp in Points(token, version))
         {
             if (sp.IsHidden)
             {
@@ -287,7 +288,7 @@ public partial class ModuleMetadataReader
         return new MethodCandidate(token, firstSP.Value, lastSP!.Value, coveringSP, docPath!);
     }
     private static ResolvedBreakpoint NewResolvedBreakpoint(int token, Point sp, string docPath) =>
-        new(token, sp.Offset, sp.StartLine, sp.EndLine, sp.StartColumn, sp.EndColumn, docPath);
+        new(token, sp.Offset, sp.StartLine, sp.EndLine, sp.StartColumn, sp.EndColumn, docPath) { Rewritten = sp.Rewritten };
 }
 
 internal readonly record struct LineCol(int Line, int Column) : IComparable<LineCol>

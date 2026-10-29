@@ -246,7 +246,7 @@ public sealed partial class DebugAdapter
             List<ModuleUpdate> updates = [.. arguments.Updates.Select(u => new ModuleUpdate(u.Module, u.Name, u.Metadata, u.IL, u.Pdb, u.UpdatedMethods, u.UpdatedTypes,
                 [.. u.Lines.Select(l => (l.Document, (IReadOnlyList<(int, int)>)[.. l.Updates.Select(x => (x.OldLine, x.NewLine))]))],
                 [.. u.ActiveStatements.Select(a => new StatementUpdate(a.Token, a.Version, a.ILOffset, a.StartLine, a.StartColumn, a.EndLine, a.EndColumn))],
-                [.. u.FirstChanges.Select(c => (c.Document, c.Line))]))];
+                [.. u.FirstChanges.Select(c => new TextChange(c.Document, c.Line, c.TailWas, c.TailNow))]))];
             IReadOnlyList<ModuleApplied> applied = await Locked(() => debugger.ApplyChanges(updates));
             return new ApplyChangesResponse([.. applied.Select(a => new DapModuleApplied(a.Module, a.Name, a.Applied, a.Message))]);
         });

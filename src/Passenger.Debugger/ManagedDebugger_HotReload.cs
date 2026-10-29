@@ -15,11 +15,15 @@ public sealed record ActiveStatementInfo(Guid Module, int Token, int Version, in
 /// <summary>Where an active statement of a method's version went in the new version's source (lines and columns from zero).</summary>
 public sealed record StatementUpdate(int Token, int Version, int ILOffset, int StartLine, int StartColumn, int EndLine, int EndColumn);
 
-/// <summary>One module's update as Roslyn's Edit and Continue emitted it, with the first line (from zero) it changed in each
-/// document it edits.</summary>
+/// <summary>How an update changed a document's text, lines from zero: <paramref name="Line"/> is the first it changed, the
+/// lines above reading as they did, and the text below the change reads as it did, from line <paramref name="TailWas"/>
+/// before and <paramref name="TailNow"/> now.</summary>
+public sealed record TextChange(string Document, int Line, int TailWas, int TailNow);
+
+/// <summary>One module's update as Roslyn's Edit and Continue emitted it, with how it changed each document it edits.</summary>
 public sealed record ModuleUpdate(Guid Module, string Name, byte[] Metadata, byte[] IL, byte[] Pdb, IReadOnlyList<int> UpdatedMethods,
     IReadOnlyList<int> UpdatedTypes, IReadOnlyList<(string Document, IReadOnlyList<(int Old, int New)> Updates)> Lines,
-    IReadOnlyList<StatementUpdate> ActiveStatements, IReadOnlyList<(string Document, int Line)> FirstChanges);
+    IReadOnlyList<StatementUpdate> ActiveStatements, IReadOnlyList<TextChange> TextChanges);
 
 /// <summary>What became of one module's update: applied (or, its module not yet loaded, held for its load), or why not.</summary>
 public sealed record ModuleApplied(Guid Module, string Name, bool Applied, string? Message);
@@ -291,7 +295,7 @@ public partial class ManagedDebugger
         }
         try
         {
-            module.MetadataReader.AddGeneration(update.Metadata, update.IL, update.Pdb, update.UpdatedMethods, update.Lines);
+            module.MetadataReader.AddGeneration(update.Metadata, update.IL, update.Pdb, update.UpdatedMethods, update.Lines, update.TextChanges);
         }
         catch (Exception error) when (error is BadImageFormatException or InvalidOperationException)
         {
@@ -322,9 +326,9 @@ public partial class ManagedDebugger
                 _placedFrames.Add((update.Module, moved.Token, moved.Version));
             }
         }
-        foreach ((string document, int line) in update.FirstChanges)
+        foreach (TextChange text in update.TextChanges)
         {
-            _firstChanges[(update.Module, document)] = line;
+            _firstChanges[(update.Module, text.Document)] = text.Line;
         }
         ModuleSet_Version++;
         foreach (int method in update.UpdatedMethods)

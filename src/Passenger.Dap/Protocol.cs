@@ -492,8 +492,9 @@ public sealed record DapModuleUpdate(Guid Module, string Name, byte[] Metadata, 
     IReadOnlyList<int> UpdatedMethods, IReadOnlyList<int> UpdatedTypes, IReadOnlyList<DapLineUpdates> Lines,
     IReadOnlyList<DapStatementUpdate> ActiveStatements, IReadOnlyList<DapFirstChange> FirstChanges);
 
-/// <summary>A document an update edits and the first of its lines the edit changed (from zero), as it read before.</summary>
-public sealed record DapFirstChange(string Document, int Line);
+/// <summary>A document an update edits, lines from zero: the first of its lines the edit changed, as it read before, and the
+/// text below the change, which reads as it did, from line TailWas before and TailNow now.</summary>
+public sealed record DapFirstChange(string Document, int Line, int TailWas, int TailNow);
 
 public sealed record DapLineUpdates(string Document, IReadOnlyList<DapLineUpdate> Updates);
 

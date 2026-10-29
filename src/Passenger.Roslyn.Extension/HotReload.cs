@@ -159,7 +159,8 @@ internal static class HotReload
         return new HotReloadEmitted(null, "ready", updates, problems, changed);
     }
 
-    /// <summary>Each document of a project an update edits, with the first of its lines the edit changed (from zero).</summary>
+    /// <summary>Each document of a project an update edits, with the first of its lines the edit changed and the first of
+    /// the unchanged lines below the change, before and now (from zero).</summary>
     private static async Task<IReadOnlyList<HotReloadFirstChange>> FirstChangesAsync(Project? before, Project? after, CancellationToken cancel)
     {
         if (before is null || after is null)
@@ -171,7 +172,11 @@ internal static class HotReload
         {
             if (before.GetDocument(id) is { FilePath: { } path } was && after.GetDocument(id) is { } now)
             {
-                changes.Add(new HotReloadFirstChange(path, FirstChangedLine(await was.GetTextAsync(cancel).ConfigureAwait(false), await now.GetTextAsync(cancel).ConfigureAwait(false))));
+                SourceText then = await was.GetTextAsync(cancel).ConfigureAwait(false);
+                SourceText text = await now.GetTextAsync(cancel).ConfigureAwait(false);
+                int first = FirstChangedLine(then, text);
+                int kept = KeptLines(then, text, first);
+                changes.Add(new HotReloadFirstChange(path, first, then.Lines.Count - kept, text.Lines.Count - kept));
             }
         }
         return changes;
@@ -183,14 +188,32 @@ internal static class HotReload
         int lines = Math.Min(before.Lines.Count, after.Lines.Count);
         for (int line = 0; line < lines; line++)
         {
-            TextSpan was = before.Lines[line].SpanIncludingLineBreak;
-            TextSpan now = after.Lines[line].SpanIncludingLineBreak;
-            if (was.Length != now.Length || before.ToString(was) != after.ToString(now))
+            if (!SameLine(before, line, after, line))
             {
                 return line;
             }
         }
         return lines;
+    }
+
+    /// <summary>How many lines at the end of two texts of a document read the same, line breaks included, none above the
+    /// first changed line in either.</summary>
+    private static int KeptLines(SourceText before, SourceText after, int firstChanged)
+    {
+        int kept = 0;
+        while (before.Lines.Count - kept > firstChanged && after.Lines.Count - kept > firstChanged
+            && SameLine(before, before.Lines.Count - 1 - kept, after, after.Lines.Count - 1 - kept))
+        {
+            kept++;
+        }
+        return kept;
+    }
+
+    private static bool SameLine(SourceText before, int was, SourceText after, int now)
+    {
+        TextSpan then = before.Lines[was].SpanIncludingLineBreak;
+        TextSpan span = after.Lines[now].SpanIncludingLineBreak;
+        return then.Length == span.Length && before.ToString(then) == after.ToString(span);
     }
 
     public static HotReloadDone Commit(int id)

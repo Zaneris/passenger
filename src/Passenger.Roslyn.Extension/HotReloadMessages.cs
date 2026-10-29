@@ -86,11 +86,14 @@ public sealed record HotReloadStatementUpdate(
     [property: JsonPropertyName("endLine")] int EndLine,
     [property: JsonPropertyName("endColumn")] int EndColumn);
 
-/// <summary>A document an update edits and the first of its lines the edit changed (from zero), as it read before: the
-/// lines above it read as they did.</summary>
+/// <summary>A document an update edits, lines from zero: the first of its lines the edit changed, as it read before, the
+/// lines above it reading as they did; and the text below the change, which reads as it did, from line TailWas before and
+/// TailNow now.</summary>
 public sealed record HotReloadFirstChange(
     [property: JsonPropertyName("document")] string Document,
-    [property: JsonPropertyName("line")] int Line);
+    [property: JsonPropertyName("line")] int Line,
+    [property: JsonPropertyName("tailWas")] int TailWas,
+    [property: JsonPropertyName("tailNow")] int TailNow);
 
 /// <summary>One module's update: the metadata, IL and PDB deltas, the methods and types it changes (their tokens), the
 /// lines that moved, where the active statements went, the runtime capabilities it needs, and the first line it changed

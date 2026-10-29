@@ -156,6 +156,10 @@ public partial class ModuleMetadataReader : IDisposable
         /// <summary>An XAML attribute's setter that XamlIl compiled under the point of its element (or of an attribute before
         /// it): bound at that point, and shown at the attribute.</summary>
         public bool Attributed { get; init; }
+
+        /// <summary>Whether an update rewrote this place's lines after the code it was found in: that code's statement is no
+        /// longer in the text.</summary>
+        public bool Rewritten { get; init; }
     }
 
     /// <summary>
