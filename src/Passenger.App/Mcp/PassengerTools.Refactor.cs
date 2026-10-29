@@ -400,7 +400,7 @@ public sealed partial class PassengerTools
             cancel.ThrowIfCancellationRequested();
             await Tidied(open, service.For(open)?.Lsp);
         }
-        using (Passenger.App.Editors.CommandHistory.Recording recording = Editors.Commands.Record(name))
+        using (Passenger.App.Editors.CommandHistory.Recording recording = Editors.Commands.RecordWrites(name))
         {
             HashSet<string> shown = new(Editors.Documents.Select(d => d.Path), StringComparer.Ordinal);
             foreach (string file in files.Where(f => !shown.Contains(f)))

@@ -25,6 +25,8 @@ public sealed class FolderPackages
     /// <summary>The package change under way, as its work says it.</summary>
     private string? changing;
 
+    private (Task Until, TaskCompletionSource Reached)? holdNext;
+
     /// <param name="projects">The folder's projects, whose packages are listed and changed.</param>
     /// <param name="root">The folder NuGet's configuration is read from: the solution's, else the one open.</param>
     public FolderPackages(Func<IReadOnlyList<ProjectModel>> projects, Func<string?> root)
@@ -188,6 +190,15 @@ public sealed class FolderPackages
     /// <summary>Ends a package change still under way, as the folder is left.</summary>
     public void Stop() => manager.Stop();
 
+    /// <summary>The next package change waits until <paramref name="until"/> has ended before its command runs, as a slow
+    /// restore keeps it, for a test of what goes on meanwhile: done once that change is waiting.</summary>
+    public Task HoldNextChange(Task until)
+    {
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        holdNext = (until, reached);
+        return reached.Task;
+    }
+
     /// <summary>A package change, whoever asks for it: one at a time (another asked meanwhile is refused, saying what is under
     /// way), the open files saved first, shown as the window's work under <see cref="Changing"/>, which <see cref="Stop"/>
     /// ends; then the files it changed told (<see cref="Changed"/>).</summary>
@@ -216,6 +227,12 @@ public sealed class FolderPackages
             }
             // Read once the open files are saved: what the save wrote is not the change's.
             before = [.. files.Select(Bytes)];
+            if (holdNext is { } hold)
+            {
+                holdNext = null;
+                hold.Reached.TrySetResult();
+                await hold.Until;
+            }
             done = await change();
         }
         finally

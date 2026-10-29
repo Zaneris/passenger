@@ -103,7 +103,7 @@ public partial class MainWindow
         IReadOnlyDictionary<string, IReadOnlyList<string>> following = DependentsOf(paths);
         HashSet<string> dependents = [.. following.Values.SelectMany(d => d)];
         using CommandHistory.Recording? recording = copy ? null
-            : Editors.Commands.Record($"Move {Together([.. paths.Where(p => !dependents.Contains(p)).Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
+            : Editors.Commands.RecordWrites($"Move {Together([.. paths.Where(p => !dependents.Contains(p)).Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
         List<string> put = [];
         List<(string From, string To)> moved = [];
         // The ends of the moves, followed with the copies once all are put.

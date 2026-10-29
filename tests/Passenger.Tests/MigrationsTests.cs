@@ -153,6 +153,70 @@ public sealed class MigrationsTests
         }
     }
 
+    /// <summary>The missing Design package's fix from the window's button while the person types in Program.cs as its install
+    /// runs (held): Undo there takes back the typing alone, asking nothing, the package staying, and the fix's own Undo in
+    /// the Solution view takes the package out and leaves the typing, where the fix's command took the typing as its own.</summary>
+    [AvaloniaFact]
+    public void Typing_in_another_file_while_a_fix_adds_a_package_stays_that_files_own_undo()
+    {
+        string folder = ShopApp.Make(design: false, tool: ShopApp.Version);
+        string program = Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Program.cs"));
+        string project = Path.Combine(folder, "Shop.csproj");
+        TaskCompletionSource installed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(program);
+            window.ShowToolWindow(ToolWindowIds.Migrations);
+            string fix = $"Add Microsoft.EntityFrameworkCore.Design {ShopApp.Version}";
+            Ui.WaitFor(() => Gaps(window).Contains("lacks Microsoft.EntityFrameworkCore.Design", StringComparison.Ordinal) && window.Migrations.Busy is null,
+                $"the missing Design package found ({Gaps(window)})", Slow);
+            Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+            string had = editor.Document.Snapshot.ToString();
+
+            Task held = window.Session.Packages.HoldNextChange(installed.Task);
+            Ui.ClickButton(window.MigrationsView, fix);
+            ChoiceDialog asked = Asked<ChoiceDialog>(window, "the fix's question, before it reaches the feeds");
+            Button add = asked.GetVisualDescendants().OfType<Button>().Single(b => b.IsEffectivelyVisible && b.Content as string == fix);
+            // Pumped, not settled: the package change holds the window's background work while its install is held.
+            Ui.Click(add, settle: false);
+            Ui.PumpUntil(() => held.IsCompleted, $"the Design package's install to be held ({window.Status})", Slow);
+            Assert.Equal(program, window.EditorArea.Active?.Path);
+            Ui.PlaceAfter(editor, "Console.WriteLine(context.Products.Count());");
+            editor.Focus();
+            window.KeyTextInput(" // typed meanwhile");
+            string typed = editor.Document.Snapshot.ToString();
+            Assert.Contains("Count()); // typed meanwhile", typed, StringComparison.Ordinal);
+            installed.SetResult();
+            Ui.WaitFor(() => File.ReadAllText(project).Contains("Microsoft.EntityFrameworkCore.Design", StringComparison.Ordinal) && window.Migrations.Busy is null,
+                $"the Design package added once its install went on ({window.Status}; gaps: {Gaps(window)})", Slow);
+
+            List<string> questions = [];
+            window.Confirm = (_, question, _) =>
+            {
+                questions.Add(question);
+                return Task.FromResult(true);
+            };
+            window.OpenFile(program);
+            Ui.Settle();
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Assert.True(questions.Count == 0, $"Undo in Program.cs asked {string.Join(" | ", questions)}, as though the typing were the package add's");
+            Assert.Equal(had, editor.Document.Snapshot.ToString());
+            Assert.Contains("Microsoft.EntityFrameworkCore.Design", File.ReadAllText(project), StringComparison.Ordinal);
+            Ui.Run(window, Passenger.Editor.EditorActions.Redo);
+            Assert.Equal(typed, editor.Document.Snapshot.ToString());
+
+            UndoFromExplorer(window, project);
+            Assert.DoesNotContain("Microsoft.EntityFrameworkCore.Design", File.ReadAllText(project), StringComparison.Ordinal);
+            Assert.Equal(typed, window.EditorArea.Find(program)?.Text.Snapshot.ToString());
+        }
+        finally
+        {
+            installed.TrySetResult();
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Only_the_projects_own_contexts_are_taken_for_its_own_not_a_nested_projects_nor_a_dependencys()
     {

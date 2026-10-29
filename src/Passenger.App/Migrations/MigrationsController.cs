@@ -955,7 +955,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         {
             return answer is not null;
         }
-        using CommandHistory.Recording recording = parts.Editors.Commands.Record(together);
+        using CommandHistory.Recording recording = parts.Editors.Commands.RecordWrites(together);
         WatchPackageFiles(recording, project);
         List<(string, string)> moved = [.. project.Packages.Where(p => EfProviders.InSet(p.Name)).Select(p => (p.Name, version))];
         if (!moved.Any(m => m.Item1.Equals(id, StringComparison.OrdinalIgnoreCase)))
@@ -1066,7 +1066,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         string root = session.Folder!;
         string? manifest = EfTools.NearestManifest(startup.Folder) is { } near && PathNames.IsUnder(near, root) ? near : null;
         EfTool? local = manifest is null ? null : EfTools.Local(startup.Folder);
-        using CommandHistory.Recording recording = parts.Editors.Commands.Record($"Pin {EfTools.Id} to {runtime}");
+        using CommandHistory.Recording recording = parts.Editors.Commands.RecordWrites($"Pin {EfTools.Id} to {runtime}");
         if (manifest is null)
         {
             manifest = Path.Combine(root, "dotnet-tools.json");
@@ -1109,7 +1109,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     /// <summary>A package added to a project through the NuGet window's one way, as one step of global undo.</summary>
     private async Task<string?> AddPackageAsync(ProjectModel project, string id, string version)
     {
-        using CommandHistory.Recording recording = parts.Editors.Commands.Record($"Add {id} {version} to {project.Name}");
+        using CommandHistory.Recording recording = parts.Editors.Commands.RecordWrites($"Add {id} {version} to {project.Name}");
         WatchPackageFiles(recording, project);
         PackageOutcome outcome = await parts.Install(project, id, version);
         Touched = outcome.Changed;
@@ -1140,7 +1140,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             return $"No version of {behind.Id} in the feeds supports EF Core {runtime}, and none of EF Core it supports is there";
         }
         work.Say($"{alignment.Title}…");
-        using CommandHistory.Recording recording = parts.Editors.Commands.Record(alignment.Title);
+        using CommandHistory.Recording recording = parts.Editors.Commands.RecordWrites(alignment.Title);
         foreach (EfMove move in alignment.Moves)
         {
             WatchPackageFiles(recording, move.Project);
