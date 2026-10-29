@@ -250,6 +250,31 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("count 2", (await Call(client, McpTools.Output, new() { ["of"] = "debug" })).GetString(), StringComparison.Ordinal);
     }
 
+    /// <summary>An agent's breakpoint in a lambda of a closed file whose lambda is then written away on disk is the line's
+    /// once the program is debugged: it stops once at the statement and is listed by its line, never asking the debugger
+    /// for a column nothing holds.</summary>
+    [Fact]
+    public async Task An_agents_breakpoint_in_a_lambda_written_away_from_its_closed_file_stops_at_the_statement_listed_by_its_line()
+    {
+        await TakeFolderAsync();
+        const string Counting = "int count = items.Count(i => i > 1);";
+        int body = Counting.IndexOf("i > 1", StringComparison.Ordinal) + 1;
+        Write("Program.cs", $"int[] items = [1, 2, 3];\n{Counting}\nConsole.WriteLine($\"count {{count}}\");\n");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        JsonElement set = Assert.Single((await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 2, ["column"] = body })).EnumerateArray());
+        Assert.Equal((2, body), (set.GetProperty("line").GetInt32(), set.GetProperty("column").GetInt32()));
+        Write("Program.cs", "int[] items = [1, 2, 3];\nint count = items.Length;\nConsole.WriteLine($\"count {count}\");\n");
+
+        JsonElement stop = await Call(client, McpTools.DebugStart);
+        Assert.Equal("Program.cs:2:1", stop.GetProperty("location").GetString());
+        JsonElement listed = Assert.Single((await Call(client, McpTools.DebugState, new() { ["of"] = "breakpoints" })).EnumerateArray(),
+            b => b.TryGetProperty("path", out JsonElement path) && path.GetString() == "Program.cs");
+        Assert.True(listed.GetProperty("line").GetInt32() == 2 && (!listed.TryGetProperty("column", out JsonElement column) || column.ValueKind == JsonValueKind.Null),
+            $"The breakpoint whose lambda was written away is listed as {listed}, not as its line's");
+        Assert.Equal("not debugging", (await Call(client, McpTools.DebugContinue)).GetProperty("state").GetString());
+        Assert.Contains("count 3", (await Call(client, McpTools.Output, new() { ["of"] = "debug" })).GetString(), StringComparison.Ordinal);
+    }
+
     /// <summary>A call that takes a while tells an agent that asked for progress what it is doing as it goes (the run's
     /// stages, then the wait for the program), at rising counts, so a client that gives up on a silent call (OpenCode's
     /// 60 s) waits on; and the agent's own Passenger writes nothing to the standard error an agent may never read.</summary>

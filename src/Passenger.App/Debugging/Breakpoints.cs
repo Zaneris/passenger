@@ -579,6 +579,33 @@ public sealed class BreakpointStore
         return added;
     }
 
+    /// <summary>Makes a file's breakpoints inside C# lambdas that are gone (<paramref name="gone"/>, given a line and a column
+    /// from zero) their lines' own, each keeping what it does; one on a line holding its own already goes, the line's
+    /// staying as it was.</summary>
+    public void ToLines(string path, Func<int, int, bool> gone)
+    {
+        List<LineBreakpoint> lost = [.. In(path).Where(b => b.Column is int column && gone(b.Line, column))];
+        if (lost.Count == 0)
+        {
+            return;
+        }
+        List<LineBreakpoint> list = For(path);
+        foreach (LineBreakpoint breakpoint in lost)
+        {
+            if (list.Any(b => b.Line == breakpoint.Line && !b.OnPart))
+            {
+                list.Remove(breakpoint);
+                breakpoint.At.Detach();
+            }
+            else
+            {
+                breakpoint.At.ToLine();
+            }
+        }
+        Sort(list);
+        Changed?.Invoke(this, path);
+    }
+
     /// <summary>A file's breakpoints in order: by line, a line's own before its attributes' and its lambdas', those by their
     /// columns.</summary>
     private static void Sort(List<LineBreakpoint> list) =>

@@ -507,20 +507,76 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         WaitDebugging(window, () => session.State == DebugState.Ended, "the program to run to its end, the lambda run three times");
         Assert.Contains("count 2", window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
         window.Close();
-
-        static void RightClick(MainWindow window, Point at)
-        {
-            window.MouseDown(at, MouseButton.Right);
-            window.MouseUp(at, MouseButton.Right);
-            Ui.Settle();
-        }
-
-        // What a line's breakpoint on part of it tints there, as the editor shows it; null where none does.
-        static string? Tinted(CodeEditor editor, int line) =>
-            editor.LineMarks.FirstOrDefault(m => m.Line == line && m.Range is { Length: > 0 }) is { Range: { } range }
-                ? editor.Document.Snapshot.GetText(range.Start, range.Length)
-                : null;
     }
+
+    /// <summary>Edit Breakpoint with the caret in a lambda without a breakpoint of its own sets the lambda's to edit, beside
+    /// the line's. A comment left open above as it is typed leaves it the lambda's, and the lambda edited away makes it the
+    /// line's, listed by its line, which stops once at the statement.</summary>
+    [AvaloniaFact]
+    public void Edit_breakpoint_in_a_lambda_sets_its_own_and_the_lambda_edited_away_leaves_the_lines_which_stops_at_the_statement()
+    {
+        const string Counting = "int count = items.Count(i => i > 1);";
+        int body = Counting.IndexOf("i > 1", StringComparison.Ordinal);
+        string inside = $"Program.cs:2:{body + 1}";
+        Write("Program.cs", $"int[] items = [1, 2, 3];\n{Counting}\nConsole.WriteLine($\"count {{count}}\");\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Point gutter = Gutter(window, editor, 1);
+        window.MouseDown(gutter, MouseButton.Left);
+        window.MouseUp(gutter, MouseButton.Left);
+        editor.GoTo(new TextPosition(1, body + 2));
+        Ui.Run(window, AppActions.EditBreakpoint);
+        BreakpointPopup popup = Assert.IsType<BreakpointPopup>(window.Popup);
+        Ui.Settle();
+        Assert.Equal(inside, popup.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("popupTitle")).Text);
+        Ui.Press(window, "Enter");
+        Assert.Equal(["Program.cs:2", inside], window.Debugger.Breakpoints.In(Program).Select(b => b.Location));
+        RightClick(window, gutter);
+        Ui.Choose(window.OpenContextMenu, "Line");
+        Assert.Equal([inside], window.Debugger.Breakpoints.In(Program).Select(b => b.Location));
+
+        editor.GoTo(new TextPosition(0, 0));
+        window.KeyTextInput("/*");
+        Ui.Settle();
+        Assert.True(window.Debugger.Breakpoints.In(Program).Select(b => b.Location).SequenceEqual([inside]),
+            $"A comment left open above the lambda made its breakpoint {string.Join(", ", window.Debugger.Breakpoints.In(Program).Select(b => b.Location))}");
+        Ui.Press(window, "Back");
+        Ui.Press(window, "Back");
+        Ui.Settle();
+        Assert.Equal("i => i > 1", Tinted(editor, 1));
+        Typing.Replace(window, "Count(i => i > 1)", "Length");
+        Assert.Equal(["Program.cs:2"], window.Debugger.Breakpoints.In(Program).Select(b => b.Location));
+        Assert.Contains(new LineMark(1, LineMarkKind.Breakpoint), editor.LineMarks);
+        Ui.Run(window, AppActions.ViewBreakpoints);
+        BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
+        Assert.Equal(["Program.cs:2", ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError], breakpoints.Listed.Select(b => b.Location));
+        Ui.Press(window, "Escape");
+
+        StartDebugging(window);
+        DebugSession session = window.Debugger.Session!;
+        WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 1 } && window.BottomPanel.Debug.Frames.Count > 0, "the stop at the statement");
+        Assert.Contains(new LineMark(1, LineMarkKind.ExecutionPoint), editor.LineMarks);
+        Assert.Contains("<Main>$", window.BottomPanel.Debug.Frames[0].Name, StringComparison.Ordinal);
+        Assert.Equal(1, window.BottomPanel.Debug.Frames[0].Column);
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => session.State == DebugState.Ended, "the program to run to its end, stopping nowhere else");
+        Assert.Equal(1, session.Stops);
+        Assert.Contains("count 3", window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    private static void RightClick(MainWindow window, Point at)
+    {
+        window.MouseDown(at, MouseButton.Right);
+        window.MouseUp(at, MouseButton.Right);
+        Ui.Settle();
+    }
+
+    /// <summary>What a line's breakpoint on part of it tints there, as the editor shows it; null where none does.</summary>
+    private static string? Tinted(CodeEditor editor, int line) =>
+        editor.LineMarks.FirstOrDefault(m => m.Line == line && m.Range is { Length: > 0 }) is { Range: { } range }
+            ? editor.Document.Snapshot.GetText(range.Start, range.Length)
+            : null;
 
     /// <summary>Run to Cursor stops at its line whatever breakpoint stands there, one whose condition is false and a
     /// tracepoint alike, each as it was once the stop is made: the condition passed by on the loop's later turns.</summary>

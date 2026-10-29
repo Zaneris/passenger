@@ -651,6 +651,7 @@ public sealed class DebugController : IDisposable
         tab.Plan = plan;
         BuiltLines built = new(path => CSharp.ServerPlaces.TextOf(editors, path));
         tab.Lines = built;
+        await FollowClosedLambdasAsync();
         await ChooseAsync(tab);
         if (disposed || ending || tab.OpeningStopped || !view.Sessions.Contains(tab))
         {
@@ -1451,6 +1452,7 @@ public sealed class DebugController : IDisposable
                 run.Reload.Edited(document.Path, change.Before);
             }
             Breakpoints.Follow(document.Path);
+            FollowLambdas(document);
             FollowStop(document, change);
             if (Breakpoints.In(document.Path).Any(b => b.OnPart))
             {
@@ -1462,7 +1464,32 @@ public sealed class DebugController : IDisposable
         Breakpoints.Attach(document.Path, document.Text);
         document.Text.Changed += follow;
         document.Saved += OnSaved;
+        FollowLambdas(document);
         UpdateMarks(document);
+    }
+
+    /// <summary>Makes an open C# file's breakpoints whose lambdas are gone from its text as it stands their lines' own
+    /// (<see cref="LambdaBreakpoints.Gone"/>).</summary>
+    private void FollowLambdas(OpenDocument document)
+    {
+        if (Breakpoints.In(document.Path).Any(b => b.Column is not null) && document.Syntax?.Current is { } parsed
+            && ReferenceEquals(parsed.Text, document.Text.Snapshot))
+        {
+            Breakpoints.ToLines(document.Path, (line, column) => LambdaBreakpoints.Gone(parsed, line, column));
+        }
+    }
+
+    /// <summary>Makes the breakpoints whose lambdas are gone from closed C# files, as the disk has them, their lines' own, each
+    /// file read and parsed off the window's thread, so a session is sent no column that nothing holds.</summary>
+    private async Task FollowClosedLambdasAsync()
+    {
+        foreach (string path in Breakpoints.Files.Where(p => editors.Find(p) is null && Breakpoints.In(p).Any(b => b.Column is not null)).ToList())
+        {
+            if (await LambdaBreakpoints.ParsedAsync(editors, path) is { } parsed && !disposed)
+            {
+                Breakpoints.ToLines(path, (line, column) => LambdaBreakpoints.Gone(parsed, line, column));
+            }
+        }
     }
 
     public void Detach(OpenDocument document)

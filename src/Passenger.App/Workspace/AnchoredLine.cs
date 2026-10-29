@@ -31,6 +31,20 @@ public sealed class AnchoredLine(int line, int? column = null)
             : document.AnchorAt(span.Start, AnchorGravity.After);
     }
 
+    /// <summary>Makes the place its line's, anchored from now on as a line is.</summary>
+    public void ToLine()
+    {
+        if (Column is null)
+        {
+            return;
+        }
+        Column = null;
+        if (text is { } document)
+        {
+            Attach(document);
+        }
+    }
+
     /// <summary>Its file closed: the line stays where it was last read.</summary>
     public void Detach()
     {

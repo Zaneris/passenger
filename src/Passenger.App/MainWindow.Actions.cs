@@ -307,7 +307,8 @@ public partial class MainWindow
             IReadOnlyList<Debugging.LineBreakpoint> here = session.Debug.Breakpoints.In(c.File!.Path);
             Debugging.LineBreakpoint? own = lambda is not null ? session.Debug.OnLambda(c.File, lambda.Value)
                 : here.FirstOrDefault(b => b.Line == line && b.Attribute == attribute && b.Column is null);
-            if ((own ?? here.FirstOrDefault(b => b.Line == line)) is not { } editing)
+            // In a lambda, its own, set if it has none: the line's is edited from outside the lambda.
+            if ((own ?? (lambda is null ? here.FirstOrDefault(b => b.Line == line) : null)) is not { } editing)
             {
                 // Edit Breakpoint on a line with none sets one to edit: on an XAML attribute or in a lambda, its own.
                 if (attribute is not null)

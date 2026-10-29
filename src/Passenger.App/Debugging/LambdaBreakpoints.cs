@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Passenger.App.Editors;
+using Passenger.Core;
 using Passenger.Languages;
 using Passenger.Languages.CSharp;
 using Passenger.Text;
@@ -21,19 +22,25 @@ public static class LambdaBreakpoints
     /// <summary>The longest a lambda's name runs before it is cut short.</summary>
     private const int LongestName = 48;
 
-    /// <summary>A C# file's parse: an open file's as it stands, else the disk's, read and parsed as its project compiles it;
-    /// null for a file that is not C# or cannot be read.</summary>
-    public static ParsedText? Parsed(EditorArea editors, string path)
+    /// <summary>A C# file's parse: an open file's as it stands, else the disk's, read and parsed off the window's thread as
+    /// its project compiles it; null for a file that is not C# or cannot be read.</summary>
+    public static async Task<ParsedText?> ParsedAsync(EditorArea editors, string path)
     {
+        UiThread.Check();
         if (editors.Find(path) is { } open)
         {
             return open.Syntax?.Current;
         }
-        if (Language.ForPath(path) != Language.CSharp || !File.Exists(path) || FileText.Load(path) is not { } file)
+        if (Language.ForPath(path) != Language.CSharp)
         {
             return null;
         }
-        return new ParsedText(CSharpSyntaxTree.ParseText(file.Text, editors.ParseOptions(path)), TextSnapshot.From(file.Text));
+        CSharpParseOptions options = editors.ParseOptions(path);
+        ParsedText? read = await BackgroundWork.Run(() => EditorArea.ReadText(path) is { } text
+            ? new ParsedText(CSharpSyntaxTree.ParseText(text, options), TextSnapshot.From(text))
+            : null);
+        // Opened as it was read, its text is the editor's.
+        return editors.Find(path) is { } opened ? opened.Syntax?.Current : read;
     }
 
     /// <summary>The lambdas whose bodies begin on a line (from zero) after its code begins, in the order they begin.</summary>
@@ -83,6 +90,23 @@ public static class LambdaBreakpoints
         }
         LineSpan span = parsed.Text.GetLine(line);
         return column <= span.Length ? At(parsed, span.Start + column) : null;
+    }
+
+    /// <summary>Whether the lambda a breakpoint at a column (from zero) of a line was set inside is gone: none of the line's
+    /// holds it, and the code around it reads whole, so no comment or string left open as it is typed hides one still
+    /// written there.</summary>
+    public static bool Gone(ParsedText parsed, int line, int column)
+    {
+        if (Of(parsed, line, column) is not null)
+        {
+            return false;
+        }
+        SyntaxNode root = parsed.Root;
+        int offset = line < parsed.Text.LineCount ? parsed.Text.GetLineStart(line) + Math.Min(column, parsed.Text.GetLine(line).Length) : root.FullSpan.End;
+        SyntaxNode around = offset < root.FullSpan.End && root.FindToken(offset).Parent is { } parent
+            ? parent.AncestorsAndSelf().FirstOrDefault(n => n is StatementSyntax or MemberDeclarationSyntax) ?? root
+            : root;
+        return !around.ContainsDiagnostics;
     }
 
     /// <summary>The breakpoint set inside a lambda, among a file's.</summary>

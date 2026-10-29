@@ -1343,7 +1343,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             return ExceptionBreakpoints();
         }
         (string full, int at) = LinePlace(path, line);
-        LineBreakpoint set = column is int inside ? LambdaBreakpoint(full, at, inside, set: true)! : store.Set(full, at, attribute is { Length: > 0 } ? attribute : null);
+        LineBreakpoint set = column is int inside ? (await LambdaBreakpointAsync(full, at, inside, set: true))! : store.Set(full, at, attribute is { Length: > 0 } ? attribute : null);
         store.Update(set, enabled: true, suspend, condition, hitCondition, logMessage);
         await InTheProgram(cancel);
         return Breakpoints(full);
@@ -1394,7 +1394,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         (string full, int at) = LinePlace(path, line);
         string? on = attribute is { Length: > 0 } ? attribute : null;
-        if ((column is int inside ? LambdaBreakpoint(full, at, inside, set: false) : store.In(full).FirstOrDefault(b => b.Line == at && b.Attribute == on && b.Column is null)) is { } set)
+        if ((column is int inside ? await LambdaBreakpointAsync(full, at, inside, set: false) : store.In(full).FirstOrDefault(b => b.Line == at && b.Attribute == on && b.Column is null)) is { } set)
         {
             store.Remove(set);
         }
@@ -1405,9 +1405,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>The breakpoint inside the C# lambda holding a column (from one) of a line (from zero), set if
     /// <paramref name="set"/> says to, else null with none there; refused where no lambda written after the line's code
     /// begins holds that column.</summary>
-    private LineBreakpoint? LambdaBreakpoint(string path, int line, int column, bool set)
+    private async Task<LineBreakpoint?> LambdaBreakpointAsync(string path, int line, int column, bool set)
     {
-        Passenger.Languages.CSharp.ParsedText parsed = LambdaBreakpoints.Parsed(Editors, path)
+        Passenger.Languages.CSharp.ParsedText parsed = await LambdaBreakpoints.ParsedAsync(Editors, path)
             ?? throw new ArgumentException($"A column names a lambda's breakpoint in a C# file, which {Relative(path)} is not");
         if (line >= parsed.Text.LineCount)
         {
