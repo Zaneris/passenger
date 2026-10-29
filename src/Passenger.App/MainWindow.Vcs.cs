@@ -495,14 +495,23 @@ public partial class MainWindow
         status.Text = $"{lines[line].Short} {lines[line].Summary} ({lines[line].Author}, {lines[line].Time.ToLocalTime():f})";
     }
 
-    /// <summary>The gutter menu where no breakpoint is: annotations on or off.</summary>
-    private void ShowGutterMenu(CodeEditor editor, OpenDocument document)
+    /// <summary>The gutter menu where no breakpoint is, or on a line holding lambdas: the line's breakpoints given first, then
+    /// annotations on or off.</summary>
+    private void ShowGutterMenu(CodeEditor editor, OpenDocument document, IReadOnlyList<Control>? breakpoints = null)
     {
         ContextMenu menu = new();
+        foreach (Control item in breakpoints ?? [])
+        {
+            menu.Items.Add(item);
+        }
+        if (breakpoints is { Count: > 0 })
+        {
+            menu.Items.Add(new Separator());
+        }
         MenuItem annotate = new() { Header = session.Vcs.IsAnnotated(document) ? "Close Annotations" : "Annotate with Git Blame", IsEnabled = session.Vcs.Repository is not null };
         annotate.Click += (_, _) => IdeErrors.Observe(ToggleAnnotationsAsync(document));
         menu.Items.Add(annotate);
-        menu.Open(editor);
+        Open(menu, editor);
     }
 
     /// <summary>The version control actions over the folder's working tree, each needing a repository, and those on a

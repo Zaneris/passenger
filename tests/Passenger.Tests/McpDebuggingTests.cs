@@ -219,6 +219,37 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's breakpoint given a column in a lambda written on its statement's line is the lambda's, at its body:
+    /// it stops inside the lambda each time it runs, where one on the line stops once at the statement; a column no lambda
+    /// holds is refused, naming where the line's lambdas are.</summary>
+    [Fact]
+    public async Task An_agents_breakpoint_given_a_lambdas_column_stops_inside_it_and_one_on_its_line_at_the_statement()
+    {
+        await TakeFolderAsync();
+        const string Counting = "int count = items.Count(i => i > 1);";
+        int lambda = Counting.IndexOf("i =>", StringComparison.Ordinal) + 1;
+        int body = Counting.IndexOf("i > 1", StringComparison.Ordinal) + 1;
+        Write("Program.cs", $"int[] items = [1, 2, 3];\n{Counting}\nConsole.WriteLine($\"count {{count}}\");\n");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        CallToolResult missed = await Result(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 2, ["column"] = 5 });
+        Assert.True(missed.IsError == true && Text(missed).Contains($"its lambdas are at columns {lambda}-{Counting.Length - 2}", StringComparison.Ordinal),
+            $"breakpoint_set at a column no lambda holds answered: {Text(missed)}");
+        JsonElement set = Assert.Single((await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 2, ["column"] = lambda })).EnumerateArray());
+        Assert.Equal((2, body), (set.GetProperty("line").GetInt32(), set.GetProperty("column").GetInt32()));
+        Assert.Equal(2, (await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 2 })).GetArrayLength());
+
+        JsonElement stop = await Call(client, McpTools.DebugStart);
+        Assert.Equal(("Program.cs:2:1", (string?)null), (stop.GetProperty("location").GetString(), Local(stop, "i")));
+        foreach (string i in new[] { "1", "2", "3" })
+        {
+            stop = await Call(client, McpTools.DebugContinue);
+            Assert.Equal(($"Program.cs:2:{body}", i), (stop.GetProperty("location").GetString(), Local(stop, "i")));
+        }
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 2, ["column"] = body, ["remove"] = true });
+        Assert.Equal("not debugging", (await Call(client, McpTools.DebugContinue)).GetProperty("state").GetString());
+        Assert.Contains("count 2", (await Call(client, McpTools.Output, new() { ["of"] = "debug" })).GetString(), StringComparison.Ordinal);
+    }
+
     /// <summary>A call that takes a while tells an agent that asked for progress what it is doing as it goes (the run's
     /// stages, then the wait for the program), at rising counts, so a client that gives up on a silent call (OpenCode's
     /// 60 s) waits on; and the agent's own Passenger writes nothing to the standard error an agent may never read.</summary>

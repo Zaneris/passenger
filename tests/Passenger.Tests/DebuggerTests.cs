@@ -449,6 +449,79 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
+    /// <summary>F9 with the caret in a lambda written on its statement's line sets the lambda's own breakpoint beside the
+    /// gutter's for the line, the lambda tinted, both carried down by a line typed above and named in the Breakpoints window,
+    /// the lambda's by its column; the gutter's menu offers the line and the lambda and takes either away or sets it again.
+    /// The gutter's stops once at the statement, and the lambda's inside the lambda each time it runs.</summary>
+    [AvaloniaFact]
+    public void A_breakpoint_set_in_a_lambda_on_its_statements_line_stops_inside_it_and_the_gutters_on_that_line_at_the_statement()
+    {
+        const string Counting = "int count = items.Count(i => i > 1);";
+        int body = Counting.IndexOf("i > 1", StringComparison.Ordinal);
+        Write("Program.cs", $"int[] items = [1, 2, 3];\n{Counting}\nConsole.WriteLine($\"count {{count}}\");\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Point gutter = Gutter(window, editor, 1);
+        window.MouseDown(gutter, MouseButton.Left);
+        window.MouseUp(gutter, MouseButton.Left);
+        editor.GoTo(new TextPosition(1, body + 2));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        editor.GoTo(new TextPosition(0, 0));
+        window.KeyTextInput("Console.WriteLine(\"counting\");");
+        Ui.Press(window, "Enter");
+        Ui.Settle();
+        string[] listed = ["Program.cs:3", $"Program.cs:3:{body + 1}"];
+        Assert.Equal(listed, window.Debugger.Breakpoints.In(Program).Select(b => b.Location));
+        Assert.Contains(new LineMark(2, LineMarkKind.Breakpoint), editor.LineMarks);
+        Assert.Equal("i => i > 1", Tinted(editor, 2));
+
+        RightClick(window, Gutter(window, editor, 2));
+        ContextMenu menu = window.OpenContextMenu ?? throw new Xunit.Sdk.XunitException("A right-click on the gutter of a line holding a lambda opened no menu");
+        Assert.Equal([("Line", true), ("i => i > 1", true)], menu.Items.OfType<MenuItem>().Take(2).Select(m => ((string?)m.Header, m.IsChecked)));
+        Ui.Choose(menu, "i => i > 1");
+        Assert.Equal(["Program.cs:3"], window.Debugger.Breakpoints.In(Program).Select(b => b.Location));
+        Assert.Null(Tinted(editor, 2));
+        RightClick(window, Gutter(window, editor, 2));
+        Ui.Choose(window.OpenContextMenu, "i => i > 1");
+        Ui.Run(window, AppActions.ViewBreakpoints);
+        BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
+        Assert.Equal([.. listed, ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError], breakpoints.Listed.Select(b => b.Location));
+        Ui.Press(window, "Escape");
+
+        StartDebugging(window);
+        DebugSession session = window.Debugger.Session!;
+        WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 1 } && window.BottomPanel.Debug.Frames.Count > 0, "the gutter's stop at the count");
+        Assert.Contains(new LineMark(2, LineMarkKind.ExecutionPoint), editor.LineMarks);
+        Assert.Contains("<Main>$", window.BottomPanel.Debug.Frames[0].Name, StringComparison.Ordinal);
+        Assert.Equal(1, window.BottomPanel.Debug.Frames[0].Column);
+        foreach (string i in new[] { "1", "2", "3" })
+        {
+            int stops = session.Stops;
+            Ui.Run(window, AppActions.Resume);
+            WaitDebugging(window, () => session.State == DebugState.Paused && session.Stops > stops && Value(window, "i") == i, $"the stop inside the lambda with i at {i}");
+            DapStackFrame top = window.BottomPanel.Debug.Frames[0];
+            Assert.True(top.Name.Contains(">b__", StringComparison.Ordinal) && top.Column == body + 1,
+                $"The lambda's breakpoint stopped in {top.Name} at column {top.Column}, not inside the lambda at column {body + 1}");
+        }
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => session.State == DebugState.Ended, "the program to run to its end, the lambda run three times");
+        Assert.Contains("count 2", window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+
+        static void RightClick(MainWindow window, Point at)
+        {
+            window.MouseDown(at, MouseButton.Right);
+            window.MouseUp(at, MouseButton.Right);
+            Ui.Settle();
+        }
+
+        // What a line's breakpoint on part of it tints there, as the editor shows it; null where none does.
+        static string? Tinted(CodeEditor editor, int line) =>
+            editor.LineMarks.FirstOrDefault(m => m.Line == line && m.Range is { Length: > 0 }) is { Range: { } range }
+                ? editor.Document.Snapshot.GetText(range.Start, range.Length)
+                : null;
+    }
+
     /// <summary>Run to Cursor stops at its line whatever breakpoint stands there, one whose condition is false and a
     /// tracepoint alike, each as it was once the stop is made: the condition passed by on the loop's later turns.</summary>
     [AvaloniaFact]

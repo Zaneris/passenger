@@ -196,7 +196,11 @@ public partial class MainWindow : Window
             }
             if (click.Context)
             {
-                if (session.Debug.Breakpoints.In(active.Path).FirstOrDefault(b => b.Line == click.Line) is { } breakpoint)
+                if (active.Syntax?.Current is { } parsed && Debugging.LambdaBreakpoints.On(parsed, click.Line) is { Count: > 0 } lambdas)
+                {
+                    ShowGutterMenu(editor, active, LineBreakpointChoices(active, parsed.Text, click.Line, lambdas));
+                }
+                else if (session.Debug.Breakpoints.In(active.Path).FirstOrDefault(b => b.Line == click.Line) is { } breakpoint)
                 {
                     ShowBreakpointPopup(breakpoint);
                 }
@@ -847,6 +851,58 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(popup.Properties.FocusCondition, DispatcherPriority.Loaded);
     }
 
+    /// <summary>The gutter menu's breakpoints on a line holding lambdas: the line's own and each lambda's, by its text, each
+    /// set or taken away as it is chosen, and Edit for each set.</summary>
+    private List<Control> LineBreakpointChoices(OpenDocument document, TextSnapshot text, int line, IReadOnlyList<Debugging.LambdaBreakpoints.Lambda> lambdas)
+    {
+        Debugging.BreakpointStore store = session.Debug.Breakpoints;
+        Debugging.LineBreakpoint? own = store.In(document.Path).FirstOrDefault(b => b.Line == line && !b.OnPart);
+        List<Control> items = [Choice("Line", own is not null, () =>
+        {
+            if (own is null)
+            {
+                store.Set(document.Path, line);
+            }
+            else
+            {
+                store.Remove(own);
+            }
+        })];
+        List<(string Name, Debugging.LineBreakpoint Breakpoint)> set = own is null ? [] : [("Line Breakpoint", own)];
+        foreach (Debugging.LambdaBreakpoints.Lambda lambda in lambdas)
+        {
+            string name = Debugging.LambdaBreakpoints.Named(text, lambda);
+            Debugging.LineBreakpoint? inside = session.Debug.OnLambda(document, lambda);
+            MenuItem choice = Choice(name, inside is not null, () => session.Debug.ToggleLambda(document, lambda));
+            // Its code as the editor draws it.
+            choice.FontFamily = CSharp.Fonts.Mono;
+            choice.FontFeatures = CSharp.Fonts.Features(settings.Ligatures);
+            items.Add(choice);
+            if (inside is not null)
+            {
+                set.Add(($"Breakpoint in {name}", inside));
+            }
+        }
+        if (set.Count > 0)
+        {
+            items.Add(new Separator());
+        }
+        foreach ((string name, Debugging.LineBreakpoint breakpoint) in set)
+        {
+            MenuItem edit = new() { Header = (set.Count == 1 ? "Edit Breakpoint…" : $"Edit {name}…").Replace("_", "__", StringComparison.Ordinal) };
+            edit.Click += (_, _) => ShowBreakpointPopup(breakpoint);
+            items.Add(edit);
+        }
+        return items;
+
+        static MenuItem Choice(string name, bool on, Action toggle)
+        {
+            MenuItem item = new() { Header = name.Replace("_", "__", StringComparison.Ordinal), ToggleType = MenuItemToggleType.CheckBox, IsChecked = on };
+            item.Click += (_, _) => toggle();
+            return item;
+        }
+    }
+
     /// <summary>A press on an icon of the gutter's marks: a test's menu, a route's or an .http request's, a run
     /// configuration's or a colour's picker; false where the line has none of these.</summary>
     private bool PressMark(CodeEditor editor, OpenDocument document, GutterClick click)
@@ -885,7 +941,7 @@ public partial class MainWindow : Window
             popups.Close();
             if (show is not null)
             {
-                NavigateTo(show.Path, new TextPosition(show.Line, 0));
+                NavigateTo(show.Path, new TextPosition(show.Line, show.Column ?? 0));
             }
         };
         popups.Show(window);

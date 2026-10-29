@@ -1208,7 +1208,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.BreakpointSet, Title = "Set a breakpoint", Destructive = true), Description(
         "Sets, changes or with remove takes away a breakpoint: on a line (path, line; in .axaml where the line's first element " +
-        "or attribute is made or set, or attribute's property, as written); on an exception type (its full name, or \"Any " +
+        "or attribute is made or set, or attribute's property, as written; in C#, at the statement the line begins, or with " +
+        "column inside the lambda there, each time it runs); on an exception type (its full name, or \"Any " +
         "exception\", which remove only turns off), in its scenarios (all by default); XAML Binding Errors (bindingErrors: a " +
         "debugged app stops as a binding fails, $bindingError giving Control, Property, Path, FailedPart, DataContext, Message " +
         "and Xaml); or Break When Value Changes on control's property (as app_details names it) in the app debugged, for the " +
@@ -1219,6 +1220,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         string? path = null,
         int? line = null,
         string? attribute = null,
+        int? column = null,
         string? exception = null,
         bool bindingErrors = false,
         string? control = null,
@@ -1234,7 +1236,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         if (remove)
         {
-            return await RemoveBreakpoint(path, line, attribute, exception, bindingErrors, control, property, cancel);
+            return await RemoveBreakpoint(path, line, attribute, column, exception, bindingErrors, control, property, cancel);
         }
         BreakpointStore store = Session.Debug.Breakpoints;
         if (bindingErrors)
@@ -1263,7 +1265,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             return ExceptionBreakpoints();
         }
         (string full, int at) = LinePlace(path, line);
-        LineBreakpoint set = store.Set(full, at, attribute is { Length: > 0 } ? attribute : null);
+        LineBreakpoint set = column is int inside ? LambdaBreakpoint(full, at, inside, set: true)! : store.Set(full, at, attribute is { Length: > 0 } ? attribute : null);
         store.Update(set, enabled: true, suspend, condition, hitCondition, logMessage);
         await InTheProgram(cancel);
         return Breakpoints(full);
@@ -1271,7 +1273,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>breakpoint_set's remove: the breakpoint its other arguments name taken away, or for "Any exception" and
     /// XAML Binding Errors turned off.</summary>
-    private async Task<IReadOnlyList<BreakpointInfo>> RemoveBreakpoint(string? path, int? line, string? attribute, string? exception, bool bindingErrors,
+    private async Task<IReadOnlyList<BreakpointInfo>> RemoveBreakpoint(string? path, int? line, string? attribute, int? column, string? exception, bool bindingErrors,
         string? control, string? property, CancellationToken cancel)
     {
         BreakpointStore store = Session.Debug.Breakpoints;
@@ -1314,12 +1316,35 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         (string full, int at) = LinePlace(path, line);
         string? on = attribute is { Length: > 0 } ? attribute : null;
-        if (store.In(full).FirstOrDefault(b => b.Line == at && b.Attribute == on) is { } set)
+        if ((column is int inside ? LambdaBreakpoint(full, at, inside, set: false) : store.In(full).FirstOrDefault(b => b.Line == at && b.Attribute == on && b.Column is null)) is { } set)
         {
             store.Remove(set);
         }
         await InTheProgram(cancel);
         return Breakpoints(full);
+    }
+
+    /// <summary>The breakpoint inside the C# lambda holding a column (from one) of a line (from zero), set if
+    /// <paramref name="set"/> says to, else null with none there; refused where no lambda written after the line's code
+    /// begins holds that column.</summary>
+    private LineBreakpoint? LambdaBreakpoint(string path, int line, int column, bool set)
+    {
+        Passenger.Languages.CSharp.ParsedText parsed = LambdaBreakpoints.Parsed(Editors, path)
+            ?? throw new ArgumentException($"A column names a lambda's breakpoint in a C# file, which {Relative(path)} is not");
+        if (line >= parsed.Text.LineCount)
+        {
+            throw new ArgumentException($"{Relative(path)} has {parsed.Text.LineCount} lines");
+        }
+        LineSpan span = parsed.Text.GetLine(line);
+        if ((column >= 1 ? LambdaBreakpoints.Of(parsed, line, column - 1) : null) is not { } lambda)
+        {
+            IReadOnlyList<LambdaBreakpoints.Lambda> lambdas = LambdaBreakpoints.On(parsed, line);
+            throw new ArgumentException(lambdas.Count == 0
+                ? $"Line {line + 1} holds no lambda after its code begins: a breakpoint on the line, with no column, stops there"
+                : $"No lambda holds column {column} of line {line + 1}: its lambdas are at columns {string.Join(", ", lambdas.Select(l => $"{l.Range.Start - span.Start + 1}-{Math.Min(l.Range.End, span.End) - span.Start}"))}");
+        }
+        BreakpointStore store = Session.Debug.Breakpoints;
+        return LambdaBreakpoints.SetOn(store.In(path), parsed, lambda) ?? (set ? store.Set(path, line, column: lambda.Body - span.Start) : null);
     }
 
     /// <summary>The element of the debugged app a query names, as a property breakpoint describes it (Type#Name), with its
@@ -2009,7 +2034,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private IReadOnlyList<BreakpointInfo> Breakpoints(string? path) =>
         [.. (path is null ? Session.Debug.Breakpoints.All : Session.Debug.Breakpoints.In(path))
             .Select(b => new BreakpointInfo(Relative(b.Path), b.Line + 1, b.Enabled, b.Status.ToString().ToLowerInvariant(), b.Condition, b.HitCondition, b.LogMessage, b.Suspend, b.Message,
-                Attribute: b.Attribute))];
+                Attribute: b.Attribute, Column: b.Column + 1))];
 
     private IReadOnlyList<BreakpointInfo> DataBreakpoints() =>
         [.. Session.Debug.Breakpoints.Data.Select(b => new BreakpointInfo(null, null, b.Enabled, b.Status.ToString().ToLowerInvariant(), b.Condition, b.HitCondition,
@@ -2471,7 +2496,7 @@ public sealed record RunResult(bool StillRunning, int? ExitCode, string Status, 
 /// TextBlock#Counter", and the element's @id).</summary>
 public sealed record BreakpointInfo(string? Path, int? Line, bool Enabled, string Status, string? Condition, string? HitCondition, string? LogMessage, bool Suspend,
     string? Message, string? Exception = null, IReadOnlyList<string>? Scenarios = null, string? Data = null, string? Attribute = null, string? Property = null,
-    bool? BindingErrors = null, string? Control = null);
+    bool? BindingErrors = null, string? Control = null, int? Column = null);
 
 public sealed record VariableInfo(string Name, string Value, string? Type, int Reference);
 

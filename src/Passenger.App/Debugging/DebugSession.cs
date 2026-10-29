@@ -39,9 +39,10 @@ public sealed class DebugSession
     private readonly BreakpointStore breakpoints;
     private readonly BuiltLines lines;
 
-    /// <summary>The column (from one) a line (from zero) of a file asks for, a XAML attribute's (by its name) or the line's
-    /// own: in XAML (<see cref="XamlBreakpoints.Column"/>) and where C#'s code begins; null for the whole line.</summary>
-    private readonly Func<string, int, string?, int?> columns;
+    /// <summary>The column (from one) a line (from zero) of a file asks for, a XAML attribute's (by its name), a C# lambda's
+    /// (by its column from zero) or the line's own: in XAML (<see cref="XamlBreakpoints.Column"/>), at the lambda's body and
+    /// where C#'s code begins; null for the whole line.</summary>
+    private readonly Func<string, int, string?, int?, int?> columns;
     private readonly Dictionary<string, string> sent = new(StringComparer.Ordinal);
 
     /// <summary>The exception breakpoints as last sent.</summary>
@@ -133,14 +134,14 @@ public sealed class DebugSession
         return start;
     }
 
-    private DebugSession(Process adapter, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output, Func<string, int, string?, int?>? columns,
+    private DebugSession(Process adapter, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output, Func<string, int, string?, int?, int?>? columns,
         bool elsewhere, AdapterPlace? place, bool quiet = false)
     {
         Elsewhere = elsewhere || place is not null;
         this.place = place;
         this.breakpoints = breakpoints;
         this.lines = lines;
-        this.columns = columns ?? ((_, _, _) => null);
+        this.columns = columns ?? ((_, _, _, column) => column + 1);
         // The log is called from the adapter's error stream and the connection's own threads: each line lands on the UI's.
         log = UiThread.Marshal(log);
         this.adapter = adapter;
@@ -297,7 +298,7 @@ public sealed class DebugSession
     /// terminal it starts, its output there. <paramref name="starting"/> is handed the session as it begins, so Stop can end
     /// it while it starts; with <paramref name="elsewhere"/> the program is on another machine.</summary>
     public static Task<DebugSession> LaunchAsync(Run.LaunchPlan plan, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
-        Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal = null, Func<string, int, string?, int?>? columns = null, bool hotReload = false,
+        Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal = null, Func<string, int, string?, int?, int?>? columns = null, bool hotReload = false,
         Action<DebugSession>? starting = null, bool elsewhere = false, AdapterPlace? place = null)
     {
         return StartAsync(plan.Built ?? plan.Program, DapCommands.Launch, new LaunchArguments
@@ -319,7 +320,7 @@ public sealed class DebugSession
     /// so its code may change as a launch's may; with <paramref name="elsewhere"/> it is not on this machine, and with
     /// <paramref name="place"/> the adapter runs where it is (a container's, its process id that container's).</summary>
     public static Task<DebugSession> AttachAsync(int processId, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
-        Func<string, int, string?, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null,
+        Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null,
         bool quiet = false) =>
         StartAsync(place is null ? $"process {processId}" : $"process {processId} in {place.Where}", DapCommands.Attach,
             new AttachArguments { ProcessId = processId, JustMyCode = true, HotReload = hotReload ? true : null },
@@ -329,7 +330,7 @@ public sealed class DebugSession
     /// exception to stop at), then configurationDone, whose answer waits for the program's runtime however long it takes. A
     /// session stopped meanwhile ends the start at once, failing it with <see cref="StoppedStarting"/>.</summary>
     private static async Task<DebugSession> StartAsync(string program, string request, object arguments, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
-        Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal, Func<string, int, string?, int?>? columns, Action<DebugSession>? starting, bool elsewhere, AdapterPlace? place,
+        Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal, Func<string, int, string?, int?, int?>? columns, Action<DebugSession>? starting, bool elsewhere, AdapterPlace? place,
         bool quiet = false)
     {
         UiThread.Check();
@@ -850,7 +851,8 @@ public sealed class DebugSession
             bool held = false;
             for (int i = 0; i < requests.Count; i++)
             {
-                if (requests[i].Line == target.At.Line)
+                // A lambda's breakpoint is its own, stopping only inside the lambda.
+                if (requests[i].Line == target.At.Line && built[i].Column is null)
                 {
                     // Its condition, hit count or going on set aside until the stop, which Run to Cursor makes whatever they say.
                     requests[i] = requests[i] with { Condition = null, HitCondition = null, Suspend = true };
@@ -888,7 +890,7 @@ public sealed class DebugSession
 
     /// <summary>A breakpoint as the debugger is asked for it (<see cref="Asked"/>).</summary>
     private DapSourceBreakpoint Request(string path, LineBreakpoint breakpoint) =>
-        Asked(path, breakpoint.Line, breakpoint.Attribute) with
+        Asked(path, breakpoint.Line, breakpoint.Attribute, breakpoint.Column) with
         {
             Condition = breakpoint.Condition,
             HitCondition = breakpoint.HitCondition,
@@ -896,12 +898,12 @@ public sealed class DebugSession
             Suspend = breakpoint.Suspend,
         };
 
-    /// <summary>A line (from zero) of a file as the debugger is asked for it: at its built line, and at its column there
-    /// (<see cref="columns"/>), both as the compiler counted them (a lone '\r' before the column begins another line in
-    /// XAML).</summary>
-    private DapSourceBreakpoint Asked(string path, int line, string? attribute)
+    /// <summary>A line (from zero) of a file, or a lambda's column (from zero) on it, as the debugger is asked for it: at its
+    /// built line, and at its column there (<see cref="columns"/>), both as the compiler counted them (a lone '\r' before the
+    /// column begins another line in XAML).</summary>
+    private DapSourceBreakpoint Asked(string path, int line, string? attribute, int? lambda = null)
     {
-        int? column = columns(path, line, attribute);
+        int? column = columns(path, line, attribute, lambda);
         TextPosition at = lines.ToBuilt(path, line, column is int named ? named - 1 : 0);
         return new DapSourceBreakpoint(at.Line + 1, column is null ? null : at.Column + 1);
     }
@@ -965,7 +967,7 @@ public sealed class DebugSession
     /// <summary>What a file's breakpoints ask of the debugger, at their built lines, to tell a change worth sending.</summary>
     private string Signature(string path) => breakpoints.Muted ? "muted" :
         string.Join(';', breakpoints.In(path).Where(b => b.Enabled).Select(b =>
-            $"{(lines.IsBuilt(path, b.Line) ? $"{lines.ToBuilt(path, b.Line)}" : $"new {b.Line}")}:{b.Attribute}|{b.Condition}|{b.HitCondition}|{b.LogMessage}|{b.Suspend}"));
+            $"{(lines.IsBuilt(path, b.Line) ? $"{lines.ToBuilt(path, b.Line)}" : $"new {b.Line}")}:{b.Attribute}:{b.Column}|{b.Condition}|{b.HitCondition}|{b.LogMessage}|{b.Suspend}"));
 
     /// <summary>The exception breakpoints that are on, as the protocol's exception options; none while muted, so no exception
     /// stops the program, not even one left unhandled.</summary>
