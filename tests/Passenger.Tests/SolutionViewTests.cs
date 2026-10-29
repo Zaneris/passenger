@@ -6,6 +6,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.CSharp;
 using Passenger.App.Docking;
 using Passenger.App.Explorer;
 using Passenger.App.Run;
@@ -630,7 +631,7 @@ public sealed class SolutionViewTests : IDisposable
 
         Assert.Equal("order.cs is already there", Ui.Await(window.RenameAsync(order, "order.cs"), "the rename"));
         int type = File.ReadAllText(order).IndexOf("Order", StringComparison.Ordinal);
-        Assert.Equal("order.cs is already there", Ui.Await(window.RenameWithTypeAsync(order, "order.cs", ("Order", type), renameType: true), "the rename with its type"));
+        Assert.Equal("order.cs is already there", Ui.Await(window.RenameWithTypeAsync(order, "order.cs", new TypeRename.FileType("Order", order, type), renameType: true), "the rename with its type"));
         Assert.Equal(Order, File.ReadAllText(order));
         Assert.Equal("// Another file than Order.cs here.\n", File.ReadAllText(sibling));
         window.Close();

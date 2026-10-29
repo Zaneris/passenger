@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.App.Editors;
+using Passenger.App.Navigation;
 using Passenger.App.Xaml;
 using Passenger.Core;
 using Passenger.Lsp;
@@ -159,24 +160,35 @@ public static class TypeRename
             ? path
             : null;
 
-    /// <summary>The type a C# file is named after, where its name is in the file's text as it is now; null when it
-    /// declares none of its name.</summary>
-    public static (string Name, int Offset)? NamedAfterFile(EditorArea editors, string path)
+    /// <summary>The type a file is named after, the C# file declaring it and where its name is in that file's text as it
+    /// is now: a C# file's own type of its name, or the class a XAML or Razor file's code-behind beside it declares of
+    /// the markup's name (a XAML file's only where its <c>x:Class</c> names that class); null for none.</summary>
+    public static FileType? NamedAfterFile(EditorArea editors, string path)
     {
-        if (!IsCSharp(path) || Syntax(editors, path) is not { } parsed)
+        string? declaring = IsCSharp(path) ? path : CodeBehind.PartnerOf(path);
+        if (declaring is null || Syntax(editors, declaring) is not { } parsed)
         {
             return null;
         }
         string stem = Stem(path);
+        string? className = XamlService.IsXaml(path) ? ClassOf(editors, path) ?? string.Empty : null;
         foreach (SyntaxNode node in parsed.Root.DescendantNodes(n => n is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax or TypeDeclarationSyntax))
         {
-            if (Identifier(node) is { } name && name.ValueText == stem)
+            if (Identifier(node) is { } name && name.ValueText == stem && (className is null || FullName(node, stem) == className))
             {
-                return (stem, name.SpanStart);
+                return new FileType(stem, declaring, name.SpanStart);
             }
         }
         return null;
     }
+
+    /// <summary>The type a file is named after (<see cref="NamedAfterFile"/>): its name, the C# file declaring it, and the
+    /// offset of its name there.</summary>
+    public sealed record FileType(string Name, string Declaring, int Offset);
+
+    /// <summary>The class a XAML file's <c>x:Class</c> names, in its text as it is now; null for none.</summary>
+    private static string? ClassOf(EditorArea editors, string path) =>
+        editors.TextOf(path) is { } text && XmlTree.Parse(text.ToString()).Root?.Attribute("x:Class") is { IsValueClosed: true } declared ? declared.Value : null;
 
     /// <summary>Whether a file is named after a type: a C# file whose name up to its first dot is the type's.</summary>
     public static bool IsNamedAfter(string path, string type) => IsCSharp(path) && Stem(path) == type;

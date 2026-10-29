@@ -127,7 +127,7 @@ public partial class MainWindow
     };
 
     /// <summary>Rename on a row: a solution folder's name in the solution, a project's file with what names it, a file
-    /// or folder on disk, offering to rename a C# type named after it.</summary>
+    /// or folder on disk, offering to rename a type named after it.</summary>
     private void RenameRow(ExplorerNode row)
     {
         switch (row)

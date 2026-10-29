@@ -114,6 +114,8 @@ public sealed class FileNestingTests : IDisposable
         Choose(window, At("Components/Counter.razor"));
         Ui.Run(window, AppActions.Rename);
         NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+        // The file alone: renaming its class with it needs the language server, which this window runs without.
+        Ui.Click(popup.Option ?? throw new Xunit.Sdk.XunitException("Renaming Counter.razor did not offer to rename its code-behind's class Counter"));
         popup.Text = string.Empty;
         window.KeyTextInput("Clicker.razor");
         Ui.Press(window, "ENTER");

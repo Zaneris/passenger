@@ -196,8 +196,9 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Rename on a row: a C# file named after a type it declares offers to rename the type too (Rename type
-    /// 'Foo' to match the new file name), checked as it was left (on until turned off).</summary>
+    /// <summary>Rename on a row: a file named after a type (a C# file declaring it, a XAML or Razor file whose code-behind
+    /// declares its class, <see cref="TypeRename.NamedAfterFile"/>) offers to rename the type too (Rename type 'Foo' to
+    /// match the new file name), checked as it was left (on until turned off).</summary>
     private void AskRename(string path)
     {
         if (TypeRename.NamedAfterFile(Editors, path) is not { } type)
@@ -212,11 +213,12 @@ public partial class MainWindow
         popups.Show(popup, _ => { });
     }
 
-    /// <summary>Renames a C# file and, when asked, the type it is named after: the language server renames the type
-    /// everywhere it is used, then the file takes its new name and any other file named after the type (a partial
-    /// part's Foo.Designer.cs) the type's, the markup its class is made with following (<see cref="TypeRename.MarkupAsync"/>),
-    /// all one command for Undo. Null once renamed, else why not.</summary>
-    public async Task<string?> RenameWithTypeAsync(string path, string name, (string Name, int Offset) type, bool renameType)
+    /// <summary>Renames a file and, when asked, the type it is named after: the language server renames the type
+    /// everywhere it is used, from its declaration (a markup file's in its code-behind), then the file takes its new name
+    /// and any other file named after the type (a partial part's Foo.Designer.cs, a code-behind) the type's, the markup
+    /// its class is made with following (<see cref="TypeRename.MarkupAsync"/>), all one command for Undo. Null once
+    /// renamed, else why not.</summary>
+    public async Task<string?> RenameWithTypeAsync(string path, string name, TypeRename.FileType type, bool renameType)
     {
         string renamed = TypeRename.Stem(name);
         if (!renameType || renamed == type.Name)
@@ -227,9 +229,10 @@ public partial class MainWindow
         {
             return problem;
         }
-        if (!name.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+        string extension = PathNames.Same(type.Declaring, path) ? ".cs" : Path.GetExtension(path);
+        if (!name.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
         {
-            return "The new file name extension is not valid for source code files";
+            return extension == ".cs" ? "The new file name extension is not valid for source code files" : $"The new file name must end in {extension} to name its class";
         }
         if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(renamed))
         {
@@ -245,7 +248,7 @@ public partial class MainWindow
         {
             return csharp?.Unready("Renaming the type") ?? "Renaming the type needs the C# language server, which runs for a folder";
         }
-        OpenDocument? open = Editors.Find(path);
+        OpenDocument? open = Editors.Find(type.Declaring);
         // A file not open is shown to the server for the question alone, never opened in a tab.
         Lsp.LspDocument? shown = null;
         Anchor? at = null;
@@ -253,7 +256,7 @@ public partial class MainWindow
         try
         {
             Lsp.LspDocument document = open is not null ? csharp.For(open)?.Lsp ?? throw new Lsp.LanguageServerFailed("the C# language server has not opened the file yet")
-                : shown = server.Open(path, new TextDocument(FileText.Load(path)?.Text ?? string.Empty));
+                : shown = server.Open(type.Declaring, new TextDocument(FileText.Load(type.Declaring)?.Text ?? string.Empty));
             // Held on the type's name through what is typed while it is asked about.
             at = document.Text.AnchorAt(type.Offset, AnchorGravity.After);
             TypeRename.Named? named = await TypeRename.NamedAsync(Editors, server.Folder, document, at.Offset);
@@ -278,11 +281,11 @@ public partial class MainWindow
             List<(string From, string To)> moves = [(path, target)];
             if (named is { } parts)
             {
-                moves.AddRange(parts.Files.Where(f => f != path).Select(f => (f, TypeRename.Renamed(f, renamed))));
+                moves.AddRange(parts.Files.Where(f => !PathNames.Same(f, path)).Select(f => (f, TypeRename.Renamed(f, renamed))));
             }
             moves.AddRange(markup.Moves.Where(m => !moves.Any(n => PathNames.Same(n.From, m.From))));
             // The files nested under it go with it too (Form1.resx with Form1.cs), those that are parts of the type once.
-            moves.AddRange(WithDependents(path, name).Where(d => !moves.Any(m => m.From == d.From)));
+            moves.AddRange(WithDependents(path, name).Where(d => !moves.Any(m => PathNames.Same(m.From, d.From))));
             List<string> dropped = [];
             string command = $"Rename {type.Name} to {renamed}";
             using CommandHistory.Recording recording = Editors.Commands.Record(command);
