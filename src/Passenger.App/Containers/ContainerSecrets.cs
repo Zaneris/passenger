@@ -9,8 +9,9 @@ namespace Passenger.App.Containers;
 
 /// <summary>Passenger's one rule for what is a secret, and its one mask: a value whose name says it is one
 /// (<see cref="Secret(string)"/>) shows as the same dots whatever its length; in any other value, a URL's password
-/// (<c>postgres://app:••••••@db</c>) and a connection string's part so named (<c>Password=••••••</c>). An empty value
-/// hides nothing and shows as it is.</summary>
+/// (<c>postgres://app:••••••@db</c>) and a connection string's part so named (<c>Password=••••••</c>); on a command line,
+/// the word after a flag so named (<c>--password ••••••</c>, <see cref="SecretFlag"/>). An empty value hides nothing and
+/// shows as it is.</summary>
 public static partial class ContainerSecrets
 {
     public const string Masked = "••••••";
@@ -34,8 +35,16 @@ public static partial class ContainerSecrets
     private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> Folders =
         new HashSet<string>(StringComparer.Ordinal) { "PWD", "OLDPWD" }.GetAlternateLookup<ReadOnlySpan<char>>();
 
-    /// <summary>What every mask but a Bearer's or Basic's credentials needs in a line to find anything there.</summary>
+    /// <summary>What every mask but a Bearer's or Basic's credentials and a flag's word needs in a line to find anything
+    /// there.</summary>
     private static readonly SearchValues<char> Marks = SearchValues.Create("=:@");
+
+    /// <summary>What a flag's name is written in (<c>--api-key</c>, <c>--ConnectionStrings:Shop</c>).</summary>
+    private static readonly SearchValues<char> FlagName =
+        SearchValues.Create("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.:");
+
+    /// <summary>What a flag in what a program said begins after, as <see cref="FlagValue"/> reads it.</summary>
+    private static readonly SearchValues<char> BeforeFlag = SearchValues.Create(" \t\"'`([{");
 
     /// <summary>The longest name read on the stack; a longer one is read in a rented buffer.</summary>
     private const int OnStack = 128;
@@ -119,6 +128,31 @@ public static partial class ContainerSecrets
             || (single.EndsWith("KEY", StringComparison.Ordinal) && !Ordinary.Contains(single));
     }
 
+    /// <summary>Whether a word of a command line is a flag naming a secret, so the word after it is one (<c>--password</c>,
+    /// <c>--api-key</c>, <c>-pwd</c>): one or two dashes before a name of two characters or more that is a secret's and does
+    /// not say it takes no value (<c>--no-password</c>, <c>--password-stdin</c>). One letter names nothing this rule can
+    /// read: <c>-p</c> is a port to one program, a Compose project to another and a password to a third.</summary>
+    private static bool SecretFlag(ReadOnlySpan<char> word)
+    {
+        ReadOnlySpan<char> name = word.StartsWith("--", StringComparison.Ordinal) ? word[2..] : word.StartsWith('-') ? word[1..] : [];
+        return name.Length > 1 && char.IsAsciiLetter(name[0]) && !name.ContainsAnyExcept(FlagName)
+            && !name.StartsWith("no-", StringComparison.OrdinalIgnoreCase) && !name.EndsWith("-stdin", StringComparison.OrdinalIgnoreCase)
+            && Secret(name);
+    }
+
+    /// <summary>A word of a command line given on its own, masked: the dots for one after a flag naming a secret
+    /// (<see cref="SecretFlag"/>) but an empty one, else as <paramref name="masking"/> masks it.</summary>
+    private static string Argument(string word, string? before, Func<string, string> masking) =>
+        word.Length > 0 && SecretFlag(before) ? Masked : masking(word);
+
+    /// <summary>A program's arguments given one by one (an Aspire resource's), each masked as
+    /// <see cref="CommandLine(System.Diagnostics.ProcessStartInfo)"/> masks a child's.</summary>
+    public static IReadOnlyList<string> Arguments(IReadOnlyList<string> words)
+    {
+        Func<string, string> masking = Masking();
+        return [.. words.Select((word, i) => Argument(word, i == 0 ? null : words[i - 1], masking))];
+    }
+
     /// <summary>A variable's value as it is shown.</summary>
     public static string Shown(string name, string value) => value.Length > 0 && Secret(name) ? Masked : InValue(value);
 
@@ -168,20 +202,24 @@ public static partial class ContainerSecrets
     /// <summary>What a program said of its failure (the docker CLI's and Compose's errors, the aspire CLI's, a resource
     /// service's status), masked wherever it is shown or logged: each value it knows to be a secret's (<paramref name="known"/>,
     /// this process's environment's variables whose names are a secret's, and those of the .env in <paramref name="folder"/>)
-    /// as the dots wherever it stands; then on each line a <c>NAME=value</c> or <c>"NAME": "value"</c> whose name is a
-    /// secret's, an Authorization header, a URL's credentials and a connection string's secret part.</summary>
+    /// as the dots wherever it stands; then on each line a <c>NAME=value</c>, <c>"NAME": "value"</c> or <c>--NAME value</c>
+    /// whose name is a secret's, an Authorization header, a URL's credentials and a connection string's secret part.</summary>
     public static string InSaid(string said, string? folder = null, IEnumerable<string>? known = null) => Masking(folder, known)(said);
 
     /// <summary>A command line as Passenger logs or shows it (<see cref="ChildProcesses.Shown"/>): each word masked on its own
     /// as <see cref="InSaid"/> masks what a program said (so a <c>--password=…</c> masks its value, not the words after it),
-    /// knowing too the values of the child's own environment whose names are a secret's.</summary>
-    public static string CommandLine(System.Diagnostics.ProcessStartInfo start) =>
-        ChildProcesses.Display(start, Masking(known: [.. start.Environment.Where(v => v.Value is { Length: > 0 } && Secret(v.Key)).Select(v => v.Value!)]));
+    /// and one after a flag naming a secret as the dots (<see cref="SecretFlag"/>), knowing too the values of the child's own
+    /// environment whose names are a secret's.</summary>
+    public static string CommandLine(System.Diagnostics.ProcessStartInfo start)
+    {
+        Func<string, string> masking = Masking(known: [.. start.Environment.Where(v => v.Value is { Length: > 0 } && Secret(v.Key)).Select(v => v.Value!)]);
+        return ChildProcesses.Display(start, (word, before) => Argument(word, before, masking));
+    }
 
     /// <summary>Command lines as the system gives them (a running program's, as Attach to Process and debug_state list it),
     /// shown with each word masked on its own as <see cref="CommandLine(System.Diagnostics.ProcessStartInfo)"/> masks a
-    /// child's, a word in double quotes inside them. A line comes back as it was when nothing in it is masked; the secrets
-    /// known are read once, for many lines.</summary>
+    /// child's, a word in double quotes inside them, and quoted still when it was. A line comes back as it was when nothing
+    /// in it is masked; the secrets known are read once, for many lines.</summary>
     public static Func<string, string> CommandLines()
     {
         Func<string, string> masking = Masking();
@@ -193,6 +231,8 @@ public static partial class ContainerSecrets
     private static string InWords(string line, Func<string, string> masking)
     {
         StringBuilder? shown = null;
+        // The word before, inside its double quotes when it is quoted whole.
+        ReadOnlySpan<char> before = [];
         int at = 0;
         while (at < line.Length)
         {
@@ -225,21 +265,24 @@ public static partial class ContainerSecrets
                 }
             }
             string word = line[start..at];
-            string bare = InWord(word, masking);
+            bool whole = word.Length > 1 && word[0] == '"' && word[^1] == '"';
+            string bare = !SecretFlag(before) ? InWord(word, whole, masking)
+                : whole ? (word.Length == 2 ? word : $"\"{Masked}\"") : Masked;
             if (shown is null && !string.Equals(bare, word, StringComparison.Ordinal))
             {
                 shown = new StringBuilder(line.Length).Append(line, 0, start);
             }
             shown?.Append(bare);
+            before = whole ? line.AsSpan(start + 1, at - start - 2) : line.AsSpan(start, at - start);
         }
         return shown?.ToString() ?? line;
     }
 
     /// <summary>A word of a command line masked: one in double quotes whole is masked inside them, its escaped quotes read
     /// as quotes, and quoted again only when something in it was masked.</summary>
-    private static string InWord(string word, Func<string, string> masking)
+    private static string InWord(string word, bool whole, Func<string, string> masking)
     {
-        if (word.Length < 2 || word[0] != '"' || word[^1] != '"')
+        if (!whole)
         {
             return masking(word);
         }
@@ -304,6 +347,7 @@ public static partial class ContainerSecrets
         string bare = InValue(line);
         bare = Assignment().Replace(bare, pair => Secret(pair.Groups["name"].Value) ? $"{pair.Groups["head"].Value}{Quoted(pair.Groups["value"].Value)}" : pair.Value);
         bare = Member().Replace(bare, pair => Secret(pair.Groups["name"].Value) ? $"{pair.Groups["head"].Value}{Quoted(pair.Groups["value"].Value)}" : pair.Value);
+        bare = FlagValue().Replace(bare, value => SecretFlag(value.Groups["flag"].ValueSpan) && value.Value is not ("\"\"" or "''") ? Quoted(value.Value) : value.Value);
         bare = AuthorizationHeader().Replace(bare, $"${{head}}{Masked}");
         return UrlUser().Replace(bare, $"${{scheme}}{Masked}@");
 
@@ -311,10 +355,22 @@ public static partial class ContainerSecrets
     }
 
     /// <summary>Whether <see cref="InLine"/> may mask something in a line: one with none of <see cref="Marks"/> only a
-    /// Bearer's or Basic's credentials, any other only where one of its masks finds what it masks, a name a secret's
-    /// where it asks.</summary>
+    /// Bearer's or Basic's credentials or a flag's word, any other only where one of its masks finds what it masks, a name
+    /// a secret's where it asks.</summary>
     private static bool MasksLine(ReadOnlySpan<char> line)
     {
+        if (line.Contains('-'))
+        {
+            foreach (ValueMatch value in FlagValue().EnumerateMatches(line))
+            {
+                // Its flag is the word before the spaces before it.
+                ReadOnlySpan<char> flag = line[..value.Index].TrimEnd(" \t");
+                if (SecretFlag(flag[(flag.LastIndexOfAny(BeforeFlag) + 1)..]))
+                {
+                    return true;
+                }
+            }
+        }
         if (!line.ContainsAny(Marks))
         {
             return AuthorizationCredentials().IsMatch(line);
@@ -543,6 +599,12 @@ public static partial class ContainerSecrets
     /// connection string's part), its value quoted or up to a space, comma, semicolon, ampersand or closing bracket.</summary>
     [GeneratedRegex("""(?<head>(?<![\w.])(?<name>[A-Za-z_][\w.\-]*)\s*=\s*)(?<value>"[^"]*"|'[^']*'|[^\s"',;&}\]]+)""")]
     private static partial Regex Assignment();
+
+    /// <summary>A word after a flag (<c>--name</c> or <c>-name</c> where a word begins, after <see cref="BeforeFlag"/>'s
+    /// characters) in what a program said, the flag its group, the word quoted or up to what ends an
+    /// <see cref="Assignment"/>'s value.</summary>
+    [GeneratedRegex("""(?<=(?:^|[ \t"'`(\[{])(?<flag>--?[A-Za-z][A-Za-z0-9_.:\-]*)[ \t]+)(?<value>"[^"]*"|'[^']*'|[^\s"',;&}\]]+)""")]
+    private static partial Regex FlagValue();
 
     /// <summary>A JSON or YAML member whose name is quoted (<c>"apiKey": "…"</c>), its value quoted or up to a comma or bracket.</summary>
     [GeneratedRegex("""(?<head>(?<q>["'])(?<name>[A-Za-z_][\w.\-]*)\k<q>\s*:\s*)(?<value>"[^"]*"|'[^']*'|[^\s,}\]]+)""")]

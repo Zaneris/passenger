@@ -538,9 +538,9 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
     /// <summary>The Aspire window over the AppHost's resources, driven by clicks: a resource's row has its state's dot,
     /// its health's tag and its address as a link to the browser; its Details are framed tables, a secret's value
-    /// masked (by its name, a connection string's password); its toolbar's icon buttons each run an action, showing its
-    /// work; its commands are a menu; its console merges every resource's lines, a toggle each ending that resource's
-    /// stream, with Find; and at the window's least width nothing overflows its room.</summary>
+    /// masked (by its name, a connection string's password, an argument after its flag); its toolbar's icon buttons each
+    /// run an action, showing its work; its commands are a menu; its console merges every resource's lines, a toggle each
+    /// ending that resource's stream, with Find; and at the window's least width nothing overflows its room.</summary>
     [AvaloniaFact]
     public void The_window_shows_a_resources_row_details_commands_and_merged_console_as_Containers_shows_a_services()
     {
@@ -557,7 +557,15 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
                 new Passenger.App.Aspire.Protocol.EnvironmentVariable { Name = "API_KEY", Value = "key-never-shown" },
                 new Passenger.App.Aspire.Protocol.EnvironmentVariable { Name = "DATABASE_URL", Value = "postgres://app:pass-never-shown@db/shop" },
             },
-            Properties = { new ResourceProperty { Name = "project.path", Value = Google.Protobuf.WellKnownTypes.Value.ForString(project.ProjectFile) } },
+            Properties =
+            {
+                new ResourceProperty { Name = "project.path", Value = Google.Protobuf.WellKnownTypes.Value.ForString(project.ProjectFile) },
+                new ResourceProperty
+                {
+                    Name = "resource.appArgs",
+                    Value = Google.Protobuf.WellKnownTypes.Value.ForList([.. ((string[])["--api-key", "arg-never-shown", "--port", "5310"]).Select(Google.Protobuf.WellKnownTypes.Value.ForString)]),
+                },
+            },
             Commands = { new ResourceCommand { Name = "resource-restart", DisplayName = "Restart", State = ResourceCommandState.Enabled } },
         });
         backend.PushResource(new Resource { Name = "cache", DisplayName = "cache", Uid = "cache", ResourceType = "Container", State = "Starting" });
@@ -583,6 +591,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Assert.Contains(Passenger.App.Containers.ContainerSecrets.Masked, shown);
             Assert.DoesNotContain(shown, text => text.Contains("never-shown", StringComparison.Ordinal));
             Assert.Contains(shown, text => text.StartsWith("postgres://app:", StringComparison.Ordinal) && text.EndsWith("@db/shop", StringComparison.Ordinal));
+            Assert.Contains($"--api-key, {Passenger.App.Containers.ContainerSecrets.Masked}, --port, 5310", shown);
             Assert.Contains(shown, text => text.Contains("It answers", StringComparison.Ordinal));
             Assert.True(details.GetVisualDescendants().OfType<Border>().Count(border => border.Classes.Contains("framed")) >= 4,
                 "The details are not framed tables as Containers' are");

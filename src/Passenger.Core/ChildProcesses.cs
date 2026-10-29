@@ -566,14 +566,15 @@ public static class ChildProcesses
 
     /// <summary>A command as a person would type it, each word quoted that needs to be, as it runs (the log and a console
     /// say it through <see cref="Shown"/>).</summary>
-    public static string Display(ProcessStartInfo start) => Display(start, word => word);
+    public static string Display(ProcessStartInfo start) => Display(start, (word, _) => word);
 
     /// <summary><see cref="Display(ProcessStartInfo)"/> with each word (the program, each argument, or the arguments whole when
-    /// given as one string) as <paramref name="said"/> says it, before it is quoted.</summary>
-    public static string Display(ProcessStartInfo start, Func<string, string> said) =>
+    /// given as one string) as <paramref name="said"/> says it from itself and the word before it (null for the program),
+    /// before it is quoted.</summary>
+    public static string Display(ProcessStartInfo start, Func<string, string?, string> said) =>
         string.Join(' ', start.ArgumentList.Count > 0 || start.Arguments.Length == 0
-            ? [Quote(said(start.FileName)), .. start.ArgumentList.Select(a => Quote(said(a)))]
-            : [Quote(said(start.FileName)), said(start.Arguments)]);
+            ? [Quote(said(start.FileName, null)), .. start.ArgumentList.Select((a, i) => Quote(said(a, i == 0 ? start.FileName : start.ArgumentList[i - 1])))]
+            : [Quote(said(start.FileName, null)), said(start.Arguments, start.FileName)]);
 
     /// <summary>A word of a command line as it is shown: in double quotes, its own escaped, when it is empty or holds a
     /// space or a quote, else as it is.</summary>

@@ -121,12 +121,13 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open) :
         return Words(words, brush: status == "unhealthy" ? TokenKeys.Error : null);
     }
 
-    /// <summary>A variable's or property's value, a secret's masked whatever the AppHost sent; none said so.</summary>
+    /// <summary>A variable's or property's value, a secret's masked whatever the AppHost sent (a list's items as a program's
+    /// arguments, the word after a flag naming a secret among them); none said so.</summary>
     private static SelectableTextBlock Value(string name, JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.Null or JsonValueKind.Undefined => Words("No value", brush: TokenKeys.TextMuted),
         JsonValueKind.String => Words(ContainerSecrets.Shown(name, value.GetString() ?? string.Empty), code: true),
-        JsonValueKind.Array => Words(ContainerSecrets.Shown(name, string.Join(", ", value.EnumerateArray().Select(Plain))), code: true),
+        JsonValueKind.Array => Words(ContainerSecrets.Shown(name, string.Join(", ", ContainerSecrets.Arguments([.. value.EnumerateArray().Select(Plain)]))), code: true),
         _ => Words(ContainerSecrets.Shown(name, value.GetRawText()), code: true),
     };
 
