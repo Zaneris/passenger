@@ -423,7 +423,7 @@ public static class XamlDiagnostics
     {
         XmlElement element = attribute.Owner;
         bool compiled = file.Dialect.CompilesBindings;
-        if (compiled && binding.LocalName == "Binding" && !CompilesBindings(file, element))
+        if (compiled && binding.LocalName == "Binding" && !file.CompilesBindingsAt(element))
         {
             return;
         }
@@ -478,20 +478,6 @@ public static class XamlDiagnostics
             current = next;
             at += step.Length + 1;
         }
-    }
-
-    /// <summary>Whether a <c>{Binding}</c> at an element compiles: the project's default (Avalonia's own, on since 11),
-    /// unless the nearest <c>x:CompileBindings</c> says otherwise.</summary>
-    private static bool CompilesBindings(XamlFile file, XmlElement element)
-    {
-        for (XmlElement? at = element; at is not null; at = at.Parent)
-        {
-            if (file.Directive(at, "CompileBindings") is { } set)
-            {
-                return !string.Equals(set.Value.Trim(), "False", StringComparison.OrdinalIgnoreCase);
-            }
-        }
-        return file.Project.CompilesBindings;
     }
 
     private static void Selector(XamlFile file, XmlAttribute attribute, List<XamlDiagnostic> found)

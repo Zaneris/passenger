@@ -763,6 +763,75 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>An element's own DataContext binding resolves against the type above it, as Avalonia's compiler reads it,
+    /// whatever x:DataType the element gives what is inside it; one with no x:DataType gives what is inside it its path's
+    /// type. Each binding the build refuses is marked and none it takes, and completion and Go to Declaration in the
+    /// DataContext binding take the type above, in a binding beside it the type it gives. Put right, the view builds.</summary>
+    [AvaloniaFact]
+    public void An_elements_own_data_context_binding_starts_from_the_type_above_it_and_gives_its_path_type_to_what_is_inside()
+    {
+        const string Contexts = """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         xmlns:vm="using:Gallery.ViewModels"
+                         x:DataType="vm:MainViewModel">
+                <StackPanel>
+                    <Border x:DataType="vm:Person" DataContext="{Binding Owner}">
+                        <TextBlock Text="{Binding Name}" />
+                    </Border>
+                    <Border DataContext="{Binding Owner}" Tag="{Binding Age}">
+                        <TextBlock Text="{Binding Name}" />
+                    </Border>
+                    <Border x:DataType="vm:Person" DataContext="{Binding Nickname}" />
+                    <Border DataContext="{Binding Owner}">
+                        <TextBlock Text="{Binding Greeting}" />
+                    </Border>
+                </StackPanel>
+            </UserControl>
+
+            """;
+        MainWindow window = app.Open(app.Write("ContextsView.axaml", Contexts));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => document.Markers.Count == 2, () => $"the two bindings the build refuses marked, and none it takes: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        Assert.Equal("Cannot resolve property 'Nickname' on MainViewModel", MarkerOn(editor, document, "Nickname").Message);
+        Assert.Equal("Cannot resolve property 'Greeting' on Person", MarkerOn(editor, document, "Greeting").Message);
+
+        Ui.PlaceAfter(editor, "<Border x:DataType=\"vm:Person\" DataContext=\"{Binding ");
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Owner"), "the DataContext binding completing the view model's properties, the type above the Border");
+        Assert.Contains("Greeting", window.Assist.CompletionLabels);
+        Assert.DoesNotContain("Age", window.Assist.CompletionLabels);
+        Ui.Press(window, "ESCAPE");
+        Ui.PlaceAfter(editor, "<Border x:DataType=\"vm:Person\" DataContext=\"{Binding Own");
+        Ui.Run(window, AppActions.GoToDeclaration);
+        Ui.Settle();
+        Assert.Equal("MainViewModel.cs", window.EditorArea.Active?.Name);
+        Assert.Contains("public Person |Owner", CaretLine(window.EditorArea.CodeEditor), StringComparison.Ordinal);
+        window.OpenFile(app.PathOf("ContextsView.axaml"));
+        Ui.Settle();
+        editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "Tag=\"{Binding Ag");
+        Ui.Run(window, AppActions.GoToDeclaration);
+        Ui.Settle();
+        Assert.Equal("MainViewModel.cs", window.EditorArea.Active?.Name);
+        Assert.Contains("public int |Age", CaretLine(window.EditorArea.CodeEditor), StringComparison.Ordinal);
+
+        window.OpenFile(app.PathOf("ContextsView.axaml"));
+        Ui.Settle();
+        editor = window.EditorArea.CodeEditor;
+        document = window.EditorArea.Active!;
+        Replace(editor, "{Binding Nickname}", "{Binding Owner}");
+        Replace(editor, "{Binding Greeting}", "{Binding Name}");
+        Ui.WaitFor(() => document.Markers.Count == 0, () => $"every binding resolved once put right: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        string said = $"{Ui.Said(window)}: {string.Join("; ", window.BottomPanel.Problems.Problems.Select(p => $"{p.Code} {p.Where} {p.Message}"))}";
+        Assert.True(window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true, $"The view Passenger finds right did not build: {said}");
+        Assert.True(!window.BottomPanel.Problems.Problems.Any(p => p.Path?.EndsWith("ContextsView.axaml", StringComparison.Ordinal) == true), $"The build said something of the view: {said}");
+        window.Close();
+    }
+
     /// <summary>After a build the XAML compiler's error (a number only it reads) is marked on its line and listed with its
     /// code. Avalonia's XAML compiler counts lines as an XML reader does, ending one at the lone '\r' in the window's tag,
     /// which the editor reads inside its line, so below it the compiler's line runs one ahead of the editor's: its error is

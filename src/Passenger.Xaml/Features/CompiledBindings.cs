@@ -54,8 +54,7 @@ public static class CompiledBindings
             {
                 return true;
             }
-            if (at.Attribute("DataContext") is { } context && MarkupExtension.Parse(file.Text, context.ValueStart, context.ValueEnd) is { Name.Length: > 0 } set
-                && !IsLanguage(file, at, set))
+            if (file.SetsDataContext(at))
             {
                 return true;
             }
