@@ -169,9 +169,11 @@ public sealed class OutputView : DockPanel
 
     private TextBlock? waitingWords;
 
-    /// <summary>Shows over the console why its program is not running though its run goes on, with Rerun and Stop after the
-    /// words, which do what the toolbar's do; null takes it away.</summary>
-    public void ShowWaiting(string? said)
+    private Button? waitingRerun;
+
+    /// <summary>Shows over the console why its program is not running though its run goes on, with Stop after the words, and
+    /// Rerun where <paramref name="rerun"/> says a start now would run it, which do what the toolbar's do; null takes it away.</summary>
+    public void ShowWaiting(string? said, bool rerun = false)
     {
         UiThread.Check();
         if (said is null)
@@ -182,14 +184,15 @@ public sealed class OutputView : DockPanel
             }
             return;
         }
-        if (waiting is null || waitingWords is null)
+        if (waiting is null || waitingWords is null || waitingRerun is null)
         {
             waitingWords = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+            waitingRerun = Link("Rerun", () => RerunClicked);
             waiting = new Border
             {
                 [DockProperty] = Dock.Top,
                 Height = 28,
-                Child = new DockPanel { Children = { Link("Stop", () => StopClicked), Link("Rerun", () => RerunClicked), waitingWords } },
+                Child = new DockPanel { Children = { Link("Stop", () => StopClicked), waitingRerun, waitingWords } },
             };
             // Its own tint tells it from the output under it, with no rule between.
             waiting.Bind(Border.BackgroundProperty, waiting.GetResourceObservable(TokenKeys.Banner));
@@ -198,6 +201,7 @@ public sealed class OutputView : DockPanel
         waitingWords.Text = said;
         // Narrower than its words, the bar shows the rest when the pointer rests on them.
         ToolTip.SetTip(waitingWords, said);
+        waitingRerun.IsVisible = rerun;
         waiting.IsVisible = true;
 
         Button Link(string words, Func<EventHandler?> clicked)

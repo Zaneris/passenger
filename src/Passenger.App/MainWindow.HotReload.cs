@@ -91,8 +91,8 @@ public partial class MainWindow
     /// <summary>A program under dotnet watch takes edits as their files are saved: they are saved, and what dotnet watch says
     /// of them, a line at a time in the Run window, is said in the status bar however late (its last word, or a restart,
     /// standing) until the next save, the run's end or the program's, as a changed signature restarts the program only at its
-    /// next call. The answer is what dotnet watch said of them, or of the program's end or start again, <paramref name="later"/>
-    /// after an apply unless a restart or an end comes sooner; null if nothing in 30 s or before the following ended.</summary>
+    /// next call. The answer is what dotnet watch said of them, or of the program's end, failed build or start again,
+    /// <paramref name="later"/> after an apply unless a restart or an end comes sooner; null if nothing in 30 s or before the following ended.</summary>
     internal async Task<HotReloadOutcome?> SaveForWatchAsync(TimeSpan later)
     {
         UnfollowWatch();
@@ -128,7 +128,7 @@ public partial class MainWindow
             }
         };
         EventHandler<int> ended = (_, _) => UnfollowWatch();
-        // The program's end before or after the apply, or its start again once it had ended: what the save came to, said already.
+        // The program's end before or after the apply, its build failed, or its start again: what the save came to, said already.
         BuildRunController watched = buildRun;
         EventHandler<HotReloadOutcome> told = (_, outcome) =>
         {

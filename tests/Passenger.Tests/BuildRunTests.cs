@@ -454,6 +454,119 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>A program under dotnet watch whose build fails, as it first starts and once it has ended and a change that does
+    /// not compile is saved: the status bar names the build's first error, a click choosing it in Problems' Build, and the
+    /// Run window says dotnet watch builds it again when a change is saved, offering Stop, the Apply that saved the change
+    /// ending on it; a change that builds, saved, has the program run, which the status bar says, the bar and the error
+    /// gone.</summary>
+    [AvaloniaFact]
+    public void A_program_under_dotnet_watch_whose_build_fails_is_said_to_wait_for_a_change_naming_the_error_and_a_change_that_builds_runs_it()
+    {
+        string started = Path.Combine(Folder, "program.pid");
+        string asked = Path.Combine(Folder, "asked");
+        // Its second line fails its first build; once it runs, it ends when asked.
+        Write("src/Hello/Program.cs", $$"""
+            File.WriteAllText(@"{{started}}", Environment.ProcessId.ToString());
+            int broken = "not a number";
+            while (!File.Exists(@"{{asked}}"))
+            {
+                Thread.Sleep(200);
+            }
+
+            """);
+        MainWindow window = Open();
+        window.ApplySettings(window.Settings with { HotReload = true });
+        bool ending = false;
+        try
+        {
+            window.OpenFile(Path.Combine(Folder, "src", "Hello", "Program.cs"));
+            Ui.Settle();
+            window.Perform(AppActions.RunProgram);
+            Passenger.App.Workspace.OpenDocument program = window.EditorArea.Active!;
+            Problem converted = FailsToBuild("CS0029", "Program.cs:2:14", TimeSpan.FromMinutes(2));
+            Assert.Equal(0, Processes.ReadId(started));
+
+            // The status bar's words are a link to the error in Problems' Build.
+            ProblemsModel problems = window.BottomPanel.Problems;
+            problems.Shown = ProblemsTab.File;
+            Ui.Click(window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StatusMessage"));
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Problems) && problems.Shown == ProblemsTab.Build && problems.Selected == converted,
+                $"A click on \"{window.Status}\" in the status bar showed {(window.DockHost.IsShown(ToolWindowIds.Problems) ? $"Problems' {problems.Shown} tab, {problems.Selected?.Code ?? "nothing"} chosen" : "nothing")}, "
+                + "not dotnet watch's build error in Problems' Build");
+
+            // A change that builds, saved by the Apply: dotnet watch builds and starts the program.
+            Mend("int broken = \"not a number\";", "Console.WriteLine(\"mended\");");
+            WaitWatched(window, () => window.Status == "Running Hello with Hot Reload: a save applies its changes" && Processes.ReadId(started) > 0,
+                "dotnet watch to build and start the program once a change that builds was saved, and the status bar to say so", TimeSpan.FromMinutes(1));
+            int first = Processes.ReadId(started);
+            Mended("CS0029");
+
+            // Ended, it waits for a change; one that does not compile fails the build that would start it again.
+            Write("asked", "");
+            WaitWatched(window, () => window.Status == "Hot Reload: Hello exited with code 0; dotnet watch starts it again when a change is saved, or Rerun starts it now",
+                "the status bar to say the program ended and dotnet watch waits for a change", TimeSpan.FromMinutes(1));
+            File.Delete(asked);
+            Mend("Console.WriteLine(\"mended\");", "Console.WriteLine(Missing);");
+            FailsToBuild("CS0103", "Program.cs:2:19", TimeSpan.FromMinutes(1));
+            Assert.True(Processes.Gone(first), "The program that ended still runs");
+            Assert.True(window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is null, "Apply Hot Reload Changes went on working after dotnet watch's build of the change had failed");
+
+            Mend("Console.WriteLine(Missing);", "Console.WriteLine(\"mended again\");");
+            WaitWatched(window, () => window.Status == "Running Hello again with Hot Reload: a save applies its changes" && Processes.ReadId(started) is int again && again > 0 && again != first,
+                "dotnet watch to build and start the program again once a change that builds was saved, and the status bar to say so", TimeSpan.FromMinutes(1));
+            Mended("CS0103");
+
+            ending = true;
+            AssertEndsWithTheWindow(window, started, "the program dotnet watch started");
+
+            // Waits for dotnet watch's build to fail on the error with this code at this place, and checks what the window says of it.
+            Problem FailsToBuild(string code, string where, TimeSpan limit)
+            {
+                const string later = "dotnet watch builds it again when a change is saved";
+                WaitWatched(window, () => window.Status is { } said && said.StartsWith("Hot Reload: Hello's build failed: ", StringComparison.Ordinal)
+                    && said.EndsWith($" ({where}); {later}", StringComparison.Ordinal), $"the status bar to name the build's error at {where}", limit);
+                Assert.True(window.Runner.IsRunning, "dotnet watch ended with its build, where it waits for a change");
+                Problem? error = window.BottomPanel.Problems.Problems.SingleOrDefault(p => p.Code == code);
+                Assert.True(error is not null, $"dotnet watch's build failed on {code}, but Problems' Build lists [{string.Join(", ", window.BottomPanel.Problems.Problems.Select(p => $"{p.Code} {p.Where}"))}]");
+                Assert.Equal($"Hot Reload: Hello's build failed: {error.Message} ({where}); {later}", window.Status);
+                Assert.Equal("see it in Problems, Build", window.StatusPlace?.Name);
+                window.ShowToolWindow(ToolWindowIds.Run);
+                Ui.Settle();
+                Assert.Equal($"Hello's build failed with 1 error: {later}", window.BottomPanel.Run.Waiting);
+                string[] offered = [.. window.BottomPanel.Run.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible).Select(b => b.Content).OfType<string>()];
+                Assert.True(offered.Contains("Stop") && !offered.Contains("Rerun"), $"The Run window should offer Stop alone, a start building as it failed; it offers [{string.Join(", ", offered)}]");
+                return error;
+            }
+
+            // Has Apply Hot Reload Changes save a change of one line.
+            void Mend(string before, string after)
+            {
+                int at = program.Text.Snapshot.ToString().IndexOf(before, StringComparison.Ordinal);
+                window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(at, before.Length, after)]);
+                Assert.True(window.Perform(AppActions.ApplyHotReloadChanges), $"Apply Hot Reload Changes could not run: {window.Status}");
+            }
+
+            // Checks that what the build that failed said is gone once a change built.
+            void Mended(string code)
+            {
+                Ui.Settle();
+                Assert.True(window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is null, "Apply Hot Reload Changes went on working after dotnet watch had started the program");
+                Assert.Null(window.BottomPanel.Run.Waiting);
+                Assert.DoesNotContain(window.BottomPanel.Problems.Problems, p => p.Code == code);
+            }
+        }
+        finally
+        {
+            if (!ending)
+            {
+                window.Perform(AppActions.Stop);
+                Ui.WaitFor(() => !window.Runner.IsRunning, "the program to stop");
+                window.Close();
+            }
+            window.ApplySettings(new Passenger.App.Settings.AppSettings());
+        }
+    }
+
     private static string Output(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
 
     /// <summary>A test program's expression of the static delegates of the exception a body an update deleted throws (none

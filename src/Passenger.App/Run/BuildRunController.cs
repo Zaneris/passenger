@@ -1069,13 +1069,16 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>dotnet watch's words once the program it ran has ended and it waits for a file to change before starting it
-    /// again, and once it watches the program it has started.</summary>
+    /// again, once its build of the program has failed and it waits for a file to change to build it again, and once it
+    /// watches the program it has started.</summary>
     private const string WatchWaits = "Waiting for a file to change before restarting";
+
+    private const string WatchBuildFails = "Fix the error to continue";
 
     private const string WatchWatches = "Waiting for changes";
 
-    /// <summary>dotnet watch said the program it ran in the Run window ended and it waits for a change to start it again
-    /// (<see cref="HotReloadResult.Failed"/>), or that a change started it again (<see cref="HotReloadResult.Applied"/>),
+    /// <summary>dotnet watch said the program it ran in the Run window ended, or that its build failed, and it waits for a
+    /// change (<see cref="HotReloadResult.Failed"/>), or that a change started it again (<see cref="HotReloadResult.Applied"/>),
     /// with the status bar's words of it.</summary>
     public event EventHandler<HotReloadOutcome>? WatchSaid;
 
@@ -1084,46 +1087,74 @@ public sealed partial class BuildRunController
     private Action? unfollowWatched;
 
     /// <summary>Follows what dotnet watch says of the program it runs in the Run window, a line at a time, until the run's end
-    /// or the next start: once the program has ended and dotnet watch waits for a change to start it again, the status bar
-    /// and the Run window say so, offering Rerun, rather than what the last apply came to; once dotnet watch has started it
-    /// again and watches it, the status bar says that.</summary>
+    /// or the next start: once the program has ended, or dotnet watch's build of it has failed (its errors in Problems as a
+    /// build's, the first named), and dotnet watch waits for a change, the status bar and the Run window say so rather than
+    /// what the last apply came to; once dotnet watch has started it and watches it, the status bar says that.</summary>
     private void FollowWatched(string name)
     {
         UnfollowWatched();
         ProcessRunner runner = session.Runner;
         string? ended = null;
         bool waits = false;
+        bool started = false;
+        // While the program runs, the lines that are not dotnet watch's are its own, never its build's.
+        bool runs = false;
+        List<Problem> errors = [];
+        List<Problem> listed = [];
         EventHandler<string> heard = (_, line) =>
         {
-            // The program's own lines are never dotnet watch's.
             if (!line.StartsWith("dotnet watch", StringComparison.Ordinal))
             {
+                if (!runs && BuildOutput.Parse(line) is { Severity: ProblemSeverity.Error } error
+                    && Placed(error, ServerPlaces.Texts(parts.Editors)) is var placed && !errors.Contains(placed))
+                {
+                    errors.Add(placed);
+                }
                 return;
             }
             if (line.Contains(WatchWaits, StringComparison.Ordinal))
             {
-                waits = true;
                 string end = ended ?? $"{name} ended";
-                string said = $"Hot Reload: {end}; dotnet watch starts it again when a change is saved, or Rerun starts it now";
-                parts.Views.Run.ShowWaiting($"{end}: dotnet watch starts it again when a change is saved");
-                parts.Say(said, StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
-                WatchSaid?.Invoke(this, new HotReloadOutcome(HotReloadResult.Failed, said));
+                SayWaiting($"Hot Reload: {end}; dotnet watch starts it again when a change is saved, or Rerun starts it now",
+                    $"{end}: dotnet watch starts it again when a change is saved", rerun: true, StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
+            }
+            else if (line.Contains(WatchBuildFails, StringComparison.Ordinal))
+            {
+                List<Problem> failed = errors;
+                ListErrors(failed);
+                const string later = "dotnet watch builds it again when a change is saved";
+                if (failed.Count == 0)
+                {
+                    SayWaiting($"Hot Reload: {name}'s build failed; {later}", $"{name}'s build failed: {later}", rerun: false, StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
+                    return;
+                }
+                Problem first = failed[0];
+                string more = failed.Count > 1 ? $", and {Plural.Of(failed.Count - 1, "more error")}" : string.Empty;
+                SayWaiting($"Hot Reload: {name}'s build failed: {first.Message}{(first.Where is { Length: > 0 } where ? $" ({where})" : string.Empty)}{more}; {later}",
+                    $"{name}'s build failed with {Plural.Of(failed.Count, "error")}: {later}", rerun: false,
+                    StatusPlace.Problems(parts.Dock, parts.Views.Problems, ProblemsTab.Build, p => p == first));
             }
             else if (WatchedEnd(line, name) is { } end)
             {
                 ended = end;
+                runs = false;
+                errors = [];
             }
             else if (line.Contains(WatchWatches, StringComparison.Ordinal))
             {
                 ended = null;
+                runs = true;
+                errors = [];
                 if (waits)
                 {
                     waits = false;
-                    string again = $"Running {name} again with Hot Reload: a save applies its changes";
+                    ListErrors([]);
+                    string again = started ? $"Running {name} again with Hot Reload: a save applies its changes" : $"Running {name} with Hot Reload: a save applies its changes";
                     parts.Views.Run.ShowWaiting(null);
                     parts.Say(again);
                     WatchSaid?.Invoke(this, new HotReloadOutcome(HotReloadResult.Applied, again));
                 }
+                started = true;
             }
         };
         runner.Line += heard;
@@ -1132,6 +1163,29 @@ public sealed partial class BuildRunController
             runner.Line -= heard;
             parts.Views.Run.ShowWaiting(null);
         };
+
+        // dotnet watch waits for a change: the status bar says why, a click going where it has more, and the Run window too.
+        void SayWaiting(string said, string shown, bool rerun, StatusPlace place)
+        {
+            waits = true;
+            runs = false;
+            errors = [];
+            parts.Views.Run.ShowWaiting(shown, rerun);
+            parts.Say(said, place);
+            WatchSaid?.Invoke(this, new HotReloadOutcome(HotReloadResult.Failed, said));
+        }
+
+        // Problems lists the errors of dotnet watch's last build in place of those of the one before, as it lists a build's.
+        void ListErrors(List<Problem> now)
+        {
+            int gone = session.Problems.RemoveAll(listed.Contains);
+            listed = [.. now.Where(p => !session.Problems.Contains(p))];
+            session.Problems.AddRange(listed);
+            if (gone + listed.Count > 0)
+            {
+                ShowProblems();
+            }
+        }
     }
 
     private void UnfollowWatched()
