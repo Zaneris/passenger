@@ -1,8 +1,8 @@
 #!/bin/sh
 # Passenger's own icons from src/Passenger.App/Assets/passenger.svg (`just app-icon`, on macOS, since sips draws them):
-# Passenger.icns at each size macOS asks of an app icon, passenger.png at 256 pixels for the window, and Passenger.ico
-# at the sizes Windows' shell draws, each a PNG inside. Every picture the three files hold is read back, failing the
-# script unless its corner is fully transparent.
+# Passenger.icns at each size macOS asks of an app icon, passenger.png at 256 pixels for the IDE's mark and Linux's
+# desktop entry, and Passenger.ico at the sizes Windows draws Passenger.exe's and every window's icon, each a PNG inside.
+# Every picture the three files hold is read back, failing the script unless its corner is fully transparent.
 set -eu
 fail() {
     echo "app-icon: $*" >&2

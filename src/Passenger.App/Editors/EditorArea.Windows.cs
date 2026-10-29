@@ -130,7 +130,6 @@ public sealed partial class EditorArea
         FloatWindow shown = new(this, placed, placed is { } at ? new Size(at.Width, at.Height) : new Size(800, 600))
         {
             Content = frame.Surface,
-            Icon = host?.Icon,
             MinWidth = 320,
             MinHeight = 200,
             ShowActivated = activate,

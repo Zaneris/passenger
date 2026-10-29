@@ -8,7 +8,9 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
+using Avalonia.Platform;
 using Avalonia.Styling;
+using System.Buffers.Binary;
 using System.Text.RegularExpressions;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Themes.Fluent;
@@ -23,9 +25,10 @@ namespace Passenger.Tests;
 /// Shell.axaml's panelTab); every popup's width from one scale, its title one size and its rows one height
 /// (PopupFrame); a menu opening against its widget; the scrollbars, thin and arrowless; the open editor tab's ×; the
 /// focus ring; every list's rows made once (ReusedRows); every Settings page a message names one the dialog lists
-/// (SettingsDialog.PlaceOfPage); and the window at half a 1366-wide screen with nothing cut, a stripe putting what has
-/// no room behind More. Each rule that a look could break is held under both looks in one window, the look switched in
-/// place as Settings switches it.</summary>
+/// (SettingsDialog.PlaceOfPage); every window's icon the icon file's (AppIcon, which Shell.axaml's Window style gives);
+/// and the window at half a 1366-wide screen with nothing cut, a stripe putting what has no room behind More. Each rule
+/// that a look could break is held under both looks in one window, the look switched in place as Settings switches
+/// it.</summary>
 public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLifetime
 {
     private readonly Project project;
@@ -423,6 +426,74 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             window.Close();
             placed.Close();
         }
+    }
+
+    /// <summary>Every window Passenger opens (the main window, a dialog, editors in a window, a tool window in its own)
+    /// wears the one icon, AppIcon's, made from the icon file, whose own pictures at the sizes Windows draws a window's icon
+    /// (16, 24 and 32 pixels) it takes as they are; and the file reads as one picture large enough for Linux's.</summary>
+    [AvaloniaFact]
+    public void Every_window_wears_the_icon_files_own_pictures_at_the_sizes_Windows_draws_never_one_scaled_down()
+    {
+        int[] sizes = PicturesIn(AppIcon.File);
+        Assert.True(new[] { 16, 24, 32 }.All(sizes.Contains),
+            $"The windows' icon holds pictures {string.Join(", ", sizes)} pixels wide, not 16, 24 and 32: Windows scales a larger one down to its title bar's 16 and taskbar's 24, blurred and fringed");
+        using (Stream file = AssetLoader.Open(AppIcon.File))
+        {
+            using Avalonia.Media.Imaging.Bitmap picture = new(file);
+            Assert.True(picture.PixelSize.Width >= 128,
+                $"The icon file reads as a picture {picture.PixelSize} large, smaller than the 128 pixels Linux takes a window's icon at");
+        }
+
+        List<Window> opened = [];
+        using IDisposable watching = Window.WindowOpenedEvent.AddClassHandler<Window>((shown, _) => opened.Add(shown));
+        MainWindow window = Open(1200, 800);
+        try
+        {
+            WearsTheIcon(window);
+            Assert.True(window.Perform(AppActions.About), $"About could not run: {window.Status}");
+            Ui.WaitFor(() => window.OwnedWindows.OfType<AboutDialog>().Any(w => w.IsVisible), "the About dialog");
+            AboutDialog about = window.OwnedWindows.OfType<AboutDialog>().Single(w => w.IsVisible);
+            WearsTheIcon(about);
+            about.Close();
+            window.OpenFile(project.PathOf("Notes.txt"));
+            window.OpenFile(project.PathOf("Program.cs"));
+            Ui.Settle();
+            Assert.True(window.Perform(AppActions.OpenInNewWindow), $"Open Tab in New Window could not run: {window.Status}");
+            window.DockHost.Show(ToolWindowIds.Debug);
+            window.DockHost.SetMode(window.DockHost[ToolWindowIds.Debug], Passenger.App.Docking.ToolMode.Windowed);
+            Ui.Settle();
+            Window[] apart = [.. opened.Where(w => w != window && w != about && w.IsVisible)];
+            WearsTheIcon(apart.FirstOrDefault(w => w.GetVisualDescendants().OfType<Passenger.App.Editors.EditorGroup>().Any())
+                ?? throw new Xunit.Sdk.XunitException("Open Tab in New Window opened no window of editors"));
+            WearsTheIcon(apart.FirstOrDefault(w => w.GetVisualDescendants().Contains(window.DebugWindow))
+                ?? throw new Xunit.Sdk.XunitException("The Debug window, set to a window of its own, opened none"));
+        }
+        finally
+        {
+            window.DockHost.SetMode(window.DockHost[ToolWindowIds.Debug], Passenger.App.Docking.ToolMode.Docked);
+            foreach (Window other in opened.Where(w => w != window && w.IsVisible))
+            {
+                other.Close();
+            }
+            window.Close();
+        }
+
+        static void WearsTheIcon(Window shown) =>
+            Assert.True(ReferenceEquals(AppIcon.Window, shown.Icon),
+                $"The {shown.GetType().Name} \"{shown.Title}\" wears {(shown.Icon is null ? "no icon" : "an icon of its own")}, not the icon file's every window wears: Windows draws a picture scaled down in its title bar and taskbar");
+    }
+
+    /// <summary>The widths of the pictures an icon file holds, read from its directory: an entry of 16 bytes each, its first
+    /// byte its width, 256 written as 0.</summary>
+    private static int[] PicturesIn(Uri iconFile)
+    {
+        using Stream file = AssetLoader.Open(iconFile);
+        using MemoryStream read = new();
+        file.CopyTo(read);
+        byte[] bytes = read.ToArray();
+        Assert.True(bytes.Length >= 6 && BinaryPrimitives.ReadUInt16LittleEndian(bytes) == 0 && BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(2)) == 1,
+            $"{iconFile} is not an icon file, so Windows takes it as one picture and scales it");
+        return [.. Enumerable.Range(0, BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(4))).Select(i => bytes[6 + 16 * i] is 0 ? 256 : (int)bytes[6 + 16 * i])];
     }
 
     /// <summary>Every corner Passenger rounds is one of the look's radii (Shell.axaml's kindBadge, tag and box on them), so

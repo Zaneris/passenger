@@ -6,12 +6,16 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Passenger.exe's icon on Windows, so its Start menu entry's and its file types' (tools/app-icon.sh). -->
     <ApplicationIcon>Assets/Passenger.ico</ApplicationIcon>
+    <!-- Every window wears AppIcon's, so no second copy of the file is carried as the icon of a window with none. -->
+    <AvaloniaIncludeApplicationIconAsWindowIcon>false</AvaloniaIncludeApplicationIconAsWindowIcon>
     <!-- PathNames calls libc's realpath through a generated P/Invoke. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- The window's icon (X11's too), drawn from Assets/passenger.svg. -->
+    <!-- Every window's icon (AppIcon), at each size Windows draws one. -->
+    <AvaloniaResource Include="Assets/Passenger.ico" />
+    <!-- The mark About, the Welcome page and What's New show, drawn from Assets/passenger.svg. -->
     <AvaloniaResource Include="Assets/passenger.png" />
     <!-- MSBuild's own schemas (dotnet/msbuild, MIT), which the .NET SDK does not carry: the elements, properties, items,
          metadata and tasks the code help in project files offers and describes (MSBuild/MSBuildSchema.cs). -->

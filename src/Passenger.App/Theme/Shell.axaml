@@ -139,10 +139,11 @@
     </Style>
     <!-- Every window's ground is a tool window's: a dialog is its page, never an editor's background. A window that shows
          an editor (a diff, a merge) says so itself. A greyed control still shows its tooltip, which says what it is or why
-         it is greyed: inherited by all a window holds, its menus and popups too. -->
+         it is greyed: inherited by all a window holds, its menus and popups too. Every window wears the one icon. -->
     <Style Selector="Window">
         <Setter Property="Background" Value="{DynamicResource Passenger.Panel}" />
         <Setter Property="ToolTip.ShowOnDisabled" Value="True" />
+        <Setter Property="Icon" Value="{x:Static app:AppIcon.Window}" />
     </Style>
     <!-- The window's frame round the editors, each surface named once: the toolbar that is the title bar, the stripes
          down the edges, a tool window's pane and header, the editor tabs' strip and the status bar. The areas are told

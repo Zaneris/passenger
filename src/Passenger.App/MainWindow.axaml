@@ -5,7 +5,6 @@
         xmlns:app="using:Passenger.App"
         x:Class="Passenger.App.MainWindow"
         Title="Passenger"
-        Icon="/Assets/passenger.png"
         Width="1400" Height="900"
         MinWidth="{x:Static app:MainWindow.SmallestWidth}" MinHeight="{x:Static app:MainWindow.SmallestHeight}">
     <Window.Resources>
