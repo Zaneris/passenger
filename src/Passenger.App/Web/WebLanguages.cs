@@ -544,7 +544,9 @@ public sealed class WebLanguages : IAsyncDisposable
     };
 
     /// <summary>How a server starts: its script on Node.js in the folder, with the options its package documents. The
-    /// TypeScript server never installs type packages from npm (automatic type acquisition) behind the person's back, nor
+    /// TypeScript server never installs type packages from npm (automatic type acquisition) behind the person's back, and
+    /// renames a name where it is declared and everywhere it is used from any of them (an import's too, which it would
+    /// otherwise rename alone, aliased), answering from its project once loaded rather than from the open files alone; nor
     /// the Dockerfile server asks Docker Hub for image tags unless Settings allows it (its preload, <see cref="DockerHubTags"/>).</summary>
     private ServerStart Starting(WebServerKind kind, string node)
     {
@@ -561,8 +563,9 @@ public sealed class WebLanguages : IAsyncDisposable
             {
                 hostInfo = "Passenger",
                 disableAutomaticTypingAcquisition = true,
-                tsserver = new { logVerbosity = "off" },
-                preferences = new { includeCompletionsForModuleExports = true, includeCompletionsForImportStatements = true },
+                // One tsserver: a second, for syntax, would answer a rename or usages from the open files while a project loads.
+                tsserver = new { logVerbosity = "off", useSyntaxServer = "never" },
+                preferences = new { includeCompletionsForModuleExports = true, includeCompletionsForImportStatements = true, providePrefixAndSuffixTextForRename = false },
             },
             WebServerKind.Html => new { provideFormatter = true, embeddedLanguages = new { css = true, javascript = true } },
             WebServerKind.Css => new { provideFormatter = true },

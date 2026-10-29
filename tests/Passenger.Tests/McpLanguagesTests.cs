@@ -310,6 +310,37 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         Assert.Contains("from \"./Circle\";", File.ReadAllText(Path.Combine(web, main)), StringComparison.Ordinal);
     }
 
+    /// <summary>An agent's TypeScript rename at an imported name, and at a use of another, renames each where it is declared
+    /// and everywhere it is used, every file written, never an alias in the importing file alone. Skipped without a Node.js.</summary>
+    [Fact]
+    public async Task An_agents_typescript_rename_at_an_imported_name_renames_it_where_it_is_declared_and_everywhere_it_is_used()
+    {
+        await WebLanguagesTests.SkipWithoutNodeAsync(typescript: true);
+        string web = Made("mcptsrename-", made =>
+        {
+            Directory.CreateDirectory(Path.Combine(made, "src"));
+            File.WriteAllText(Path.Combine(made, "tsconfig.json"), "{\n  \"compilerOptions\": { \"target\": \"ES2022\", \"module\": \"ES2022\", \"strict\": true },\n  \"include\": [\"src\"]\n}\n");
+            File.WriteAllText(Path.Combine(made, "src", "shapes.ts"), Shapes);
+            File.WriteAllText(Path.Combine(made, "src", "main.ts"), "import { Circle, total } from \"./shapes\";\n\nconst shapes = [new Circle(1), new Circle(2)];\nconsole.log(total(shapes));\n");
+        });
+        await using McpClient client = await Start(["--mcp", web], languageServer: false);
+        string main = Path.Combine("src", "main.ts");
+        string shapes = Path.Combine("src", "shapes.ts");
+
+        string imported = (await Call(client, McpTools.Rename, new(At(File.ReadAllText(Path.Combine(web, main)), main, "import { Circle, tot")) { ["newName"] = "sumOf" })).GetString()!;
+        Assert.True(imported.StartsWith("Renamed in 2 files: ", StringComparison.Ordinal) && imported.Contains(shapes, StringComparison.Ordinal), $"The rename at the import answered: {imported}");
+        Assert.Contains("export function sumOf(shapes: Shape[]): number", File.ReadAllText(Path.Combine(web, shapes)), StringComparison.Ordinal);
+        string script = File.ReadAllText(Path.Combine(web, main));
+        Assert.True(script.Contains("import { Circle, sumOf } from \"./shapes\";", StringComparison.Ordinal) && script.Contains("console.log(sumOf(shapes));", StringComparison.Ordinal),
+            $"The importing file was not renamed with the function:\n{script}");
+
+        await Call(client, McpTools.Rename, new(At(script, main, "new Cir")) { ["newName"] = "Round" });
+        Assert.Contains("export class Round implements Shape", File.ReadAllText(Path.Combine(web, shapes)), StringComparison.Ordinal);
+        script = File.ReadAllText(Path.Combine(web, main));
+        Assert.True(script.Contains("import { Round, sumOf } from \"./shapes\";", StringComparison.Ordinal) && script.Contains("[new Round(1), new Round(2)]", StringComparison.Ordinal),
+            $"The importing file was not renamed with the class:\n{script}");
+    }
+
     /// <summary>The module of shapes McpLanguagesTests' TypeScript refactors and renames.</summary>
     private const string Shapes = "export interface Shape {\n  area(): number;\n}\n\nexport class Circle implements Shape {\n  constructor(public radius: number) {}\n"
         + "  area(): number {\n    return Math.PI * this.radius * this.radius;\n  }\n}\n\nexport function total(shapes: Shape[]): number {\n"

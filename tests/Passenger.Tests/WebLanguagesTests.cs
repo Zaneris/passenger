@@ -179,6 +179,54 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
+    /// <summary>A TypeScript rename at an imported name, or at a use of one, renames the name where it is declared and
+    /// everywhere it is used, as a rename from its declaration does: the file that declares it changed on disk while it is
+    /// not open, and in its editor once it is, the importing file never given an alias in its place.</summary>
+    [AvaloniaFact]
+    public void A_TypeScript_rename_at_an_imported_name_or_a_use_of_one_renames_it_where_it_is_declared_and_everywhere_it_is_used()
+    {
+        SkipWithoutNode(typescript: true);
+        MainWindow window = app.Open("Scripts/cart.ts", languageServer: false);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument cart = window.EditorArea.Active!;
+        Ui.WaitFor(() => window.Session.Web?.For(cart) is { Lsp: not null }, "TypeScript's document of cart.ts");
+        string items = app.PathOf("Scripts/items.ts");
+        TimeSpan unsettled = File.GetLastWriteTimeUtc(items) + Passenger.App.CSharp.WorkspaceEdits.Catching - DateTime.UtcNow;
+        if (unsettled > TimeSpan.Zero)
+        {
+            Ui.Hold(unsettled + TimeSpan.FromMilliseconds(100), "the moment after the class's reset wrote items.ts, in which a rename refuses it as changed on disk, to pass");
+        }
+
+        Ui.PlaceAfter(editor, "import { Item, tot");
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.Renaming == "total", "the rename box on the imported function");
+        window.KeyTextInput("sumOf");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => File.ReadAllText(items).Contains("export function sumOf(items: Item[]): number", StringComparison.Ordinal),
+            () => $"the function renamed where items.ts declares it; the status bar said: {window.Status}\n{cart.Text.Snapshot}");
+        string renamed = cart.Text.Snapshot.ToString();
+        Assert.True(renamed.Contains("import { Item, sumOf } from \"./items\";", StringComparison.Ordinal) && renamed.Contains("const sum: number = sumOf(items);", StringComparison.Ordinal),
+            $"The importing file was not renamed with the function:\n{renamed}");
+
+        window.OpenFile(items);
+        Ui.Settle();
+        OpenDocument declaring = window.EditorArea.Active!;
+        window.OpenFile(app.PathOf("Scripts/cart.ts"));
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "const items: It");
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.Renaming == "Item", "the rename box on a use of the imported interface");
+        window.KeyTextInput("Product");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => declaring.Text.Snapshot.ToString().Contains("export interface Product {", StringComparison.Ordinal),
+            () => $"the interface renamed where items.ts declares it; the status bar said: {window.Status}\n{declaring.Text.Snapshot}");
+        Assert.Contains("export function sumOf(items: Product[]): number", declaring.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        renamed = cart.Text.Snapshot.ToString();
+        Assert.True(renamed.Contains("import { Product, sumOf } from \"./items\";", StringComparison.Ordinal) && renamed.Contains("const items: Product[] = ", StringComparison.Ordinal),
+            $"The importing file was not renamed with the interface:\n{renamed}");
+        window.Close();
+    }
+
     /// <summary>Chooses one of the actions offered by its words, with the keys a person would press.</summary>
     private static void ChooseOffered(MainWindow window, string title)
     {
