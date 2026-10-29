@@ -235,7 +235,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   toolbar is the title bar: anything new on it goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press on
   it for the caption's. Logs are `logs/` under the state root (`IdeLog`; Settings › Diagnostics turns on protocol traces).
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; wire every editor through `ForEachEditor`;
-  `CloseTab` is the one close); a preview holds no text (`HoldsText` false).
+  `CloseTab` is the one close); a preview holds no text (`HoldsText` false). The Markdown preview draws only the blocks
+  near its sight (`MarkdownBlocks`), a page kept per tab, a scroll it sets going through `Jump`.
 - **Docking.** A kept layout records windows by `ToolWindowIds`, so a value never changes; add a window with one
   `Dock.Add`. A view is built when first shown: what the IDE writes while it's hidden lives in a model, and code reaches
   a view only through a property that builds it for a person's action.
