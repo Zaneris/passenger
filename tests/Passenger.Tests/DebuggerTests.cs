@@ -413,6 +413,42 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
+    /// <summary>A line holding a lambda after its statement begins is the statement's: a breakpoint on a query never read
+    /// stops there, Run to Cursor onto a count with a lambda stops at the count rather than in the lambda, and Set Next
+    /// Statement goes back to one, the program then counting again and stopping at the breakpoint again.</summary>
+    [AvaloniaFact]
+    public void A_breakpoint_run_to_cursor_and_set_next_statement_on_a_line_holding_a_lambda_act_on_its_statement()
+    {
+        Write("Program.cs", "int[] items = [1, 2, 3, 4, 5];\nint count = items.Count(i => i > 2);\nIEnumerable<int> big = items.Where(i => i > 3);\n"
+            + "Console.WriteLine($\"count {count}\");\ncount = items.Count(i => i > 4);\nConsole.WriteLine($\"then {count}\");\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(2, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        DebugSession session = window.Debugger.Session!;
+        WaitDebugging(window, () => session.State == DebugState.Paused && Value(window, "count") == "3", "the stop at the query never read");
+        Assert.Contains(new LineMark(2, LineMarkKind.ExecutionPoint), editor.LineMarks);
+
+        editor.GoTo(new TextPosition(4, 0));
+        Ui.Run(window, AppActions.RunToCursor);
+        WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 2 }, "Run to Cursor's stop at the second count");
+        Assert.Contains(new LineMark(4, LineMarkKind.ExecutionPoint), editor.LineMarks);
+        Assert.Null(Value(window, "i"));
+        Assert.Contains("<Main>$", window.BottomPanel.Debug.Frames[0].Name, StringComparison.Ordinal);
+
+        editor.GoTo(new TextPosition(1, 0));
+        Ui.Run(window, AppActions.SetNextStatement);
+        Ui.WaitFor(() => editor.LineMarks.Contains(new LineMark(1, LineMarkKind.ExecutionPoint)), "the arrow at the first count, where Set Next Statement went back");
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 4 }, "the breakpoint's stop at the query again");
+        Assert.Contains(new LineMark(2, LineMarkKind.ExecutionPoint), editor.LineMarks);
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => session.State == DebugState.Ended, "the program to run to its end without stopping in a lambda");
+        Assert.Contains("count 3\nthen 1\n", window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_hit_count_the_debugger_cannot_read_is_said_as_it_is_typed_and_the_breakpoint_refused()
     {

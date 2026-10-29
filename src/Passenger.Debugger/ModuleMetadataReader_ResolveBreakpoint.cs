@@ -44,7 +44,10 @@ public partial class ModuleMetadataReader
     /// 0 when no document of its is that file.</summary>
     public int DocumentMatch(string sourceFilePath) => BestDocument(sourceFilePath).Score;
 
-    public ResolvedBreakpoint? ResolveBreakpoint(string sourceFilePath, int line, int? column = null)
+    /// <summary>Where a line, or a place given a column, of a source file binds: with no column, the statement that starts
+    /// first on it, a lambda's body only where it starts the line; with <paramref name="inMethod"/>, a place in that method
+    /// alone.</summary>
+    public ResolvedBreakpoint? ResolveBreakpoint(string sourceFilePath, int line, int? column = null, int? inMethod = null)
     {
         if (_pdbMetadataReader is null || BestDocument(sourceFilePath).Document is not { } document)
         {
@@ -52,6 +55,7 @@ public partial class ModuleMetadataReader
         }
 
         List<MethodCandidate> candidates = MethodsWithPoints(document)
+            .Where(token => inMethod is null || token == inMethod)
             .Select(token => CollectCandidate(token, document, line, column))
             .OfType<MethodCandidate>()
             .ToList();
@@ -61,7 +65,7 @@ public partial class ModuleMetadataReader
             ResolvedBreakpoint attributed = new(setter.Token, setter.Point.Offset, line, line, requested, requested, document) { Attributed = true };
             return attributed with { BindOffset = JitBoundaryAtOrBefore(attributed.MethodToken, attributed.ILOffset) };
         }
-        ResolvedBreakpoint? resolved = Resolve(candidates, rewritten);
+        ResolvedBreakpoint? resolved = Resolve(candidates, rewritten, column is null);
         return resolved is not null && rewritten ? resolved with { BindOffset = JitBoundaryAtOrBefore(resolved.MethodToken, resolved.ILOffset) } : resolved;
     }
 
@@ -176,7 +180,7 @@ public partial class ModuleMetadataReader
         return offset;
     }
 
-    private ResolvedBreakpoint? Resolve(List<MethodCandidate> candidates, bool rewritten)
+    private ResolvedBreakpoint? Resolve(List<MethodCandidate> candidates, bool rewritten, bool wholeLine)
     {
         List<MethodCandidate> covering = candidates.Where(c => c.CoversLine).ToList();
 
@@ -195,6 +199,12 @@ public partial class ModuleMetadataReader
 
         // The candidates whose covering point starts latest: the innermost lambda, not the method spanning its body.
         LineCol maxCoverStart = covering.Max(c => c.CoveringSp!.Value.Start());
+        if (wholeLine && !rewritten)
+        {
+            // The line's first statement there, so a lambda written after it on the line is not taken for the line.
+            int latestLine = maxCoverStart.Line;
+            maxCoverStart = covering.Select(c => c.CoveringSp!.Value.Start()).Where(start => start.Line == latestLine).Min();
+        }
         List<MethodCandidate> primary = covering.Where(c => c.CoveringSp!.Value.Start() == maxCoverStart).ToList();
 
         if (primary.Count == 1)

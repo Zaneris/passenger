@@ -56,11 +56,8 @@ public class SmartStepIntoTests(ITestOutputHelper testOutputHelper)
     {
         const string code = "int[] doubled = [.. Numbers().Select(n => Twice(n))];";
         int line = Line(code);
-        // A breakpoint on the line alone binds to the lambda's body, which shares it.
         int column = File.ReadAllLines(Debuggees.Source(Stepping, "Program.cs"))[line - 1].IndexOf(code, StringComparison.Ordinal) + 1;
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await host.InitializeAsync().LaunchAsync(Debuggees.Program(Stepping), stopAtEntry: false, justMyCode: true).WaitForInitializedEvent();
-        await host.BreakpointsAsync(Debuggees.Source(Stepping, "Program.cs"), [new DapSourceBreakpoint(line, column)]).ConfigurationDoneAsync();
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, line, []);
         StoppedEvent stop = await host.WaitForStoppedEvent();
         Assert.Equal((line, column), (stop.ReadStopInfo().line, stop.ReadStopInfo().column));
         int thread = stop.ThreadId!.Value;

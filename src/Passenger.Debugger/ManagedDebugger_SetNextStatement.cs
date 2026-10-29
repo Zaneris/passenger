@@ -8,22 +8,27 @@ namespace Passenger.Debugger;
 /// its instruction pointer (ICorDebugILFrame.SetIP) once it says the move is safe.</summary>
 public partial class ManagedDebugger
 {
-    /// <summary>Where a paused thread could go on from at a line: the line's first statement (1-based, as its sequence
-    /// point starts) and its IL offset, when the line is in the method its top frame runs; null otherwise.</summary>
-    public (int Line, int Column, int ILOffset)? GotoTarget(int threadId, string filePath, int line)
+    /// <summary>Where a paused thread could go on from at a line, or a place in it given a column: the line's first statement
+    /// (1-based, as its sequence point starts) and its IL offset, when the line is in the method its top frame runs, else a
+    /// statement of that method starting on the line beside another's; null otherwise.</summary>
+    public (int Line, int Column, int ILOffset)? GotoTarget(int threadId, string filePath, int line, int? column = null)
     {
         if (!_threads.TryGetValue(threadId, out ThreadInfo? info) || info.Thread.ActiveFrame is not ICorDebugILFrame frame)
         {
             return null;
         }
         ICorDebugFunction function = frame.Function;
-        if (FindModule(function.Module) is not { } module
-            || module.MetadataReader.ResolveBreakpoint(filePath, line) is not { } target
-            || target.MethodToken != function.Token)
+        if (FindModule(function.Module) is not { } module)
         {
             return null;
         }
-        return (target.StartLine, target.StartColumn, target.ILOffset);
+        ModuleMetadataReader.ResolvedBreakpoint? target = module.MetadataReader.ResolveBreakpoint(filePath, line, column);
+        if (target?.MethodToken != function.Token)
+        {
+            target = module.MetadataReader.ResolveBreakpoint(filePath, line, column, function.Token) is { } own
+                && own.StartLine == line && own.MethodToken == function.Token ? own : null;
+        }
+        return target is null ? null : (target.StartLine, target.StartColumn, target.ILOffset);
     }
 
     /// <summary>Moves a paused thread's next statement to an IL offset of its top frame's method. Throws with the

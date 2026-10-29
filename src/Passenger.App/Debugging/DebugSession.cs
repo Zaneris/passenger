@@ -39,8 +39,9 @@ public sealed class DebugSession
     private readonly BreakpointStore breakpoints;
     private readonly BuiltLines lines;
 
-    /// <summary>The column (from one) a breakpoint asks for, in XAML (<see cref="XamlBreakpoints.Column"/>); null for its line.</summary>
-    private readonly Func<LineBreakpoint, int?> columns;
+    /// <summary>The column (from one) a line (from zero) of a file asks for, a XAML attribute's (by its name) or the line's
+    /// own: in XAML (<see cref="XamlBreakpoints.Column"/>) and where C#'s code begins; null for the whole line.</summary>
+    private readonly Func<string, int, string?, int?> columns;
     private readonly Dictionary<string, string> sent = new(StringComparer.Ordinal);
 
     /// <summary>The exception breakpoints as last sent.</summary>
@@ -70,8 +71,8 @@ public sealed class DebugSession
     /// <summary>Done once the adapter's process has ended, however soon after its start that was.</summary>
     private readonly TaskCompletionSource exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    /// <summary>Run to Cursor's place, at its built line, until the next stop.</summary>
-    private (string Path, int Line)? runToCursor;
+    /// <summary>Run to Cursor's place, as the debugger is asked for it (<see cref="Asked"/>), until the next stop.</summary>
+    private (string Path, DapSourceBreakpoint At)? runToCursor;
 
     /// <summary>How many stops the adapter has told of, so a resume's answer that comes after the next stop leaves it be.</summary>
     private int stops;
@@ -132,14 +133,14 @@ public sealed class DebugSession
         return start;
     }
 
-    private DebugSession(Process adapter, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output, Func<LineBreakpoint, int?>? columns,
+    private DebugSession(Process adapter, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output, Func<string, int, string?, int?>? columns,
         bool elsewhere, AdapterPlace? place, bool quiet = false)
     {
         Elsewhere = elsewhere || place is not null;
         this.place = place;
         this.breakpoints = breakpoints;
         this.lines = lines;
-        this.columns = columns ?? (_ => null);
+        this.columns = columns ?? ((_, _, _) => null);
         // The log is called from the adapter's error stream and the connection's own threads: each line lands on the UI's.
         log = UiThread.Marshal(log);
         this.adapter = adapter;
@@ -296,7 +297,7 @@ public sealed class DebugSession
     /// terminal it starts, its output there. <paramref name="starting"/> is handed the session as it begins, so Stop can end
     /// it while it starts; with <paramref name="elsewhere"/> the program is on another machine.</summary>
     public static Task<DebugSession> LaunchAsync(Run.LaunchPlan plan, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
-        Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal = null, Func<LineBreakpoint, int?>? columns = null, bool hotReload = false,
+        Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal = null, Func<string, int, string?, int?>? columns = null, bool hotReload = false,
         Action<DebugSession>? starting = null, bool elsewhere = false, AdapterPlace? place = null)
     {
         return StartAsync(plan.Built ?? plan.Program, DapCommands.Launch, new LaunchArguments
@@ -318,7 +319,7 @@ public sealed class DebugSession
     /// so its code may change as a launch's may; with <paramref name="elsewhere"/> it is not on this machine, and with
     /// <paramref name="place"/> the adapter runs where it is (a container's, its process id that container's).</summary>
     public static Task<DebugSession> AttachAsync(int processId, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
-        Func<LineBreakpoint, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null,
+        Func<string, int, string?, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null,
         bool quiet = false) =>
         StartAsync(place is null ? $"process {processId}" : $"process {processId} in {place.Where}", DapCommands.Attach,
             new AttachArguments { ProcessId = processId, JustMyCode = true, HotReload = hotReload ? true : null },
@@ -328,7 +329,7 @@ public sealed class DebugSession
     /// exception to stop at), then configurationDone, whose answer waits for the program's runtime however long it takes. A
     /// session stopped meanwhile ends the start at once, failing it with <see cref="StoppedStarting"/>.</summary>
     private static async Task<DebugSession> StartAsync(string program, string request, object arguments, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
-        Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal, Func<LineBreakpoint, int?>? columns, Action<DebugSession>? starting, bool elsewhere, AdapterPlace? place,
+        Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal, Func<string, int, string?, int?>? columns, Action<DebugSession>? starting, bool elsewhere, AdapterPlace? place,
         bool quiet = false)
     {
         UiThread.Check();
@@ -432,7 +433,7 @@ public sealed class DebugSession
         {
             return Task.CompletedTask;
         }
-        runToCursor = (path, lines.ToBuilt(path, line));
+        runToCursor = (path, Asked(path, line, null));
         return Resume(DapCommands.Continue, before: () => SendBreakpointsAsync(path));
     }
 
@@ -749,9 +750,14 @@ public sealed class DebugSession
     public Task<SetExpressionResponse> SetExpressionAsync(string expression, string value, int frameId) =>
         connection.RequestAsync<SetExpressionResponse>(DapCommands.SetExpression, new SetExpressionArguments(expression, value, frameId));
 
-    /// <summary>Where the paused thread could go on from at a line of a file (from one), if the line is in its method.</summary>
-    public async Task<GotoTarget?> GotoTargetAsync(string path, int line) =>
-        (await connection.RequestAsync<GotoTargetsResponse>(DapCommands.GotoTargets, new GotoTargetsArguments(new DapSource { Path = ToProgram(path) }, line))).Targets.FirstOrDefault();
+    /// <summary>Where the paused thread could go on from at a line of a file (from zero, the editor's), if the line is in its
+    /// method.</summary>
+    public async Task<GotoTarget?> GotoTargetAsync(string path, int line)
+    {
+        DapSourceBreakpoint at = Asked(path, line, null);
+        return (await connection.RequestAsync<GotoTargetsResponse>(DapCommands.GotoTargets,
+            new GotoTargetsArguments(new DapSource { Path = ToProgram(path) }, at.Line, at.Column))).Targets.FirstOrDefault();
+    }
 
     /// <summary>Set Next Statement: the paused thread goes on from a target; it stops there anew.</summary>
     public Task GotoAsync(int thread, GotoTarget target) => connection.RequestAsync<object>(DapCommands.Goto, new GotoArguments(thread, target.Id));
@@ -838,9 +844,9 @@ public sealed class DebugSession
         List<LineBreakpoint> built = [.. sending.Where(b => lines.IsBuilt(path, b.Line))];
         List<LineBreakpoint> unbuilt = [.. sending.Where(b => !lines.IsBuilt(path, b.Line))];
         List<DapSourceBreakpoint> requests = [.. built.Select(b => Request(path, b))];
-        if (runToCursor is { } target && target.Path == path && requests.All(r => r.Line != target.Line + 1))
+        if (runToCursor is { } target && target.Path == path && requests.All(r => r.Line != target.At.Line))
         {
-            requests.Add(new DapSourceBreakpoint(target.Line + 1));
+            requests.Add(target.At);
         }
         sent[path] = Signature(path);
         SetBreakpointsResponse response = await connection.RequestAsync<SetBreakpointsResponse>(
@@ -866,13 +872,24 @@ public sealed class DebugSession
             [.. built.Take(response.Breakpoints.Count), .. unbuilt]);
     }
 
-    /// <summary>A breakpoint as the debugger is asked for it: at its built line, and in XAML at its name's column there, both
-    /// as the compiler counted them (a lone '\r' before the name begins another line in XAML).</summary>
-    private DapSourceBreakpoint Request(string path, LineBreakpoint breakpoint)
+    /// <summary>A breakpoint as the debugger is asked for it (<see cref="Asked"/>).</summary>
+    private DapSourceBreakpoint Request(string path, LineBreakpoint breakpoint) =>
+        Asked(path, breakpoint.Line, breakpoint.Attribute) with
+        {
+            Condition = breakpoint.Condition,
+            HitCondition = breakpoint.HitCondition,
+            LogMessage = breakpoint.LogMessage,
+            Suspend = breakpoint.Suspend,
+        };
+
+    /// <summary>A line (from zero) of a file as the debugger is asked for it: at its built line, and at its column there
+    /// (<see cref="columns"/>), both as the compiler counted them (a lone '\r' before the column begins another line in
+    /// XAML).</summary>
+    private DapSourceBreakpoint Asked(string path, int line, string? attribute)
     {
-        int? column = columns(breakpoint);
-        TextPosition at = lines.ToBuilt(path, breakpoint.Line, column is int named ? named - 1 : 0);
-        return new DapSourceBreakpoint(at.Line + 1, column is null ? null : at.Column + 1, breakpoint.Condition, breakpoint.HitCondition, breakpoint.LogMessage, breakpoint.Suspend);
+        int? column = columns(path, line, attribute);
+        TextPosition at = lines.ToBuilt(path, line, column is int named ? named - 1 : 0);
+        return new DapSourceBreakpoint(at.Line + 1, column is null ? null : at.Column + 1);
     }
 
     /// <summary>Sends every breakpoint whose request differs from what the debugger was last sent: each file's (one that lost

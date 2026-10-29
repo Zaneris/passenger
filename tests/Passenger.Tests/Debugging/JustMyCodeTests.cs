@@ -99,14 +99,13 @@ public class JustMyCodeTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task A_step_over_a_call_that_throws_and_catches_within_it_ends_at_the_next_line()
     {
-        // At the call, not in the lambda on the same line that throws.
         int call = Line("Wrapper.CallWithCatch(");
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
             .InitializeAsync()
             .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true)
             .WaitForInitializedEvent();
-        await host.BreakpointsAsync(Source, [new DapSourceBreakpoint(call, Column: 1)]).ConfigurationDoneAsync();
+        await host.BreakpointsAsync(Source, [new DapSourceBreakpoint(call)]).ConfigurationDoneAsync();
         StoppedEvent stop = await host.WaitForStoppedEvent();
         Assert.Equal(1, stop.ReadStopInfo().column);
 

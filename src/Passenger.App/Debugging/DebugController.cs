@@ -483,16 +483,27 @@ public sealed class DebugController : IDisposable
             plan.Name, launched: true, inTerminal: inTerminal is not null, hotReloadOn: hotReloadOn, tab: tab, app: app, plan: plan);
     }
 
-    /// <summary>The column a breakpoint asks the debugger for: in Avalonia XAML, its attribute's or its line's first name's
-    /// in the file's text (an open file's as it is now, else as saved); none elsewhere.</summary>
-    private int? ColumnOf(LineBreakpoint breakpoint)
+    /// <summary>The column (from one) a line (from zero) asks the debugger for, in the file's text (an open file's as it is
+    /// now, else as saved): in Avalonia XAML, its attribute's or its line's first name's; in C#, where the line's code begins,
+    /// so a lambda written after a statement's start is not taken for its line; none elsewhere, or on a blank line.</summary>
+    private int? ColumnOf(string path, int line, string? attribute)
     {
-        if (!XamlBreakpoints.Compiled(breakpoint.Path))
+        bool xaml = XamlBreakpoints.Compiled(path);
+        if (!xaml && Languages.Language.ForPath(path) != Languages.Language.CSharp)
         {
             return null;
         }
-        TextSnapshot? text = CSharp.ServerPlaces.TextOf(editors, breakpoint.Path);
-        return text is null ? null : XamlBreakpoints.Column(text, breakpoint.Line, breakpoint.Attribute);
+        if (CSharp.ServerPlaces.TextOf(editors, path) is not { } text || line < 0 || line >= text.LineCount)
+        {
+            return null;
+        }
+        if (xaml)
+        {
+            return XamlBreakpoints.Column(text, line, attribute);
+        }
+        LineSpan span = text.GetLine(line);
+        int code = TextNavigation.IndentEnd(text, span);
+        return code < span.End ? code - span.Start + 1 : null;
     }
 
     /// <summary>Attaches the debugger to a running .NET process beside any other program debugged, its output going
@@ -1361,7 +1372,7 @@ public sealed class DebugController : IDisposable
             {
                 problem = "No thread is paused";
             }
-            else if (await session.GotoTargetAsync(path, Built(path, line) + 1) is not { } target)
+            else if (await session.GotoTargetAsync(path, line) is not { } target)
             {
                 problem = $"Line {line + 1} is not in the method the program is paused in";
             }

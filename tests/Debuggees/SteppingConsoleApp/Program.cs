@@ -5,6 +5,7 @@ Lambdas.Run();
 Awaits.RunAsync().GetAwaiter().GetResult();
 Returns.Run();
 Throws.Run();
+Queries.Run();
 
 internal static class Calls
 {
@@ -95,6 +96,17 @@ internal static class Throws
     }
 
     private static void Fail(string reason) => throw new InvalidOperationException(reason);
+}
+
+internal static class Queries
+{
+    public static void Run()
+    {
+        int[] numbers = [1, 2, 3, 4, 5];
+        int counted = numbers.Count(n => n > 2);
+        IEnumerable<int> unread = numbers.Where(n => n > 3);
+        Console.WriteLine($"counted {counted}");
+    }
 }
 
 internal readonly record struct Spot(int X, int Y);

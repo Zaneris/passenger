@@ -157,14 +157,14 @@ public sealed partial class DebugAdapter
                 PresentationHint = ToProtocol(value.PresentationHint),
             };
         });
-        // Set Next Statement: a target per line, in the last stopped thread's method, its id the IL offset goto takes.
+        // Set Next Statement: a target per line (or column), in the last stopped thread's method, its id the IL offset goto takes.
         connection.Handle<GotoTargetsArguments, GotoTargetsResponse>(DapCommands.GotoTargets, async arguments =>
         {
             if (stoppedThread is not int thread || arguments.Source.Path is not { } path)
             {
                 return new GotoTargetsResponse();
             }
-            (int Line, int Column, int ILOffset)? target = await Read(() => debugger.GotoTarget(thread, path, LineIn(arguments.Line)));
+            (int Line, int Column, int ILOffset)? target = await Read(() => debugger.GotoTarget(thread, path, LineIn(arguments.Line), arguments.Column is int column ? ColumnIn(column) : null));
             return target is { } found
                 ? new GotoTargetsResponse { Targets = [new GotoTarget(found.ILOffset, $"Line {found.Line}", LineOut(found.Line), ColumnOut(found.Column))] }
                 : new GotoTargetsResponse();
