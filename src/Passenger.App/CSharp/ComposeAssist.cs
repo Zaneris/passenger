@@ -34,6 +34,21 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
     public override async Task<bool> DefinitionAsync(int offset) =>
         context.WebCurrent is { Lsp: not null } compose && context.Editors.Active is { } shown && IsComposeFile(compose, shown) && await ComposeGoTo(compose, offset);
 
+    /// <summary>Where Passenger's own declarations in a compose file lead, or the registry's page of an image; null where
+    /// they find nothing, for the server's (an anchor's).</summary>
+    public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
+    {
+        if (context.WebOf(document) is not { Lsp: { } lsp } compose || !IsComposeFile(compose, document))
+        {
+            return null;
+        }
+        Func<string, TextSnapshot?> texts = ServerPlaces.Texts(context.Editors);
+        ComposeAnswer answer = await ComposeDeclarationAsync(lsp, document, offset, texts, Projects?.Invoke() ?? []);
+        return answer.Page is { } page ? new Declared([], answer.Said) { Page = page }
+            : answer.Places.Count == 0 && answer.Said == Refusals.NoDeclaration ? null
+            : new Declared(Declared.Served(answer.Places.Select(p => (p.Path, p.Position)), texts), answer.Said) { Names = [.. answer.Places.Select(p => (string?)p.Name)] };
+    }
+
     /// <summary>A compose file's own name: where it is declared and every use, its override's too; else the server's (an anchor's).</summary>
     public override bool Rename(int caret)
     {

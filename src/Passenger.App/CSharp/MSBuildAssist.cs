@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Passenger.App.Editors;
 using Passenger.App.MSBuild;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Lsp;
@@ -67,9 +68,9 @@ internal sealed class MSBuildAssist : LanguageAssist
     /// <summary>The card beside the list: MSBuild's documentation of the item chosen, where its schemas have some.</summary>
     public override string? Describe(CompletionItem item) => msbuildOffered.GetValueOrDefault(item)?.Documentation;
 
-    public override async Task<bool> HoverAsync(InfoCard card, int offset, CancellationToken cancel)
+    public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
-        if (context.MSBuildCurrent is not { } msbuild)
+        if (context.MSBuildOf(document) is not { } msbuild)
         {
             return false;
         }
@@ -85,6 +86,19 @@ internal sealed class MSBuildAssist : LanguageAssist
         }
         await MSBuildGoTo(msbuild, offset);
         return true;
+    }
+
+    /// <summary>Where a property was set (the one in force first), an item type or target defined, the files an import or
+    /// SDK brings in (the SDK's own, read-only), each named as the window's choice of them is.</summary>
+    public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
+    {
+        if (context.MSBuildOf(document) is not { } msbuild)
+        {
+            return null;
+        }
+        IReadOnlyList<MSBuildTarget> targets = await msbuild.TargetsAsync(offset) is { } found ? found.Targets : [];
+        return new Declared(Declared.Served(targets.Select(t => (t.Place.Path, new TextPosition(Math.Max(0, t.Place.Line - 1), Math.Max(0, t.Place.Column - 1)))),
+            ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration) { Names = [.. targets.Select(t => (string?)t.Title)] };
     }
 
     /// <summary>Whether what was just typed in an MSBuild file opens completion.</summary>
@@ -314,7 +328,7 @@ internal sealed class MSBuildAssist : LanguageAssist
 
     /// <summary>The hover card for a name in an MSBuild file: what it is (a property and its value) as code, then where it
     /// was set and MSBuild's documentation.</summary>
-    private static async Task<bool> MSBuildHover(InfoCard hoverCard, MSBuildDocument msbuild, int offset, CancellationToken cancel)
+    private static async Task<bool> MSBuildHover(IHoverCard hoverCard, MSBuildDocument msbuild, int offset, CancellationToken cancel)
     {
         if (await msbuild.DescribeAsync(offset) is not { } described || cancel.IsCancellationRequested)
         {

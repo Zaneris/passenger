@@ -1,5 +1,6 @@
 using Passenger.App.Workspace;
 using Passenger.Lsp;
+using Passenger.Text;
 
 namespace Passenger.App.CSharp;
 
@@ -19,18 +20,31 @@ internal sealed class HttpAssist(AssistContext context, CodeNavigation navigatio
 
     public override Task<bool> DefinitionAsync(int offset) => Task.FromResult(HttpGoTo(offset));
 
+    public override Task<Declared?> DeclaredAsync(OpenDocument document, int offset) => Task.FromResult(RoutesOf(document, offset));
+
     public override Task<bool> UsagesAsync(int offset) => Task.FromResult(RouteUsages(offset));
 
     /// <summary>Go to Declaration in an .http file: the route the request at the caret calls.</summary>
     private bool HttpGoTo(int offset)
     {
-        if (context.Editors.Active is not { } shown || !IsHttpFile(shown))
+        if (context.Editors.Active is not { } shown || RoutesOf(shown, offset) is not { } routes)
         {
             return false;
         }
-        int line = context.Editor.Document.Snapshot.GetPosition(Math.Min(offset, context.Editor.Document.Snapshot.Length)).Line;
-        navigation.Go(HttpRouteTargets!(shown.Path, line), offset, "Routes", "No route of the folder's web projects takes this request");
+        navigation.Go(routes, offset);
         return true;
+    }
+
+    /// <summary>The routes the request at an offset of an .http file calls; null for any other file.</summary>
+    private Declared? RoutesOf(OpenDocument document, int offset)
+    {
+        if (!IsHttpFile(document))
+        {
+            return null;
+        }
+        TextSnapshot text = document.Text.Snapshot;
+        int line = text.GetPosition(Math.Min(offset, text.Length)).Line;
+        return new Declared(HttpRouteTargets!(document.Path, line), "No route of the folder's web projects takes this request") { Title = "Routes" };
     }
 
     /// <summary>Find Usages on a route's declaration: the .http requests that call it.</summary>

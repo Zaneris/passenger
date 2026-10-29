@@ -19,14 +19,14 @@ internal sealed partial class CSharpAssist
     /// <summary>The configuration of the project a C# file is of (the session's <see cref="ProjectSession.ConfigurationOf(string)"/>).</summary>
     public Func<string, ConfigurationProject?>? ConfigurationOf { get; set; }
 
-    /// <summary>Go to Declaration from a read of a configuration key in C#: where each file the project runs with gives it (its
-    /// settings, a launch profile, its user secrets, a compose file, an AppHost), or saying none does; false where the caret
-    /// is on no read of the project's, for the server's own. Only a string's place asks.</summary>
-    private async Task<bool> ConfigurationGoTo(LspDocument lsp, int offset)
+    /// <summary>Where Go to Declaration goes from a read of a configuration key in C#: where each file the project runs with
+    /// gives it (its settings, a launch profile, its user secrets, a compose file, an AppHost), or saying none does; null
+    /// where the offset is on no read of the project's, for the server's own. Only a string's place asks.</summary>
+    private async Task<Declared?> ConfigurationDeclaredAsync(LspDocument lsp, OpenDocument document, int offset)
     {
-        if (context.Editors.Active is not { } document || await ReadAtAsync(lsp, document, offset) is not ({ } project, { } read))
+        if (await ReadAtAsync(lsp, document, offset) is not ({ } project, { } read))
         {
-            return false;
+            return null;
         }
         Func<string, string?> text = context.Editors.Texts().Text;
         IReadOnlyList<(GivenKey Given, LspLocation Place)> given = await BackgroundWork.Run(() =>
@@ -44,20 +44,17 @@ internal sealed partial class CSharpAssist
                     return (g, new LspLocation(DocumentUris.FromPath(g.File!), new LspRange(start, end)));
                 })];
         });
-        if (context.Editors.Active != document)
+        return new Declared([.. given.Select(g => g.Place)], $"Nothing {project.Name} runs with gives {read.Key}")
         {
-            return true;
-        }
-        navigation.Go([.. given.Select(g => g.Place)], offset, "Declarations", $"Nothing {project.Name} runs with gives {read.Key}",
-            [.. given.Select(g => (string?)$"{Path.GetFileName(g.Given.File)}: {g.Given.Key} = {g.Given.Shown}")]);
-        return true;
+            Names = [.. given.Select(g => (string?)$"{Path.GetFileName(g.Given.File)}: {g.Given.Key} = {g.Given.Shown}")],
+        };
     }
 
     /// <summary>The read of a configuration key whose string an offset of a C# file is in, with its project's configuration; null
     /// elsewhere, and asking nothing where the offset is in no string.</summary>
     private async Task<(ConfigurationProject Project, ConfigurationKey Read)?> ReadAtAsync(LspDocument lsp, OpenDocument document, int offset, CancellationToken cancel = default)
     {
-        if (context.Syntax is not { } parsed || !ReferenceEquals(parsed.Text, context.Editor.Document.Snapshot)
+        if (document.Syntax?.Current is not { } parsed || !ReferenceEquals(parsed.Text, document.Text.Snapshot)
             || !parsed.Root.FindToken(Math.Max(0, offset - 1)).IsKind(SyntaxKind.StringLiteralToken) && !parsed.Root.FindToken(offset).IsKind(SyntaxKind.StringLiteralToken)
             || ConfigurationOf?.Invoke(document.Path) is not { } project)
         {
@@ -73,9 +70,9 @@ internal sealed partial class CSharpAssist
     /// <summary>What the hover card says of a read of a configuration key in C#: the key and where each file the project runs
     /// with gives it with its value (a user secret's always as dots, any other masked by Passenger's rule for secrets), or that
     /// nothing does. None elsewhere.</summary>
-    private async Task<string?> ConfigurationHoverAsync(int offset, CancellationToken cancel)
+    private async Task<string?> ConfigurationHoverAsync(OpenDocument document, int offset, CancellationToken cancel)
     {
-        if (context.Editors.Active is not { } document || context.WebCurrent is not null || context.CSharp?.For(document)?.Lsp is not { } lsp
+        if (context.WebOf(document) is not null || context.CSharp?.For(document)?.Lsp is not { } lsp
             || await ReadAtAsync(lsp, document, offset, cancel) is not ({ } project, { } found))
         {
             return null;

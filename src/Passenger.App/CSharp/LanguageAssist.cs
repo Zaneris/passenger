@@ -15,6 +15,8 @@ internal abstract class LanguageAssist
 
     protected static readonly Task<bool> Answered = Task.FromResult(true);
 
+    protected static readonly Task<Declared?> NotDeclared = Task.FromResult<Declared?>(null);
+
     /// <summary>Opens completion or Parameter Info for what was just typed in the file shown, as its language has it.</summary>
     public virtual bool Typed(string text) => false;
 
@@ -33,12 +35,16 @@ internal abstract class LanguageAssist
     /// <summary>The colour badge of one of the language's own items; null for none.</summary>
     public virtual IBrush? Swatch(CompletionItem item) => null;
 
-    /// <summary>What the hover card says of an offset, added to <paramref name="card"/>; an abandoned one throws
-    /// <see cref="OperationCanceledException"/>, so the card is not shown.</summary>
-    public virtual Task<bool> HoverAsync(InfoCard card, int offset, CancellationToken cancel) => Passed;
+    /// <summary>What the hover card says of an offset of a file, added to <paramref name="card"/>, the window's and an
+    /// agent's alike; an abandoned one throws <see cref="OperationCanceledException"/>, so the card is not shown.</summary>
+    public virtual Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel) => Passed;
 
-    /// <summary>Go to Declaration from an offset.</summary>
+    /// <summary>Go to Declaration from an offset of the file shown.</summary>
     public virtual Task<bool> DefinitionAsync(int offset) => Passed;
+
+    /// <summary>Where Go to Declaration goes from an offset of a file, as <see cref="DefinitionAsync"/> goes from the file
+    /// shown, for an agent; it answers for the same files, and passes (null) where that passes.</summary>
+    public virtual Task<Declared?> DeclaredAsync(OpenDocument document, int offset) => NotDeclared;
 
     /// <summary>Find Usages from an offset.</summary>
     public virtual Task<bool> UsagesAsync(int offset) => Passed;
@@ -94,11 +100,11 @@ internal sealed class LanguageAssists(HttpAssist http, MSBuildAssist msbuild, Xa
         }
     }
 
-    public async Task HoverAsync(InfoCard card, int offset, CancellationToken cancel)
+    public async Task HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
         foreach (LanguageAssist language in ladder)
         {
-            if (await language.HoverAsync(card, offset, cancel))
+            if (await language.HoverAsync(card, document, offset, cancel))
             {
                 return;
             }
@@ -114,6 +120,19 @@ internal sealed class LanguageAssists(HttpAssist http, MSBuildAssist msbuild, Xa
                 return;
             }
         }
+    }
+
+    /// <summary>Where Go to Declaration goes from an offset of a file, for an agent; null where no language answers.</summary>
+    public async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
+    {
+        foreach (LanguageAssist language in ladder)
+        {
+            if (await language.DeclaredAsync(document, offset) is { } declared)
+            {
+                return declared;
+            }
+        }
+        return null;
     }
 
     public async Task UsagesAsync(int offset)
@@ -150,4 +169,40 @@ internal sealed class LanguageAssists(HttpAssist http, MSBuildAssist msbuild, Xa
         }
         return null;
     }
+}
+
+/// <summary>What a hover card is given, part by part: the window's card shows each, an agent reads them as text.</summary>
+internal interface IHoverCard
+{
+    /// <summary>Code, as written.</summary>
+    void AddCode(string code);
+
+    /// <summary>Words.</summary>
+    void AddText(string text);
+
+    /// <summary>What a language server says of a place.</summary>
+    void AddHover(Hover hover);
+}
+
+/// <summary>Where Go to Declaration goes, the window's and an agent's alike: its places as a language server names them,
+/// each with the words its choice shows (<see cref="Names"/>, none for one shown by its line of code); else a page that
+/// declares it (an image's registry page), or the words for there being none.</summary>
+internal sealed record Declared(IReadOnlyList<LspLocation> Places, string None)
+{
+    /// <summary>The words each place's choice shows, in order; null where each is shown by its line of code.</summary>
+    public IReadOnlyList<string?>? Names { get; init; }
+
+    /// <summary>What the places to choose from are called.</summary>
+    public string Title { get; init; } = "Declarations";
+
+    /// <summary>A page that declares it in place of a file, which <see cref="None"/> names.</summary>
+    public Uri? Page { get; init; }
+
+    /// <summary>Places in the editor's lines, as a language server names them (<see cref="ServerPlaces.ServerPositionOf"/>).</summary>
+    public static IReadOnlyList<LspLocation> Served(IEnumerable<(string Path, TextPosition Position)> places, Func<string, TextSnapshot?> texts) =>
+        [.. places.Select(p =>
+        {
+            LspPosition at = ServerPlaces.ServerPositionOf(texts(p.Path), p.Position);
+            return new LspLocation(DocumentUris.FromPath(p.Path), new LspRange(at, at));
+        })];
 }

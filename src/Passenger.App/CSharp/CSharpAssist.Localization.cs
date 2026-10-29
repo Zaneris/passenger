@@ -27,7 +27,7 @@ internal sealed partial class CSharpAssist
     private async Task<(LocalizedKey Read, LocalizedResource Resource, ResourceSet? Set)?> LocalizedAtAsync(LspDocument lsp, OpenDocument document, int offset,
         CancellationToken cancel = default)
     {
-        if (!lsp.IsRazor && (context.Syntax is not { } parsed || !ReferenceEquals(parsed.Text, lsp.Text.Snapshot)
+        if (!lsp.IsRazor && (document.Syntax?.Current is not { } parsed || !ReferenceEquals(parsed.Text, lsp.Text.Snapshot)
             || !new[] { parsed.Root.FindToken(Math.Max(0, offset - 1)), parsed.Root.FindToken(offset) }.Any(t => t.IsKind(SyntaxKind.StringLiteralToken) || t.IsKind(SyntaxKind.IdentifierToken))))
         {
             return null;
@@ -49,9 +49,9 @@ internal sealed partial class CSharpAssist
 
     /// <summary>What the hover card says of a localized key: each language's value (the neutral file's first), or that it has
     /// none, is not translated yet or wants review; that no file gives the resource where none is found.</summary>
-    private async Task<string?> LocalizationHoverAsync(int offset, CancellationToken cancel)
+    private async Task<string?> LocalizationHoverAsync(OpenDocument document, int offset, CancellationToken cancel)
     {
-        if (context.Editors.Active is not { } document || context.WebCurrent is not null || context.CSharp?.For(document)?.Lsp is not { } lsp
+        if (context.WebOf(document) is not null || context.CSharp?.For(document)?.Lsp is not { } lsp
             || await LocalizedAtAsync(lsp, document, offset, cancel) is not ({ } read, { } resource, var set))
         {
             return null;
@@ -69,39 +69,38 @@ internal sealed partial class CSharpAssist
         string.Join('\n', [$"'{key}' ({(set.Name == type ? type : $"{type}, {set.Name}")}):", .. set.Languages(key)]);
 
     /// <summary>Where Go to Declaration goes from a localized key: each file's entry of it (a .resx's <c>&lt;data name&gt;</c>,
-    /// an XLIFF unit's id), named by its language, at the editor's lines, and for a generated class's property whether the
-    /// server's own declaration of it goes first; null where the offset is on no key. Shared with the agents' definition.</summary>
-    internal async Task<(IReadOnlyList<(string Path, TextPosition Position, LspPosition Served, string Label)> Places, bool Generated, string Key, string Type)?> LocalizedDeclarationsAsync(
+    /// an XLIFF unit's id), named by its language, in the server's lines, and for a generated class's property whether the
+    /// server's own declaration of it goes first; null where the offset is on no key.</summary>
+    private async Task<(IReadOnlyList<(string Path, LspPosition Served, string Label)> Places, bool Generated, string Key, string Type)?> LocalizedDeclarationsAsync(
         OpenDocument document, int offset)
     {
         if (context.CSharp?.For(document)?.Lsp is not { } lsp || await LocalizedAtAsync(lsp, document, offset) is not ({ } read, { } resource, var set))
         {
             return null;
         }
-        IReadOnlyList<(string, TextPosition, LspPosition, string)> places = [];
+        IReadOnlyList<(string, LspPosition, string)> places = [];
         if (set is not null)
         {
             OpenTexts texts = context.Editors.Texts();
-            places = await BackgroundWork.Run(() => (IReadOnlyList<(string, TextPosition, LspPosition, string)>)[.. set.Files.Select(f => (File: f, Entry: f.Entry(read.Key)))
+            places = await BackgroundWork.Run(() => (IReadOnlyList<(string, LspPosition, string)>)[.. set.Files.Select(f => (File: f, Entry: f.Entry(read.Key)))
                 .Where(f => f.Entry is not null).Select(f =>
                 {
                     TextSnapshot? text = texts.TextOf(f.File.Path);
                     int at = Math.Min(f.Entry!.NameStart, text?.Length ?? 0);
-                    TextPosition position = text?.GetPosition(at) ?? new TextPosition(0, 0);
-                    return (f.File.Path, position, text is null ? new LspPosition(0, 0) : ServerLines.Of(text).PositionOf(at),
+                    return (f.File.Path, text is null ? new LspPosition(0, 0) : ServerLines.Of(text).PositionOf(at),
                         $"{(f.File.Culture.Length == 0 ? "neutral" : f.File.Culture)}: {f.File.Name}");
                 })]);
         }
         return (places, resource.Kind == LocalizedKinds.Class, read.Key, resource.Type);
     }
 
-    /// <summary>Go to Declaration from a localized key: each language's entry of it, beside a generated class's property the
-    /// server declares; false where the caret is on no key, for the server's own.</summary>
-    private async Task<bool> LocalizationGoTo(LspDocument lsp, int offset)
+    /// <summary>Where Go to Declaration goes from a localized key: each language's entry of it, beside a generated class's
+    /// property the server declares; null where the offset is on no key, for the server's own.</summary>
+    private async Task<Declared?> LocalizationDeclaredAsync(LspDocument lsp, OpenDocument document, int offset)
     {
-        if (context.Editors.Active is not { } document || await LocalizedDeclarationsAsync(document, offset) is not { } found)
+        if (await LocalizedDeclarationsAsync(document, offset) is not { } found)
         {
-            return false;
+            return null;
         }
         List<LspLocation> places = [];
         List<string?> names = [];
@@ -113,16 +112,12 @@ internal sealed partial class CSharpAssist
                 names.Add($"{found.Type}.{found.Key}");
             }
         }
-        foreach ((string path, _, LspPosition served, string label) in found.Places)
+        foreach ((string path, LspPosition served, string label) in found.Places)
         {
             places.Add(new LspLocation(DocumentUris.FromPath(path), new LspRange(served, served)));
             names.Add(label);
         }
-        if (context.Editors.Active == document)
-        {
-            navigation.Go(places, offset, "Declarations", $"No file of {found.Type} gives '{found.Key}'", names);
-        }
-        return true;
+        return new Declared(places, $"No file of {found.Type} gives '{found.Key}'") { Names = names };
     }
 
     /// <summary>What completion offers in a localizer's string: every key the resource's files have, its neutral value (else a

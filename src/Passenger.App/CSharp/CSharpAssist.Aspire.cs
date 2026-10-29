@@ -14,8 +14,11 @@ namespace Passenger.App.CSharp;
 internal sealed partial class CSharpAssist
 {
     /// <summary>The file shown's role, when it is a C# file of the server's.</summary>
-    internal AspireRole AspireRoleOfShown => context.Editors.Active is { Syntax: not null } shown && context.CSharp?.For(shown) is { } features
-        ? features.AspireRole : AspireRole.None;
+    internal AspireRole AspireRoleOfShown => context.Editors.Active is { } shown ? AspireRoleOf(shown) : AspireRole.None;
+
+    /// <summary>What a C# file is to Aspire: an AppHost's, a service's, or neither.</summary>
+    private AspireRole AspireRoleOf(OpenDocument document) =>
+        document.Syntax is not null && context.CSharp?.For(document) is { } features ? features.AspireRole : AspireRole.None;
 
     /// <summary>A resource's names where one is typed in an AppHost or a service: true once they are listed, or the list was
     /// asked for again meanwhile; false for the server's own list, also when the text changed while the extension answered.</summary>
@@ -247,25 +250,17 @@ internal sealed partial class CSharpAssist
 
     /// <summary>Aspire's Go to Declaration, in an AppHost's or a service's file: AddProject's project file, not its generated
     /// metadata type, and from a service's connection string or service-discovery name the AppHost's line that declares the
-    /// resource; false elsewhere, for the server's own.</summary>
-    private async Task<bool> AspireGoTo(LspDocument document, int offset)
+    /// resource; null elsewhere, or without Passenger's extension, for the server's own.</summary>
+    private async Task<Declared?> AspireDeclaredAsync(LspDocument lsp, OpenDocument document, int offset)
     {
-        if (AspireRoleOfShown == AspireRole.None || await AspireDeclarationAsync(document, offset, ServerPlaces.Texts(context.Editors)) is not { } place)
+        if (AspireRoleOf(document) == AspireRole.None)
         {
-            return false;
+            return null;
         }
-        context.Navigate(place);
-        return true;
-    }
-
-    /// <summary>Where Aspire's Go to Declaration goes from an offset of an AppHost's or a service's file, at the editor's line of
-    /// the file it lands in; null where it finds nothing, or without Passenger's extension. Shared with the agents' definition.</summary>
-    internal static async Task<(string Path, TextPosition Position)?> AspireDeclarationAsync(LspDocument document, int offset, Func<string, TextSnapshot?> texts)
-    {
         AspireProjectTarget target;
         try
         {
-            target = await document.ExtensionAsync<AspireProjectTarget>(Handlers.AspireProjectDeclaration, new Caret(document.PlaceOf(offset)));
+            target = await lsp.ExtensionAsync<AspireProjectTarget>(Handlers.AspireProjectDeclaration, new Caret(lsp.PlaceOf(offset)));
         }
         catch (LanguageServerFailed)
         {
@@ -276,7 +271,7 @@ internal sealed partial class CSharpAssist
         {
             return null;
         }
-        string path = Passenger.Core.PathNames.Canonical(found);
-        return (path, target.At is { } at ? ServerPlaces.PositionOf(texts(path), new LspPosition(at.Line, at.Character)) : new TextPosition(0, 0));
+        LspPosition at = target.At is { } place ? new LspPosition(place.Line, place.Character) : new LspPosition(0, 0);
+        return new Declared([new LspLocation(DocumentUris.FromPath(Passenger.Core.PathNames.Canonical(found)), new LspRange(at, at))], Refusals.NoDeclaration);
     }
 }

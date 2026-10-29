@@ -80,13 +80,6 @@ public sealed partial class PassengerTools
             + "XAML, JavaScript, TypeScript, HTML, CSS, SCSS, Less, JSON, YAML, Dockerfiles and MSBuild files");
     }
 
-    /// <summary>Where Go to Declaration goes from a name in an MSBuild file: where a property was set (the one in force
-    /// first), an item type or target defined, the files an import or SDK brings in (the SDK's own, read-only).</summary>
-    private async Task<IReadOnlyList<Place>> MSBuildDefinition(MSBuildServed msbuild, int offset, CancellationToken cancel) =>
-        await msbuild.MSBuild.TargetsAsync(offset) is { } found
-            ? await PlacesOf([.. found.Targets.Select(t => (t.Place.Path, new TextPosition(Math.Max(0, t.Place.Line - 1), Math.Max(0, t.Place.Column - 1))))], cancel)
-            : [];
-
     /// <summary>An MSBuild file's elements, indented, each with its line: a property or metadata with its value as written,
     /// an item with what it includes, a target, an import or an SDK with what names it.</summary>
     private static string MSBuildOutline(MSBuildServed msbuild)
@@ -135,58 +128,6 @@ public sealed partial class PassengerTools
     private static string LanguageOf(OpenDocument document) =>
         Languages.Language.ForPath(document.Path) is { Service: not (Languages.LanguageService.None or Languages.LanguageService.CSharp) } served
             ? served.Name : document.Language.Name;
-
-    /// <summary>Go to Declaration in JSON, whose server has none: a package.json dependency's package, a script's run.</summary>
-    private async Task<IReadOnlyList<Place>> JsonDefinition(ServerServed json, int offset, CancellationToken cancel)
-    {
-        // A settings file's key: the options property it sets, else what reads it, as the window's goes.
-        if (await window.Assist.Languages.Settings.SettingsDeclarationsAsync(json.Document, offset) is { } settings)
-        {
-            return await PlacesOf(settings, cancel);
-        }
-        ((string Path, TextPosition Position)? place, string said) = await WebAssist.JsonDeclarationAsync(json.Lsp, json.Document, offset);
-        return place is { } found ? await PlacesOf([found], cancel)
-            : said == Refusals.NoDeclaration ? []
-            : throw new InvalidOperationException(said);
-    }
-
-    /// <summary>Passenger's own Go to Declaration in a compose file, as the window's goes; null where it finds nothing,
-    /// for the YAML server's own (an alias's anchor) to be asked. An image's registry page is said, not gone to.</summary>
-    private async Task<IReadOnlyList<Place>?> ComposeDefinition(Served served, int offset, CancellationToken cancel)
-    {
-        if (served is not ServerServed { Web.Kind: WebServerKind.Yaml } compose || !ComposeDeclarations.IsCompose(compose.Document.Path))
-        {
-            return null;
-        }
-        ComposeAnswer answer = await ComposeAssist.ComposeDeclarationAsync(compose.Lsp, compose.Document, offset,
-            ServerPlaces.Texts(Editors), Session.Workspace?.Projects ?? []);
-        if (answer.Page is { } page)
-        {
-            throw new InvalidOperationException($"{answer.Said} is declared on its registry, not in the folder: its page is {page}");
-        }
-        return answer.Places.Count > 0 ? await PlacesOf([.. answer.Places.Select(p => (p.Path, p.Position))], cancel)
-            : answer.Said == Refusals.NoDeclaration ? null
-            : throw new InvalidOperationException(answer.Said);
-    }
-
-    /// <summary>Aspire's Go to Declaration in an AppHost's or a service's C# file, as the window's goes: AddProject's project,
-    /// a connection string's or service's name to the AppHost line declaring it; null elsewhere, for the server's own.</summary>
-    private async Task<IReadOnlyList<Place>?> AspireDefinition(Served served, int offset, CancellationToken cancel) =>
-        served is ServerServed { Web: null } csharp && csharp.Document.Language == Languages.Language.CSharp && Session.AspireFiles.RoleOf(csharp.Document.Path) != Aspire.AspireRole.None
-            && await CSharpAssist.AspireDeclarationAsync(csharp.Lsp, offset, ServerPlaces.Texts(Editors)) is { } place
-            ? await PlacesOf([place], cancel) : null;
-
-    /// <summary>A localized key's Go to Declaration in a C# or Razor file, as the window's goes: each language's entry of it, a
-    /// generated class's property as the server declares it first; null elsewhere, for the server's own.</summary>
-    private async Task<IReadOnlyList<Place>?> LocalizedDefinition(Served served, int offset, CancellationToken cancel)
-    {
-        if (served is not ServerServed { Web: null } code || await window.Assist.Languages.CSharp.LocalizedDeclarationsAsync(code.Document, offset) is not { } found)
-        {
-            return null;
-        }
-        IReadOnlyList<Place> declared = found.Generated ? await Places(await code.Lsp.DefinitionAsync(offset), cancel) : [];
-        return [.. declared, .. await PlacesOf([.. found.Places.Select(p => (p.Path, p.Position))], cancel)];
-    }
 
     /// <summary>An AppHost's or a service's C# file's diagnostics pulled and marked now, a file reading what an open compose
     /// file's service lacks or one that may read configuration or localized strings too, so the fixes Passenger offers on
@@ -270,38 +211,6 @@ public sealed partial class PassengerTools
     /// <summary>A XAML name at an offset, with the places it leads; null where there is none.</summary>
     private static async Task<XamlSymbol?> XamlSymbolAt(XamlServed xaml, int offset) =>
         await BackgroundWork.Run(() => XamlNavigation.At(xaml.File, offset)) is { Targets.Count: > 0 } symbol ? symbol : null;
-
-    /// <summary>What the hover card says of a XAML name: the type, property, resource or element it is.</summary>
-    private static async Task<string> XamlSymbolInfo(XamlServed xaml, int offset) =>
-        await XamlSymbolAt(xaml, offset) is { } symbol ? XamlNavigation.Describe(xaml.File, symbol) : "Nothing is known about this position";
-
-    /// <summary>Where Go to Declaration goes from a XAML name: the project's source or XAML, a library's type decompiled (read
-    /// only), the theme's XAML from its Source Link, a localized string's entry in each language's file; why not, where none of
-    /// the places can be had.</summary>
-    private async Task<IReadOnlyList<Place>> XamlDefinition(XamlServed xaml, int offset, CancellationToken cancel)
-    {
-        if (await XamlSymbolAt(xaml, offset) is not { } symbol)
-        {
-            return [];
-        }
-        List<(string Path, TextPosition Position)> places = [];
-        List<string> unreached = [];
-        foreach (XamlTarget target in (IReadOnlyList<XamlTarget>)[.. symbol.Targets, .. await window.Assist.Languages.Xaml.XamlLocalizedTargetsAsync(xaml.File, offset)])
-        {
-            ((string Path, TextPosition Position)? place, string? said) = await window.Assist.Languages.Xaml.XamlPlaceAsync(target, xaml.File);
-            if (place is { } found)
-            {
-                places.Add(found);
-            }
-            else if (said is not null)
-            {
-                unreached.Add(said);
-            }
-        }
-        return places.Count == 0 && unreached.Count > 0
-            ? throw new InvalidOperationException($"{symbol.Name}'s declaration cannot be reached: {string.Join("; ", unreached)}")
-            : await PlacesOf(places, cancel);
-    }
 
     /// <summary>Find Usages in XAML: an element's name in its file and its code-behind, a resource key in the project's XAML.</summary>
     private async Task<IReadOnlyList<Place>> XamlUsages(XamlServed xaml, int offset, CancellationToken cancel)
@@ -508,8 +417,4 @@ public sealed partial class PassengerTools
             ? places.Count == 1 ? places[0] : throw new InvalidOperationException($"{what} needs a choice of where it goes: {string.Join("; ", places.Select(p => p.Title))}")
             : places.FirstOrDefault(p => p.Title == choice) ?? throw new InvalidOperationException($"{what} cannot go in '{choice}'; it can go in: {string.Join("; ", places.Select(p => p.Title))}");
     }
-
-    /// <summary>Places in files as an agent reads them, with each line's text.</summary>
-    private Task<IReadOnlyList<Place>> PlacesOf(IReadOnlyList<(string Path, TextPosition Position)> places, CancellationToken cancel) =>
-        Lines([.. places.Select(p => (DocumentUris.FromPath(p.Path), new LspPosition(p.Position.Line, p.Position.Column), false))], cancel);
 }

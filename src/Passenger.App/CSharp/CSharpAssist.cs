@@ -1,4 +1,5 @@
 using Passenger.App.Web;
+using Passenger.App.Workspace;
 using Passenger.Lsp;
 
 namespace Passenger.App.CSharp;
@@ -42,18 +43,18 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
     }
 
     /// <summary>The server's description of the symbol, then a configuration key's values and a localized key's languages.</summary>
-    public override async Task<bool> HoverAsync(InfoCard card, int offset, CancellationToken cancel)
+    public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
-        if (context.Current?.Lsp is { } lsp)
+        if (context.ServerOf(document)?.Lsp is { } lsp)
         {
             await QuickInfo.ServerHoverAsync(lsp, card, offset, cancel);
         }
-        if (await ConfigurationHoverAsync(offset, cancel) is { } configured)
+        if (await ConfigurationHoverAsync(document, offset, cancel) is { } configured)
         {
             cancel.ThrowIfCancellationRequested();
             card.AddText(configured);
         }
-        if (await LocalizationHoverAsync(offset, cancel) is { } localized)
+        if (await LocalizationHoverAsync(document, offset, cancel) is { } localized)
         {
             cancel.ThrowIfCancellationRequested();
             card.AddText(localized);
@@ -61,38 +62,49 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         return true;
     }
 
-    /// <summary>Aspire's, a configuration read's and a localized key's places first; then the server's, where a Dockerfile's
-    /// FROM that names no stage goes to its image's registry page and a XAML element's generated field to its name.</summary>
+    /// <summary>Go to Declaration from the file shown, where <see cref="DeclaredAsync"/> leads.</summary>
     public override async Task<bool> DefinitionAsync(int offset)
     {
-        if (context.Ask("Go to Declaration") is not { } lsp)
+        if (context.Ask("Go to Declaration") is null || context.Editors.Active is not { } shown)
         {
             return true;
         }
         try
         {
-            if (await AspireGoTo(lsp, offset) || await ConfigurationGoTo(lsp, offset) || await LocalizationGoTo(lsp, offset))
+            if (await DeclaredAsync(shown, offset) is { } declared && context.Editors.Active == shown)
             {
-                return true;
+                navigation.Go(declared, offset);
             }
-            IReadOnlyList<LspLocation> found = await lsp.DefinitionAsync(offset);
-            if (found.Count == 0 && context.WebCurrent is { Kind: WebServerKind.Dockerfile } && WebAssist.FromImageAt(context.Editor.Document.Snapshot, offset) is { } page)
-            {
-                context.Browse(page);
-                return true;
-            }
-            if (await xaml.NamedElementOfAsync(found, offset) is { } element)
-            {
-                await xaml.Arrive(element);
-                return true;
-            }
-            navigation.Go(found, offset, "Declarations", Refusals.NoDeclaration);
         }
         catch (LanguageServerFailed failed)
         {
             context.Failed("Go to Declaration", failed);
         }
         return true;
+    }
+
+    /// <summary>Aspire's, a configuration read's and a localized key's places first; then the server's, where a Dockerfile's
+    /// FROM that names no stage goes to its image's registry page and a XAML element's generated field to its name.</summary>
+    public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
+    {
+        if (context.ServerOf(document)?.Lsp is not { } lsp)
+        {
+            return null;
+        }
+        if ((await AspireDeclaredAsync(lsp, document, offset) ?? await ConfigurationDeclaredAsync(lsp, document, offset) ?? await LocalizationDeclaredAsync(lsp, document, offset)) is { } own)
+        {
+            return own;
+        }
+        IReadOnlyList<LspLocation> found = await lsp.DefinitionAsync(offset);
+        if (found.Count == 0 && context.WebOf(document) is { Kind: WebServerKind.Dockerfile } && WebAssist.FromImageAt(document.Text.Snapshot, offset) is ({ } image, { } page))
+        {
+            return new Declared([], $"The image {image}") { Page = page };
+        }
+        if (await xaml.NamedElementOfAsync(document, found, offset) is { } element && await xaml.XamlPlaceAsync(element, null) is ({ } place, _))
+        {
+            return new Declared(Declared.Served([place], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration);
+        }
+        return new Declared(found, Refusals.NoDeclaration);
     }
 
     public override async Task<bool> UsagesAsync(int offset)

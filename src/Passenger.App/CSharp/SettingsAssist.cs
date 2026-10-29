@@ -23,8 +23,12 @@ internal sealed class SettingsAssist(AssistContext context, CodeCompletion compl
 
     /// <summary>The settings file shown, a JSON file that configures some of the folder's projects; null for any other.</summary>
     private (WebDocument Json, OpenDocument Document, IReadOnlyList<ConfigurationProject> Projects)? Shown =>
-        context.WebCurrent is { Kind: WebServerKind.Json } json && context.Editors.Active is { } settings && ConfiguredBy?.Invoke(settings.Path) is { Count: > 0 } projects
-            ? (json, settings, projects) : null;
+        context.Editors.Active is { } shown ? SettingsOf(shown) : null;
+
+    /// <summary>A settings file, a JSON file that configures some of the folder's projects; null for any other.</summary>
+    private (WebDocument Json, OpenDocument Document, IReadOnlyList<ConfigurationProject> Projects)? SettingsOf(OpenDocument document) =>
+        context.WebOf(document) is { Kind: WebServerKind.Json } json && ConfiguredBy?.Invoke(document.Path) is { Count: > 0 } projects
+            ? (json, document, projects) : null;
 
     /// <summary>The keys and values the code reads, ahead of the JSON server's items; alone where no JSON server runs.</summary>
     public override async Task<bool> CompleteAsync(string? trigger, bool incomplete)
@@ -44,9 +48,9 @@ internal sealed class SettingsAssist(AssistContext context, CodeCompletion compl
     }
 
     /// <summary>The JSON server's card, then the type the code reads the key as and what declares it.</summary>
-    public override async Task<bool> HoverAsync(InfoCard card, int offset, CancellationToken cancel)
+    public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
-        if (Shown is not ({ } web, { } document, { } projects))
+        if (SettingsOf(document) is not ({ } web, _, { } projects))
         {
             return false;
         }
@@ -62,8 +66,32 @@ internal sealed class SettingsAssist(AssistContext context, CodeCompletion compl
         return true;
     }
 
-    public override async Task<bool> DefinitionAsync(int offset) =>
-        Shown is (_, { } document, { } projects) && await SettingsGoTo(document, projects, offset);
+    /// <summary>Go to Declaration from a key in a settings file or a secrets.json; false where the caret is on no key, for
+    /// the JSON server's.</summary>
+    public override async Task<bool> DefinitionAsync(int offset)
+    {
+        if (context.Editors.Active is not { } shown || await DeclaredAsync(shown, offset) is not { } declared)
+        {
+            return false;
+        }
+        if (context.Editors.Active == shown)
+        {
+            navigation.Go(declared, offset);
+        }
+        return true;
+    }
+
+    /// <summary>Where Go to Declaration goes from a key in a settings file or a secrets.json: the options property it sets,
+    /// else the code that reads it or binds its section; null where the offset is on no key.</summary>
+    public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
+    {
+        if (SettingsOf(document) is not (_, _, { } projects) || await SettingsDeclaredAsync(document, projects, offset) is not (string key, IReadOnlyList<ConfigurationKey> declared))
+        {
+            return null;
+        }
+        return new Declared([.. declared.Select(k => new LspLocation(DocumentUris.FromPath(k.Path!), new LspRange(new LspPosition(k.At!.Line, k.At.Character), new LspPosition(k.End!.Line, k.End.Character))))],
+            $"No code of {string.Join(" or ", projects.Select(p => p.Name))} reads {key}") { Names = [.. declared.Select(k => (string?)(k.Owner ?? $"{k.Key} ({k.Kind})"))] };
+    }
 
     /// <summary>What the hover card says of a key in a settings file: the type the code reads it as and what declares it.</summary>
     private async Task<string?> SettingsHoverAsync(OpenDocument document, IReadOnlyList<ConfigurationProject> projects, int offset, CancellationToken cancel)
@@ -214,24 +242,6 @@ internal sealed class SettingsAssist(AssistContext context, CodeCompletion compl
         };
     }
 
-    /// <summary>Go to Declaration from a key in a settings file or a secrets.json: the options property it sets, else the code
-    /// that reads it or binds its section; false where the caret is on no key, for the JSON server's.</summary>
-    private async Task<bool> SettingsGoTo(OpenDocument document, IReadOnlyList<ConfigurationProject> projects, int offset)
-    {
-        if (await SettingsDeclaredAsync(document, projects, offset) is not (string key, IReadOnlyList<ConfigurationKey> declared))
-        {
-            return false;
-        }
-        if (context.Editors.Active != document)
-        {
-            return true;
-        }
-        string names = string.Join(" or ", projects.Select(p => p.Name));
-        navigation.Go([.. declared.Select(k => new LspLocation(DocumentUris.FromPath(k.Path!), new LspRange(new LspPosition(k.At!.Line, k.At.Character), new LspPosition(k.End!.Line, k.End.Character))))],
-            offset, "Declarations", $"No code of {names} reads {key}", [.. declared.Select(k => (string?)(k.Owner ?? $"{k.Key} ({k.Kind})"))]);
-        return true;
-    }
-
     /// <summary>The key at an offset of a settings file and what declares it in the projects' code: the options properties it
     /// sets first, then the bindings of its section, then the reads; null where the offset is on no key.</summary>
     private async Task<(string Key, IReadOnlyList<ConfigurationKey> Declared)?> SettingsDeclaredAsync(OpenDocument document, IReadOnlyList<ConfigurationProject> projects, int offset)
@@ -246,19 +256,6 @@ internal sealed class SettingsAssist(AssistContext context, CodeCompletion compl
                 && (k.Kind == ConfigurationKinds.Option ? ConfigurationFiles.Matches(k.Key, segments) : k.Key.Equals(key, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(k => k.Kind switch { ConfigurationKinds.Option => 0, ConfigurationKinds.Binding => 1, _ => 2 })
             .DistinctBy(k => (k.Path, k.At!.Line, k.At.Character))]);
-    }
-
-    /// <summary>Where Go to Declaration goes from a key of a settings file or a secrets.json, at the editor's lines; null for
-    /// any other file or where no key is. Shared with the agents' definition.</summary>
-    internal async Task<IReadOnlyList<(string Path, TextPosition Position)>?> SettingsDeclarationsAsync(OpenDocument document, int offset)
-    {
-        if (ConfiguredBy?.Invoke(document.Path) is not { Count: > 0 } projects
-            || await SettingsDeclaredAsync(document, projects, offset) is not (_, IReadOnlyList<ConfigurationKey> declared))
-        {
-            return null;
-        }
-        Func<string, TextSnapshot?> texts = ServerPlaces.Texts(context.Editors);
-        return [.. declared.Select(k => (k.Path!, ServerPlaces.PositionOf(texts(k.Path!), new LspPosition(k.At!.Line, k.At.Character))))];
     }
 
     /// <summary>The key whose name, or whose value, an offset of a configuration file is on, its sections joined by ':'.</summary>

@@ -82,9 +82,9 @@ internal sealed partial class XamlAssist : LanguageAssist
         xamlOffered.TryGetValue(item, out XamlItem? offered) ? CodeAssist.Swatch(offered.Colour) : null;
 
     /// <summary>The hover card's words for a XAML name, then each language's value of a localized string.</summary>
-    public override async Task<bool> HoverAsync(InfoCard card, int offset, CancellationToken cancel)
+    public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
-        if (context.XamlCurrent is not { } xaml)
+        if (context.XamlOf(document) is not { } xaml)
         {
             return false;
         }
@@ -107,6 +107,37 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
         await XamlGoTo(xaml, offset);
         return true;
+    }
+
+    /// <summary>Where Go to Declaration goes from a XAML name, every place had at once: the project's source or XAML, a
+    /// library's type decompiled (read only), the theme's XAML from its Source Link, a localized string's entry in each
+    /// language's file; why not, where none of them can be had.</summary>
+    public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
+    {
+        if (context.XamlOf(document) is not { } xaml)
+        {
+            return null;
+        }
+        if (await XamlSymbolAt(xaml, offset, null) is not { } found)
+        {
+            return new Declared([], Refusals.NoDeclaration);
+        }
+        List<(string Path, TextPosition Position)> places = [];
+        List<string> unreached = [];
+        foreach (XamlTarget target in (IReadOnlyList<XamlTarget>)[.. found.Symbol.Targets, .. await XamlLocalizedTargetsAsync(found.File, offset)])
+        {
+            ((string Path, TextPosition Position)? place, string? said) = await XamlPlaceAsync(target, found.File);
+            if (place is { } reached)
+            {
+                places.Add(reached);
+            }
+            else if (said is not null)
+            {
+                unreached.Add(said);
+            }
+        }
+        return new Declared(Declared.Served(places, ServerPlaces.Texts(context.Editors)), places.Count == 0 && unreached.Count > 0
+            ? $"{found.Symbol.Name}'s declaration cannot be reached: {string.Join("; ", unreached)}" : Refusals.NoDeclaration);
     }
 
     public override async Task<bool> UsagesAsync(int offset)
@@ -783,14 +814,10 @@ internal sealed partial class XamlAssist : LanguageAssist
 
     /// <summary>A C# definition that lands in the field Avalonia's generator or WPF's MarkupCompile made for a named
     /// element goes to the element's name in its XAML instead; null for any other.</summary>
-    internal async Task<XamlTarget?> NamedElementOfAsync(IReadOnlyList<LspLocation> definitions, int offset)
+    internal async Task<XamlTarget?> NamedElementOfAsync(OpenDocument document, IReadOnlyList<LspLocation> definitions, int offset)
     {
         foreach (LspLocation place in definitions)
         {
-            if (context.Editors.Active is not { } active)
-            {
-                continue;
-            }
             string? xaml;
             if (place.Uri.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
             {
@@ -799,9 +826,9 @@ internal sealed partial class XamlAssist : LanguageAssist
             else
             {
                 Match generated = GeneratedFile().Match(Uri.UnescapeDataString(place.Uri));
-                xaml = generated.Success && context.Xaml?.Invoke() is { } service ? await service.ClassFileAsync(generated.Groups["class"].Value, active.Path) : null;
+                xaml = generated.Success && context.Xaml?.Invoke() is { } service ? await service.ClassFileAsync(generated.Groups["class"].Value, document.Path) : null;
             }
-            string name = context.NameAt(offset);
+            string name = AssistContext.NameAt(document.Text.Snapshot, offset);
             if (xaml is not null && Regex.Match(context.ReadOpenOrDisk(xaml), $@"\b(?:x:)?Name\s*=\s*""(?<name>{Regex.Escape(name)})""") is { Success: true } found)
             {
                 int start = found.Groups["name"].Index;

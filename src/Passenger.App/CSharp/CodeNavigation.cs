@@ -220,6 +220,17 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
         }
     }
 
+    /// <summary>Where a declaration's answer leads: its page opened, else its places (<see cref="Go(IReadOnlyList{LspLocation}, int, string, string, IReadOnlyList{string?}?)"/>).</summary>
+    public void Go(Declared declared, int offset)
+    {
+        if (declared.Page is { } page)
+        {
+            context.Browse(page);
+            return;
+        }
+        Go(declared.Places, offset, declared.Title, declared.None, declared.Names);
+    }
+
     /// <summary>Straight to the one place, else the places to choose from; the status bar says <paramref name="none"/>
     /// when there are none.</summary>
     public void Go(IReadOnlyList<LspLocation> locations, int offset, string title, string none, IReadOnlyList<string?>? names = null)

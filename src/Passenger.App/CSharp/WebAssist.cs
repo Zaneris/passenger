@@ -40,9 +40,9 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         return true;
     }
 
-    public override async Task<bool> HoverAsync(InfoCard card, int offset, CancellationToken cancel)
+    public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
-        if (context.WebCurrent is not { } web)
+        if (context.WebOf(document) is not { } web)
         {
             return false;
         }
@@ -62,6 +62,17 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         }
         await WebGoTo(web, offset);
         return true;
+    }
+
+    /// <summary>Where Go to Declaration goes where the server has none (JSON's), or why not; null where the server has its own.</summary>
+    public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
+    {
+        if (context.WebOf(document) is not { Lsp: { } lsp } web || web.Provides("definitionProvider"))
+        {
+            return null;
+        }
+        ((string Path, TextPosition Position)? place, string said) = await JsonDeclarationAsync(lsp, document, offset);
+        return new Declared(place is { } found ? Declared.Served([found], ServerPlaces.Texts(context.Editors)) : [], said);
     }
 
     public override Task<bool> UsagesAsync(int offset)
@@ -329,14 +340,15 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         return written.ToString();
     }
 
-    /// <summary>The registry page of the image a Dockerfile's FROM names where an offset is on it; null elsewhere.</summary>
-    internal static Uri? FromImageAt(TextSnapshot text, int offset)
+    /// <summary>The image a Dockerfile's FROM names where an offset is on it, with its registry page; null elsewhere.</summary>
+    internal static (string Image, Uri Page)? FromImageAt(TextSnapshot text, int offset)
     {
         int line = text.GetLineFromOffset(Math.Clamp(offset, 0, text.Length));
         int column = Math.Clamp(offset, 0, text.Length) - text.GetLineStart(line);
         return FromLine().Match(text.GetLineText(line)) is { Success: true } from
             && column >= from.Groups["image"].Index && column <= from.Groups["image"].Index + from.Groups["image"].Length
-            ? ComposeDeclarations.RegistryPage(from.Groups["image"].Value)
+            && ComposeDeclarations.RegistryPage(from.Groups["image"].Value) is { } page
+            ? (from.Groups["image"].Value, page)
             : null;
     }
 

@@ -12,7 +12,7 @@ namespace Passenger.App.CSharp;
 /// <summary>A card over the editor: hover information, a diagnostic's message, a signature. Code is
 /// set in the editor's font, prose in the interface's, a problem in its severity's colour. A paused program's value with
 /// members is its row of the stop's values (<see cref="AddValues"/>), which the card then takes the pointer and the keys for.</summary>
-internal sealed partial class InfoCard : Border
+internal sealed partial class InfoCard : Border, IHoverCard
 {
     // Styled as the Border it is, so the theme's Border.popup reaches it.
     protected override Type StyleKeyOverride => typeof(Border);
@@ -108,6 +108,17 @@ internal sealed partial class InfoCard : Border
         FontSize = 12.5,
         Foreground = colour ?? Brush(TokenKeys.TextMuted),
     });
+
+    void IHoverCard.AddText(string text) => AddText(text);
+
+    /// <summary>A language server's hover, its Markdown shown (<see cref="AddMarkdown"/>).</summary>
+    public void AddHover(Lsp.Hover hover)
+    {
+        if (Lsp.Shapes.Text(hover.Contents) is { Length: > 0 } markdown)
+        {
+            AddMarkdown(markdown);
+        }
+    }
 
     /// <summary>Hover markdown, as Roslyn writes it: fenced code blocks and prose between them.</summary>
     public void AddMarkdown(string markdown)

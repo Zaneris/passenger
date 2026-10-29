@@ -45,7 +45,10 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     public int Caret => Editor.Selections.Primary.Caret;
 
     /// <summary>The shown file's share of its language server: C#'s or Razor's, else a web language's.</summary>
-    public IServerDocument? Current => editors.Active is { } active ? service()?.For(active) ?? (IServerDocument?)WebOf(active) : null;
+    public IServerDocument? Current => editors.Active is { } active ? ServerOf(active) : null;
+
+    /// <summary>A file's share of its language server: C#'s or Razor's, else a web language's.</summary>
+    public IServerDocument? ServerOf(OpenDocument document) => service()?.For(document) ?? (IServerDocument?)WebOf(document);
 
     public WebDocument? WebOf(OpenDocument document) => Web?.Invoke()?.For(document);
 
@@ -190,10 +193,12 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
         return start;
     }
 
-    /// <summary>The name at an offset, or empty where there is none.</summary>
-    public string NameAt(int offset)
+    /// <summary>The name at an offset of the editor's text, or empty where there is none.</summary>
+    public string NameAt(int offset) => NameAt(Editor.Document.Snapshot, offset);
+
+    /// <summary>The name at an offset of a text, or empty where there is none.</summary>
+    public static string NameAt(TextSnapshot text, int offset)
     {
-        TextSnapshot text = Editor.Document.Snapshot;
         TextRange word = TextNavigation.WordAt(text, Math.Min(offset, text.Length));
         return word.Length > 0 && TextNavigation.IsWordChar(text[word.Start]) ? text.GetText(word) : string.Empty;
     }

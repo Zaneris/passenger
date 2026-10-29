@@ -174,7 +174,10 @@ internal sealed class QuickInfo
         {
             try
             {
-                await context.Languages.HoverAsync(hoverCard, offset, cancel.Token);
+                if (context.Editors.Active is { } shown)
+                {
+                    await context.Languages.HoverAsync(hoverCard, shown, offset, cancel.Token);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -322,15 +325,15 @@ internal sealed class QuickInfo
 
     /// <summary>The card for what a language server says of an offset (its symbol's description), added to the card;
     /// none where the server fails, the card then saying what the markers there say.</summary>
-    public static async Task ServerHoverAsync(LspDocument lsp, InfoCard card, int offset, CancellationToken cancel)
+    public static async Task ServerHoverAsync(LspDocument lsp, IHoverCard card, int offset, CancellationToken cancel)
     {
         try
         {
             Hover? hover = await lsp.HoverAsync(offset, cancel);
             cancel.ThrowIfCancellationRequested();
-            if (hover is not null && Shapes.Text(hover.Contents) is { Length: > 0 } markdown)
+            if (hover is not null)
             {
-                card.AddMarkdown(markdown);
+                card.AddHover(hover);
             }
         }
         catch (LanguageServerFailed)

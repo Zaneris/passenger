@@ -258,25 +258,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
         Served served = await Serve(at.Path, cancel);
         int offset = Offset(served.Document, at.Line, at.Column);
-        switch (served)
+        string said = await CardAsync(served.Document, offset, cancel);
+        // A C# place on no symbol tells of the one its line declares.
+        if (said.Length == 0 && served is ServerServed { Web: null } code)
         {
-            case XamlServed xaml:
-                return await XamlSymbolInfo(xaml, offset);
-            case MSBuildServed msbuild:
-                return await msbuild.MSBuild.DescribeAsync(offset) ?? "Nothing is known about this position";
+            said = await CardAsync(served.Document, offset = await DeclaredOn(code, at.Line, at.Column), cancel);
         }
-        ServerServed server = (ServerServed)served;
-        Hover? hover = await server.Lsp.HoverAsync(offset);
-        if (hover is null && server.Web is null)
-        {
-            hover = await server.Lsp.HoverAsync(offset = await DeclaredOn(server, at.Line, at.Column));
-        }
-        if (hover is null)
+        if (said.Length == 0)
         {
             return "Nothing is known about this position";
         }
-        string said = HoverText(hover);
-        return served.Document.Language == Languages.Language.CSharp && await server.Lsp.SymbolAtAsync(offset) is { Id: { } id } ? $"{said}\n\nDocumentation id: {id}" : said;
+        return served is ServerServed { Web: null } csharp && served.Document.Language == Languages.Language.CSharp && await csharp.Lsp.SymbolAtAsync(offset) is { Id: { } id }
+            ? $"{said}\n\nDocumentation id: {id}" : said;
     });
 
     [McpServerTool(Name = McpTools.Definition, Title = "Go to definition", ReadOnly = true), Description(
@@ -291,29 +284,21 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
         Served served = await Serve(at.Path, cancel);
         int offset = Offset(served.Document, at.Line, at.Column);
-        if (await ComposeDefinition(served, offset, cancel) is { } composed)
+        Declared? declared = await window.Assist.Languages.DeclaredAsync(served.Document, offset);
+        // A C# place on no symbol goes from the one its line declares.
+        if (declared is { Places.Count: 0, Page: null } && served is ServerServed { Web: null } code && await SymbolOffset(code, at.Line, at.Column, offset) is int named && named != offset)
         {
-            return composed;
+            declared = await window.Assist.Languages.DeclaredAsync(served.Document, named);
         }
-        if (await AspireDefinition(served, offset, cancel) is { } aspire)
+        if (declared is { Page: { } page })
         {
-            return aspire;
+            throw new InvalidOperationException($"{declared.None} is declared on its registry, not in the folder: its page is {page}");
         }
-        if (await LocalizedDefinition(served, offset, cancel) is { } localized)
+        if (declared is null || declared.Places.Count == 0 && declared.None == Refusals.NoDeclaration)
         {
-            return localized;
+            return (IReadOnlyList<Place>)[];
         }
-        switch (served)
-        {
-            case XamlServed xaml:
-                return await XamlDefinition(xaml, offset, cancel);
-            case MSBuildServed msbuild:
-                return await MSBuildDefinition(msbuild, offset, cancel);
-            case ServerServed json when !json.Provides("definitionProvider"):
-                return await JsonDefinition(json, offset, cancel);
-        }
-        ServerServed server = (ServerServed)served;
-        return await Places(await server.Lsp.DefinitionAsync(await SymbolOffset(server, at.Line, at.Column, offset)), cancel);
+        return declared.Places.Count > 0 ? await Places(declared.Places, cancel) : throw new InvalidOperationException(declared.None);
     });
 
     [McpServerTool(Name = McpTools.Usages, Title = "Find usages", ReadOnly = true), Description(
@@ -807,11 +792,42 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         List<string> each = [];
         foreach (NamedPlace place in named.Symbols)
         {
-            (OpenDocument document, LspDocument lsp) = await Code(place.Path, cancel);
-            Hover? hover = await lsp.HoverAsync(Offset(document, place.Line, place.Column));
-            each.Add($"{place}\n{(hover is null ? string.Empty : HoverText(hover))}".TrimEnd());
+            (OpenDocument document, _) = await Code(place.Path, cancel);
+            each.Add($"{place}\n{await CardAsync(document, Offset(document, place.Line, place.Column), cancel)}".TrimEnd());
         }
         return string.Join("\n\n", each) + (named.More > 0 ? $"\n\nAnd {named.More} more: name one by its container, its parameters' types or its documentation id" : string.Empty);
+    }
+
+    /// <summary>What the hover card says of an offset of a file, as the languages' one order says it (<see
+    /// cref="LanguageAssists.HoverAsync"/>), read as an agent reads it; empty where it says nothing.</summary>
+    private async Task<string> CardAsync(OpenDocument document, int offset, CancellationToken cancel)
+    {
+        HoverWords card = new();
+        await window.Assist.Languages.HoverAsync(card, document, offset, cancel);
+        return card.Text;
+    }
+
+    /// <summary>A hover card's parts as an agent reads them: code and words as they are, a language server's made plain
+    /// (<see cref="HoverText"/>) and set apart from the rest by a blank line.</summary>
+    private sealed class HoverWords : IHoverCard
+    {
+        private readonly List<(string Text, bool Served)> parts = [];
+
+        public string Text => string.Concat(parts.Select((p, i) => (i == 0 ? string.Empty : p.Served || parts[i - 1].Served ? "\n\n" : "\n") + p.Text));
+
+        public void AddCode(string code) => Add(code, false);
+
+        public void AddText(string text) => Add(text, false);
+
+        public void AddHover(Hover hover) => Add(HoverText(hover), true);
+
+        private void Add(string text, bool served)
+        {
+            if (text.Trim() is { Length: > 0 } said)
+            {
+                parts.Add((said, served));
+            }
+        }
     }
 
     /// <summary>A hover card's words as an agent reads them: Markdown made plain text, its code fences, backslash escapes,

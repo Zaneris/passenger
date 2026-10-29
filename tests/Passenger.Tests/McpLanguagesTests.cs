@@ -62,6 +62,9 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
             Assert.True(bound.Contains("MainWindow.axaml:11") && bound.Contains($"{viewModel}:5"),
                 $"The bound property's usages from {asked["path"]} are not its declaration and the binding: {string.Join(", ", bound)}");
         }
+        // A named element's field in the code-behind goes to its name in the XAML, as Go to Declaration goes, not to the generated field.
+        JsonElement field = Assert.Single((await Call(client, McpTools.Definition, At(XamlTests.Gallery.HandlingCodeBehind, "MainWindow.axaml.cs", "        G"))).EnumerateArray());
+        Assert.Equal(("MainWindow.axaml", 12), (field.GetProperty("path").GetString(), field.GetProperty("line").GetInt32()));
         Dictionary<string, object?> handler = At(XamlTests.Gallery.HandlingCodeBehind, "MainWindow.axaml.cs", "void On");
         Assert.Contains("MainWindow.axaml:12", Used(await Call(client, McpTools.Usages, handler)).Select(u => $"{u.Path}:{u.Line}"));
         JsonElement described = await Call(client, McpTools.Refactor, new(property) { ["kind"] = "safe_delete", ["describe"] = true });
@@ -480,6 +483,34 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         DeleteAtEnd(made);
         TestFolders.Prepare(() => write(made), made);
         return made;
+    }
+
+    /// <summary>A Blazor app's C#, as the window's code help reads it: a configuration key's read goes to where appsettings.json
+    /// gives it and its card says the value.</summary>
+    [Fact]
+    public async Task An_agent_goes_to_a_configuration_keys_value_and_reads_it_as_the_hover_card_says_it()
+    {
+        string shop = PathNames.Canonical(TestFolders.Create("mcp-blazor-"));
+        DeleteAtEnd(shop);
+        await TestFolders.PrepareAsync(async () =>
+        {
+            await BlazorApp.CreateAsync(shop);
+            string start = File.ReadAllText(Path.Combine(shop, "Program.cs"));
+            File.WriteAllText(Path.Combine(shop, "Program.cs"), start.Replace("var builder = WebApplication.CreateBuilder(args);",
+                "var builder = WebApplication.CreateBuilder(args);\nstring? greeting = builder.Configuration[\"Greeting:Text\"];", StringComparison.Ordinal));
+            File.WriteAllText(Path.Combine(shop, "appsettings.json"), "{\n  \"AllowedHosts\": \"*\",\n  \"Greeting\": {\n    \"Text\": \"hi\"\n  }\n}\n");
+            await Restore.RunAsync(shop);
+        }, shop);
+        await using McpClient client = await Start(["--mcp", shop]);
+        string program = File.ReadAllText(Path.Combine(shop, "Program.cs"));
+        Assert.Contains("[\"Greeting:Text\"]", program, StringComparison.Ordinal);
+
+        Dictionary<string, object?> key = At(program, "Program.cs", "[\"Greeting:Te");
+        JsonElement given = Assert.Single((await Call(client, McpTools.Definition, key)).EnumerateArray());
+        Assert.Equal(("appsettings.json", 4, "\"Text\": \"hi\""), (given.GetProperty("path").GetString(), given.GetProperty("line").GetInt32(), given.GetProperty("text").GetString()));
+        string card = (await Call(client, McpTools.SymbolInfo, key)).GetString()!.ReplaceLineEndings("\n");
+        Assert.True(card.Contains("System.String", StringComparison.Ordinal) && card.Contains("Greeting:Text:\nappsettings.json = hi", StringComparison.Ordinal),
+            $"symbol_info on a configuration key's read did not say where its value is given, as the hover card does:\n{card}");
     }
 
     /// <summary>The test's own restored folder (<see cref="Restored"/>), removed with the test.</summary>
