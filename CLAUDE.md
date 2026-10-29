@@ -179,9 +179,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   is read), `PassengerLog` (below the App, never `IdeLog`), `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's
   lines read and messages written as pooled bytes), `SharedNames` (a name read from bytes, made once).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
-  function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `FileText`, and anchors (`AnchorAt`/`RangeAt`/`MarkAt`,
-  `AnchoredList`; moved before `Changed`, each handler isolated): hold a place in the text with one, never your own
-  `TextEditing.Map*`.
+  function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `Outline` (a tree's rows in reading order, kept where
+  unchanged), `FileText`, and anchors (`AnchorAt`/`RangeAt`/`MarkAt`, `AnchoredList`; moved before `Changed`, each
+  handler isolated): hold a place in the text with one, never your own `TextEditing.Map*`.
 - `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets). The gutter's columns
   but numbers and folds are the App's (`IGutterColumn`), the editor naming no debugger, test or VCS concept
   (EditorRulesTests); what a file's editors draw is its one `DocumentDecorations`, never fed per split. With soft wrap,
