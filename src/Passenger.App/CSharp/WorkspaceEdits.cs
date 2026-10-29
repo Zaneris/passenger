@@ -71,8 +71,10 @@ public static class WorkspaceEdits
             // A server without Passenger's extension: the files' times are all there is to go by.
             return null;
         }
+        // Each file read off the window's thread, as an edit's reach is files of any size.
+        List<(string Path, string Hash, bool? OnDisk)> read = await BackgroundWork.Run(() => texts.Where(t => t.Hash is not null).Select(t => (t.Path, t.Hash!, OnDisk(t.Path, t.Hash!))).ToList());
         // One the call trusts is also the text it was seen as: a write within the disk's clock tick keeps its time.
-        List<string> unread = [.. texts.Where(t => t.Hash is { } hash && (OnDisk(t.Path, hash) == false || patience?.AsSeen(t.Path, hash) == false)).Select(t => t.Path)];
+        List<string> unread = [.. read.Where(t => t.OnDisk == false || patience?.AsSeen(t.Path, t.Hash) == false).Select(t => t.Path)];
         if (unread.Count > 0)
         {
             string name = Path.GetFileName(unread[0]);
@@ -101,69 +103,10 @@ public static class WorkspaceEdits
             || Roslyn.Extension.TextHash.Of(new System.Text.UTF8Encoding(false).GetString(bytes).TrimStart('﻿')) == hash;
     }
 
-    /// <summary>The edit applied; the number of files it changed. Throws <see cref="WorkspaceEditFailed"/> when its
-    /// file operations cannot all be made, found before anything changed, or when the disk refuses one on the way, an
-    /// operation or a file not open being written.</summary>
-    public static int Apply(EditorArea editors, JsonElement edit, Asked? asked = null, List<string>? dropped = null)
-    {
-        using IDisposable? recording = editors.Recording?.Invoke();
-        IReadOnlyList<FileEdits> changes = Shapes.WorkspaceEdit(edit);
-        if (Refusal(editors, changes) is { } refused)
-        {
-            throw new WorkspaceEditFailed(refused);
-        }
-        int files = 0;
-        foreach (FileEdits change in changes)
-        {
-            if (change.Operation is { } operation)
-            {
-                try
-                {
-                    Operate(editors, Resource.Read(operation));
-                }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-                {
-                    throw new WorkspaceEditFailed(error.Message);
-                }
-                files++;
-                continue;
-            }
-            string path = DocumentUris.ToPath(change.Uri);
-            OpenDocument? open = editors.Find(path);
-            if (open is not null)
-            {
-                if (Placed(open, change, asked?.Trackers.GetValueOrDefault(open)) is not { } edits)
-                {
-                    dropped?.Add(open.Name);
-                    continue;
-                }
-                ApplyTo(editors, open, edits);
-            }
-            else
-            {
-                try
-                {
-                    if (FileText.Load(path) is { } file)
-                    {
-                        TextSnapshot snapshot = TextSnapshot.From(file.Text);
-                        List<TextEdit> edits = Convert(snapshot, change.Edits, TextDocument.DetectLineEnding(file.Text), FileIndent.Of(path, file.Text));
-                        FileText.Save(path, snapshot.Apply(edits.OrderBy(e => e.Start).ToList()).ToString(), file.Encoding, file.HasBom, file.CrBreaks);
-                    }
-                }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-                {
-                    throw new WorkspaceEditFailed(Unwritten(path, error));
-                }
-            }
-            files++;
-        }
-        return files;
-    }
-
-    /// <summary>Waits within a command's recording for the saves it made of its files not open that are still landing
+    /// <summary>Writes a command's files not open and waits within its recording for those still landing
     /// (<see cref="CommandHistory.Recording.LandedAsync"/>: a file never written is left out of its Undo),
-    /// <paramref name="waiting"/> told meanwhile which; one that never lands throws <see cref="WorkspaceEditFailed"/>, as
-    /// <see cref="Apply"/> does for a file the disk refuses at once. Whether any was landing.</summary>
+    /// <paramref name="waiting"/> told meanwhile which; one the disk refuses, or that never lands, throws
+    /// <see cref="WorkspaceEditFailed"/>. Whether any was landing.</summary>
     public static async Task<bool> LandedAsync(CommandHistory.Recording recording, Action<string>? waiting)
     {
         bool landing = false;
@@ -178,27 +121,74 @@ public static class WorkspaceEdits
         return landing;
     }
 
+    /// <summary>Throws <see cref="WorkspaceEditFailed"/> naming the file a command's writes stopped at, when the disk refused
+    /// one (<see cref="CommandHistory.Recording.WriteAsync"/>).</summary>
+    public static void Written((string Path, Exception Refused)? refused)
+    {
+        if (refused is (string path, Exception error))
+        {
+            throw new WorkspaceEditFailed(Unwritten(path, error));
+        }
+    }
+
     /// <summary>What a change says of a file the disk would not take.</summary>
     internal static string Unwritten(string path, Exception error) => $"{Path.GetFileName(path)} could not be written: {error.Message}";
 
-    /// <summary>The edit applied within a command of <see cref="EditorArea.Commands"/> its caller records (a fix all's,
-    /// under its title), which waits for its writes before it ends (<see cref="LandedAsync(CommandHistory.Recording, Action{string}?)"/>):
-    /// the files not open that it writes or makes are followed, so Undo takes all of it back at once, where they could
-    /// otherwise come back only from Local History. The number of files changed.</summary>
+    /// <summary>The edit applied within a command its caller records, which writes the files not open off the window's thread
+    /// and waits for them before it ends (<see cref="LandedAsync(CommandHistory.Recording, Action{string}?)"/>): the open
+    /// files edited and the operations made now, each file not open queued (<see cref="CommandHistory.Recording.Change"/>),
+    /// so Undo takes all of it back at once. The number of files changed. Throws <see cref="WorkspaceEditFailed"/> when its
+    /// file operations cannot all be made, found before anything changed, or when the disk refuses one on the way.</summary>
     public static int ApplyAsCommand(EditorArea editors, JsonElement edit, CommandHistory.Recording recording, Asked? asked = null, List<string>? dropped = null)
     {
-        foreach (FileEdits change in Shapes.WorkspaceEdit(edit))
+        recording.Naming(editors.Recording?.Invoke());
+        IReadOnlyList<FileEdits> changes = Shapes.WorkspaceEdit(edit);
+        if (Refusal(editors, changes) is { } refused)
         {
-            if (change.Operation is not { } operation)
-            {
-                recording.Watch(DocumentUris.ToPath(change.Uri));
-            }
-            else if (Resource.Read(operation) is { Kind: "create" } made)
-            {
-                recording.Watch(made.Path);
-            }
+            throw new WorkspaceEditFailed(refused);
         }
-        return Apply(editors, edit, asked, dropped);
+        int files = 0;
+        foreach (FileEdits change in changes)
+        {
+            if (change.Operation is { } operation)
+            {
+                try
+                {
+                    Operate(editors, Resource.Read(operation), recording);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    throw new WorkspaceEditFailed(error.Message);
+                }
+                files++;
+                continue;
+            }
+            string path = DocumentUris.ToPath(change.Uri);
+            if (editors.Find(path) is { } open)
+            {
+                recording.Watch(path);
+                if (Placed(open, change, asked?.Trackers.GetValueOrDefault(open)) is not { } edits)
+                {
+                    dropped?.Add(open.Name);
+                    continue;
+                }
+                ApplyTo(editors, open, edits);
+            }
+            else
+            {
+                IReadOnlyList<LspTextEdit> edits = change.Edits;
+                recording.Change(path, text => Edited(path, text, edits));
+            }
+            files++;
+        }
+        return files;
+    }
+
+    /// <summary>A file not open's text with a server's edits made in it, in its own line breaks and indentation.</summary>
+    private static string Edited(string path, string text, IReadOnlyList<LspTextEdit> edits)
+    {
+        TextSnapshot snapshot = TextSnapshot.From(text);
+        return snapshot.Apply([.. Convert(snapshot, edits, TextDocument.DetectLineEnding(text), FileIndent.Of(path, text)).OrderBy(e => e.Start)]).ToString();
     }
 
     /// <summary>Edits in an open file's text as it is now: through the active editor when it is the file shown there, so
@@ -306,13 +296,27 @@ public static class WorkspaceEdits
         return null;
     }
 
-    private static void Operate(EditorArea editors, Resource resource)
+    /// <summary>Makes a file operation, telling the recording of a file not open it makes, or empties to be written over.</summary>
+    private static void Operate(EditorArea editors, Resource resource, CommandHistory.Recording recording)
     {
         bool exists = File.Exists(resource.Path) || Directory.Exists(resource.Path);
+        bool closed = editors.Find(resource.Path) is null;
         switch (resource.Kind)
         {
+            case "create" when exists && closed && File.Exists(resource.Path) && resource.Option("overwrite"):
+                // Emptied in order with the changes before and after it, its text before kept for Undo.
+                recording.Change(resource.Path, _ => string.Empty);
+                break;
             case "create" when !exists || resource.Option("overwrite"):
             {
+                if (closed)
+                {
+                    recording.Made(resource.Path);
+                }
+                else
+                {
+                    recording.Watch(resource.Path);
+                }
                 // Written as a save writes, in the charset its .editorconfig names.
                 FileEncoding charset = EditorConfig.For(resource.Path).Charset ?? FileEncoding.Utf8;
                 FileText.Save(resource.Path, string.Empty, charset.Encoding, charset.Bom);
@@ -396,6 +400,19 @@ public static class WorkspaceEdits
             }
         }
         return files;
+    }
+
+    /// <summary>What an edit does to each file (<see cref="Files"/>), as the open files were as it was asked
+    /// (<see cref="Answered"/>), the files not open read off the window's thread.</summary>
+    public static async Task<IReadOnlyList<RefactoredFile>> FilesAsync(EditorArea editors, JsonElement edit, Asked? asked)
+    {
+        Func<string, TextSnapshot?> answered = Answered(editors, asked);
+        Dictionary<string, TextSnapshot?> open = new(PathNames.Comparer);
+        foreach (string path in Paths(edit).Where(p => editors.Find(p) is not null || asked?.Trackers.Keys.Any(d => d.Path == p) == true))
+        {
+            open.TryAdd(path, answered(path));
+        }
+        return await BackgroundWork.Run(() => Files(edit, path => open.TryGetValue(path, out TextSnapshot? text) ? text : ServerPlaces.Read(path)));
     }
 
     /// <summary>Every file an edit changes, makes, moves (from and to) or deletes.</summary>

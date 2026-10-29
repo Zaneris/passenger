@@ -438,7 +438,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             edit = TypeRename.With(edit, named.Path, named.Edit);
         }
-        IReadOnlyList<RefactoredFile> edited = WorkspaceEdits.Files(edit, answered);
+        IReadOnlyList<RefactoredFile> edited = await WorkspaceEdits.FilesAsync(context.Editors, edit, asked);
         List<(string From, string To)> moves = [.. (renameFiles ? type?.Files ?? [] : []).Select(f => (From: f, To: TypeRename.Renamed(f, name))).Concat(markup.Moves)
             .Where(m => m.From != m.To && File.Exists(m.From) && !edited.Any(f => f.Change == "moved" && PathNames.Same(f.Path, m.From))).Distinct()];
         List<string> dropped = [];
@@ -446,7 +446,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         using CommandHistory.Recording recording = context.Editors.Commands.Record(command);
         try
         {
-            TypeRename.Apply(context.Editors, edit, moves, command, asked, dropped, into: recording);
+            TypeRename.Apply(context.Editors, edit, moves, asked, dropped, recording);
             await WorkspaceEdits.LandedAsync(recording, context.Say);
         }
         catch (WorkspaceEditFailed failed)
@@ -649,7 +649,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     private async Task<RefactorOutcome> ApplyEditAsync(System.Text.Json.JsonElement edit, Asked? asked, string what)
     {
         List<string> dropped = [];
-        IReadOnlyList<RefactoredFile> files = WorkspaceEdits.Files(edit, WorkspaceEdits.Answered(context.Editors, asked));
+        IReadOnlyList<RefactoredFile> files = await WorkspaceEdits.FilesAsync(context.Editors, edit, asked);
         bool waited;
         using CommandHistory.Recording recording = context.Editors.Commands.Record(what);
         try

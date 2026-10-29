@@ -248,13 +248,13 @@ public static class TypeRename
         return Path.Combine(Path.GetDirectoryName(path)!, type + name[Stem(path).Length..]);
     }
 
-    /// <summary>Applies a rename's edit and then moves the files it renames, as one command named for the person's undo
-    /// (or within the caller's, <paramref name="into"/>, which waits for its writes before it ends), with what else the
-    /// command does once they have moved (the projects following them). A file the moves would put where another file is
-    /// stops the whole before anything changes, with why (<see cref="WorkspaceEditFailed"/>), as does the edit's own
-    /// refusal. The number of files changed.</summary>
-    public static int Apply(EditorArea editors, JsonElement edit, IReadOnlyList<(string From, string To)> moves, string name, Asked? asked, List<string> dropped,
-        Action<CommandHistory.Recording>? moved = null, CommandHistory.Recording? into = null)
+    /// <summary>Applies a rename's edit and then moves the files it renames, within the caller's command, which writes the
+    /// files not open and waits for them before it ends (<see cref="WorkspaceEdits.LandedAsync(CommandHistory.Recording, Action{string}?)"/>),
+    /// with what else the command does once they have moved (the projects following them). A file the moves would put where
+    /// another file is stops the whole before anything changes, with why (<see cref="WorkspaceEditFailed"/>), as does the
+    /// edit's own refusal. The number of files changed.</summary>
+    public static int Apply(EditorArea editors, JsonElement edit, IReadOnlyList<(string From, string To)> moves, Asked? asked, List<string> dropped,
+        CommandHistory.Recording recording, Action<CommandHistory.Recording>? moved = null)
     {
         foreach ((string from, string to) in moves)
         {
@@ -263,13 +263,7 @@ public static class TypeRename
                 throw new WorkspaceEditFailed($"{Path.GetFileName(to)} is already there");
             }
         }
-        using CommandHistory.Recording? own = into is null ? editors.Commands.Record(name) : null;
-        CommandHistory.Recording recording = into ?? own!;
-        foreach (FileEdits change in Shapes.WorkspaceEdit(edit).Where(c => c.Operation is null))
-        {
-            recording.Watch(DocumentUris.ToPath(change.Uri));
-        }
-        int files = WorkspaceEdits.Apply(editors, edit, asked, dropped);
+        int files = WorkspaceEdits.ApplyAsCommand(editors, edit, recording, asked, dropped);
         foreach ((string from, string to) in moves.Where(m => m.From != m.To && File.Exists(m.From)))
         {
             if (editors.MoveFile(from, to) is { } failed)

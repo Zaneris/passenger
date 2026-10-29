@@ -245,11 +245,10 @@ internal sealed class MSBuildAssist : LanguageAssist
         }, Json.Options);
         List<string> dropped = [];
         using CommandHistory.Recording recording = context.Editors.Commands.Record($"Add {package.Id}");
-        recording.Watch(props!);
         Editor.ApplyEdits(edits, SelectionSet.Single(replaced.Start + package.Id.Length));
         try
         {
-            WorkspaceEdits.Apply(context.Editors, edit, null, dropped);
+            WorkspaceEdits.ApplyAsCommand(context.Editors, edit, recording, null, dropped);
         }
         catch (WorkspaceEditFailed failed)
         {

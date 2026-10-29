@@ -155,22 +155,22 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// went without, when it did.</summary>
     public void ShowUsages(string title, IReadOnlyList<LspLocation> usages, string? note = null) => UsagesFound?.Invoke(this, (title, usages, note));
 
-    /// <summary>How the window runs a change of files beyond the open ones (<see cref="ChangeFiles"/>).</summary>
-    public Action<IReadOnlyCollection<string>, Action>? FilesChanging { get; set; }
+    /// <summary>How the window runs a change of files beyond the open ones (<see cref="ChangeFilesAsync"/>).</summary>
+    public Func<IReadOnlyCollection<string>, CommandHistory.Recording, Action, Task>? FilesChanging { get; set; }
 
-    /// <summary>Runs a refactoring's change of files beyond the open ones, which the window follows once it is done: what it
-    /// made, moved or deleted among <paramref name="paths"/>, which the Explorer and Git then show, and the projects that
-    /// read a text it changed.</summary>
-    public void ChangeFiles(IReadOnlyCollection<string> paths, Action change)
+    /// <summary>Runs a refactoring's change of files beyond the open ones within its command's recording, which writes the
+    /// files not open it changes (<see cref="CommandHistory.Recording.WriteAsync"/>); the window follows it once they are
+    /// written: what it made, moved or deleted among <paramref name="paths"/>, which the Explorer and Git then show, and the
+    /// projects and XAML that read a text it changed. Throws <see cref="WorkspaceEditFailed"/> for a file the disk refused.</summary>
+    public async Task ChangeFilesAsync(IReadOnlyCollection<string> paths, CommandHistory.Recording recording, Action change)
     {
         if (FilesChanging is { } following)
         {
-            following(paths, change);
+            await following(paths, recording, change);
+            return;
         }
-        else
-        {
-            change();
-        }
+        change();
+        WorkspaceEdits.Written(await recording.WriteAsync());
     }
 
     /// <summary>A page to open in the browser: an ESLint rule's, an image's registry page.</summary>

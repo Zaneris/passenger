@@ -104,7 +104,7 @@ public partial class MainWindow
             using CommandHistory.Recording recording = Editors.Commands.Record(name);
             try
             {
-                TypeRename.Apply(Editors, change, [], name, null, [], into: recording);
+                TypeRename.Apply(Editors, change, [], null, [], recording);
             }
             catch (WorkspaceEditFailed failed)
             {

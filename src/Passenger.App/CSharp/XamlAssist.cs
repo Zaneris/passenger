@@ -732,7 +732,7 @@ internal sealed partial class XamlAssist : LanguageAssist
         using CommandHistory.Recording recording = context.Editors.Commands.Record(named);
         try
         {
-            files = TypeRename.Apply(context.Editors, edit, [], named, asked, dropped, into: recording);
+            files = TypeRename.Apply(context.Editors, edit, [], asked, dropped, recording);
             await WorkspaceEdits.LandedAsync(recording, context.Say);
         }
         catch (WorkspaceEditFailed failed)

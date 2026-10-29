@@ -450,11 +450,12 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A server's edit applied as Move to File applies its own: one command of Undo.</summary>
+    /// <summary>A server's edit applied as Move to File applies its own: one command of Undo, its files written.</summary>
     private static void MoveToFile(MainWindow window, System.Text.Json.JsonElement edit)
     {
         using Passenger.App.Editors.CommandHistory.Recording recording = window.EditorArea.Commands.Record("Move to File");
         Passenger.App.CSharp.WorkspaceEdits.ApplyAsCommand(window.EditorArea, edit, recording);
+        Ui.Await(Passenger.App.CSharp.WorkspaceEdits.LandedAsync(recording, null), "the move's writes");
     }
 
     [AvaloniaFact]

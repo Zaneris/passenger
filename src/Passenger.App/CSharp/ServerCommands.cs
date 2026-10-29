@@ -46,7 +46,7 @@ internal static class ServerCommands
                 Unmake(made, recording);
                 return refused = stale;
             }
-            IReadOnlyList<RefactoredFile> changed = WorkspaceEdits.Files(change, WorkspaceEdits.Answered(editors, answered));
+            IReadOnlyList<RefactoredFile> changed = await WorkspaceEdits.FilesAsync(editors, change, answered);
             foreach (string path in made)
             {
                 recording.Made(path);
@@ -59,6 +59,12 @@ internal static class ServerCommands
             {
                 Unmake(made, recording);
                 return refused = failed.Message;
+            }
+            // On disk before the server goes on, which may read what it asked for.
+            if (await recording.WriteAsync() is (string unwritten, Exception error))
+            {
+                Unmake(made, recording);
+                return refused = WorkspaceEdits.Unwritten(unwritten, error);
             }
             files.AddRange(changed);
             created.UnionWith(made);

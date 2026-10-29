@@ -110,8 +110,8 @@ internal sealed partial class CodeActions
 
     /// <summary>A refactoring's or fix's changes to files made in the command <paramref name="recording"/> follows (XAML's, an
     /// Aspire parameter's value set; Undo takes back every file, a file made included): each file's edits made from its text
-    /// as it is now, open or on disk. Null once made; else why not.</summary>
-    private string? ApplyFileChanges(string name, IReadOnlyList<XamlFileChange> changes, CommandHistory.Recording recording)
+    /// as it is now, open or on disk, those not open written before the window follows them. Null once made; else why not.</summary>
+    private async Task<string?> ChangeFilesAsync(string name, IReadOnlyList<XamlFileChange> changes, CommandHistory.Recording recording)
     {
         List<object> documentChanges = [];
         foreach (XamlFileChange change in changes)
@@ -139,7 +139,7 @@ internal sealed partial class CodeActions
         List<string> dropped = [];
         try
         {
-            context.ChangeFiles([.. changes.Select(c => c.Path)], () => TypeRename.Apply(context.Editors, edit, [], name, null, dropped, into: recording));
+            await context.ChangeFilesAsync([.. changes.Select(c => c.Path)], recording, () => TypeRename.Apply(context.Editors, edit, [], null, dropped, recording));
         }
         catch (WorkspaceEditFailed failed)
         {
@@ -148,13 +148,13 @@ internal sealed partial class CodeActions
         return dropped.Count > 0 ? $"{name} was not applied to {string.Join(", ", dropped)}: it was edited meanwhile" : null;
     }
 
-    /// <summary><see cref="ApplyFileChanges"/> as one command, answered once the files not open it wrote have landed, the
+    /// <summary><see cref="ChangeFilesAsync"/> as one command, answered once the files not open it wrote have landed, the
     /// status bar saying meanwhile which another program holds (<see cref="CommandHistory.Recording.LandedAsync"/>).
     /// Null once made; else why not.</summary>
     internal async Task<string?> ApplyFileChangesAsync(string name, IReadOnlyList<XamlFileChange> changes)
     {
         using CommandHistory.Recording recording = context.Editors.Commands.Record(name);
-        if (ApplyFileChanges(name, changes, recording) is { } refused)
+        if (await ChangeFilesAsync(name, changes, recording) is { } refused)
         {
             return refused;
         }

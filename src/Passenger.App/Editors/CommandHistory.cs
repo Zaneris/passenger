@@ -501,6 +501,10 @@ public sealed class CommandHistory
         public Action? Dropped { get; init; }
     }
 
+    /// <summary>A file not open a queued change was made in: its path as the command began and where it was written, its
+    /// texts before and after, and whether they differ.</summary>
+    private sealed record ChangeMade(string Began, string At, TextSnapshot Before, TextSnapshot After, bool Changed);
+
     /// <summary>One file's text changed by a command: the open file (null for one changed on disk) and the undo step its
     /// change is there.</summary>
     public sealed record TextChange(OpenDocument? Document, string Path, TextSnapshot Before, TextSnapshot After, object? Step);
@@ -518,11 +522,21 @@ public sealed class CommandHistory
         private readonly Dictionary<OpenDocument, (string Path, object? Step, TextSnapshot Text)> writing = [];
         private readonly Dictionary<OpenDocument, TextChange> wrote = [];
         /// <summary>Each file not open it watched or wrote, by its path as the command began: its text before (none for one it
-        /// made) and its text after, when the command gave it (<see cref="Wrote"/>), else read once it ends.</summary>
+        /// made) and its text after, when the command gave it (<see cref="Wrote"/>) or made it (<see cref="Change"/>), else
+        /// read once it ends.</summary>
         private readonly Dictionary<string, (TextSnapshot? Before, TextSnapshot? After)> closed = [];
+        /// <summary>The changes of files not open it has yet to make (<see cref="Change"/>), in order, each by the file's path
+        /// as the command began.</summary>
+        private readonly List<(string Began, Func<string, string> Change)> queued = [];
+        /// <summary>Where it made each change of <see cref="queued"/>, with the file's path as the command began.</summary>
+        private readonly Dictionary<string, string> madeAt = new(PathNames.Comparer);
+        /// <summary>What names its writes to files not open in Local History, held until they are made.</summary>
+        private readonly List<IDisposable> naming = [];
         private readonly List<(string From, string To)> moves = [];
         private readonly List<Part> parts = [];
         private List<TextChange>? openTaken;
+        // Whether it has said it writes a file since the open files were last taken.
+        private bool writes = true;
         private bool ended;
 
         internal Recording(CommandHistory history, EditorArea editors, string name, bool ownWrites)
@@ -540,6 +554,7 @@ public sealed class CommandHistory
         /// path it had as the command began, where its undo moves it back before putting its text there.</summary>
         public void Watch(string path)
         {
+            writes = true;
             string began = Began(path);
             if (editors.Documents.FirstOrDefault(d => d.Path == path) is { } document)
             {
@@ -555,16 +570,28 @@ public sealed class CommandHistory
             }
         }
 
-        /// <summary>A file not open that the command's language server made empty a moment before, for the command to fill
-        /// (TypeScript's Move to a new file): one the command made, which its Undo takes away.</summary>
+        /// <summary>A file not open that the command, or its language server a moment before, made empty for the command to
+        /// fill (TypeScript's Move to a new file): one the command made, which its Undo takes away.</summary>
         public void Made(string path) => closed.TryAdd(Began(path), (null, null));
 
         /// <summary>A file not open the command wrote, at its path now, with its text before and after as the command had
         /// them, kept as they are: neither is read again. One it watched before keeps the text it had then.</summary>
-        public void Wrote(string path, TextSnapshot before, TextSnapshot after)
+        public void Wrote(string path, TextSnapshot before, TextSnapshot after) => Keep(Began(path), before, after);
+
+        /// <summary>A file not open the command changes, at its path now, by a change of its text that any thread may run:
+        /// made off the window's thread, after the changes queued before it, once the command writes (<see cref="WriteAsync"/>),
+        /// the file read there once and written in its own encoding, its texts kept for Undo. One the command moves meanwhile
+        /// is changed where it went.</summary>
+        public void Change(string path, Func<string, string> change) => queued.Add((Began(path), change));
+
+        /// <summary>What names the command's writes in Local History (a refactoring's change set), held until the changes
+        /// queued are made.</summary>
+        public void Naming(IDisposable? during)
         {
-            string began = Began(path);
-            closed[began] = (closed.TryGetValue(began, out (TextSnapshot? Before, TextSnapshot? After) watched) ? watched.Before : before, after);
+            if (during is not null)
+            {
+                naming.Add(during);
+            }
         }
 
         /// <summary>A file not open the command watched left out of it: its write never landed, so it changed nothing.</summary>
@@ -578,6 +605,7 @@ public sealed class CommandHistory
             {
                 closed.Remove(path);
             }
+            queued.RemoveAll(q => PathNames.IsUnder(q.Began, folder));
             foreach (OpenDocument document in writing.Keys.Concat(wrote.Keys).Where(d => PathNames.IsUnder(d.Path, folder)).ToList())
             {
                 writing.Remove(document);
@@ -585,14 +613,19 @@ public sealed class CommandHistory
             }
         }
 
-        /// <summary>What the command changed in the open files, taken as it stands now: what is typed later, while it waits
-        /// for its writes to files not open to land, is no part of it. Taking only what it writes, the open files it wrote
-        /// since the last take are taken, and those it writes later are taken from what they hold then.</summary>
+        /// <summary>What the command changed in the open files, taken as it stands now: what is typed later, while it writes
+        /// files not open or waits for them to land, is no part of it, the open files taken again only once it says it writes
+        /// another (<see cref="Watch"/>). Taking only what it writes, the open files it wrote since the last take are taken,
+        /// and those it writes later are taken from what they hold then.</summary>
         public void TakeOpen()
         {
             if (!ownWrites)
             {
-                openTaken = OpenChanges();
+                if (writes || openTaken is null)
+                {
+                    openTaken = OpenChanges();
+                    writes = false;
+                }
                 return;
             }
             foreach ((OpenDocument document, (string path, object? step, TextSnapshot text)) in writing)
@@ -612,13 +645,38 @@ public sealed class CommandHistory
         /// whose save never landed left out (<see cref="Unwritten"/>): those files, with why.</summary>
         public async Task<IReadOnlyList<(string Path, Exception Refused)>> LandedAsync(Action<string>? waiting)
         {
-            TakeOpen();
-            IReadOnlyList<(string Path, Exception Refused)> unlanded = await EditorArea.LandedAsync([.. closed.Keys], waiting);
+            (string Path, Exception Refused)? refused = await WriteAsync();
+            IReadOnlyList<(string Path, Exception Refused)> unlanded = await EditorArea.LandedAsync([.. closed.Keys, .. madeAt.Keys], waiting);
             foreach ((string path, _) in unlanded)
             {
-                closed.Remove(path);
+                closed.Remove(madeAt.GetValueOrDefault(path) ?? path);
             }
-            return unlanded;
+            return refused is { } first ? [first, .. unlanded] : unlanded;
+        }
+
+        /// <summary>Makes the changes queued so far (<see cref="Change"/>) off the window's thread, in order, the open files'
+        /// changes taken first (<see cref="TakeOpen"/>): the first file the disk refused, with why, the changes after it left
+        /// unmade; else null.</summary>
+        public async Task<(string Path, Exception Refused)?> WriteAsync()
+        {
+            TakeOpen();
+            if (queued.Count == 0)
+            {
+                Unname();
+                return null;
+            }
+            List<(string Began, string At, Func<string, string> Change)> files = [.. queued.Select(q => (q.Began, Now(q.Began), q.Change))];
+            queued.Clear();
+            try
+            {
+                (List<ChangeMade> made, (string Path, Exception Refused)? refused) = await BackgroundWork.Run(() => Make(files));
+                Took(made);
+                return refused;
+            }
+            finally
+            {
+                Unname();
+            }
         }
 
         /// <summary>Something besides files the command changed, taken back and made again with them; the command is kept
@@ -633,6 +691,13 @@ public sealed class CommandHistory
             }
             ended = true;
             editors.Moved -= OnMoved;
+            if (queued.Count > 0)
+            {
+                // Changes the command queued but never wrote, as when it stopped on a refusal after them, made as it ends.
+                Took(Make([.. queued.Select(q => (q.Began, Now(q.Began), q.Change))]).Made);
+                queued.Clear();
+            }
+            Unname();
             Command made = new(name, [], [.. moves]);
             if (ownWrites)
             {
@@ -676,6 +741,60 @@ public sealed class CommandHistory
 
         /// <summary>Where a file was as the command began, before the moves it made since.</summary>
         private string Began(string path) => Enumerable.Reverse(moves).Aggregate(path, (at, move) => PathNames.Moved(at, move.To, move.From));
+
+        /// <summary>Where a file the command began with is once the moves it made since.</summary>
+        private string Now(string began) => moves.Aggregate(began, (at, move) => PathNames.Moved(at, move.From, move.To));
+
+        private void Keep(string began, TextSnapshot before, TextSnapshot after) =>
+            closed[began] = (closed.TryGetValue(began, out (TextSnapshot? Before, TextSnapshot? After) watched) ? watched.Before : before, after);
+
+        /// <summary>The files a write made kept for Undo: one it left as it was only when the command made it.</summary>
+        private void Took(IEnumerable<ChangeMade> made)
+        {
+            foreach (ChangeMade file in made.Where(m => m.Changed || closed.ContainsKey(m.Began)))
+            {
+                Keep(file.Began, file.Before, file.After);
+                madeAt[file.At] = file.Began;
+            }
+        }
+
+        private void Unname()
+        {
+            naming.ForEach(n => n.Dispose());
+            naming.Clear();
+        }
+
+        /// <summary>Makes queued changes of files not open on the calling thread, in order: each file read once, its changes
+        /// run over its text in turn and written once, in its encoding, where it changed. The first the disk refused, with
+        /// why, ends it.</summary>
+        private static (List<ChangeMade> Made, (string Path, Exception Refused)? Refused) Make(IReadOnlyList<(string Began, string At, Func<string, string> Change)> files)
+        {
+            List<ChangeMade> made = [];
+            foreach (IGrouping<string, (string Began, string At, Func<string, string> Change)> file in files.GroupBy(f => f.Began, PathNames.Comparer))
+            {
+                string at = file.First().At;
+                try
+                {
+                    if (FileText.Load(at) is not { } loaded)
+                    {
+                        continue;
+                    }
+                    string text = file.Aggregate(loaded.Text, (now, change) => change.Change(now));
+                    bool changed = text != loaded.Text;
+                    if (changed)
+                    {
+                        FileText.Save(at, text, loaded.Encoding, loaded.HasBom, loaded.CrBreaks);
+                    }
+                    TextSnapshot before = TextSnapshot.From(loaded.Text);
+                    made.Add(new ChangeMade(file.Key, at, before, changed ? TextSnapshot.From(text) : before, changed));
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    return (made, (at, error));
+                }
+            }
+            return (made, null);
+        }
 
         /// <summary>Each open file the command changed: its text before and now, and the undo step that made it now.</summary>
         private List<TextChange> OpenChanges()

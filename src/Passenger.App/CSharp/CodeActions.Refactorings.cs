@@ -282,8 +282,20 @@ internal sealed partial class CodeActions
         return await new ConfirmDialog("Safe Delete", text, "Delete Anyway", detail: list).ShowDialog<bool>(owner);
     }
 
+    /// <summary>A file not open written with the declaration taken out, off the window's thread, in its own encoding: false,
+    /// leaving it as it is, when it is not as Safe Delete read it.</summary>
+    private static bool Removed(Doomed doomed, TextSnapshot after)
+    {
+        if (FileText.Load(doomed.Path) is not { } file || file.Text != doomed.Text.ToString())
+        {
+            return false;
+        }
+        _ = FileText.Save(doomed.Path, after.ToString(), file.Encoding, file.HasBom, file.CrBreaks);
+        return true;
+    }
+
     /// <summary>Takes the declaration out of its file as it is now: an open one through its document, one undo step; one
-    /// not open on disk, a command of its own, said once its write has landed. One whose declaration was edited meanwhile is
+    /// not open on disk, a command of its own, written off the window's thread and said once its write has landed. One whose declaration was edited meanwhile is
     /// left alone, and said so.</summary>
     public async Task<RefactorOutcome> DeleteAsync(Doomed doomed)
     {
@@ -304,14 +316,14 @@ internal sealed partial class CodeActions
             }
             else
             {
-                if (FileText.Load(doomed.Path) is not { } file || file.Text != doomed.Text.ToString())
+                // A command of its own, as the file has no undo: Undo in the Solution view puts the declaration back.
+                using Editors.CommandHistory.Recording recording = context.Editors.Commands.Record("Safe Delete");
+                TextSnapshot after = doomed.Text.Replace(removal.Range.Start, removal.Range.Length, string.Empty);
+                if (!await BackgroundWork.Run(() => Removed(doomed, after)))
                 {
                     return RefactorOutcome.Refused($"Safe Delete was not applied: {Path.GetFileName(doomed.Path)} changed meanwhile");
                 }
-                // A command of its own, as the file has no undo: Undo in the Solution view puts the declaration back.
-                using Editors.CommandHistory.Recording recording = context.Editors.Commands.Record("Safe Delete");
-                recording.Watch(doomed.Path);
-                _ = FileText.Save(doomed.Path, doomed.Text.Replace(removal.Range.Start, removal.Range.Length, string.Empty).ToString(), file.Encoding, file.HasBom, file.CrBreaks);
+                recording.Wrote(doomed.Path, doomed.Text, after);
                 if (await recording.LandedAsync(context.Say) is [(_, Exception refused), ..])
                 {
                     return RefactorOutcome.Refused($"Safe Delete failed: {refused.Message}");

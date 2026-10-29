@@ -250,17 +250,11 @@ internal sealed partial class CodeActions
             }
             List<string> dropped = [];
             Func<string, TextSnapshot?> texts = WorkspaceEdits.Answered(context.Editors, asked);
-            IReadOnlyList<RefactoredFile> files = WorkspaceEdits.Files(edit, texts);
+            IReadOnlyList<RefactoredFile> files = await WorkspaceEdits.FilesAsync(context.Editors, edit, asked);
             List<UnchangedUse> unchanged = [.. (made.Left ?? []).Select(use => Unchanged(use, texts))];
             using CommandHistory.Recording recording = context.Editors.Commands.Record(name);
-            context.ChangeFiles([.. made.Changes.Select(c => c.Path), .. WorkspaceEdits.Paths(edit)], () =>
-            {
-                foreach (FileChange change in made.Changes)
-                {
-                    recording.Watch(PathNames.Canonical(change.Path));
-                }
-                _ = WorkspaceEdits.Apply(context.Editors, edit, asked, dropped);
-            });
+            await context.ChangeFilesAsync([.. made.Changes.Select(c => c.Path), .. WorkspaceEdits.Paths(edit)], recording,
+                () => WorkspaceEdits.ApplyAsCommand(context.Editors, edit, recording, asked, dropped));
             await WorkspaceEdits.LandedAsync(recording, context.Say);
             // Counted by file: a file made is its creation and its text, which the edit counts apart.
             string said = done(made.Changes.Count - dropped.Count) + (dropped.Count > 0 ? $", but not in {string.Join(", ", dropped)}: it was edited meanwhile" : string.Empty)

@@ -297,9 +297,10 @@ public partial class MainWindow
             List<string> dropped = [];
             string command = $"Rename {type.Name} to {renamed}";
             using CommandHistory.Recording recording = Editors.Commands.Record(command);
-            int files = Following([.. moves.SelectMany(m => new[] { m.From, m.To }), .. WorkspaceEdits.Paths(made)],
-                () => TypeRename.Apply(Editors, made, moves, command, asked, dropped,
-                    moving => FollowMoved([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], moving), into: recording));
+            int files = 0;
+            await FollowingAsync([.. moves.SelectMany(m => new[] { m.From, m.To }), .. WorkspaceEdits.Paths(made)], recording,
+                () => files = TypeRename.Apply(Editors, made, moves, asked, dropped, recording,
+                    moving => FollowMoved([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], moving)));
             Explorer.Reveal(PathNames.Canonical(target));
             await WorkspaceEdits.LandedAsync(recording, waiting => status.Text = waiting);
             status.Text = $"Renamed {Path.GetFileName(path)} to {name}, and {type.Name} to {renamed} in {Plural.Of(files, "file")}"
@@ -514,6 +515,30 @@ public partial class MainWindow
         change();
         return true;
     });
+
+    /// <summary>As <see cref="Following{T}"/>, a change made within a command's recording, followed only once the recording
+    /// has written the files not open it changes (<see cref="CommandHistory.Recording.WriteAsync"/>), so what reads them
+    /// then reads them as the change left them. Throws <see cref="WorkspaceEditFailed"/> naming a file the disk refused.</summary>
+    private async Task FollowingAsync(IReadOnlyCollection<string> paths, CommandHistory.Recording recording, Action change)
+    {
+        Dictionary<string, bool> stood = Standing(paths);
+        List<string> moved = [];
+        (string Path, Exception Refused)? refused;
+        try
+        {
+            Gathering(moved, () =>
+            {
+                change();
+                return true;
+            });
+        }
+        finally
+        {
+            refused = await recording.WriteAsync();
+            Followed(stood, moved, paths);
+        }
+        WorkspaceEdits.Written(refused);
+    }
 
     /// <summary>Whether each file and folder along the paths stands, up to the open folder: what a change made or took away
     /// is what stands otherwise after it, a folder made or taken with a file among them.</summary>

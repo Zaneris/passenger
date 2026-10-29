@@ -130,7 +130,7 @@ public sealed class CodeAssist
 
     /// <summary>How a refactoring's change of files beyond the open ones is run: the window runs it and follows what it made,
     /// moved or deleted among the paths given, and the projects that read a text it changed.</summary>
-    public Action<IReadOnlyCollection<string>, Action>? FilesChanging
+    public Func<IReadOnlyCollection<string>, CommandHistory.Recording, Action, Task>? FilesChanging
     {
         get => context.FilesChanging;
         set => context.FilesChanging = value;

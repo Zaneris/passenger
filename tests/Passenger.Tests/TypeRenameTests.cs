@@ -268,6 +268,72 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         window.Close();
     }
 
+    /// <summary>A rename reads and writes the closed files it changes off the window's thread: renaming a method used in
+    /// three closed files of 2 MB each costs that thread no more than renaming one used in three small ones, where a read of
+    /// one of them there costs at least its bytes; and the rename is still one step of Undo, which puts every file back.</summary>
+    [AvaloniaFact]
+    public void A_rename_across_large_closed_files_costs_the_window_thread_what_one_across_small_ones_does_and_undo_takes_it_back_whole()
+    {
+        const int Large = 2 * 1024 * 1024;
+        const string Filler = "// a line of filler, with nothing in it to rename\n";
+        string filler = string.Concat(Enumerable.Repeat(Filler, Large / Filler.Length + 1));
+        TestFolders.Write(folder, "Tally.cs", "namespace Shop;\n\npublic static class Tally\n{\n    public static int Few(int value) => value;\n\n    public static int Many(int value) => value;\n}\n");
+        List<string> written = [Path.Combine(folder, "Tally.cs")];
+        for (int i = 0; i < 3; i++)
+        {
+            written.Add(TestFolders.Write(folder, $"Small{i}.cs", $"namespace Shop;\n\npublic static class Small{i}\n{{\n    public static int Use() => Tally.Few({i});\n}}\n"));
+            written.Add(TestFolders.Write(folder, $"Large{i}.cs", $"namespace Shop;\n\npublic static class Large{i}\n{{\n    public static int Use() => Tally.Many({i});\n}}\n" + filler));
+        }
+        // Long written: a rename refuses a file written a moment before, which its server may not have read.
+        foreach (string path in written)
+        {
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow - TimeSpan.FromMinutes(1));
+        }
+        string large = Path.Combine(folder, "Large0.cs");
+        string before = File.ReadAllText(large);
+        MainWindow window = Open("Tally.cs");
+        List<(string Title, string Text)> asked = Answer(window);
+        try
+        {
+            long few = Cost("int Fe", "Fewer");
+            long many = Cost("int Ma", "More");
+            Assert.True(many < few + Large,
+                $"A rename across three closed files of 2 MB allocated {many / 1024} KB on the window's thread, across three small ones {few / 1024} KB: the files are read or written there, freezing the window as they grow");
+            Assert.Equal(before.Replace("Tally.Many(", "Tally.More(", StringComparison.Ordinal), File.ReadAllText(large));
+            Assert.Contains("Tally.Fewer(1)", File.ReadAllText(Path.Combine(folder, "Small1.cs")), StringComparison.Ordinal);
+
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => window.Status == "Undone: Rename Many to More", () => $"Undo of the rename across the large files; the status says '{window.Status}'");
+            (string title, string text) = Assert.Single(asked);
+            Assert.Equal("Undo", title);
+            Assert.True(text.StartsWith("Undo Rename Many to More? It changes ", StringComparison.Ordinal) && new[] { "Large0.cs", "Large1.cs", "Large2.cs", "Tally.cs" }.All(n => text.Contains(n, StringComparison.Ordinal)),
+                $"Undo asked '{text}', not once for the whole rename");
+            Assert.Equal(before, File.ReadAllText(large));
+            Assert.Contains("Tally.Fewer(1)", File.ReadAllText(Path.Combine(folder, "Small1.cs")), StringComparison.Ordinal);
+            Assert.Contains("int Many(int value)", window.EditorArea.Active?.Text.Snapshot.ToString(), StringComparison.Ordinal);
+            Assert.Contains("int Fewer(int value)", window.EditorArea.Active?.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // What renaming the method at the end of a piece of Tally.cs allocated on the window's thread, from Enter till done.
+        long Cost(string after, string name)
+        {
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Run(window, AppActions.Rename);
+            Ui.Settle();
+            Assert.True(window.Assist.Renaming is not null, "Rename opened no box");
+            window.KeyTextInput(name);
+            long start = GC.GetAllocatedBytesForCurrentThread();
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.Status == "Renamed in 4 files", () => $"the rename to {name}; the status says '{window.Status}'");
+            return GC.GetAllocatedBytesForCurrentThread() - start;
+        }
+    }
+
     /// <summary>A line typed at the top of a partial class's open file while the Solution view renames the file with its
     /// class goes in above it, and the class's other part named after it is renamed with it all the same.</summary>
     [AvaloniaFact]
