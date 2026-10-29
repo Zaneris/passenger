@@ -4,6 +4,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Passenger.Core;
 using Passenger.Text;
 
@@ -36,8 +37,9 @@ public interface IStateDocument<TSelf> where TSelf : class, IStateDocument<TSelf
 /// <summary>One file of the store, read the first time it is wanted and clamped. A change is written a moment later,
 /// off the UI thread, through a temporary file flushed to disk and moved over the old one; it is merged over what the
 /// file holds then, so a value this build does not know, or one another Passenger changed, stays. A write that fails
-/// keeps its change waiting and is tried again. A file that does not read is set aside as <c>.bad</c>, logged and said
-/// in a window keeping its state there, never written over.</summary>
+/// keeps its change waiting and is tried again. A value of a kind its property cannot take is passed over alone; a file
+/// that does not read is set aside as <c>.bad</c>, never written over; each logged and said in a window keeping its state
+/// there.</summary>
 public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
 {
     /// <summary>How long a change waits before it is written, so a burst of them (a drag, an edit moving breakpoints)
@@ -140,7 +142,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
 
     /// <summary>Reads the file again, once a change still waiting is written: what another Passenger wrote since comes
     /// in. A change that could not be written, a file gone or one not reading leaves the value as it is (this is no first
-    /// read, which sets a bad one aside). Whether the value changed.</summary>
+    /// read, which sets a bad one aside), one not reading said so. Whether the value changed.</summary>
     public bool Reread()
     {
         Load();
@@ -158,12 +160,18 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
             T read;
             try
             {
-                read = (Upgraded(File.ReadAllText(Path)).Document.Deserialize<T>(StateFile.Options) ?? throw new JsonException("it holds null")).Clamped();
+                read = StateFile.Read<T>(Path, Upgraded(File.ReadAllText(Path)).Document).Clamped();
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException || StateFile.DoesNotRead(error))
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
                 return false;
             }
+            catch (Exception error) when (StateFile.DoesNotRead(error))
+            {
+                StateFile.Unread(Path, error);
+                return false;
+            }
+            StateFile.Reads(Path);
             string text = JsonSerializer.Serialize(read, StateFile.Options);
             known = text;
             if (text == latest)
@@ -258,7 +266,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
     {
         try
         {
-            return Upgraded(File.ReadAllText(file)).Document.Deserialize<T>(StateFile.Options) ?? throw new JsonException("it holds null");
+            return StateFile.Read<T>(file, Upgraded(File.ReadAllText(file)).Document);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -268,7 +276,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
         }
         catch (Exception error) when (StateFile.DoesNotRead(error))
         {
-            readOnly |= !StateFile.SetAside(file, error.Message) && file == Path;
+            readOnly |= !StateFile.SetAside(file, error, "its defaults stand") && file == Path;
             return null;
         }
     }
@@ -362,7 +370,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
     {
         try
         {
-            return JsonSerializer.Serialize((written.Deserialize<T>(StateFile.Options) ?? new T()).Clamped(), StateFile.Options) == mine;
+            return JsonSerializer.Serialize(StateFile.Read<T>(path: null, written).Clamped(), StateFile.Options) == mine;
         }
         catch (Exception error) when (StateFile.DoesNotRead(error))
         {
@@ -385,7 +393,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
         }
         catch (Exception error) when (StateFile.DoesNotRead(error))
         {
-            if (StateFile.SetAside(Path, error.Message))
+            if (StateFile.SetAside(Path, error, "what this Passenger has in force is written in its place"))
             {
                 return ([], 0);
             }
@@ -443,15 +451,20 @@ internal static class StateFile
     public static bool DoesNotRead(Exception error) =>
         error is JsonException or InvalidOperationException or ArgumentException or NotSupportedException or FormatException;
 
-    /// <summary>The files set aside that no window has said yet, each with what a window says of it and where it is kept.</summary>
+    /// <summary>What no window has said yet of the files that did not read (set aside, read again, a value passed over),
+    /// each with the file and what a window says of it, and the file a click there shows.</summary>
     private static readonly List<(string File, string Said, string Kept)> Unsaid = [];
 
-    /// <summary>Raised on any thread once a file is set aside, for a window keeping its state there to say so.</summary>
-    public static event Action? SetAsideNow;
+    /// <summary>What was last said of each file's values passed over, and of its not reading again, by its path, under
+    /// <see cref="Unsaid"/>: each is said once, and again only once it changed or the file read whole between.</summary>
+    private static readonly Dictionary<string, (string? Passed, string? Unread)> LastSaid = new(StringComparer.Ordinal);
 
-    /// <summary>What a window keeping its state in a folder says of the files set aside there that no window has said
-    /// yet, which are then said, with the .bad file each is kept as: the person's settings in a .bad file, the defaults
-    /// standing, are never news only to the log.</summary>
+    /// <summary>Raised on any thread once there is something for a window keeping its state there to say.</summary>
+    public static event Action? NewsNow;
+
+    /// <summary>What a window keeping its state in a folder says of the files there that did not read that no window has
+    /// said yet, which are then said, with the file each click shows: the person's settings in a .bad file, a hand edit
+    /// passed over, are never news only to the log.</summary>
     public static IReadOnlyList<(string Said, string Kept)> TakeUnsaid(string root)
     {
         lock (Unsaid)
@@ -462,31 +475,162 @@ internal static class StateFile
         }
     }
 
-    /// <summary>Moves a file that did not read to its <c>.bad</c> name (numbered past one there already), and logs it;
-    /// false when it could not be moved.</summary>
-    public static bool SetAside(string file, string reason)
+    /// <summary>Moves a file that did not read to its <c>.bad</c> name (numbered past one there already), and logs and
+    /// says it with what <paramref name="stands"/> in its place; false when it could not be moved.</summary>
+    public static bool SetAside(string file, Exception reason, string stands)
     {
         string bad = file + ".bad";
         for (int n = 2; File.Exists(bad); n++)
         {
             bad = $"{file}.{n}.bad";
         }
+        string why = Why(reason);
         try
         {
             File.Move(file, bad);
-            Log($"{file} did not read ({reason}): set aside as {Path.GetFileName(bad)}, and the defaults stand");
-            lock (Unsaid)
-            {
-                Unsaid.Add((Path.GetFullPath(file), $"{Path.GetFileName(file)} did not read, so its defaults stand: what it held is kept as {bad}", bad));
-            }
-            SetAsideNow?.Invoke();
+            Log($"{file} did not read ({why}): set aside as {Path.GetFileName(bad)}, and {stands}");
+            Tell(file, $"{Path.GetFileName(file)} did not read, so {stands}: what it held is kept as {bad}", bad);
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            Log($"{file} did not read ({reason}) and could not be set aside ({error.Message}): it is not written this run");
+            Log($"{file} did not read ({why}) and could not be set aside ({error.Message}): it is not written this run");
             return false;
         }
+    }
+
+    /// <summary>A file read again that does not read, logged and said, once for each way it does not: the values in
+    /// force stand until it reads.</summary>
+    public static void Unread(string file, Exception reason)
+    {
+        string said = $"{Path.GetFileName(file)} does not read ({Why(reason)}): the values in force stand until it reads";
+        lock (Unsaid)
+        {
+            (string? Passed, string? Unread) last = LastSaid.GetValueOrDefault(file);
+            if (last.Unread == said)
+            {
+                return;
+            }
+            LastSaid[file] = (last.Passed, said);
+        }
+        Log($"{file} does not read as it is read again ({Why(reason)}): the values in force stand");
+        Tell(file, said, file);
+    }
+
+    /// <summary>A file read whole: what is said next of its not reading is news again.</summary>
+    public static void Reads(string file)
+    {
+        lock (Unsaid)
+        {
+            if (LastSaid.TryGetValue(file, out (string? Passed, string? Unread) last))
+            {
+                LastSaid[file] = (last.Passed, null);
+            }
+        }
+    }
+
+    /// <summary>A document's value read from its JSON, each of its own values whose kind its property cannot take (a hand
+    /// edit's "16" where a number goes) passed over alone, its default standing, and said once for the file at
+    /// <paramref name="path"/> (none for a document about to be written). What still does not read throws.</summary>
+    public static T Read<T>(string? path, JsonObject document) where T : class, new()
+    {
+        List<string> passed = [];
+        T read;
+        try
+        {
+            read = document.Deserialize<T>(Options) ?? throw new JsonException("it holds null");
+        }
+        catch (Exception error) when (DoesNotRead(error))
+        {
+            JsonObject kept = [];
+            JsonTypeInfo shape = Options.GetTypeInfo(typeof(T));
+            foreach ((string name, JsonNode? value) in document)
+            {
+                try
+                {
+                    _ = new JsonObject { [name] = value?.DeepClone() }.Deserialize<T>(Options);
+                    kept[name] = value?.DeepClone();
+                }
+                catch (Exception wrong) when (DoesNotRead(wrong))
+                {
+                    Type? type = shape.Properties.FirstOrDefault(p => p.Name == name)?.PropertyType;
+                    passed.Add($"{name} is {Shown(value)}, where {(type is null ? "another kind of value" : KindOf(type))} goes");
+                }
+            }
+            if (passed.Count == 0)
+            {
+                throw;
+            }
+            read = kept.Deserialize<T>(Options) ?? throw new JsonException("it holds null");
+        }
+        if (path is not null)
+        {
+            Passed(path, passed);
+        }
+        return read;
+    }
+
+    /// <summary>A file's values passed over, logged and said when they differ from those said last.</summary>
+    private static void Passed(string file, List<string> passed)
+    {
+        string? said = passed.Count == 0 ? null : $"{Path.GetFileName(file)}'s {string.Join("; ", passed)}: {(passed.Count == 1 ? "its default stands" : "their defaults stand")}";
+        lock (Unsaid)
+        {
+            (string? Passed, string? Unread) last = LastSaid.GetValueOrDefault(file);
+            if (last.Passed == said)
+            {
+                return;
+            }
+            LastSaid[file] = (said, last.Unread);
+        }
+        if (said is not null)
+        {
+            Log($"{file}: {said}");
+            Tell(file, said, file);
+        }
+    }
+
+    /// <summary>Something for a window keeping its state where a file is to say, a click there showing <paramref name="kept"/>.</summary>
+    private static void Tell(string file, string said, string kept)
+    {
+        lock (Unsaid)
+        {
+            Unsaid.Add((Path.GetFullPath(file), said, kept));
+        }
+        NewsNow?.Invoke();
+    }
+
+    /// <summary>Why a file did not read in its reader's words, with the line where its text stopped reading when it says
+    /// one (a value read from the parsed document has no line of the file's).</summary>
+    public static string Why(Exception error)
+    {
+        string words = error.Message;
+        int place = words.IndexOf(" Path: ", StringComparison.Ordinal) is int path and >= 0 ? path : words.IndexOf(" LineNumber: ", StringComparison.Ordinal);
+        if (place >= 0)
+        {
+            words = words[..place];
+        }
+        words = words.TrimEnd('.', ' ');
+        return error is JsonException { LineNumber: long line, Path: null } ? $"{words}, at line {line + 1}" : words;
+    }
+
+    /// <summary>A value as the person wrote it, cut short past 40 characters.</summary>
+    private static string Shown(JsonNode? value)
+    {
+        string written = value?.ToJsonString(Options) ?? "null";
+        return written.Length > 40 ? written[..39] + "…" : written;
+    }
+
+    /// <summary>The kind of value a property takes, as a person writing JSON names it.</summary>
+    private static string KindOf(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        return type == typeof(bool) ? "true or false"
+            : type == typeof(string) ? "text"
+            : type.IsPrimitive || type == typeof(decimal) ? "a number"
+            : typeof(System.Collections.IDictionary).IsAssignableFrom(type) ? "an object"
+            : typeof(System.Collections.IEnumerable).IsAssignableFrom(type) ? "a list"
+            : "an object";
     }
 
     /// <summary>Writes a document through a temporary file beside it, flushed to disk and moved over it, so a crash or

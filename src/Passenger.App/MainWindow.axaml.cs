@@ -685,15 +685,15 @@ public partial class MainWindow : Window
                 }
                 state.Flush();
             };
-            Action setAside = () => UiThread.Post(SayWhatWasSetAside);
-            State.StateFile.SetAsideNow += setAside;
+            Action news = () => UiThread.Post(SayStateNews);
+            State.StateFile.NewsNow += news;
             Closed += (_, _) =>
             {
-                State.StateFile.SetAsideNow -= setAside;
+                State.StateFile.NewsNow -= news;
                 LetGoFolder();
                 state.Release();
             };
-            SayWhatWasSetAside();
+            SayStateNews();
         }
         return state;
     }
@@ -723,9 +723,10 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>A file of the window's state that did not read and was set aside (its settings, a folder's breakpoints)
-    /// is said in the status bar, so the person knows where what they kept went.</summary>
-    private void SayWhatWasSetAside()
+    /// <summary>A file of the window's state that did not read (its settings, a folder's breakpoints), set aside, read
+    /// again or a value of it passed over, is said in the status bar, so the person knows what stands and where what they
+    /// kept went.</summary>
+    private void SayStateNews()
     {
         if (State.StateFile.TakeUnsaid(StateFolder) is { Count: > 0 } said)
         {

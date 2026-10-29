@@ -15,7 +15,8 @@ using Passenger.Text;
 namespace Passenger.Tests;
 
 /// <summary>The IDE's own state, in one store in its state folder: a file that does not read is set aside, said in
-/// the status bar and logged, never written over; a later build's values and a hand edit out of range stay in the file while the window
+/// the status bar and logged, never written over, and one read again that does not read said too; a value of the wrong
+/// kind is passed over alone; a later build's values and a hand edit out of range stay in the file while the window
 /// uses what it can; two windows' changes are both kept; what a person kept before the store is there on the first
 /// run; and a folder's tabs (whatever was open before it), layout, breakpoints and bookmarks come back with it.</summary>
 public sealed class StateTests : IDisposable
@@ -84,6 +85,42 @@ public sealed class StateTests : IDisposable
         Ui.WaitFor(() => window.Status?.Contains($"what it held is kept as {file}.bad", StringComparison.Ordinal) == true,
             "the status bar to say the settings were set aside and where");
         window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_settings_value_of_the_wrong_kind_is_passed_over_alone_and_a_hand_edit_that_does_not_read_is_said_as_it_is_read_again()
+    {
+        string file = Path.Combine(settings, "settings.json");
+        File.WriteAllText(file, $"{{\n  \"version\": {AppSettings.Upgrades.Count},\n  \"editorFontSize\": \"16\",\n  \"terminalFontSize\": 15,\n  \"editorLineSpacing\": 1.5\n}}\n");
+        MainWindow window = Keeping();
+        window.KeepSettings();
+        Ui.Settle();
+        Assert.True((window.Settings.EditorFontSize, window.Settings.TerminalFontSize, window.Settings.EditorLineSpacing) == (13, 15, 1.5),
+            $"A font size written as text took the file's other settings with it: the editor's font {window.Settings.EditorFontSize}, the terminal's {window.Settings.TerminalFontSize}, the line spacing {window.Settings.EditorLineSpacing}");
+        Assert.False(File.Exists(file + ".bad"), "settings.json was set aside for one value of the wrong kind");
+        Assert.True(window.Status == "settings.json's editorFontSize is \"16\", where a number goes: its default stands",
+            $"The status bar says \"{window.Status}\", not which value was passed over and why");
+        Assert.True(window.StatusPlace?.Name == $"show settings.json in {Passenger.App.FileManager.Name}",
+            $"The status bar's word on the value passed over goes to '{window.StatusPlace?.Name}', not to settings.json");
+
+        // Edited by hand while the window is open, a comma left out: the window keeps what it has, and says why.
+        string broken = "{\n  \"version\": 1,\n  \"terminalFontSize\": 17\n  \"editorLineSpacing\": 1.5\n}\n";
+        File.WriteAllText(file, broken);
+        Ui.WaitFor(() => window.Status?.StartsWith("settings.json does not read (", StringComparison.Ordinal) == true,
+            () => $"the status bar to say settings.json, read again, does not read (it says \"{window.Status}\")");
+        Assert.True(window.Status!.EndsWith(", at line 4): the values in force stand until it reads", StringComparison.Ordinal),
+            $"The status bar says \"{window.Status}\", not where settings.json stops reading and that the values in force stand");
+        Assert.Equal(15, window.Settings.TerminalFontSize);
+
+        window.ApplySettings(window.Settings with { EditorFontSize = 16 });
+        Ui.WaitFor(() => File.Exists(file + ".bad"), "the file that did not read to be set aside");
+        Ui.WaitFor(() => window.Status?.Contains($"settings.json did not read, so what this Passenger has in force is written in its place: what it held is kept as {file}.bad", StringComparison.Ordinal) == true,
+            () => $"the status bar to say the values in force were written in place of the file set aside (it says \"{window.Status}\")");
+        window.Close();
+        JsonObject written = Read(file);
+        Assert.True(((double)written["editorFontSize"]!, (double)written["terminalFontSize"]!, (double)written["editorLineSpacing"]!) == (16, 15, 1.5),
+            $"settings.json written in place of the one set aside does not hold the values in force: {written.ToJsonString()}");
+        Assert.Equal(broken, File.ReadAllText(file + ".bad"));
     }
 
     [Gate]
