@@ -443,7 +443,8 @@ internal static class BlazorApp
 /// code is all in its code-behind, and a Razor Page whose markup misnames a member of its model; for the web languages,
 /// the files a web project carries beside its C#: wwwroot/js/site.js, TypeScript under Scripts/ with its tsconfig.json,
 /// wwwroot/css/site.css and an SCSS and a Less stylesheet beside it, a package.json with a dependency installed in
-/// node_modules, and a component with a &lt;style&gt; and a &lt;script&gt;.</summary>
+/// node_modules, a component with a &lt;style&gt; and a &lt;script&gt;, and VS Code's settings and a dev container, each
+/// with a comment.</summary>
 public sealed class BlazorShop : SharedProject
 {
     public const string Script = "// Greets whoever opens the page.\nfunction greet(name) {\n    return \"Hello, \" + name;\n}\n\nconst message = greet(\"Ada\");\nconsole.log(message);\n";
@@ -472,6 +473,13 @@ public sealed class BlazorShop : SharedProject
     public const string Component = "@page \"/styled\"\n\n<h1 class=\"title\">Styled</h1>\n\n<style>\n    .title {\n        color: #1b6ec2;\n    }\n</style>\n\n"
         + "<script>\n    function shout(text) {\n        return text.toUpperCase();\n    }\n    shout(\"hi\");\n</script>\n";
 
+    /// <summary>VS Code's settings, a comment in them as VS Code writes one, and a comma missing: the error a check finds.</summary>
+    public const string VsCodeSettings = "{\n  // Laid out on save, as the team's editors do.\n  \"editor.formatOnSave\": true\n  \"files.trimTrailingWhitespace\": true\n}\n";
+
+    /// <summary>A dev container, its comment as the Dev Containers templates write one, and a comma missing.</summary>
+    public const string DevContainer = "{\n  \"name\": \"Shop\",\n  // Features to add to the dev container.\n  \"image\": \"mcr.microsoft.com/devcontainers/dotnet\"\n"
+        + "  \"forwardPorts\": [5000]\n}\n";
+
     private static readonly (string Path, string Text)[] Files =
     [
         ("Components/Greeting.razor",
@@ -493,6 +501,8 @@ public sealed class BlazorShop : SharedProject
         ("node_modules/left-pad/package.json", "{\n  \"name\": \"left-pad\",\n  \"version\": \"1.3.0\",\n  \"main\": \"index.js\"\n}\n"),
         ("node_modules/left-pad/index.js", "module.exports = (text, length) => text.padStart(length);\n"),
         ("Components/Pages/Styled.razor", Component),
+        (".vscode/settings.json", VsCodeSettings),
+        (".devcontainer/devcontainer.json", DevContainer),
     ];
 
     public BlazorShop()

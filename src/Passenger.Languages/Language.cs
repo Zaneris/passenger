@@ -22,18 +22,42 @@ public enum LanguageService
 }
 
 /// <summary>A file name a language claims, matched without regard to case: a name, or one <c>*</c> standing for any run
-/// (<c>*.tsx</c>, <c>Dockerfile.*</c>, <c>tsconfig*.json</c>), with the language id a server is told for it where that
-/// is not the language's own (<c>typescriptreact</c>).</summary>
+/// (<c>*.tsx</c>, <c>Dockerfile.*</c>, <c>tsconfig*.json</c>), after the folders the file must be in where it names
+/// them (<c>.vscode/*.json</c>), with the language id a server is told for it where that is not the language's own
+/// (<c>typescriptreact</c>).</summary>
 public sealed record FilePattern(string Glob, string? Id = null)
 {
-    private readonly int star = Glob.IndexOf('*', StringComparison.Ordinal);
+    private readonly int slash = Glob.LastIndexOf('/');
+    private readonly int star = Glob.IndexOf('*', Glob.LastIndexOf('/') + 1);
 
     public static implicit operator FilePattern(string glob) => new(glob);
 
-    public bool Matches(ReadOnlySpan<char> name) => star < 0
-        ? name.Equals(Glob, StringComparison.OrdinalIgnoreCase)
-        : name.Length >= Glob.Length - 1 && name.StartsWith(Glob.AsSpan(0, star), StringComparison.OrdinalIgnoreCase)
-            && name.EndsWith(Glob.AsSpan(star + 1), StringComparison.OrdinalIgnoreCase);
+    public bool Matches(ReadOnlySpan<char> path)
+    {
+        ReadOnlySpan<char> name = Path.GetFileName(path);
+        ReadOnlySpan<char> glob = Glob.AsSpan(slash + 1);
+        bool named = star < 0
+            ? name.Equals(glob, StringComparison.OrdinalIgnoreCase)
+            : name.Length >= glob.Length - 1 && name.StartsWith(Glob.AsSpan(slash + 1, star - slash - 1), StringComparison.OrdinalIgnoreCase)
+                && name.EndsWith(Glob.AsSpan(star + 1), StringComparison.OrdinalIgnoreCase);
+        return named && (slash < 0 || In(Path.GetDirectoryName(path), Glob.AsSpan(0, slash)));
+    }
+
+    /// <summary>Whether a folder's path ends in the folders named, the innermost last.</summary>
+    private static bool In(ReadOnlySpan<char> folder, ReadOnlySpan<char> folders)
+    {
+        while (folders.Length > 0)
+        {
+            int last = folders.LastIndexOf('/');
+            if (!Path.GetFileName(folder).Equals(folders[(last + 1)..], StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+            folders = last < 0 ? [] : folders[..last];
+            folder = Path.GetDirectoryName(folder);
+        }
+        return true;
+    }
 }
 
 /// <summary>Every language a file can be in, and what each gives its files before any language server answers: its id
@@ -108,11 +132,16 @@ public sealed class Language
         ["*.xml", "*.slnx", "*.resx", "*.config", "*.nuspec", "*.manifest", "*.runsettings", "*.xsd", "*.xslt", "*.xsl", "*.svg", "*.plist", "*.storyboard"],
         LanguageService.None);
 
-    /// <summary>JSON, told to its server as JSON with comments where the file's reader takes them (TypeScript's
-    /// configuration, ASP.NET Core's settings and launch profiles, the SDK's global.json, ESLint's, a solution filter).</summary>
+    /// <summary>JSON, told to its server as JSON with comments where the file's reader takes them: the files VS Code reads
+    /// so (its json, configuration-editing and typescript-basics extensions' jsonc names, and every JSON file under
+    /// .vscode), and .NET's (ASP.NET Core's settings and launch profiles, the SDK's global.json, a solution filter).</summary>
     public static readonly Language Json = new("json", "JSON",
-        [new("*.jsonc", "jsonc"), new("tsconfig*.json", "jsonc"), new("jsconfig*.json", "jsonc"), new("appsettings*.json", "jsonc"),
-            new("launchSettings.json", "jsonc"), new("global.json", "jsonc"), new(".eslintrc.json", "jsonc"), new("*.slnf", "jsonc"), "*.json"],
+        [.. ((string[])["*.jsonc", "*.eslintrc", "*.eslintrc.json", "*.jsfmtrc", "*.jshintrc", "*.swcrc", "*.hintrc", "*.babelrc", "*.toolset.jsonc",
+            "babel.config.json", "bun.lock", ".babelrc.json", ".ember-cli", "typedoc.json", ".github/hooks/*.json",
+            "*.code-workspace", "*language-configuration.json", "*icon-theme.json", "*color-theme.json", "settings.json", "launch.json", "tasks.json",
+            "mcp.json", "keybindings.json", "extensions.json", "argv.json", "profiles.json", "devcontainer.json", ".devcontainer.json", ".vscode/*.json",
+            "tsconfig*.json", "jsconfig*.json", "appsettings*.json", "launchSettings.json", "global.json", "*.slnf"]).Select(glob => new FilePattern(glob, "jsonc")),
+            "*.json"],
         line: "//", block: ("/*", "*/"), indent: 2, grammar: new("source.json", "JSON.tmLanguage.json"), folds: FoldScan.Json, service: LanguageService.Json);
 
     public static readonly Language Yaml = new("yaml", "YAML", ["*.yml", "*.yaml"], line: "#", indent: 2,
@@ -187,13 +216,12 @@ public sealed class Language
     /// <summary>Whether the language is coloured and folded by its own parse in-process (C#'s) rather than by its grammar.</summary>
     internal bool Parsed { get; }
 
-    /// <summary>The language a file is in, by its name.</summary>
+    /// <summary>The language a file is in, by its name (and its folders, where a pattern names them).</summary>
     public static Language ForPath(string path)
     {
-        ReadOnlySpan<char> name = Path.GetFileName(path.AsSpan());
         foreach (Language language in All)
         {
-            if (language.PatternOf(name) is not null)
+            if (language.PatternOf(path) is not null)
             {
                 return language;
             }
@@ -202,7 +230,7 @@ public sealed class Language
     }
 
     /// <summary>The language id a server is told a file of this language is in: its pattern's, else the language's own.</summary>
-    public string IdOf(string path) => PatternOf(Path.GetFileName(path.AsSpan()))?.Id ?? Id;
+    public string IdOf(string path) => PatternOf(path)?.Id ?? Id;
 
     /// <summary>The indentation a file's own lines show, read as tags where the language is markup.</summary>
     public IndentOptions? Detect(ReadOnlySpan<char> text) => Indentation.Detect(text, Indent.TabWidth, markup: Markup != MarkupKind.None);
@@ -216,11 +244,11 @@ public sealed class Language
         new(id, name, patterns, block: ("<!--", "-->"), indent: 2, grammar: new("text.xml", "xml.tmLanguage.json", Tags.Xml), folds: FoldScan.Xml,
             service: service, markup: MarkupKind.Xml);
 
-    private FilePattern? PatternOf(ReadOnlySpan<char> name)
+    private FilePattern? PatternOf(string path)
     {
         foreach (FilePattern pattern in patterns)
         {
-            if (pattern.Matches(name))
+            if (pattern.Matches(path))
             {
                 return pattern;
             }

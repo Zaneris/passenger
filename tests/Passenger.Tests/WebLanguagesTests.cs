@@ -7,6 +7,7 @@ using Passenger.App.Navigation;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages;
 using Passenger.Text;
 
 namespace Passenger.Tests;
@@ -354,6 +355,37 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         Ui.Press(window, "ENTER");
         CodeEditor editor = window.EditorArea.CodeEditor;
         Assert.Contains("\"build\"", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>The JSON files VS Code reads with comments, its settings and a dev container among them, are told to the
+    /// JSON server as JSON with comments, so a comment in one is no problem and the error beside it still is; a comment in
+    /// package.json, plain JSON, is one.</summary>
+    [AvaloniaFact]
+    public void VS_Codes_settings_and_a_dev_container_take_comments_where_plain_JSON_marks_one_as_an_error()
+    {
+        Assert.All(["a/.vscode/launch.json", "a/.vscode/cspell.json", "a/.babelrc", "a/shop.code-workspace", "a/.github/hooks/hooks.json", "a/tsconfig.app.json"],
+            path => Assert.True(Language.ForPath(path) == Language.Json && Language.Json.IdOf(path) == "jsonc", $"{path} is not read as JSON with comments"));
+        Assert.All(["a/package.json", "a/.github/data.json", "a/vscode/data.json"],
+            path => Assert.True(Language.Json.IdOf(path) == "json", $"{path}, plain JSON, is read as JSON with comments"));
+        SkipWithoutNode();
+        MainWindow window = app.Open(".vscode/settings.json", languageServer: false);
+        foreach (string file in (string[])[".vscode/settings.json", ".devcontainer/devcontainer.json"])
+        {
+            window.OpenFile(app.PathOf(file));
+            Ui.Settle();
+            OpenDocument document = window.EditorArea.Active!;
+            Ui.WaitFor(() => document.Markers.Any(m => m.Message.Contains("comma", StringComparison.OrdinalIgnoreCase)), $"{file}'s missing comma marked");
+            Assert.True(!document.Markers.Any(m => m.Message.Contains("Comments are not permitted", StringComparison.Ordinal)),
+                $"{file}'s comment is marked as a problem, where VS Code and its readers take comments: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        }
+
+        window.OpenFile(app.PathOf("package.json"));
+        Ui.Settle();
+        OpenDocument package = window.EditorArea.Active!;
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "{");
+        window.KeyTextInput(" // plain JSON");
+        Ui.WaitFor(() => package.Markers.Any(m => m.Message.Contains("Comments are not permitted", StringComparison.Ordinal)), "package.json's comment marked, as plain JSON has none");
         window.Close();
     }
 
