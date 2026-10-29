@@ -1153,11 +1153,15 @@ public sealed partial class CSharpService : IAsyncDisposable
             }
             if (LoadReport.Read(message.Message) is { } report)
             {
-                UiThread.Post(() => OnLoadReport(server, report));
+                string? unwritable = report.Problem is { Severity: ProblemSeverity.Error } error ? UnwritableFolders.Of(error.Message) : null;
+                UiThread.Post(() => OnLoadReport(server, unwritable is null ? report
+                    : report with { Problem = report.Problem! with { Message = Unwritable(unwritable, report.Problem.Message) } }));
             }
             foreach (ProjectLoadProblem failed in restores.Hear(message.Message))
             {
-                UiThread.Post(() => OnLoadReport(server, new LoadReport(LoadReportKind.Problem, failed with { Message = InFolder(failed.Message) }, null)));
+                string? unwritable = UnwritableFolders.Of(failed.Message);
+                UiThread.Post(() => OnLoadReport(server, new LoadReport(LoadReportKind.Problem,
+                    failed with { Message = unwritable is null ? InFolder(failed.Message) : Unwritable(unwritable, failed.Message) }, null)));
             }
         };
         EventHandler<LogMessageParams> shown = (_, message) =>
@@ -1413,6 +1417,11 @@ public sealed partial class CSharpService : IAsyncDisposable
     private static string Spoken(TimeSpan time) => time >= TimeSpan.FromMinutes(1)
         ? Plural.Of((long)time.TotalMinutes, "minute")
         : Plural.Of(Math.Max(1, (long)time.TotalSeconds), "second");
+
+    /// <summary>A load's error met where MSBuild cannot write, said as that folder's being read-only and the way on, the
+    /// error's own words after.</summary>
+    private string Unwritable(string folder, string error) =>
+        $"{Shown(folder)} is read-only, so MSBuild cannot write the files the project loads with: make it writable, or open a copy of it elsewhere ({InFolder(error)})";
 
     /// <summary>Words with the open folder's paths in them made relative to it.</summary>
     private string InFolder(string text) =>

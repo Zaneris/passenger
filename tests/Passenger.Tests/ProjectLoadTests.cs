@@ -287,6 +287,58 @@ public sealed class ProjectLoadTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A project in a folder its user cannot write loads with an error saying the folder is read-only, so MSBuild
+    /// cannot write what the project loads with, and the way on, in the status bar and under the project in Problems.</summary>
+    [AvaloniaFact]
+    public void A_project_in_a_read_only_folder_is_said_to_be_read_only_where_msbuild_cannot_write()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("A folder's read-only mode keeps no one from writing in it on Windows");
+            return;
+        }
+        File.WriteAllText(project, "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+        string web = Path.GetDirectoryName(project)!;
+        UnixFileMode was = File.GetUnixFileMode(web);
+        File.SetUnixFileMode(web, UnixFileMode.UserRead | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
+            | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        try
+        {
+            Assert.SkipWhen(Writable(web), "This user (root) writes in a folder whatever its mode");
+            MainWindow window = Open();
+            Ui.WaitFor(() => window.Status?.Contains("is read-only", StringComparison.Ordinal) == true,
+                () => $"the status bar to say Web cannot be written (it says \"{window.Status}\")");
+            string said = window.Status!;
+            Assert.True(said.StartsWith($"Error while loading {Path.Combine("Web", "Web.csproj")}: Web is read-only, so MSBuild cannot write the files the project loads with: "
+                + "make it writable, or open a copy of it elsewhere (", StringComparison.Ordinal),
+                $"The status bar over a project whose folder cannot be written says \"{said}\", not that Web is read-only and the way on");
+            Assert.True(window.StatusSeverity == ProblemSeverity.Error, $"The status bar's word that Web is read-only is marked as {window.StatusSeverity?.ToString() ?? "nothing"}, not an error");
+            Problem readOnly = window.BottomPanel.Problems.ToolsetProblems.FirstOrDefault(p => p.Severity == ProblemSeverity.Error)
+                ?? throw new Xunit.Sdk.XunitException("Problems lists no error for the project whose folder cannot be written");
+            Assert.True(readOnly.Project == "Web" && said.Contains(readOnly.Message, StringComparison.Ordinal),
+                $"Problems lists the read-only folder's error as \"{readOnly.Message}\" under {readOnly.Project}");
+            window.Close();
+        }
+        finally
+        {
+            File.SetUnixFileMode(web, was);
+        }
+
+        static bool Writable(string folder)
+        {
+            try
+            {
+                File.WriteAllText(Path.Combine(folder, "probe"), string.Empty);
+                File.Delete(Path.Combine(folder, "probe"));
+                return true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+    }
+
     /// <summary>A window on the folder, its projects loaded by the language server.</summary>
     private MainWindow Open()
     {
