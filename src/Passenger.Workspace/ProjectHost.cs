@@ -31,6 +31,10 @@ public sealed class ProjectHost : IAsyncDisposable
 
     /// <summary>The host's output, a line at a time.</summary>
     private readonly Utf8Lines lines;
+
+    /// <summary>Done once the host's error stream has been read to its end.</summary>
+    private readonly Task errorsHeard;
+
     private readonly object writing = new();
 
     /// <summary>The methods whose next answers are spoiled (<see cref="SpoilNext"/>), and the requests now asked of them.</summary>
@@ -47,10 +51,11 @@ public sealed class ProjectHost : IAsyncDisposable
     /// <summary>The folder the host was started for, with the global.json over it as it stood (<see cref="Dotnet.GlobalJsonOver"/>).</summary>
     private readonly (string Folder, string GlobalJson) startedFor;
 
-    private ProjectHost(Process process, Utf8Lines lines, HostReady ready, string folder, string globalJson)
+    private ProjectHost(Process process, Utf8Lines lines, Task errorsHeard, HostReady ready, string folder, string globalJson)
     {
         this.process = process;
         this.lines = lines;
+        this.errorsHeard = errorsHeard;
         ProcessId = process.Id;
         Sdk = ready.Sdk;
         Version = ready.Version;
@@ -113,25 +118,26 @@ public sealed class ProjectHost : IAsyncDisposable
             throw new ProjectHostFailed($"the project host could not start: {error.Message}", error);
         }
         ProjectHost? started = null;
-        process.ErrorDataReceived += (_, e) =>
+        int id = process.Id;
+        Task errorsHeard = ChildProcesses.Hear(process, errors: line =>
         {
-            if (e.Data is { Length: > 0 } line)
+            if (line.Length > 0)
             {
-                PassengerLog.Write($"Project host (process {process.Id}): {line}");
+                PassengerLog.Write($"Project host (process {id}): {line}");
                 if (started is { crashed: null } host && line.StartsWith("Unhandled exception.", StringComparison.Ordinal))
                 {
                     host.crashed = line.Length > 300 ? line[..300] + "…" : line;
                 }
             }
-        };
-        process.BeginErrorReadLine();
+        });
+        UnawaitedWork.Observe(errorsHeard);
         Utf8Lines lines = new(process.StandardOutput.BaseStream);
         try
         {
             ReadOnlyMemory<byte> first = await lines.NextAsync(cancel).AsTask().WaitAsync(TimeSpan.FromMinutes(1), cancel)
                 ?? throw new ProjectHostFailed($"the project host ended as it started ({Ended(process)})");
             HostReady ready = Ready(first.Span);
-            ProjectHost host = started = new(process, lines, ready, folder, globalJson);
+            ProjectHost host = started = new(process, lines, errorsHeard, ready, folder, globalJson);
             // Not held: it reads the host's answers for as long as the host lives.
             UnawaitedWork.Observe(BackgroundWork.Unheld(host.ReadAsync));
             return host;
@@ -521,9 +527,10 @@ public sealed class ProjectHost : IAsyncDisposable
         string how;
         try
         {
-            // Its error stream read to its end too, which holds what it wrote as it crashed.
             using CancellationTokenSource limit = new(TimeSpan.FromSeconds(2));
             await process.WaitForExitAsync(limit.Token).ConfigureAwait(false);
+            // Its error stream read to its end too, which holds what it wrote as it crashed.
+            await errorsHeard.WaitAsync(limit.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             how = $"exit code {process.ExitCode}";
         }
         catch (Exception error) when (error is OperationCanceledException or InvalidOperationException)

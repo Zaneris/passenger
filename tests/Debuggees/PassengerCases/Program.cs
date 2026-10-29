@@ -17,6 +17,15 @@ if (args is ["flood"])
 	Environment.ExitCode = 42;
 	return;
 }
+if (args is ["chatter"])
+{
+	// Numbered lines on standard output and standard error, without pause, until it is ended.
+	for (long line = 0; ; line++)
+	{
+		Console.Out.WriteLine($"chatter {line}");
+		Console.Error.WriteLine($"chatter {line}");
+	}
+}
 if (args is ["busy"])
 {
 	Busy.Spin(TimeSpan.FromMilliseconds(800));

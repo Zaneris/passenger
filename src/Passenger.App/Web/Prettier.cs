@@ -286,14 +286,13 @@ public sealed class PrettierService : IAsyncDisposable
             Process process = await ChildProcesses.StartAsync(start).ConfigureAwait(false);
             int id = process.Id;
             // What a plugin or configuration prints comes here too: the runner keeps its output for the answers.
-            process.ErrorDataReceived += (_, e) =>
+            IdeErrors.Observe(ChildProcesses.Hear(process, errors: said =>
             {
-                if (e.Data is { Length: > 0 } said)
+                if (said.Length > 0)
                 {
                     IdeErrors.Write($"Prettier runner (process {id}): {said}");
                 }
-            };
-            process.BeginErrorReadLine();
+            }));
             return new Runner(process, node);
         }
 

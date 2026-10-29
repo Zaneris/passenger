@@ -38,9 +38,10 @@
                       GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained" />
   </ItemGroup>
 
-  <!-- Passenger's own code writes a whole file only through AtomicFile, FileText.Save or OwnFiles: File.WriteAll* is
-       banned under src/ (src/BannedSymbols.txt), which warnings as errors make a failed build. Compared without case, as
-       macOS and Windows name a folder, so a build through another spelling of the checkout's path still holds it. -->
+  <!-- Passenger's own code writes a whole file only through AtomicFile, FileText.Save or OwnFiles, and hears a child's
+       output only through ChildProcesses.Hear: File.WriteAll* and Process's Begin*ReadLine are banned under src/
+       (src/BannedSymbols.txt), which warnings as errors make a failed build. Compared without case, as macOS and Windows
+       name a folder, so a build through another spelling of the checkout's path still holds it. -->
   <ItemGroup Condition="$(MSBuildProjectDirectory.ToLowerInvariant().StartsWith('$(MSBuildThisFileDirectory.ToLowerInvariant())src'))">
     <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" />
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)src/BannedSymbols.txt" />

@@ -33,6 +33,10 @@ public sealed class LanguageServer : IAsyncDisposable
     private readonly CountedMessages messages;
     private readonly ClientTarget client;
     private readonly ServerLog log;
+
+    /// <summary>Done once the server's error stream has been read into its log to its end.</summary>
+    private readonly Task errorsHeard;
+
     private readonly Dictionary<long, (string Method, long Since)> waiting = [];
     private readonly Dictionary<string, (int Left, TaskCompletionSource Spent)> refusing = [];
     private readonly List<Hold> holding = [];
@@ -63,7 +67,7 @@ public sealed class LanguageServer : IAsyncDisposable
     private CommandRun? commandRun;
     private readonly SemaphoreSlim commandRuns = new(1, 1);
 
-    private LanguageServer(Process process, JsonRpc rpc, CountedMessages messages, ClientTarget client, ServerLog log, string logFolder,
+    private LanguageServer(Process process, JsonRpc rpc, CountedMessages messages, ClientTarget client, ServerLog log, Task errorsHeard, string logFolder,
         IReadOnlyDictionary<string, object>? options, Func<string?, object?>? configure = null, Func<string, CancellationToken, Task<string>>? content = null)
     {
         this.configure = configure;
@@ -74,6 +78,7 @@ public sealed class LanguageServer : IAsyncDisposable
         this.messages = messages;
         this.client = client;
         this.log = log;
+        this.errorsHeard = errorsHeard;
         LogFolder = logFolder;
         WatchedFiles = new WatchedFiles(this);
         ProcessId = process.Id;
@@ -470,8 +475,8 @@ public sealed class LanguageServer : IAsyncDisposable
             End(process);
             throw;
         }
-        process.ErrorDataReceived += (_, e) => log.Write(e.Data);
-        process.BeginErrorReadLine();
+        Task errorsHeard = HearErrorsAsync(process, log);
+        UnawaitedWork.Observe(errorsHeard);
 
         SystemTextJsonFormatter formatter = new() { JsonSerializerOptions = Json.Options };
         CountedMessages handler = new(input, output, formatter);
@@ -479,7 +484,7 @@ public sealed class LanguageServer : IAsyncDisposable
         // One at a time, in order: a progress report handled after its end would leave the load showing.
         JsonRpc rpc = new(handler) { SynchronizationContext = new Microsoft.VisualStudio.Threading.NonConcurrentSynchronizationContext(sticky: false) };
         rpc.AddLocalRpcTarget(client, new JsonRpcTargetOptions { UseSingleObjectParameterDeserialization = true });
-        LanguageServer server2 = new(process, rpc, handler, client, log, logFolder, options, configure, content);
+        LanguageServer server2 = new(process, rpc, handler, client, log, errorsHeard, logFolder, options, configure, content);
         client.Owner = server2;
         rpc.StartListening();
 
@@ -541,6 +546,19 @@ public sealed class LanguageServer : IAsyncDisposable
         && provider.ValueKind == JsonValueKind.Object && provider.TryGetProperty("triggerCharacters", out JsonElement triggers) && triggers.ValueKind == JsonValueKind.Array
             ? [.. triggers.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.String).Select(t => t.GetString()!)]
             : [];
+
+    /// <summary>The server's error stream heard into its log to its end, which closes the log.</summary>
+    private static async Task HearErrorsAsync(Process process, ServerLog log)
+    {
+        try
+        {
+            await ChildProcesses.Hear(process, errors: log.Write).ConfigureAwait(false);
+        }
+        finally
+        {
+            log.Dispose();
+        }
+    }
 
     /// <summary>Ends a server that never finished starting, at once: there is no shutdown to ask it for.</summary>
     private static void End(Process process)
@@ -889,13 +907,10 @@ public sealed class LanguageServer : IAsyncDisposable
         {
         }
         rpc.Dispose();
-        try
+        using (CancellationTokenSource limit = new(TimeSpan.FromSeconds(2)))
         {
-            using CancellationTokenSource limit = new(TimeSpan.FromSeconds(2));
-            await process.WaitForExitAsync(limit.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
+            // Its error stream read into its log to its end too, which holds its last words.
+            await Task.WhenAll(process.WaitForExitAsync(limit.Token), errorsHeard).WaitAsync(limit.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
         // Killed whether it went or not: a server that exits can leave its BuildHost running, in its process group.
         ChildProcesses.Kill(process);

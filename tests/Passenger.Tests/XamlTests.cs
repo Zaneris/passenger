@@ -1785,6 +1785,100 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         }
     }
 
+    /// <summary>The XAML preview of a view whose previewer writes to its output and its errors without pause, opened and
+    /// closed twenty times beside two busy processes (each other time closed as soon as its previewer has started, else
+    /// once it has drawn), leaves the IDE with no error caught: no read of the previewer's output faults as it ends, nor
+    /// is left faulted for the garbage collector to find.</summary>
+    [AvaloniaFact]
+    public void Opening_and_closing_the_XAML_preview_twenty_times_beside_busy_processes_faults_no_read_of_the_previewer()
+    {
+        app.Write("Chatty.axaml", """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         x:Class="Gallery.Chatty" Width="200" Height="100">
+                <TextBlock Text="Chatty" />
+            </UserControl>
+
+            """);
+        app.Write("Chatty.axaml.cs", """
+            using System;
+            using System.Threading;
+            using Avalonia.Controls;
+
+            namespace Gallery;
+
+            public partial class Chatty : UserControl
+            {
+                public Chatty()
+                {
+                    InitializeComponent();
+                    if (Design.IsDesignMode)
+                    {
+                        // A line a millisecond on the previewer's output and its errors, for as long as it runs.
+                        new Thread(() =>
+                        {
+                            for (long line = 0; ; line++)
+                            {
+                                Console.WriteLine($"chatty {line}");
+                                Console.Error.WriteLine($"chatty {line}");
+                                Thread.Sleep(1);
+                            }
+                        }) { IsBackground = true }.Start();
+                    }
+                }
+            }
+
+            """);
+        MainWindow window = app.Open(app.PathOf("Chatty.axaml"), languageServer: false);
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        Passenger.App.Editors.EditorGroup group = window.EditorArea.ActiveGroup;
+        OpenDocument document = window.EditorArea.Active!;
+        int previewers = 0;
+        void OnStarted(object? sender, ChildStart start)
+        {
+            if (start.Command.Contains("Avalonia.Designer.HostApp", StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref previewers);
+            }
+        }
+        List<System.Diagnostics.Process> busy = ChildOutputTests.Busy();
+        ChildProcesses.Started += OnStarted;
+        try
+        {
+            for (int round = 1; round <= 20; round++)
+            {
+                Ui.Click(group.PreviewToggle);
+                Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException($"Round {round}: the toggle showed no preview");
+                if (round % 2 == 1)
+                {
+                    Ui.PumpUntil(() => Volatile.Read(ref previewers) == round, $"round {round}'s previewer to start");
+                }
+                else
+                {
+                    Ui.WaitFor(() => preview.Frame is not null, $"round {round}'s previewer to draw the view ({preview.Status})", TimeSpan.FromSeconds(60));
+                }
+                Ui.Click(group.PreviewToggle);
+                Ui.Settle();
+                Assert.True(window.PreviewOf(document) is null, $"Round {round}: the toggle left the preview on");
+            }
+        }
+        finally
+        {
+            ChildProcesses.Started -= OnStarted;
+            ChildOutputTests.End(busy);
+        }
+        Assert.Equal(20, Volatile.Read(ref previewers));
+        // A read left faulted is told only as its task is collected.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        Ui.Settle();
+        Assert.True(IdeErrors.Errors.Count == 0, $"Ending the previewer twenty times left the IDE with errors caught: {string.Join("; ", IdeErrors.Errors.Select(e => $"{e.Kind}: {e.Message}"))}");
+        window.Close();
+    }
+
     /// <summary>An Avalonia previewer that ends as it draws (a crash) has its end in passenger.log, with the last words the
     /// pane says it ended with, as the WPF previewer's is.</summary>
     [AvaloniaFact]

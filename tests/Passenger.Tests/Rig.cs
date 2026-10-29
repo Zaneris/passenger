@@ -2545,18 +2545,16 @@ public static partial class NativeStacks
                 },
             };
             System.Text.StringBuilder said = new();
-            sample.OutputDataReceived += (_, e) => Heard(said, e.Data);
-            sample.ErrorDataReceived += (_, e) => Heard(said, e.Data);
             sample.Start();
-            sample.BeginOutputReadLine();
-            sample.BeginErrorReadLine();
+            Task heard = ChildProcesses.Hear(sample, line => Heard(said, line), line => Heard(said, line));
+            Passenger.App.IdeErrors.Observe(heard);
             if (!sample.WaitForExit(TimeSpan.FromMinutes(1)))
             {
                 sample.Kill();
                 return $"\n{what}: sample did not finish in a minute";
             }
             // Once it has ended, until the last of what it wrote has been heard.
-            sample.WaitForExit();
+            Waiting.Until(() => heard.IsCompleted, TimeSpan.FromSeconds(10));
             if (!File.Exists(file))
             {
                 lock (said)
@@ -2610,14 +2608,11 @@ public static partial class NativeStacks
         }
     }
 
-    private static void Heard(System.Text.StringBuilder said, string? line)
+    private static void Heard(System.Text.StringBuilder said, string line)
     {
-        if (line is not null)
+        lock (said)
         {
-            lock (said)
-            {
-                said.Append(line).Append(' ');
-            }
+            said.Append(line).Append(' ');
         }
     }
 

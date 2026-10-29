@@ -96,18 +96,18 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         using Process program = Passenger.Core.ChildProcesses.Start(start);
         TaskCompletionSource evaluating = new(TaskCreationOptions.RunContinuationsAsynchronously);
         System.Text.StringBuilder written = new();
-        program.OutputDataReceived += (_, line) =>
+        Task heard = Passenger.Core.ChildProcesses.Hear(program, line =>
         {
             lock (written)
             {
-                written.AppendLine(line.Data);
+                written.AppendLine(line);
             }
-            if (line.Data == "evaluating")
+            if (line == "evaluating")
             {
                 evaluating.TrySetResult();
             }
-        };
-        program.BeginOutputReadLine();
+        });
+        Passenger.App.IdeErrors.Observe(heard);
         await using DebugSession host = DebugSession.ForAttach(testOutputHelper, program,
             new Dictionary<string, string> { [AdapterEnvironment.EvaluationTimeoutVariable] = TimeSpan.FromMinutes(10).TotalMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) });
         await host
@@ -123,7 +123,7 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         Assert.True(await host.DisconnectAsync(DebugSession.RequestLimit), "The detach was not answered: it waited out the evaluation's ten minutes, not its half-second end");
         Assert.Contains("went on", (await slow).Result, StringComparison.Ordinal);
         Assert.True(program.WaitForExit(TimeSpan.FromSeconds(30).Scaled()), "The program let go did not run on to its end");
-        program.WaitForExit();
+        Assert.True(await Waiting.Within(heard, TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken), "The program's output was not read to its end after it ended");
         lock (written)
         {
             Assert.Contains("ran on", written.ToString(), StringComparison.Ordinal);
@@ -142,7 +142,7 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
         using Process program = Passenger.Core.ChildProcesses.Start(start);
-        program.BeginOutputReadLine();
+        Passenger.App.IdeErrors.Observe(Passenger.Core.ChildProcesses.Hear(program, _ => { }));
         await using DebugSession host = DebugSession.ForAttach(testOutputHelper, program);
         await host
             .InitializeAsync()

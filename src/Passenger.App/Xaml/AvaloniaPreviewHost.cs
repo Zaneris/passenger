@@ -92,11 +92,8 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             started = await ChildProcesses.StartAsync(start);
         }
         host = started;
-        started.OutputDataReceived += (_, e) => log.Heard(e.Data);
-        started.ErrorDataReceived += (_, e) => log.Heard(e.Data);
+        IdeErrors.Observe(ChildProcesses.Hear(started, log.Heard, log.Heard));
         HearEnd(started, () => Ended(started));
-        started.BeginOutputReadLine();
-        started.BeginErrorReadLine();
         starting = Stopwatch.StartNew();
         preview.Say($"Starting the previewer on {Path.GetFileName(output)}…");
         preview.Hold();

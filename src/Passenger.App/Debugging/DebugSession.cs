@@ -67,7 +67,9 @@ public sealed class DebugSession
     private readonly Dictionary<int, LineBreakpoint> byId = [];
     private readonly TaskCompletionSource initialized = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Queue<string> errors = new();
-    private readonly TaskCompletionSource errorsRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Done once the adapter's error stream has been read to its end.</summary>
+    private readonly Task errorsHeard;
 
     /// <summary>Done once the adapter's process has ended, however soon after its start that was.</summary>
     private readonly TaskCompletionSource exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -153,24 +155,19 @@ public sealed class DebugSession
             IdeLog.Write(IdeLog.Debugger, $"[{name}] {line}");
             console(line);
         };
-        adapter.ErrorDataReceived += (_, e) =>
+        errorsHeard = ChildProcesses.Hear(adapter, errors: line =>
         {
-            if (e.Data is null)
-            {
-                errorsRead.TrySetResult();
-                return;
-            }
             lock (errors)
             {
-                errors.Enqueue(e.Data);
+                errors.Enqueue(line);
                 if (errors.Count > ErrorLines)
                 {
                     errors.Dequeue();
                 }
             }
-            log(e.Data);
-        };
-        adapter.BeginErrorReadLine();
+            log(line);
+        });
+        IdeErrors.Observe(errorsHeard);
         adapter.EnableRaisingEvents = true;
         adapter.Exited += (_, _) => exited.TrySetResult();
         // Exited is raised once: an adapter that died as it started may have had it before this thread came to listen.
@@ -580,7 +577,7 @@ public sealed class DebugSession
     private async Task HearEndAsync(Action<string> log)
     {
         await exited.Task.ConfigureAwait(false);
-        await Task.WhenAny(errorsRead.Task, Task.Delay(TimeSpan.FromSeconds(2))).ConfigureAwait(false);
+        await Task.WhenAny(errorsHeard, Task.Delay(TimeSpan.FromSeconds(2))).ConfigureAwait(false);
         UiThread.Post(() => OnAdapterExited(log));
     }
 

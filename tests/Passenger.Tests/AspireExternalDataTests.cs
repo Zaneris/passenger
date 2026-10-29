@@ -36,10 +36,14 @@ public sealed class AspireExternalDataTests(AspireApp project) : IClassFixture<A
         start.RedirectStandardError = true;
         StringBuilder said = new();
         using Process run = ChildProcesses.Start(start);
-        run.OutputDataReceived += (_, line) => { lock (said) { said.AppendLine(line.Data); } };
-        run.ErrorDataReceived += (_, line) => { lock (said) { said.AppendLine(line.Data); } };
-        run.BeginOutputReadLine();
-        run.BeginErrorReadLine();
+        void Keep(string line)
+        {
+            lock (said)
+            {
+                said.AppendLine(line);
+            }
+        }
+        IdeErrors.Observe(ChildProcesses.Hear(run, Keep, Keep));
         MainWindow? window = null;
         int[] listed = [];
         try

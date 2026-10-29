@@ -224,7 +224,7 @@ public static class ChildProcesses
         catch (OperationCanceledException) when (ending.IsCancellationRequested)
         {
             GiveUp(process, cancel);
-            // Disposing the process ends the reads; their ends are nobody's to report.
+            // The kill ends the reads at their pipes' end; their ends are nobody's to report.
             Forget(read);
             cancel.ThrowIfCancellationRequested();
             if (output.Overran || errors.Overran)
@@ -496,6 +496,43 @@ public static class ChildProcesses
             return isAnswer!(line) && answer.TrySetResult(line);
         }
     }
+
+    /// <summary>Hears what a child writes to its output and its errors (each redirected), a line at a time as it comes, its
+    /// end ("\n", "\r\n" or "\r") left off, on the thread pool: each stream given a hearer is read to its end, the child's
+    /// letting go of its pipe, then closed here. Its process may be killed and disposed at any moment meanwhile, which
+    /// never closes a stream read here under its read. The task ends once both reads have; a hearer's fault faults it.</summary>
+    public static Task Hear(Process process, Action<string>? output = null, Action<string>? errors = null) =>
+        Task.WhenAll(output is null ? Task.CompletedTask : HearAsync(process.StandardOutput, output),
+            errors is null ? Task.CompletedTask : HearAsync(process.StandardError, errors));
+
+    /// <summary>One stream heard to its end. It is taken as the process's reader, which the process's disposal leaves open
+    /// for whoever took it: closed under a read, the read would fault.</summary>
+    private static Task HearAsync(StreamReader stream, Action<string> heard) =>
+        // Unheld: it reads for as long as the child keeps its pipe open, which no wait for the IDE to be quiet may wait out.
+        BackgroundWork.Unheld(async () =>
+        {
+            using (stream)
+            {
+                while (true)
+                {
+                    string? line;
+                    try
+                    {
+                        line = await stream.ReadLineAsync(CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (IOException)
+                    {
+                        // A pipe broken as its child was killed: the stream has ended all the same.
+                        return;
+                    }
+                    if (line is null)
+                    {
+                        return;
+                    }
+                    heard(line);
+                }
+            }
+        });
 
     /// <summary>Has <see cref="Kill"/> end what a child that has just started starts from now on, even once the process that
     /// started it has gone (a restore's MSBuild nodes after the restore), which on Windows no walk of its tree finds;

@@ -57,15 +57,11 @@ public sealed class DebugSession : IAsyncDisposable
             start.Environment[variable] = value;
         }
         adapter = ChildProcesses.Start(start);
-        adapter.ErrorDataReceived += (_, e) =>
+        Passenger.App.IdeErrors.Observe(ChildProcesses.Hear(adapter, errors: line =>
         {
-            if (e.Data is not null)
-            {
-                Log(output, $"adapter: {e.Data}");
-                Hear($"standard error: {e.Data}");
-            }
-        };
-        adapter.BeginErrorReadLine();
+            Log(output, $"adapter: {line}");
+            Hear($"standard error: {line}");
+        }));
         Connection = new DapConnection(adapter.StandardOutput.BaseStream, adapter.StandardInput.BaseStream, message => Log(output, message));
         Connection.EventReceived += (name, body) =>
         {

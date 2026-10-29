@@ -308,6 +308,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             string folder = Path.GetDirectoryName(assembly.Path)!;
             StringBuilder said = new();
             Process? process = null;
+            Task heard = Task.CompletedTask;
             int id;
             if (debugger is null)
             {
@@ -326,10 +327,8 @@ public sealed class TestingPlatformRunner : ITestRunner
                 {
                     throw new TestHostFailed($"{name} could not start: {failed.Message}");
                 }
-                process.OutputDataReceived += (_, line) => Keep(said, line.Data);
-                process.ErrorDataReceived += (_, line) => Keep(said, line.Data);
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
+                heard = ChildProcesses.Hear(process, line => Keep(said, line), line => Keep(said, line));
+                IdeErrors.Observe(heard);
                 id = process.Id;
             }
             else
@@ -339,7 +338,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             TcpClient client;
             try
             {
-                client = await AcceptAsync(listener, process, id, name, said, cancel);
+                client = await AcceptAsync(listener, process, heard, id, name, said, cancel);
             }
             catch
             {
@@ -469,7 +468,7 @@ public sealed class TestingPlatformRunner : ITestRunner
 
         /// <summary>The test host's connection, once its program makes it; failed if the program ends first or, run by the
         /// runner, takes longer than <see cref="ConnectLimit"/> (under the debugger the person may be stopped in it).</summary>
-        private static async Task<TcpClient> AcceptAsync(TcpListener listener, Process? process, int id, string name, StringBuilder said, CancellationToken cancel)
+        private static async Task<TcpClient> AcceptAsync(TcpListener listener, Process? process, Task heard, int id, string name, StringBuilder said, CancellationToken cancel)
         {
             using CancellationTokenSource giveUp = CancellationTokenSource.CreateLinkedTokenSource(cancel);
             Task<TcpClient> accepting = listener.AcceptTcpClientAsync(giveUp.Token).AsTask();
@@ -487,7 +486,7 @@ public sealed class TestingPlatformRunner : ITestRunner
                         if (process is not null)
                         {
                             // What it wrote last is read to its end before it is quoted.
-                            await process.WaitForExitAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(1), CancellationToken.None).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
+                            await Task.WhenAll(process.WaitForExitAsync(CancellationToken.None), heard).WaitAsync(TimeSpan.FromSeconds(1), CancellationToken.None).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
                             exit = $" with exit code {process.ExitCode}";
                         }
                         throw new TestHostFailed(Written($"{name} ended{exit} before it connected", said));
@@ -541,12 +540,8 @@ public sealed class TestingPlatformRunner : ITestRunner
             }
         }
 
-        private static void Keep(StringBuilder said, string? line)
+        private static void Keep(StringBuilder said, string line)
         {
-            if (line is null)
-            {
-                return;
-            }
             lock (said)
             {
                 said.Append(line).Append('\n');

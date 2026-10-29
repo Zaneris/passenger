@@ -148,17 +148,13 @@ public abstract class McpRig : IDisposable
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         Process passenger = ChildProcesses.Start(start);
-        passenger.ErrorDataReceived += (_, e) =>
+        IdeErrors.Observe(ChildProcesses.Hear(passenger, errors: line =>
         {
-            if (e.Data is not null)
+            lock (errors)
             {
-                lock (errors)
-                {
-                    errors.Add(e.Data);
-                }
+                errors.Add(line);
             }
-        };
-        passenger.BeginErrorReadLine();
+        }));
         lock (passengers)
         {
             passengers.Add(passenger);
