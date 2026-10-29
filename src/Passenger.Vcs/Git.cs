@@ -578,12 +578,29 @@ public sealed class Git
     /// and the remotes, which a remote branch's name begins with.</summary>
     public async Task<(IReadOnlyList<BranchInfo> Branches, IReadOnlyList<string> Remotes)> BranchTreeAsync()
     {
-        GitResult refs = await RunAsync(Root, ["for-each-ref",
-            "--format=%(HEAD)%1f%(refname)%1f%(objectname)%1f%(*objectname)%1f%(upstream:remotename)%1f%(upstream:remoteref)%1f%(refname:short)",
-            "refs/heads", "refs/remotes", "refs/tags"]);
+        GitResult refs = await RunAsync(Root, ["for-each-ref", BranchFormat, "refs/heads", "refs/remotes", "refs/tags"]);
         GitResult remotes = await RunAsync(Root, ["remote"]);
+        string[] named = remotes.Succeeded ? remotes.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : [];
+        return (refs.Succeeded ? BranchesOf(refs.Output) : [], named);
+    }
+
+    /// <summary>The local branches, the one committed to last first, each as <see cref="BranchTreeAsync"/> reads it. Read and
+    /// parsed off the caller's thread.</summary>
+    public Task<IReadOnlyList<BranchInfo>> LocalBranchesAsync() => BackgroundWork.Run<IReadOnlyList<BranchInfo>>(async () =>
+    {
+        GitResult refs = await RunAsync(Root, ["for-each-ref", "--sort=-committerdate", BranchFormat, "refs/heads"]);
+        return refs.Succeeded ? BranchesOf(refs.Output) : [];
+    });
+
+    /// <summary>What a branch or tag is read as, in the fields <see cref="BranchesOf"/> takes.</summary>
+    private const string BranchFormat =
+        "--format=%(HEAD)%1f%(refname)%1f%(objectname)%1f%(*objectname)%1f%(upstream:remotename)%1f%(upstream:remoteref)%1f%(refname:short)";
+
+    /// <summary>The branches and tags for-each-ref wrote in <see cref="BranchFormat"/>, a line each, in its order.</summary>
+    private static List<BranchInfo> BranchesOf(string output)
+    {
         List<BranchInfo> found = [];
-        foreach (string line in refs.Succeeded ? refs.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries) : [])
+        foreach (string line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             string[] field = line.Split('\x1f');
             if (field.Length < 7)
@@ -605,7 +622,7 @@ public sealed class Git
                     field[4].Length > 0 ? field[4] : null, field[5].Length > 0 ? field[5] : null));
             }
         }
-        return (found, remotes.Succeeded ? remotes.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : []);
+        return found;
     }
 
     /// <summary>The history of every branch, remote and tag and of HEAD, newest first with a branch's commits together, at

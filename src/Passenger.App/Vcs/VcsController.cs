@@ -784,6 +784,9 @@ public sealed class VcsController : IDisposable
     public async Task<(IReadOnlyList<BranchInfo> Branches, IReadOnlyList<string> Remotes)> BranchTreeAsync() =>
         git is { } repository ? await repository.BranchTreeAsync() : ([], []);
 
+    /// <summary>The local branches, the one committed to last first; none outside a working tree.</summary>
+    public async Task<IReadOnlyList<BranchInfo>> LocalBranchesAsync() => git is { } repository ? await repository.LocalBranchesAsync() : [];
+
     /// <summary>Checkout from the branches panel: a local branch checked out; a remote's as a local branch of the same name
     /// tracking it, or that local branch where there is one already; a tag on its own (a detached head).</summary>
     public Task<VcsOutcome> CheckoutRefAsync(BranchInfo branch, IReadOnlyList<BranchInfo> all)

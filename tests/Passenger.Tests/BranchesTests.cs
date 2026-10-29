@@ -1,7 +1,10 @@
+using System.Globalization;
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.LogicalTree;
 using Passenger.App;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
@@ -344,6 +347,106 @@ public sealed class BranchesTests : IDisposable
         Ui.Press(window, "Enter");
         Ui.Landed(() => window.Vcs.Branch == "team/login", "the checkout of team/login");
         window.Close();
+    }
+
+    /// <summary>The toolbar's branch menu lists the current branch, the favourites and those committed to last, ten at
+    /// most, with More Branches… for the rest, and makes a branch's own menu only as it opens: over 5,000 local branches it
+    /// costs the window's thread what 30 do, and More Branches… gives the keys to the Git window's branch search.</summary>
+    [AvaloniaFact]
+    public void The_branch_menu_over_5000_branches_costs_the_window_what_30_do_and_more_branches_searches_them_all()
+    {
+        string few = Repository(30);
+        string many = Repository(5_000);
+        try
+        {
+            MainWindow window = Ui.OpenFolder(few, width: 1300, height: 900, languageServer: false);
+            (long fewCost, int fewMade) = Measured(window);
+            window.Close();
+            window = Ui.OpenFolder(many, width: 1300, height: 900, languageServer: false);
+            (long manyCost, int manyMade) = Measured(window);
+            TestContext.Current.TestOutputHelper?.WriteLine(
+                $"The branch menu allocated {fewCost >> 10} KB on the window's thread and made {fewMade} menu items over 30 branches, {manyCost >> 10} KB and {manyMade} over 5,000");
+            Assert.True(manyMade <= fewMade,
+                $"The branch menu made {manyMade} menu items over 5,000 local branches, where over 30 it made {fewMade}: it makes items for branches it does not list");
+            Assert.True(manyCost < fewCost * 3 / 2,
+                $"Opening and closing the branch menu allocated {manyCost >> 10} KB on the window's thread over 5,000 local branches, {fewCost >> 10} KB over 30: the window pays for every branch");
+
+            ContextMenu menu = OpenBranchWidget(window);
+            MenuItem[] items = [.. menu.Items.OfType<MenuItem>()];
+            MenuItem[] branches = [.. items.SkipWhile(i => i.Header as string != "Local").Skip(1).SkipLast(1)];
+            Assert.Equal(
+                ["main", "recent-12", "recent-11", "recent-10", "recent-09", "recent-08", "recent-07", "recent-06", "recent-05", "recent-04"],
+                branches.Select(i => i.Header as string));
+            Assert.True(branches[0].IsChecked, "main, the current branch, is not checked in the branch menu");
+            Assert.Equal("More Branches…", items[^1].Header);
+            MenuItem[] made = [.. branches.Where(b => b.Items.OfType<MenuItem>().Any())];
+            Assert.True(made.Length == 0, $"The branch menu made the menus of [{string.Join(", ", made.Select(b => b.Header))}] before any was opened");
+
+            MenuItem recent = Reach(window, items, "recent-12");
+            Ui.Press(window, "Enter");
+            Assert.True(recent.IsSubMenuOpen, "Choosing recent-12 in the branch menu opened no menu of its own");
+            MenuItem[] own = [.. recent.Items.OfType<MenuItem>()];
+            Assert.True(own.Any(i => i.Header as string == "Checkout") && own.Any(i => i.Header as string == "Merge 'recent-12' into 'main'"),
+                $"recent-12's menu, opened, holds [{string.Join(", ", own.Select(i => i.Header))}] rather than its Checkout and Merge");
+            Ui.Press(window, "Left");
+            Reach(window, items, "More Branches…");
+            Ui.Press(window, "Enter");
+            Ui.Settle();
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Git), "More Branches… did not show the Git window");
+            window.KeyTextInput("b4321");
+            Ui.Settle();
+            Assert.True(window.GitBranches.SearchText == "b4321" && window.GitBranches.Rows.Any(r => r.Title == "b4321"),
+                $"After More Branches… and b4321 typed the branch search holds '{window.GitBranches.SearchText}' and the panel lists [{string.Join(", ", Listed(window.GitBranches).Take(8))}]: the keys never reached the search");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(few);
+            TestFolders.Delete(many);
+        }
+
+        // The menu opened and closed once to warm it, then again measured: what the window's thread allocated, and how
+        // many menu items the menu made.
+        static (long Cost, int Made) Measured(MainWindow window)
+        {
+            OpenBranchWidget(window);
+            Ui.Press(window, "Escape");
+            Ui.Settle();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            ContextMenu menu = OpenBranchWidget(window);
+            long opened = GC.GetAllocatedBytesForCurrentThread();
+            int made = menu.GetLogicalDescendants().OfType<MenuItem>().Count();
+            long closing = GC.GetAllocatedBytesForCurrentThread();
+            Ui.Press(window, "Escape");
+            Ui.Settle();
+            Assert.False(menu.IsOpen, "Escape left the branch menu open");
+            return (opened - before + GC.GetAllocatedBytesForCurrentThread() - closing, made);
+        }
+    }
+
+    /// <summary>A repository of so many local branches: main, checked out; recent-01 to recent-12, each committed to a
+    /// minute after the one before and later than main; and the rest at main's commit, under bulk/.</summary>
+    private static string Repository(int branches)
+    {
+        string made = TestFolders.Create("branches-many-");
+        File.WriteAllText(Path.Combine(made, "Shop.cs"), Shop);
+        TestGit.Init(made);
+        string head = TestGit.Run(made, "rev-parse", "HEAD").Trim();
+        long later = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600;
+        StringBuilder recent = new();
+        for (int i = 1; i <= 12; i++)
+        {
+            recent.Append(CultureInfo.InvariantCulture,
+                $"commit refs/heads/recent-{i:00}\ncommitter Passenger Tests <tests@passenger.invalid> {later + (i * 60)} +0000\ndata <<END\nRecent {i}\nEND\nfrom {head}\n\n");
+        }
+        TestGit.Feed(made, recent.ToString(), "fast-import", "--quiet");
+        StringBuilder rest = new();
+        for (int i = 0; i < branches - 13; i++)
+        {
+            rest.Append(CultureInfo.InvariantCulture, $"create refs/heads/bulk/b{i:0000} {head}\n");
+        }
+        TestGit.Feed(made, rest.ToString(), "update-ref", "--stdin");
+        return made;
     }
 
     /// <summary>The toolbar's branch widget clicked, as a person's pointer clicks it, and its menu waited for.</summary>

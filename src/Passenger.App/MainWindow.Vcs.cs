@@ -174,7 +174,8 @@ public partial class MainWindow
         Explorer.Tree.SetChanges(vcs.Changes.Where(c => c.Kind is not ChangeKind.Deleted).ToDictionary(c => c.Path, c => c.Kind));
     }
 
-    /// <summary>The branch popup: new branch, commit, push, then the local branches, each with its own menu.</summary>
+    /// <summary>The branch popup: new branch, commit, push, then the local branches (the current, favourites and last
+    /// committed to, at most <see cref="BranchesListed"/>), each with its own menu, and More Branches… for the rest.</summary>
     private void OnBranchClicked(object? sender, RoutedEventArgs e) => ShowBranches();
 
     private void ShowBranches()
@@ -227,13 +228,46 @@ public partial class MainWindow
         menu.Items.Add(Action(AppActions.Unstash));
         menu.Items.Add(new Separator());
         menu.Items.Add(new MenuItem { Header = "Local", IsEnabled = false });
+        IReadOnlyList<BranchInfo> local = await session.Vcs.LocalBranchesAsync();
         // Each branch opens its own menu (Checkout, Merge into Current and the rest), so only Checkout checks one out.
-        (IReadOnlyList<BranchInfo> refs, _) = await session.Vcs.BranchTreeAsync();
-        foreach (BranchInfo branch in refs.Where(b => b.Kind == RefKind.Local).OrderByDescending(b => b.IsCurrent))
+        foreach (BranchInfo branch in Listed(local, gitView?.Log.Branches?.Favorites ?? branchFavorites))
         {
-            menu.Items.Add(MenuChoice.Holding(branch.Name, branch.IsCurrent, GitBranches.Menu(branch)));
+            menu.Items.Add(MenuChoice.Holding(branch.Name, branch.IsCurrent, () => GitBranches.Menu(branch)));
+        }
+        if (local.Count > BranchesListed)
+        {
+            menu.Items.Add(Item("More Branches…", ShowAllBranches));
         }
         Open(menu, BranchButton);
+    }
+
+    /// <summary>How many local branches the branch popup lists at most, whatever the repository holds.</summary>
+    private const int BranchesListed = 10;
+
+    /// <summary>The local branches the branch popup lists, of those read with the one committed to last first: the current
+    /// one, then the favourites, then the rest, at most <see cref="BranchesListed"/>.</summary>
+    private static List<BranchInfo> Listed(IReadOnlyList<BranchInfo> local, ToolWindows.GitBranchesState favorites)
+    {
+        List<BranchInfo> listed = [];
+        for (int rank = 0; rank < 3 && listed.Count < BranchesListed; rank++)
+        {
+            for (int i = 0; i < local.Count && listed.Count < BranchesListed; i++)
+            {
+                if ((local[i].IsCurrent ? 0 : favorites.Holds(local[i]) ? 1 : 2) == rank)
+                {
+                    listed.Add(local[i]);
+                }
+            }
+        }
+        return listed;
+    }
+
+    /// <summary>More Branches… of the branch popup: the Git window's branches panel, its search box given the keys.</summary>
+    private void ShowAllBranches()
+    {
+        ShowToolWindow(ToolWindowIds.Git);
+        GitWindow.ShowLog();
+        GitBranches.FocusSearch();
     }
 
     /// <summary>Stash Changes: what is open saved first, then every change put away under the message given.</summary>

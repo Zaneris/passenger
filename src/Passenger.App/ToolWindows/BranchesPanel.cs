@@ -61,6 +61,9 @@ public sealed class BranchNode(BranchNodeKind kind, string title, string key, in
 /// origin's) unmarked. Full ref names.</summary>
 public sealed record GitBranchesState : IStateDocument<GitBranchesState>
 {
+    /// <summary>The predefined favourites.</summary>
+    public static readonly IReadOnlyList<string> Predefined = ["refs/heads/master", "refs/heads/main", "refs/remotes/origin/master", "refs/remotes/origin/main"];
+
     public List<string> Favorites { get; init; } = [];
 
     public List<string> NotFavorites { get; init; } = [];
@@ -72,6 +75,10 @@ public sealed record GitBranchesState : IStateDocument<GitBranchesState>
         Favorites = [.. (Favorites ?? []).Where(f => f is not null).Distinct()],
         NotFavorites = [.. (NotFavorites ?? []).Where(f => f is not null).Distinct()],
     };
+
+    /// <summary>Whether a branch is a favourite here: marked, or predefined and not unmarked; a tag never is.</summary>
+    public bool Holds(BranchInfo branch) => branch.Kind != RefKind.Tag && (Favorites.Contains(branch.Ref.FullName)
+        || (Predefined.Contains(branch.Ref.FullName) && !NotFavorites.Contains(branch.Ref.FullName)));
 }
 
 /// <summary>The branches panel at the Git log's left: HEAD (Current Branch), then Local, Remote by remote and Tags, each
@@ -81,9 +88,6 @@ public sealed record GitBranchesState : IStateDocument<GitBranchesState>
 /// deletes.</summary>
 public sealed class BranchesPanel : DockPanel
 {
-    /// <summary>The predefined favourites.</summary>
-    private static readonly string[] Predefined = ["refs/heads/master", "refs/heads/main", "refs/remotes/origin/master", "refs/remotes/origin/main"];
-
     private VcsController vcs;
     private readonly ListBox list;
     private readonly TextBox search;
@@ -283,6 +287,14 @@ public sealed class BranchesPanel : DockPanel
         return true;
     }
 
+    /// <summary>Gives the search box the keys once the panel is laid out (it may have just been shown), its words chosen,
+    /// so what is typed narrows the branches afresh.</summary>
+    public void FocusSearch() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        search.Focus();
+        search.SelectAll();
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
+
     /// <summary>Gives the chosen row the keys, as a click on it does.</summary>
     public void FocusRows()
     {
@@ -341,7 +353,7 @@ public sealed class BranchesPanel : DockPanel
     public void ToggleFavorite(BranchInfo branch)
     {
         string full = branch.Ref.FullName;
-        bool predefined = Predefined.Contains(full);
+        bool predefined = GitBranchesState.Predefined.Contains(full);
         bool now = IsFavorite(branch);
         Favorites = predefined
             ? Favorites with { NotFavorites = now ? [.. Favorites.NotFavorites, full] : [.. Favorites.NotFavorites.Where(f => f != full)] }
@@ -352,8 +364,7 @@ public sealed class BranchesPanel : DockPanel
         list.SelectedItem = rows.FirstOrDefault(r => r.Key == chosen);
     }
 
-    public bool IsFavorite(BranchInfo branch) => branch.Kind != RefKind.Tag && (Favorites.Favorites.Contains(branch.Ref.FullName)
-        || (Predefined.Contains(branch.Ref.FullName) && !Favorites.NotFavorites.Contains(branch.Ref.FullName)));
+    public bool IsFavorite(BranchInfo branch) => Favorites.Holds(branch);
 
     /// <summary>Builds the tree from the branches read and lists the rows the groups and the search leave.</summary>
     private void Show()

@@ -21,7 +21,21 @@ public static class MenuChoice
     }
 
     /// <summary>One whose own menu holds what can be done with it (a branch in the branch widget), so choosing it opens
-    /// that menu and nothing is done until one of its items is chosen.</summary>
-    public static MenuItem Holding(object header, bool current, IReadOnlyList<Control> items) =>
-        new() { Header = header, ToggleType = MenuItemToggleType.Radio, IsChecked = current, ItemsSource = items };
+    /// that menu and nothing is done until one of its items is chosen. Its items are made as that menu first opens, so a
+    /// value whose menu stays shut costs it nothing.</summary>
+    public static MenuItem Holding(object header, bool current, Func<IReadOnlyList<Control>> items)
+    {
+        // A stand-in until then, so the value shows that it opens a menu and a click or Enter opens it.
+        MenuItem item = new() { Header = header, ToggleType = MenuItemToggleType.Radio, IsChecked = current, ItemsSource = (Control[])[new Separator()] };
+        bool made = false;
+        item.SubmenuOpened += (_, e) =>
+        {
+            if (e.Source == item && !made)
+            {
+                made = true;
+                item.ItemsSource = items();
+            }
+        };
+        return item;
+    }
 }
