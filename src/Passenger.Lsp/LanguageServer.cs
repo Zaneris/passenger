@@ -58,16 +58,16 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>What <c>vscode/content</c> answers (a JSON schema by its URI); null for a server that asks none.</summary>
     private readonly Func<string, CancellationToken, Task<string>>? content;
 
-    /// <summary>What makes an edit the server asks for (<c>workspace/applyEdit</c>); null refuses every one.</summary>
-    private readonly Func<JsonElement, Task<string?>>? applyEdit;
+    /// <summary>The command running now that takes what the server asks of the client as it runs (<see cref="CommandRun"/>),
+    /// one at a time (<see cref="commandRuns"/>); null while none runs, when every edit the server asks for is refused.</summary>
+    private CommandRun? commandRun;
+    private readonly SemaphoreSlim commandRuns = new(1, 1);
 
     private LanguageServer(Process process, JsonRpc rpc, CountedMessages messages, ClientTarget client, ServerLog log, string logFolder,
-        IReadOnlyDictionary<string, object>? options, Func<string?, object?>? configure = null, Func<string, CancellationToken, Task<string>>? content = null,
-        Func<JsonElement, Task<string?>>? applyEdit = null)
+        IReadOnlyDictionary<string, object>? options, Func<string?, object?>? configure = null, Func<string, CancellationToken, Task<string>>? content = null)
     {
         this.configure = configure;
         this.content = content;
-        this.applyEdit = applyEdit;
         this.options = new Dictionary<string, object>(options ?? new Dictionary<string, object>(), StringComparer.Ordinal);
         this.process = process;
         this.rpc = rpc;
@@ -410,7 +410,7 @@ public sealed class LanguageServer : IAsyncDisposable
         {
             start.Environment["DOTNET_gcServer"] = "0";
         }
-        LanguageServer server2 = await StartCoreAsync(start, folder, logFolder, ClientCapabilities.Value, null, options, null, null, null, cancel).ConfigureAwait(false);
+        LanguageServer server2 = await StartCoreAsync(start, folder, logFolder, ClientCapabilities.Value, null, options, null, null, cancel).ConfigureAwait(false);
         if (copy is not null)
         {
             server2.ServerCopy = copy;
@@ -444,12 +444,12 @@ public sealed class LanguageServer : IAsyncDisposable
     {
         Directory.CreateDirectory(start.LogFolder);
         return StartCoreAsync(start.Process, start.Folder, start.LogFolder, start.Capabilities, start.InitializationOptions, null,
-            start.Configuration ?? (_ => null), start.Content, start.ApplyEdit, cancel);
+            start.Configuration ?? (_ => null), start.Content, cancel);
     }
 
     private static async Task<LanguageServer> StartCoreAsync(ProcessStartInfo start, string folder, string logFolder, JsonElement capabilities,
         object? initializationOptions, IReadOnlyDictionary<string, object>? options, Func<string?, object?>? configure,
-        Func<string, CancellationToken, Task<string>>? content, Func<JsonElement, Task<string?>>? applyEdit, CancellationToken cancel)
+        Func<string, CancellationToken, Task<string>>? content, CancellationToken cancel)
     {
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
@@ -479,7 +479,7 @@ public sealed class LanguageServer : IAsyncDisposable
         // One at a time, in order: a progress report handled after its end would leave the load showing.
         JsonRpc rpc = new(handler) { SynchronizationContext = new Microsoft.VisualStudio.Threading.NonConcurrentSynchronizationContext(sticky: false) };
         rpc.AddLocalRpcTarget(client, new JsonRpcTargetOptions { UseSingleObjectParameterDeserialization = true });
-        LanguageServer server2 = new(process, rpc, handler, client, log, logFolder, options, configure, content, applyEdit);
+        LanguageServer server2 = new(process, rpc, handler, client, log, logFolder, options, configure, content);
         client.Owner = server2;
         rpc.StartListening();
 
@@ -822,10 +822,35 @@ public sealed class LanguageServer : IAsyncDisposable
         }
     }
 
-    /// <summary>Runs one of the server's own commands (<c>workspace/executeCommand</c>, as ESLint's fixes are), which may ask
-    /// the client to make an edit on the way (<see cref="ServerStart.ApplyEdit"/>).</summary>
+    /// <summary>Runs one of the server's own commands (<c>workspace/executeCommand</c>) that asks nothing of the client as it
+    /// runs (TypeScript's tsserver requests): an edit it asks for is refused.</summary>
     public Task<JsonElement> ExecuteCommandAsync(LspCommand command, CancellationToken cancel = default) =>
         RequestAsync<JsonElement>(LspMethods.ExecuteCommand, new ExecuteCommandParams(command.Command, command.Arguments ?? []), cancel);
+
+    /// <summary>Runs one of the server's own commands (ESLint's fixes, TypeScript's refactorings), what it asks of the client
+    /// as it runs taken by <paramref name="run"/>: one such command at a time, so each edit the server asks for is the one's
+    /// it came during.</summary>
+    public async Task<JsonElement> ExecuteCommandAsync(LspCommand command, CommandRun run, CancellationToken cancel = default)
+    {
+        await commandRuns.WaitAsync(cancel).ConfigureAwait(false);
+        try
+        {
+            Volatile.Write(ref commandRun, run);
+            return await ExecuteCommandAsync(command, cancel).ConfigureAwait(false);
+        }
+        finally
+        {
+            Volatile.Write(ref commandRun, null);
+            commandRuns.Release();
+        }
+    }
+
+    /// <summary>Whether the server runs a command itself: one its <c>executeCommandProvider</c> lists. Roslyn's lists none,
+    /// leaving its commands to the client (<see cref="ClientCommands"/>).</summary>
+    public bool Runs(string command) =>
+        Capabilities.ValueKind == JsonValueKind.Object && Capabilities.TryGetProperty("executeCommandProvider", out JsonElement provider)
+        && provider.ValueKind == JsonValueKind.Object && provider.TryGetProperty("commands", out JsonElement commands) && commands.ValueKind == JsonValueKind.Array
+        && commands.EnumerateArray().Any(c => c.ValueKind == JsonValueKind.String && c.GetString() == command);
 
     /// <summary>A call hierarchy item's callers, each with where the calls are.</summary>
     public async Task<IReadOnlyList<IncomingCall>> IncomingCallsAsync(HierarchyItem item, CancellationToken cancel = default) =>
@@ -1118,17 +1143,33 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.ShowDocument)]
         public object ShowDocument(JsonElement? request = null) => new { success = false };
 
-        /// <summary>An edit a server's own command makes (ESLint's fixes): made by what its start names, else refused.
-        /// Awaited apart from the messages that follow.</summary>
+        /// <summary>An edit a server's own command makes (ESLint's fixes, TypeScript's refactorings): made by the command run
+        /// it came during, else refused. Awaited apart from the messages that follow.</summary>
         [JsonRpcMethod(LspMethods.ApplyEdit)]
         public async Task<object> ApplyEdit(JsonElement request)
         {
-            if (Owner?.applyEdit is not { } apply || request.ValueKind != JsonValueKind.Object || !request.TryGetProperty("edit", out JsonElement edit))
+            if (Owner is not { } owner || Volatile.Read(ref owner.commandRun) is not { } run || request.ValueKind != JsonValueKind.Object
+                || !request.TryGetProperty("edit", out JsonElement edit))
             {
-                return new { applied = false, failureReason = "Passenger does not run commands that edit through the server" };
+                return new { applied = false, failureReason = "Passenger makes a server's edits only for a command it runs" };
             }
-            string? refused = await apply(edit.Clone()).ConfigureAwait(false);
+            string? refused = await run.Apply(edit.Clone()).ConfigureAwait(false);
             return refused is null ? new { applied = true } : new { applied = false, failureReason = refused };
+        }
+
+        /// <summary>The TypeScript server's word, as a refactoring it ran ends, of a name it wrote to be renamed at once: kept for
+        /// the command run it came during.</summary>
+        [JsonRpcMethod(LspMethods.TypeScriptRename)]
+        public object? TypeScriptRename(JsonElement place)
+        {
+            if (Owner is { } owner && Volatile.Read(ref owner.commandRun) is { } run && place.ValueKind == JsonValueKind.Object
+                && place.TryGetProperty("textDocument", out JsonElement document) && document.ValueKind == JsonValueKind.Object
+                && document.TryGetProperty("uri", out JsonElement uri) && uri.ValueKind == JsonValueKind.String
+                && place.TryGetProperty("position", out JsonElement position) && position.Deserialize<LspPosition>(Json.Options) is { } at)
+            {
+                run.RenameAt = new LspLocation(uri.GetString()!, new LspRange(at, at));
+            }
+            return null;
         }
 
         [JsonRpcMethod("eslint/status")]

@@ -58,8 +58,8 @@ internal sealed partial class WebAssist
         }
     }
 
-    /// <summary>One of ESLint's fixes chosen: made by its server's command, which hands the window its edit; its rule's page
-    /// opened for the documentation.</summary>
+    /// <summary>One of ESLint's fixes chosen: made by its server's command, which hands the window its edit
+    /// (<see cref="ServerCommands"/>); its rule's page opened for the documentation.</summary>
     internal async Task RunLintFix(OpenDocument document, EslintFix fix)
     {
         if (LintOf(document) is not { } lint)
@@ -76,13 +76,14 @@ internal sealed partial class WebAssist
             return;
         }
         using IDisposable held = BackgroundWork.Scope();
-        try
+        RefactorOutcome made = await ServerCommands.RunAsync(context.Editors, fix.Title, fix.Title, null, run => lint.RunAsync(fix, run), null, null, context.Say);
+        if (made.Left.Count > 0)
         {
-            await lint.RunAsync(fix);
+            context.Say($"{fix.Title} was not applied to {string.Join(", ", made.Left)}: it was edited meanwhile");
         }
-        catch (LanguageServerFailed failed)
+        else if ((made.Problem ?? made.Said) is { Length: > 0 } said)
         {
-            context.Failed(fix.Title, failed);
+            context.Say(said);
         }
     }
 

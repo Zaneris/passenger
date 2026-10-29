@@ -238,7 +238,7 @@ public sealed partial class PassengerTools
     }
 
     /// <summary>One of ESLint's fixes made, as choosing it makes it: its server's command, which hands the window its edit
-    /// before it answers; the file saved.</summary>
+    /// before it answers (<see cref="ServerCommands"/>); the file saved.</summary>
     private async Task<string> ApplyLintFix(ServerServed web, EslintFix fix)
     {
         if (fix.OpensDocumentation)
@@ -250,7 +250,15 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException($"'{fix.Title}' was not applied: ESLint no longer checks {Path.GetFileName(web.Document.Path)}");
         }
         int version = web.Document.Text.Version;
-        await lint.RunAsync(fix);
+        RefactorOutcome made = await ServerCommands.RunAsync(Editors, fix.Title, $"'{fix.Title}'", null, run => lint.RunAsync(fix, run), null, null, null);
+        if (made.Problem is not null)
+        {
+            throw new InvalidOperationException(made.Problem);
+        }
+        if (made.Left.Count > 0)
+        {
+            throw new InvalidOperationException($"'{fix.Title}' was not applied: {string.Join(", ", made.Left)} was edited meanwhile");
+        }
         if (web.Document.Text.Version == version)
         {
             return $"'{fix.Title}' changed nothing";

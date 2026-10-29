@@ -4,7 +4,8 @@ namespace Passenger.Lsp;
 
 /// <summary>The commands Roslyn's server leaves to its client: a completion's code written whole (an override's body, the
 /// async an await needs), a code action's nested actions to choose from, and a fix-all's scopes. Roslyn registers no
-/// command of its own (workspace/executeCommand), so any other command is one Passenger cannot run, and says so.</summary>
+/// command of its own (workspace/executeCommand), so any other command of its is one Passenger cannot run, and says so;
+/// another server's runs on it where it lists it (<see cref="LanguageServer.Runs"/>).</summary>
 public static class ClientCommands
 {
     public const string CompletionComplexEdit = "roslyn.client.completionComplexEdit";

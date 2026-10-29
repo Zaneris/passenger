@@ -90,8 +90,9 @@ public static class ClientCapabilities
 
     /// <summary>What Passenger tells the web language servers (TypeScript's, and VS Code's for HTML, CSS and JSON): the
     /// same, but completion takes snippets (the JSON server offers no completion to a client without them, and the
-    /// others write an attribute's or a property's value with the caret inside), a document's colours are asked for, and
-    /// no file is watched for them: each watches its own.</summary>
+    /// others write an attribute's or a property's value with the caret inside), a document's colours are asked for, the
+    /// edits their own commands make are made (<see cref="CommandRun"/>), and no file is watched for them: each watches its
+    /// own.</summary>
     public static readonly JsonElement Web = WebCapabilities();
 
     private static JsonElement WebCapabilities()
@@ -101,6 +102,7 @@ public static class ClientCapabilities
         capabilities["textDocument"]!["colorProvider"] = new JsonObject { ["dynamicRegistration"] = false };
         capabilities["textDocument"]!["publishDiagnostics"]!["versionSupport"] = true;
         capabilities["workspace"]!["didChangeWatchedFiles"] = new JsonObject { ["dynamicRegistration"] = false };
+        capabilities["workspace"]!["applyEdit"] = true;
         return JsonDocument.Parse(capabilities.ToJsonString()).RootElement.Clone();
     }
 }

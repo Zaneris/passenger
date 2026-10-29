@@ -46,9 +46,6 @@ public sealed class EslintService : IAsyncDisposable
     /// <summary>A rule's page the server asked to be opened.</summary>
     public event EventHandler<Uri>? Browse;
 
-    /// <summary>Makes a workspace edit ESLint's command makes (a fix), on the UI thread: null once made and landed, else why not.</summary>
-    public Func<JsonElement, Task<string?>>? ApplyEdit { get; set; }
-
     /// <summary>The server's script in the package carried under web/.</summary>
     public static string Script => Path.Combine(WebLanguages.Modules, "vscode-langservers-extracted", "lib", "eslint-language-server", "eslintServer.js");
 
@@ -176,8 +173,6 @@ public sealed class EslintService : IAsyncDisposable
             Command = runtime => new ServerStart(ChildProcesses.Command(runtime, [Script, "--stdio"], folder), folder, WebLanguages.LogFolder, ClientCapabilities.Web)
             {
                 Configuration = Section,
-                ApplyEdit = edit => UiThread.InvokeAsync(() => disposed ? Task.FromResult<string?>("the folder was closed")
-                    : ApplyEdit is { } apply ? apply(edit) : Task.FromResult<string?>("Passenger cannot make ESLint's edit here")),
             },
             HearsOwnLog = true,
             Listen = Hear,
@@ -490,14 +485,14 @@ public sealed class EslintDocument : IDisposable
     public async Task<JsonElement?> FixAllAsync(CancellationToken cancel = default) =>
         Lsp is { } lsp ? (await lsp.SourceActionsAsync("source.fixAll.eslint", cancel)).FirstOrDefault(a => a.Edit is not null)?.Edit : null;
 
-    /// <summary>Makes a fix: the server's command runs, and makes its edit through the client.</summary>
-    public async Task RunAsync(EslintFix fix, CancellationToken cancel = default)
+    /// <summary>Makes a fix: the server's command runs, and asks <paramref name="run"/> to make its edit.</summary>
+    public async Task RunAsync(EslintFix fix, CommandRun run, CancellationToken cancel = default)
     {
         if (Lsp is null || session is not { } running || fix.Action.Command is not { } command)
         {
             return;
         }
-        await running.Server.ExecuteCommandAsync(command, cancel);
+        await running.Server.ExecuteCommandAsync(command, run, cancel);
     }
 
     private static EslintFix Named(CodeAction action)

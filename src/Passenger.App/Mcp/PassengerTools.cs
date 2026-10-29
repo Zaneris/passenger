@@ -575,6 +575,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
         }
         chosen = resolved;
+        if (chosen.Command is { } run && lsp.Runs(run))
+        {
+            return await ApplyByCommand(lsp, chosen, run, title, what, asked, patience, cancel);
+        }
         string unrun = chosen.Command is { } command ? $", but not {command.Command}, which Passenger cannot run" : string.Empty;
         if (chosen.Edit is not { } edit)
         {
@@ -601,6 +605,30 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         await SaveLandedAsync(cancel);
         return $"Applied {what} to {Plural.Of(files, "file")}{unrun}{(dropped.Count > 0 ? $", but not to {string.Join(", ", dropped)}, edited meanwhile" : string.Empty)}";
     }, cancel));
+
+    /// <summary>A code action whose change its server makes by its own command, made as the window makes it
+    /// (<see cref="ServerCommands"/>), the files saved: which files it changed and made, and where it put a name to rename.</summary>
+    private async Task<string> ApplyByCommand(LspDocument lsp, CodeAction chosen, LspCommand run, string title, string what, Asked asked,
+        Patience patience, CancellationToken cancel)
+    {
+        RefactorOutcome made = await ServerCommands.RunAsync(Editors, title, what, chosen.Edit, taking => lsp.ExecuteCommandAsync(run, taking, cancel), asked, patience, null);
+        if (made.Problem is not null)
+        {
+            throw new InvalidOperationException(made.Problem);
+        }
+        if (made.Files.Count == 0 && made.Left.Count == 0)
+        {
+            return $"{what} changed nothing";
+        }
+        await SaveLandedAsync(cancel);
+        string named = made.RenameAt is { } place && Editors.Find(DocumentUris.ToPath(place.Uri)) is { } open
+            ? $", naming what it made {open.Text.Snapshot.GetText(TextNavigation.WordAt(open.Text.Snapshot, ServerLines.Of(open.Text.Snapshot).OffsetOf(place.Range.Start)))} at {Relative(open.Path)}:{place.Range.Start.Line + 1}:{place.Range.Start.Character + 1}"
+            : string.Empty;
+        string changed = string.Join(", ", made.Files.Where(f => f.Change != "created").Select(f => Relative(f.Path)));
+        string created = string.Join(", ", made.Files.Where(f => f.Change == "created").Select(f => Relative(f.Path)));
+        string where = (changed.Length > 0 ? $" to {changed}" : string.Empty) + (created.Length > 0 ? $"{(changed.Length > 0 ? "," : string.Empty)} making {created}" : string.Empty);
+        return $"Applied {what}{where}{named}{(made.Left.Count > 0 ? $", but not to {string.Join(", ", made.Left)}, edited meanwhile" : string.Empty)}";
+    }
 
     /// <summary>A code action as code_actions lists it: its title, its kind, and the choices it offers, a Suppress or
     /// Configure action's (dozens: each scope, each severity) only counted unless <paramref name="all"/>.</summary>

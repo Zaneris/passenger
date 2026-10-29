@@ -31,20 +31,22 @@ public static class WorkspaceEdits
     /// not open again only once the folder's watcher has told it of the change.</summary>
     public static readonly TimeSpan Catching = TimeSpan.FromSeconds(2);
 
-    /// <summary>Why an edit the language server worked out must not be applied to the files not open it changes, found
-    /// before any is written: one written on disk since the request was sent (<paramref name="since"/>) or a moment
-    /// before it, which the server may not have read again, or one whose text the server holds is not the disk's, where
-    /// its lines and columns would land elsewhere. Null when each is as the server read it. An agent's call tells its
+    /// <summary>Why an edit the language server worked out must not be applied to the files not open it changes, but those
+    /// it <paramref name="made"/> empty for it: one written since the request was sent (<paramref name="since"/>) or a
+    /// moment before, which the server may not have read again, or one whose text the server holds is not the disk's, where
+    /// its lines and columns would land elsewhere; null when each is as the server read it. An agent's call tells its
     /// <paramref name="patience"/>, which works the edit out again once the server has read them.</summary>
-    public static Task<string?> StaleAsync(EditorArea editors, LspDocument? server, JsonElement edit, DateTime? since, Patience? patience = null) =>
-        StaleAsync(editors, server is null ? null : paths => server.HeldTextsAsync(paths), edit, since, patience);
+    public static Task<string?> StaleAsync(EditorArea editors, LspDocument? server, JsonElement edit, DateTime? since, Patience? patience = null,
+        IReadOnlyCollection<string>? made = null) =>
+        StaleAsync(editors, server is null ? null : paths => server.HeldTextsAsync(paths), edit, since, patience, made);
 
-    /// <summary>As <see cref="StaleAsync(EditorArea, LspDocument?, JsonElement, DateTime?, Patience?)"/>, the server's texts
-    /// asked of its session (<paramref name="held"/>, null for a server with none to tell).</summary>
-    public static async Task<string?> StaleAsync(EditorArea editors, Held? held, JsonElement edit, DateTime? since, Patience? patience = null)
+    /// <summary>As <see cref="StaleAsync(EditorArea, LspDocument?, JsonElement, DateTime?, Patience?, IReadOnlyCollection{string}?)"/>,
+    /// the server's texts asked of its session (<paramref name="held"/>, null for a server with none to tell).</summary>
+    public static async Task<string?> StaleAsync(EditorArea editors, Held? held, JsonElement edit, DateTime? since, Patience? patience = null,
+        IReadOnlyCollection<string>? made = null)
     {
         List<string> closed = [.. Shapes.WorkspaceEdit(edit).Where(c => c.Operation is null).Select(c => DocumentUris.ToPath(c.Uri)).Distinct()
-            .Where(p => editors.Documents.All(d => d.Path != p) && File.Exists(p))];
+            .Where(p => editors.Documents.All(d => d.Path != p) && File.Exists(p) && made?.Contains(p) != true)];
         // One the agent's call saw the server hold as the disk has it, unwritten since, has had its moment.
         List<string> written = [.. closed.Where(p => since is { } sent && File.GetLastWriteTimeUtc(p) > sent - Catching && patience?.Trusts(p) != true)];
         if (written.Count > 0)
@@ -156,21 +158,6 @@ public static class WorkspaceEdits
             files++;
         }
         return files;
-    }
-
-    /// <summary>Waits for the saves an applied edit made of its files not open that are still landing, another program
-    /// holding them (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>), <paramref name="waiting"/>
-    /// told meanwhile which; one that never lands throws <see cref="WorkspaceEditFailed"/>, as <see cref="Apply"/> does for a
-    /// file the disk refuses at once. Whether any was landing.</summary>
-    public static async Task<bool> LandedAsync(EditorArea editors, JsonElement edit, Action<string>? waiting)
-    {
-        List<string> written = [.. Paths(edit).Where(p => editors.Find(p) is null)];
-        bool landing = written.Any(p => FileText.Landed(p) is { IsCompleted: false });
-        if (await EditorArea.LandedAsync(written, waiting) is [(string path, Exception refused), ..])
-        {
-            throw new WorkspaceEditFailed(Unwritten(path, refused));
-        }
-        return landing;
     }
 
     /// <summary>Waits within a command's recording for the saves it made of its files not open that are still landing
@@ -454,6 +441,10 @@ public static class WorkspaceEdits
 public sealed record RefactorOutcome(string Said, string? Problem, IReadOnlyList<RefactoredFile> Files, IReadOnlyList<string> Left)
 {
     public IReadOnlyList<UnchangedUse> Unchanged { get; init; } = [];
+
+    /// <summary>Where the server that made it asked a name it wrote be renamed at once (TypeScript's Extract to function's
+    /// new function), in the text as it left it; null where it asked none.</summary>
+    public LspLocation? RenameAt { get; init; }
 
     public static RefactorOutcome Refused(string problem) => new(problem, problem, [], []);
 }

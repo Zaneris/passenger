@@ -615,6 +615,14 @@ public sealed class LspDocument : IDisposable
     public Task<CodeAction?> ResolveAsync(CodeAction action, CancellationToken cancel = default) =>
         Server.RequestAsync<CodeAction>(LspMethods.CodeActionResolve, action, cancel);
 
+    /// <summary>Whether the document's server runs a command itself (<see cref="LanguageServer.Runs"/>).</summary>
+    public bool Runs(LspCommand command) => Server.Runs(command.Command);
+
+    /// <summary>Runs a command on the document's server, what it asks of the client meanwhile taken by <paramref name="run"/>
+    /// (<see cref="LanguageServer.ExecuteCommandAsync(LspCommand, CommandRun, CancellationToken)"/>).</summary>
+    public Task<JsonElement> ExecuteCommandAsync(LspCommand command, CommandRun run, CancellationToken cancel = default) =>
+        Server.ExecuteCommandAsync(command, run, cancel);
+
     /// <summary>A chosen code action with its edit: as it came when it had one, resolved when the server left it for later,
     /// and a fix-all's resolved for the scope chosen (Roslyn's codeAction/resolveFixAll).</summary>
     public async Task<CodeAction> ResolveChosenAsync(CodeAction action, string? scope, CancellationToken cancel = default)

@@ -181,9 +181,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     }
 
     /// <summary>A code action's change made: resolved first when the server left it for later (a fix-all's over the scope
-    /// chosen), by the server running now, its edit applied, and a command it still carries, which Passenger cannot run,
-    /// said in the status bar, as is a server that cannot resolve it. <paramref name="listed"/> follows the files from
-    /// when the actions were asked for. Whether every file took it.</summary>
+    /// chosen), by the server running now, its edit applied and its command run, or said in the status bar as one
+    /// Passenger cannot run, as is a server that cannot resolve it; a name the server asks be renamed then offered to
+    /// rename. <paramref name="listed"/> follows the files from when the actions were asked for. Whether every file took it.</summary>
     private async Task<bool> Apply(OpenDocument document, CodeAction action, string? scope, string what, Asked? listed)
     {
         (RefactorOutcome made, bool applied) = await ApplyAsync(document, action, scope, what, listed);
@@ -199,6 +199,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         if (made.Said.Length > 0)
         {
             context.Say(made.Said);
+        }
+        if (made.RenameAt is { } place && context.Editors.Active == document && PathNames.Same(DocumentUris.ToPath(place.Uri), document.Path))
+        {
+            Editor.Selections = SelectionSet.Single(ServerLines.Of(document.Text.Snapshot).OffsetOf(place.Range.Start));
+            Rename();
         }
         return applied;
     }
@@ -240,9 +245,15 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
     }
 
-    /// <summary>A code action's change made as <see cref="ApplyAsync"/> resolved it.</summary>
+    /// <summary>A code action's change made as <see cref="ApplyAsync"/> resolved it: with a command its server runs, by
+    /// <see cref="ServerCommands"/>.</summary>
     private async Task<(RefactorOutcome Outcome, bool Applied)> ApplyChosenAsync(OpenDocument document, CodeAction chosen, string what, Asked? asked, Patience? patience)
     {
+        if (chosen.Command is { } run && (context.CSharp?.For(document)?.Lsp ?? context.WebOf(document)?.Lsp) is { } server && server.Runs(run))
+        {
+            RefactorOutcome ran = await ServerCommands.RunAsync(context.Editors, what, what, chosen.Edit, taking => server.ExecuteCommandAsync(run, taking), asked, patience, context.Say);
+            return (ran, ran.Problem is null && ran.Left.Count == 0 && ran.Files.Count > 0);
+        }
         if (chosen.Edit is { } changes && await StaleAsync(document, changes, asked, patience) is { } stale)
         {
             return (RefactorOutcome.Refused($"{what} was not applied: {stale}"), false);
@@ -261,7 +272,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     private Task<string?> StaleAsync(OpenDocument document, System.Text.Json.JsonElement edit, Asked? asked, Patience? patience = null) =>
         WorkspaceEdits.StaleAsync(context.Editors, context.CSharp?.For(document)?.Lsp, edit, asked?.Since, patience);
 
-    /// <summary>What the status bar says of a command left unrun: Roslyn's own are run, and it registers no other.</summary>
+    /// <summary>What the status bar says of a command left unrun: one its server does not run itself (<see cref="LanguageServer.Runs"/>).</summary>
     internal static string NotRun(string what, LspCommand command) => $"{what} needs {command.Command}, which Passenger cannot run";
 
     /// <summary>A refactoring by its own key, over the selection: the language server's action of that kind applied at

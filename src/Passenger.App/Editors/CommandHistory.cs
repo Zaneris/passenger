@@ -398,6 +398,10 @@ public sealed class CommandHistory
             }
         }
 
+        /// <summary>A file not open that the command's language server made empty a moment before, for the command to fill
+        /// (TypeScript's Move to a new file): one the command made, which its Undo takes away.</summary>
+        public void Made(string path) => closed.TryAdd(Began(path), null);
+
         /// <summary>A file not open the command watched left out of it: its write never landed, so it changed nothing.</summary>
         public void Unwritten(string path) => closed.Remove(Began(path));
 

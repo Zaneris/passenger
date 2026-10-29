@@ -273,6 +273,48 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
             $"The script's rename did not reach package.json on disk:\n{manifest}");
     }
 
+    /// <summary>TypeScript's refactorings, which its server makes by commands of its own that hand Passenger their edits: an
+    /// agent extracts a call into a function, told the name it was given and where, and moves a class to a new file, which
+    /// the file that used it then imports it from, every file written. Skipped without a Node.js.</summary>
+    [Fact]
+    public async Task An_agent_applies_typescripts_refactorings_which_its_server_makes_by_commands_of_its_own()
+    {
+        await WebLanguagesTests.SkipWithoutNodeAsync(typescript: true);
+        string web = Made("mcptsref-", made =>
+        {
+            Directory.CreateDirectory(Path.Combine(made, "src"));
+            File.WriteAllText(Path.Combine(made, "tsconfig.json"), "{\n  \"compilerOptions\": { \"target\": \"ES2022\", \"module\": \"ES2022\", \"strict\": true },\n  \"include\": [\"src\"]\n}\n");
+            File.WriteAllText(Path.Combine(made, "src", "shapes.ts"), Shapes);
+            File.WriteAllText(Path.Combine(made, "src", "main.ts"), "import { Circle, total } from \"./shapes\";\n\nconst shapes = [new Circle(1), new Circle(2)];\nconsole.log(total(shapes));\n");
+        });
+        await using McpClient client = await Start(["--mcp", web], languageServer: false);
+        string main = Path.Combine("src", "main.ts");
+        string shapes = Path.Combine("src", "shapes.ts");
+        string script = File.ReadAllText(Path.Combine(web, main));
+
+        Dictionary<string, object?> call = At(script, main, "console.log(");
+        Dictionary<string, object?> callEnd = At(script, main, "console.log(total(shapes)");
+        string extracted = (await Call(client, McpTools.ApplyCodeAction, new(call)
+            { ["endLine"] = callEnd["line"], ["endColumn"] = callEnd["column"], ["title"] = "Extract to function in module scope" })).GetString()!;
+        Assert.StartsWith($"Applied 'Extract to function in module scope' to {main}, naming what it made newFunction at {main}:4:", extracted, StringComparison.Ordinal);
+        string written = File.ReadAllText(Path.Combine(web, main));
+        Assert.True(written.Contains("console.log(newFunction());", StringComparison.Ordinal) && written.Contains("return total(shapes);", StringComparison.Ordinal),
+            $"The call was not extracted into a function on disk:\n{written}");
+
+        string moved = (await Call(client, McpTools.ApplyCodeAction, new(At(Shapes, shapes, "export class Cir")) { ["title"] = "Move to a new file" })).GetString()!;
+        string circle = Path.Combine("src", "Circle.ts");
+        Assert.True(moved.StartsWith("Applied 'Move to a new file' to ", StringComparison.Ordinal) && moved.EndsWith($", making {circle}", StringComparison.Ordinal),
+            $"Move to a new file answered: {moved}");
+        Assert.Contains("export class Circle implements Shape", File.ReadAllText(Path.Combine(web, circle)), StringComparison.Ordinal);
+        Assert.DoesNotContain("class Circle", File.ReadAllText(Path.Combine(web, shapes)), StringComparison.Ordinal);
+        Assert.Contains("from \"./Circle\";", File.ReadAllText(Path.Combine(web, main)), StringComparison.Ordinal);
+    }
+
+    /// <summary>The module of shapes McpLanguagesTests' TypeScript refactors and renames.</summary>
+    private const string Shapes = "export interface Shape {\n  area(): number;\n}\n\nexport class Circle implements Shape {\n  constructor(public radius: number) {}\n"
+        + "  area(): number {\n    return Math.PI * this.radius * this.radius;\n  }\n}\n\nexport function total(shapes: Shape[]): number {\n"
+        + "  return shapes.reduce((sum, s) => sum + s.area(), 0);\n}\n";
+
     /// <summary>An agent's diagnostics and ESLint's fixes answer from the checks of the text as it stands: TypeScript's problem
     /// in a file just opened, then the edited text's own, ESLint's in its first call as its server starts, and ESLint's fix
     /// listed, then applied, each in a file let go since the call before (as a pause lets it go). Skipped without a Node.js.</summary>

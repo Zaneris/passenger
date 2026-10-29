@@ -336,32 +336,6 @@ public partial class MainWindow
                     Browse(page);
                 }
             };
-            // ESLint's fixes are made by its server's commands, which hand their edit to the window to make, answered once it has landed.
-            web.Eslint.ApplyEdit = async edit =>
-            {
-                void SayOf(string said)
-                {
-                    if (session == next)
-                    {
-                        status.Text = said;
-                    }
-                }
-                List<string> dropped = [];
-                try
-                {
-                    WorkspaceEdits.Apply(Editors, edit, null, dropped);
-                    if (await WorkspaceEdits.LandedAsync(Editors, edit, SayOf))
-                    {
-                        SayOf("ESLint's edit done");
-                    }
-                }
-                catch (WorkspaceEditFailed failed)
-                {
-                    SayOf($"ESLint's edit failed: {failed.Message}");
-                    return failed.Message;
-                }
-                return dropped.Count > 0 ? $"{string.Join(", ", dropped)} changed since ESLint was asked" : null;
-            };
         }
         next.WorkspaceChanged += (_, _) =>
         {

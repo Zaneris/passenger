@@ -126,6 +126,70 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
+    /// <summary>TypeScript's refactorings, which its server makes by commands of its own that hand the window their edits:
+    /// Extract to function writes the function, its new name then offered to rename, and Move to a new file makes the file
+    /// and imports from it in both files, one command that Undo takes back whole, the new file with it.</summary>
+    [AvaloniaFact]
+    public void TypeScripts_refactorings_extract_a_function_offering_its_name_and_move_a_declaration_to_a_new_file_that_undo_takes_back()
+    {
+        SkipWithoutNode(typescript: true);
+        MainWindow window = app.Open("Scripts/cart.ts", languageServer: false);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument cart = window.EditorArea.Active!;
+        Ui.WaitFor(() => window.Session.Web?.For(cart) is { Lsp: not null }, "TypeScript's document of cart.ts");
+        int call = BlazorShop.Cart.IndexOf("total(items)", StringComparison.Ordinal);
+        editor.Selections = SelectionSet.Single(new Selection(call, call + "total(items)".Length));
+        Ui.Run(window, AppActions.QuickFix);
+        ChooseOffered(window, "Extract to function in module scope");
+        Ui.WaitFor(() => window.Assist.Renaming == "newFunction", () => $"the rename box on the function TypeScript wrote; the status bar said: {window.Status}\n{cart.Text.Snapshot}");
+        window.KeyTextInput("totalOfItems");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => cart.Text.Snapshot.ToString().Contains("function totalOfItems()", StringComparison.Ordinal), () => $"the function renamed as typed:\n{cart.Text.Snapshot}");
+        string extracted = cart.Text.Snapshot.ToString();
+        Assert.True(extracted.Contains("const sum: number = totalOfItems();", StringComparison.Ordinal) && extracted.Contains("    return total(items);\n", StringComparison.Ordinal),
+            $"The call was not extracted into the function:\n{extracted}");
+
+        window.OpenFile(app.PathOf("Scripts/items.ts"));
+        Ui.Settle();
+        OpenDocument items = window.EditorArea.Active!;
+        Ui.WaitFor(() => window.Session.Web?.For(items) is { Lsp: not null }, "TypeScript's document of items.ts");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "export interface It");
+        Ui.Run(window, AppActions.QuickFix);
+        ChooseOffered(window, "Move to a new file");
+        string moved = app.PathOf("Scripts/Item.ts");
+        Ui.WaitFor(() => File.Exists(moved) && File.ReadAllText(moved).Contains("export interface Item", StringComparison.Ordinal),
+            () => $"the interface in a file of its own; the status bar said: {window.Status}");
+        Ui.WaitFor(() => cart.Text.Snapshot.ToString().Contains("from \"./Item\"", StringComparison.Ordinal), () => $"cart.ts importing the interface from its new file:\n{cart.Text.Snapshot}");
+        Assert.DoesNotContain("export interface Item", items.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Contains("from \"./Item\"", items.Text.Snapshot.ToString(), StringComparison.Ordinal);
+
+        List<string> asked = [];
+        window.Confirm = (_, question, _) =>
+        {
+            asked.Add(question);
+            return Task.FromResult(true);
+        };
+        Ui.Settle();
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => !File.Exists(moved), () => $"Undo to take the new file away; it asked [{string.Join(" | ", asked)}], the status bar said: {window.Status}");
+        Assert.True(asked is [{ } question] && question.StartsWith("Undo Move to a new file? It changes ", StringComparison.Ordinal)
+            && new[] { "items.ts", "cart.ts", "Item.ts" }.All(f => question.Contains(f, StringComparison.Ordinal)), $"Undo asked: {string.Join(" | ", asked)}");
+        Assert.Equal(BlazorShop.Items, items.Text.Snapshot.ToString());
+        Assert.Equal(extracted, cart.Text.Snapshot.ToString());
+        window.Close();
+    }
+
+    /// <summary>Chooses one of the actions offered by its words, with the keys a person would press.</summary>
+    private static void ChooseOffered(MainWindow window, string title)
+    {
+        Ui.WaitFor(() => window.Assist.Offered.Contains(title), () => $"'{title}' among the actions offered: {string.Join("; ", window.Assist.Offered)}; the status bar said: {window.Status}");
+        for (int down = window.Assist.Offered.ToList().IndexOf(title); down > 0; down--)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Ui.Press(window, "ENTER");
+    }
+
     [AvaloniaFact]
     public void A_stylesheet_completes_a_property_warns_of_an_unknown_one_shows_its_colours_goes_to_a_custom_propertys_declaration_and_renames_it()
     {

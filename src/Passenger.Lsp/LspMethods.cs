@@ -111,4 +111,8 @@ public static class LspMethods
 
     /// <summary>The TypeScript server's: the version of TypeScript it runs.</summary>
     public const string TypeScriptVersion = "$/typescriptVersion";
+
+    /// <summary>The TypeScript server's: a name a refactoring it ran has just written (Extract to function's new function's),
+    /// to be renamed at once.</summary>
+    public const string TypeScriptRename = "_typescript.rename";
 }

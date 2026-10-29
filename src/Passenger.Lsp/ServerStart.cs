@@ -13,10 +13,6 @@ public sealed record ServerStart(ProcessStartInfo Process, string Folder, string
 
     public Func<string, CancellationToken, Task<string>>? Content { get; init; }
 
-    /// <summary>Makes a workspace edit the server asks for (<c>workspace/applyEdit</c>, as ESLint's commands make their
-    /// fixes): null once it is made, else why not. Without it, every such edit is refused.</summary>
-    public Func<JsonElement, Task<string?>>? ApplyEdit { get; init; }
-
     /// <summary>How the diagnostics it pushes naming no version follow the texts it is sent.</summary>
     public PushPace Pushes { get; init; } = PushPace.Latest;
 }
