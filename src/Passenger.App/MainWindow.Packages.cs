@@ -38,7 +38,7 @@ public partial class MainWindow
     {
         next.Packages.Changed += (_, outcome) =>
         {
-            if (session == next)
+            if (session == next && outcome.Refused is null)
             {
                 // dotnet add package wrote the project, its lock file, and Directory.Packages.props under central management.
                 FollowWritten(outcome.Written);

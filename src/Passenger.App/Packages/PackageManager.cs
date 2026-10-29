@@ -4,7 +4,8 @@ using Passenger.Core;
 namespace Passenger.App.Packages;
 
 /// <summary>What a package change came to: whether dotnet did it, the files it changed and left so (the project, its lock
-/// file, the nearest Directory.Packages.props), what dotnet said, and, for one never begun, why (another change under way).</summary>
+/// file, the nearest Directory.Packages.props), what dotnet said, and, for one refused, why (another change under way, an
+/// open file that would not save).</summary>
 public sealed record PackageOutcome(bool Done, IReadOnlyList<string> Changed, IReadOnlyList<string> Said)
 {
     public string? Refused { get; init; }

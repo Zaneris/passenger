@@ -174,14 +174,37 @@ public sealed class NuGetView : DockPanel
         log.CaretIndex = log.Text.Length;
     }
 
-    private void OnChangeBegun(object? sender, string stage) => status.Text = "Working…";
+    /// <summary>A package change begun, whoever asked for it: said, and the projects' actions disabled until it ends.</summary>
+    private void OnChangeBegun(object? sender, string stage)
+    {
+        status.Text = "Working…";
+        EnableActions();
+    }
 
-    /// <summary>A package change ended, whoever asked for it: said, and the list read again.</summary>
+    /// <summary>A package change ended, whoever asked for it: said, and the list read again; one refused changed nothing.</summary>
     private void OnChanged(object? sender, PackageOutcome outcome)
     {
+        EnableActions();
+        if (outcome.Refused is { } why)
+        {
+            status.Text = why;
+            return;
+        }
         status.Text = outcome.Done ? "Done" : $"The change failed{(outcome.Left is { } left ? $", {left}" : string.Empty)}; the log says why";
         IdeErrors.Observe(RefreshAsync());
     }
+
+    /// <summary>The projects' Install, Update, Downgrade and Remove, enabled only while no package change is under way.</summary>
+    private void EnableActions()
+    {
+        foreach (Button button in ProjectsPanel?.Children.OfType<StackPanel>().SelectMany(line => line.Children.OfType<Button>()) ?? [])
+        {
+            button.IsEnabled = !model.IsBusy;
+        }
+    }
+
+    /// <summary>The chosen package's line per project, among its details; null while none is chosen.</summary>
+    private StackPanel? ProjectsPanel => details.Children.OfType<StackPanel>().FirstOrDefault(p => p.Name == "projects");
 
     /// <summary>One of the window's actions asked for by its button.</summary>
     public event EventHandler<string>? ActionRequested;
@@ -420,7 +443,7 @@ public sealed class NuGetView : DockPanel
     public async Task<bool> InstallAsync(ProjectModel project) =>
         Selected is { } row && (ChosenVersion ?? row.Version) is { Length: > 0 } version
         && (BeforeInstall is null || await BeforeInstall(project, row.Id, version))
-        && (await model.InstallAsync(project, row.Id, version)).Done;
+        && Said(await model.InstallAsync(project, row.Id, version));
 
     /// <summary>Asked before the window's own Install or Update of a package in a project, with its id and version: whether
     /// it goes on as asked (false when the person cancelled, or had it made another way, as EF Core's packages moved with
@@ -428,7 +451,18 @@ public sealed class NuGetView : DockPanel
     public Func<ProjectModel, string, string, Task<bool>>? BeforeInstall { get; set; }
 
     /// <summary>Takes the chosen package out of a project (Remove).</summary>
-    public async Task<bool> RemoveAsync(ProjectModel project) => Selected is { } row && (await model.RemoveAsync(project, row.Id)).Done;
+    public async Task<bool> RemoveAsync(ProjectModel project) => Selected is { } row && Said(await model.RemoveAsync(project, row.Id));
+
+    /// <summary>Whether a change the window asked for was done, its status saying why when it was refused (another change
+    /// under way, which no change's end then tells).</summary>
+    private bool Said(PackageOutcome outcome)
+    {
+        if (outcome.Refused is { } why)
+        {
+            status.Text = why;
+        }
+        return outcome.Done;
+    }
 
     /// <summary>Reads the sources the first time the window is shown, or lists again once they are read.</summary>
     private Task Shown() => !model.IsCurrent && model.Given is null ? ReloadSourcesAsync() : RefreshAsync();
@@ -606,7 +640,7 @@ public sealed class NuGetView : DockPanel
 
     private void ShowProjects(PackageRow row)
     {
-        if (details.Children.OfType<StackPanel>().FirstOrDefault(p => p.Name == "projects") is not { } panel)
+        if (ProjectsPanel is not { } panel)
         {
             return;
         }

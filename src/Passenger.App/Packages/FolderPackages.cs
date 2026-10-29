@@ -47,8 +47,9 @@ public sealed class FolderPackages
     /// <summary>Raised as a package change begins, with what it is.</summary>
     public event EventHandler<string>? ChangeBegun;
 
-    /// <summary>Raised after a package change, done or not, with the files it wrote, before whoever asked for it is
-    /// answered: the window takes them into its editors and reads the solution again.</summary>
+    /// <summary>Raised after every package change begun, done, failed or refused as the open files would not save, with the
+    /// files it wrote, before whoever asked for it is answered: the window takes them into its editors and reads the
+    /// solution again.</summary>
     public event EventHandler<PackageOutcome>? Changed;
 
     /// <summary>Raised as nuget.config files the Sources tab wrote have landed, done or not: the window takes those open
@@ -217,10 +218,10 @@ public sealed class FolderPackages
     }
 
     /// <summary>A package change, whoever asks for it: one at a time (another asked meanwhile is refused, saying what is under
-    /// way), the open files saved first, shown as the window's work under <see cref="Changing"/>, which <see cref="Stop"/>
-    /// ends; its files (<see cref="PackageFiles"/>) recorded <paramref name="within"/> the caller's command, else as one of
-    /// its own named <paramref name="name"/>. One that fails puts back what it wrote, then, unless stopped, runs
-    /// <paramref name="again"/> (a restore of the project as it was). Then the files it wrote are told (<see cref="Changed"/>).</summary>
+    /// way), the open files saved first (refused, saying why, when one is not), shown as the window's work under <see
+    /// cref="Changing"/>; its files (<see cref="PackageFiles"/>) recorded <paramref name="within"/> the caller's command, else
+    /// as its own named <paramref name="name"/>. One that fails puts back what it wrote, then, unless stopped, runs <paramref
+    /// name="again"/> (a restore of the project as it was). Then its end is told (<see cref="Changed"/>).</summary>
     private async Task<PackageOutcome> ChangeAsync(string stage, string name, ProjectModel project, CommandHistory.Recording? within, Func<Task<bool>> change,
         Func<Task<bool>>? again = null)
     {
@@ -245,31 +246,34 @@ public sealed class FolderPackages
             {
                 if (SaveFirst is { } save && await save(working, CancellationToken.None) is { } unsaved)
                 {
-                    return new PackageOutcome(false, [], []) { Refused = unsaved };
+                    outcome = new PackageOutcome(false, [], []) { Refused = unsaved };
                 }
-                // Read once the open files are saved: what the save wrote is not the change's.
-                byte[]?[] before = [.. files.Select(Bytes)];
-                CommandHistory.Recording? recording = within ?? (own = Commands?.RecordWrites(name));
-                foreach (string file in files)
+                else
                 {
-                    recording?.Watch(file);
+                    // Read once the open files are saved: what the save wrote is not the change's.
+                    byte[]?[] before = [.. files.Select(Bytes)];
+                    CommandHistory.Recording? recording = within ?? (own = Commands?.RecordWrites(name));
+                    foreach (string file in files)
+                    {
+                        recording?.Watch(file);
+                    }
+                    if (holdNext is { } hold)
+                    {
+                        holdNext = null;
+                        hold.Reached.TrySetResult();
+                        await hold.Until;
+                    }
+                    bool done = await change();
+                    // What the put back's restore says is the log's alone: the change's own words say why it failed.
+                    manager.Line -= heard;
+                    int[] wrote = Unlike(files, before);
+                    if (!done && wrote.Length > 0 && await PutBackAsync([.. wrote.Select(i => (files[i], before[i]))]) && again is not null && !manager.Stopped)
+                    {
+                        await again();
+                    }
+                    IReadOnlyList<string> written = [.. wrote.Select(i => files[i])];
+                    outcome = new(done, done ? written : [.. Unlike(files, before).Select(i => files[i])], said) { Written = written };
                 }
-                if (holdNext is { } hold)
-                {
-                    holdNext = null;
-                    hold.Reached.TrySetResult();
-                    await hold.Until;
-                }
-                bool done = await change();
-                // What the put back's restore says is the log's alone: the change's own words say why it failed.
-                manager.Line -= heard;
-                int[] wrote = Unlike(files, before);
-                if (!done && wrote.Length > 0 && await PutBackAsync([.. wrote.Select(i => (files[i], before[i]))]) && again is not null && !manager.Stopped)
-                {
-                    await again();
-                }
-                IReadOnlyList<string> written = [.. wrote.Select(i => files[i])];
-                outcome = new(done, done ? written : [.. Unlike(files, before).Select(i => files[i])], said) { Written = written };
             }
             finally
             {
