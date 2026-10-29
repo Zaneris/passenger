@@ -383,6 +383,14 @@ public sealed class XamlFile
     public ClrType? DataTypeOf(XmlAttribute attribute, bool stopAtTemplates = false) =>
         BoundAgainst(attribute.Owner, attribute.Name == "DataContext", stopAtTemplates);
 
+    /// <summary>The type a binding element (<c>&lt;Binding Path="Name"/&gt;</c>) resolves against: that of the element
+    /// whose property it sets, or of a multi-binding's, but for an element's own <c>DataContext</c>, which binds against
+    /// the one above.</summary>
+    public ClrType? DataTypeOf(XmlElement binding, bool stopAtTemplates = false) =>
+        binding.Parent is { IsPropertyElement: true } holder && holder.Parent is { } owner
+            ? BoundAgainst(owner, holder.LocalName.EndsWith(".DataContext", StringComparison.Ordinal), stopAtTemplates)
+            : DataTypeAt(binding, stopAtTemplates: stopAtTemplates);
+
     private ClrType? BoundAgainst(XmlElement owner, bool dataContext, bool stopAtTemplates) => dataContext
         ? owner.Parent is { } parent ? DataTypeAt(parent, stopAtTemplates: stopAtTemplates) : null
         : DataTypeAt(owner, stopAtTemplates: stopAtTemplates);

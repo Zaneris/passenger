@@ -93,6 +93,10 @@ public static class XamlDiagnostics
             {
                 Attribute(file, attribute, found);
             }
+            if (file.IsBindingElement(element))
+            {
+                BindingElement(file, element, found);
+            }
             if (file.NameAttribute(element) is { Value.Length: > 0 } name && !InTemplate(element))
             {
                 if (named.TryGetValue(name.Value, out XmlAttribute? first))
@@ -417,8 +421,9 @@ public static class XamlDiagnostics
 
     /// <summary>A compiled binding's path, read against the data type in scope: each step a property of the one before;
     /// one starting at a data context no type is given is marked (<see cref="CompiledBindings"/>). A path from another
-    /// source (an element, a relative source, a converter's own) is the compiler's to judge. In a dialect that compiles no
-    /// binding (WPF's), a path its data context's known type lacks is warned of: it fails only as the app runs.</summary>
+    /// source (an element, a relative source but the data context's, a converter's own) is the compiler's to judge. In a
+    /// dialect that compiles no binding (WPF's), a path its data context's known type lacks is warned of: it fails only as
+    /// the app runs.</summary>
     private static void Binding(XamlFile file, XmlAttribute attribute, MarkupExtension binding, List<XamlDiagnostic> found, bool nested)
     {
         XmlElement element = attribute.Owner;
@@ -427,7 +432,7 @@ public static class XamlDiagnostics
         {
             return;
         }
-        if (binding.Arguments.Any(a => a.Key is "ElementName" or "RelativeSource" or "Source" or "DataType"))
+        if (XamlFile.NamesSource(binding))
         {
             return;
         }
@@ -444,12 +449,48 @@ public static class XamlDiagnostics
         {
             return;
         }
-        string text = path.Value.TrimStart('!');
+        Steps(file, type, path.Value, path.ValueStart, compiled, attribute, binding.Argument("Converter") is not null, found);
+    }
+
+    /// <summary>A <c>&lt;Binding&gt;</c> element, which compiles as a <c>{Binding}</c> does where bindings compile: one
+    /// with no type to start from is marked, else its <c>Path</c> is read against the type in scope.</summary>
+    private static void BindingElement(XamlFile file, XmlElement binding, List<XamlDiagnostic> found)
+    {
+        if (!file.CompilesBindingsAt(binding) || file.NamesSource(binding))
+        {
+            return;
+        }
+        XmlAttribute? path = binding.Attribute("Path");
+        XmlElement? given = binding.Children.FirstOrDefault(c => c.IsPropertyElement && c.LocalName.EndsWith(".Path", StringComparison.Ordinal));
+        if ((path is not null && MarkupExtension.Parse(file.Text, path.ValueStart, path.ValueEnd) is not null) || given is { Children.Count: > 0 })
+        {
+            return;
+        }
+        string? value = path?.Value ?? (given is null ? null : XmlEntities.Decode(file.Text[given.Content.Start..given.Content.End]));
+        if (CompiledBindings.StartsAtDataContext(value) && !CompiledBindings.HasDataType(file, binding))
+        {
+            found.Add(new XamlDiagnostic(binding.NameRange, XamlSeverity.Error, CompiledBindings.NoDataType)
+            {
+                Fixes = CompiledBindings.Fixes(file, binding, value),
+            });
+            return;
+        }
+        if (path is { Value.Length: > 0 } && path.Value == path.RawValue && file.DataTypeOf(binding, stopAtTemplates: true) is { } type)
+        {
+            Steps(file, type, path.Value, path.ValueStart, compiled: true, attribute: null, converted: false, found);
+        }
+    }
+
+    /// <summary>A path's steps read from a type, each a property of the one before, the first that is not marked, with a
+    /// fix creating it where the binding is an attribute's; a path of anything but properties is left to the compiler.</summary>
+    private static void Steps(XamlFile file, ClrType type, string path, int start, bool compiled, XmlAttribute? attribute, bool converted, List<XamlDiagnostic> found)
+    {
+        string text = path.TrimStart('!');
         if (text.Length == 0 || text == "." || text.IndexOfAny(['$', '#', '^', '(', '[', ' ', '/']) >= 0)
         {
             return;
         }
-        int at = path.ValueStart + (path.Value.Length - text.Length);
+        int at = start + (path.Length - text.Length);
         ClrType current = type;
         string[] steps = text.Split('.');
         for (int i = 0; i < steps.Length; i++)
@@ -463,7 +504,7 @@ public static class XamlDiagnostics
                 {
                     return;
                 }
-                IReadOnlyList<XamlFix> fixes = CreateFromUsage.Property(file, current, step, attribute, last: i == steps.Length - 1 && binding.Argument("Converter") is null) is { } create
+                IReadOnlyList<XamlFix> fixes = attribute is not null && CreateFromUsage.Property(file, current, step, attribute, last: i == steps.Length - 1 && !converted) is { } create
                     ? [create]
                     : [];
                 found.Add(compiled

@@ -6,10 +6,11 @@ using Passenger.Xaml.Syntax;
 namespace Passenger.Xaml.Features;
 
 /// <summary>A compiled binding with no type to start its path from, which Avalonia's compiler refuses (AVLN2100; AVLN2101
-/// for a DataContext's): its path starts at the data context, and nothing above it gives one a type, neither an
-/// <c>x:DataType</c>, a data template, a <c>DataContext</c> set by a markup extension, nor the items an items control is
-/// given, where its property takes its type from them. Its fixes give the file's root an <c>x:DataType</c> of one of the
-/// project's view models, or make it a <c>ReflectionBinding</c>, resolved as the app runs.</summary>
+/// for a DataContext's): in an attribute or as a <c>&lt;Binding&gt;</c> element, its path starts at the data context, and
+/// nothing above it gives one a type, neither an <c>x:DataType</c>, a data template, a <c>DataContext</c> set by a markup
+/// extension, nor the items an items control is given, where its property takes its type from them. Its fixes give the
+/// file's root an <c>x:DataType</c> of one of the project's view models, or make it a <c>ReflectionBinding</c>, resolved
+/// as the app runs.</summary>
 public static class CompiledBindings
 {
     public const string NoDataType = "No x:DataType gives this compiled binding the type it binds to";
@@ -20,8 +21,8 @@ public static class CompiledBindings
     private const int MostOffered = 10;
 
     /// <summary>Whether a path (null when the binding names none) starts at the data context: none, ".", or a property or
-    /// indexer after any '!'; not an element's name (#), a relative source ($), or what parentheses start (an attached
-    /// property, a cast).</summary>
+    /// indexer after any '!', or one cast (<c>((vm:Shop)Item).Name</c>); not an element's name (#), a relative source ($),
+    /// or what other parentheses start (an attached property, the data context cast).</summary>
     public static bool StartsAtDataContext(string? path)
     {
         string text = path?.Trim() ?? string.Empty;
@@ -29,22 +30,43 @@ public static class CompiledBindings
         {
             return true;
         }
-        text = text.TrimStart('!').TrimStart();
+        text = Uncast(text.TrimStart('!').TrimStart());
         return text.Length > 0 && (char.IsLetter(text[0]) || text[0] is '_' or '[');
+    }
+
+    /// <summary>A path whose first step is cast (<c>((vm:Shop)Item).Name</c>) from that step on (<c>Item).Name</c>); any
+    /// other as it is.</summary>
+    private static string Uncast(string path)
+    {
+        int close = path.StartsWith("((", StringComparison.Ordinal) ? path.IndexOf(')') : -1;
+        return close > 0 ? path[(close + 1)..] : path;
     }
 
     /// <summary>Whether something gives a type to the data context a binding in an attribute starts from; a binding
     /// nested in another extension's argument (<paramref name="nested"/>) takes none from its property's items.</summary>
-    public static bool HasDataType(XamlFile file, XmlAttribute attribute, bool nested)
+    public static bool HasDataType(XamlFile file, XmlAttribute attribute, bool nested) =>
+        HasDataType(file, attribute.Owner, nested ? null : file.MeaningOf(attribute).Property, attribute.Name == "DataContext");
+
+    /// <summary>Whether something gives a type to the data context a <c>&lt;Binding&gt;</c> element starts from: as the
+    /// value of the property element it is in, else as one of a multi-binding's, which takes none from items.</summary>
+    public static bool HasDataType(XamlFile file, XmlElement binding)
     {
-        XmlElement element = attribute.Owner;
-        if (!nested && file.MeaningOf(attribute).Property?.ClrProperty?.Attributes.FirstOrDefault(a => a.ShortName == "InheritDataTypeFromItems") is { } inherit
-            && ItemsGiven(file, element, inherit))
+        if (binding.Parent is { IsPropertyElement: true } holder && holder.Parent is { } owner)
+        {
+            return HasDataType(file, owner, file.PropertyElement(holder).Property, holder.LocalName.EndsWith(".DataContext", StringComparison.Ordinal));
+        }
+        return binding.Parent is not { } parent || HasDataType(file, parent, property: null, dataContext: false);
+    }
+
+    /// <summary>Whether something gives a type to the data context a binding of an element's property starts from.</summary>
+    private static bool HasDataType(XamlFile file, XmlElement element, XamlProperty? property, bool dataContext)
+    {
+        if (property?.ClrProperty?.Attributes.FirstOrDefault(a => a.ShortName == "InheritDataTypeFromItems") is { } inherit && ItemsGiven(file, element, inherit))
         {
             return true;
         }
         // An element's own DataContext binds against the data context above it.
-        for (XmlElement? at = attribute.Name == "DataContext" ? element.Parent : element; at is not null; at = at.Parent)
+        for (XmlElement? at = dataContext ? element.Parent : element; at is not null; at = at.Parent)
         {
             if (at.IsPropertyElement)
             {
@@ -94,10 +116,34 @@ public static class CompiledBindings
     /// <summary>A binding's fixes: <c>x:DataType</c> on the file's root (but for the root's own DataContext, which binds
     /// against what is above the file) of each view model of the project's that has the path's first step, every one where
     /// none has it; then <c>ReflectionBinding</c> in its place.</summary>
-    public static IReadOnlyList<XamlFix> Fixes(XamlFile file, XmlAttribute attribute, MarkupExtension binding, string? path)
+    public static IReadOnlyList<XamlFix> Fixes(XamlFile file, XmlAttribute attribute, MarkupExtension binding, string? path) =>
+        Fixes(file, attribute.Owner == file.Tree.Root && attribute.Name == "DataContext", path,
+            [(binding.NameStart + (binding.Prefix.Length > 0 ? binding.Prefix.Length + 1 : 0), binding.LocalName)]);
+
+    /// <summary>A <c>&lt;Binding&gt;</c> element's fixes, as <see cref="Fixes(XamlFile, XmlAttribute, MarkupExtension, string?)"/>
+    /// gives a binding's; <c>ReflectionBinding</c> names its tags and those of its property elements
+    /// (<c>&lt;Binding.Path&gt;</c>).</summary>
+    public static IReadOnlyList<XamlFix> Fixes(XamlFile file, XmlElement binding, string? path)
+    {
+        List<(int At, string Local)> names = [];
+        foreach (XmlElement tag in binding.Children.Where(c => c.IsPropertyElement && c.LocalName.StartsWith("Binding.", StringComparison.Ordinal)).Prepend(binding))
+        {
+            int prefix = tag.Prefix.Length > 0 ? tag.Prefix.Length + 1 : 0;
+            names.Add((tag.NameStart + prefix, "Binding"));
+            if (tag.EndTagNameStart is { } end)
+            {
+                names.Add((end + prefix, "Binding"));
+            }
+        }
+        bool rootsOwn = binding.Parent is { IsPropertyElement: true } holder && holder.Parent == file.Tree.Root && holder.LocalName.EndsWith(".DataContext", StringComparison.Ordinal);
+        return Fixes(file, rootsOwn, path, [.. names.OrderBy(n => n.At)]);
+    }
+
+    /// <summary>The fixes of a binding whose name stands at each of <paramref name="names"/>' places.</summary>
+    private static IReadOnlyList<XamlFix> Fixes(XamlFile file, bool rootsOwnDataContext, string? path, IReadOnlyList<(int At, string Local)> names)
     {
         List<XamlFix> fixes = [];
-        if (file.Tree.Root is { } root && !(attribute.Owner == root && attribute.Name == "DataContext"))
+        if (file.Tree.Root is { } root && !rootsOwnDataContext)
         {
             List<ClrType> models = [.. ViewModels(file)];
             string? step = FirstStep(path);
@@ -112,10 +158,8 @@ public static class CompiledBindings
                 });
             }
         }
-        int name = binding.NameStart + (binding.Prefix.Length > 0 ? binding.Prefix.Length + 1 : 0);
-        string local = binding.LocalName;
-        fixes.Add(new XamlFix("Use ReflectionBinding", file.Path, text => name + local.Length <= text.Length && text.AsSpan(name, local.Length).SequenceEqual(local)
-            ? [new TextEdit(name, local.Length, "ReflectionBinding")]
+        fixes.Add(new XamlFix("Use ReflectionBinding", file.Path, text => names.All(n => n.At + n.Local.Length <= text.Length && text.AsSpan(n.At, n.Local.Length).SequenceEqual(n.Local))
+            ? [.. names.Select(n => new TextEdit(n.At, n.Local.Length, "ReflectionBinding"))]
             : [])
         {
             Detail = "Bound as the app runs",
@@ -128,11 +172,11 @@ public static class CompiledBindings
         file.Types.All.Where(t => t.IsFromSource && t.Name.EndsWith("ViewModel", StringComparison.Ordinal) && t.Kind == ClrTypeKind.Class && !t.IsNested && t.Arity == 0
             && t.Namespace.Length > 0 && !t.IsStatic).OrderBy(t => t.Name, StringComparer.Ordinal).ThenBy(t => t.Namespace, StringComparer.Ordinal);
 
-    /// <summary>The property a path's first step names; null for none, or an indexer.</summary>
+    /// <summary>The property a path's first step names, cast or not; null for none, or an indexer.</summary>
     private static string? FirstStep(string? path)
     {
-        string text = (path ?? string.Empty).Trim().TrimStart('!').TrimStart();
-        int end = text.IndexOfAny(['.', '[', '^', ' ']);
+        string text = Uncast((path ?? string.Empty).Trim().TrimStart('!').TrimStart());
+        int end = text.IndexOfAny(['.', '[', '^', ' ', ')']);
         string step = end < 0 ? text : text[..end];
         return step.Length > 0 && (char.IsLetter(step[0]) || step[0] == '_') ? step : null;
     }

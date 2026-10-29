@@ -763,6 +763,56 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>Three forms of compiled binding that start at the data context, each refused by Avalonia's compiler with no
+    /// x:DataType (AVLN2100), are marked: a binding element, a binding to RelativeSource DataContext, and a path whose first
+    /// step is cast. The binding element offers the view model's x:DataType, which clears all three; the view builds.</summary>
+    [AvaloniaFact]
+    public void A_binding_element_a_data_context_relative_source_and_a_cast_path_with_no_data_type_are_marked_and_build_once_given_one()
+    {
+        const string Unbound = """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         xmlns:vm="using:Gallery.ViewModels">
+                <StackPanel>
+                    <TextBlock>
+                        <TextBlock.Text>
+                            <Binding Path="Greeting" />
+                        </TextBlock.Text>
+                    </TextBlock>
+                    <ContentControl Content="{Binding RelativeSource={RelativeSource DataContext}}" />
+                    <TextBlock Text="{Binding ((vm:Person)Owner).Name}" />
+                </StackPanel>
+            </UserControl>
+
+            """;
+        const string NoDataType = "No x:DataType gives this compiled binding the type it binds to";
+        MainWindow window = app.Open(app.Write("FormsView.axaml", Unbound));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => document.Markers.Count(m => m.Message == NoDataType) == 3,
+            () => $"the three bindings with no data type marked, as the build refuses them: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        TextSnapshot snapshot = editor.Document.Snapshot;
+        Assert.Equal([6, 9, 10], document.Markers.Select(m => snapshot.GetLineFromOffset(m.Range.Start)).Order());
+        Assert.All(document.Markers, m => Assert.Equal(MarkerKind.Error, m.Kind));
+
+        Ui.PlaceAfter(editor, "<Binding Pa");
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the fixes offered on the binding element's line");
+        Assert.Equal(["Add x:DataType 'MainViewModel' to UserControl", "Use ReflectionBinding"], window.Assist.Offered.Take(2));
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        string typed = Unbound.Replace("using:Gallery.ViewModels\">", "using:Gallery.ViewModels\"\n             x:DataType=\"vm:MainViewModel\">", StringComparison.Ordinal);
+        Assert.Equal(typed, editor.Document.Snapshot.ToString());
+        Ui.WaitFor(() => document.Markers.Count == 0, () => $"all three resolved once the view has its type: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        string said = $"{Ui.Said(window)}: {string.Join("; ", window.BottomPanel.Problems.Problems.Select(p => $"{p.Code} {p.Where} {p.Message}"))}";
+        Assert.True(window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true, $"The view given its type did not build: {said}");
+        Assert.True(!window.BottomPanel.Problems.Problems.Any(p => p.Path?.EndsWith("FormsView.axaml", StringComparison.Ordinal) == true), $"The build said something of the view: {said}");
+        window.Close();
+    }
+
     /// <summary>An element's own DataContext binding resolves against the type above it, as Avalonia's compiler reads it,
     /// whatever x:DataType the element gives what is inside it; one with no x:DataType gives what is inside it its path's
     /// type. Each binding the build refuses is marked and none it takes, and completion and Go to Declaration in the
