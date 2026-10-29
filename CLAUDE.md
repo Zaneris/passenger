@@ -251,7 +251,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   environment only; Endpoints sends nothing but on Test or Send, and a send taking the person's environment asks first.
   `ResourceFiles` is the one reader of `.resx` and `xlf/*.xlf`.
 - **Debugging.** `DebugController` (a `DebugTab` per session, several at once), `DebugSession`, `BreakpointStore`;
-  Variables and the hover card are one list.
+  Variables and the hover card are one list. A C# breakpoint inside a lambda on its statement's line keeps the lambda's
+  column (`LambdaBreakpoints`).
 - **Tests window.** `TestFinder` (tests from code before any build), `TestRunners`; `VsTestRunner` is the only file that
   knows VSTest's object model.
 - **The rest.** `Packages` (every package change's one path; credentials only to their feed's host), `Workspace`
