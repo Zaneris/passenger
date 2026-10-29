@@ -325,6 +325,76 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Revert Selected and Later Changes over a folder writes its closed files in turn with every other write of
+    /// closed files, off the window's thread, and is one command of Undo: one Undo, asked once, takes back both files.</summary>
+    [AvaloniaFact]
+    public void A_folders_revert_of_two_closed_files_writes_neither_on_the_windows_thread_and_one_undo_takes_both_back()
+    {
+        const string A = "class A\n{\n}\n";
+        const string B = "class B\n{\n}\n";
+        string a = Write("src/A.cs", A);
+        string b = Write("src/B.cs", B);
+        MainWindow window = Open("src/A.cs");
+        Save(window, 0, 0, "sealed ");
+        window.OpenFile(b);
+        Save(window, 0, 0, "sealed ");
+        foreach (Passenger.App.Workspace.OpenDocument open in window.EditorArea.Documents.ToList())
+        {
+            window.EditorArea.Close(open);
+        }
+        Ui.Settle();
+
+        // Asked as the history's tab asks it, with no diff borrowing a file the revert writes.
+        string src = Path.Combine(folder, "src");
+        Ui.WaitFor(() => !window.LocalHistory!.IsRecording, "the saves kept");
+        HistoryRow first = HistoryRows.OfFolder(window.LocalHistory!.Snapshot().Events, src).Single(r => r.Title == "Modify A.cs");
+
+        List<string> onWindowThread = [];
+        void Writing(string path)
+        {
+            if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess() && PathNames.IsUnder(PathNames.Canonical(path), folder))
+            {
+                lock (onWindowThread)
+                {
+                    onWindowThread.Add(Path.GetFileName(path));
+                }
+            }
+        }
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        FileText.Writing += Writing;
+        try
+        {
+            Task held = window.EditorArea.Commands.HoldNextWrite(release.Task);
+            Task<string?> reverting = window.RevertLocalHistoryAsync(src, first.Set);
+            Ui.PumpUntil(() => held.IsCompleted || reverting.IsCompleted, "the revert's writes held in their turn, or the revert ended");
+            Assert.True(held.IsCompleted, $"The revert wrote its closed files without waiting its turn with the other writes of closed files: {window.Status}");
+            Assert.True(File.ReadAllText(a) == "sealed " + A && File.ReadAllText(b) == "sealed " + B, $"The revert wrote a closed file before its turn: A.cs '{File.ReadAllText(a)}', B.cs '{File.ReadAllText(b)}', open [{string.Join(", ", window.EditorArea.Documents.Select(d => d.Name))}]");
+            release.SetResult();
+            Assert.Null(Ui.AwaitPumped(reverting, "the revert"));
+        }
+        finally
+        {
+            release.TrySetResult();
+            FileText.Writing -= Writing;
+        }
+        Assert.True(onWindowThread.Count == 0, $"The revert wrote {string.Join(", ", onWindowThread)} on the window's thread");
+        Assert.True(File.ReadAllText(a) == A && File.ReadAllText(b) == B, $"The revert did not put both files back: {window.Status}");
+
+        List<string> asked = [];
+        window.Confirm = (_, question, _) =>
+        {
+            asked.Add(question);
+            return Task.FromResult(true);
+        };
+        Ui.ClickRow(window, Show(window, a));
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => File.ReadAllText(a) == "sealed " + A && File.ReadAllText(b) == "sealed " + B,
+            () => $"one Undo to take back the revert of both files: A.cs '{File.ReadAllText(a)}', B.cs '{File.ReadAllText(b)}', {window.Status}");
+        Assert.True(asked.Count == 1 && asked[0].Contains("A.cs", StringComparison.Ordinal) && asked[0].Contains("B.cs", StringComparison.Ordinal),
+            $"Undo of the revert asked: {string.Join(" | ", asked)}");
+        window.Close();
+    }
+
     /// <summary>A change kept twice in the log two Passengers on the same state append to, as an external change by the one
     /// that heard it and under its own name by the one that made it, in either order, lists once under its maker's name.</summary>
     [AvaloniaFact]

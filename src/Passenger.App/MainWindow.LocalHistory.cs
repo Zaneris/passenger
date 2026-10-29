@@ -1,3 +1,4 @@
+using Passenger.App.Editors;
 using Passenger.App.History;
 using Passenger.App.Vcs;
 using Passenger.App.Workspace;
@@ -183,10 +184,11 @@ public partial class MainWindow
         return await RevertAsync(files, HistoryTab.RevertName(row));
     }
 
-    /// <summary>Puts files back to versions, as one activity of the history: an open file's text and encoding as one
-    /// undoable step over the lines that differ (<see cref="OpenDocument.Revert"/>); a closed one's bytes written as
-    /// they were; one that did not exist then deleted (to the Trash, and kept in the history). Null once all are
-    /// written, else why not.</summary>
+    /// <summary>Puts files back to versions, as one command of Undo (an open file's own undoable step when it is all the
+    /// revert changes) and one change set of the history: an open file's text and encoding over the lines that differ
+    /// (<see cref="OpenDocument.Revert"/>), saved; a closed one's bytes written as they were, off the window's thread in
+    /// turn with every other write of closed files (one made anew taken away by its Undo); one that did not exist then
+    /// deleted (to the Trash, and kept in the history). Null once all are written, else why not.</summary>
     private async Task<string?> RevertAsync(IReadOnlyList<(string Path, string? Version)> files, string activity)
     {
         if (session.LocalHistory is not { } history)
@@ -197,8 +199,10 @@ public partial class MainWindow
         // A file deleted then is followed as its delete goes; one written may come back, with the folders it was in.
         List<string> written = [.. files.Where(f => f.Version is not null).Select(f => f.Path)];
         Dictionary<string, bool> stood = Standing(written);
-        using (history.During(activity))
+        using LocalHistory.Activity named = history.During(activity);
+        using (CommandHistory.Recording recording = Editors.Commands.RecordWrites(activity))
         {
+            List<(string Path, string Version, OpenDocument? Tab)> closed = [];
             foreach ((string path, string? version) in files)
             {
                 if (version is null)
@@ -209,43 +213,93 @@ public partial class MainWindow
                     }
                     continue;
                 }
+                // Closed, or in a tab holding none of its text (a preview's, a workbook's, a binary file's): its bytes, in turn.
+                if (Editors.Find(path) is not { HoldsText: true } open)
+                {
+                    closed.Add((path, version, Editors.Find(path)));
+                    continue;
+                }
                 byte[]? bytes = await BackgroundWork.Run(() => history.Content(version));
                 if (bytes is null)
                 {
                     refused.Add($"{Path.GetFileName(path)} (its content is no longer kept)");
                     continue;
                 }
-                OpenDocument? open = Editors.Find(path);
+                recording.Watch(path);
                 try
                 {
-                    // A tab holding none of the file's text (a preview's, a workbook's, a binary file's) shows the bytes written.
-                    if (open is not { HoldsText: true })
-                    {
-                        FileText.Restore(path, bytes);
-                        if (open is not null)
-                        {
-                            FollowDisk(open);
-                        }
-                    }
-                    else
-                    {
-                        open.Revert(bytes);
-                    }
+                    open.Revert(bytes);
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
                     refused.Add($"{Path.GetFileName(path)} ({error.Message})");
                     continue;
                 }
-                if (open is { IsModified: true } && !Editors.Save(open))
+                if (open.IsModified && !Editors.Save(open))
                 {
                     refused.Add(open.Name);
                 }
             }
+            recording.TakeOpen();
+            // From here the history names only the revert's own writes, not what is saved meanwhile.
+            named.Dispose();
+            IReadOnlyList<Restored> restored = closed.Count == 0 ? [] : await Editors.Commands.InTurnAsync(activity, [.. closed.Select(c => c.Path)], wrote =>
+            {
+                using IDisposable own = named.Own();
+                return closed.Select(c => Restore(history, c.Path, c.Version, wrote)).ToList();
+            });
+            foreach ((Restored done, OpenDocument? tab) in restored.Zip(closed.Select(c => c.Tab)))
+            {
+                if (done.Refused is { } why)
+                {
+                    refused.Add(why);
+                    continue;
+                }
+                if (done.After is { } after && (done.Before is not null || done.Made))
+                {
+                    if (done.Made)
+                    {
+                        recording.Made(done.Path);
+                    }
+                    recording.Wrote(done.Path, done.Before ?? TextSnapshot.Empty, after);
+                }
+                if (tab is not null)
+                {
+                    FollowDisk(tab);
+                }
+            }
+            refused.AddRange((await recording.LandedAsync(waiting => status.Text = waiting)).Select(u => $"{Path.GetFileName(u.Path)} ({u.Refused.Message})"));
         }
         Followed(stood, [], written);
         string? problem = refused.Count == 0 ? null : $"Cannot revert because {string.Join(", ", refused)} could not be written";
         status.Text = problem ?? activity;
         return problem;
     }
+
+    /// <summary>A closed file put back to a version's bytes on the calling thread, <paramref name="wrote"/> told: its texts
+    /// before (none where it was made anew) and after, either null where it is no text the editor takes, or why it could not be.</summary>
+    private static Restored Restore(LocalHistory history, string path, string version, Action<string> wrote)
+    {
+        string name = Path.GetFileName(path);
+        if (history.Content(version) is not { } bytes)
+        {
+            return new Restored(path, null, null, false, $"{name} (its content is no longer kept)");
+        }
+        try
+        {
+            bool made = !File.Exists(path);
+            FileText? before = made ? null : FileText.Load(path);
+            FileText.Restore(path, bytes);
+            wrote(path);
+            FileText? after = FileText.FromBytes(bytes, null, () => EditorConfig.For(path).Charset);
+            return new Restored(path, before is null ? null : TextSnapshot.From(before.Text), after is null ? null : TextSnapshot.From(after.Text), made, null);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return new Restored(path, null, null, false, $"{name} ({error.Message})");
+        }
+    }
+
+    /// <summary>A closed file a revert wrote: its texts before and after, whether it made it, or why it could not.</summary>
+    private sealed record Restored(string Path, TextSnapshot? Before, TextSnapshot? After, bool Made, string? Refused);
 }
