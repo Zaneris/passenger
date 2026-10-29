@@ -667,6 +667,90 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         return given;
     }
 
+    /// <summary>An argument the AppHost marks sensitive is a secret wherever its service's command line is shown: DCP asks the
+    /// IDE to start the service with it as a positional argument before an AppHost that says its resources' arguments (its
+    /// cache's) has said the service's, as it may, and the start waits for them, so the IDE's log of the program's start, its
+    /// console's echo and an agent's list of running programs show it as the dots, the arguments before it as they are.</summary>
+    [AvaloniaFact]
+    public void An_argument_the_AppHost_marks_sensitive_shows_as_dots_in_the_log_the_console_and_the_list_of_programs()
+    {
+        const string Secret = "marked-never-shown";
+        project.Reset();
+        project.BuildApi();
+        File.Delete(project.KeyFile);
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        window.ApplySettings(window.Settings with { LogEveryProgram = true });
+        try
+        {
+            backend.PushResource(WithArguments(new Resource { Name = "cache", DisplayName = "cache", Uid = "cache", ResourceType = "Container", State = "Running" }, [], [], marked: false));
+            FindAction(window, "Show Aspire Resources");
+            Ui.WaitFor(() => window.Aspire.Rows.Any(row => row.Resource.Name == "cache"), "the cache's row, its arguments said");
+            Task<(System.Net.WebSockets.ClientWebSocket Notified, HttpStatusCode Answer)> asked =
+                Waiting.Apart(() => project.StartApiAsync("apiservice", arguments: ["--port", "5310", Secret]));
+            AspireAppRun app = window.AspireRuntime.Apps.Single();
+            Ui.PumpUntil(() => app.Services.Count == 1 || asked.IsCompleted, "DCP's start of the API to reach the IDE");
+            AspireResourceRun service = Assert.Single(app.Services);
+            Assert.True(service.Console.Document.Snapshot.Length == 0 && service.ProcessId is null,
+                $"The API started before its AppHost said which of its arguments are secrets: {service.Console.Document.Snapshot}");
+            backend.PushResource(WithArguments(ApiResource(), ["--port", "5310", Secret], [0, 0, 1], marked: true));
+            (System.Net.WebSockets.ClientWebSocket notified, HttpStatusCode answer) = Ui.Await(asked, "the IDE's answer to the run session");
+            using System.Net.WebSockets.ClientWebSocket subscribed = notified;
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the API's start: {answer} ({window.Status})");
+            int api = Api(window);
+            string masked = $"--port 5310 {Passenger.App.Containers.ContainerSecrets.Masked}";
+            string echoed = service.Console.Document.Snapshot.ToString();
+            Assert.True(echoed.Contains(masked, StringComparison.Ordinal) && !echoed.Contains(Secret, StringComparison.Ordinal),
+                $"The API's console echoes its start, its marked argument shown: {echoed}");
+            string Started() => Ui.Shared(IdeErrors.LogPath).Split('\n').FirstOrDefault(line => line.Contains($"Process {api} started", StringComparison.Ordinal)) ?? string.Empty;
+            Ui.WaitFor(() => Started().Length > 0, "the IDE's log of the API's start");
+            Assert.True(Started().TrimEnd().EndsWith(masked, StringComparison.Ordinal) && !Ui.Shared(IdeErrors.LogPath).Contains(Secret, StringComparison.Ordinal),
+                $"The IDE's log shows the API's marked argument: {Started()}");
+            object listed = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).GetDebugState(of: "processes"), "an agent's list of running programs");
+            Passenger.App.Mcp.ProcessInfo program = Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<Passenger.App.Mcp.ProcessInfo>>(listed), process => process.ProcessId == api);
+            Assert.True(program.CommandLine.EndsWith(masked, StringComparison.Ordinal) && !program.CommandLine.Contains(Secret, StringComparison.Ordinal),
+                $"An agent's list of running programs shows the API's marked argument: {program.CommandLine}");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { LogEveryProgram = false });
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
+    /// <summary>A service DCP starts with arguments starts at once where its AppHost has not shown it says its resources'
+    /// arguments, as one older than Aspire 9.1 never does, never waiting for them.</summary>
+    [AvaloniaFact]
+    public void A_service_started_with_arguments_by_an_AppHost_that_says_no_resources_arguments_starts_without_waiting_for_them()
+    {
+        project.Reset();
+        project.BuildApi();
+        File.Delete(project.KeyFile);
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            IdeLog.Flush();
+            int logged = Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Length;
+            (System.Net.WebSockets.ClientWebSocket notified, HttpStatusCode answer) = Ui.Await(
+                Waiting.Apart(() => project.StartApiAsync("apiservice", arguments: ["--port", "5310"])), "the IDE's answer to the run session");
+            using System.Net.WebSockets.ClientWebSocket subscribed = notified;
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the API's start: {answer} ({window.Status})");
+            Assert.True(Processes.IsRunning(Api(window)), "The API did not start");
+            IdeLog.Flush();
+            string log = Ui.Shared(IdeLog.PathOf(IdeLog.Ide));
+            string since = log[Math.Min(logged, log.Length)..];
+            Assert.False(since.Contains("starts with arguments its AppHost had not said", StringComparison.Ordinal),
+                $"The API's start waited for arguments its AppHost never says: {since}");
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>A click on a resource's address, in its row or its Details, or on its commands lands while the AppHost
     /// streams updates: an update between the press and the release (its health turned degraded) changes the row in
     /// place, its control and its link kept, and the click opens the browser; the commands button and its menu's item,
@@ -2908,11 +2992,11 @@ public sealed class StandInAppHost : SharedProject
     }
 
     /// <summary><see cref="AskToStartApi"/> off the window's thread, as DCP asks again for a resource its AppHost restarts:
-    /// the session's mode as DCP gives it, and variables beside the resource's name; subscribed to the sessions' notifications
-    /// unless <paramref name="subscribe"/> is false (DCP subscribes once, which a second refuses). The IDE's answer is no
-    /// status at all when it closed its endpoint as it stopped the AppHost, the request unanswered.</summary>
+    /// the session's mode as DCP gives it, variables beside the resource's name, and its arguments (none by default);
+    /// subscribed to the sessions' notifications unless <paramref name="subscribe"/> is false (DCP subscribes once, which a
+    /// second refuses). The IDE's answer is no status at all when it closed its endpoint as it stopped the AppHost.</summary>
     internal async Task<(System.Net.WebSockets.ClientWebSocket Notified, System.Net.HttpStatusCode Answer)> StartApiAsync(string resource, string mode = "NoDebug",
-        IReadOnlyDictionary<string, string>? environment = null, bool subscribe = true, string? projectPath = null)
+        IReadOnlyDictionary<string, string>? environment = null, bool subscribe = true, string? projectPath = null, string[]? arguments = null)
     {
         string[] session = (await File.ReadAllTextAsync(SessionFile)).Split('\n', 3);
         using JsonDocument info = JsonDocument.Parse(session[2]);
@@ -2934,7 +3018,7 @@ public sealed class StandInAppHost : SharedProject
                 launch_configurations = new[] { new { type = "project", project_path = projectPath ?? ApiProject, mode } },
                 env = new[] { new { name = "OTEL_SERVICE_NAME", value = resource } }
                     .Concat((environment ?? new Dictionary<string, string>()).Select(variable => new { name = variable.Key, value = variable.Value })).ToArray(),
-                args = Array.Empty<string>(),
+                args = arguments ?? [],
             }), System.Text.Encoding.UTF8, "application/json"),
         };
         start.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", session[1]);

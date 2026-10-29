@@ -894,6 +894,11 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 }
                 inspected = inspected with { Environment = holding };
             }
+            if (request.Arguments is { Length: > 0 })
+            {
+                // Those the AppHost marks sensitive are known secrets before its command line is echoed and logged.
+                await ArgumentsSaidAsync(app, resource, cancellation);
+            }
             ProcessRunner runner = resource.Runner = new ProcessRunner(resource.Console, takesInput: true);
             runner.OutputReceived += (_, output) => app.Execution?.NotifyServiceLog(request.DcpInstanceId, request.SessionId, output.Text, output.IsError);
             runner.Exited += (_, code) => Finished(app, resource, code);
@@ -941,6 +946,46 @@ public sealed partial class AspireController(ProjectSession workspace, string st
 
     /// <summary>A service held at its start for a debugger that could not reach it, which then runs on unheld: said.</summary>
     public event EventHandler<string>? RunsUndebugged;
+
+    /// <summary>How long a start DCP gave arguments waits for its AppHost to say them (<see cref="ArgumentsSaidAsync"/>).</summary>
+    private static readonly TimeSpan ArgumentsWait = TimeSpan.FromSeconds(5);
+
+    /// <summary>Waits, up to <see cref="ArgumentsWait"/>, for the AppHost to say the arguments DCP gave a start as its
+    /// resource's (<c>resource.appArgs</c>, which DCP's request and the AppHost's word race to bring), so those it marks
+    /// sensitive are known secrets (<see cref="Containers.ContainerSecrets.Arguments"/>) wherever its command line is shown;
+    /// only where the AppHost has shown it says them (<see cref="AspireInteractions.SaysArguments"/>), and not at all once said.</summary>
+    private static async Task ArgumentsSaidAsync(AspireAppRun app, AspireResourceRun resource, CancellationToken cancellation)
+    {
+        if (app.Interactions is not { SaysArguments: true } interactions)
+        {
+            return;
+        }
+        using CancellationTokenSource waiting = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        waiting.CancelAfter(Waits.Of(ArgumentsWait));
+        try
+        {
+            while (true)
+            {
+                (IReadOnlyList<AspireResource> resources, Task moved) = await interactions.FollowedAsync(waiting.Token);
+                if (resource.ResourceIn(resources) is { } own && AspireJson.Properties(own.Data, "properties").Any(property => property.Name == "resource.appArgs"))
+                {
+                    return;
+                }
+                await moved.WaitAsync(waiting.Token);
+            }
+        }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+        {
+            if (waiting.IsCancellationRequested)
+            {
+                IdeLog.Write(IdeLog.Ide, $"Aspire: {((IRunService)resource).Name} starts with arguments its AppHost had not said within {Waits.Of(ArgumentsWait).TotalSeconds:0} s");
+            }
+        }
+        catch (IOException)
+        {
+            // The resources' stream has ended: nothing more will be said of them.
+        }
+    }
 
     /// <summary>Lets a program held at its runtime's start go (<see cref="HeldStart"/>), its hold cleared for what it starts;
     /// one already going, or gone, is left as it is.</summary>

@@ -157,6 +157,24 @@ public sealed class CommandLineSecretsTests
         Assert.Equal([Masked, Masked, ""], ContainerSecrets.Arguments(["run", "hunter2", ""], [true]));
     }
 
+    /// <summary>An argument its sender marks sensitive (an Aspire resource's) is a known secret from then on: the line of the
+    /// program given it, as the system lists it, as the log and a console echo its start and as a program says it, shows it
+    /// as the dots whatever is before it; marks that are not one an argument make none known.</summary>
+    [Fact]
+    public void An_argument_marked_sensitive_is_masked_from_then_on_wherever_a_command_line_holds_it()
+    {
+        const string Marked = "marked-positional-7f3a";
+        const string Unmatched = "unmatched-positional-7f3a";
+        string line = $"dotnet Shop.dll --port 5310 {Marked} {Unmatched}";
+        Assert.Same(line, ContainerSecrets.CommandLines()(line));
+        ContainerSecrets.Arguments(["--port", "5310", Marked], [false, false, true]);
+        ContainerSecrets.Arguments(["--port", "5310", Unmatched], [true]);
+        string shown = $"dotnet Shop.dll --port 5310 {Masked} {Unmatched}";
+        Assert.Equal(shown, ContainerSecrets.CommandLines()(line));
+        Assert.Equal(shown, ContainerSecrets.CommandLine(ChildProcesses.Command("dotnet", ["Shop.dll", "--port", "5310", Marked, Unmatched])));
+        Assert.Equal($"failed: {shown}", ContainerSecrets.InSaid($"failed: {line}"));
+    }
+
     /// <summary>Inspect's command lines are masked as a program's arguments are, an array read on from the one it continues
     /// (a container's Args from its Path, a Config's Cmd from its Entrypoint) and a health check's Test on its own, and a
     /// copy written so comes back as it was.</summary>

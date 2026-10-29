@@ -23,12 +23,17 @@ public sealed partial class AspireInteractions
     private readonly SemaphoreSlim resourceReading = new(1, 1);
     private CancellationTokenSource? resourceWatch;
     private bool displayWatching;
+    private volatile bool saysArguments;
     private int following;
     private Task resourceListening = Task.CompletedTask;
     private IOException? resourceFailure;
 
     /// <summary>One immutable bounded snapshot per server batch, delivered on the UI thread.</summary>
     public event EventHandler<IReadOnlyList<AspireResource>>? ResourcesChanged;
+
+    /// <summary>Whether the AppHost says its resources' arguments (<c>resource.appArgs</c>, which Aspire's AppHosts send from
+    /// 9.1 on, for containers and executables alike): a resource it sent has carried them.</summary>
+    public bool SaysArguments => saysArguments;
 
     /// <summary>Controls display-only subscriptions. Interactions remain connected while hidden.</summary>
     public void SetWatching(bool watching)
@@ -410,6 +415,7 @@ public sealed partial class AspireInteractions
         }
         // A secret masked by ContainerSecrets' rule, and one the AppHost marks sensitive whatever its name.
         Resource resource = incoming.Clone();
+        saysArguments |= resource.Properties.Any(property => property.Name == "resource.appArgs");
         ResourceProperty? arguments = MaskArguments(resource);
         foreach (ResourceProperty property in resource.Properties)
         {

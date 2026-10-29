@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -217,10 +218,27 @@ public static partial class ContainerSecrets
 
     /// <summary>A program's arguments given one by one (an Aspire resource's), each masked as
     /// <see cref="CommandLine(System.Diagnostics.ProcessStartInfo)"/> masks a child's, and one its sender marks sensitive
-    /// (<paramref name="sensitive"/>, a mark an argument) as the dots whatever is before it; marks that are not one an
-    /// argument mask them all. An empty one shows as it is.</summary>
-    public static IReadOnlyList<string> Arguments(IReadOnlyList<string> words, IReadOnlyList<bool>? sensitive = null) =>
-        Arguments(words, sensitive, Masking());
+    /// (<paramref name="sensitive"/>, a mark an argument) as the dots whatever is before it, a known secret from then on
+    /// wherever a mask made after finds it (<see cref="Masking"/>); marks that are not one an argument mask them all, and
+    /// make none known. An empty one shows as it is.</summary>
+    public static IReadOnlyList<string> Arguments(IReadOnlyList<string> words, IReadOnlyList<bool>? sensitive = null)
+    {
+        if (sensitive is not null && sensitive.Count == words.Count)
+        {
+            for (int i = 0; i < words.Count; i++)
+            {
+                if (sensitive[i] && words[i].Length > 0)
+                {
+                    Marked.TryAdd(words[i], 0);
+                }
+            }
+        }
+        return Arguments(words, sensitive, Masking());
+    }
+
+    /// <summary>The arguments their senders marked sensitive (<see cref="Arguments(IReadOnlyList{string}, IReadOnlyList{bool})"/>),
+    /// secrets whatever words are around them wherever they are shown again: a program's command line, its log, its echo.</summary>
+    private static readonly ConcurrentDictionary<string, byte> Marked = new(StringComparer.Ordinal);
 
     private static string[] Arguments(IReadOnlyList<string> words, IReadOnlyList<bool>? sensitive, Func<string, string> masking)
     {
@@ -498,14 +516,18 @@ public static partial class ContainerSecrets
         return false;
     }
 
-    /// <summary>The values a failure may echo that are known to be secrets: those given, this process's environment's whose
-    /// names are a secret's, and those a folder's .env gives such names (<c>KEY=value</c>, quoted or not, after an
-    /// <c>export</c> or not; a line it cannot read passed over).</summary>
+    /// <summary>The values a failure may echo that are known to be secrets: those given, the arguments marked sensitive
+    /// (<see cref="Marked"/>), this process's environment's whose names are a secret's, and those a folder's .env gives such
+    /// names (<c>KEY=value</c>, quoted or not, after an <c>export</c> or not; a line it cannot read passed over).</summary>
     private static IEnumerable<string> Known(string? folder, IEnumerable<string>? known)
     {
         foreach (string given in known ?? [])
         {
             yield return given;
+        }
+        foreach (string marked in Marked.Keys)
+        {
+            yield return marked;
         }
         foreach (System.Collections.DictionaryEntry variable in Environment.GetEnvironmentVariables())
         {
