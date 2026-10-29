@@ -234,7 +234,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   a view only through a property that builds it for a person's action.
 - **C#.** `CSharpService`, `ServerDiagnostics` (one pull at a time after a pause), `CodeAssist` (the window's wiring)
   over its parts; each language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a
-  server's edit to a file not open is refused if it was written in the last 2 s (an agent's call waits, `Patience`).
+  server's edit to a file not open written in the 2 s before it was asked waits for the server to read it (`Patience`,
+  the window's and an agent's alike, said as the action's work); one written as the server worked is refused.
   `ServerWatches` watches for the server what it registers (`WatchedFiles`), beside the folder's watcher. A place the
   server names in a source generator's document reaches the file it was written in through `RoslynSession.WrittenAsync`.
   A C# symbol's uses in XAML come from one finder, `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to
