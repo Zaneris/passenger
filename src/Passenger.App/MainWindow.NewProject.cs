@@ -93,7 +93,7 @@ public partial class MainWindow
             }
             // What the template and the set-up made in the project's folder goes and comes back with the folder.
             recording.Leave(made.Folder);
-            recording.Also(MadeFolder(made.Folder));
+            recording.Also(await MadeFolderAsync(made.Folder));
             return problem;
         }
     }

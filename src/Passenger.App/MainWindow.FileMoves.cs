@@ -391,7 +391,7 @@ public partial class MainWindow
     private async Task UndoCommandAsync(CommandHistory.Command command, bool redo)
     {
         string verb = redo ? "Redo" : "Undo";
-        if (Editors.Commands.Blocked(command, redo) is { } changed)
+        if (await Editors.Commands.BlockedAsync(command, redo) is { } changed)
         {
             status.Text = $"Cannot {verb.ToLowerInvariant()} {command.Name}: {changed}";
             return;
@@ -404,11 +404,17 @@ public partial class MainWindow
         {
             return;
         }
+        // Asked again, what the disk holds read off the window's thread: a file may have changed while the question was open.
+        if (await Editors.Commands.BlockedAsync(command, redo) is { } since)
+        {
+            status.Text = $"Cannot {verb.ToLowerInvariant()} {command.Name}: {since}";
+            return;
+        }
         // What may come or go, with the folders over it, as they stand before: a part may make or take away a folder.
         Dictionary<string, bool> stood = Standing(command.Moves.SelectMany(m => new[] { m.From, m.To }).Concat(command.Created.Select(c => c.Path)));
         List<string> moved = [];
         IReadOnlyList<string> written = Editors.Commands.Writes(command, redo);
-        // Asked again: a file may have changed while the question was open.
+        // Asked again at once, the open files' steps above all, so nothing comes between the look and the change.
         string? failed = Gathering(moved, () => Editors.Commands.Blocked(command, redo) ?? (redo ? Editors.Commands.Redo(command) : Editors.Commands.Undo(command)));
         Followed(stood, moved, [.. command.Texts.Select(t => t.Document?.Path ?? (redo ? command.Moved(t.Path) : t.Path))]);
         if (failed is null && await EditorArea.LandedAsync(written, waiting => status.Text = waiting) is [(string path, Exception why), ..])

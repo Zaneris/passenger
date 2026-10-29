@@ -163,6 +163,90 @@ public sealed class NewServiceSetupTests : IDisposable
         }
     }
 
+    /// <summary>New Project of an MVC app, a folder of megabytes (its scripts and styles): its Undo keeps the folder as each
+    /// file's length and time, not its bytes, so the undo history grows by a small part of the folder; Undo takes the folder
+    /// away and Redo puts every file back as it was.</summary>
+    [AvaloniaFact]
+    public void New_Project_of_an_MVC_app_keeps_its_folder_for_Undo_without_its_bytes()
+    {
+        TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
+        TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
+        TestFolders.Write(place, "Shop.slnx", "<Solution>\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
+        string site = Path.Combine(PathNames.Canonical(place), "Site");
+        MainWindow window = Ui.OpenFolder(place, languageServer: false);
+        try
+        {
+            Ui.Run(window, AppActions.NewProject);
+            NewProjectDialog dialog = Opened(window);
+            Choose(dialog, "mvc");
+            dialog.ProjectName = "Site";
+            dialog.Framework = TestProjects.Framework;
+            dialog.SetupChooser.SelectedIndex = (int)ProjectSetup.None;
+            Ui.Settle();
+            Created(dialog, "the MVC app");
+            Assert.Null(SetUp(window));
+            Dictionary<string, byte[]> made = Made(site);
+            long bytes = made.Values.Sum(b => (long)b.Length);
+            Assert.True(bytes > 1_000_000, $"The MVC app's folder holds only {bytes} bytes in {made.Count} files, too few to tell its bytes from its list");
+
+            List<string> asked = Answer(window);
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Undo);
+            Assert.Equal(["Undo"], asked);
+            Assert.False(Directory.Exists(site), $"Undo left the new project's folder: {window.Status}");
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Redo);
+            Assert.True(Directory.Exists(site), $"Redo did not put the new project's folder back: {window.Status}");
+            Dictionary<string, byte[]> back = Made(site);
+            Assert.True(back.Count == made.Count && made.All(f => back.TryGetValue(f.Key, out byte[]? now) && now.AsSpan().SequenceEqual(f.Value)),
+                $"Redo did not put the folder back as it was: {window.Status}");
+
+            Ui.Settle();
+            long held = GC.GetTotalMemory(forceFullCollection: true);
+            Assert.True(Undoes(window), "New Project left no command for Undo to take back");
+            window.EditorArea.Commands.Clear();
+            long growth = held - GC.GetTotalMemory(forceFullCollection: true);
+            Assert.True(growth < bytes / 10, $"New Project's Undo held {growth} bytes of the history for a folder of {bytes} bytes in {made.Count} files");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Undo of New Project refused once a file of the folder it made has changed, naming that file, the folder kept.</summary>
+    [AvaloniaFact]
+    public void Undo_of_New_Project_refuses_once_a_file_in_its_folder_has_changed_naming_it()
+    {
+        TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
+        TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
+        TestFolders.Write(place, "Shop.slnx", "<Solution>\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
+        string lib = Path.Combine(PathNames.Canonical(place), "Lib");
+        MainWindow window = Ui.OpenFolder(place, languageServer: false);
+        try
+        {
+            Ui.Run(window, AppActions.NewProject);
+            NewProjectDialog dialog = Opened(window);
+            Choose(dialog, "classlib");
+            dialog.ProjectName = "Lib";
+            dialog.Framework = TestProjects.Framework;
+            Created(dialog, "the class library");
+            Assert.Null(SetUp(window));
+            TestFolders.Write(place, "Lib/Class1.cs", "namespace Lib;\n\npublic class Changed;\n");
+
+            List<string> asked = Answer(window);
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Undo);
+            Assert.Empty(asked);
+            Assert.Equal($"Cannot undo New Project Lib: {Path.Join("Lib", "Class1.cs")} has been changed since", window.Status);
+            Assert.True(File.Exists(Path.Combine(lib, "Class1.cs")), "Undo refused took the folder away all the same");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>New Solution of a web API with Docker Compose: the solution's compose.yaml has it as a service built from its
     /// Dockerfile, the Compose configuration is chosen, and the first Run brings it up in its container (where a Linux
     /// container engine runs).</summary>
@@ -290,6 +374,17 @@ public sealed class NewServiceSetupTests : IDisposable
         Assert.True(dialog.Families.Count > 0, $"The dialog lists no templates: {dialog.Problem}");
         return dialog;
     }
+
+    /// <summary>Whether Undo in the Solution view has a command to take back, asked apart so no reference to it outlives the
+    /// question in the test's frame.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static bool Undoes(MainWindow window) => window.EditorArea.Commands.ToUndo(null) is not null;
+
+    /// <summary>Every file the template and set-up made in a project's folder, but what builds write, with its bytes.</summary>
+    private static Dictionary<string, byte[]> Made(string folder) =>
+        Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
+            .Where(f => !Path.GetRelativePath(folder, f).Split(Path.DirectorySeparatorChar).Any(part => part is "bin" or "obj" || PathNames.IsSystemFile(part)))
+            .ToDictionary(f => Path.GetRelativePath(folder, f), File.ReadAllBytes, StringComparer.Ordinal);
 
     private static List<string> Answer(MainWindow window)
     {

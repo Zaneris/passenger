@@ -190,51 +190,45 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The folder a command made whole, at its end: Undo takes it away (its open files' tabs closed), once every
-    /// file in it but what builds write is as the command left it, and Redo puts it back as it was.</summary>
-    private CommandHistory.Part MadeFolder(string folder)
+    /// <summary>The folder a command made whole, at its end, kept as its files' lengths and times read off the window's
+    /// thread: Undo moves it aside under the window's state (its open files' tabs closed) once every file in it but what
+    /// builds write is as the command left it and none holds edits not saved, saying which otherwise, and Redo moves it
+    /// back from there; nothing of its bytes is read or held.</summary>
+    private async Task<CommandHistory.Part> MadeFolderAsync(string folder)
     {
-        Dictionary<string, byte[]> files = FolderFiles(folder);
+        string state = StateFolder;
+        Dictionary<string, (long Length, DateTime Written)> made = await BackgroundWork.Run(() =>
+        {
+            MadeFolders.Sweep(state);
+            return MadeFolders.Stamps(folder);
+        });
         string name = Path.GetFileName(folder);
+        string aside = MadeFolders.Aside(state, folder);
         return new CommandHistory.Part($"the folder {name}", redo =>
+            redo ? Directory.Exists(folder) || File.Exists(folder) ? $"{name} is already there" : Directory.Exists(aside) ? null : $"{name} was not kept to be made again"
+            : !Directory.Exists(folder) ? $"{name} is no longer there"
+            : Editors.Documents.FirstOrDefault(d => d.IsModified && PathNames.IsUnder(d.Path, folder)) is { } edited ? $"{edited.Name} has edits not saved"
+            : null, redo => Following([folder], () =>
         {
-            if (redo)
+            if (!redo)
             {
-                return Directory.Exists(folder) || File.Exists(folder) ? $"{name} is already there" : null;
-            }
-            Dictionary<string, byte[]> now = Directory.Exists(folder) ? FolderFiles(folder) : [];
-            return now.Count == 0 ? $"{name} is no longer there"
-                : now.Count != files.Count || now.Any(f => !files.TryGetValue(f.Key, out byte[]? was) || !was.AsSpan().SequenceEqual(f.Value)) ? $"{name} has been changed since"
-                : null;
-        }, redo => Following([folder], () =>
-        {
-            if (redo)
-            {
-                foreach ((string path, byte[] bytes) in files)
+                foreach (OpenDocument document in Editors.Documents.Where(d => PathNames.IsUnder(d.Path, folder)).ToList())
                 {
-                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                    AtomicFile.Write(path, bytes);
+                    Editors.CloseDeleted(document);
                 }
-                return;
-            }
-            foreach (OpenDocument document in Editors.Documents.Where(d => PathNames.IsUnder(d.Path, folder)).ToList())
-            {
-                Editors.CloseDeleted(document);
             }
             try
             {
-                Directory.Delete(folder, recursive: true);
+                MadeFolders.Move(redo ? aside : folder, redo ? folder : aside);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
-                status.Text = $"{name} could not be deleted: {error.Message}";
+                status.Text = $"{name} could not be {(redo ? "put back" : "set aside")}: {error.Message}";
             }
-        }));
+        }))
+        {
+            Read = redo => redo ? Task.FromResult<string?>(null) : BackgroundWork.Run(() => MadeFolders.Unlike(folder, made)),
+            Dropped = () => MadeFolders.Forget(aside),
+        };
     }
-
-    /// <summary>Every file under a folder by its path, with its bytes, but what a build or restore writes (bin, obj).</summary>
-    private static Dictionary<string, byte[]> FolderFiles(string folder) =>
-        Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
-            .Where(f => !Path.GetRelativePath(folder, f).Split(Path.DirectorySeparatorChar).Any(part => part is "bin" or "obj"))
-            .ToDictionary(f => f, File.ReadAllBytes, PathNames.Comparer);
 }

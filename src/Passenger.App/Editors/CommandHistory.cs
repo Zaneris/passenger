@@ -43,14 +43,18 @@ public sealed class CommandHistory
     /// <summary>Forgets every command, as a folder closing does.</summary>
     public void Clear()
     {
-        done.Clear();
-        undone.Clear();
+        Drop(done);
+        Drop(undone);
     }
 
-    /// <summary>Why a command cannot be taken back (or made again) now, naming the first file changed or moved since;
-    /// null when it can.</summary>
+    /// <summary>Why a command cannot be taken back (or made again) now, naming the first file changed or moved since, or
+    /// saying the history has let it go; null when it can.</summary>
     public string? Blocked(Command command, bool redo)
     {
+        if (!(redo ? undone : done).Contains(command))
+        {
+            return "commands made since have taken its place";
+        }
         foreach ((string from, string to) in command.Moves)
         {
             (string there, string free) = redo ? (from, to) : (to, from);
@@ -101,6 +105,20 @@ public sealed class CommandHistory
             }
         }
         return null;
+    }
+
+    /// <summary>Why a command cannot be taken back (or made again) now, as <see cref="Blocked"/> says, what its parts read of
+    /// the disk at length (<see cref="Part.Read"/>) read off the window's thread first.</summary>
+    public async Task<string?> BlockedAsync(Command command, bool redo)
+    {
+        foreach (Part part in command.Parts)
+        {
+            if (part.Read is { } read && await read(redo) is { } changed)
+            {
+                return changed;
+            }
+        }
+        return Blocked(command, redo);
     }
 
     /// <summary>Takes a command back: the files it moved go back, then every file's text is as it was. Null once done,
@@ -183,11 +201,28 @@ public sealed class CommandHistory
 
     private void Keep(Command command)
     {
-        undone.Clear();
+        Drop(undone);
         done.Add(command);
         if (done.Count > Limit)
         {
+            Command oldest = done[0];
             done.RemoveAt(0);
+            Dropped(oldest);
+        }
+    }
+
+    private static void Drop(List<Command> commands)
+    {
+        List<Command> going = [.. commands];
+        commands.Clear();
+        going.ForEach(Dropped);
+    }
+
+    private static void Dropped(Command command)
+    {
+        foreach (Part part in command.Parts)
+        {
+            part.Dropped?.Invoke();
         }
     }
 
@@ -301,7 +336,15 @@ public sealed class CommandHistory
     /// <summary>Something besides files a command changed (a run configuration's changes kept with the folder), named as the
     /// question before Undo names it: why it cannot be taken back (or made again, given true) now, null when it can; and
     /// how it is put as it was before the command (false) or after it (true).</summary>
-    public sealed record Part(string Name, Func<bool, string?> Blocked, Action<bool> Put);
+    public sealed record Part(string Name, Func<bool, string?> Blocked, Action<bool> Put)
+    {
+        /// <summary>Why it cannot be taken back (or made again, given true) now, from what it reads of the disk at length,
+        /// read off the window's thread; null when it can.</summary>
+        public Func<bool, Task<string?>>? Read { get; init; }
+
+        /// <summary>Lets go of what it keeps to be made again, once its command has left the history.</summary>
+        public Action? Dropped { get; init; }
+    }
 
     /// <summary>One file's text changed by a command: the open file (null for one changed on disk) and the undo step its
     /// change is there.</summary>
