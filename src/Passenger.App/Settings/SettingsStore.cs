@@ -1,4 +1,5 @@
 using Passenger.App.State;
+using Passenger.Core;
 
 namespace Passenger.App.Settings;
 
@@ -6,9 +7,9 @@ namespace Passenger.App.Settings;
 /// windows all follow theirs, kept in its settings.json), or one of a window's own that keeps nothing. A change reads
 /// the file again first, so what another Passenger wrote meanwhile stays, puts over it only the values the change makes
 /// differ, is written through the store, and raises <see cref="Changed"/>; settings.json changed on disk by another
-/// Passenger is read again as it lands, as its watcher overflows, and as a window comes in front once it moved (<see
-/// cref="LookAgain"/>). The theme, the keymap and the logs' switches are the process's: put in force here, once, before
-/// any window hears. UI thread only.</summary>
+/// Passenger is read again as it lands, as its watcher overflows, and as a window comes in front, each once it moved since
+/// this process last read or wrote it (<see cref="LookAgain"/>). The theme, the keymap and the logs' switches are the
+/// process's: put in force here, once, before any window hears. UI thread only.</summary>
 public sealed class SettingsStore : IDisposable
 {
     private readonly StateDocument<AppSettings>? document;
@@ -17,13 +18,20 @@ public sealed class SettingsStore : IDisposable
     private bool inForce;
     private bool disposed;
 
-    /// <summary>settings.json's last write and length as it was last read again; none before the first time.</summary>
+    private readonly Lock stamped = new();
+
+    /// <summary>settings.json's last write and length as this process last read it again or wrote it, under <see
+    /// cref="stamped"/>; none before the first time.</summary>
     private (DateTime Written, long Length) read;
 
     private SettingsStore(StateDocument<AppSettings>? document)
     {
         this.document = document;
         value = document?.Value ?? new AppSettings();
+        if (document is not null)
+        {
+            document.Wrote += Saw;
+        }
         if (document is null || Path.GetDirectoryName(document.Path) is not { } folder)
         {
             return;
@@ -36,17 +44,17 @@ public sealed class SettingsStore : IDisposable
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size | NotifyFilters.CreationTime,
             };
             // Written by a temporary file moved over it, so a rename onto the name counts as well as a write.
-            watcher.Changed += (_, _) => UiThread.Post(ReadAgain);
-            watcher.Created += (_, _) => UiThread.Post(ReadAgain);
+            watcher.Changed += (_, _) => Look();
+            watcher.Created += (_, _) => Look();
             watcher.Renamed += (_, e) =>
             {
                 if (string.Equals(e.Name, watcher.Filter, StringComparison.OrdinalIgnoreCase))
                 {
-                    UiThread.Post(ReadAgain);
+                    Look();
                 }
             };
             // Overflowed, or failed: a change it lost is in the file.
-            watcher.Error += (_, _) => UiThread.Post(ReadAgain);
+            watcher.Error += (_, _) => Look();
             watcher.EnableRaisingEvents = true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or PlatformNotSupportedException)
@@ -113,21 +121,54 @@ public sealed class SettingsStore : IDisposable
     /// <summary>Writes a change still waiting, now.</summary>
     public void Flush() => document?.Flush();
 
-    /// <summary>Reads settings.json again if it moved since it was last read, as a window comes in front: another
-    /// Passenger's change the watcher never heard, as the system may drop one without a word, is followed then.</summary>
+    /// <summary>Looks off the UI thread whether settings.json moved since this process last read or wrote it, as a window
+    /// comes in front, and reads it again only if it did: another Passenger's change the watcher never heard, as the
+    /// system may drop one without a word, is followed then.</summary>
     public void LookAgain()
     {
         UiThread.Check();
-        if (document is not null && Stamp(document.Path) != read)
+        if (document is not null && !disposed)
         {
-            ReadAgain();
+            IdeErrors.Observe(BackgroundWork.Run(Look));
         }
     }
 
     public void Dispose()
     {
         disposed = true;
+        if (document is not null)
+        {
+            document.Wrote -= Saw;
+        }
         watcher?.Dispose();
+    }
+
+    /// <summary>On any thread: settings.json read again on the UI thread if it moved since this process last read or wrote
+    /// it, the window's own writes no change.</summary>
+    private void Look()
+    {
+        if (document is null)
+        {
+            return;
+        }
+        (DateTime Written, long Length) now = Stamp(document.Path);
+        lock (stamped)
+        {
+            if (now == read)
+            {
+                return;
+            }
+        }
+        UiThread.Post(ReadAgain);
+    }
+
+    /// <summary>settings.json as this process last read or wrote it, on any thread.</summary>
+    private void Saw((DateTime Written, long Length) stamp)
+    {
+        lock (stamped)
+        {
+            read = stamp;
+        }
     }
 
     /// <summary>settings.json as it is on disk now, when another Passenger changed it.</summary>
@@ -138,7 +179,7 @@ public sealed class SettingsStore : IDisposable
             return;
         }
         // Taken before the read, so a write after it moves the stamp past this.
-        read = Stamp(document.Path);
+        Saw(Stamp(document.Path));
         if (!document.Reread())
         {
             return;

@@ -228,6 +228,59 @@ public sealed class SettingsTests : IDisposable
         }
     }
 
+    /// <summary>The window's own change to the settings is never read back from settings.json: neither as the window comes in
+    /// front nor as the watcher says it overflowed. The file is changed after the window's write with its last write and
+    /// length kept, which only a read would find; the window's next change, which reads the file first, finds it.</summary>
+    [AvaloniaFact]
+    public void The_windows_own_change_to_settings_json_is_not_read_back_as_the_window_comes_in_front()
+    {
+        MainWindow window = Open();
+        window.KeepSettings();
+        StateStore store = StateStore.Open(settings);
+        string file = Path.Combine(settings, StateStore.SettingsFile);
+        FileSystemWatcher watcher = store.Settings.Watcher ?? throw new InvalidOperationException($"{file} is not watched");
+        try
+        {
+            // Deaf, so its word of the window's own write, which comes when the system sends it, is no part of the test.
+            watcher.EnableRaisingEvents = false;
+            window.ApplySettings(window.Settings with { EditorFontSize = 15 });
+            store.Settings.Flush();
+            ChangedUnstamped(file, 16);
+
+            window.Activate();
+            Ui.Settle();
+            Assert.True(window.EditorArea.CodeEditor.FontSize == 15, "settings.json was read again as the window came in front, though only the window's own change had moved it");
+            FolderWatchTests.RaiseError(watcher, new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
+            Ui.Settle();
+            Assert.True(window.EditorArea.CodeEditor.FontSize == 15, "settings.json was read again as its watcher overflowed, though only the window's own change had moved it");
+
+            window.ApplySettings(window.Settings with { ShowLineNumbers = false });
+            Assert.True(window.EditorArea.CodeEditor.FontSize == 16,
+                $"The window's next change did not find the font settings.json was given under its stamp (its font is {window.EditorArea.CodeEditor.FontSize}), so the test showed nothing of what is read");
+        }
+        finally
+        {
+            watcher.EnableRaisingEvents = true;
+            store.Release();
+            window.Close();
+        }
+    }
+
+    /// <summary>settings.json with the editor's font changed in place, its last write and length as they were: a change only a
+    /// read of the file finds.</summary>
+    private static void ChangedUnstamped(string file, int fontSize)
+    {
+        FileInfo was = new(file);
+        (DateTime written, long length) = (was.LastWriteTimeUtc, was.Length);
+        string text = Ui.Shared(file);
+        string changed = System.Text.RegularExpressions.Regex.Replace(text, @"(""editorFontSize"":\s*)\d\d\b", $"${{1}}{fontSize}");
+        Assert.True(changed != text && changed.Length == text.Length, $"settings.json holds no two-digit editorFontSize to change in place:\n{text}");
+        File.WriteAllText(file, changed);
+        File.SetLastWriteTimeUtc(file, written);
+        FileInfo now = new(file);
+        Assert.True((now.LastWriteTimeUtc, now.Length) == (written, length), $"settings.json's last write and length moved as it was changed in place: {now.LastWriteTimeUtc:o} {now.Length}, not {written:o} {length}");
+    }
+
     /// <summary>settings.json with the editor's font changed, as another Passenger writes it: a temporary file moved over it.</summary>
     private static void WrittenElsewhere(string file, int fontSize)
     {

@@ -112,6 +112,11 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
     /// not wait for a timer.</summary>
     public void Flush() => Write();
 
+    /// <summary>A change of this side's about to be put in the file's place, holding this side's value and nothing it has not
+    /// read: the written file's last write and length, by which a look at the file later knows it holds nothing new. Raised
+    /// on the writing thread, under the document's lock.</summary>
+    public event Action<(DateTime Written, long Length)>? Wrote;
+
     /// <summary>Reads the file again, once a change still waiting is written: what another Passenger wrote since comes
     /// in. A file gone or not reading leaves the value as it is (this is no first read, which sets a bad one aside).
     /// Whether the value changed.</summary>
@@ -264,13 +269,27 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
                 {
                     return;
                 }
-                StateFile.Replace(Path, StateFile.Merged(disk.Document, Math.Max(disk.Version, T.Upgrades.Count), known, mine, T.Sets));
+                JsonObject merged = StateFile.Merged(disk.Document, Math.Max(disk.Version, T.Upgrades.Count), known, mine, T.Sets);
+                StateFile.Replace(Path, merged, Wrote is { } told && Holds(merged, mine) ? told : null);
                 known = mine;
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
                 StateFile.Log($"{Path} could not be written ({error.Message})");
             }
+        }
+    }
+
+    /// <summary>Whether a document about to be written holds, as this build reads it, this side's value and nothing else.</summary>
+    private static bool Holds(JsonObject written, string mine)
+    {
+        try
+        {
+            return JsonSerializer.Serialize((written.Deserialize<T>(StateFile.Options) ?? new T()).Clamped(), StateFile.Options) == mine;
+        }
+        catch (Exception error) when (StateFile.DoesNotRead(error))
+        {
+            return false;
         }
     }
 
@@ -394,8 +413,9 @@ internal static class StateFile
 
     /// <summary>Writes a document through a temporary file beside it, flushed to disk and moved over it, so a crash or
     /// a full disk leaves the old file whole; a symlink (settings.json kept in a dotfiles folder) is written through to
-    /// its target, which keeps its permissions, rather than replaced by a file of its own.</summary>
-    public static void Replace(string path, JsonObject document)
+    /// its target, which keeps its permissions, rather than replaced by a file of its own. <paramref name="placing"/> is
+    /// told the written file's last write and length just before it is moved over the old one.</summary>
+    public static void Replace(string path, JsonObject document, Action<(DateTime Written, long Length)>? placing = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string target = new FileInfo(path).LinkTarget is not null ? File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName ?? path : path;
@@ -405,7 +425,15 @@ internal static class StateFile
             throw new ReadOnlyFileException(path);
         }
         UnixFileMode? mode = !OperatingSystem.IsWindows() && File.Exists(target) ? File.GetUnixFileMode(target) : null;
-        AtomicFile.Write(target, Encoding.UTF8.GetBytes(document.ToJsonString(Options) + "\n"), mode);
+        AtomicFile.Write(target, Encoding.UTF8.GetBytes(document.ToJsonString(Options) + "\n"), mode, AtomicFile.Temporary, (temporary, at) =>
+        {
+            if (placing is not null)
+            {
+                FileInfo written = new(temporary);
+                placing((written.LastWriteTimeUtc, written.Length));
+            }
+            File.Move(temporary, at, overwrite: true);
+        });
     }
 
     /// <summary>The file's document, its version first, with each value this side changed since it last read or wrote
