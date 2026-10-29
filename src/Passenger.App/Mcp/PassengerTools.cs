@@ -337,7 +337,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         // Passenger's extension reads a C# file's symbols, not a Razor file's.
         string? taken = served.Document.Language == Languages.Language.CSharp && await server.Lsp.SymbolAtAsync(offset, cancel) is { } named ? $"{named.Shown} ({named.Kind})" : null;
-        return ByFile(taken, await Places(found, cancel));
+        // Answered now, saying which files that could use it the server has yet to take in.
+        IReadOnlyList<(string Path, string Project)> untaken = server.Web is null && Session.CSharp is { } csharp ? await csharp.UntakenAsync(served.Document, offset, cancel) : [];
+        return ByFile(taken, await Places(found, cancel)) with { Note = untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Relative(u.Path))]) : null };
     });
 
     /// <summary>usages' answer: its places in order (<see cref="Sorted"/>), each file named once.</summary>
@@ -531,7 +533,21 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new InvalidOperationException($"'{title}' offers no choices");
         }
         string what = choice is null ? $"'{title}'" : $"'{title}' ({choice})";
-        chosen = await lsp.ResolveChosenAsync(chosen, scope);
+        CodeAction resolved = await lsp.ResolveChosenAsync(chosen, scope);
+        // Resolved again once the files come under the projects its edit reaches are in them, as the window's are.
+        if (resolved.Edit is { } reaching && Session.CSharp is { IsReady: true } csharp)
+        {
+            (IReadOnlyList<(string Path, string Project)> left, bool waited) = await csharp.ReachedAsync(reaching, Patience.Limit, SayTakingIn, cancel);
+            if (left.Count > 0)
+            {
+                throw new TimeoutException($"{what} was not applied: {NotTakenIn(left)}");
+            }
+            if (waited)
+            {
+                resolved = await (Session.CSharp?.For(served.Document)?.Lsp ?? lsp).ResolveChosenAsync(chosen, scope);
+            }
+        }
+        chosen = resolved;
         string unrun = chosen.Command is { } command ? $", but not {command.Command}, which Passenger cannot run" : string.Empty;
         if (chosen.Edit is not { } edit)
         {
@@ -708,11 +724,17 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private sealed record SymbolsNamed(IReadOnlyList<NamedPlace> Symbols, int More);
 
     /// <summary>The solution's own C# symbols a name names exactly, of a kind when one is given, at most limit; none is
-    /// refused, saying how to find a name like it, unless <paramref name="noneRefused"/> is false.</summary>
+    /// refused, saying how to find a name like it, unless <paramref name="noneRefused"/> is false. A name none declares is
+    /// looked for again once the C# files come under the folder's projects are in them: a file just written may declare it.</summary>
     private async Task<SymbolsNamed> NamedAsync(RoslynSession session, string name, string? kind, int limit, CancellationToken cancel, bool noneRefused = true)
     {
         Roslyn.Extension.SymbolsFound found = await session.SymbolsNamedAsync(name, kind is null ? limit : 1000, cancel);
         List<Roslyn.Extension.NamedSymbol> kept = [.. found.Symbols.Where(s => kind is null || s.Kind.Equals(kind, StringComparison.OrdinalIgnoreCase))];
+        if (kept.Count == 0 && noneRefused && await TakenInAsync(null, cancel) && Session.CSharp?.Session is { } now)
+        {
+            found = await now.SymbolsNamedAsync(name, kind is null ? limit : 1000, cancel);
+            kept = [.. found.Symbols.Where(s => kind is null || s.Kind.Equals(kind, StringComparison.OrdinalIgnoreCase))];
+        }
         if (kept.Count == 0 && noneRefused)
         {
             throw new InvalidOperationException($"No {kind ?? "symbol"} of the solution's own code is named {name}: find_symbol finds names like it");
@@ -2022,36 +2044,40 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await When(() => Session.CSharp?.IsReady != false, ServerLimit, cancel, ServerState());
             AgentCall.Say(null);
         }
-        if (Session.CSharp is not { IsReady: true, Session: { } server })
-        {
-            throw new TimeoutException($"The language server has not loaded the workspace ({Session.CSharp?.State ?? "none"})");
-        }
-        await TakenInAsync(cancel);
-        return Session.CSharp?.Session ?? server;
+        return Session.CSharp is { IsReady: true, Session: { } server }
+            ? server
+            : throw new TimeoutException($"The language server has not loaded the workspace ({Session.CSharp?.State ?? "none"})");
     }
 
-    /// <summary>Waits, once the language server has loaded the workspace, until it holds every C# file come under one of the
-    /// folder's projects in its project (one an agent wrote a moment before among them), for up to <see cref="Patience.Limit"/>:
-    /// an answer before would leave each it holds in none out, a rename's callers there unrenamed. Refused, naming the
-    /// first, when the time is up; whether it was waited for (false while the server still loads the workspace).</summary>
-    private async Task<bool> TakenInAsync(CancellationToken cancel)
+    /// <summary>Waits, once the language server has loaded the workspace, until it holds in its project the C# file asked
+    /// about, if it came under one of the folder's projects since (an agent's written a moment before looked for first),
+    /// else every such file, for up to <see cref="Patience.Limit"/>: of a file in none it answers from its Miscellaneous
+    /// Files, and a name declared there it does not find. Refused, naming the first, when the time is up; whether it was
+    /// waited for (false while the server still loads the workspace).</summary>
+    private async Task<bool> TakenInAsync(string? path, CancellationToken cancel)
     {
         if (Session.CSharp is not { IsReady: true } csharp)
         {
             return false;
         }
-        IReadOnlyList<(string Path, string Project)> left = await csharp.UnplacedAsync(Patience.Limit, looking: true,
-            waiting => AgentCall.Say(waiting is null ? null : $"Waiting for the C# language server to load {Relative(waiting)} into its project"), cancel);
-        return left.Count == 0 ? true
-            : throw new TimeoutException(Refusals.NotTakenIn(Relative(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project)));
+        IReadOnlyList<(string Path, string Project)> left = path is null
+            ? await csharp.UnplacedAsync(Patience.Limit, looking: true, null, SayTakingIn, cancel)
+            : await csharp.PlacedAsync(Resolve(path), Patience.Limit, looking: true, SayTakingIn, cancel);
+        return left.Count == 0 ? true : throw new TimeoutException(NotTakenIn(left));
     }
 
+    /// <summary>The agent's progress while a C# file is waited for (null once it is not).</summary>
+    private void SayTakingIn(string? file) => AgentCall.Say(file is null ? null : $"Waiting for the C# language server to load {Relative(file)} into its project");
+
+    private string NotTakenIn(IReadOnlyList<(string Path, string Project)> left) =>
+        Refusals.NotTakenIn(Relative(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project));
+
     /// <summary>A file opened as the editor would, with the language server's document for it once the server has loaded
-    /// the workspace and every C# file come under its projects (<see cref="TakenInAsync"/>, waited for before the file is
-    /// opened, so one just written is opened in its project; <paramref name="takenIn"/> when the caller has).</summary>
+    /// the workspace and holds the file in its project (<see cref="TakenInAsync"/>, waited for before the file is opened,
+    /// so one just written is opened in its project; <paramref name="takenIn"/> when the caller has).</summary>
     private async Task<(OpenDocument Document, LspDocument Lsp)> Code(string path, CancellationToken cancel, bool takenIn = false)
     {
-        takenIn = takenIn || await TakenInAsync(cancel);
+        takenIn = takenIn || await TakenInAsync(path, cancel);
         OpenDocument document = await DocumentAsync(path, cancel);
         if (Session.CSharp is null)
         {
@@ -2066,7 +2092,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         await Until(() => Session.CSharp is not { } csharp || csharp.IsReady && csharp.For(document)?.Lsp is not null, ServerLimit, cancel);
         if (!takenIn)
         {
-            await TakenInAsync(cancel);
+            await TakenInAsync(path, cancel);
         }
         return (document, Session.CSharp?.For(document)?.Lsp
             ?? throw new TimeoutException($"The language server has not loaded {Path.GetFileName(document.Path)} ({Session.CSharp?.State ?? "none"})"));
@@ -2409,7 +2435,8 @@ public sealed record Place(string Path, int Line, int Column, string Text);
 
 /// <summary>usages' answer: the C# symbol the place took, as its card names it, how many places, and each file's places as
 /// "line:column text".</summary>
-public sealed record UsagesFound(string? Symbol, int Count, IReadOnlyList<FilePlaces> Files);
+/// <summary>usages' answer, and what it went without (files the C# language server has yet to take in), when it did.</summary>
+public sealed record UsagesFound(string? Symbol, int Count, IReadOnlyList<FilePlaces> Files, string? Note = null);
 
 public sealed record FilePlaces(string Path, IReadOnlyList<string> Places);
 

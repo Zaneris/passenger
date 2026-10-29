@@ -306,6 +306,69 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
             $"usages right after the agent wrote Square.cs and its caller missed the caller, so a change made by it would leave the caller behind: {Text(usages)}");
     }
 
+    /// <summary>App references Lib, and a caller of Lib's method is written into App while App's design-time build is
+    /// held, so the language server cannot take it in: usages of the method answer at once, saying they went without the
+    /// caller, where they waited for App and refused; a rename of it waits for App, which loads once its build is let go,
+    /// and renames the caller there too.</summary>
+    [Fact]
+    public async Task Usages_answer_at_once_without_a_file_another_project_has_yet_to_load_and_a_rename_waits_for_it()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-reach-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Shapes.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
+        TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library());
+        const string Shape = "namespace Lib;\n\npublic static class Shape\n{\n    public static int Make() => 1;\n}\n";
+        TestFolders.Write(folder, "Lib/Shape.cs", Shape);
+        TestFolders.Write(folder, "App/App.csproj", TestProjects.Library().With("  <ItemGroup>\n    <ProjectReference Include=\"../Lib/Lib.csproj\" />\n  </ItemGroup>\n"));
+        TestFolders.Write(folder, "App/Start.cs", "namespace App;\n\npublic static class Start\n{\n    public static int Go() => 0;\n}\n");
+        // App's design-time builds, which the language server loads it from, held while App/hold is there until App/released is.
+        TestFolders.Write(folder, "App/Directory.Build.targets", """
+            <Project>
+              <Target Name="HeldLoad" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' == 'true'">
+                <Exec Condition="'$(OS)' != 'Windows_NT' and Exists('$(MSBuildProjectDirectory)/hold')" Command="for i in `seq 3000`; do test -f released &amp;&amp; break; sleep 0.1; done" />
+                <Exec Condition="'$(OS)' == 'Windows_NT' and Exists('$(MSBuildProjectDirectory)/hold')" Command="powershell -NoProfile -Command &quot;for (%24i = 0; %24i -lt 3000 -and -not (Test-Path released); %24i++) { Start-Sleep -Milliseconds 100 }&quot;" />
+              </Target>
+            </Project>
+            """);
+        await Restore.RunAsync(Path.Combine(folder, "Shapes.slnx"));
+        await using McpClient client = await Start(["--mcp", folder]);
+        // The projects loaded first, so the file written next comes after.
+        await Call(client, McpTools.Diagnostics, new() { ["path"] = "Lib/Shape.cs" });
+
+        TestFolders.Write(folder, "App/hold", string.Empty);
+        const string Caller = "namespace App;\n\npublic static class Caller\n{\n    public static int Call() => Lib.Shape.Make();\n}\n";
+        TestFolders.Write(folder, "App/Caller.cs", Caller);
+        (int line, int column) = LineColumn(Shape, "Make", Shape.IndexOf("Make", StringComparison.Ordinal));
+        Dictionary<string, object?> make = new() { ["path"] = "Lib/Shape.cs", ["line"] = line, ["column"] = column };
+        Heard heard = new();
+        CallToolResult asked = await Result(client, McpTools.Usages, make, heard: heard);
+        Assert.True(asked.IsError != true, $"usages of Lib's method, while App's build was held with a new file in it, did not answer: {Text(asked)}");
+        string caller = Path.Combine("App", "Caller.cs");
+        Assert.True(!heard.Told.Any(t => t.Message?.Contains("Caller.cs", StringComparison.Ordinal) == true),
+            $"usages waited for App, whose build was held, to load its new caller: {string.Join(" | ", heard.Told.Select(t => t.Message))}");
+        using JsonDocument usages = JsonDocument.Parse(Text(asked));
+        Assert.Equal([Path.Combine("Lib", "Shape.cs")], Used(usages.RootElement).Select(u => u.Path));
+        Assert.True(usages.RootElement.TryGetProperty("note", out JsonElement note) && note.GetString()!.Contains(caller, StringComparison.Ordinal),
+            $"usages answered without App's new caller and did not say so, so an agent takes the method for used nowhere else: {Text(asked)}");
+
+        Task<CallToolResult> renaming = Result(client, McpTools.Rename, new(make) { ["newName"] = "Build" });
+        string status = string.Empty;
+        Assert.True(await Waiting.UntilAsync(async () => renaming.IsCompleted
+                || (status = Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide", ["filter"] = "#StatusText" }))).Contains("to load Caller.cs into its project", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(30), Cancel, TimeSpan.FromMilliseconds(100)),
+            $"The rename did not say it waited for App to load its new caller: {status}");
+        if (renaming.IsCompleted)
+        {
+            Assert.Fail($"The rename did not wait for App, whose build was held, to load its new caller: {Text(await renaming)}");
+        }
+        TestFolders.Write(folder, "App/released", string.Empty);
+        CallToolResult renamed = await renaming;
+        Assert.True(renamed.IsError != true, $"The rename, once App's build was let go, answered: {Text(renamed)}");
+        Assert.Equal(Shape.Replace("Make()", "Build()", StringComparison.Ordinal), File.ReadAllText(Path.Combine(folder, "Lib", "Shape.cs")));
+        Assert.True(File.ReadAllText(Path.Combine(folder, "App", "Caller.cs")) == Caller.Replace("Shape.Make()", "Shape.Build()", StringComparison.Ordinal),
+            $"The rename ({Text(renamed)}) left App's new caller calling a method that is no longer there:\n{File.ReadAllText(Path.Combine(folder, "App", "Caller.cs"))}");
+    }
+
     [AvaloniaFact]
     public void An_agent_optimizes_imports_and_cleans_up_a_file_a_project_and_the_solution_and_hears_what_other_files_have()
     {

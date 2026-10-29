@@ -177,17 +177,15 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
         }
     }
 
-    /// <summary>Find Usages through the language server: the usages of the name at an offset, for the Find window.</summary>
+    /// <summary>Find Usages through the language server: the usages of the name at an offset, for the Find window, which
+    /// names the files come under the projects that could use it that the server has not taken in yet.</summary>
     public async Task ServerUsagesAsync(int offset)
     {
+        IReadOnlyList<(string Path, string Project)> untaken = [];
         if (context.Editors.Active is { } shown)
         {
             using ChangeTracker waited = new(shown.Text);
-            if (await context.TakenInAsync(shown) is { } unloaded)
-            {
-                context.Say($"Find Usages: {unloaded}");
-                return;
-            }
+            untaken = await context.UntakenAsync(shown, () => waited.MapOffset(offset));
             offset = waited.MapOffset(offset);
         }
         if (context.Ask("Find Usages") is not { } lsp)
@@ -209,7 +207,8 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
                 end++;
             }
             string name = Editor.Document.Snapshot.GetText(start, end - start);
-            context.ShowUsages(($"Usages of {(name.Length > 0 ? name : "symbol")}", usages));
+            context.ShowUsages($"Usages of {(name.Length > 0 ? name : "symbol")}", usages,
+                untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Path.GetFileName(u.Path))]) : null);
         }
         catch (LanguageServerFailed failed)
         {

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Lsp;
@@ -10,7 +11,8 @@ namespace Passenger.App.CSharp;
 /// in its project: before, the server has an open one in Miscellaneous Files and the rest in nothing, so what it says of
 /// the solution leaves them out. Each is heard by the folder's watcher or found written a moment ago (<see
 /// cref="WrittenNow"/>), and let go of once the server holds it, or once a load of its project that read the disk after it
-/// came has ended without it (a file the project leaves out). An open one is opened in the server only then.</summary>
+/// came has ended without it (a file the project leaves out). An open one is opened in the server only then. What waits
+/// for them waits only for those that can change its answer (<see cref="ReachOfAsync"/>).</summary>
 public sealed partial class CSharpService
 {
     /// <summary>How long after a write a file may be on disk unheard by the folder's watcher.</summary>
@@ -38,12 +40,20 @@ public sealed partial class CSharpService
         public bool Decided { get; set; }
     }
 
-    /// <summary>The C# files of the folder's projects the server may not hold in their projects yet, with <paramref
-    /// name="looking"/> those written a moment ago the watcher may not have heard (an agent's), waited for up to <paramref
-    /// name="within"/>: none once each is held or left out, else the rest, each with its project; none from a server not
-    /// loaded or without Passenger's extension. Done at once, on the thread, when none is waited for and none looked for;
-    /// <paramref name="waiting"/> is told the first file waited for, and null once a wait is over.</summary>
-    public async Task<IReadOnlyList<(string Path, string Project)>> UnplacedAsync(TimeSpan within, bool looking, Action<string?>? waiting, CancellationToken cancel)
+    /// <summary>Whether a C# file come under one of the folder's projects may not be in it in the server yet.</summary>
+    public bool Arriving => arriving.Count > 0;
+
+    /// <summary>The folder's loaded projects as MSBuild evaluates them now (the session's), which say what references what;
+    /// without a session, those of the workspace it was started on, which may not be evaluated yet.</summary>
+    public Func<IReadOnlyList<ProjectModel>>? ProjectsNow { get; init; }
+
+    /// <summary>The C# files of the folder's projects the server may not hold in their projects yet that <paramref
+    /// name="counted"/> names by path and project (null: all), with <paramref name="looking"/> those written a moment ago the
+    /// watcher may not have heard (an agent's), waited for up to <paramref name="within"/>: none once each is held or left
+    /// out, else the rest; none from a server not loaded or without Passenger's extension. At once, on the thread, when none
+    /// is waited for or looked for; <paramref name="waiting"/> is told the first waited for, and null once a wait is over.</summary>
+    public async Task<IReadOnlyList<(string Path, string Project)>> UnplacedAsync(TimeSpan within, bool looking, Func<string, string, bool>? counted, Action<string?>? waiting,
+        CancellationToken cancel)
     {
         UiThread.Check();
         long began = Stopwatch.GetTimestamp();
@@ -65,11 +75,12 @@ public sealed partial class CSharpService
         {
             while (true)
             {
-                if (session is not { IsLoaded: true } running || arriving.Count == 0)
+                if (session is not { IsLoaded: true } running || !arriving.Any(a => Counts(a.Key, a.Value.Project)))
                 {
                     return [];
                 }
                 Task heard = reportHeard.Task;
+                // Every one is asked about, so those held now are let go of whether counted or not.
                 List<string> asked = [.. arriving.Keys];
                 IReadOnlyList<Roslyn.Extension.TextHeld> texts;
                 try
@@ -80,19 +91,26 @@ public sealed partial class CSharpService
                 {
                     return [];
                 }
+                bool letGo = false;
                 foreach (Roslyn.Extension.TextHeld text in texts)
                 {
                     // One gone, held, or left out by a load of its project since it came is waited for no more.
                     if (arriving.TryGetValue(text.Path, out Arrival? arrival) && (text.Hash is not null || arrival.Decided || !File.Exists(text.Path)))
                     {
                         arriving.Remove(text.Path);
+                        letGo = true;
                         if (text.Hash is null && arrival.Decided)
                         {
                             leftOut[text.Path] = Written(text.Path, File.GetLastWriteTimeUtc);
                         }
                     }
                 }
-                List<(string Path, string Project)> left = [.. asked.Where(arriving.ContainsKey).Select(p => (p, arriving[p].Project))];
+                // An open one held back from the server goes to it now that its project has it.
+                if (letGo && holding is not null && session == running)
+                {
+                    ConnectLoaded(running);
+                }
+                List<(string Path, string Project)> left = [.. asked.Where(p => arriving.TryGetValue(p, out Arrival? a) && Counts(p, a.Project)).Select(p => (p, arriving[p].Project))];
                 TimeSpan spent = Stopwatch.GetElapsedTime(began);
                 if (left.Count == 0 || spent >= within)
                 {
@@ -112,6 +130,116 @@ public sealed partial class CSharpService
                 waiting?.Invoke(null);
             }
         }
+
+        bool Counts(string path, string project) => counted?.Invoke(path, project) != false;
+    }
+
+    /// <summary>Waits until the server holds an open file itself in its project, if it came under one since the server
+    /// loaded the workspace, for up to <paramref name="within"/>: of one it holds in none it answers from its Miscellaneous
+    /// Files, or from nothing. The file when it does not by then, else none.</summary>
+    public Task<IReadOnlyList<(string Path, string Project)>> PlacedAsync(string path, TimeSpan within, bool looking, Action<string?>? waiting, CancellationToken cancel) =>
+        UnplacedAsync(within, looking, (file, _) => PathNames.Same(file, path), waiting, cancel);
+
+    /// <summary>Waits, for a change at an offset of an open file, until the server holds in their projects the C# files come
+    /// under the projects it reaches (<see cref="ReachOfAsync"/>), the file itself first, for up to <paramref name="within"/>
+    /// in all: worked out before, the change leaves each it holds in none out (a rename its callers there). The rest when
+    /// the time is up, else none.</summary>
+    public async Task<IReadOnlyList<(string Path, string Project)>> ReachedAsync(OpenDocument document, Func<int> offset, TimeSpan within, Action<string?>? waiting,
+        CancellationToken cancel)
+    {
+        long began = Stopwatch.GetTimestamp();
+        IReadOnlyList<(string Path, string Project)> itself = await PlacedAsync(document.Path, within, looking: false, waiting, cancel);
+        if (itself.Count > 0 || !Arriving)
+        {
+            return itself;
+        }
+        Func<string, string, bool> reach = await ReachOfAsync(document, offset(), cancel);
+        return await UnplacedAsync(within - Stopwatch.GetElapsedTime(began), looking: false, reach, waiting, cancel);
+    }
+
+    /// <summary>The C# files come under the projects that can hold the usages of the symbol at an offset of an open file
+    /// (<see cref="ReachOfAsync"/>) that the server has not taken into them yet, looked at once: an answer given now says
+    /// it went without them.</summary>
+    public async Task<IReadOnlyList<(string Path, string Project)>> UntakenAsync(OpenDocument document, int offset, CancellationToken cancel) =>
+        Arriving ? await UnplacedAsync(TimeSpan.Zero, looking: false, await ReachOfAsync(document, offset, cancel), null, cancel) : [];
+
+    /// <summary>Which C# files come under the folder's projects can change what the server says of the symbol at an offset
+    /// of an open file, by their paths and projects: those of the project that declares it (the file's own where the
+    /// server names no declaration in the folder's code) and of every project that references that one, through others too;
+    /// every one where no project holds the declaration.</summary>
+    public async Task<Func<string, string, bool>> ReachOfAsync(OpenDocument document, int offset, CancellationToken cancel)
+    {
+        string declared = document.Path;
+        if (For(document)?.Lsp is { } lsp)
+        {
+            try
+            {
+                if (await lsp.SymbolAtAsync(offset, cancel) is { Path: { } path })
+                {
+                    declared = PathNames.Canonical(path);
+                }
+            }
+            catch (LanguageServerFailed)
+            {
+                // A server that cannot say has the file's own project stand for the declaration's.
+            }
+        }
+        return ReachOf(HolderOf(declared) is { } project ? [project] : null, withDependents: true);
+    }
+
+    /// <summary>Waits, for an edit the server worked out, until it holds in their projects the C# files come under the
+    /// projects of the C# files the edit reaches, for up to <paramref name="within"/>: the rest when the time is up, else
+    /// none; and whether any was waited for, which the edit went without.</summary>
+    public async Task<(IReadOnlyList<(string Path, string Project)> Left, bool Waited)> ReachedAsync(System.Text.Json.JsonElement edit, TimeSpan within, Action<string?>? waiting,
+        CancellationToken cancel)
+    {
+        if (!Arriving)
+        {
+            return ([], false);
+        }
+        bool waited = false;
+        IReadOnlyList<(string Path, string Project)> left = await UnplacedAsync(within, looking: false, ReachOf(WorkspaceEdits.Paths(edit)), file =>
+        {
+            waited |= file is not null;
+            waiting?.Invoke(file);
+        }, cancel);
+        return (left, waited);
+    }
+
+    /// <summary>Which C# files come under the folder's projects can change an edit the server worked out, by their paths
+    /// and projects: those of the projects holding the C# files it reaches; every one where no project holds one of them.</summary>
+    private Func<string, string, bool> ReachOf(IEnumerable<string> reached)
+    {
+        List<string> projects = [];
+        foreach (string path in reached.Where(IsCSharp))
+        {
+            if (HolderOf(PathNames.Canonical(path)) is not { } project)
+            {
+                return ReachOf(null, withDependents: false);
+            }
+            projects.Add(project);
+        }
+        return ReachOf(projects, withDependents: false);
+    }
+
+    /// <summary>The projects given, with every one that references one of them where <paramref name="withDependents"/>, as a
+    /// test of an arrival's project; every project for none given.</summary>
+    private Func<string, string, bool> ReachOf(IReadOnlyList<string>? projects, bool withDependents)
+    {
+        if (projects is null || workspace is not { } opened)
+        {
+            return (_, _) => true;
+        }
+        HashSet<string> reach = new(projects, PathNames.Comparer);
+        if (withDependents)
+        {
+            IReadOnlyList<ProjectModel> now = ProjectsNow?.Invoke() ?? opened.Projects;
+            foreach (string project in projects)
+            {
+                reach.UnionWith(ProjectModel.Dependents(now, project));
+            }
+        }
+        return (_, project) => reach.Contains(project);
     }
 
     /// <summary>The C# files of the projects written since <paramref name="since"/>, with the project and time of each: a

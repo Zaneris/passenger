@@ -28,6 +28,12 @@ public static class Refusals
         $"{file} is not loaded into {project} yet: the C# language server has not taken it in after {CSharp.Patience.Limit.TotalSeconds:0} s, "
         + "and would answer without it; try again once it has";
 
+    /// <summary>What an answer given before the C# language server took C# files come under its projects into them went
+    /// without (<see cref="CSharp.CSharpService.UntakenAsync"/>), the files named as shown.</summary>
+    public static string Untaken(IReadOnlyList<string> files) =>
+        $"Without {string.Join(", ", files.Take(3))}{(files.Count > 3 ? $" and {files.Count - 3} more" : string.Empty)}, which the C# language server "
+        + $"has not loaded into {(files.Count == 1 ? "its project" : "their projects")} yet";
+
     /// <summary>Go to Declaration found nothing to go to where it was asked.</summary>
     public const string NoDeclaration = "Cannot find a declaration to go to";
 

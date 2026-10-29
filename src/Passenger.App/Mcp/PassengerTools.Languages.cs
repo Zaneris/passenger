@@ -44,8 +44,8 @@ public sealed partial class PassengerTools
     /// project read, the C# server's workspace loaded. A file no service reads is refused at once, saying which do.</summary>
     private async Task<Served> Serve(string path, CancellationToken cancel)
     {
-        // A C# file is opened in the server once the files come under its projects are in them.
-        bool takenIn = Languages.Language.ForPath(path).Service == Languages.LanguageService.CSharp && await TakenInAsync(cancel);
+        // A C# file come under a project is opened in the server once it is in that project.
+        bool takenIn = Languages.Language.ForPath(path).Service == Languages.LanguageService.CSharp && await TakenInAsync(path, cancel);
         OpenDocument document = await DocumentAsync(path, cancel);
         string name = Path.GetFileName(document.Path);
         if (XamlService.IsXaml(document.Path))

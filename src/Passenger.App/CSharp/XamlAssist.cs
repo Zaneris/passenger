@@ -470,7 +470,7 @@ internal sealed partial class XamlAssist : LanguageAssist
             context.Say("No usages found");
             return;
         }
-        context.ShowUsages(($"Usages of {symbol.Name}", usages));
+        context.ShowUsages($"Usages of {symbol.Name}", usages);
     }
 
     /// <summary>What Find Usages finds in XAML, said where it finds nothing else.</summary>

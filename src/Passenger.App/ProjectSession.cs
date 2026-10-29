@@ -1007,6 +1007,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 SolutionWide = setup.SolutionWide(),
                 Hints = (shown.ParameterHints, shown.TypeHints),
                 FirstProjects = ActiveProjectsAsync,
+                ProjectsNow = () => Projects,
                 Feed = DesignTimeBuilds.Feed,
                 // Razor's HTML is the HTML server's to answer.
                 HtmlServer = Web is { } web ? web.HtmlAsync : null,

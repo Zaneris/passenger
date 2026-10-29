@@ -25,7 +25,7 @@ public partial class MainWindow
             return null;
         }
         HashSet<string> referenced = new(all.FirstOrDefault(p => PathNames.Same(p.Path, project))?.ProjectReferences ?? [], StringComparer.Ordinal);
-        HashSet<string> dependents = Dependents(all, project);
+        HashSet<string> dependents = ProjectModel.Dependents(all, project);
         AddReferenceDialog dialog = new(name, [.. others.Select(p => new ReferenceChoice(p.Path, p.Name, InFolder(p.Path), referenced.Contains(p.Path), dependents.Contains(p.Path)))]);
         IdeErrors.Observe(ApplyAsync());
         return dialog;
@@ -119,23 +119,5 @@ public partial class MainWindow
         }
         status.Text = problem is null ? $"Removed the reference to {other} from {name}" : $"{name} could not be changed: {problem}";
         return problem is null;
-    }
-
-    /// <summary>The projects that reference one, directly or through others.</summary>
-    private static HashSet<string> Dependents(IReadOnlyList<ProjectModel> projects, string project)
-    {
-        HashSet<string> found = new(StringComparer.Ordinal);
-        Queue<string> next = new([project]);
-        while (next.TryDequeue(out string? at))
-        {
-            foreach (ProjectModel referrer in projects.Where(p => p.ProjectReferences.Any(r => PathNames.Same(r, at))))
-            {
-                if (found.Add(referrer.Path))
-                {
-                    next.Enqueue(referrer.Path);
-                }
-            }
-        }
-        return found;
     }
 }

@@ -115,7 +115,7 @@ public sealed class CodeAssist
     }
 
     /// <summary>Find Usages' answer, for the Find window: what was searched for and where it is used.</summary>
-    public event EventHandler<(string Title, IReadOnlyList<LspLocation> Usages)>? UsagesFound
+    public event EventHandler<(string Title, IReadOnlyList<LspLocation> Usages, string? Note)>? UsagesFound
     {
         add => context.UsagesFound += value;
         remove => context.UsagesFound -= value;

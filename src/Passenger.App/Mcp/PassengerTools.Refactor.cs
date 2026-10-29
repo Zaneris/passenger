@@ -78,7 +78,7 @@ public sealed partial class PassengerTools
             "move" => await MoveAsync(document, lsp, offset, given, describing, patience),
             "pull_members_up" => await MembersAsync(document, lsp, offset, given, describing, up: true, patience),
             "push_members_down" => await MembersAsync(document, lsp, offset, given, describing, up: false, patience),
-            "safe_delete" => await SafeDeleteAsync(lsp, offset, given, describing, cancel),
+            "safe_delete" => await SafeDeleteAsync(document, offset, given, describing, cancel),
             _ => await ServerRefactorAsync(named, document, lsp, offset, endLine, endColumn, given, describing, patience),
         };
         if (answer.Files.Count > 0)
@@ -265,9 +265,9 @@ public sealed partial class PassengerTools
         return Applied(kind, await window.Assist.Actions.MoveMembersAsync(document, offset, hierarchy, up, target, members, made, patience));
     }
 
-    private async Task<RefactorAnswer> SafeDeleteAsync(LspDocument lsp, int offset, JsonElement? options, bool describing, CancellationToken cancel)
+    private async Task<RefactorAnswer> SafeDeleteAsync(OpenDocument document, int offset, JsonElement? options, bool describing, CancellationToken cancel)
     {
-        (CSharp.CodeActions.Doomed? found, string? whyNot) = await window.Assist.Actions.FindDoomedAsync(lsp, offset);
+        (CSharp.CodeActions.Doomed? found, string? whyNot) = await window.Assist.Actions.FindDoomedAsync(document, offset);
         if (found is not { } doomed)
         {
             throw new InvalidOperationException(whyNot ?? "Nothing to delete here");

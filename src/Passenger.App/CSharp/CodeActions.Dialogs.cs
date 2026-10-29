@@ -136,7 +136,7 @@ internal sealed partial class CodeActions
     /// call changed, as one command.</summary>
     public Task<RefactorOutcome> ChangeSignatureAsync(OpenDocument document, int offset, Signature signature, string method, string returnType, IReadOnlyList<ParameterChange> parameters,
         Patience? patience = null) =>
-        MakeAsync("Change Signature", document,
+        MakeAsync("Change Signature", document, offset,
             lsp => lsp.ExtensionAsync<Refactored>(Handlers.ChangeSignature, new SignatureChange(lsp.PlaceOf(offset), method, returnType, parameters)),
             files => $"Changed the signature of {signature.Container}{(signature.Kind == "method" ? "." + method : string.Empty)} in {Plural.Of(files, "file")}", patience);
 
@@ -144,19 +144,19 @@ internal sealed partial class CodeActions
     /// the type's, of the members chosen by their ids, which the type then implements.</summary>
     public Task<RefactorOutcome> ExtractInterfaceAsync(OpenDocument document, int offset, InterfaceSource source, string name, string file, IReadOnlyList<string> members,
         Patience? patience = null) =>
-        MakeAsync("Extract Interface", document,
+        MakeAsync("Extract Interface", document, offset,
             lsp => lsp.ExtensionAsync<Refactored>(Handlers.ExtractInterface, new InterfaceExtraction(lsp.PlaceOf(offset), name, file, members)),
             _ => $"Extracted the interface {name} from {source.Type} to {file}", patience);
 
     /// <summary>Move to Another File: the type at an offset into a new file of this name beside its own.</summary>
     public Task<RefactorOutcome> MoveTypeToFileAsync(OpenDocument document, int offset, TypeSource type, string file, Patience? patience = null) =>
-        MakeAsync("Move to Another File", document,
+        MakeAsync("Move to Another File", document, offset,
             lsp => lsp.ExtensionAsync<Refactored>(Handlers.MoveTypeToFile, new TypeToFile(lsp.PlaceOf(offset), file)),
             _ => $"Moved {type.Kind} {type.Name} to {file}", patience);
 
     /// <summary>Move to Namespace: the type at an offset into this namespace, the files that use it following.</summary>
     public Task<RefactorOutcome> MoveTypeToNamespaceAsync(OpenDocument document, int offset, TypeSource type, string space, Patience? patience = null) =>
-        MakeAsync("Move to Namespace", document,
+        MakeAsync("Move to Namespace", document, offset,
             lsp => lsp.ExtensionAsync<Refactored>(Handlers.MoveTypeToNamespace, new TypeToNamespace(lsp.PlaceOf(offset), space)),
             files => $"Moved {type.Kind} {type.Name} to namespace {space} in {Plural.Of(files, "file")}", patience);
 
@@ -165,7 +165,7 @@ internal sealed partial class CodeActions
     /// stay.</summary>
     public Task<RefactorOutcome> MoveMembersAsync(OpenDocument document, int offset, Hierarchy hierarchy, bool up, string target, IReadOnlyList<string> members, IReadOnlyList<string> made,
         Patience? patience = null) =>
-        MakeAsync(up ? "Pull Members Up" : "Push Members Down", document,
+        MakeAsync(up ? "Pull Members Up" : "Push Members Down", document, offset,
             lsp => lsp.ExtensionAsync<Refactored>(up ? Handlers.PullMembersUp : Handlers.PushMembersDown, new MembersMove(lsp.PlaceOf(offset), target, members, made)),
             files => up
                 ? $"Pulled {Plural.Of(members.Count, "member")} of {hierarchy.Type} up to {hierarchy.Bases.FirstOrDefault(b => b.Id == target)?.Text ?? target}"
@@ -214,15 +214,16 @@ internal sealed partial class CodeActions
     }
 
     /// <summary>A refactoring computed by Passenger's extension for a file and applied as one command, which Undo takes back
-    /// whole: every file it changes, open or not, and every file it makes. What it came to once the files not open it wrote
-    /// have landed (<see cref="WorkspaceEdits.LandedAsync"/>): the files it changed and what to say of it, or why it was
-    /// not made (for an agent's call, told its <paramref name="patience"/>).</summary>
-    internal async Task<RefactorOutcome> MakeAsync(string name, OpenDocument document, Func<LspDocument, Task<Refactored>> ask, Func<int, string> done, Patience? patience)
+    /// whole: every file it changes, open or not, and every file it makes, once the files come under the projects the symbol
+    /// at <paramref name="offset"/> reaches are in them. What it came to once the files not open it wrote have landed (<see
+    /// cref="WorkspaceEdits.LandedAsync"/>): the files it changed and what to say of it, or why it was not made (for an
+    /// agent's call, told its <paramref name="patience"/>).</summary>
+    internal async Task<RefactorOutcome> MakeAsync(string name, OpenDocument document, int offset, Func<LspDocument, Task<Refactored>> ask, Func<int, string> done, Patience? patience)
     {
         try
         {
             int version = document.Text.Version;
-            if (await context.TakenInAsync(document) is { } unloaded)
+            if (await context.TakenInAsync(document, () => offset) is { } unloaded)
             {
                 return RefactorOutcome.Refused($"{name} was not applied: {unloaded}");
             }

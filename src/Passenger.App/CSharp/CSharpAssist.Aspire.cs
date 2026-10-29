@@ -101,7 +101,7 @@ internal sealed partial class CSharpAssist
             // Where its warning stands as it is chosen, while it does; the extension says when the reference is no longer missing.
             Again = _ => context.CSharp?.For(file)?.AspireMissingOn(null).FirstOrDefault(m => m.Service == named && m.Resource == resource) is { } now
                 ? Fix(now.Range, named, resource) : Fix(range, named, resource),
-            Elsewhere = (at, patience) => actions.MakeAsync("Add Aspire reference", file,
+            Elsewhere = (at, patience) => actions.MakeAsync("Add Aspire reference", file, at.Start,
                 current => current.ExtensionAsync<Refactored>(Handlers.AspireReferenceFix,
                     new AspireFixRequest(current.PlaceOf(at.Start), named, resource)),
                 _ => $"Added WithReference({resource}) to {named}", patience),
@@ -240,7 +240,7 @@ internal sealed partial class CSharpAssist
     /// <summary>A resource renamed from its name at an offset: where its AppHost declares it and wherever its services read it,
     /// worked out again by the extension as it is made, one command of global undo; shared with the agents' rename.</summary>
     internal Task<RefactorOutcome> RenameResourceAsync(OpenDocument document, int offset, string old, string name, Patience? patience) =>
-        actions.MakeAsync($"Rename {old} to {name}", document,
+        actions.MakeAsync($"Rename {old} to {name}", document, offset,
             async current => (await current.ExtensionAsync<AspireRenaming>(Handlers.AspireRename, new AspireRenameRequest(current.PlaceOf(offset), name))).Made
                 ?? new Refactored($"{old} was not renamed: no resource is named there any longer", []),
             files => $"Renamed {old} to {name} in {Passenger.Core.Plural.Of(files, "file")}", patience);

@@ -207,6 +207,62 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         second.Close();
     }
 
+    /// <summary>A caller of Lib's method comes into App, which references Lib, while App's design-time build is held, so the
+    /// language server cannot take it in: Find Usages on the method answers at once, the Find window and the status bar
+    /// saying it went without the caller, where it waited for App and refused; a rename of the method waits for App, which
+    /// loads once its build is let go, and renames the caller there too.</summary>
+    [AvaloniaFact]
+    public void Find_usages_answers_at_once_without_a_file_another_project_has_yet_to_load_and_a_rename_waits_for_it()
+    {
+        // App's design-time builds, which the language server loads it from, held while App/hold is there until App/released is.
+        Write(folder, "App/Directory.Build.targets", """
+            <Project>
+              <Target Name="HeldLoad" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' == 'true'">
+                <Exec Condition="'$(OS)' != 'Windows_NT' and Exists('$(MSBuildProjectDirectory)/hold')" Command="for i in `seq 3000`; do test -f released &amp;&amp; break; sleep 0.1; done" />
+                <Exec Condition="'$(OS)' == 'Windows_NT' and Exists('$(MSBuildProjectDirectory)/hold')" Command="powershell -NoProfile -Command &quot;for (%24i = 0; %24i -lt 3000 -and -not (Test-Path released); %24i++) { Start-Sleep -Milliseconds 100 }&quot;" />
+              </Target>
+            </Project>
+            """);
+        MainWindow window = Keeping();
+        window.OpenFile(Path.Combine(folder, "Lib", "Greeter.cs"));
+        OpenDocument greeter = window.EditorArea.Active!;
+        Ui.WaitFor(() => window.CSharpService?.IsReady == true && window.CSharpService.For(greeter)?.Lsp is not null, "the language server to load the projects", TimeSpan.FromMinutes(2));
+        HashSet<string> heard = new(StringComparer.Ordinal);
+        EventHandler<FolderChanges> hear = (_, changes) => heard.UnionWith(changes.Paths.Select(Path.GetFileName).OfType<string>());
+        window.FolderWatcher!.Changed += hear;
+        Write(folder, "App/hold", string.Empty);
+        string caller = Write(folder, "App/Caller.cs", "static class Caller\n{\n    static string Call() => Lib.Greeter.Hello();\n}\n");
+        Ui.PumpUntil(() => heard.Contains("Caller.cs"), "the folder's watcher to hear of App's new caller");
+        window.FolderWatcher.Changed -= hear;
+
+        // Pumped, not settled from here until App's build is let go: what the server is asked of App waits for it.
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "string Hel");
+        Ui.Run(window, AppActions.FindUsages, settle: false);
+        Ui.PumpUntil(() => window.Find.Rows.Any(r => r.Usage is not null) || window.Status?.StartsWith("Find Usages:", StringComparison.Ordinal) == true,
+            "Find Usages to answer", TimeSpan.FromSeconds(30));
+        string[] usages = [.. window.Find.Rows.Where(r => r.Usage is not null).Select(r => $"{Path.GetFileName(r.Usage!.Path)}: {r.Label}")];
+        Assert.True(usages.Length > 0, $"Find Usages on Lib's method, while App's build was held with a new file in it, did not answer: {window.Status}");
+        Assert.DoesNotContain(usages, u => u.StartsWith("Caller.cs", StringComparison.Ordinal));
+        Assert.True(window.Find.Without?.Contains("Caller.cs", StringComparison.Ordinal) == true,
+            $"The Find window did not say its usages went without App's new caller, so the method reads as used less than it is: {window.Find.Without} [{string.Join("; ", usages)}]");
+        Assert.Contains("without Caller.cs", window.Status, StringComparison.Ordinal);
+
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, AppActions.Rename, settle: false);
+        Ui.PumpUntil(() => window.FocusManager?.GetFocusedElement() is TextBox, "the rename box to take the keys");
+        window.KeyTextInput("Greet");
+        window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
+        Ui.PumpUntil(() => window.Status?.Contains("to load Caller.cs into its project", StringComparison.Ordinal) == true,
+            "the rename to say it waits for App to load its new caller", TimeSpan.FromSeconds(30));
+        Assert.Contains("Greeter.Hello()", File.ReadAllText(caller), StringComparison.Ordinal);
+        Ui.Hold(Passenger.App.CSharp.WorkspaceEdits.Catching, "the caller's write to be older than the moment in which a rename refuses a file just written");
+        Write(folder, "App/released", string.Empty);
+        Ui.WaitFor(() => File.ReadAllText(caller).Contains("Greeter.Greet()", StringComparison.Ordinal), () => $"the rename, once App's build was let go, to reach App's new caller ({window.Status})",
+            TimeSpan.FromMinutes(1));
+        Assert.Contains("public static string Greet()", greeter.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
     /// <summary>A file open as the language server starts again, or as the solution gains a project, reaches the new server
     /// only once it has said that file's project loaded, never one of its Miscellaneous Files meanwhile, though a program
     /// found beside the solution as it started is loaded beside the projects shown first; a file no project of the folder

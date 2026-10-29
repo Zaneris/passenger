@@ -337,6 +337,24 @@ public sealed record ProjectModel(
         return owner;
     }
 
+    /// <summary>The projects that reference one, directly or through others, by their paths.</summary>
+    public static HashSet<string> Dependents(IReadOnlyList<ProjectModel> projects, string project)
+    {
+        HashSet<string> found = new(PathNames.Comparer);
+        Queue<string> next = new([project]);
+        while (next.TryDequeue(out string? at))
+        {
+            foreach (ProjectModel referrer in projects.Where(p => p.ProjectReferences.Any(r => PathNames.Same(r, at))))
+            {
+                if (found.Add(referrer.Path))
+                {
+                    next.Enqueue(referrer.Path);
+                }
+            }
+        }
+        return found;
+    }
+
     /// <summary>Whether it is a file-based program, named by its C# file rather than a project file.</summary>
     public bool IsProgram => Host.ProgramFiles.IsProgram(Path);
 

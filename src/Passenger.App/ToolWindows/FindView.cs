@@ -62,6 +62,9 @@ public sealed class FindView : DockPanel
     private readonly ListBox list;
     private readonly CodeEditor preview;
     private readonly TextBlock placeholder;
+
+    /// <summary>What the search shown went without, above its usages, while it went without anything.</summary>
+    private readonly TextBlock note;
     private readonly Func<string, string?> textOf;
     private readonly Func<string, CSharpParseOptions> parseOptions;
 
@@ -111,9 +114,13 @@ public sealed class FindView : DockPanel
         body.Children.Add(preview);
         placeholder = new TextBlock { Classes = { "emptyText" } };
         ActionTips.SetWords(placeholder, AppActions.FindUsages, keys => $"{ActionTips.Named("Find Usages", keys)} lists a symbol's usages here");
-        body.IsVisible = false;
-        Children.Add(new Panel { Children = { body, placeholder } });
-        Body = body;
+        note = MutedText.Wrapped(string.Empty);
+        note.Margin = new Thickness(8, 4);
+        note.IsVisible = false;
+        DockPanel.SetDock(note, Dock.Top);
+        DockPanel shown = new() { IsVisible = false, Children = { note, body } };
+        Children.Add(new Panel { Children = { shown, placeholder } });
+        Body = shown;
     }
 
     /// <summary>A usage to go to.</summary>
@@ -128,6 +135,9 @@ public sealed class FindView : DockPanel
     /// <summary>The search shown, by its title.</summary>
     public string? Shown => current?.Title;
 
+    /// <summary>What the search shown went without, as it says above its usages; null when it went without nothing.</summary>
+    public string? Without => current?.Without;
+
     /// <summary>The code beside the tree: the chosen usage's file, scrolled to it.</summary>
     public CodeEditor Preview => preview;
 
@@ -137,7 +147,7 @@ public sealed class FindView : DockPanel
         set => list.SelectedItem = value;
     }
 
-    private Grid Body { get; }
+    private DockPanel Body { get; }
 
     /// <summary>Gives the tree the keys, as a click on a row does: the chosen row's, else the list's.</summary>
     public void FocusRows()
@@ -149,8 +159,9 @@ public sealed class FindView : DockPanel
         list.ContainerFromIndex(index)?.Focus();
     }
 
-    /// <summary>A new search's usages in a tab of their own, every group open and the first usage chosen.</summary>
-    public void Show(string title, IReadOnlyList<Usage> usages)
+    /// <summary>A new search's usages in a tab of their own, every group open and the first usage chosen, with what the
+    /// search went without above them (<paramref name="without"/>), when it went without anything.</summary>
+    public void Show(string title, IReadOnlyList<Usage> usages, string? without = null)
     {
         List<FindRow> roots = [];
         foreach ((UsageKind kind, string name) in Groups)
@@ -166,7 +177,7 @@ public sealed class FindView : DockPanel
                         new FindRow(u.LineText.Trim(), (u.Line + 1).ToString(), 3, u, []))]))]))];
             roots.Add(new FindRow(name, Core.Plural.Of(ofKind.Count, "usage"), 0, null, projects));
         }
-        Search search = new(title, roots);
+        Search search = new(title, roots, without);
         searches.Add(search);
         if (searches.Count > TabLimit)
         {
@@ -248,6 +259,8 @@ public sealed class FindView : DockPanel
     {
         current = search;
         rows.Show([.. TreeRows<FindRow>.Shown(search.Roots, r => r.Children)]);
+        note.Text = search.Without;
+        note.IsVisible = search.Without is not null;
         Body.IsVisible = true;
         placeholder.IsVisible = false;
         DrawTabs();
@@ -373,5 +386,5 @@ public sealed class FindView : DockPanel
         });
     }
 
-    private sealed record Search(string Title, IReadOnlyList<FindRow> Roots);
+    private sealed record Search(string Title, IReadOnlyList<FindRow> Roots, string? Without);
 }

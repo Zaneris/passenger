@@ -139,7 +139,7 @@ internal sealed partial class CodeActions
     /// only if the person says Delete Anyway.</summary>
     public async Task SafeDelete()
     {
-        if (context.Ask("Safe Delete") is not { } lsp)
+        if (context.Ask("Safe Delete") is null || context.Editors.Active is not { } document)
         {
             return;
         }
@@ -149,7 +149,7 @@ internal sealed partial class CodeActions
         {
             try
             {
-                (doomed, string? whyNot) = await FindDoomedAsync(lsp, caret);
+                (doomed, string? whyNot) = await FindDoomedAsync(document, caret);
                 if (whyNot is not null)
                 {
                     context.Say(whyNot);
@@ -180,11 +180,21 @@ internal sealed partial class CodeActions
         }
     }
 
-    /// <summary>What Safe Delete would take out of the symbol at an offset (its declaration or a use of it), and the usages
-    /// that would break; else why it cannot (no declaration, one outside the folder's code, a parameter). The caller
-    /// disposes what it found.</summary>
-    public async Task<(Doomed? Doomed, string? WhyNot)> FindDoomedAsync(LspDocument lsp, int caret)
+    /// <summary>What Safe Delete would take out of the symbol at an offset of a file (its declaration or a use of it), and
+    /// the usages that would break, once the files come under the projects it reaches are in them; else why it cannot (no
+    /// declaration, one outside the folder's code, a parameter). The caller disposes what it found.</summary>
+    public async Task<(Doomed? Doomed, string? WhyNot)> FindDoomedAsync(OpenDocument document, int caret)
     {
+        // Followed through what is typed while the files just made are waited for.
+        using (ChangeTracker waited = new(document.Text))
+        {
+            if (await context.TakenInAsync(document, () => waited.MapOffset(caret)) is { } unloaded)
+            {
+                return (null, $"Safe Delete was not applied: {unloaded}");
+            }
+            caret = waited.MapOffset(caret);
+        }
+        LspDocument lsp = context.Now(document);
         IReadOnlyList<LspLocation> declared = await lsp.DefinitionAsync(caret);
         if (declared.Count != 1)
         {

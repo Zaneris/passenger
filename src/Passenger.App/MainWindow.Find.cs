@@ -32,17 +32,17 @@ public partial class MainWindow
             ExpandAll = () => Find.ExpandAll(),
             CollapseAll = () => Find.CollapseAll(),
         });
-        assist.UsagesFound += (_, found) => ShowUsages(found.Title, found.Usages);
+        assist.UsagesFound += (_, found) => ShowUsages(found.Title, found.Usages, found.Note);
     }
 
     /// <summary>Bumped by each search shown, so one that lands after a later one is dropped.</summary>
     private int usageSearches;
 
-    private void ShowUsages(string title, IReadOnlyList<LspLocation> locations) => IdeErrors.Observe(ShowUsagesAsync(title, locations));
+    private void ShowUsages(string title, IReadOnlyList<LspLocation> locations, string? note) => IdeErrors.Observe(ShowUsagesAsync(title, locations, note));
 
     /// <summary>The usages under what each does there, read from each file's syntax off the UI thread: an open file's
-    /// shared parse as it stands, a file not open read from disk and parsed there.</summary>
-    private async Task ShowUsagesAsync(string title, IReadOnlyList<LspLocation> locations)
+    /// shared parse as it stands, a file not open read from disk and parsed there; with what the search went without.</summary>
+    private async Task ShowUsagesAsync(string title, IReadOnlyList<LspLocation> locations, string? note)
     {
         int search = ++usageSearches;
         // Each file's path made canonical once, not once a usage: that asks the disk.
@@ -84,8 +84,8 @@ public partial class MainWindow
         {
             return;
         }
-        Find.Show(title, usages);
+        Find.Show(title, usages, note);
         ShowToolWindow(ToolWindowIds.Find);
-        status.Text = $"{title}: {usages.Count} found";
+        status.Text = $"{title}: {usages.Count} found{(note is null ? string.Empty : $"; {char.ToLowerInvariant(note[0])}{note[1..]}")}";
     }
 }

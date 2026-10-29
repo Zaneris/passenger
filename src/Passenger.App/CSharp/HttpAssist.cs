@@ -46,7 +46,7 @@ internal sealed class HttpAssist(AssistContext context, CodeNavigation navigatio
         }
         else
         {
-            context.ShowUsages(($"Requests to {callers.Title}", callers.Requests));
+            context.ShowUsages($"Requests to {callers.Title}", callers.Requests);
         }
         return true;
     }

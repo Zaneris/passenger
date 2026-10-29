@@ -204,25 +204,45 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     }
 
     /// <summary>A code action's change made, as <see cref="Apply"/> makes it, for the status bar or an agent: why not, else
-    /// the files it changed, those left as edited meanwhile, and what to say beyond its being done (a command it carries
-    /// that Passenger cannot run, that it changed nothing, or that it is done after the status bar said it waited for a file
-    /// to land); and whether every file took it. An agent's refusal for files the server had yet to read is told its
-    /// <paramref name="patience"/>.</summary>
+    /// the files it changed, those left as edited meanwhile, and what to say beyond its being done (a command it carries that
+    /// Passenger cannot run, that it changed nothing, or that it is done after a file landed late); and whether every file
+    /// took it. The files come under the projects its edit reaches are waited for, and it is resolved again once they are
+    /// in them. An agent's refusal for files the server had yet to read is told its <paramref name="patience"/>.</summary>
     public async Task<(RefactorOutcome Outcome, bool Applied)> ApplyAsync(OpenDocument document, CodeAction action, string? scope, string what, Asked? listed, Patience? patience = null)
     {
         bool resolve = (action.Edit is null && action.Data is not null) || scope is not null;
-        // An answer resolved now is for the text as it is now, and carried through what is typed while it comes.
-        using Asked? resolving = resolve ? WorkspaceEdits.Track(context.Editors) : null;
-        CodeAction chosen;
-        try
+        for (bool again = false; ; again = true)
         {
-            chosen = resolve ? await context.Now(document).ResolveChosenAsync(action, scope) : action;
+            // An answer resolved now is for the text as it is now, and carried through what is typed while it comes.
+            using Asked? resolving = resolve ? WorkspaceEdits.Track(context.Editors) : null;
+            CodeAction chosen;
+            try
+            {
+                chosen = resolve ? await context.Now(document).ResolveChosenAsync(action, scope) : action;
+            }
+            catch (LanguageServerFailed failed)
+            {
+                return (RefactorOutcome.Refused($"{what} was not applied: {failed.Reason}"), false);
+            }
+            if (!again && chosen.Edit is { } reaching)
+            {
+                (string? unloaded, bool waited) = await context.TakenInAsync(reaching);
+                if (unloaded is not null)
+                {
+                    return (RefactorOutcome.Refused($"{what} was not applied: {unloaded}"), false);
+                }
+                if (waited && resolve)
+                {
+                    continue;
+                }
+            }
+            return await ApplyChosenAsync(document, chosen, what, resolving ?? listed, patience);
         }
-        catch (LanguageServerFailed failed)
-        {
-            return (RefactorOutcome.Refused($"{what} was not applied: {failed.Reason}"), false);
-        }
-        Asked? asked = resolving ?? listed;
+    }
+
+    /// <summary>A code action's change made as <see cref="ApplyAsync"/> resolved it.</summary>
+    private async Task<(RefactorOutcome Outcome, bool Applied)> ApplyChosenAsync(OpenDocument document, CodeAction chosen, string what, Asked? asked, Patience? patience)
+    {
         if (chosen.Edit is { } changes && await StaleAsync(document, changes, asked, patience) is { } stale)
         {
             return (RefactorOutcome.Refused($"{what} was not applied: {stale}"), false);
@@ -359,7 +379,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         // Followed through what is typed while the files just made are waited for.
         using (ChangeTracker waited = new(document.Text))
         {
-            if (await context.TakenInAsync(document) is { } unloaded)
+            if (await context.TakenInAsync(document, () => waited.MapOffset(offset)) is { } unloaded)
             {
                 return RefactorOutcome.Refused($"Rename was not applied: {unloaded}");
             }

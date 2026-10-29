@@ -34,7 +34,7 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
 
     public event EventHandler<(string Path, TextPosition Position)>? Navigated;
 
-    public event EventHandler<(string Title, IReadOnlyList<LspLocation> Usages)>? UsagesFound;
+    public event EventHandler<(string Title, IReadOnlyList<LspLocation> Usages, string? Note)>? UsagesFound;
 
     public event EventHandler<string>? Message;
 
@@ -95,20 +95,46 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
         WebOf(document) is not null ? "its language server is not running"
         : service() is { } csharp ? $"the C# language server is not ready: {csharp.State}" : Refusals.NoCSharp);
 
-    /// <summary>Waits until the C# server holds every C# file come under one of the folder's projects in its project, for up
-    /// to <see cref="Patience.Limit"/>, the status bar saying which meanwhile: a command answered before would leave each it
-    /// holds in none out (a rename its callers there). Why not when the time is up, else null; null at once, the caller's
-    /// offsets still standing, for a file of another server's or with none come.</summary>
-    public async Task<string?> TakenInAsync(OpenDocument document)
+    /// <summary>Waits, for a change at an offset of a C# file, until the server holds in their projects the C# files come
+    /// under the projects it reaches (<see cref="CSharpService.ReachedAsync"/>), for up to <see cref="Patience.Limit"/>, the
+    /// status bar saying which meanwhile. Why not when the time is up, else null; null at once, the caller's offsets still
+    /// standing, for a file of another server's or with none come.</summary>
+    public async Task<string?> TakenInAsync(OpenDocument document, Func<int> offset) =>
+        CSharp is { IsReady: true, Arriving: true } csharp && csharp.For(document) is not null
+            ? NotTakenIn(await csharp.ReachedAsync(document, offset, Patience.Limit, SayWaiting, CancellationToken.None))
+            : null;
+
+    /// <summary>Waits, for an edit the server worked out, until it holds in their projects the C# files come under the
+    /// projects of the files the edit reaches (<see cref="CSharpService.ReachedAsync(System.Text.Json.JsonElement, TimeSpan,
+    /// Action{string?}?, CancellationToken)"/>), for up to <see cref="Patience.Limit"/>, the status bar saying which
+    /// meanwhile: why not when the time is up, else null; and whether any was waited for, which the edit went without.</summary>
+    public async Task<(string? Unloaded, bool Waited)> TakenInAsync(System.Text.Json.JsonElement edit)
     {
-        if (CSharp is not { IsReady: true } csharp || csharp.For(document) is null)
+        if (CSharp is not { IsReady: true } csharp)
         {
-            return null;
+            return (null, false);
         }
-        IReadOnlyList<(string Path, string Project)> left = await csharp.UnplacedAsync(Patience.Limit, looking: false,
-            waiting => Say(waiting is null ? string.Empty : $"Waiting for the C# language server to load {Path.GetFileName(waiting)} into its project…"), CancellationToken.None);
-        return left.Count == 0 ? null : Refusals.NotTakenIn(Path.GetFileName(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project));
+        (IReadOnlyList<(string Path, string Project)> left, bool waited) = await csharp.ReachedAsync(edit, Patience.Limit, SayWaiting, CancellationToken.None);
+        return (NotTakenIn(left), waited);
     }
+
+    /// <summary>For a question about an offset of a C# file (Find Usages): waits until the server holds the file itself in
+    /// its project, if it just came, for up to <see cref="Patience.Limit"/>; then the C# files come under the projects that
+    /// can change the answer that it has not taken in yet, looked at once, which the answer says it went without.</summary>
+    public async Task<IReadOnlyList<(string Path, string Project)>> UntakenAsync(OpenDocument document, Func<int> offset)
+    {
+        if (CSharp is not { IsReady: true, Arriving: true } csharp || csharp.For(document) is null)
+        {
+            return [];
+        }
+        IReadOnlyList<(string Path, string Project)> itself = await csharp.PlacedAsync(document.Path, Patience.Limit, looking: false, SayWaiting, CancellationToken.None);
+        return itself.Count > 0 ? itself : await csharp.UntakenAsync(document, offset(), CancellationToken.None);
+    }
+
+    private void SayWaiting(string? waiting) => Say(waiting is null ? string.Empty : $"Waiting for the C# language server to load {Path.GetFileName(waiting)} into its project…");
+
+    private static string? NotTakenIn(IReadOnlyList<(string Path, string Project)> left) =>
+        left.Count == 0 ? null : Refusals.NotTakenIn(Path.GetFileName(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project));
 
     /// <summary>The folder the open file's places are named from: the C# server's, else the web servers'.</summary>
     public string? Root => service()?.Session?.Folder ?? Web?.Invoke()?.Folder;
@@ -122,8 +148,9 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>A place to go: a file and a line and column (from zero).</summary>
     public void Navigate((string Path, TextPosition Position) place) => Navigated?.Invoke(this, place);
 
-    /// <summary>Find Usages' answer, for the Find window: what was searched for and where it is used.</summary>
-    public void ShowUsages((string Title, IReadOnlyList<LspLocation> Usages) found) => UsagesFound?.Invoke(this, found);
+    /// <summary>Find Usages' answer, for the Find window: what was searched for, where it is used, and what the answer
+    /// went without, when it did.</summary>
+    public void ShowUsages(string title, IReadOnlyList<LspLocation> usages, string? note = null) => UsagesFound?.Invoke(this, (title, usages, note));
 
     /// <summary>How the window runs a change of files beyond the open ones (<see cref="ChangeFiles"/>).</summary>
     public Action<IReadOnlyCollection<string>, Action>? FilesChanging { get; set; }
