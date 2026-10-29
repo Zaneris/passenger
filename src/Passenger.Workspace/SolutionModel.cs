@@ -28,16 +28,41 @@ public sealed record SolutionModel(string Path, string Name, IReadOnlyList<Solut
 
     /// <summary>Reads a solution, its own path and its projects' named as the file system names them
     /// (<see cref="PathNames.Canonical"/>), whatever letter case or links the solution's lines use.</summary>
-    public static SolutionModel? Load(string path)
+    public static SolutionModel? Load(string path) => Load(path, out _);
+
+    /// <summary>Reads a solution as <see cref="Load(string)"/> does; null with why in <paramref name="unread"/> for one that
+    /// does not read (a .slnx that is not well-formed XML, a file that cannot be opened).</summary>
+    public static SolutionModel? Load(string path, out UnreadSolution? unread)
     {
         path = PathNames.Canonical(path);
+        unread = null;
         try
         {
             return System.IO.Path.GetExtension(path).Equals(".slnx", StringComparison.OrdinalIgnoreCase) ? LoadSlnx(path) : LoadSln(path);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Xml.XmlException)
+        catch (System.Xml.XmlException error)
         {
+            unread = UnreadSolution.Of(path, error);
             return null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            unread = new UnreadSolution(path, error.Message, 0, 0);
+            return null;
+        }
+    }
+
+    /// <summary>Why a .slnx's text does not read as XML, where its reader stopped; null for text that reads.</summary>
+    public static UnreadSolution? Unread(string path, string text)
+    {
+        try
+        {
+            XDocument.Parse(text);
+            return null;
+        }
+        catch (System.Xml.XmlException error)
+        {
+            return UnreadSolution.Of(path, error);
         }
     }
 
@@ -187,6 +212,23 @@ public sealed record SolutionModel(string Path, string Name, IReadOnlyList<Solut
         SolutionFolder folder => folder.Children.SelectMany(Flatten),
         _ => [],
     };
+}
+
+/// <summary>A solution's file that does not read: its path, why in its reader's words, and the line and column (from 1,
+/// as an XML reader counts them) where the reader stopped, 0 where it cannot tell.</summary>
+public sealed record UnreadSolution(string Path, string Why, int Line, int Column)
+{
+    /// <summary>An XML reader's refusal, its words without the place it adds to them.</summary>
+    public static UnreadSolution Of(string path, System.Xml.XmlException error)
+    {
+        string why = error.Message;
+        string place = $" Line {error.LineNumber}, position {error.LinePosition}.";
+        if (error.LineNumber > 0 && why.EndsWith(place, StringComparison.Ordinal))
+        {
+            why = why[..^place.Length];
+        }
+        return new UnreadSolution(path, why.TrimEnd('.', ' '), error.LineNumber, error.LinePosition);
+    }
 }
 
 public abstract record SolutionEntry(string Name);

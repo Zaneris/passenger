@@ -25,6 +25,10 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// <see cref="Projects"/>, and those the filter leaves out are the session's to unload. Null for any other workspace.</summary>
     public SolutionFilter? Filter { get; init; }
 
+    /// <summary>The solution the folder opens by that does not read, in whose place the folder's own projects are read;
+    /// null for any other workspace.</summary>
+    public UnreadSolution? Unread { get; init; }
+
     /// <summary>What it was opened as, which Recent Solutions keeps and reopens: the solution filter, the solution, the
     /// project, else the folder.</summary>
     public string OpenedAs => Filter?.Path ?? Solution?.Path ?? ProjectFile ?? Folder;
@@ -50,15 +54,20 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// and walks it for its programs (a folder without either for its projects too), which is a worker's job, never the
     /// window's thread's.</summary>
     public static WorkspaceModel Read(string folder, string? named = null) =>
-        ReadSolution(folder, named) is { } read
+        ReadSolution(folder, named, out UnreadSolution? unread) is { } read
             ? read.WithPrograms(Walk(folder, [.. read.Projects.Where(p => !p.IsProgram).Select(p => p.Folder)]))
-            : new WorkspaceModel(folder, null, [.. Walk(folder, null).Select(ProjectModel.Unevaluated)]);
+            : new WorkspaceModel(folder, null, [.. Walk(folder, null).Select(ProjectModel.Unevaluated)]) { Unread = unread };
 
     /// <summary>A folder read through the solution or project it was opened by, else its own solution: a listing of the
     /// folder's top and the files the solution names, quick enough for the window's thread. Null for a folder without one
     /// (or one that does not read), whose projects only a walk of its folders finds.</summary>
-    public static WorkspaceModel? ReadSolution(string folder, string? named = null)
+    public static WorkspaceModel? ReadSolution(string folder, string? named = null) => ReadSolution(folder, named, out _);
+
+    /// <summary>A folder read as <see cref="ReadSolution(string, string?)"/> reads it, with why its solution did not read in
+    /// <paramref name="unread"/> when that is why there is none.</summary>
+    public static WorkspaceModel? ReadSolution(string folder, string? named, out UnreadSolution? unread)
     {
+        unread = null;
         if (named is not null && IsProject(named) && File.Exists(named))
         {
             return new WorkspaceModel(folder, null, [ProjectModel.Unevaluated(named)]) { ProjectFile = named };
@@ -70,7 +79,7 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
             path = filter?.Solution;
         }
         // A Docker Compose project (.dcproj) is read as XML for its run configurations, never loaded as a project.
-        return path is not null && SolutionModel.Load(path) is { } solution
+        return path is not null && SolutionModel.Load(path, out unread) is { } solution
             ? new WorkspaceModel(folder, solution, [.. solution.Projects.Where(p => !IsComposeProject(p.Path))]) { Filter = filter }
             : null;
     }

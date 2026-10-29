@@ -9,7 +9,11 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
+using Passenger.App.Workspace;
+using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Packages;
+using Passenger.Text;
 
 namespace Passenger.Tests;
 
@@ -17,7 +21,8 @@ namespace Passenger.Tests;
 /// restore's audit reads, so nothing reaches nuget.org) is a warning naming the package and its severity in the status
 /// bar, under the project with its advisory's link in Problems' Toolset, Environment, and marked in the NuGet window,
 /// which offers the version that fixes it; updating to it takes the warning away. A project whose SDK cannot be found is
-/// an error naming why, in the status bar and under the project in Problems.</summary>
+/// an error naming why, in the status bar and under the project in Problems. A solution that does not read is an error in
+/// the status bar, the projects under its folder open in its place, and marked where it stops in its open file.</summary>
 public sealed class ProjectLoadTests : IDisposable
 {
     private const string Advisory = "https://github.com/advisories/GHSA-pass-load-test";
@@ -204,8 +209,48 @@ public sealed class ProjectLoadTests : IDisposable
         list.SelectedItem = problems.Rows.Single(r => r.Problem is not null);
         Ui.ChooseFromMenu(list, "Go to");
         Ui.Settle();
-        Assert.True(window.EditorArea.Active?.Path is { } opened && Passenger.Core.PathNames.Same(opened, Passenger.Core.PathNames.Canonical(bad)),
+        Assert.True(window.EditorArea.Active?.Path is { } opened && PathNames.Same(opened, PathNames.Canonical(bad)),
             $"Going to the load error opened {window.EditorArea.Active?.Path}, not Bad.csproj");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_solution_that_does_not_read_is_an_error_in_the_status_bar_its_folders_projects_open_and_its_file_marked_until_it_reads()
+    {
+        string solution = Path.Combine(folder, "Shop.slnx");
+        // A merge left half done: its conflict's markers stand among the solution's projects.
+        const string Conflict = "<<<<<<< HEAD\n  <Project Path=\"Web/Web.csproj\" />\n=======\n  <Project Path=\"Web/Web.csproj\" Id=\"1\" />\n>>>>>>> theirs\n";
+        File.WriteAllText(solution, $"<Solution>\n{Conflict}</Solution>\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false, width: 1400, height: 900);
+        const string Why = "Name cannot begin with the '<' character, hexadecimal value 0x3C";
+        string said = $"Shop.slnx does not read, so the projects under its folder are open in its place: {Why} (line 2, column 2)";
+        Assert.True(window.Status == said, $"The status bar says \"{window.Status}\" as the folder opens, not that its solution does not read and why");
+        Assert.True(window.StatusSeverity == ProblemSeverity.Error, $"The status bar's word on the solution is marked as {window.StatusSeverity?.ToString() ?? "nothing"}, not an error");
+        Assert.True(window.WorkspaceModel is { Solution: null, Unread: not null } read && read.Projects.Select(p => p.Path).SequenceEqual([PathNames.Canonical(project)]),
+            $"The folder whose solution does not read has {string.Join(", ", window.WorkspaceModel?.Projects.Select(p => p.Name) ?? [])} open, not the project under it");
+
+        Assert.Equal("open Shop.slnx where it stops reading", window.StatusPlace?.Name);
+        ClickStatus(window);
+        OpenDocument shown = window.EditorArea.Active!;
+        Assert.True(PathNames.Same(shown.Path, PathNames.Canonical(solution)), $"A click on the status bar's words opened {shown.Path}, not Shop.slnx");
+        Assert.True(window.EditorArea.CodeEditor.CaretPosition == new TextPosition(1, 1),
+            $"Shop.slnx opened at {window.EditorArea.CodeEditor.CaretPosition}, not where its reader stopped (line 2, column 2)");
+        Marker marked = Assert.Single(shown.Markers);
+        Assert.True(marked is { Kind: MarkerKind.Error, Message: $"The solution does not read: {Why}", Range: { Start: 12, Length: 1 } },
+            $"The open solution is marked {marked.Kind} \"{marked.Message}\" at {marked.Range}, not as an error on the conflict's second '<'");
+
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string text = editor.Document.Snapshot.ToString();
+        editor.Select(new TextRange(text.IndexOf("=======", StringComparison.Ordinal), text.IndexOf("</Solution>", StringComparison.Ordinal) - text.IndexOf("=======", StringComparison.Ordinal)));
+        Ui.Press(window, "BACK_SPACE");
+        editor.Select(new TextRange(text.IndexOf("<<<<<<<", StringComparison.Ordinal), "<<<<<<< HEAD\n".Length));
+        Ui.Press(window, "BACK_SPACE");
+        Ui.WaitFor(() => shown.Markers.Count == 0, () => $"the mark to go once the solution reads: {editor.Document.Snapshot}");
+        Ui.Press(window, Ui.Shortcut(AppActions.Save));
+        Ui.WaitFor(() => window.WorkspaceModel is { Solution: not null, Unread: null }, "the folder to open by Shop.slnx once it reads");
+        Assert.True(window.WorkspaceModel!.Solution!.Projects.Select(p => p.Path).SequenceEqual([PathNames.Canonical(project)]),
+            "Shop.slnx read again does not hold its project");
+        Assert.True(window.Status?.Contains("does not read", StringComparison.Ordinal) != true, $"The status bar still says \"{window.Status}\" once Shop.slnx reads");
         window.Close();
     }
 

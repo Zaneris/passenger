@@ -150,10 +150,12 @@ public sealed class ProjectSession : IAsyncDisposable
     public static ProjectSession None(SessionSetup setup) => new(setup, null);
 
     /// <summary>Opens a folder (canonical) with its solution read, or the one named, or none: its Local History, index and
-    /// watcher, its configurations, and the language server on its projects; one without a solution is walked for them.
-    /// The projects are as the folder's cache in the store has them (<paramref name="kept"/>, when the window keeps state)
-    /// until MSBuild has evaluated them again (<see cref="Evaluate"/>).</summary>
-    public static ProjectSession Open(SessionSetup setup, string folder, string? named, WorkspaceModel? withSolution, ProjectState? kept = null)
+    /// watcher, its configurations, and the language server on its projects; one without a solution (or whose solution
+    /// does not read, <paramref name="unread"/>) is walked for them. The projects are as the folder's cache in the store
+    /// has them (<paramref name="kept"/>, when the window keeps state) until MSBuild has evaluated them again (<see
+    /// cref="Evaluate"/>).</summary>
+    public static ProjectSession Open(SessionSetup setup, string folder, string? named, WorkspaceModel? withSolution, UnreadSolution? unread,
+        ProjectState? kept = null)
     {
         HeadStart? ahead = setup.HeadStart is { } head && PathNames.Same(head.Folder, folder)
             && (head.Named is null ? named is null : named is not null && PathNames.Same(head.Named, named)) ? head : null;
@@ -172,7 +174,8 @@ public sealed class ProjectSession : IAsyncDisposable
         session.DesignTimeBuilds.Open(folder, kept?.ProjectBuilds, ahead?.Builds);
         session.openedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         // The folder as read ahead, its projects walked for already, when that read has landed.
-        WorkspaceModel opening = ahead?.Read is { IsCompletedSuccessfully: true } walked ? walked.Result : withSolution ?? new WorkspaceModel(folder, null, []);
+        WorkspaceModel opening = ahead?.Read is { IsCompletedSuccessfully: true } walked ? walked.Result
+            : withSolution ?? new WorkspaceModel(folder, null, []) { Unread = unread };
         session.Workspace = session.Models.Apply(opening);
         session.TakeFilter(session.Workspace);
         session.TimeSolutionView();
@@ -652,8 +655,8 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The code help in the folder's project, .props and .targets files, from MSBuild's evaluation in the project host.</summary>
     public MSBuild.MSBuildService MSBuild { get; }
 
-    /// <summary>The open .editorconfig files' sections that match no file, marked.</summary>
-    internal EditorConfigChecks EditorConfigs { get; } = new();
+    /// <summary>The open files Passenger reads for itself (an .editorconfig, a .slnx) marked where it cannot use what they say.</summary>
+    internal FileChecks FileChecks { get; } = new();
 
     /// <summary>The folder's NuGet: its package sources, feeds and known vulnerabilities, and the one way its projects'
     /// packages change, which the NuGet window, MSBuild files' code help, Migrations and an agent all use.</summary>
@@ -864,7 +867,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Web?.Attach(document);
         Xaml.Attach(document);
         MSBuild.Attach(document);
-        EditorConfigs.Attach(document);
+        FileChecks.Attach(document);
         Debug.Attach(document);
         Vcs.Attach(document);
         Bookmarks.Attach(document.Path, document.Text);
@@ -878,7 +881,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Web?.Detach(document);
         Xaml.Detach(document);
         MSBuild.Detach(document);
-        EditorConfigs.Detach(document);
+        FileChecks.Detach(document);
         Debug.Detach(document);
         Vcs.Detach(document);
         Bookmarks.Detach(document.Path);
@@ -920,8 +923,8 @@ public sealed class ProjectSession : IAsyncDisposable
             Xaml.Attach(document);
             MSBuild.Detach(document);
             MSBuild.Attach(document);
-            EditorConfigs.Detach(document);
-            EditorConfigs.Attach(document);
+            FileChecks.Detach(document);
+            FileChecks.Attach(document);
         }
     }
 
@@ -931,24 +934,25 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         if (Folder is not null)
         {
-            Read(WorkspaceModel.ReadSolution(Folder, NamedSolution));
+            Read(WorkspaceModel.ReadSolution(Folder, NamedSolution, out UnreadSolution? unread), unread);
         }
     }
 
     /// <summary>The same folder opened again, with the solution or project named this time, or none: the folder is read
     /// again with it, and the language server starts again only when what it loads changed.</summary>
-    public void Reopen(string? named, WorkspaceModel? withSolution)
+    public void Reopen(string? named, WorkspaceModel? withSolution, UnreadSolution? unread)
     {
         NamedSolution = named;
-        Read(withSolution);
+        Read(withSolution, unread);
     }
 
-    /// <summary>Takes the folder's solution, read now, with the programs beside it it had; or for a folder without one the
-    /// projects it had, read again now; and those added or gone since once a worker has walked its folders for them.</summary>
-    private void Read(WorkspaceModel? withSolution)
+    /// <summary>Takes the folder's solution, read now, with the programs beside it it had; or for a folder without one (or
+    /// with one that does not read, <paramref name="unread"/>) the projects it had, read again now; and those added or gone
+    /// since once a worker has walked its folders for them.</summary>
+    private void Read(WorkspaceModel? withSolution, UnreadSolution? unread)
     {
         reads++;
-        Reload(withSolution?.KeepingPrograms(Workspace!) ?? Workspace!.Reread());
+        Reload(withSolution?.KeepingPrograms(Workspace!) ?? Workspace!.Reread() with { Unread = unread });
         WalkForProjects();
     }
 
@@ -1202,7 +1206,7 @@ public sealed class ProjectSession : IAsyncDisposable
         parts.Add(("the folder's containers", Containers.EndAsync(Task.WhenAll(debuggers, abandoned))));
         Xaml.Dispose();
         MSBuild.Dispose();
-        EditorConfigs.Dispose();
+        FileChecks.Dispose();
         return parts;
     }
 

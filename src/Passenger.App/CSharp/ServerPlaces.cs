@@ -35,6 +35,13 @@ public static class ServerPlaces
     /// <summary>A server's position in a file as the editor's line and column there.</summary>
     public static TextPosition PositionOf(EditorArea editors, string path, LspPosition at) => PositionOf(TextOf(editors, path), at);
 
+    /// <summary>An XML reader's line and column (from 1) in a file as the editor's line and column there (<see
+    /// cref="ServerLines.OfXml"/>); null for no line, or a file that cannot be read.</summary>
+    public static TextPosition? XmlPositionOf(EditorArea editors, string path, int line, int column) =>
+        line > 0 && TextOf(editors, path) is { } text
+            ? text.GetPosition(ServerLines.OfXml(text).OffsetOf(line - 1, Math.Max(0, column - 1)))
+            : null;
+
     /// <summary>The editor's line and column in a text as the server's; as they are in a file that cannot be read.</summary>
     public static LspPosition ServerPositionOf(TextSnapshot? text, TextPosition at) =>
         text is null ? new LspPosition(at.Line, at.Column) : ServerLines.Of(text).PositionOf(text.GetOffset(at));

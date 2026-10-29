@@ -73,6 +73,24 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(run.IsError == true && Text(run).Contains(Missing, StringComparison.Ordinal), $"run without the SDK answered: {Text(run)}");
     }
 
+    /// <summary>A folder whose .slnx does not read: workspace names it with where its reader stopped and why, and no
+    /// solution open.</summary>
+    [Fact]
+    public async Task An_agent_on_a_folder_whose_solution_does_not_read_hears_where_and_why_from_workspace()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-unread-solution-"));
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "App.csproj"), TestProjects.Console());
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), "System.Console.WriteLine(\"App\");\n");
+        File.WriteAllText(Path.Combine(folder, "Shop.slnx"), "<Solution>\n  <Project Path=\"App.csproj\" />\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement workspace = await Call(client, McpTools.Workspace);
+        Assert.True(workspace.TryGetProperty("unreadSolution", out JsonElement unread)
+            && unread.GetString() == "Shop.slnx:3:1: Unexpected end of file has occurred. The following elements are not closed: Solution"
+            && !workspace.TryGetProperty("solution", out _),
+            $"workspace, where Shop.slnx is cut short, answered: {workspace}");
+    }
+
     /// <summary>tests_run answers with the run it made alone: after a run of every test, one failing, a run of the passing
     /// one by its name tells no failure, while tests_list still says the other failed when it last ran.</summary>
     [Fact]

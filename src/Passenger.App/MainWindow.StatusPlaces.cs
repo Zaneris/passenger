@@ -6,10 +6,10 @@ using Passenger.Workspace;
 namespace Passenger.App;
 
 /// <summary>Where what the status bar says has more to see: a project's load problem in Problems' Toolset, Environment,
-/// the download page of a .NET SDK the folder wants, a build's problems in Problems' Build, Hot Reload's edits in its
-/// tab, a binding error stopped at in Bindings, a test run in Unit Tests, an internal error in IDE Internal Errors, a
-/// state file set aside in the file manager, the log where the words say it says why, and a language server left
-/// stopped started again. A click on the words, or Enter on them, goes there.</summary>
+/// the download page of a .NET SDK the folder wants, a solution that does not read where it stops, a build's problems in
+/// Problems' Build, Hot Reload's edits in its tab, a binding error stopped at in Bindings, a test run in Unit Tests, an
+/// internal error in IDE Internal Errors, a state file set aside in the file manager, the log where the words say it
+/// says why, and a language server left stopped started again. A click on the words, or Enter on them, goes there.</summary>
 public partial class MainWindow
 {
     /// <summary>Where a click on the status bar's words goes now, null when nowhere.</summary>
@@ -41,6 +41,15 @@ public partial class MainWindow
     /// <summary>A state file set aside, chosen in the file manager.</summary>
     private StatusPlace SetAsidePlace(string kept) =>
         new($"show {Path.GetFileName(kept)} in {FileManager.Name}", () => ShowInFileManager(kept));
+
+    /// <summary>A solution that does not read, open in the editor where its reader stopped.</summary>
+    private StatusPlace UnreadSolutionPlace(UnreadSolution unread) => new($"open {Path.GetFileName(unread.Path)} where it stops reading", () =>
+    {
+        if (OpenFile(unread.Path) is null && UnreadPosition(unread) is { } at)
+        {
+            NavigateTo(unread.Path, at);
+        }
+    });
 
     /// <summary>Help, Show Log: the log chosen in the file manager.</summary>
     private StatusPlace LogPlace => new($"show the log in {FileManager.Name}", ShowLog);

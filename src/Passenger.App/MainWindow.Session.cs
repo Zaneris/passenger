@@ -3,6 +3,7 @@ using Passenger.App.CSharp;
 using Passenger.App.Run;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App;
@@ -135,14 +136,14 @@ public partial class MainWindow
     /// named), read with that one, its files and what it runs kept.</summary>
     private void ReadAgain(string folder, string? named)
     {
-        WorkspaceModel? withSolution = WorkspaceModel.ReadSolution(folder, named ?? session.NamedSolution);
+        WorkspaceModel? withSolution = WorkspaceModel.ReadSolution(folder, named ?? session.NamedSolution, out UnreadSolution? unread);
         if ((withSolution?.OpenedAs ?? folder) == session.Workspace?.OpenedAs)
         {
-            session.Reopen(session.NamedSolution, withSolution);
+            session.Reopen(session.NamedSolution, withSolution, unread);
             return;
         }
         Autosave();
-        session.Reopen(named, withSolution);
+        session.Reopen(named, withSolution, unread);
         Explorer.Load(session.Workspace!);
         ShowWorkspaceName();
         UpdateStatus();
@@ -169,9 +170,9 @@ public partial class MainWindow
     {
         // Begun, the folder is the session's: kept as opening, a Close Solution after would leave the window holding it.
         opening = null;
-        WorkspaceModel? withSolution = WorkspaceModel.ReadSolution(folder, named);
+        WorkspaceModel? withSolution = WorkspaceModel.ReadSolution(folder, named, out UnreadSolution? unread);
         // The projects as MSBuild last evaluated them, from the folder's cache, before any is evaluated again.
-        ProjectSession opened = ProjectSession.Open(Setup(), folder, named, withSolution, keepsWorkspace ? Hold(folder) : null);
+        ProjectSession opened = ProjectSession.Open(Setup(), folder, named, withSolution, unread, keepsWorkspace ? Hold(folder) : null);
         // The head start is this first folder's: one opened later, this one again too, is read and evaluated afresh.
         headStart = null;
         // The consoles are another folder's: what it ran said its last there before its end landed.
@@ -187,6 +188,7 @@ public partial class MainWindow
         RestoreWorkspace();
         ShowWorkspaceName();
         UpdateStatus();
+        ShowUnreadSolution();
         Remember();
         IdeErrors.Observe(KeepSnapshotsAsync());
     }
@@ -347,11 +349,13 @@ public partial class MainWindow
             }
         };
         ShowSdk();
+        unreadSaid = null;
         next.WorkspaceChanged += (_, _) =>
         {
             if (session == next)
             {
                 Explorer.Reload(next.Workspace!);
+                ShowUnreadSolution();
                 ShowWorkspaceName();
                 FollowSymbols();
                 FindTests();
@@ -526,6 +530,41 @@ public partial class MainWindow
         sdkSaid = Refusals.NoSdk(missing, Folder);
         status.Say(sdkSaid, ProblemSeverity.Error, SdkPlace(missing));
     }
+
+    /// <summary>What the status bar said of the folder's solution that does not read, while the folder is read without it.</summary>
+    private string? unreadSaid;
+
+    /// <summary>The folder's solution that does not read, said in the status bar as an error once it is found so, a click
+    /// there opening it where its reader stopped; its words taken away once it reads again.</summary>
+    private void ShowUnreadSolution()
+    {
+        UnreadSolution? unread = session.Workspace?.Unread;
+        string? said = unread is null ? null : UnreadWords(unread);
+        if (said == unreadSaid)
+        {
+            return;
+        }
+        if (unreadSaid is not null && status.Text == unreadSaid)
+        {
+            status.Text = null;
+        }
+        unreadSaid = said;
+        if (said is not null)
+        {
+            status.Say(said, ProblemSeverity.Error, UnreadSolutionPlace(unread!));
+        }
+    }
+
+    /// <summary>What a solution that does not read is said as: its name, what is open in its place, its reader's words and
+    /// where it stopped, as the editor counts the file's lines.</summary>
+    private string UnreadWords(UnreadSolution unread)
+    {
+        string where = UnreadPosition(unread) is { } at ? $" (line {at.Line + 1}, column {at.Column + 1})" : string.Empty;
+        return $"{PathNames.Shown(unread.Path, Folder)} does not read, so the projects under its folder are open in its place: {unread.Why}{where}";
+    }
+
+    /// <summary>Where a solution's reader stopped, in the editor's lines and columns; null where it cannot tell.</summary>
+    private TextPosition? UnreadPosition(UnreadSolution unread) => ServerPlaces.XmlPositionOf(Editors, unread.Path, unread.Line, unread.Column);
 
     /// <summary>Reads the solution's files again (after a package or project change, here or on disk), keeping the run
     /// configuration chosen when it is still there and the Explorer's rows open.</summary>

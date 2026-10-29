@@ -2408,8 +2408,16 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             Session.Debug.Session?.State.ToString().ToLowerInvariant() ?? "not debugging")
         {
             SdkMissing = session.Models.MissingSdk is { } missing ? Refusals.NoSdk(missing, session.Folder) : null,
+            UnreadSolution = session.Workspace?.Unread is { } unread ? UnreadSolutionSaid(unread) : null,
         };
     }
+
+    /// <summary>A solution that does not read as an agent is told it: its path, where its reader stopped as the editor
+    /// counts the file's lines, and why.</summary>
+    private string UnreadSolutionSaid(global::Passenger.Workspace.UnreadSolution unread) =>
+        ServerPlaces.XmlPositionOf(Editors, unread.Path, unread.Line, unread.Column) is { } at
+            ? $"{Relative(unread.Path)}:{at.Line + 1}:{at.Column + 1}: {unread.Why}"
+            : $"{Relative(unread.Path)}: {unread.Why}";
 
     /// <summary>A path an agent gave, from the open folder unless rooted, as the IDE names it (in any letter case).</summary>
     private string Resolve(string path) =>
@@ -2539,6 +2547,10 @@ public sealed record Workspace(
 
     /// <summary>The web projects' routes, when asked for.</summary>
     public IReadOnlyList<RouteInfo>? Routes { get; init; }
+
+    /// <summary>The solution the folder opens by that does not read ("path:line:column: why"), in whose place the projects
+    /// under the folder are open; null with none.</summary>
+    public string? UnreadSolution { get; init; }
 }
 
 /// <summary>A route as an agent reads it: its project, what declares it, its methods and template ("GET /todos/{id:int}"),
