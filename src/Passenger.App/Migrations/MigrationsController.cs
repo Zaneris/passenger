@@ -963,7 +963,8 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         }
         moved.Add((left.Id, up!));
         PackageOutcome outcome = await parts.InstallSet(project, moved, recording);
-        parts.Say(outcome.Done ? $"{together}: {left.Id} {up} with it" : outcome.Refused ?? $"{together} failed: the NuGet window's log says why");
+        parts.Say(outcome.Done ? $"{together}: {left.Id} {up} with it"
+            : (outcome.Refused ?? $"{together} failed: the NuGet window's log says why") + (outcome.Left is { } kept ? $"; {kept}" : string.Empty));
         return false;
     }
 
@@ -1111,11 +1112,12 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         using CommandHistory.Recording recording = parts.Editors.Commands.RecordWrites($"Add {id} {version} to {project.Name}");
         PackageOutcome outcome = await parts.Install(project, id, version, recording);
         Touched = outcome.Changed;
-        return outcome.Done ? null : outcome.Refused ?? outcome.Said.LastOrDefault(l => l.Trim().Length > 0) ?? $"{id} could not be added to {project.Name}";
+        return outcome.Failure($"{id} could not be added to {project.Name}");
     }
 
     /// <summary>A provider behind the startup project's EF Core brought into step, as the feeds' metadata says fits
-    /// (<see cref="EfProviders.AlignAsync"/>): every project's packages moved as one step of global undo.</summary>
+    /// (<see cref="EfProviders.AlignAsync"/>): every project's packages moved as one step of global undo. A project's move
+    /// that fails is put back, and the moves of the projects before it are said, for Undo to take back.</summary>
     private async Task<string?> AlignAsync(ProjectModel startup, string runtime, Working work)
     {
         if (EfRestore.Of(startup.Path) is not { Behind: { } behind } restore)
@@ -1141,11 +1143,12 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         using CommandHistory.Recording recording = parts.Editors.Commands.RecordWrites(alignment.Title);
         foreach (EfMove move in alignment.Moves)
         {
+            IReadOnlyList<string> moved = Touched;
             PackageOutcome outcome = await parts.InstallSet(move.Project, move.Packages, recording);
             Touched = [.. Touched, .. outcome.Changed];
-            if (!outcome.Done)
+            if (outcome.Failure($"{alignment.Title} failed in {move.Project.Name}") is { } failed)
             {
-                return outcome.Refused ?? outcome.Said.LastOrDefault(l => l.Trim().Length > 0) ?? $"{alignment.Title} failed in {move.Project.Name}";
+                return moved.Count == 0 ? failed : $"{failed}; {PackageOutcome.Named(moved)} changed already, which Undo takes back";
             }
         }
         return null;

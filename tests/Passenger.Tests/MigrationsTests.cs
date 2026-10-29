@@ -322,6 +322,41 @@ public sealed class MigrationsTests
         }
     }
 
+    /// <summary>The provider's version that supports the project's EF Core needs a package no feed holds, so the alignment's
+    /// restore fails: the project is put back as it was and restored again, the fix saying it failed and that the project
+    /// was put back, the provider still behind and nothing left for Undo.</summary>
+    [AvaloniaFact]
+    public void A_provider_alignment_whose_restore_fails_puts_the_project_back_as_it_was_and_says_so()
+    {
+        // A version no other test makes: the package cache keeps a provider by its id and version.
+        string folder = ShopApp.Make(design: true, tool: ShopApp.Version, provider: "1.0.0",
+            providers: [("1.0.0", $"[{ShopApp.Older}]"), ("3.0.0", $"[{ShopApp.Version}]")], unrestorable: "3.0.0");
+        string project = Path.Combine(folder, "Shop.csproj");
+        byte[] before = File.ReadAllBytes(project);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Migrations);
+            string said = $"{ShopApp.Provider} 1.0.0 supports EF Core {ShopApp.Older}";
+            Ui.WaitFor(() => Gaps(window).Contains(said, StringComparison.Ordinal) && window.Migrations.Busy is null, $"the provider behind ({Gaps(window)})", Slow);
+            EfFix align = window.Migrations.Gaps.SelectMany(g => g.Fixes).First(f => f.Kind == EfFixKind.AlignProvider);
+            Task<string?> fixing = window.Migrations.FixAsync(align);
+            Ui.ClickButton(Asked<ChoiceDialog>(window, "the fix's question"), align.Title);
+            string? why = Ui.Await(fixing, "the alignment's end", Slow);
+
+            Assert.True(File.ReadAllBytes(project).AsSpan().SequenceEqual(before), $"The alignment whose restore failed left the project as:\n{File.ReadAllText(project)}\n(it said: {why})");
+            Assert.True(why is not null && why.EndsWith("; Shop.csproj put back as before", StringComparison.Ordinal),
+                $"The alignment whose restore failed said \"{why}\", not that it failed and put the project back");
+            Ui.WaitFor(() => Gaps(window).Contains(said, StringComparison.Ordinal) && window.Migrations.Busy is null,
+                $"the provider still behind once the project was restored again ({Gaps(window)})", Slow);
+            Assert.True(window.EditorArea.Commands.ToUndo(null) is null, $"The failed alignment left {window.EditorArea.Commands.ToUndo(null)?.Name} for Undo");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_context_the_tools_cannot_make_is_said_with_why_and_a_design_time_factory_added_in_place_and_taken_back_by_undo()
     {
@@ -568,13 +603,13 @@ internal static class ShopApp
     public static string Provider { get; } = $"Passenger.EntityFrameworkCore.StandIn.Ef{Older.Replace('.', '_')}.Ef{Version.Replace('.', '_')}";
 
     /// <summary>The app in a folder of its own: the Design package or not, the local tool at a version or none, the stand-in
-    /// provider at a version (its versions in a feed of the test's own, each with the range of EF Core it supports), and a
-    /// Program.cs of the test's in place of the shop's; restored from the UI thread (a window test's body), the window's
-    /// loop running meanwhile.</summary>
+    /// provider at a version (its versions in a feed of the test's own, each with the range of EF Core it supports, the
+    /// <paramref name="unrestorable"/> one needing a package no feed holds), and a Program.cs of the test's in place of the
+    /// shop's; restored from the UI thread (a window test's body), the window's loop running meanwhile.</summary>
     public static string Make(bool design, string? tool, string? provider = null, IReadOnlyList<(string Version, string Range)>? providers = null, string? program = null,
-        string? ef = null)
+        string? ef = null, string? unrestorable = null)
     {
-        string folder = Write(design, tool, provider, providers, program, ef);
+        string folder = Write(design, tool, provider, providers, program, ef, unrestorable);
         Restore.Run(Path.Combine(folder, "Shop.csproj"));
         return folder;
     }
@@ -582,12 +617,13 @@ internal static class ShopApp
     /// <inheritdoc cref="Make"/>
     public static async Task<string> MakeAsync(bool design, string? tool)
     {
-        string folder = Write(design, tool, null, null, null, null);
+        string folder = Write(design, tool, null, null, null, null, null);
         await Restore.RunAsync(Path.Combine(folder, "Shop.csproj"));
         return folder;
     }
 
-    private static string Write(bool design, string? tool, string? provider, IReadOnlyList<(string Version, string Range)>? providers, string? program, string? ef)
+    private static string Write(bool design, string? tool, string? provider, IReadOnlyList<(string Version, string Range)>? providers, string? program, string? ef,
+        string? unrestorable)
     {
         ef ??= Version;
         string folder = TestFolders.Create("shop");
@@ -595,7 +631,7 @@ internal static class ShopApp
         string standIns = TestFolders.Create("standins");
         foreach ((string version, string range) in providers ?? [])
         {
-            StandIn(standIns, version, range);
+            StandIn(standIns, version, range, version == unrestorable);
         }
         File.WriteAllText(Path.Combine(folder, "nuget.config"), $"""
             <?xml version="1.0" encoding="utf-8"?>
@@ -732,9 +768,11 @@ internal static class ShopApp
     }
 
     /// <summary>A stand-in provider's package in a feed: a nuspec alone, depending on EF Core's relational layer within the
-    /// range given, as a provider that trails EF Core's releases does.</summary>
-    private static void StandIn(string feed, string version, string range)
+    /// range given, as a provider that trails EF Core's releases does; <paramref name="unrestorable"/>, on a package no
+    /// feed holds too, so no restore takes it.</summary>
+    private static void StandIn(string feed, string version, string range, bool unrestorable)
     {
+        string missing = unrestorable ? "\n                    <dependency id=\"Passenger.Missing\" version=\"1.0.0\" />" : string.Empty;
         using System.IO.Compression.ZipArchive package = System.IO.Compression.ZipFile.Open(Path.Combine(feed, $"{Provider}.{version}.nupkg"), System.IO.Compression.ZipArchiveMode.Create);
         using StreamWriter nuspec = new(package.CreateEntry($"{Provider}.nuspec").Open());
         nuspec.Write($"""
@@ -747,7 +785,7 @@ internal static class ShopApp
                 <description>A stand-in provider of EF Core that supports {range}</description>
                 <dependencies>
                   <group targetFramework="{TestProjects.Framework}">
-                    <dependency id="Microsoft.EntityFrameworkCore.Relational" version="{range}" />
+                    <dependency id="Microsoft.EntityFrameworkCore.Relational" version="{range}" />{missing}
                   </group>
                 </dependencies>
               </metadata>

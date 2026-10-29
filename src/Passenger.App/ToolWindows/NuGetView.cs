@@ -179,7 +179,7 @@ public sealed class NuGetView : DockPanel
     /// <summary>A package change ended, whoever asked for it: said, and the list read again.</summary>
     private void OnChanged(object? sender, PackageOutcome outcome)
     {
-        status.Text = outcome.Done ? "Done" : "The change failed; the log says why";
+        status.Text = outcome.Done ? "Done" : $"The change failed{(outcome.Left is { } left ? $", {left}" : string.Empty)}; the log says why";
         IdeErrors.Observe(RefreshAsync());
     }
 

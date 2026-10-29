@@ -3,11 +3,39 @@ using Passenger.Core;
 
 namespace Passenger.App.Packages;
 
-/// <summary>What a package change came to: whether dotnet did it, the files it changed (the project, its lock file, the
-/// nearest Directory.Packages.props), what dotnet said, and, for one never begun, why (another change under way).</summary>
+/// <summary>What a package change came to: whether dotnet did it, the files it changed and left so (the project, its lock
+/// file, the nearest Directory.Packages.props), what dotnet said, and, for one never begun, why (another change under way).</summary>
 public sealed record PackageOutcome(bool Done, IReadOnlyList<string> Changed, IReadOnlyList<string> Said)
 {
     public string? Refused { get; init; }
+
+    /// <summary>The files the change wrote, those of one that failed among them, which it put back where it could.</summary>
+    public IReadOnlyList<string> Written { get; init; } = [];
+
+    /// <summary>For a change that failed having written files, what became of them: put back as before, or those the disk
+    /// would not take back left changed; else null.</summary>
+    public string? Left => Done || Written.Count == 0 ? null
+        : Changed.Count > 0 ? $"{Named(Changed)} left changed" : $"{Named(Written)} put back as before";
+
+    /// <summary>Why a change was refused or failed, in dotnet's last words (else <paramref name="otherwise"/>), with what
+    /// became of the files it wrote; null for one done.</summary>
+    public string? Failure(string otherwise)
+    {
+        if (Done)
+        {
+            return null;
+        }
+        string why = Refused ?? Said.LastOrDefault(l => l.Trim().Length > 0)?.Trim() ?? otherwise;
+        return Left is { } left ? $"{why.TrimEnd('.')}; {left}" : why;
+    }
+
+    /// <summary>Files by their names, "Shop.csproj and packages.lock.json".</summary>
+    public static string Named(IReadOnlyList<string> files) => files.Count switch
+    {
+        0 => "no file",
+        1 => Path.GetFileName(files[0]),
+        _ => $"{string.Join(", ", files.SkipLast(1).Select(Path.GetFileName))} and {Path.GetFileName(files[^1])}",
+    };
 }
 
 /// <summary>Adds, updates and removes a project's packages through dotnet add and remove package, so the SDK checks the
@@ -47,8 +75,14 @@ public sealed class PackageManager
                 return false;
             }
         }
-        return await RunAsync(["restore", project]);
+        return await RestoreAsync(project);
     }
+
+    /// <summary>Restores the project as it is.</summary>
+    public Task<bool> RestoreAsync(string project) => RunAsync(["restore", project]);
+
+    /// <summary>Whether the last change was stopped (<see cref="Stop"/>), as its folder was left.</summary>
+    public bool Stopped => stopped;
 
     /// <summary>Ends a change still under way, its whole process tree.</summary>
     public void Stop()

@@ -41,7 +41,7 @@ public partial class MainWindow
             if (session == next)
             {
                 // dotnet add package wrote the project, its lock file, and Directory.Packages.props under central management.
-                FollowWritten(outcome.Changed);
+                FollowWritten(outcome.Written);
                 ReloadSolution();
             }
         };

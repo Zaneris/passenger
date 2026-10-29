@@ -233,11 +233,12 @@ public sealed partial class PassengerTools
     });
 
     /// <summary>The files a package change wrote, named as the answer names them (the window's change took them into the
-    /// editors and read the projects again); one refused, or that dotnet failed, is an error saying why.</summary>
+    /// editors and read the projects again); one refused, or that dotnet failed, is an error saying why and what became of
+    /// the files it wrote.</summary>
     private IReadOnlyList<string> Changed(PackageOutcome outcome) =>
         outcome.Refused is { } why ? throw new InvalidOperationException(why)
         : outcome.Done ? [.. outcome.Changed.Select(Relative)]
-        : throw new InvalidOperationException(string.Join('\n', outcome.Said.TakeLast(15)));
+        : throw new InvalidOperationException(string.Join('\n', [.. outcome.Said.TakeLast(15), .. outcome.Left is { } left ? [left] : Array.Empty<string>()]));
 
     // The profiler
 

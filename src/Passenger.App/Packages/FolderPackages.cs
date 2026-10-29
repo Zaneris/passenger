@@ -1,6 +1,7 @@
 using Passenger.App.Editors;
 using Passenger.Core;
 using Passenger.Packages;
+using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App.Packages;
@@ -46,7 +47,7 @@ public sealed class FolderPackages
     /// <summary>Raised as a package change begins, with what it is.</summary>
     public event EventHandler<string>? ChangeBegun;
 
-    /// <summary>Raised after a package change, done or not, with the files it changed, before whoever asked for it is
+    /// <summary>Raised after a package change, done or not, with the files it wrote, before whoever asked for it is
     /// answered: the window takes them into its editors and reads the solution again.</summary>
     public event EventHandler<PackageOutcome>? Changed;
 
@@ -188,10 +189,10 @@ public sealed class FolderPackages
             () => manager.InstallAsync(project.Path, id, version));
 
     /// <summary>Moves several packages of a project to their versions together, as one change (<see cref="ChangeAsync"/>):
-    /// EF Core's packages with the provider that supports them.</summary>
+    /// EF Core's packages with the provider that supports them. One that fails is restored again once put back.</summary>
     public Task<PackageOutcome> InstallSetAsync(ProjectModel project, IReadOnlyList<(string Id, string Version)> packages, CommandHistory.Recording? within = null) =>
         ChangeAsync($"Moving {Moves(packages)} in {project.Name}…", $"Move {Moves(packages)} in {project.Name}", project, within,
-            () => manager.InstallSetAsync(project.Path, packages));
+            () => manager.InstallSetAsync(project.Path, packages), () => manager.RestoreAsync(project.Path));
 
     /// <summary>Takes a package out of a project.</summary>
     public Task<PackageOutcome> RemoveAsync(ProjectModel project, string id, CommandHistory.Recording? within = null) =>
@@ -218,8 +219,10 @@ public sealed class FolderPackages
     /// <summary>A package change, whoever asks for it: one at a time (another asked meanwhile is refused, saying what is under
     /// way), the open files saved first, shown as the window's work under <see cref="Changing"/>, which <see cref="Stop"/>
     /// ends; its files (<see cref="PackageFiles"/>) recorded <paramref name="within"/> the caller's command, else as one of
-    /// its own named <paramref name="name"/>; then the files it changed told (<see cref="Changed"/>).</summary>
-    private async Task<PackageOutcome> ChangeAsync(string stage, string name, ProjectModel project, CommandHistory.Recording? within, Func<Task<bool>> change)
+    /// its own named <paramref name="name"/>. One that fails puts back what it wrote, then, unless stopped, runs
+    /// <paramref name="again"/> (a restore of the project as it was). Then the files it wrote are told (<see cref="Changed"/>).</summary>
+    private async Task<PackageOutcome> ChangeAsync(string stage, string name, ProjectModel project, CommandHistory.Recording? within, Func<Task<bool>> change,
+        Func<Task<bool>>? again = null)
     {
         if (IsBusy)
         {
@@ -258,7 +261,15 @@ public sealed class FolderPackages
                     await hold.Until;
                 }
                 bool done = await change();
-                outcome = new(done, [.. files.Where((file, i) => !Same(Bytes(file), before[i]))], said);
+                // What the put back's restore says is the log's alone: the change's own words say why it failed.
+                manager.Line -= heard;
+                int[] wrote = Unlike(files, before);
+                if (!done && wrote.Length > 0 && await PutBackAsync([.. wrote.Select(i => (files[i], before[i]))]) && again is not null && !manager.Stopped)
+                {
+                    await again();
+                }
+                IReadOnlyList<string> written = [.. wrote.Select(i => files[i])];
+                outcome = new(done, done ? written : [.. Unlike(files, before).Select(i => files[i])], said) { Written = written };
             }
             finally
             {
@@ -276,7 +287,45 @@ public sealed class FolderPackages
         }
     }
 
+    /// <summary>Where the files' bytes are not those read before.</summary>
+    private static int[] Unlike(IReadOnlyList<string> files, byte[]?[] before) =>
+        [.. Enumerable.Range(0, files.Count).Where(i => !Same(Bytes(files[i]), before[i]))];
+
     private static bool Same(byte[]? now, byte[]? was) => now is null ? was is null : was is not null && now.AsSpan().SequenceEqual(was);
+
+    /// <summary>A failed change's files written back as they were before it, one it made taken away, off the window's
+    /// thread, its saves waited for: whether all landed, the log told which, or why one did not.</summary>
+    private async Task<bool> PutBackAsync(IReadOnlyList<(string Path, byte[]? Bytes)> back)
+    {
+        string? refused = await BackgroundWork.Run(() =>
+        {
+            foreach ((string path, byte[]? bytes) in back)
+            {
+                try
+                {
+                    if (bytes is null)
+                    {
+                        File.Delete(path);
+                    }
+                    else
+                    {
+                        FileText.Restore(path, bytes);
+                    }
+                }
+                catch (Exception failed) when (failed is IOException or UnauthorizedAccessException)
+                {
+                    return $"{Path.GetFileName(path)} could not be put back: {failed.Message}";
+                }
+            }
+            return null;
+        });
+        if (refused is null && await EditorArea.LandedAsync(back.Select(b => b.Path), null) is [(string path, Exception unlanded), ..])
+        {
+            refused = $"{Path.GetFileName(path)} could not be put back: {unlanded.Message}";
+        }
+        Line?.Invoke(this, refused ?? $"The change failed: {PackageOutcome.Named(back.Select(b => b.Path).ToList())} put back as before");
+        return refused is null;
+    }
 
     private static byte[]? Bytes(string file)
     {
