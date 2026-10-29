@@ -93,6 +93,35 @@ public sealed class LongTextTests : IDisposable
             $"With soft wrap, a key in a line of a million characters allocated {largeBytes:N0} bytes on the UI thread, against {smallBytes:N0} in a line of 10,000: the line's rows were made again");
     }
 
+    /// <summary>With soft wrap on, showing a file of 500,000 lines and changing the view's width read and allocate on the UI
+    /// thread what they do in a file of 5,000: the lines on screen are wrapped at once and the rest on the thread pool,
+    /// the rows kept as they were until those land.</summary>
+    [AvaloniaFact]
+    public void Showing_and_resizing_a_soft_wrapped_file_of_500_000_lines_costs_the_UI_thread_what_one_of_5_000_does()
+    {
+        WrappedFile small = new(5_000);
+        WrappedFile large = new(500_000);
+        for (int round = 0; round < 3; round++)
+        {
+            small.Round(round);
+            large.Round(round);
+        }
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"Shown soft-wrapped, 5,000 lines read {small.ShowRead:N0} characters to wrap and allocated {small.ShowBytes:N0} bytes on the UI thread, 500,000 lines {large.ShowRead:N0} and {large.ShowBytes:N0}; "
+            + $"a width change read {small.WidthRead:N0} and allocated {small.WidthBytes:N0}, and {large.WidthRead:N0} and {large.WidthBytes:N0}");
+        Assert.True(large.ShowRead <= small.ShowRead + 1024,
+            $"Shown soft-wrapped, a file of 500,000 lines read {large.ShowRead:N0} characters on the UI thread to wrap, one of 5,000 {small.ShowRead:N0}: lines off screen were wrapped there");
+        Assert.True(large.WidthRead <= small.WidthRead + 1024,
+            $"A width change read {large.WidthRead:N0} characters of a soft-wrapped file of 500,000 lines on the UI thread to wrap, of one of 5,000 {small.WidthRead:N0}: lines off screen were wrapped there");
+        // Every line's wraps made on the UI thread would be 4 MB at the least: a reference a line.
+        Assert.True(large.ShowBytes <= small.ShowBytes + (64 * 1024),
+            $"Shown soft-wrapped, a file of 500,000 lines allocated {large.ShowBytes:N0} bytes on the UI thread, one of 5,000 {small.ShowBytes:N0}: every line's wraps were made there");
+        Assert.True(large.WidthBytes <= small.WidthBytes + (64 * 1024),
+            $"A width change allocated {large.WidthBytes:N0} bytes on the UI thread in a soft-wrapped file of 500,000 lines, in one of 5,000 {small.WidthBytes:N0}: every line's wraps were made there");
+        small.Close();
+        large.Close();
+    }
+
     /// <summary>Random edits to two long lines (typing, deleting, replacing a selection, several carets, a long insertion,
     /// Undo and Redo) of tabs, CJK, Arabic, emoji with their joiners and modifiers, flags, combining marks, a grapheme
     /// longer than any read whole and lone surrogates, one of them printable ASCII until an edit puts more in: after every
@@ -599,6 +628,86 @@ public sealed class LongTextTests : IDisposable
                 made.Append(words[random.Next(words.Length)]).Append(gaps[random.Next(gaps.Length)]);
             }
             return made.Append('z', length - made.Length - 1).Append(' ').ToString();
+        }
+    }
+
+    /// <summary>A file of words in lines of a few to a hundred and sixty characters, every tenth wrapping, shown soft-wrapped
+    /// and its view's width changed: what each costs the UI thread, the least of the rounds, once every line is wrapped.</summary>
+    private sealed class WrappedFile
+    {
+        private readonly EditorRig rig;
+        private readonly int lines;
+
+        public WrappedFile(int lines)
+        {
+            this.lines = lines;
+            Random random = new(714);
+            string[] words = ["word", "xyz", "plain", "ok", "data", "12", "wrapping", "a", "line"];
+            StringBuilder text = new();
+            for (int line = 0; line < lines; line++)
+            {
+                int length = line % 10 == 9 ? 160 : random.Next(4, 30);
+                int start = text.Length;
+                while (text.Length - start < length)
+                {
+                    text.Append(words[random.Next(words.Length)]).Append(' ');
+                }
+                text.Append('\n');
+            }
+            rig = new EditorRig(text.ToString());
+            rig.Window.Width = 640;
+            rig.Editor.SoftWrap = true;
+            blink = Ui.BlinkBytes(rig.Editor);
+        }
+
+        /// <summary>What a blink of the caret allocates, which a longer wait draws more of.</summary>
+        private readonly long blink;
+
+        public long ShowRead { get; private set; } = long.MaxValue;
+        public long ShowBytes { get; private set; } = long.MaxValue;
+        public long WidthRead { get; private set; } = long.MaxValue;
+        public long WidthBytes { get; private set; } = long.MaxValue;
+
+        /// <summary>Soft wrap off and the text edited, so no wraps are kept for it; then shown soft-wrapped, and narrowed or
+        /// widened.</summary>
+        public void Round(int round)
+        {
+            rig.Window.Activate();
+            rig.Editor.Focus();
+            Ui.Settle();
+            rig.Editor.SoftWrap = false;
+            rig.Editor.Selections = SelectionSet.Single(rig.Document.Snapshot.Length);
+            rig.Type(round % 2 == 0 ? "x" : "y");
+            GC.Collect(1, GCCollectionMode.Forced, blocking: true);
+            GC.WaitForPendingFinalizers();
+            (long read, long bytes) = Cost(() => rig.Editor.Show(rig.Document, SelectionSet.Single(0), default, wrapped: true));
+            ShowRead = Math.Min(ShowRead, read);
+            ShowBytes = Math.Min(ShowBytes, bytes);
+            Assert.True(rig.Editor.RowsShown > lines + (lines / 20), $"Shown soft-wrapped, {lines:N0} lines take {rig.Editor.RowsShown:N0} rows, where every tenth wraps");
+            int rows = rig.Editor.RowsShown;
+            GC.Collect(1, GCCollectionMode.Forced, blocking: true);
+            GC.WaitForPendingFinalizers();
+            (read, bytes) = Cost(() => rig.Window.Width += round % 2 == 0 ? -160 : 160);
+            WidthRead = Math.Min(WidthRead, read);
+            WidthBytes = Math.Min(WidthBytes, bytes);
+            Assert.True(round % 2 == 0 ? rig.Editor.RowsShown > rows : rig.Editor.RowsShown < rows,
+                $"{lines:N0} lines take {rig.Editor.RowsShown:N0} rows {(round % 2 == 0 ? "narrowed" : "widened")}, where they took {rows:N0}");
+        }
+
+        public void Close() => rig.Window.Close();
+
+        /// <summary>The characters read to wrap and the bytes allocated on the UI thread by a change and all it sets going,
+        /// until the window is quiet, but for the caret's blinks meanwhile.</summary>
+        private (long Read, long Bytes) Cost(Action change)
+        {
+            long read = rig.Editor.CharactersWrapped;
+            long blinks = rig.Editor.Blinks;
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            change();
+            Ui.Settle();
+            long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+            TestContext.Current.TestOutputHelper?.WriteLine($"{lines:N0} lines: {bytes:N0} bytes, {rig.Editor.Blinks - blinks} blinks of {blink:N0}");
+            return (rig.Editor.CharactersWrapped - read, bytes - ((rig.Editor.Blinks - blinks) * blink));
         }
     }
 

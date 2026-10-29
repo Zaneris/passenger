@@ -187,13 +187,13 @@ public sealed partial class CodeEditor
         for (int i = 0; i < matches.Count; i++)
         {
             int at = matches[i].Start;
-            Mark(ref count, new StripeMark(StripeMarkKind.SearchMatch, RowOfOffset(text, Math.Min(at, text.Length), beforeWrap: false).Row, 1, at, "Search result", Item: i));
+            Mark(ref count, new StripeMark(StripeMarkKind.SearchMatch, RowNear(text, Math.Min(at, text.Length)), 1, at, "Search result", Item: i));
         }
         int usesAt = count;
         for (int i = 0; i < uses.Count; i++)
         {
             UsageHighlight use = uses[i];
-            Mark(ref count, new StripeMark(use.IsWrite ? StripeMarkKind.WriteUsage : StripeMarkKind.Usage, RowOfOffset(text, Math.Min(use.Range.Start, text.Length), beforeWrap: false).Row, 1,
+            Mark(ref count, new StripeMark(use.IsWrite ? StripeMarkKind.WriteUsage : StripeMarkKind.Usage, RowNear(text, Math.Min(use.Range.Start, text.Length)), 1,
                 use.Range.Start, use.IsWrite ? "Write usage" : "Read usage", Item: i));
         }
         MarkProblems(ref count, text, markers);
@@ -389,7 +389,7 @@ public sealed partial class CodeEditor
         {
             if (at >= start && at <= end)
             {
-                return RowOfOffset(text, at, beforeWrap: false).Row == mark.Row;
+                return RowNear(text, at) == mark.Row;
             }
         }
         return true;
@@ -432,7 +432,7 @@ public sealed partial class CodeEditor
     private StripeMark CaretMark()
     {
         int caret = selections.Primary.Caret;
-        return new StripeMark(StripeMarkKind.Caret, RowOfOffset(document.Snapshot, caret, LeansBack(caret)).Row, 1, caret, "Caret");
+        return new StripeMark(StripeMarkKind.Caret, RowNear(document.Snapshot, caret, LeansBack(caret)), 1, caret, "Caret");
     }
 
     /// <summary>The scrollbar's track, where the marks go: between its arrows, in this control's coordinates.</summary>

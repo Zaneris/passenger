@@ -1191,17 +1191,22 @@ public sealed partial class CodeEditor
 
     /// <summary>How wide each grapheme is in the editor's font as the formatter lays it alone, measured the first time it is
     /// met and kept; printable ASCII's one width when they share it (a monospaced font), and a tab's fixed width (the
-    /// formatter's tab, which does not go to a stop).</summary>
+    /// formatter's tab, which does not go to a stop). A copy for the thread pool measures nothing: what it has no width
+    /// for it gathers (<see cref="Lacking"/>) for the window's thread to measure.</summary>
     private sealed class Advances
     {
+        /// <summary>The most graphemes a copy gathers that it has no width for.</summary>
+        private const int LackedAtMost = 1024;
+
         private readonly double[] ascii = new double[128];
-        private readonly Dictionary<string, double> measured = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, double> measured;
         private readonly Dictionary<string, double>.AlternateLookup<ReadOnlySpan<char>> lookup;
-        private readonly Func<string, double> measure;
+        private readonly Func<string, double>? measure;
 
         public Advances(Func<string, double> measure, double tab)
         {
             this.measure = measure;
+            measured = new(StringComparer.Ordinal);
             lookup = measured.GetAlternateLookup<ReadOnlySpan<char>>();
             Array.Fill(ascii, double.NaN);
             Tab = tab;
@@ -1214,21 +1219,68 @@ public sealed partial class CodeEditor
             Uniform = same ? first : double.NaN;
         }
 
+        private Advances(Advances from)
+        {
+            from.ascii.CopyTo(ascii, 0);
+            measured = new(from.measured, StringComparer.Ordinal);
+            lookup = measured.GetAlternateLookup<ReadOnlySpan<char>>();
+            Tab = from.Tab;
+            Uniform = from.Uniform;
+            Widest = from.Widest;
+            Lacking = [];
+        }
+
         public double Uniform { get; }
         public double Tab { get; }
+
+        /// <summary>The widest a character of the graphemes measured is: a grapheme's width over its length.</summary>
+        public double Widest { get; private set; }
+
+        /// <summary>The graphemes a copy met that it has no width for; null for the editor's own, which measures them.</summary>
+        public HashSet<string>? Lacking { get; }
+
+        /// <summary>Whether a copy has met a grapheme it has no width for.</summary>
+        public bool Lacked { get; private set; }
+
+        /// <summary>Whether a copy has gathered as many graphemes it lacks as it takes.</summary>
+        public bool Full => Lacking is { Count: >= LackedAtMost };
+
+        /// <summary>The widths measured so far, for wrapping on the thread pool.</summary>
+        public Advances Copy() => new(this);
 
         public double Of(ReadOnlySpan<char> grapheme)
         {
             if (grapheme is [< '\u0080' and var c])
             {
-                return double.IsNaN(ascii[c]) ? ascii[c] = measure(c.ToString()) : ascii[c];
+                return !double.IsNaN(ascii[c]) ? ascii[c] : measure is null ? Lack(grapheme) : ascii[c] = Widen(measure(c.ToString()), 1);
             }
             if (!lookup.TryGetValue(grapheme, out double width))
             {
+                if (measure is null)
+                {
+                    return Lack(grapheme);
+                }
                 string key = grapheme.ToString();
-                width = measured[key] = measure(key);
+                width = measured[key] = Widen(measure(key), key.Length);
             }
             return width;
+        }
+
+        private double Widen(double width, int length)
+        {
+            Widest = Math.Max(Widest, width / length);
+            return width;
+        }
+
+        /// <summary>A copy's stand-in for a grapheme it has no width for, which it gathers.</summary>
+        private double Lack(ReadOnlySpan<char> grapheme)
+        {
+            Lacked = true;
+            if (!Full)
+            {
+                Lacking!.Add(grapheme.ToString());
+            }
+            return Tab;
         }
     }
 

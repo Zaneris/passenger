@@ -384,6 +384,8 @@ public sealed partial class CodeEditor : Control
 
     private void ShowText(TextDocument value, DocumentDecorations? shared)
     {
+        KeepWraps();
+        StopWrapping();
         document.ChangedFirst -= OnChangedFirst;
         document.Changed -= OnDocumentChanged;
         document = value;
@@ -408,8 +410,9 @@ public sealed partial class CodeEditor : Control
         leaning = [];
         wrapLeaning = [];
         nextWrapLeaning = null;
-        wraps = null;
+        wraps = KeptWraps(value.Snapshot);
         rowMap = null;
+        awaitedY = null;
         scroll = default;
         widestLine = 0;
         measuredWidth = 0;
@@ -492,6 +495,12 @@ public sealed partial class CodeEditor : Control
     {
         ShowText(shown, decorated);
         softWrap = wrapped;
+        if (!wrapped)
+        {
+            wraps = null;
+        }
+        // Without its wraps kept, the rows the host kept come once the lines above them are wrapped.
+        awaitedY = wrapped && wraps is null && offset.Y > 0 ? offset.Y : null;
         selections = carets.Clamp(shown.Snapshot.Length);
         caretsText = shown.Snapshot;
         leaning = [];
@@ -576,6 +585,7 @@ public sealed partial class CodeEditor : Control
             return;
         }
         scroll = clamped;
+        awaitedY = null;
         HideFoldPreview();
         UpdateScrollBars();
         InvalidateVisual();

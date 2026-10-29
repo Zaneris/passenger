@@ -40,6 +40,7 @@ public sealed partial class CodeEditor
     public override void Render(DrawingContext context)
     {
         Frames++;
+        WrapOnScreen();
         Size size = Bounds.Size;
         double gutter = GutterWidth;
         double left = TextLeft - scroll.X;

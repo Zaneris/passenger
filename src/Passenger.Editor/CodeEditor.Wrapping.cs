@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -45,9 +46,14 @@ public sealed partial class CodeEditor
             }
             KeepTopLine(() =>
             {
+                KeepWraps();
                 softWrap = value;
-                wraps = null;
+                wraps = value ? KeptWraps(document.Snapshot) : null;
             });
+            if (!value)
+            {
+                StopWrapping();
+            }
             scroll = new Vector(0, scroll.Y);
             nextWrapLeaning = null;
             wrapLeaning = [];
@@ -85,7 +91,8 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>Where the text's lines wrap at the view's width now, or null while soft wrap is off or the view has no width
-    /// yet.</summary>
+    /// yet. Made for another width or look, or for none, the lines on screen are wrapped at once and the rest kept as
+    /// they were (a row a line where there were none) until the thread pool has wrapped them (<see cref="WrapRest"/>).</summary>
     private WrapMap? Wraps
     {
         get
@@ -100,12 +107,140 @@ public sealed partial class CodeEditor
                 return null;
             }
             TextSnapshot text = document.Snapshot;
-            if (wraps is not { } map || !ReferenceEquals(map.Text, text) || map.Width != width || map.Look != look)
+            if (wraps is { } map && ReferenceEquals(map.Text, text) && map.Width == width && map.Look == look)
             {
-                wraps = map = WrapAll(text, width);
+                if (!map.Settled && wrapping is null)
+                {
+                    // Kept unsettled while another text was shown.
+                    WrapRest(map);
+                }
+                return map;
             }
+            WrapMap from = wraps is { } old && ReferenceEquals(old.Text, text) ? old : WrapMap.Blank(text);
+            RowMap rows = rowMap is { } kept && ReferenceEquals(kept.Wraps, from) && ReferenceEquals(kept.Folds, Folding) ? kept : new RowMap(Folding, from);
+            (int line, int sub) = rows.LineOfRow(Math.Max(0, RowAtY(0)));
+            wraps = map = WrapShown(from, Math.Min(line, text.LineCount - 1), ViewRows + sub, width)!;
+            rowShape++;
+            WrapRest(map);
             return map;
         }
+    }
+
+    /// <summary>How many rows the view shows, and one more.</summary>
+    private int ViewRows => (int)Math.Ceiling(Math.Max(0, Bounds.Height) / metrics.LineHeight) + 1;
+
+    /// <summary>The lines on screen wrapped at the width now before a frame draws them (those kept from another width,
+    /// or taken to fit unread), the row at the top kept there.</summary>
+    private void WrapOnScreen()
+    {
+        if (Wraps is not { Exact: false } map || Bounds.Height <= 0)
+        {
+            return;
+        }
+        (int line, int sub) = Rows.LineOfRow(Math.Max(0, RowAtY(0)));
+        if (line < map.LineCount && WrapShown(map, line, ViewRows + sub, map.Width) is { } wrapped)
+        {
+            TakeWraps(wrapped);
+        }
+    }
+
+    /// <summary>A line's wraps at the width now, wrapped first where the map has them from another width or took the line
+    /// to fit unread: what a caret's place or a row's text is worked out from.</summary>
+    private LineWrap? WrapOf(int line)
+    {
+        if (Wraps is not { } map || line >= map.LineCount)
+        {
+            return null;
+        }
+        if (!map.IsExact(line) && WrapShown(map, line, 1, map.Width) is { } wrapped)
+        {
+            TakeWraps(wrapped);
+            return wrapped[line];
+        }
+        return map[line];
+    }
+
+    /// <summary>The map with the lines shown from <paramref name="line"/> on, until they make <paramref name="rows"/> rows,
+    /// wrapped at the width where they are not yet; null where each was, or was found to fit as taken (marked so in
+    /// place). From a map of another width or look, every other line is kept as it was there, to be wrapped again.</summary>
+    private WrapMap? WrapShown(WrapMap from, int line, int rows, double width)
+    {
+        TextSnapshot text = from.Text;
+        bool same = from.Width == width && from.Look == look;
+        FoldLines folds = Folding;
+        Advances measure = Measures();
+        WrapBuilder? made = same ? null : new WrapBuilder(from.RunCount + 4);
+        int copiedTo = 0;
+        int k = folds.RangeAtOrBefore(line) + 1;
+        int shown = 0;
+        while (shown < rows && line < text.LineCount)
+        {
+            LineWrap? wrap = same && from.IsExact(line) ? from[line] : WrapLine(text, text.GetLine(line), width, measure);
+            if (same && wrap is null && ReferenceEquals(from[line], LineWrap.Assumed) && from.IsFresh(line))
+            {
+                from.Verify(line);
+            }
+            else if (!same || !from.IsExact(line))
+            {
+                made ??= new WrapBuilder(from.RunCount + 4);
+                from.CopyTo(made, copiedTo, line - copiedTo, same);
+                if (same)
+                {
+                    Rewrapped(StartsOf(from[line]), StartsOf(wrap), line);
+                }
+                made.Add(wrap, fresh: true);
+                copiedTo = line + 1;
+            }
+            shown += 1 + (wrap?.Breaks ?? 0);
+            line++;
+            if (k < folds.Hidden.Length && folds.Hidden[k].First == line)
+            {
+                line = folds.Hidden[k].Last + 1;
+                k++;
+            }
+        }
+        if (made is null)
+        {
+            return null;
+        }
+        from.CopyTo(made, copiedTo, from.LineCount - copiedTo, same);
+        return made.Build(text, width, look);
+    }
+
+    /// <summary>Takes a map of the same text and width in place of the one drawn, the offset at the view's top kept on the
+    /// row at the top.</summary>
+    private void TakeWraps(WrapMap next)
+    {
+        TextSnapshot text = document.Snapshot;
+        if (Bounds.Height <= 0 || wraps is not { } was || !ReferenceEquals(was.Text, text) || !ReferenceEquals(next.Text, text))
+        {
+            wraps = next;
+            Dispatcher.UIThread.Post(FollowRows);
+            return;
+        }
+        int top = Math.Max(0, RowAtY(0));
+        (int line, int sub) = Rows.LineOfRow(top);
+        double within = scroll.Y - (top * metrics.LineHeight);
+        wraps = next;
+        double y = MaxScrollY;
+        if (line < text.LineCount)
+        {
+            LineSpan span = text.GetLine(line);
+            int column = RowSpan.Of(span, was[line], sub).Start - span.Start;
+            int row = Rows.RowOf(line) + (IsHidden(line) ? 0 : SubRowOf(next[line], column, beforeWrap: false));
+            y = (row * metrics.LineHeight) + Math.Min(within, metrics.LineHeight - 1);
+        }
+        scroll = new Vector(scroll.X, Math.Clamp(y, 0, MaxScrollY));
+        // Asked for a row as a frame is drawn (this one's or a part's beside it), the rest follows once it has been.
+        Dispatcher.UIThread.Post(FollowRows);
+    }
+
+    /// <summary>The view, the scroll bars and the host told the rows changed under the view.</summary>
+    private void FollowRows()
+    {
+        InvalidateVisual();
+        UpdateScrollBars();
+        ScrollChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>The width a row's text may take: the view's, less room for the caret and the wrap's sign at a row's end.</summary>
@@ -136,17 +271,26 @@ public sealed partial class CodeEditor
     private bool LeansBack(int offset) => wrapLeaning.Contains(offset);
 
     /// <summary>A row of a line: its text's span, from a row of the line (from zero) as the wraps now have it.</summary>
-    private RowSpan RowSpanOf(TextSnapshot text, int line, int row) => RowSpan.Of(text.GetLine(line), Wraps?[line], row);
+    private RowSpan RowSpanOf(TextSnapshot text, int line, int row) => RowSpan.Of(text.GetLine(line), WrapOf(line), row);
 
     /// <summary>The row of the text an offset stands on, and the span of it: after a wrap there, or at the end of the row
     /// before it when <paramref name="beforeWrap"/>. An offset in folded lines is on its fold's first row.</summary>
     private (RowSpan Span, int Row) RowOfOffset(TextSnapshot text, int offset, bool beforeWrap)
     {
         int line = text.GetLineFromOffset(offset);
+        LineWrap? wrap = WrapOf(line);
         LineSpan span = text.GetLine(line);
-        LineWrap? wrap = Wraps?[line];
         int sub = SubRowOf(wrap, Math.Min(offset, span.End) - span.Start, beforeWrap);
         return (RowSpan.Of(span, wrap, sub), RowOf(line) + (IsHidden(line) ? 0 : sub));
+    }
+
+    /// <summary>The row an offset stands on as the rows are now, its line wrapped at another width where the map has it so:
+    /// for a mark beside the text, which wraps no line to be placed.</summary>
+    private int RowNear(TextSnapshot text, int offset, bool beforeWrap = false)
+    {
+        int line = text.GetLineFromOffset(offset);
+        int column = Math.Min(offset, text.GetLine(line).End) - text.GetLineStart(line);
+        return RowOf(line) + (IsHidden(line) ? 0 : SubRowOf(Wraps?[line], column, beforeWrap));
     }
 
     /// <summary>Which row of its line a column is on: the one a wrap at it starts, or with <paramref name="beforeWrap"/> the
@@ -260,7 +404,7 @@ public sealed partial class CodeEditor
     private void MoveToRowStart(bool extend)
     {
         TextSnapshot text = document.Snapshot;
-        if (Wraps is not { } map)
+        if (Wraps is null)
         {
             Move(s => TextNavigation.SmartHome(text, s.Caret), extend);
             return;
@@ -269,8 +413,8 @@ public sealed partial class CodeEditor
         SetSelections(selections.With(s =>
         {
             int line = text.GetLineFromOffset(s.Caret);
+            LineWrap? wrap = WrapOf(line);
             LineSpan span = text.GetLine(line);
-            LineWrap? wrap = map[line];
             int sub = SubRowOf(wrap, s.Caret - span.Start, LeansBack(s.Caret));
             if (wrap is null || sub == 0)
             {
@@ -290,7 +434,7 @@ public sealed partial class CodeEditor
     private void MoveToRowEnd(bool extend)
     {
         TextSnapshot text = document.Snapshot;
-        if (Wraps is not { } map)
+        if (Wraps is null)
         {
             Move(s => TextNavigation.LineEnd(text, s.Caret), extend);
             return;
@@ -300,8 +444,8 @@ public sealed partial class CodeEditor
         SelectionSet moved = selections.With(s =>
         {
             int line = text.GetLineFromOffset(s.Caret);
+            LineWrap? wrap = WrapOf(line);
             LineSpan span = text.GetLine(line);
-            LineWrap? wrap = map[line];
             bool before = LeansBack(s.Caret);
             int sub = SubRowOf(wrap, s.Caret - span.Start, before);
             if (wrap is null)
@@ -326,13 +470,13 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>Makes the wraps again for what they are made with (the font, the hints, the indent), the view's top line kept
-    /// where it is.</summary>
+    /// where it is: the lines on screen at once, the rest on the thread pool.</summary>
     private void Rewrap()
     {
         look++;
         if (softWrap)
         {
-            KeepTopLine(() => wraps = null);
+            KeepTopLine(() => { });
         }
     }
 
@@ -363,8 +507,8 @@ public sealed partial class CodeEditor
         base.OnSizeChanged(e);
         if (softWrap && wraps is { } map && map.Width != WrapWidth)
         {
-            // The text wraps at the new width; the line at the top stays at the top.
-            KeepTopLine(() => wraps = null);
+            // The text wraps at the new width, on screen at once; the line at the top stays at the top.
+            KeepTopLine(() => { });
         }
     }
 
@@ -384,14 +528,15 @@ public sealed partial class CodeEditor
     /// it asks where the carets are drawn.</summary>
     private void FollowWraps(DocumentChangedEventArgs change)
     {
-        if (wraps is not { } map || !ReferenceEquals(map.Text, change.Before))
+        if (!softWrap || wraps is not { } map || !ReferenceEquals(map.Text, change.Before))
         {
             wraps = null;
+            StopWrapping();
             return;
         }
         TextSnapshot before = change.Before;
         TextSnapshot after = change.After;
-        WrapBuilder made = new(map.Runs + 2);
+        WrapBuilder made = new(map.RunCount + 2);
         Advances measure = Measures();
         int copiedTo = 0;
         int shift = 0;
@@ -411,25 +556,26 @@ public sealed partial class CodeEditor
                 last = Math.Max(last, end);
                 j++;
             }
-            made.AddRange(map, copiedTo, first - copiedTo);
+            map.CopyTo(made, copiedTo, first - copiedTo, keepFresh: true);
             int lastAfter = last + shift + added;
-            if (added == 0 && first == last && map[first] is { } was
+            if (added == 0 && first == last && map.IsExact(first) && map[first] is { } was
                 && TryCarry(was, change, first, first + shift, i, j, map.Width, measure, out LineWrap? carried))
             {
-                made.Add(carried);
+                made.Add(carried, fresh: true);
             }
             else
             {
                 for (int line = first + shift; line <= lastAfter; line++)
                 {
                     LineWrap? wrap = WrapLine(after, after.GetLine(line), map.Width, measure);
-                    made.Add(wrap);
+                    made.Add(wrap, fresh: true);
                     if (added == 0)
                     {
                         Rewrapped(StartsOf(map[line - shift]), StartsOf(wrap), line);
                     }
                 }
             }
+            wrapping?.Moves.Add((first + shift, lastAfter, added));
             if (added != 0)
             {
                 rowShape++;
@@ -438,7 +584,7 @@ public sealed partial class CodeEditor
             shift += added;
             i = j;
         }
-        made.AddRange(map, copiedTo, map.LineCount - copiedTo);
+        map.CopyTo(made, copiedTo, map.LineCount - copiedTo, keepFresh: true);
         wraps = made.Build(after, map.Width, map.Look);
     }
 
@@ -464,7 +610,7 @@ public sealed partial class CodeEditor
             return false;
         }
         WrapReading chars = Reading(change.After, now);
-        RowRule rule = new(now.Start, was.FirstText, Fixed(width), Fixed(width - was.Indent), measure);
+        RowRule rule = new(now.Start, was.FirstText, Fixed(width), Fixed(width - was.Indent), measure, HintsNow);
         ReadOnlySpan<int> starts = was.Starts;
         List<int> rows = rowsMade;
         rows.Clear();
@@ -567,36 +713,24 @@ public sealed partial class CodeEditor
         {
             touched.Add(text.GetLineFromOffset(Math.Clamp(offset, 0, text.Length)));
         }
-        WrapBuilder made = new(map.Runs + touched.Count + 1);
+        WrapBuilder made = new(map.RunCount + touched.Count + 1);
         Advances measure = Measures();
         int copiedTo = 0;
         foreach (int line in touched)
         {
-            made.AddRange(map, copiedTo, line - copiedTo);
+            map.CopyTo(made, copiedTo, line - copiedTo, keepFresh: true);
             LineWrap? wrap = WrapLine(text, text.GetLine(line), map.Width, measure);
-            made.Add(wrap);
+            made.Add(wrap, fresh: true);
             Rewrapped(StartsOf(map[line]), StartsOf(wrap), line);
             copiedTo = line + 1;
         }
-        made.AddRange(map, copiedTo, map.LineCount - copiedTo);
+        map.CopyTo(made, copiedTo, map.LineCount - copiedTo, keepFresh: true);
         wraps = made.Build(text, map.Width, map.Look);
     }
 
     private static int Breaks(string text) => text.AsSpan().Count('\n');
 
     private static ReadOnlySpan<int> StartsOf(LineWrap? wrap) => wrap is null ? [] : wrap.Starts;
-
-    private WrapMap WrapAll(TextSnapshot text, double width)
-    {
-        rowShape++;
-        WrapBuilder made = new();
-        Advances measure = Measures();
-        for (int line = 0; line < text.LineCount; line++)
-        {
-            made.Add(WrapLine(text, text.GetLine(line), width, measure));
-        }
-        return made.Build(text, width, look);
-    }
 
     /// <summary>The graphemes' widths in the editor's font now, measured once each.</summary>
     private Advances Measures()
@@ -614,6 +748,11 @@ public sealed partial class CodeEditor
 
     private WrapReading? wrapReading;
 
+    private RowHints? hintsNow;
+
+    /// <summary>The hints as they stand, which the rows wrapped on the window's thread share their room with.</summary>
+    private RowHints HintsNow => hintsNow ??= RowHints.Live(this);
+
     private WrapReading Reading(TextSnapshot text, LineSpan line)
     {
         wrapReading ??= new WrapReading(this);
@@ -621,17 +760,23 @@ public sealed partial class CodeEditor
         return wrapReading;
     }
 
+    /// <summary><see cref="WrapLine(WrapReading, TextSnapshot, LineSpan, double, Advances, RowHints, bool, List{int})"/> on the
+    /// window's thread, with the hints as they stand, what it reads counted.</summary>
+    private LineWrap? WrapLine(TextSnapshot text, LineSpan line, double width, Advances measure) =>
+        WrapLine(wrapReading ??= new WrapReading(this), text, line, width, measure, HintsNow, wrapIndent, rowsMade);
+
     /// <summary>Where one line wraps at a width, or null for a line that fits: its rows one after another, each from where
     /// the one before it ended (<see cref="RowEnd"/>), its rows after the first drawn from its indent where that is no more
-    /// than half the width.</summary>
-    private LineWrap? WrapLine(TextSnapshot text, LineSpan line, double width, Advances measure)
+    /// than half the width (with <paramref name="indentWraps"/>).</summary>
+    private static LineWrap? WrapLine(WrapReading chars, TextSnapshot text, LineSpan line, double width, Advances measure, RowHints hints,
+        bool indentWraps, List<int> rows)
     {
         int length = line.Length;
         if (length == 0)
         {
             return null;
         }
-        WrapReading chars = Reading(text, line);
+        chars.Begin(text, line);
         int firstText = 0;
         double indent = 0;
         while (firstText < length)
@@ -649,9 +794,8 @@ public sealed partial class CodeEditor
         {
             return null;
         }
-        double drawnIndent = wrapIndent && indent <= width / 2 ? indent : 0;
-        RowRule rule = new(line.Start, firstText, Fixed(width), Fixed(width - drawnIndent), measure);
-        List<int> rows = rowsMade;
+        double drawnIndent = indentWraps && indent <= width / 2 ? indent : 0;
+        RowRule rule = new(line.Start, firstText, Fixed(width), Fixed(width - drawnIndent), measure, hints);
         rows.Clear();
         (int end, int firstReach) = RowEnd(chars, 0, rule);
         while (end >= 0)
@@ -667,13 +811,13 @@ public sealed partial class CodeEditor
     /// whatever came before, and past its room it ends after its last space, comma or semicolon, else before its last dot or
     /// bracket, else before the grapheme that would not fit. Spaces never wrap: they stay at the end of their row however
     /// far they reach, so a row starts with text.</summary>
-    private (int End, int Reach) RowEnd(WrapReading chars, int start, in RowRule rule)
+    private static (int End, int Reach) RowEnd(WrapReading chars, int start, in RowRule rule)
     {
         int length = chars.Length;
         Int128 room = start == 0 ? rule.FirstRoom : rule.Room;
-        HintList hints = decorations.InlayHints;
-        int h = ShownHintFrom(hints, FirstHintFrom(rule.LineStart + start));
-        int hintAt = h < hints.Count ? hints[h].Offset - rule.LineStart : int.MaxValue;
+        RowHints hints = rule.Hints;
+        int h = hints.From(rule.LineStart + start);
+        int hintAt = hints.ColumnOf(h, rule.LineStart);
         if (rule.Uniform >= 0 && PlainRowEnd(chars, start, room, hintAt, rule) is { } plain)
         {
             return plain;
@@ -700,9 +844,9 @@ public sealed partial class CodeEditor
             }
             while (hintAt <= i)
             {
-                x += Fixed(HintWidth(hints[h], out _));
-                h = ShownHintFrom(hints, h + 1);
-                hintAt = h < hints.Count ? hints[h].Offset - rule.LineStart : int.MaxValue;
+                x += hints.RoomOf(h);
+                h = hints.After(h);
+                hintAt = hints.ColumnOf(h, rule.LineStart);
             }
             int size = chars.Grapheme(i);
             Int128 advance = c == '\t' ? rule.Tab
@@ -813,6 +957,10 @@ public sealed partial class CodeEditor
     /// line carries its rows in place (<see cref="TryCarry"/>), the map then holding it being the one of the text it made.</summary>
     private sealed class LineWrap
     {
+        /// <summary>A line taken to fit unread, too short to wrap however wide its characters are but for one never yet
+        /// measured: one row, as a line that fits, read before it is drawn or a place on it is worked out.</summary>
+        public static readonly LineWrap Assumed = new([], 0, 0, 0);
+
         private int[] starts;
         private int count;
 
@@ -850,22 +998,23 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>What a line's rows wrap by: where the line starts, where its text begins after its indent, the room of its
-    /// first row and of the rest, the graphemes' widths, and printable ASCII's one width (or -1) and a tab's in
-    /// <see cref="Unit"/>s.</summary>
-    private readonly struct RowRule(int lineStart, int firstText, Int128 firstRoom, Int128 room, Advances measure)
+    /// first row and of the rest, the graphemes' widths, the hints sharing the rows, and printable ASCII's one width (or
+    /// -1) and a tab's in <see cref="Unit"/>s.</summary>
+    private readonly struct RowRule(int lineStart, int firstText, Int128 firstRoom, Int128 room, Advances measure, RowHints hints)
     {
         public int LineStart { get; } = lineStart;
         public int FirstText { get; } = firstText;
         public Int128 FirstRoom { get; } = firstRoom;
         public Int128 Room { get; } = room;
         public Advances Measure { get; } = measure;
+        public RowHints Hints { get; } = hints;
         public Int128 Uniform { get; } = double.IsNaN(measure.Uniform) ? -1 : Fixed(measure.Uniform);
         public Int128 Tab { get; } = Fixed(measure.Tab);
     }
 
     /// <summary>The line being wrapped, read from its text a window at a time, so wrapping a few of its rows reads only
-    /// around them; what it reads is counted in <see cref="CharactersWrapped"/>.</summary>
-    private sealed class WrapReading(CodeEditor editor)
+    /// around them; what the window's thread reads is counted in its editor's <see cref="CharactersWrapped"/>.</summary>
+    private sealed class WrapReading(CodeEditor? counted)
     {
         private const int Window = 1024;
 
@@ -903,7 +1052,10 @@ public sealed partial class CodeEditor
                 buffer = new char[Math.Max(count, buffer.Length * 2)];
             }
             text!.CopyTo(lineStart + from, buffer.AsSpan(0, count));
-            editor.CharactersWrapped += count;
+            if (counted is not null)
+            {
+                counted.CharactersWrapped += count;
+            }
             readAt = from;
             read = count;
         }
@@ -954,8 +1106,9 @@ public sealed partial class CodeEditor
     /// <summary>Where every line of one text wraps at one width, null for a line that fits, in runs of lines that the maps of
     /// later texts share: an edit's map makes again the lines it touched and takes the runs around them as they were, so a
     /// key costs the lines it changed and a few small arrays, whatever the length of the file. Replaced, never changed but
-    /// for a line an edit carries in place for the next text's map, so a row map made from it stays true to it while its
-    /// text stands.</summary>
+    /// for a line an edit carries in place for the next text's map, or one taken to fit found to, so a row map made from it
+    /// stays true to it while its text stands. A run made at another width or look keeps that one's rows until wrapped
+    /// again (stale), and a line may be taken to fit unread (<see cref="LineWrap.Assumed"/>).</summary>
     private sealed class WrapMap
     {
         private readonly WrapRun[] runs;
@@ -975,14 +1128,23 @@ public sealed partial class CodeEditor
             firstLines = new int[runs.Length];
             extraBefore = new int[runs.Length + 1];
             int lines = 0;
+            bool settled = true;
+            bool exact = true;
             for (int k = 0; k < runs.Length; k++)
             {
                 firstLines[k] = lines;
                 lines += runs[k].Count;
                 extraBefore[k + 1] = extraBefore[k] + runs[k].ExtraRows;
+                settled &= runs[k].Fresh;
+                exact &= runs[k].Fresh && !runs[k].Assumes;
             }
             LineCount = lines;
+            Settled = settled;
+            Exact = exact;
         }
+
+        /// <summary>A text's lines with none wrapped yet, each a row: what a text first shown wraps from.</summary>
+        public static WrapMap Blank(TextSnapshot text) => new(text, double.NaN, int.MinValue, [WrapRun.Blank(text.LineCount)]);
 
         public TextSnapshot Text { get; }
 
@@ -992,8 +1154,14 @@ public sealed partial class CodeEditor
 
         public int LineCount { get; }
 
+        /// <summary>Whether every line is wrapped at this width and look, or taken to fit there.</summary>
+        public bool Settled { get; }
+
+        /// <summary>Whether every line is wrapped at this width and look, none taken to fit unread.</summary>
+        public bool Exact { get; }
+
         /// <summary>How many runs the lines are kept in.</summary>
-        public int Runs => runs.Length;
+        public int RunCount => runs.Length;
 
         /// <summary>The rows every line's wraps add.</summary>
         public int ExtraRows => extraBefore[^1];
@@ -1005,6 +1173,26 @@ public sealed partial class CodeEditor
                 int k = RunOf(line);
                 return runs[k][line - firstLines[k]];
             }
+        }
+
+        /// <summary>A run and the line it starts at.</summary>
+        public (int First, WrapRun Run) RunAt(int k) => (firstLines[k], runs[k]);
+
+        /// <summary>Whether a line is wrapped at this width and look, or taken to fit there.</summary>
+        public bool IsFresh(int line) => runs[RunOf(line)].Fresh;
+
+        /// <summary>Whether a line is wrapped at this width and look, not taken to fit unread.</summary>
+        public bool IsExact(int line)
+        {
+            int k = RunOf(line);
+            return runs[k].Fresh && !ReferenceEquals(runs[k][line - firstLines[k]], LineWrap.Assumed);
+        }
+
+        /// <summary>A line taken to fit, read and found to, marked so in place, where every map sharing its run reads it.</summary>
+        public void Verify(int line)
+        {
+            int k = RunOf(line);
+            runs[k].Verify(line - firstLines[k]);
         }
 
         /// <summary>The rows the wraps of the lines before a line add.</summary>
@@ -1019,8 +1207,8 @@ public sealed partial class CodeEditor
         }
 
         /// <summary>Lines [start, start + count) as they are, given to a map being made: the runs that hold them, the first
-        /// and last cut to fit.</summary>
-        public void CopyTo(WrapBuilder made, int start, int count)
+        /// and last cut to fit, stale unless <paramref name="keepFresh"/> (a map of this width and look).</summary>
+        public void CopyTo(WrapBuilder made, int start, int count, bool keepFresh)
         {
             if (count <= 0)
             {
@@ -1031,7 +1219,8 @@ public sealed partial class CodeEditor
             {
                 int from = Math.Max(start, firstLines[k]) - firstLines[k];
                 int to = Math.Min(end, firstLines[k] + runs[k].Count) - firstLines[k];
-                made.Add(runs[k].Slice(from, to - from));
+                WrapRun part = runs[k].Slice(from, to - from);
+                made.Add(keepFresh ? part : part.Stale);
             }
         }
 
@@ -1043,66 +1232,98 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>Lines' wraps as a stretch of one array, with the rows the wraps before each line of the array add, so a
-    /// stretch of it is shared by every map that has those lines unchanged.</summary>
-    private readonly struct WrapRun(LineWrap?[] lines, int[] extra, int from, int count)
+    /// stretch of it is shared by every map that has those lines unchanged; whether they were wrapped at the width and look
+    /// of the map holding it (fresh), and whether some were taken to fit unread. A blank run has no array: every line a row.</summary>
+    private readonly struct WrapRun(LineWrap?[]? lines, int[]? extra, int from, int count, bool fresh, bool assumes)
     {
         public int Count { get; } = count;
 
-        public int ExtraRows => extra[from + Count] - extra[from];
+        public bool Fresh { get; } = fresh;
 
-        public LineWrap? this[int line] => lines[from + line];
+        public bool Assumes { get; } = assumes;
 
-        public static WrapRun Of(LineWrap?[] lines)
+        /// <summary>Whether it has no array, every line a row, none wrapped.</summary>
+        public bool IsBlank => lines is null;
+
+        public int ExtraRows => extra is null ? 0 : extra[from + Count] - extra[from];
+
+        public LineWrap? this[int line] => lines?[from + line];
+
+        /// <summary>A run that is the stale one of this, as a map of another width or look takes it.</summary>
+        public WrapRun Stale => new(lines, extra, from, Count, false, Assumes);
+
+        public static WrapRun Of(LineWrap?[] lines, bool fresh)
         {
             int[] extra = new int[lines.Length + 1];
+            bool assumes = false;
             for (int i = 0; i < lines.Length; i++)
             {
                 extra[i + 1] = extra[i] + (lines[i]?.Breaks ?? 0);
+                assumes |= ReferenceEquals(lines[i], LineWrap.Assumed);
             }
-            return new WrapRun(lines, extra, 0, lines.Length);
+            return new WrapRun(lines, extra, 0, lines.Length, fresh, assumes);
         }
 
-        public int ExtraBefore(int line) => extra[from + line] - extra[from];
+        public static WrapRun Blank(int count) => new(null, null, 0, count, false, false);
 
-        public WrapRun Slice(int start, int length) => new(lines, extra, from + start, length);
+        public int ExtraBefore(int line) => extra is null ? 0 : extra[from + line] - extra[from];
+
+        public WrapRun Slice(int start, int length) => new(lines, extra, from + start, length, Fresh, Assumes);
+
+        /// <summary>A line taken to fit marked as found to, which draws and counts the same.</summary>
+        public void Verify(int line)
+        {
+            if (lines is not null && ReferenceEquals(lines[from + line], LineWrap.Assumed))
+            {
+                lines[from + line] = null;
+            }
+        }
     }
 
     /// <summary>Makes a <see cref="WrapMap"/> line by line, taking an older map's runs whole where they are long enough to
-    /// share and copying the short ones, so the runs stay few however many edits a file has had.</summary>
-    private sealed class WrapBuilder(int runsAbout = 0)
+    /// share and copying the short ones, so the runs stay few however many edits a file has had; a run holds lines of
+    /// one freshness, in runs of <paramref name="runLength"/> lines at most.</summary>
+    private sealed class WrapBuilder(int runsAbout = 0, int runLength = 512)
     {
-        private const int RunLength = 512;
         private const int SharedAtLeast = 64;
 
         private readonly List<WrapRun> runs = new(runsAbout);
         private LineWrap?[]? pending;
         private int filled;
+        private bool pendingFresh;
 
-        public void Add(LineWrap? wrap)
+        public void Add(LineWrap? wrap, bool fresh)
         {
-            if (filled == RunLength)
+            if (filled == runLength || (filled > 0 && fresh != pendingFresh))
             {
                 Flush();
             }
-            pending ??= ArrayPool<LineWrap?>.Shared.Rent(RunLength);
+            pending ??= ArrayPool<LineWrap?>.Shared.Rent(runLength);
+            pendingFresh = fresh;
             pending[filled++] = wrap;
         }
-
-        /// <summary>Lines [start, start + count) of an older map, as they are.</summary>
-        public void AddRange(WrapMap map, int start, int count) => map.CopyTo(this, start, count);
 
         /// <summary>A stretch of an older map's run.</summary>
         public void Add(WrapRun run)
         {
-            if (run.Count >= SharedAtLeast)
+            if (run.Count >= SharedAtLeast || run.IsBlank)
             {
-                Flush();
-                runs.Add(run);
+                Share(run);
                 return;
             }
             for (int i = 0; i < run.Count; i++)
             {
-                Add(run[i]);
+                Add(run[i], run.Fresh);
+            }
+        }
+
+        /// <summary>A run taken whole however short: for the thread pool, which reads no line of a run another map holds.</summary>
+        public void Share(WrapRun run)
+        {
+            if (run.Count > 0)
+            {
+                Flush();
+                runs.Add(run);
             }
         }
 
@@ -1121,7 +1342,7 @@ public sealed partial class CodeEditor
         {
             if (filled > 0)
             {
-                runs.Add(WrapRun.Of(pending.AsSpan(0, filled).ToArray()));
+                runs.Add(WrapRun.Of(pending.AsSpan(0, filled).ToArray(), pendingFresh));
                 filled = 0;
             }
         }

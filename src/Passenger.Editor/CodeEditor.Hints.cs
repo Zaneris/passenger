@@ -295,12 +295,8 @@ public sealed partial class CodeEditor
     /// <summary>Whether a row of the offset's line starts at it, its line wrapping there.</summary>
     private bool IsWrapAt(TextSnapshot text, int offset)
     {
-        if (Wraps is not { } map)
-        {
-            return false;
-        }
         int line = text.GetLineFromOffset(offset);
-        return map[line] is { } wrap && wrap.Starts.BinarySearch(offset - text.GetLineStart(line)) >= 0;
+        return WrapOf(line) is { } wrap && wrap.Starts.BinarySearch(offset - text.GetLineStart(line)) >= 0;
     }
 
     /// <summary>Whether a point on the text is past the middle of the hints at the offset it falls at, where a click
