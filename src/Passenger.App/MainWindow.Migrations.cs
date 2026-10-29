@@ -21,7 +21,8 @@ public partial class MainWindow
     private void AddMigrations()
     {
         MigrationsController controller = migrations = new MigrationsController(new MigrationsParts(Editors, Bottom, Dock, work, Say, () => session, () => buildRun,
-            ChooseAsync, (project, id, version) => session.Packages.InstallAsync(project, id, version), (project, packages) => session.Packages.InstallSetAsync(project, packages),
+            ChooseAsync, (project, id, version, recording) => session.Packages.InstallAsync(project, id, version, recording),
+            (project, packages, recording) => session.Packages.InstallSetAsync(project, packages, recording),
             () => session.Packages.FeedAsync(null), FollowWritten, OpenFile, () => StateFolder, ShowPendingModelChanges)
         {
             AsksNoOne = () => AgentsOwn,

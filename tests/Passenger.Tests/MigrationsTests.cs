@@ -404,7 +404,7 @@ public sealed class MigrationsTests
 
     /// <summary>Undo from the Solution view, a row chosen there, its question answered yes: the last command taken back;
     /// <paramref name="opened"/> says where the files open in editors were opened from.</summary>
-    private static void UndoFromExplorer(MainWindow window, string path, Func<string>? opened = null)
+    internal static void UndoFromExplorer(MainWindow window, string path, Func<string>? opened = null)
     {
         List<string> asked = [];
         window.Confirm = (_, question, _) =>

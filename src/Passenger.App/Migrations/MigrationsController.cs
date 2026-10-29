@@ -23,8 +23,8 @@ public sealed record MigrationsParts(
     Func<ProjectSession> Session,
     Func<BuildRunController> Builds,
     Func<string, string, IReadOnlyList<string>, string?, Task<string?>> Choose,
-    Func<ProjectModel, string, string, Task<PackageOutcome>> Install,
-    Func<ProjectModel, IReadOnlyList<(string Id, string Version)>, Task<PackageOutcome>> InstallSet,
+    Func<ProjectModel, string, string, CommandHistory.Recording, Task<PackageOutcome>> Install,
+    Func<ProjectModel, IReadOnlyList<(string Id, string Version)>, CommandHistory.Recording, Task<PackageOutcome>> InstallSet,
     Func<Task<IPackageFeed>> Feed,
     Action<IReadOnlyList<string>> FollowWritten,
     Func<string, string?> OpenFile,
@@ -956,14 +956,13 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             return answer is not null;
         }
         using CommandHistory.Recording recording = parts.Editors.Commands.RecordWrites(together);
-        WatchPackageFiles(recording, project);
         List<(string, string)> moved = [.. project.Packages.Where(p => EfProviders.InSet(p.Name)).Select(p => (p.Name, version))];
         if (!moved.Any(m => m.Item1.Equals(id, StringComparison.OrdinalIgnoreCase)))
         {
             moved.Add((id, version));
         }
         moved.Add((left.Id, up!));
-        PackageOutcome outcome = await parts.InstallSet(project, moved);
+        PackageOutcome outcome = await parts.InstallSet(project, moved, recording);
         parts.Say(outcome.Done ? $"{together}: {left.Id} {up} with it" : outcome.Refused ?? $"{together} failed: the NuGet window's log says why");
         return false;
     }
@@ -1110,8 +1109,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     private async Task<string?> AddPackageAsync(ProjectModel project, string id, string version)
     {
         using CommandHistory.Recording recording = parts.Editors.Commands.RecordWrites($"Add {id} {version} to {project.Name}");
-        WatchPackageFiles(recording, project);
-        PackageOutcome outcome = await parts.Install(project, id, version);
+        PackageOutcome outcome = await parts.Install(project, id, version, recording);
         Touched = outcome.Changed;
         return outcome.Done ? null : outcome.Refused ?? outcome.Said.LastOrDefault(l => l.Trim().Length > 0) ?? $"{id} could not be added to {project.Name}";
     }
@@ -1143,8 +1141,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         using CommandHistory.Recording recording = parts.Editors.Commands.RecordWrites(alignment.Title);
         foreach (EfMove move in alignment.Moves)
         {
-            WatchPackageFiles(recording, move.Project);
-            PackageOutcome outcome = await parts.InstallSet(move.Project, move.Packages);
+            PackageOutcome outcome = await parts.InstallSet(move.Project, move.Packages, recording);
             Touched = [.. Touched, .. outcome.Changed];
             if (!outcome.Done)
             {
@@ -1152,23 +1149,6 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             }
         }
         return null;
-    }
-
-    /// <summary>The files a package change writes, watched by a command of global undo: the project, its lock file and the
-    /// nearest Directory.Packages.props.</summary>
-    private static void WatchPackageFiles(CommandHistory.Recording recording, ProjectModel project)
-    {
-        recording.Watch(project.Path);
-        recording.Watch(Path.Combine(project.Folder, "packages.lock.json"));
-        for (string? at = project.Folder; at is not null; at = Path.GetDirectoryName(at))
-        {
-            string props = Path.Combine(at, "Directory.Packages.props");
-            if (File.Exists(props))
-            {
-                recording.Watch(PathNames.Canonical(props));
-                break;
-            }
-        }
     }
 
     /// <summary>A design-time factory for the context, beside the project's file, from a template: the provider's own

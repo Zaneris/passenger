@@ -195,6 +195,44 @@ public sealed class PackagesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>In a project that restores with a lock file, the window's update of a package is one command of Undo with
+    /// the lock file its restore rewrote: the open lock file shows the new version as the update ends, and Undo in the
+    /// Solution view takes the project back on disk and the open lock file back in its editor, together.</summary>
+    [AvaloniaFact]
+    public void An_update_in_a_project_with_a_lock_file_shows_in_the_open_lock_file_and_is_one_undo_with_it()
+    {
+        File.WriteAllText(project, "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n"
+            + "    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>\n  </PropertyGroup>\n</Project>\n");
+        string lockFile = Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Lib", "packages.lock.json"));
+        MainWindow window = Open(new FolderFeed(feed));
+        NuGetView nuget = window.NuGet;
+        nuget.Query = "sample";
+        Task searched = nuget.RefreshAsync();
+        Ui.Landed(() => searched.IsCompleted && nuget.Versions.Count == 2, "the package and its versions");
+        nuget.ChosenVersion = "1.0.0";
+        Run(nuget, nuget.InstallAsync(Assert.Single(window.Projects)));
+        Assert.True(File.Exists(lockFile), $"The install's restore made no packages.lock.json:\n{nuget.Log}");
+        string projectBefore = File.ReadAllText(project);
+        string lockBefore = File.ReadAllText(lockFile);
+
+        window.OpenFile(lockFile);
+        Ui.Landed(() => nuget.Selected?.IsInstalled == true && nuget.Versions.Count == 2, "the package marked installed");
+        nuget.ChosenVersion = "1.1.0";
+        Run(nuget, nuget.InstallAsync(Assert.Single(window.Projects)));
+        Assert.True(File.ReadAllText(lockFile).Contains("\"resolved\": \"1.1.0\"", StringComparison.Ordinal), $"The update's restore left the lock file:\n{File.ReadAllText(lockFile)}");
+        string shown = window.EditorArea.Find(lockFile)?.Text.Snapshot.ToString() ?? "(no editor)";
+        Assert.True(shown == File.ReadAllText(lockFile), $"The open lock file still shows the text from before the update:\n{shown}");
+
+        MigrationsTests.UndoFromExplorer(window, project);
+        Ui.Landed(() => File.ReadAllText(project) == projectBefore, "the project back at 1.0.0");
+        shown = window.EditorArea.Find(lockFile)?.Text.Snapshot.ToString() ?? "(no editor)";
+        Assert.True(shown == lockBefore, $"Undo of the update took the project back but left the open lock file at:\n{shown}");
+        window.Perform(AppActions.SaveAll);
+        Ui.Settle();
+        Assert.True(File.ReadAllText(lockFile) == lockBefore, $"The lock file, saved once its update was undone, holds:\n{File.ReadAllText(lockFile)}");
+        window.Close();
+    }
+
     /// <summary>The version a project's line shows for the chosen package: the one installed there, or nothing.</summary>
     private static string? ShownVersion(NuGetView nuget, string name) => nuget.GetLogicalDescendants().OfType<StackPanel>()
         .Where(line => line.Children.FirstOrDefault() is TextBlock { Text: { } text } && text == name)

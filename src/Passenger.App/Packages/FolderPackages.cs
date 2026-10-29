@@ -1,3 +1,4 @@
+using Passenger.App.Editors;
 using Passenger.Core;
 using Passenger.Packages;
 using Passenger.Workspace;
@@ -7,7 +8,7 @@ namespace Passenger.App.Packages;
 /// <summary>The folder's NuGet, whoever asks of it (the NuGet window, MSBuild files' code help, Migrations, an agent): the
 /// package sources its nuget.config files give, read when first asked for and again after one changes, their feeds, the
 /// audit's known vulnerabilities, and the one way a package goes in, moves or comes out of a project, through the .NET
-/// command line, one change at a time. A session's own, ended with it; a UI-thread object.</summary>
+/// command line, one change at a time, each one command of Undo. A session's own, ended with it; a UI-thread object.</summary>
 public sealed class FolderPackages
 {
     /// <summary>What a package change's work is held under in the window, which no action names.</summary>
@@ -48,6 +49,9 @@ public sealed class FolderPackages
     /// <summary>Raised after a package change, done or not, with the files it changed, before whoever asked for it is
     /// answered: the window takes them into its editors and reads the solution again.</summary>
     public event EventHandler<PackageOutcome>? Changed;
+
+    /// <summary>Where a package change is recorded as one command of Undo, unless its caller records it; null records none.</summary>
+    public CommandHistory? Commands { get; set; }
 
     /// <summary>Saves the open files and waits for the saves still landing before a change rewrites a project or a
     /// nuget.config, so what is rewritten, and what the restore then reads, holds their edits. Null once all are on disk,
@@ -175,17 +179,21 @@ public sealed class FolderPackages
 
     /// <summary>Adds a package to a project at a version, or moves it to that version: the one way a package goes in
     /// (<see cref="ChangeAsync"/>).</summary>
-    public Task<PackageOutcome> InstallAsync(ProjectModel project, string id, string version) =>
-        ChangeAsync($"Installing {id} {version} in {project.Name}…", project, () => manager.InstallAsync(project.Path, id, version));
+    public Task<PackageOutcome> InstallAsync(ProjectModel project, string id, string version, CommandHistory.Recording? within = null) =>
+        ChangeAsync($"Installing {id} {version} in {project.Name}…", $"Install {id} {version} in {project.Name}", project, within,
+            () => manager.InstallAsync(project.Path, id, version));
 
     /// <summary>Moves several packages of a project to their versions together, as one change (<see cref="ChangeAsync"/>):
     /// EF Core's packages with the provider that supports them.</summary>
-    public Task<PackageOutcome> InstallSetAsync(ProjectModel project, IReadOnlyList<(string Id, string Version)> packages) =>
-        ChangeAsync($"Moving {string.Join(", ", packages.Select(p => $"{p.Id} to {p.Version}"))} in {project.Name}…", project, () => manager.InstallSetAsync(project.Path, packages));
+    public Task<PackageOutcome> InstallSetAsync(ProjectModel project, IReadOnlyList<(string Id, string Version)> packages, CommandHistory.Recording? within = null) =>
+        ChangeAsync($"Moving {Moves(packages)} in {project.Name}…", $"Move {Moves(packages)} in {project.Name}", project, within,
+            () => manager.InstallSetAsync(project.Path, packages));
 
     /// <summary>Takes a package out of a project.</summary>
-    public Task<PackageOutcome> RemoveAsync(ProjectModel project, string id) =>
-        ChangeAsync($"Removing {id} from {project.Name}…", project, () => manager.RemoveAsync(project.Path, id));
+    public Task<PackageOutcome> RemoveAsync(ProjectModel project, string id, CommandHistory.Recording? within = null) =>
+        ChangeAsync($"Removing {id} from {project.Name}…", $"Remove {id} from {project.Name}", project, within, () => manager.RemoveAsync(project.Path, id));
+
+    private static string Moves(IReadOnlyList<(string Id, string Version)> packages) => string.Join(", ", packages.Select(p => $"{p.Id} to {p.Version}"));
 
     /// <summary>Ends a package change still under way, as the folder is left.</summary>
     public void Stop() => manager.Stop();
@@ -201,8 +209,9 @@ public sealed class FolderPackages
 
     /// <summary>A package change, whoever asks for it: one at a time (another asked meanwhile is refused, saying what is under
     /// way), the open files saved first, shown as the window's work under <see cref="Changing"/>, which <see cref="Stop"/>
-    /// ends; then the files it changed told (<see cref="Changed"/>).</summary>
-    private async Task<PackageOutcome> ChangeAsync(string stage, ProjectModel project, Func<Task<bool>> change)
+    /// ends; its files (<see cref="PackageFiles"/>) recorded <paramref name="within"/> the caller's command, else as one of
+    /// its own named <paramref name="name"/>; then the files it changed told (<see cref="Changed"/>).</summary>
+    private async Task<PackageOutcome> ChangeAsync(string stage, string name, ProjectModel project, CommandHistory.Recording? within, Func<Task<bool>> change)
     {
         if (IsBusy)
         {
@@ -217,52 +226,68 @@ public sealed class FolderPackages
         EventHandler<string> heard = (_, line) => said.Add(line);
         manager.Line += heard;
         IReadOnlyList<string> files = PackageFiles(project);
-        byte[]?[] before;
-        bool done;
+        CommandHistory.Recording? own = null;
         try
         {
-            if (SaveFirst is { } save && await save(working, CancellationToken.None) is { } unsaved)
+            PackageOutcome outcome;
+            try
             {
-                return new PackageOutcome(false, [], []) { Refused = unsaved };
+                if (SaveFirst is { } save && await save(working, CancellationToken.None) is { } unsaved)
+                {
+                    return new PackageOutcome(false, [], []) { Refused = unsaved };
+                }
+                // Read once the open files are saved: what the save wrote is not the change's.
+                byte[]?[] before = [.. files.Select(Bytes)];
+                CommandHistory.Recording? recording = within ?? (own = Commands?.RecordWrites(name));
+                foreach (string file in files)
+                {
+                    recording?.Watch(file);
+                }
+                if (holdNext is { } hold)
+                {
+                    holdNext = null;
+                    hold.Reached.TrySetResult();
+                    await hold.Until;
+                }
+                bool done = await change();
+                outcome = new(done, [.. files.Where((file, i) => !Same(Bytes(file), before[i]))], said);
             }
-            // Read once the open files are saved: what the save wrote is not the change's.
-            before = [.. files.Select(Bytes)];
-            if (holdNext is { } hold)
+            finally
             {
-                holdNext = null;
-                hold.Reached.TrySetResult();
-                await hold.Until;
+                IsBusy = false;
+                changing = null;
+                manager.Line -= heard;
             }
-            done = await change();
+            Changed?.Invoke(this, outcome);
+            return outcome;
         }
         finally
         {
-            IsBusy = false;
-            changing = null;
-            manager.Line -= heard;
-        }
-        PackageOutcome outcome = new(done, [.. files.Where((file, i) => !(Bytes(file) ?? []).AsSpan().SequenceEqual(before[i] ?? []))], said);
-        Changed?.Invoke(this, outcome);
-        return outcome;
-
-        static byte[]? Bytes(string file)
-        {
-            try
-            {
-                return File.Exists(file) ? File.ReadAllBytes(file) : null;
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                return null;
-            }
+            // Ended once the window has taken the files into its editors, so the command holds their reload.
+            own?.Dispose();
         }
     }
 
-    /// <summary>The files a package change can write: the project, and under central package management the nearest
+    private static bool Same(byte[]? now, byte[]? was) => now is null ? was is null : was is not null && now.AsSpan().SequenceEqual(was);
+
+    private static byte[]? Bytes(string file)
+    {
+        try
+        {
+            return File.Exists(file) ? File.ReadAllBytes(file) : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The files a package change can write: the project, its lock file (<see cref="ProjectModel.LockFile"/>),
+    /// which its restore writes when it restores with one, and under central package management the nearest
     /// Directory.Packages.props, where dotnet add package puts the version.</summary>
     private static IReadOnlyList<string> PackageFiles(ProjectModel project)
     {
-        List<string> files = [project.Path];
+        List<string> files = [project.Path, PathNames.Canonical(project.LockFile)];
         for (string? at = Path.GetDirectoryName(project.Path); at is not null; at = Path.GetDirectoryName(at))
         {
             string props = Path.Combine(at, "Directory.Packages.props");

@@ -366,6 +366,23 @@ public sealed record ProjectModel(
     public bool Holds(string path) => !IsProgram ? PathNames.Within(path, Folder)
         : PathNames.Same(path, Path) || (Evaluated?.Items.Any(i => i.Type == "Compile" && PathNames.Same(i.Path, path)) ?? false);
 
+    /// <summary>The lock file its restore writes when it restores with one (<see cref="LockFileOf"/>).</summary>
+    public string LockFile => LockFileOf(Path, Property(Host.CarriedProperties.NuGetLockFilePath), File.Exists);
+
+    /// <summary>The lock file NuGet's restore of a project writes: the one the project names (NuGetLockFilePath, from its
+    /// folder), else packages.<i>its name</i>.lock.json beside it where <paramref name="exists"/> finds that, else
+    /// packages.lock.json.</summary>
+    public static string LockFileOf(string project, string? named, Func<string, bool> exists)
+    {
+        string folder = System.IO.Path.GetDirectoryName(project)!;
+        if (named is { Length: > 0 })
+        {
+            return System.IO.Path.GetFullPath(System.IO.Path.Combine(folder, named.Replace('\\', '/')));
+        }
+        string own = System.IO.Path.Combine(folder, $"packages.{System.IO.Path.GetFileNameWithoutExtension(project).Replace(' ', '_')}.lock.json");
+        return exists(own) ? own : System.IO.Path.Combine(folder, "packages.lock.json");
+    }
+
     /// <summary>The files of the project that depend on another, as its evaluated DependentUpon says (relative to the
     /// file's own folder, as MSBuild has it), each with that file's path; none before the project is evaluated. Made on
     /// each call from every item, so a folder's nesting asks once for all its files.</summary>

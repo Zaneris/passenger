@@ -214,7 +214,7 @@ public sealed partial class PassengerTools
         "Adds a package to a project (its name or .csproj) at a version (else the newest on the folder's enabled feeds), or " +
         "moves it to that version, through dotnet add package as the NuGet window does, restoring from the folder's " +
         "nuget.config feeds; with remove, takes it out through dotnet remove package. Answers the version installed and the " +
-        "files it changed (the project, and Directory.Packages.props under central package management).")]
+        "files it changed (the project, its packages.lock.json, and Directory.Packages.props under central package management).")]
     public Task<PackageChange> NuGetInstall(string project, string id, string? version = null, bool remove = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         ProjectModel chosen = Project(project);

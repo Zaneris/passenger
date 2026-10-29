@@ -346,6 +346,35 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.False(removed.Contains("Passenger.Sample", StringComparison.Ordinal), $"nuget_install with remove answered with the open project file still holding the package:\n{removed}");
     }
 
+    /// <summary>In a project that restores with a lock file, the files nuget_install names are all it changed: the lock file
+    /// its restore made, then rewrote for the next version, so an agent committing them leaves a locked restore whole.</summary>
+    [Fact]
+    public async Task An_agents_package_install_in_a_project_restoring_with_a_lock_file_names_the_lock_file_among_the_files_it_changed()
+    {
+        string library = PathNames.Canonical(TestFolders.Create("mcp-nuget-lock-"));
+        DeleteAtEnd(library);
+        string feed = Directory.CreateDirectory(Path.Combine(library, "feed")).FullName;
+        File.WriteAllBytes(Path.Combine(feed, "Passenger.Sample.1.0.0.nupkg"), StandInFeed.Package("Passenger.Sample", "1.0.0"));
+        File.WriteAllBytes(Path.Combine(feed, "Passenger.Sample.1.1.0.nupkg"), StandInFeed.Package("Passenger.Sample", "1.1.0"));
+        File.WriteAllText(Path.Combine(library, "nuget.config"),
+            "<configuration>\n  <packageSources>\n    <clear />\n    <add key=\"local\" value=\"feed\" />\n  </packageSources>\n"
+            + "  <config>\n    <add key=\"globalPackagesFolder\" value=\"packages\" />\n  </config>\n</configuration>\n");
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library("<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>"));
+        string lockFile = Path.Combine(library, "packages.lock.json");
+        await using McpClient client = await Start(["--mcp", library], languageServer: false);
+
+        JsonElement made = await Call(client, McpTools.NugetInstall, new() { ["project"] = "Lib", ["id"] = "Passenger.Sample", ["version"] = "1.0.0" });
+        string[] changed = [.. made.GetProperty("changed").EnumerateArray().Select(f => f.GetString()!).Order(StringComparer.Ordinal)];
+        Assert.True(changed.SequenceEqual(["Lib.csproj", "packages.lock.json"]) && File.Exists(lockFile),
+            $"nuget_install answered that it changed [{string.Join(", ", changed)}], where its restore made packages.lock.json too ({(File.Exists(lockFile) ? "there" : "not there")})");
+
+        JsonElement moved = await Call(client, McpTools.NugetInstall, new() { ["project"] = "Lib", ["id"] = "Passenger.Sample", ["version"] = "1.1.0" });
+        changed = [.. moved.GetProperty("changed").EnumerateArray().Select(f => f.GetString()!).Order(StringComparer.Ordinal)];
+        string locked = File.ReadAllText(lockFile);
+        Assert.True(changed.SequenceEqual(["Lib.csproj", "packages.lock.json"]) && locked.Contains("\"resolved\": \"1.1.0\"", StringComparison.Ordinal),
+            $"nuget_install's update answered that it changed [{string.Join(", ", changed)}], the lock file now holding:\n{locked}");
+    }
+
     /// <summary>Git's tools on a repository, a merge stopped for a conflict among them: the agent finds it in vcs_status (what
     /// is under way, each side's branch, what each did to the file), resolves it with theirs, and its commit finishes the
     /// merge; and a command in the IDE's terminal.</summary>

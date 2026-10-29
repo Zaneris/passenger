@@ -136,6 +136,7 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             Work = setup.Work,
             SaveFirst = setup.Editors.SaveAllLandedAsync,
+            Commands = setup.Editors.Commands,
         };
         MSBuild = new MSBuild.MSBuildService(() => Folder, () => Workspace)
         {

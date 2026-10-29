@@ -196,11 +196,14 @@ public static class CarriedProperties
     /// <summary>The assembly the project's build makes, wherever its output folder was moved.</summary>
     public const string TargetPath = "TargetPath";
 
+    /// <summary>The lock file the project's restore writes, when the project names its own.</summary>
+    public const string NuGetLockFilePath = "NuGetLockFilePath";
+
     public static readonly IReadOnlyList<string> Names =
     [
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
-        NuGetPackageRoot, TargetPath,
+        NuGetPackageRoot, TargetPath, NuGetLockFilePath,
     ];
 }
 
