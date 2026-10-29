@@ -37,8 +37,9 @@ public sealed record XamlFix(string Title, string Path, Func<string, IReadOnlyLi
 /// <summary>The problems Avalonia's XAML compiler would find, found as the file is typed: markup that is not
 /// well-formed, an undeclared prefix, a type, property, event handler, markup extension or directive nothing resolves, a
 /// value its property's type does not take (an enum's member, a boolean, a colour), a resource no scope defines, a
-/// compiled binding's path its <c>x:DataType</c> does not have, a setter's property its style's target does not have,
-/// and a name given twice. A project whose assemblies are not read yet (not restored) is checked for its markup only.</summary>
+/// compiled binding's path its <c>x:DataType</c> does not have or one with no data type to start from, a setter's
+/// property its style's target does not have, and a name given twice. A project whose assemblies are not read yet (not
+/// restored) is checked for its markup only.</summary>
 public static class XamlDiagnostics
 {
     private static readonly HashSet<string> KnownDirectives = new(StringComparer.Ordinal)
@@ -359,7 +360,7 @@ public static class XamlDiagnostics
                 Resource(file, key, dynamic: extension.LocalName == "DynamicResource", found, converter: within == "Converter");
                 break;
             case "Binding" or "CompiledBinding" when !language:
-                Binding(file, attribute, extension, found);
+                Binding(file, attribute, extension, found, nested: within is not null);
                 break;
             case "Type" when language && extension.Argument(null) is { Nested: null, Value.Length: > 0 } named && file.ResolveType(element, named.Value) is null:
                 found.Add(new XamlDiagnostic(named.ValueRange, XamlSeverity.Error, $"Cannot resolve symbol '{named.Value}'"));
@@ -414,11 +415,11 @@ public static class XamlDiagnostics
     private static bool ReferencedKey(XamlProject project, string key) =>
         project.Files.Values.Any(f => f.Resources.Any(r => r.Key == key));
 
-    /// <summary>A compiled binding's path, read against the data type in scope: each step a property of the one before.
-    /// A path from another source (an element, a relative source, a converter's own) is the compiler's to judge. In a
-    /// dialect that compiles no binding (WPF's), a path its data context's known type lacks is warned of: it fails only
-    /// as the app runs.</summary>
-    private static void Binding(XamlFile file, XmlAttribute attribute, MarkupExtension binding, List<XamlDiagnostic> found)
+    /// <summary>A compiled binding's path, read against the data type in scope: each step a property of the one before;
+    /// one starting at a data context no type is given is marked (<see cref="CompiledBindings"/>). A path from another
+    /// source (an element, a relative source, a converter's own) is the compiler's to judge. In a dialect that compiles no
+    /// binding (WPF's), a path its data context's known type lacks is warned of: it fails only as the app runs.</summary>
+    private static void Binding(XamlFile file, XmlAttribute attribute, MarkupExtension binding, List<XamlDiagnostic> found, bool nested)
     {
         XmlElement element = attribute.Owner;
         bool compiled = file.Dialect.CompilesBindings;
@@ -431,6 +432,14 @@ public static class XamlDiagnostics
             return;
         }
         MarkupArgument? path = binding.Argument(null) ?? binding.Argument("Path");
+        if (compiled && path?.Nested is null && CompiledBindings.StartsAtDataContext(path?.Value) && !CompiledBindings.HasDataType(file, attribute, nested))
+        {
+            found.Add(new XamlDiagnostic(binding.NameRange, XamlSeverity.Error, CompiledBindings.NoDataType)
+            {
+                Fixes = CompiledBindings.Fixes(file, attribute, binding, path?.Value),
+            });
+            return;
+        }
         if (path is null || path.Nested is not null || path.Value.Length == 0 || file.DataTypeOf(attribute, stopAtTemplates: true) is not { } type)
         {
             return;

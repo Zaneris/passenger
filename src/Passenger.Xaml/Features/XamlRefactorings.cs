@@ -474,18 +474,23 @@ public static partial class XamlRefactorings
         }
         XmlAttribute? after = root.Attributes.LastOrDefault(a => a.Name == "xmlns" || a.Prefix == "xmlns") ?? root.Attributes.LastOrDefault();
         int at = after?.End ?? root.NameEnd;
-        string gap = " ";
-        if (after is not null)
-        {
-            int index = root.Attributes.ToList().IndexOf(after);
-            int before = index > 0 ? root.Attributes[index - 1].End : root.NameEnd;
-            if (text.AsSpan(before, after.NameStart - before).Contains('\n'))
-            {
-                gap = (text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n") + LineIndent(text, after.NameStart);
-            }
-        }
-        declared.Add(new TextEdit(at, 0, $"{gap}xmlns:{prefix}=\"{uri}\""));
+        declared.Add(new TextEdit(at, 0, $"{AttributeGap(text, root, after)}xmlns:{prefix}=\"{uri}\""));
         return prefix;
+    }
+
+    /// <summary>What goes before an attribute written after <paramref name="after"/> (after the element's name when null):
+    /// a line of its own indented as that one, where that one starts its own line; else a space.</summary>
+    internal static string AttributeGap(string text, XmlElement element, XmlAttribute? after)
+    {
+        if (after is null)
+        {
+            return " ";
+        }
+        int index = element.Attributes.ToList().IndexOf(after);
+        int before = index > 0 ? element.Attributes[index - 1].End : element.NameEnd;
+        return text.AsSpan(before, after.NameStart - before).Contains('\n')
+            ? (text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n") + LineIndent(text, after.NameStart)
+            : " ";
     }
 
     private static string Qualified(string prefix, string name) => prefix.Length > 0 ? $"{prefix}:{name}" : name;

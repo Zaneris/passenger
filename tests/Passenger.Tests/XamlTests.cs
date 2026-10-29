@@ -709,6 +709,60 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A view with no x:DataType in an Avalonia 12 project, which compiles its bindings: its {Binding} and its
+    /// {CompiledBinding}, which Avalonia's compiler refuses (AVLN2100), are marked. The fix that gives the view the view
+    /// model's x:DataType, its namespace declared, clears both as one step of Undo, and the project builds.</summary>
+    [AvaloniaFact]
+    public void A_compiled_binding_with_no_data_type_is_marked_and_the_fix_giving_the_view_its_view_models_type_clears_it_and_builds()
+    {
+        const string Unbound = """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                <StackPanel>
+                    <TextBlock Text="{Binding Greeting}" />
+                    <TextBlock Text="{CompiledBinding Owner.Name}" />
+                </StackPanel>
+            </UserControl>
+
+            """;
+        const string NoDataType = "No x:DataType gives this compiled binding the type it binds to";
+        MainWindow window = app.Open(app.Write("OwnerView.axaml", Unbound));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => document.Markers.Count(m => m.Message == NoDataType) == 2,
+            () => $"both bindings with no data type marked, as the build refuses them: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        Assert.Equal(MarkerKind.Error, MarkerOn(editor, document, "Binding").Kind);
+        Assert.Equal(MarkerKind.Error, MarkerOn(editor, document, "CompiledBinding").Kind);
+
+        Ui.PlaceAfter(editor, "{Binding Gree");
+        Ui.Run(window, AppActions.QuickFix);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the fixes offered on the binding's line");
+        Assert.Equal(["Add x:DataType 'MainViewModel' to UserControl", "Use ReflectionBinding"], window.Assist.Offered.Take(2));
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        string typed = Unbound.Replace("xaml\">", "xaml\"\n             xmlns:vm=\"using:Gallery.ViewModels\"\n             x:DataType=\"vm:MainViewModel\">", StringComparison.Ordinal);
+        Assert.Equal(typed, editor.Document.Snapshot.ToString());
+        Ui.WaitFor(() => document.Markers.Count == 0, () => $"both bindings resolved once the view has its type: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.True(editor.Document.Snapshot.ToString() == Unbound, $"One Undo did not take the whole fix back: {editor.Document.Snapshot}");
+        Ui.WaitFor(() => document.Markers.Count(m => m.Message == NoDataType) == 2, "both bindings marked again once Undo took the type away");
+        Ui.Run(window, EditorActions.Redo);
+        Ui.Settle();
+        Assert.Equal(typed, editor.Document.Snapshot.ToString());
+        Ui.WaitFor(() => document.Markers.Count == 0, "both bindings resolved again after Redo");
+
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        // The gallery's window has a warning of its own (CS0108: its TextBlock named Title).
+        string said = $"{Ui.Said(window)}: {string.Join("; ", window.BottomPanel.Problems.Problems.Select(p => $"{p.Code} {p.Where} {p.Message}"))}";
+        Assert.True(window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true, $"The view given its type did not build: {said}");
+        Assert.True(!window.BottomPanel.Problems.Problems.Any(p => p.Path?.EndsWith("OwnerView.axaml", StringComparison.Ordinal) == true), $"The build said something of the view: {said}");
+        window.Close();
+    }
+
     /// <summary>After a build the XAML compiler's error (a number only it reads) is marked on its line and listed with its
     /// code. Avalonia's XAML compiler counts lines as an XML reader does, ending one at the lone '\r' in the window's tag,
     /// which the editor reads inside its line, so below it the compiler's line runs one ahead of the editor's: its error is
