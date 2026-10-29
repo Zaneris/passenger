@@ -668,9 +668,11 @@ public sealed class LspDocument : IDisposable
             : symbol.Deserialize<DocumentSymbol>(Json.Options)).OfType<DocumentSymbol>()];
     }
 
-    public async Task<IReadOnlyList<LspTextEdit>> FormatAsync(IndentOptions indent, CancellationToken cancel = default) =>
+    /// <summary>The whole document formatted in its indentation, its end and its trailing whitespace as the text and its
+    /// .editorconfig ask (<see cref="FormattingOptions.Of"/>).</summary>
+    public async Task<IReadOnlyList<LspTextEdit>> FormatAsync(IndentOptions indent, EditorConfig conventions, CancellationToken cancel = default) =>
         await Server.RequestAsync<List<LspTextEdit>>(LspMethods.Formatting,
-            new DocumentFormattingParams(Identifier, new FormattingOptions(indent.Size, !indent.UseTabs)), cancel) ?? [];
+            new DocumentFormattingParams(Identifier, FormattingOptions.Of(indent, conventions, Text.Snapshot)), cancel) ?? [];
 
     /// <summary>The whole document's tokens; <paramref name="sent"/>, when given, is told where the request reached the
     /// server among its words that its colours moved.</summary>

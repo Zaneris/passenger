@@ -498,7 +498,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     private async Task<Reformatted?> ServerFormatAsync(LspDocument lsp, OpenDocument document, string what)
     {
         using ChangeTracker asked = new(document.Text);
-        IReadOnlyList<LspTextEdit> answer = await lsp.FormatAsync(document.Indentation.Options);
+        IReadOnlyList<LspTextEdit> answer = await lsp.FormatAsync(document.Indentation.Options, document.Conventions);
         if (!context.Editors.Documents.Contains(document))
         {
             return null;

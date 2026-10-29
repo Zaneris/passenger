@@ -105,7 +105,15 @@ public sealed class EditorConfig
 
     public bool TrimTrailingWhitespace => Word(this["trim_trailing_whitespace"]) == "true";
 
-    public bool InsertFinalNewline => Word(this["insert_final_newline"]) == "true";
+    public bool InsertFinalNewline => FinalNewline == true;
+
+    /// <summary>What <c>insert_final_newline</c> asks of a file's end: a line break (true), none (false), or nothing (null).</summary>
+    public bool? FinalNewline => Word(this["insert_final_newline"]) switch
+    {
+        "true" => true,
+        "false" => false,
+        _ => null,
+    };
 
     /// <summary>The encoding <c>charset</c> asks a file be written in (UTF-16 with its BOM, the only way it is read back as
     /// UTF-16); null for none.</summary>

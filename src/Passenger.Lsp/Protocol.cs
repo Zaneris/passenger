@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Passenger.Text;
 
 namespace Passenger.Lsp;
 
@@ -212,7 +213,18 @@ public sealed record ServerMessage(string Method, JsonElement Params);
 /// <summary>Roslyn's codeAction/resolveFixAll: a fix-all's data, as its code action carried it, and the scope chosen.</summary>
 public sealed record FixAllCodeActionParams(string Title, JsonElement Data, string Scope);
 
-public sealed record FormattingOptions(int TabSize, bool InsertSpaces);
+/// <summary>How a whole document is formatted, the same for every server (<see cref="Of"/>).</summary>
+public sealed record FormattingOptions(int TabSize, bool InsertSpaces, bool TrimTrailingWhitespace, bool InsertFinalNewline, bool TrimFinalNewlines)
+{
+    /// <summary>A text's options: its indentation; trailing whitespace trimmed where .editorconfig's
+    /// <c>trim_trailing_whitespace</c> says so; and its end kept as it is, a final line break or none, unless
+    /// <c>insert_final_newline</c> asks for one, or for none (every final line break trimmed).</summary>
+    public static FormattingOptions Of(IndentOptions indent, EditorConfig conventions, TextSnapshot text)
+    {
+        bool broken = text.Length > 0 && text[text.Length - 1] is '\n' or '\r';
+        return new(indent.Size, !indent.UseTabs, conventions.TrimTrailingWhitespace, conventions.FinalNewline ?? broken, conventions.FinalNewline == false);
+    }
+}
 
 public sealed record DocumentFormattingParams(TextDocumentIdentifier TextDocument, FormattingOptions Options);
 
