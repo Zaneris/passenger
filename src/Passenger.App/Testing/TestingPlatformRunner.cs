@@ -279,9 +279,11 @@ public sealed class TestingPlatformRunner : ITestRunner
         private readonly JsonRpcPeer peer;
         private readonly Notifications target;
         private readonly StringBuilder said;
+        /// <summary>Done once the runner's own test host's output and errors are read to their end.</summary>
+        private readonly Task heard;
         private bool stopped;
 
-        private Host(string name, Process? process, int processId, TcpClient client, JsonRpcPeer peer, Notifications target, StringBuilder said)
+        private Host(string name, Process? process, int processId, TcpClient client, JsonRpcPeer peer, Notifications target, StringBuilder said, Task heard)
         {
             this.name = name;
             this.process = process;
@@ -290,6 +292,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             this.peer = peer;
             this.target = target;
             this.said = said;
+            this.heard = heard;
         }
 
         /// <summary>Starts an assembly's program as a server that connects to a port of the IDE's own, and initializes it.</summary>
@@ -355,7 +358,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             peer.On<TracedJson>("telemetry/update", update => Trace("<--", "telemetry/update", update?.Json));
             peer.On<TracedJson>("testing/testUpdates/attachments", update => Trace("<--", "testing/testUpdates/attachments", update?.Json));
             peer.Start();
-            Host host = new(name, process, id, client, peer, target, said);
+            Host host = new(name, process, id, client, peer, target, said, heard);
             try
             {
                 JsonObject initialize = new()
@@ -456,11 +459,13 @@ public sealed class TestingPlatformRunner : ITestRunner
             return true;
         }
 
-        /// <summary>Why the host failed, with what its program wrote last, once it has had a moment to end.</summary>
+        /// <summary>Why the host failed, with what its program wrote last, once it has had a moment to end and what it wrote
+        /// has been read to its end.</summary>
         private async Task<TestHostFailed> FailedAsync(string why)
         {
             if (process is not null && await Exited(TimeSpan.FromSeconds(1)))
             {
+                await heard.WaitAsync(TimeSpan.FromSeconds(1), CancellationToken.None).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.SuppressThrowing);
                 why += $" (exit code {process.ExitCode})";
             }
             return new TestHostFailed(Written(why, said));

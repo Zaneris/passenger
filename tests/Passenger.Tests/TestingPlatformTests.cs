@@ -392,3 +392,48 @@ public sealed class TestingPlatformBytesTests(ITestOutputHelper testOutput) : ID
             [.. run.Outcomes.Select(o => $"{o.Test.Id} {o.State} {o.DisplayName} {o.Message} {o.StackTrace} {o.Output}").Order(StringComparer.Ordinal)];
     }
 }
+
+/// <summary>What a Testing Platform test host wrote last, quoted in the failure the runner says once the host ends.</summary>
+[Collection(Beside.Name)]
+public sealed class TestHostLastWordsTests
+{
+    private const string LastWords = "the test host's last words";
+
+    /// <summary>A test host that connects, writes more than a pipe holds and then one last line, and exits at once, before
+    /// it answers the runner, has that last line in the failure the runner says, every one of twenty times beside two busy
+    /// processes: what it wrote is read to its end before it is quoted, never stopping at an earlier line.</summary>
+    [Fact]
+    public async Task A_test_host_that_writes_a_last_line_and_exits_at_once_has_that_line_in_its_failure_every_time()
+    {
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+        string program = Passenger.Tests.Debugging.Helpers.Debuggees.Program("PassengerCases");
+        TestAssembly assembly = new(new ProjectModel(Path.ChangeExtension(program, ".csproj"), "PassengerCases", "Exe", ["net10.0"], [], [], true), "net10.0", program);
+        using TestingPlatformRunner runner = new();
+        List<System.Diagnostics.Process> busy = ChildOutputTests.Busy();
+        try
+        {
+            for (int round = 1; round <= 20; round++)
+            {
+                List<string> said = [];
+                IReadOnlyList<TestItem> found = await runner.DiscoverAsync([assembly], line =>
+                {
+                    lock (said)
+                    {
+                        said.Add(line);
+                    }
+                }, cancel);
+                string failure;
+                lock (said)
+                {
+                    failure = string.Join("\n", said);
+                }
+                Assert.True(found.Count == 0 && failure.Contains("(exit code 3)", StringComparison.Ordinal) && failure.EndsWith($"\n{LastWords}", StringComparison.Ordinal),
+                    $"Round {round}: the test host that wrote '{LastWords}' as it exited was said to fail with '{failure}'");
+            }
+        }
+        finally
+        {
+            ChildOutputTests.End(busy);
+        }
+    }
+}

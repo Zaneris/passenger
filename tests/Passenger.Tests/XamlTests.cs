@@ -1963,6 +1963,71 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>The XAML preview of a view whose previewer writes more than a pipe holds and then a last line, and exits at
+    /// once, says the previewer ended with that last line, each of three times beside two busy processes: what it wrote is
+    /// read to its end before it is quoted, never "it said nothing" or an earlier line.</summary>
+    [AvaloniaFact]
+    public void A_previewer_that_writes_a_last_line_and_exits_at_once_is_said_to_have_ended_with_that_line()
+    {
+        app.Write("Ending.axaml", """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         x:Class="Gallery.Ending" Width="200" Height="100">
+                <TextBlock Text="Ending" />
+            </UserControl>
+
+            """);
+        app.Write("Ending.axaml.cs", """
+            using System;
+            using Avalonia.Controls;
+
+            namespace Gallery;
+
+            public partial class Ending : UserControl
+            {
+                public Ending()
+                {
+                    InitializeComponent();
+                    if (Design.IsDesignMode)
+                    {
+                        for (int line = 0; line < 2000; line++)
+                        {
+                            Console.Out.Write($"{line:D5} {new string('w', 58)}\n");
+                        }
+                        Console.Out.Write("the previewer's last words\n");
+                        Console.Out.Flush();
+                        Environment.Exit(3);
+                    }
+                }
+            }
+
+            """);
+        MainWindow window = app.Open(app.PathOf("Ending.axaml"), languageServer: false);
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        Passenger.App.Editors.EditorGroup group = window.EditorArea.ActiveGroup;
+        OpenDocument document = window.EditorArea.Active!;
+        List<System.Diagnostics.Process> busy = ChildOutputTests.Busy();
+        try
+        {
+            for (int round = 1; round <= 3; round++)
+            {
+                Ui.Click(group.PreviewToggle);
+                Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException($"Round {round}: the toggle showed no preview");
+                Ui.WaitFor(() => preview.Status.StartsWith("The previewer ended: ", StringComparison.Ordinal),
+                    () => $"round {round}'s previewer to end, the pane saying so, not '{preview.Status}'", TimeSpan.FromSeconds(60));
+                Assert.Equal("The previewer ended: the previewer's last words", preview.Status);
+                Ui.Click(group.PreviewToggle);
+                Ui.Settle();
+            }
+        }
+        finally
+        {
+            ChildOutputTests.End(busy);
+        }
+        window.Close();
+    }
+
     /// <summary>An Avalonia previewer that ends as it draws (a crash) has its end in passenger.log, with the last words the
     /// pane says it ended with, as the WPF previewer's is.</summary>
     [AvaloniaFact]

@@ -92,8 +92,9 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             started = await ChildProcesses.StartAsync(start);
         }
         host = started;
-        IdeErrors.Observe(ChildProcesses.Hear(started, log.Heard, log.Heard));
-        HearEnd(started, () => Ended(started));
+        Task heard = ChildProcesses.Hear(started, log.Heard, log.Heard);
+        IdeErrors.Observe(heard);
+        HearEnd(started, [heard], () => Ended(started));
         starting = Stopwatch.StartNew();
         preview.Say($"Starting the previewer on {Path.GetFileName(output)}…");
         preview.Hold();
@@ -227,22 +228,36 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     }
 
     /// <summary>Has <paramref name="ended"/> run once on the window's thread after a previewer's process ends, an end
-    /// before this listened too: a process raises Exited once, and one that died as it started may have raised it already.</summary>
-    internal static void HearEnd(Process started, Action ended)
+    /// before this listened too (a process raises Exited once, and one that died as it started may have raised it already),
+    /// once each reader of its streams has <paramref name="heard"/> what it wrote last, or a moment has passed.</summary>
+    internal static void HearEnd(Process started, IReadOnlyList<Task> heard, Action ended)
     {
-        int heard = 0;
-        void Heard()
+        int seen = 0;
+        void Exited()
         {
-            if (Interlocked.Exchange(ref heard, 1) == 0)
+            if (Interlocked.Exchange(ref seen, 1) == 0)
             {
-                UiThread.Post(ended);
+                IdeErrors.Observe(EndedAsync(heard, ended));
             }
         }
-        started.Exited += (_, _) => Heard();
+        started.Exited += (_, _) => Exited();
         if (started.HasExited)
         {
-            Heard();
+            Exited();
         }
+    }
+
+    /// <summary>The longest a previewer's last words are waited for once its process has ended.</summary>
+    private static readonly TimeSpan LastWords = TimeSpan.FromSeconds(2);
+
+    private static async Task EndedAsync(IReadOnlyList<Task> heard, Action ended)
+    {
+        Task limit = Task.Delay(Waits.Of(LastWords));
+        foreach (Task reading in heard)
+        {
+            await Task.WhenAny(reading, limit).ConfigureAwait(false);
+        }
+        UiThread.Post(ended);
     }
 
     private void Ended(Process process)

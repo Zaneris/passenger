@@ -130,12 +130,14 @@ internal sealed class WpfPreviewHost : IPreviewHost
             started = await ChildProcesses.StartAsync(start);
         }
         process = started;
-        IdeErrors.Observe(ChildProcesses.Hear(started, errors: log.Heard));
-        AvaloniaPreviewHost.HearEnd(started, () => Ended(started));
+        Task errors = ChildProcesses.Hear(started, errors: log.Heard);
+        IdeErrors.Observe(errors);
         starting = Stopwatch.StartNew();
         // Long-lived readers of the previewer's streams: each answer holds the window's work itself (UiThread.Post).
         IdeErrors.Observe(BackgroundWork.Unheld(() => WriteAsync(started)));
-        IdeErrors.Observe(BackgroundWork.Unheld(() => ReadAsync(started)));
+        Task output = BackgroundWork.Unheld(() => ReadAsync(started));
+        IdeErrors.Observe(output);
+        AvaloniaPreviewHost.HearEnd(started, [errors, output], () => Ended(started));
         preview.Say($"Starting the previewer on {Path.GetFileName(assembly)}…");
         Update();
     }

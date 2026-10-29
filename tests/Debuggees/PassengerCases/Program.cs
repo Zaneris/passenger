@@ -26,6 +26,18 @@ if (args is ["chatter"])
 		Console.Error.WriteLine($"chatter {line}");
 	}
 }
+if (args is ["--server", "--client-host", var host, "--client-port", var port])
+{
+	// A test host that connects, writes more than a pipe holds and a last line, and ends at once, answering nothing.
+	using System.Net.Sockets.TcpClient client = new(host, int.Parse(port, System.Globalization.CultureInfo.InvariantCulture));
+	for (int line = 0; line < 2000; line++)
+	{
+		Console.Out.Write($"{line:D5} {new string('w', 58)}\n");
+	}
+	Console.Out.Write("the test host's last words\n");
+	Console.Out.Flush();
+	Environment.Exit(3);
+}
 if (args is ["busy"])
 {
 	Busy.Spin(TimeSpan.FromMilliseconds(800));
