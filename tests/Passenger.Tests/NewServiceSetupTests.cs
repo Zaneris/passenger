@@ -182,6 +182,7 @@ public sealed class NewServiceSetupTests : IDisposable
     [AvaloniaFact]
     public void Renaming_a_file_while_New_Project_sets_its_service_up_stays_out_of_its_Undo()
     {
+        SkipWithoutDockerCommand();
         TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
         TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
         TestFolders.Write(place, "notes.md", "# Notes\n");
