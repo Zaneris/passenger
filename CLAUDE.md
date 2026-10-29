@@ -231,9 +231,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   server's edit to a file not open is refused if it was written in the last 2 s (an agent's call waits, `Patience`).
   `ServerWatches` watches for the server what it registers (`WatchedFiles`), beside the folder's watcher. A C# symbol's
   uses in XAML come from one finder, `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to Declaration's resolver)
-  and `CodeSymbol`.
+  and `CodeSymbol`. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through `ServerCommands`, the
+  edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind; every per-kind switch names each kind), `JsonSchemas`
-  (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`.
+  (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
+  runs one tsserver (`useSyntaxServer` never): a syntax server answers rename and usages from the open files alone.
 - **Build and run.** `BuildRunController` (partials), `ConsoleSink` (every console through one `PumpAsync`),
   `RunConfiguration` (data, edited in place as `ConfigurationEdit`s), `LaunchPlan` (one resolution for Run, Debug,
   Profile, Hot Reload and a debugged test host; a Passenger it launches keeps its state in the launcher's `sandbox/`),
