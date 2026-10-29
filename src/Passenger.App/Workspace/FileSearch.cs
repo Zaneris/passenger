@@ -228,6 +228,30 @@ public static class FileSearch
         }
     }
 
+    /// <summary>A closed file's replace as written, off the UI thread: its texts before and after, kept as the replace's Undo
+    /// keeps them, and the save's word of a text written as UTF-8 that its encoding could not hold; or why it was left as it
+    /// was.</summary>
+    public sealed record Written(string Path, TextSnapshot? Before, TextSnapshot? After, string? Converted, string? Refused);
+
+    /// <summary>Writes a closed file's replaced text in its own encoding, off the UI thread: null when the replace leaves its
+    /// text as it was.</summary>
+    public static Written? Write(Replacing plan)
+    {
+        if (plan is not { Closed: { } file, After: { } after } || after == file.Text)
+        {
+            return null;
+        }
+        try
+        {
+            string? converted = FileText.Save(plan.Path, after, file.Encoding, file.HasBom, file.CrBreaks).Converted;
+            return new Written(plan.Path, TextSnapshot.From(file.Text), TextSnapshot.From(after), converted, null);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return new Written(plan.Path, null, null, null, Refusal(error));
+        }
+    }
+
     /// <summary>Why a file's matches are left as they were: a regex ran too long there, or replacing them would make its
     /// text too long (<see cref="Refusals.TooLongReplaced"/>); null when they are replaced.</summary>
     private static string? Unreplaced(SearchResult found, string replacement) =>

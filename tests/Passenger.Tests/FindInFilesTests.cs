@@ -416,6 +416,58 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Replace in Files reads no closed file on the window's thread, and makes its writes and the texts its Undo
+    /// keeps off it: a replace across three closed files of 2 MB each costs that thread no more than one across three
+    /// small ones, where a read of one of them there costs at least its bytes.</summary>
+    [AvaloniaFact]
+    public void A_replace_across_large_closed_files_costs_the_window_thread_what_one_across_small_ones_does()
+    {
+        const int Large = 2 * 1024 * 1024;
+        string smalls = Path.Combine(folder, "small");
+        string larges = Path.Combine(folder, "large");
+        Directory.CreateDirectory(smalls);
+        Directory.CreateDirectory(larges);
+        const string Filler = "// a line of filler, with nothing in it to replace\n";
+        string filler = string.Concat(Enumerable.Repeat(Filler, Large / Filler.Length + 1));
+        for (int i = 0; i < 3; i++)
+        {
+            File.WriteAllText(Path.Combine(smalls, $"Small{i}.txt"), "int count;\n");
+            File.WriteAllText(Path.Combine(larges, $"Large{i}.txt"), "int count;\n" + filler);
+        }
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            long few = Costs(smalls);
+            long many = Costs(larges);
+            Assert.True(many < few + Large,
+                $"A replace across three closed files of 2 MB allocated {many / 1024} KB on the window's thread, across three small ones {few / 1024} KB: the files are read or their texts made there, stalling the window as the files grow");
+            Assert.StartsWith("int count;\n", File.ReadAllText(Path.Combine(larges, "Large0.txt")), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // The least a replace in the folder's files allocated on the window's thread, over rounds there and back.
+        long Costs(string directory)
+        {
+            long least = long.MaxValue;
+            for (int round = 0; round < 4; round++)
+            {
+                (string from, string to) = round % 2 == 0 ? ("count", "total") : ("total", "count");
+                SearchQuery query = new(from, WholeWords: true);
+                FilesFound found = Ui.Await(window.FindInFilesAsync(query, new SearchScope(SearchScopeKind.Directory, null, directory, true, null, null), CancellationToken.None),
+                    $"the search for {from} in {Path.GetFileName(directory)}");
+                Assert.Equal(3, found.Matches.Count);
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                FilesReplaced done = Ui.Await(window.ReplaceInFilesAsync(query, to, found), $"the replace of {from} with {to} in {Path.GetFileName(directory)}");
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+                Assert.Empty(done.Refused);
+            }
+            return least;
+        }
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_regex_backtracking_without_end_in_a_file_is_said_to_stop_there_to_the_popup_and_an_agent_and_replace_all_leaves_that_file()

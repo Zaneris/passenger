@@ -24,8 +24,9 @@ public sealed class CommandHistory
     internal CommandHistory(EditorArea editors) => this.editors = editors;
 
     /// <summary>Follows what a command changes from now until the recording is disposed: the open files' text, the files
-    /// not open it is told it writes or makes (<see cref="Recording.Watch"/>) and the files moved. Kept as a command of its
-    /// own when it changed more than one file or one not open, moved one or made one.</summary>
+    /// not open it is told it writes or makes (<see cref="Recording.Watch"/>, or with their texts <see cref="Recording.Wrote"/>)
+    /// and the files moved. Kept as a command of its own when it changed more than one file or one not open, moved one or
+    /// made one.</summary>
     public Recording Record(string name) => new(this, editors, name, ownWrites: false);
 
     /// <summary>A command that waits between its writes (a project's read, a program it runs), followed as <see cref="Record"/>
@@ -362,7 +363,9 @@ public sealed class CommandHistory
         // Taking only what it writes: each open file it watched, as it was then, and the change it made in each taken so far.
         private readonly Dictionary<OpenDocument, (string Path, object? Step, TextSnapshot Text)> writing = [];
         private readonly Dictionary<OpenDocument, TextChange> wrote = [];
-        private readonly Dictionary<string, TextSnapshot?> closed = [];
+        /// <summary>Each file not open it watched or wrote, by its path as the command began: its text before (none for one it
+        /// made) and its text after, when the command gave it (<see cref="Wrote"/>), else read once it ends.</summary>
+        private readonly Dictionary<string, (TextSnapshot? Before, TextSnapshot? After)> closed = [];
         private readonly List<(string From, string To)> moves = [];
         private readonly List<Part> parts = [];
         private List<TextChange>? openTaken;
@@ -394,13 +397,21 @@ public sealed class CommandHistory
             }
             if (!closed.ContainsKey(began))
             {
-                closed[began] = File.Exists(path) && FileText.Load(path) is { } file ? TextSnapshot.From(file.Text) : null;
+                closed[began] = (File.Exists(path) && FileText.Load(path) is { } file ? TextSnapshot.From(file.Text) : null, null);
             }
         }
 
         /// <summary>A file not open that the command's language server made empty a moment before, for the command to fill
         /// (TypeScript's Move to a new file): one the command made, which its Undo takes away.</summary>
-        public void Made(string path) => closed.TryAdd(Began(path), null);
+        public void Made(string path) => closed.TryAdd(Began(path), (null, null));
+
+        /// <summary>A file not open the command wrote, at its path now, with its text before and after as the command had
+        /// them, kept as they are: neither is read again. One it watched before keeps the text it had then.</summary>
+        public void Wrote(string path, TextSnapshot before, TextSnapshot after)
+        {
+            string began = Began(path);
+            closed[began] = (closed.TryGetValue(began, out (TextSnapshot? Before, TextSnapshot? After) watched) ? watched.Before : before, after);
+        }
 
         /// <summary>A file not open the command watched left out of it: its write never landed, so it changed nothing.</summary>
         public void Unwritten(string path) => closed.Remove(Began(path));
@@ -475,10 +486,21 @@ public sealed class CommandHistory
             }
             List<TextChange> texts = ownWrites ? [.. wrote.Values] : openTaken ?? OpenChanges();
             List<Creation> created = [];
-            foreach ((string path, TextSnapshot? before) in closed)
+            foreach ((string path, (TextSnapshot? before, TextSnapshot? given)) in closed)
             {
                 string at = made.Moved(path);
-                if (before is null)
+                if (given is not null)
+                {
+                    if (before is null)
+                    {
+                        created.Add(new Creation(at, given));
+                    }
+                    else
+                    {
+                        texts.Add(new TextChange(null, path, before, given, null));
+                    }
+                }
+                else if (before is null)
                 {
                     if (File.Exists(at) && FileText.Load(at)?.Text is { } written)
                     {

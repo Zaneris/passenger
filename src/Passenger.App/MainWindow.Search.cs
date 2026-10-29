@@ -200,10 +200,10 @@ public partial class MainWindow
     }
 
     /// <summary>Replaces a query's matches where Find in Files found them, as one command of Undo and one change set of Local
-    /// History named for it: an open file's matches alone, so its carets and folds stay put; a closed one in its encoding
-    /// (UTF-8 when that cannot hold the replacement, said), answered for once it has landed. A file refused (read-only on disk
-    /// or in the editor, access denied, held past the save's wait), one a regex ran too long in, or one edited while it was
-    /// searched is left as it was and named with why; the rest are replaced all the same.</summary>
+    /// History named for it: an open file's matches alone, so its carets and folds stay put; a closed one written off the
+    /// window's thread in its encoding (UTF-8 when that cannot hold the replacement, said), answered for once it has landed.
+    /// A file refused (read-only on disk or in the editor, access denied, held past the save's wait), one a regex ran too
+    /// long in, or one edited while it was searched is left as it was and named with why; the rest are replaced all the same.</summary>
     public async Task<FilesReplaced> ReplaceInFilesAsync(SearchQuery query, string replacement, FilesFound found)
     {
         SearchPattern pattern = SearchPattern.For(query, TextSearch.Apart);
@@ -231,6 +231,7 @@ public partial class MainWindow
         IReadOnlyList<(string Path, Exception Refused)> unlanded;
         using (CommandHistory.Recording recording = Editors.Commands.Record(name))
         {
+            List<FileSearch.Replacing> closed = [];
             foreach (FileSearch.Replacing plan in planned)
             {
                 if (plan.Why is { } why)
@@ -250,20 +251,24 @@ public partial class MainWindow
                         open.Text.BreakUndoGroup();
                     }
                 }
-                else if (plan is { Closed: { } file, After: { } after } && after != file.Text)
+                else if (plan is { Closed: not null, After: not null })
                 {
-                    try
-                    {
-                        recording.Watch(plan.Path);
-                        written.Add((plan.Path, FileText.Save(plan.Path, after, file.Encoding, file.HasBom, file.CrBreaks).Converted));
-                    }
-                    catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-                    {
-                        refused.Add((plan.Path, FileSearch.Refusal(error)));
-                    }
+                    closed.Add(plan);
                 }
             }
             recording.TakeOpen();
+            foreach (FileSearch.Written write in await BackgroundWork.Run(() => closed.Select(FileSearch.Write).OfType<FileSearch.Written>().ToList()))
+            {
+                if (write.Refused is { } why)
+                {
+                    refused.Add((write.Path, why));
+                }
+                else if (write is { Before: { } before, After: { } after })
+                {
+                    recording.Wrote(write.Path, before, after);
+                    written.Add((write.Path, write.Converted));
+                }
+            }
             unlanded = await EditorArea.LandedAsync(written.Select(w => w.Path), waiting => status.Text = waiting);
             foreach ((string path, _) in unlanded)
             {
