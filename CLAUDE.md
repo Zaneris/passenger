@@ -270,10 +270,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   column (`LambdaBreakpoints`).
 - **Tests window.** `TestFinder` (tests from code before any build), `TestRunners`; `VsTestRunner` is the only file that
   knows VSTest's object model.
-- **The rest.** `Packages` (every package change's one path; credentials only to their feed's host), `Workspace`
-  (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`; a version written where packages
-  are managed centrally goes through `CentralPackages`), `Templates` (every `dotnet
-  new` through `ProjectTemplates`; a new service's container or Aspire set-up after Create through Add's own actions,
+- **The rest.** `Packages` (every package change's one path, its files the project, its lock file and
+  Directory.Packages.props, one command of Undo, put back when it fails; credentials only to their feed's host),
+  `Workspace` (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`; a version
+  written where packages are managed centrally goes through `CentralPackages`), `Templates` (every `dotnet new` through
+  `ProjectTemplates`; a new service's container or Aspire set-up after Create through Add's own actions,
   `MainWindow.ServiceSetup`), `Updates` (only an installed copy updates itself; What's New from
   `docs/release-notes/X.Y.Z.md`).
 - **MCP.** `PassengerTools` (every tool, run on the UI thread, answering with what its operation returned), `McpHost`
@@ -370,6 +371,8 @@ site-shots` retakes its images.
 - **MSBuild**: a build through another spelling of a project's path deletes what the first wrote (IncrementalClean; a
   shell or MSBuild takes an inherited PWD for its folder's path, #413, #537), and a reused node carries a project's
   earlier spelling and NuGet home into the next build. It keeps no idle node unless the process's nice value is 0.
+- **Local History's `changes.log` is shared by every Passenger on the same state**: a store takes in the others' lines
+  under `Hold` before it keeps anything, and a change logged twice (named by its maker, heard by another) lists once.
 - **The terminal reuses a line** once it leaves the screen and a full scrollback (`TerminalLine.Reuse`): nothing keeps a
   `TerminalLine` past its line number. A line's cells are written only through `TerminalLine.Writing()`: the view draws
   a line as it kept it while its `Writes` stand. A pseudo-terminal's close on macOS waits for a write still in flight,
