@@ -214,7 +214,8 @@ public partial class MainWindow
 
     /// <summary>Renames a C# file and, when asked, the type it is named after: the language server renames the type
     /// everywhere it is used, then the file takes its new name and any other file named after the type (a partial
-    /// part's Foo.Designer.cs) the type's, all one command for Undo. Null once renamed, else why not.</summary>
+    /// part's Foo.Designer.cs) the type's, the markup its class is made with following (<see cref="TypeRename.MarkupAsync"/>),
+    /// all one command for Undo. Null once renamed, else why not.</summary>
     public async Task<string?> RenameWithTypeAsync(string path, string name, (string Name, int Offset) type, bool renameType)
     {
         string renamed = TypeRename.Stem(name);
@@ -254,22 +255,29 @@ public partial class MainWindow
                 : shown = server.Open(path, new TextDocument(FileText.Load(path)?.Text ?? string.Empty));
             using Asked asked = WorkspaceEdits.Track(Editors);
             System.Text.Json.JsonElement? edit = await document.RenameAsync(type.Offset, renamed);
-            (string Type, IReadOnlyList<string> Files)? named = await TypeRename.NamedAsync(Editors, server.Folder, document, type.Offset);
+            TypeRename.Named? named = await TypeRename.NamedAsync(Editors, server.Folder, document, type.Offset);
             shown?.Dispose();
             shown = null;
             if (edit is not { } made)
             {
                 return $"{type.Name} can't be renamed";
             }
+            TypeRename.Markup markup = named is null ? new([], null) : await TypeRename.MarkupAsync(session.Xaml, named, renamed, renameFiles: true);
             if (await WorkspaceEdits.StaleAsync(Editors, paths => server.HeldTextsAsync(paths), made, asked.Since) is { } stale)
             {
                 return $"{type.Name} was not renamed: {stale}";
+            }
+            if (markup.ClassFile is { } xaml && named?.FullName is { } fullName
+                && TypeRename.ClassEdit(xaml, WorkspaceEdits.Answered(Editors, asked)(xaml), fullName, renamed) is { } classEdit)
+            {
+                made = TypeRename.With(made, classEdit.Path, classEdit.Edit);
             }
             List<(string From, string To)> moves = [(path, target)];
             if (named is { } parts)
             {
                 moves.AddRange(parts.Files.Where(f => f != path).Select(f => (f, TypeRename.Renamed(f, renamed))));
             }
+            moves.AddRange(markup.Moves.Where(m => !moves.Any(n => PathNames.Same(n.From, m.From))));
             // The files nested under it go with it too (Form1.resx with Form1.cs), those that are parts of the type once.
             moves.AddRange(WithDependents(path, name).Where(d => !moves.Any(m => m.From == d.From)));
             List<string> dropped = [];

@@ -1,27 +1,42 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.App.Editors;
+using Passenger.App.Xaml;
 using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Text;
+using Passenger.Xaml.Syntax;
 
 namespace Passenger.App.CSharp;
 
 /// <summary>A type's rename and the files named after it: a C# file is named after a type it declares when its name up
 /// to the first dot is the type's (Foo.cs, Foo.Designer.cs), and the rename gives it the new name before that dot; a
-/// file declaring the type under another name (Shapes.cs) keeps its own. The code's rename and the files' moves are one
-/// command, which Undo takes back whole (<see cref="CommandHistory"/>).</summary>
+/// file declaring the type under another name (Shapes.cs) keeps its own. The markup a code-behind's class is made with
+/// follows it (<see cref="MarkupAsync"/>). The code's rename and the files' moves are one command, which Undo takes back
+/// whole (<see cref="CommandHistory"/>).</summary>
 public static class TypeRename
 {
+    /// <summary>A type a rename names: its name, the name an <c>x:Class</c> gives it where a namespace declares it (null
+    /// for one nested in another type), a file declaring it inside the folder, and those of its declarations' files that
+    /// are named after it.</summary>
+    public sealed record Named(string Type, string? FullName, string Declaring, IReadOnlyList<string> Files);
+
+    /// <summary>What a type's rename takes along of the markup its class is made with: the files moved with it, and the
+    /// XAML file whose <c>x:Class</c> names it.</summary>
+    public sealed record Markup(IReadOnlyList<(string From, string To)> Moves, string? ClassFile);
+
     /// <summary>The type whose name is at an offset of a file the server has open, and its declarations' files inside
     /// the folder that are named after it (the server's definitions of a partial type are all its parts); null when the
     /// name is not a type's declared in the folder.</summary>
-    public static async Task<(string Type, IReadOnlyList<string> Files)?> NamedAsync(EditorArea editors, string folder, LspDocument server, int offset)
+    public static async Task<Named?> NamedAsync(EditorArea editors, string folder, LspDocument server, int offset)
     {
         IReadOnlyList<LspLocation> definitions = await server.DefinitionAsync(offset);
         string? type = null;
+        string? fullName = null;
+        string? declaring = null;
         List<string> files = [];
         foreach (LspLocation place in definitions)
         {
@@ -29,18 +44,102 @@ public static class TypeRename
             {
                 continue;
             }
-            type ??= declared;
-            if (declared == type && IsNamedAfter(path, type) && !files.Contains(path))
+            if (type is null)
+            {
+                (type, fullName) = declared;
+                declaring = path;
+            }
+            if (declared.Name == type && IsNamedAfter(path, type) && !files.Contains(path))
             {
                 files.Add(path);
             }
         }
-        return type is null ? null : (type, files);
+        return type is null || declaring is null ? null : new Named(type, fullName, declaring, files);
     }
 
-    /// <summary>The type declared at a place the server gave in a file; null when none is.</summary>
-    private static string? Declared(EditorArea editors, string path, LspLocation place) =>
-        Syntax(editors, path) is { } parsed ? DeclaredAt(parsed.Root, ServerLines.Of(parsed.Text).OffsetOf(place.Range.Start)) : null;
+    /// <summary>What a type's rename to <paramref name="name"/> takes along of its markup. A Razor component's class is
+    /// named after its file, so the X.razor beside a code-behind X.razor.cs moves with the type, and the files named after
+    /// it beside it (X.razor.css, X.razor.js) with it, whether or not the type's own files are renamed. The XAML file
+    /// whose <c>x:Class</c> names the type (<see cref="ClassEdit"/>), moved with its files when named after it.</summary>
+    public static async Task<Markup> MarkupAsync(XamlService? xaml, Named type, string name, bool renameFiles)
+    {
+        List<(string From, string To)> moves = [];
+        foreach (string file in type.Files.Where(f => f.EndsWith(RazorCodeBehind, StringComparison.OrdinalIgnoreCase)))
+        {
+            string component = file[..^".cs".Length];
+            if (!File.Exists(component))
+            {
+                continue;
+            }
+            moves.Add((component, Renamed(component, name)));
+            string prefix = Path.GetFileName(component) + ".";
+            try
+            {
+                moves.AddRange(Directory.EnumerateFiles(Path.GetDirectoryName(component)!)
+                    .Where(f => Path.GetFileName(f).StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && !IsCSharp(f))
+                    .Order(StringComparer.Ordinal)
+                    .Select(f => (f, Renamed(f, name))));
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                // The folder gone or unreadable: the component alone moves, as the rename's moves then say.
+            }
+        }
+        string? classFile = type.FullName is { } full && xaml is not null ? await xaml.ClassFileAsync(full, type.Declaring) : null;
+        if (renameFiles && classFile is not null && Stem(classFile) == type.Type)
+        {
+            moves.Add((classFile, Renamed(classFile, name)));
+        }
+        return new Markup(moves, classFile);
+    }
+
+    /// <summary>The edit a XAML file's <c>x:Class</c> takes as the type it names is renamed, in its text as given (the
+    /// one a request was made for): its last part; null when the root names another class.</summary>
+    public static (string Path, LspTextEdit Edit)? ClassEdit(string path, TextSnapshot? text, string fullName, string name)
+    {
+        if (text is null || XmlTree.Parse(text.ToString()).Root?.Attribute("x:Class") is not { IsValueClosed: true } declared
+            || declared.Value != fullName || declared.RawValue != declared.Value)
+        {
+            return null;
+        }
+        int start = declared.ValueStart + declared.RawValue.LastIndexOf('.') + 1;
+        return (path, new LspTextEdit(ServerLines.Of(text).RangeOf(TextRange.FromBounds(start, declared.ValueEnd)), name));
+    }
+
+    /// <summary>A workspace edit with one more file's edit after its own, in the shape it came in.</summary>
+    public static JsonElement With(JsonElement edit, string path, LspTextEdit change)
+    {
+        JsonObject whole = JsonNode.Parse(edit.GetRawText()) as JsonObject ?? [];
+        string uri = DocumentUris.FromPath(path);
+        JsonNode added = JsonSerializer.SerializeToNode(change, Json.Options)!;
+        if (whole["documentChanges"] is JsonArray documents)
+        {
+            documents.Add(new JsonObject { ["textDocument"] = new JsonObject { ["uri"] = uri, ["version"] = null }, ["edits"] = new JsonArray(added) });
+        }
+        else
+        {
+            if (whole["changes"] is not JsonObject byUri)
+            {
+                whole["changes"] = byUri = [];
+            }
+            if (byUri[uri] is JsonArray already)
+            {
+                already.Add(added);
+            }
+            else
+            {
+                byUri[uri] = new JsonArray(added);
+            }
+        }
+        return JsonSerializer.SerializeToElement(whole, Json.Options);
+    }
+
+    /// <summary>The type declared at a place the server gave in a file, with its <c>x:Class</c> name; null when none is.</summary>
+    private static (string Name, string? FullName)? Declared(EditorArea editors, string path, LspLocation place) =>
+        Syntax(editors, path) is { } parsed && DeclarationAt(parsed.Root, ServerLines.Of(parsed.Text).OffsetOf(place.Range.Start)) is { } declaration
+            && Identifier(declaration) is { } name
+            ? (name.ValueText, FullName(declaration, name.ValueText))
+            : null;
 
     /// <summary>A place's file when it is one inside the folder, never a server's own (metadata, generated source).</summary>
     private static string? Local(string folder, LspLocation place) =>
@@ -120,16 +219,35 @@ public static class TypeRename
 
     /// <summary>The type whose name is at an offset of a file's syntax: a class, struct, interface, record, enum or
     /// delegate declared there, or the type a constructor or finalizer named there makes.</summary>
-    private static string? DeclaredAt(SyntaxNode root, int offset)
+    private static SyntaxNode? DeclarationAt(SyntaxNode root, int offset)
     {
         SyntaxToken token = root.FindToken(offset);
         return token.Parent switch
         {
-            ConstructorDeclarationSyntax constructor when constructor.Identifier == token => token.ValueText,
-            DestructorDeclarationSyntax finalizer when finalizer.Identifier == token => token.ValueText,
-            { } declaration when Identifier(declaration) == token => token.ValueText,
+            ConstructorDeclarationSyntax constructor when constructor.Identifier == token => constructor.Parent,
+            DestructorDeclarationSyntax finalizer when finalizer.Identifier == token => finalizer.Parent,
+            { } declaration when Identifier(declaration) == token => declaration,
             _ => null,
         };
+    }
+
+    /// <summary>A type's name with the namespaces it is declared in, as an <c>x:Class</c> names it; null for a type nested
+    /// in another.</summary>
+    private static string? FullName(SyntaxNode declaration, string name)
+    {
+        List<string> names = [name];
+        for (SyntaxNode? at = declaration.Parent; at is not null; at = at.Parent)
+        {
+            if (at is BaseTypeDeclarationSyntax)
+            {
+                return null;
+            }
+            if (at is BaseNamespaceDeclarationSyntax space)
+            {
+                names.Insert(0, space.Name.ToString());
+            }
+        }
+        return string.Join('.', names);
     }
 
     private static SyntaxToken? Identifier(SyntaxNode node) => node switch
@@ -154,4 +272,7 @@ public static class TypeRename
     }
 
     private static bool IsCSharp(string path) => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A Razor component's code-behind's ending, after the component's own file name.</summary>
+    private const string RazorCodeBehind = ".razor.cs";
 }

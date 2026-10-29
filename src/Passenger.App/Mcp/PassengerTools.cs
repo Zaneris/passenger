@@ -381,7 +381,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.Rename, Title = "Rename a symbol", Destructive = true), Description(
         "Renames the symbol at a position everywhere it is used, as Rename does, and saves the files: a type's files named " +
-        "after it too (Foo.cs, Foo.Designer.cs) unless renameFiles is false; an Aspire resource's name where its AppHost " +
+        "after it too (Foo.cs, Foo.Designer.cs, Foo.axaml) unless renameFiles is false, and always its XAML's x:Class and " +
+        "Razor component (Foo.razor, Foo.razor.css); an Aspire resource's name where its AppHost " +
         "declares it and its services read it; a XAML element's name with its code-behind's uses; a JSON property (in " +
         "package.json's scripts, every npm run of one); a compose file's names, its override's too. MSBuild files have none.")]
     public Task<string> Rename(string newName, string? path = null, int? line = null, int? column = null, string? symbol = null,
@@ -424,9 +425,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await SaveLandedAsync(cancel);
             return $"{made.Said}: {string.Join(", ", made.Files.Select(f => Relative(f.Path)).Distinct())}";
         }
-        (string Type, IReadOnlyList<string> Files)? named = renameFiles && server.Web is null && Session.CSharp?.Session?.Folder is { } folder
-            ? await TypeRename.NamedAsync(Editors, folder, lsp, offset) : null;
-        RefactorOutcome renaming = await window.Assist.Actions.RenameSymbolAsync(served.Document, offset, newName, named?.Files ?? [], patience);
+        RefactorOutcome renaming = await window.Assist.Actions.RenameSymbolAsync(served.Document, offset, newName, renameFiles, patience);
         if (renaming.Problem is { } notRenamed)
         {
             throw new InvalidOperationException(notRenamed);

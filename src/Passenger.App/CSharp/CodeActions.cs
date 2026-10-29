@@ -352,7 +352,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             }
             try
             {
-                RefactorOutcome made = await RenameSymbolAsync(document, at, name, box.RenamesFiles ? box.Files : [], null);
+                RefactorOutcome made = await RenameSymbolAsync(document, at, name, box.RenamesFiles, null);
                 context.Say(made.Problem ?? made.Said);
             }
             catch (LanguageServerFailed failed)
@@ -369,12 +369,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     private TextRange RenamedAt(OpenDocument document, TextSnapshot text, int offset) =>
         context.WebOf(document) is { } web ? WebAssist.WebWordAt(web, text, offset) : TextNavigation.WordAt(text, offset);
 
-    /// <summary>A name renamed through the language server at an offset of a file, with the type's files given renamed
-    /// after it, as one command of global undo: the window's Rename and an agent's alike. Why not, else the files it
-    /// changed and moved, those it left as edited meanwhile, and the status bar's words, once the files not open it wrote
-    /// have landed (<see cref="WorkspaceEdits.LandedAsync"/>); an agent's call is told its <paramref name="patience"/> for
-    /// files the server has yet to read again.</summary>
-    internal async Task<RefactorOutcome> RenameSymbolAsync(OpenDocument document, int offset, string name, IReadOnlyList<string> typeFiles, Patience? patience)
+    /// <summary>A name renamed through the language server at an offset of a file, a type's files named after it renamed
+    /// with it when <paramref name="renameFiles"/> and the markup its class is made with following it
+    /// (<see cref="TypeRename.MarkupAsync"/>), as one command of global undo: the window's Rename and an agent's alike. Why
+    /// not, else the files it changed and moved, those it left as edited meanwhile, and the status bar's words, once the
+    /// files not open it wrote have landed; an agent's call is told its <paramref name="patience"/>.</summary>
+    internal async Task<RefactorOutcome> RenameSymbolAsync(OpenDocument document, int offset, string name, bool renameFiles, Patience? patience)
     {
         // Followed through what is typed while the files just made are waited for.
         using (ChangeTracker waited = new(document.Text))
@@ -389,23 +389,33 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         string old = text.GetText(RenamedAt(document, text, offset));
         // The open files as the request went: what is typed meanwhile carries the answer on.
         using Asked asked = WorkspaceEdits.Track(context.Editors);
+        // Asked before the rename, where the type is declared still.
+        TypeRename.Named? type = context.WebOf(document) is null && context.CSharp?.Session?.Folder is { } folder
+            ? await TypeRename.NamedAsync(context.Editors, folder, context.Now(document), offset) : null;
         // Asked of the server running now: one there before may have been started again since.
         if (await context.Now(document).RenameAsync(offset, name) is not { } edit)
         {
             return new RefactorOutcome("This can't be renamed", null, [], []);
         }
+        TypeRename.Markup markup = type is null ? new([], null) : await TypeRename.MarkupAsync(context.Xaml?.Invoke(), type, name, renameFiles);
         if (await StaleAsync(document, edit, asked, patience) is { } stale)
         {
             return RefactorOutcome.Refused($"Rename was not applied: {stale}");
         }
-        IReadOnlyList<RefactoredFile> edited = WorkspaceEdits.Files(edit, WorkspaceEdits.Answered(context.Editors, asked));
-        List<(string From, string To)> moves = [.. typeFiles.Select(f => (From: f, To: TypeRename.Renamed(f, name))).Where(m => m.From != m.To && File.Exists(m.From))];
+        Func<string, TextSnapshot?> answered = WorkspaceEdits.Answered(context.Editors, asked);
+        if (markup.ClassFile is { } xaml && type?.FullName is { } fullName && TypeRename.ClassEdit(xaml, answered(xaml), fullName, name) is { } named)
+        {
+            edit = TypeRename.With(edit, named.Path, named.Edit);
+        }
+        IReadOnlyList<RefactoredFile> edited = WorkspaceEdits.Files(edit, answered);
+        List<(string From, string To)> moves = [.. (renameFiles ? type?.Files ?? [] : []).Select(f => (From: f, To: TypeRename.Renamed(f, name))).Concat(markup.Moves)
+            .Where(m => m.From != m.To && File.Exists(m.From) && !edited.Any(f => f.Change == "moved" && PathNames.Same(f.Path, m.From))).Distinct()];
         List<string> dropped = [];
-        string named = $"Rename {old} to {name}";
-        using CommandHistory.Recording recording = context.Editors.Commands.Record(named);
+        string command = $"Rename {old} to {name}";
+        using CommandHistory.Recording recording = context.Editors.Commands.Record(command);
         try
         {
-            TypeRename.Apply(context.Editors, edit, moves, named, asked, dropped, into: recording);
+            TypeRename.Apply(context.Editors, edit, moves, command, asked, dropped, into: recording);
             await WorkspaceEdits.LandedAsync(recording, context.Say);
         }
         catch (WorkspaceEditFailed failed)
