@@ -823,6 +823,71 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A folder opened and closed by its chevron above the file chosen leaves the view where it was, the folder
+    /// where the person clicked and the file pushed out of sight and back (#712); a row chosen by a key, or a file opened
+    /// while the Explorer was closed, still comes into view.</summary>
+    [AvaloniaFact]
+    public void A_folder_opened_or_closed_above_the_file_chosen_leaves_the_view_where_it_was_while_a_row_chosen_by_a_key_or_opened_comes_into_view()
+    {
+        for (int i = 0; i < 40; i++)
+        {
+            Write($"Shop.App/Models/Lines/Line{i:00}.cs", $"namespace Shop.App.Models.Lines;\n\npublic class Line{i:00}\n{{\n}}\n");
+        }
+        for (int i = 0; i < 60; i++)
+        {
+            Write($"Shop.Core/Catalog/Item{i:00}.cs", $"namespace Shop.Core.Catalog;\n\npublic class Item{i:00}\n{{\n}}\n");
+        }
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        ExplorerView explorer = window.ExplorerView;
+        ListBox rows = explorer.Rows();
+        ScrollViewer scroller = rows.GetVisualDescendants().OfType<ScrollViewer>().First();
+        ExplorerNode lines = Show(window, Path.Combine(folder, "Shop.App", "Models", "Lines"));
+        Show(window, Path.Combine(folder, "Shop.Core", "Catalog", "Item00.cs"));
+        Control chevron = Ui.Row(explorer, lines).GetVisualDescendants().OfType<RowGlyphs>().Single();
+        ExplorerNode chosen = explorer.Tree.Rows.Last(r => InSight(r) == "in sight");
+        Assert.True(chosen.IsFile, $"The last row in sight is {chosen.Name}, not a file below Lines, so the list is too short to push one out of sight");
+        Ui.ClickRow(window, chosen);
+        double offset = scroller.Offset.Y;
+
+        Ui.Click(chevron, new Point(9, ListRow.Height / 2));
+        Assert.True(lines.IsExpanded, "A click on Lines' chevron left it closed");
+        Assert.True(scroller.Offset.Y == offset && InSight(lines) == "in sight" && InSight(chosen) != "in sight",
+            $"Lines opened by its chevron scrolled the view from {offset} to {scroller.Offset.Y}, Lines {InSight(lines)} and {chosen.Name}, still chosen, "
+            + $"{InSight(chosen)}: the view followed the file chosen, taking the folder opened away from where the person clicked");
+        Assert.True(explorer.SelectedNodes is [{ } still] && still == chosen, $"Opening Lines chose another row than {chosen.Name}");
+        Ui.Click(chevron, new Point(9, ListRow.Height / 2));
+        Assert.True(!lines.IsExpanded && scroller.Offset.Y == offset && InSight(lines) == "in sight" && InSight(chosen) == "in sight",
+            $"Lines closed by its chevron moved the view from {offset} to {scroller.Offset.Y}, Lines {InSight(lines)} and {chosen.Name} {InSight(chosen)}");
+
+        Ui.Click(chevron, new Point(9, ListRow.Height / 2));
+        Ui.Press(window, "END");
+        ExplorerNode end = explorer.Tree.Rows[^1];
+        Assert.True(explorer.SelectedNodes is [{ } ended] && ended == end && InSight(end) == "in sight",
+            $"End chose [{string.Join(", ", explorer.SelectedNodes.Select(n => n.Name))}], {end.Name} {InSight(end)}: a row a key chose was left out of sight");
+
+        string first = Path.Combine(folder, "Shop.App", "Models", "Lines", "Line00.cs");
+        window.DockHost.Hide(ToolWindowIds.Explorer);
+        Ui.Settle();
+        window.OpenFile(first);
+        Ui.Settle();
+        window.DockHost.Show(ToolWindowIds.Explorer);
+        ExplorerNode opened = explorer.Tree.Rows.Single(r => r.Path == PathNames.Canonical(first));
+        Assert.True(explorer.SelectedNodes is [{ } shown] && shown == opened && InSight(opened) == "in sight",
+            $"Line00.cs, opened while the Explorer was closed, is {InSight(opened)} as the Explorer opens again, [{string.Join(", ", explorer.SelectedNodes.Select(n => n.Name))}] chosen");
+        window.Close();
+
+        // Whether a row's whole height shows in the list's viewport, or which way it lies out of it.
+        string InSight(ExplorerNode row)
+        {
+            Ui.Settle();
+            if (rows.ContainerFromItem(row) is not { } container || container.TranslatePoint(default, scroller) is not { } top)
+            {
+                return "out of sight";
+            }
+            return top.Y < 0 ? "above the view" : top.Y + container.Bounds.Height > scroller.Viewport.Height ? "below the view" : "in sight";
+        }
+    }
+
     /// <summary>A solution filter naming one project of the solution, opened: its solution with that project alone loaded,
     /// the other shown unloaded, Build building the one and the language server loading the one; the filter changed on
     /// disk to name the other swaps them, and Reload Project loads the one it left out, none of which the folder keeps
