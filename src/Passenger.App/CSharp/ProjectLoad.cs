@@ -92,3 +92,76 @@ internal sealed partial record LoadReport(LoadReportKind Kind, ProjectLoadProble
     [GeneratedRegex(@"\s+")]
     private static partial Regex Spaces();
 }
+
+/// <summary>What Roslyn's server logs of a restore it runs as it loads, each line said under "Restoring App.csproj: ": the
+/// start ("Running dotnet restore on PATH"), dotnet restore's output, and "Failed to run restore on PATH" when it failed. A
+/// restore that fails before it writes a project's assets (a nuget.config that does not read) leaves no load to report
+/// its errors, so they are read here: MSBuild's and NuGet's errors, each project's joined, by the project each names, else
+/// the path restored. The server's English resources, as <see cref="LoadReport"/>'s; heard on the server's thread.</summary>
+internal sealed partial class RestoreReports
+{
+    private readonly Lock gate = new();
+
+    /// <summary>The errors each restore under way has said, by the name its lines are said under, under <see cref="gate"/>.</summary>
+    private readonly Dictionary<string, List<(string? Project, string Message)>> errors = new(StringComparer.Ordinal);
+
+    /// <summary>The problems a logged line ends a failed restore with, one per project with its errors joined; none for
+    /// any other line, and none of the server's own project (<see cref="CanonicalProject"/>).</summary>
+    public IReadOnlyList<ProjectLoadProblem> Hear(string logged)
+    {
+        if (StageLine().Match(logged) is not { Success: true } line)
+        {
+            return [];
+        }
+        string stage = line.Groups["name"].Value;
+        string output = line.Groups["output"].Value;
+        lock (gate)
+        {
+            if (BeganLine().IsMatch(output))
+            {
+                errors.Remove(stage);
+                return [];
+            }
+            if (ErrorLine().Match(output) is { Success: true } error)
+            {
+                if (!errors.TryGetValue(stage, out List<(string? Project, string Message)>? said))
+                {
+                    errors[stage] = said = [];
+                }
+                string? project = error.Groups["project"].Success ? error.Groups["project"].Value.Trim() : null;
+                said.Add((project, Spaces().Replace(error.Groups["message"].Value, " ").Trim()));
+                return [];
+            }
+            if (FailedLine().Match(output) is not { Success: true } failed)
+            {
+                return [];
+            }
+            string restored = failed.Groups["path"].Value.Trim();
+            errors.Remove(stage, out List<(string? Project, string Message)>? gone);
+            List<(string Project, string Message)> each = [.. (gone ?? []).Select(e => (e.Project ?? restored, e.Message))];
+            if (each.Count == 0)
+            {
+                each.Add((restored, "dotnet restore ended with an error; the C# language server's log has what it said"));
+            }
+            return [.. each.Where(e => !CanonicalProject.IsAbout(e.Project)).GroupBy(e => e.Project, StringComparer.Ordinal)
+                .Select(g => new ProjectLoadProblem(PathNames.Canonical(g.Key), ProblemSeverity.Error,
+                    $"Restore failed: {string.Join(" ", g.Select(e => e.Message).Where(m => m.Length > 0).Distinct(StringComparer.Ordinal))}"))];
+        }
+    }
+
+    [GeneratedRegex(@"^\s*(?:\[[^\]]*\]\s*)*Restoring (?<name>.+?): (?<output>.*)$", RegexOptions.Singleline)]
+    private static partial Regex StageLine();
+
+    [GeneratedRegex(@"^Running dotnet restore on ")]
+    private static partial Regex BeganLine();
+
+    [GeneratedRegex(@"^Failed to run restore on (?<path>.+)$", RegexOptions.Singleline)]
+    private static partial Regex FailedLine();
+
+    /// <summary>MSBuild's error line: "ORIGIN: error CODE: MESSAGE [PROJECT]", its code and project each left out at times.</summary>
+    [GeneratedRegex(@"^.*?:\s*error\s*[A-Za-z]*\d*\s*:\s*(?<message>.*?)(?:\s*\[(?<project>[^\[\]]+)\])?\s*$", RegexOptions.Singleline)]
+    private static partial Regex ErrorLine();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex Spaces();
+}

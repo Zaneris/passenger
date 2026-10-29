@@ -1138,6 +1138,7 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// server's thread, where its errors and warnings go to the log at once and only what the window shows crosses to it.</summary>
     private void Hear(LanguageServer server)
     {
+        RestoreReports restores = new();
         EventHandler<LogMessageParams> logged = (_, message) =>
         {
             // The server's own project for files no project holds yet is restored as it is made: not a problem of the person's.
@@ -1153,6 +1154,10 @@ public sealed partial class CSharpService : IAsyncDisposable
             if (LoadReport.Read(message.Message) is { } report)
             {
                 UiThread.Post(() => OnLoadReport(server, report));
+            }
+            foreach (ProjectLoadProblem failed in restores.Hear(message.Message))
+            {
+                UiThread.Post(() => OnLoadReport(server, new LoadReport(LoadReportKind.Problem, failed with { Message = InFolder(failed.Message) }, null)));
             }
         };
         EventHandler<LogMessageParams> shown = (_, message) =>
@@ -1408,6 +1413,10 @@ public sealed partial class CSharpService : IAsyncDisposable
     private static string Spoken(TimeSpan time) => time >= TimeSpan.FromMinutes(1)
         ? Plural.Of((long)time.TotalMinutes, "minute")
         : Plural.Of(Math.Max(1, (long)time.TotalSeconds), "second");
+
+    /// <summary>Words with the open folder's paths in them made relative to it.</summary>
+    private string InFolder(string text) =>
+        workspace?.Folder is { } folder ? text.Replace(folder + Path.DirectorySeparatorChar, string.Empty, StringComparison.Ordinal) : text;
 
     /// <summary>A message the server logged, as the status bar says it: without its tags ("[project/open]"), the open
     /// folder's paths made relative, its spaces single, and without MSBuild's repeat of the file at its end.</summary>

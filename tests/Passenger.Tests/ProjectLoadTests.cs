@@ -21,8 +21,9 @@ namespace Passenger.Tests;
 /// restore's audit reads, so nothing reaches nuget.org) is a warning naming the package and its severity in the status
 /// bar, under the project with its advisory's link in Problems' Toolset, Environment, and marked in the NuGet window,
 /// which offers the version that fixes it; updating to it takes the warning away. A project whose SDK cannot be found is
-/// an error naming why, in the status bar and under the project in Problems. A solution that does not read is an error in
-/// the status bar, the projects under its folder open in its place, and marked where it stops in its open file.</summary>
+/// an error naming why, in the status bar and under the project in Problems, as is a restore that fails before it writes
+/// the project's assets. A solution that does not read is an error in the status bar, the projects under its folder open
+/// in its place, and marked where it stops in its open file.</summary>
 public sealed class ProjectLoadTests : IDisposable
 {
     private const string Advisory = "https://github.com/advisories/GHSA-pass-load-test";
@@ -251,6 +252,36 @@ public sealed class ProjectLoadTests : IDisposable
         Assert.True(window.WorkspaceModel!.Solution!.Projects.Select(p => p.Path).SequenceEqual([PathNames.Canonical(project)]),
             "Shop.slnx read again does not hold its project");
         Assert.True(window.Status?.Contains("does not read", StringComparison.Ordinal) != true, $"The status bar still says \"{window.Status}\" once Shop.slnx reads");
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_project_under_a_nuget_config_that_does_not_read_says_its_restores_error_until_a_restore_succeeds()
+    {
+        string config = Path.Combine(folder, "nuget.config");
+        string reads = File.ReadAllText(config);
+        // An element left without its end: dotnet restore stops before it writes the project's assets.
+        File.WriteAllText(config, $"<?xml version=\"1.0\"?>\n<configuration>\n  <packageSources>\n    <add key=\"stand-in\" value=\"{feed.Index}\"\n  </packageSources>\n</configuration>\n");
+        File.WriteAllText(project, "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+        MainWindow window = Open();
+        Ui.WaitFor(() => window.Status?.Contains("Restore failed", StringComparison.Ordinal) == true,
+            () => $"the status bar to say Web's restore failed (it says \"{window.Status}\")");
+        string said = window.Status!;
+        string loading = $"Error while loading {Path.Combine("Web", "Web.csproj")}: Restore failed: ";
+        Assert.True(said.StartsWith(loading, StringComparison.Ordinal)
+            && said[loading.Length..].StartsWith("NuGet.Config is not valid XML. Path: '", StringComparison.OrdinalIgnoreCase)
+            && said.EndsWith("Name cannot begin with the '<' character, hexadecimal value 0x3C. Line 5, position 3.", StringComparison.Ordinal),
+            $"The status bar says \"{said}\", not that Web's restore failed for the nuget.config that does not read and where");
+        Assert.True(window.StatusSeverity == ProblemSeverity.Error, $"The status bar's restore failure is marked as {window.StatusSeverity?.ToString() ?? "nothing"}, not an error");
+        ProblemsModel problems = window.BottomPanel.Problems;
+        Problem failed = Assert.Single(problems.ToolsetProblems);
+        Assert.True(failed is { Severity: ProblemSeverity.Error, Project: "Web" } && said.EndsWith(failed.Message, StringComparison.Ordinal),
+            $"Problems lists the restore's failure as {failed.Severity} \"{failed.Message}\" under {failed.Project}");
+
+        File.WriteAllText(config, reads);
+        LaunchUpToDateTests.Built(window, AppActions.Build, succeeds: true, "Web's build with its nuget.config reading");
+        Ui.WaitFor(() => problems.ToolsetProblems.Count == 0, () => $"the restore's failure gone from Problems once a restore succeeded ({problems.ToolsetProblems.FirstOrDefault()?.Message})",
+            TimeSpan.FromMinutes(2));
         window.Close();
     }
 
