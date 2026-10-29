@@ -80,7 +80,7 @@ public sealed class AspireContainerRecoveryTests
                 Assert.All(commands, command => Assert.Contains(command, new[]
                 {
                     "version --format json", "context inspect --format json", "compose version --format json", "buildx version",
-                    $"context inspect {Context}", inspect, remove,
+                    "info --format json", $"context inspect {Context}", inspect, remove,
                 }));
             }
             else

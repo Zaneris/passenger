@@ -30,6 +30,10 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-29
 
+- `AspireContainerRecoveryTests`' `Opening_a_window_removes_only_an_exact_record_of_a_dead_owners_container`, every scenario,
+  CI Linux and macOS, run 40921064516 (7358d411), report lane: "Item: info --format json … not found". Since #636 the engine
+  asks `docker info` once it knows the server's version, and the test's stand-in docker listed the commands it allows
+  without it. Neither race: **the test**, which now allows it.
 - `BuildRunTests`' `With_hot_reload_edits_reach_the_running_program_a_signature_change_restarts_it_and_it_ends_with_the_window`,
   CI Linux, run 40921064516 (7358d411), gate: "dotnet watch did not start the program again, for the signature changed
   while the window was held". Its last step changed the signature of `Say`, which the program's loop calls every 200 ms;
