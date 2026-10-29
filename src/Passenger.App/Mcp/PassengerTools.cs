@@ -323,9 +323,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw new InvalidOperationException($"{unfound.Language} has no usages: its language server finds none, so Find Usages finds nothing in {Path.GetFileName(unfound.Document.Path)}");
         }
         ServerServed server = (ServerServed)served;
-        IReadOnlyList<LspLocation> found = await server.Lsp.ReferencesAsync(offset);
+        // A component's file at its start is the class Razor makes of it, which the server takes in the C# made of the file.
+        RoslynSession? roslyn = server.Web is null ? Session.CSharp?.Session : null;
+        TypeRename.Component? component = await TypeRename.ComponentAtAsync(roslyn, served.Document.Path, served.Document.Text.Snapshot, offset);
+        IReadOnlyList<LspLocation> found = component is not null && roslyn is not null ? await roslyn.ReferencesAsync(component.Name, cancel) : await server.Lsp.ReferencesAsync(offset);
         // A symbol's usages hold its declaration, so none says no symbol is there.
-        if (found.Count == 0 && server.Web is null)
+        if (found.Count == 0 && server.Web is null && component is null)
         {
             found = await server.Lsp.ReferencesAsync(offset = await DeclaredOn(server, at.Line, at.Column));
         }
@@ -334,7 +337,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new InvalidOperationException($"No symbol at {place}: {server.Language}'s language server finds no usages there");
         }
         // Passenger's extension reads a C# file's symbols, not a Razor file's.
-        Roslyn.Extension.NamedSymbol? named = served.Document.Language == Languages.Language.CSharp ? await server.Lsp.SymbolAtAsync(offset, cancel) : null;
+        Roslyn.Extension.NamedSymbol? named = component?.Symbol
+            ?? (served.Document.Language == Languages.Language.CSharp ? await server.Lsp.SymbolAtAsync(offset, cancel) : null);
         string? taken = named is null ? null : $"{named.Shown} ({named.Kind})";
         found = [.. found, .. await window.Assist.Languages.Xaml.CodeUsesAsync(named)];
         // Answered now, saying which files that could use it the server has yet to take in.

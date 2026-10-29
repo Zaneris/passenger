@@ -214,10 +214,10 @@ public partial class MainWindow
     }
 
     /// <summary>Renames a file and, when asked, the type it is named after: the language server renames the type
-    /// everywhere it is used, from its declaration (a markup file's in its code-behind), then the file takes its new name
-    /// and any other file named after the type (a partial part's Foo.Designer.cs, a code-behind) the type's, the markup
-    /// its class is made with following (<see cref="TypeRename.MarkupAsync"/>), all one command for Undo. Null once
-    /// renamed, else why not.</summary>
+    /// everywhere it is used, from its declaration (a markup file's in its code-behind, a Razor component's with none
+    /// where the server takes its class, <see cref="TypeRename.ComponentAsync"/>), then the file and any other named after
+    /// the type (Foo.Designer.cs, a code-behind) take its name, the markup its class is made with following
+    /// (<see cref="TypeRename.MarkupAsync"/>), all one command for Undo. Null once renamed, else why not.</summary>
     public async Task<string?> RenameWithTypeAsync(string path, string name, TypeRename.FileType type, bool renameType)
     {
         string renamed = TypeRename.Stem(name);
@@ -229,7 +229,7 @@ public partial class MainWindow
         {
             return problem;
         }
-        string extension = PathNames.Same(type.Declaring, path) ? ".cs" : Path.GetExtension(path);
+        string extension = Path.GetExtension(path);
         if (!name.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
         {
             return extension == ".cs" ? "The new file name extension is not valid for source code files" : $"The new file name must end in {extension} to name its class";
@@ -255,13 +255,21 @@ public partial class MainWindow
         BackgroundWork.Begin();
         try
         {
-            Lsp.LspDocument document = open is not null ? csharp.For(open)?.Lsp ?? throw new Lsp.LanguageServerFailed("the C# language server has not opened the file yet")
+            // A component with no code-behind is asked about where the server takes the class Razor makes of its file.
+            bool componentFile = TypeRename.IsComponentFile(type.Declaring);
+            TypeRename.Component? component = componentFile ? await TypeRename.ComponentAsync(server, type.Declaring) : null;
+            if (componentFile && component is null)
+            {
+                return $"{type.Name} can't be renamed: the C# language server has no class of {Path.GetFileName(type.Declaring)}";
+            }
+            Lsp.LspDocument? document = component is not null ? null
+                : open is not null ? csharp.For(open)?.Lsp ?? throw new Lsp.LanguageServerFailed("the C# language server has not opened the file yet")
                 : shown = server.Open(type.Declaring, new TextDocument(FileText.Load(type.Declaring)?.Text ?? string.Empty));
             // Held on the type's name through what is typed while it is asked about.
-            at = document.Text.AnchorAt(type.Offset, AnchorGravity.After);
-            TypeRename.Named? named = await TypeRename.NamedAsync(Editors, server.Folder, document, at.Offset);
+            at = document?.Text.AnchorAt(type.Offset, AnchorGravity.After);
+            TypeRename.Named? named = component?.Type ?? await TypeRename.NamedAsync(Editors, server.Folder, document!, at!.Offset);
             using Asked asked = WorkspaceEdits.Track(Editors);
-            System.Text.Json.JsonElement? edit = await document.RenameAsync(at.Offset, renamed);
+            System.Text.Json.JsonElement? edit = component is not null ? await server.RenameAsync(component.Name, renamed) : await document!.RenameAsync(at!.Offset, renamed);
             shown?.Dispose();
             shown = null;
             if (edit is not { } made)

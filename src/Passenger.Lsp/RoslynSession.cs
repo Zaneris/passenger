@@ -313,6 +313,22 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
         return all;
     }
 
+    /// <summary>The class a Razor component's file makes, and where the server takes it (Passenger's extension's
+    /// <see cref="Roslyn.Extension.ComponentAsked"/>); null when the server has no extension to ask.</summary>
+    public async Task<Roslyn.Extension.ComponentFound?> ComponentAsync(string path, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? await ExtensionAsync<Roslyn.Extension.ComponentFound>(Roslyn.Extension.Handlers.ComponentClass, new Roslyn.Extension.ComponentAsked(path), cancel).ConfigureAwait(false)
+            : null;
+
+    /// <summary>The edit renaming the symbol at a place of a document no editor has open (a source generator's, by its URI);
+    /// null where nothing can be renamed.</summary>
+    public Task<JsonElement?> RenameAsync(Roslyn.Extension.UriSpan at, string newName, CancellationToken cancel = default) =>
+        LspDocument.RenameAsync(Server, new TextDocumentIdentifier(at.Uri), new LspPosition(at.Start.Line, at.Start.Character), newName, cancel);
+
+    /// <summary>Every place the symbol at a place of a document no editor has open is used, its declaration included.</summary>
+    public Task<IReadOnlyList<LspLocation>> ReferencesAsync(Roslyn.Extension.UriSpan at, CancellationToken cancel = default) =>
+        LspDocument.ReferencesAsync(Server, new TextDocumentIdentifier(at.Uri), new LspPosition(at.Start.Line, at.Start.Character), cancel);
+
     /// <summary>Closes the documents, on the caller's thread as they are its, then ends the server without holding it.</summary>
     public async ValueTask DisposeAsync()
     {
@@ -579,9 +595,13 @@ public sealed class LspDocument : IDisposable
     /// once for each symbol declared there (a type and its primary constructor, a record's positional property and its
     /// parameter), so such a declaration came twice. Told apart by the server's own URI text, never a path made
     /// canonical, which asks the disk once a place.</summary>
-    public async Task<IReadOnlyList<LspLocation>> ReferencesAsync(int offset, CancellationToken cancel = default) =>
-        [.. Shapes.Locations(await Read(Server.RequestAsync<JsonElement>(LspMethods.References,
-                new ReferenceParams(Identifier, PositionOf(offset), new ReferenceContext(true)), cancel)))
+    public Task<IReadOnlyList<LspLocation>> ReferencesAsync(int offset, CancellationToken cancel = default) =>
+        ReferencesAsync(Server, Identifier, PositionOf(offset), cancel);
+
+    /// <summary>Every place the symbol at a place of a document is used (<see cref="ReferencesAsync(int, CancellationToken)"/>).</summary>
+    internal static async Task<IReadOnlyList<LspLocation>> ReferencesAsync(LanguageServer server, TextDocumentIdentifier document, LspPosition at, CancellationToken cancel) =>
+        [.. Shapes.Locations(await Read(server.RequestAsync<JsonElement>(LspMethods.References,
+                new ReferenceParams(document, at, new ReferenceContext(true)), cancel)))
             .DistinctBy(place => (place.Uri, place.Range.Start))];
 
     /// <summary>A request's answer awaited so that what follows the await, reading it into records, runs on the thread pool
@@ -592,9 +612,13 @@ public sealed class LspDocument : IDisposable
     public async Task<IReadOnlyList<DocumentHighlight>> HighlightsAsync(int offset, CancellationToken cancel = default) =>
         await Server.RequestAsync<List<DocumentHighlight>>(LspMethods.DocumentHighlight, new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel) ?? [];
 
-    public async Task<JsonElement?> RenameAsync(int offset, string newName, CancellationToken cancel = default)
+    public Task<JsonElement?> RenameAsync(int offset, string newName, CancellationToken cancel = default) =>
+        RenameAsync(Server, Identifier, PositionOf(offset), newName, cancel);
+
+    /// <summary>The edit renaming the symbol at a place of a document to a new name; null where nothing can be renamed.</summary>
+    internal static async Task<JsonElement?> RenameAsync(LanguageServer server, TextDocumentIdentifier document, LspPosition at, string newName, CancellationToken cancel)
     {
-        JsonElement result = await Server.RequestAsync<JsonElement>(LspMethods.Rename, new RenameParams(Identifier, PositionOf(offset), newName), cancel);
+        JsonElement result = await server.RequestAsync<JsonElement>(LspMethods.Rename, new RenameParams(document, at, newName), cancel);
         return result.ValueKind == JsonValueKind.Object ? result : null;
     }
 

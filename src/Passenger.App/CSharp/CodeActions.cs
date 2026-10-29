@@ -411,15 +411,20 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return RefactorOutcome.Refused($"Rename was not applied: {unloaded}");
         }
+        // A component's file at its start is the class Razor makes of it, which the server takes in the C# made of the file.
+        TypeRename.Component? component = context.WebOf(document) is null
+            ? await TypeRename.ComponentAtAsync(context.CSharp?.Session, document.Path, document.Text.Snapshot, at.Offset) : null;
         // Asked before the rename, where the type is declared still.
-        TypeRename.Named? type = context.WebOf(document) is null && context.CSharp?.Session?.Folder is { } folder
-            ? await TypeRename.NamedAsync(context.Editors, folder, context.Now(document), at.Offset) : null;
+        TypeRename.Named? type = component?.Type ?? (context.WebOf(document) is null && context.CSharp?.Session?.Folder is { } folder
+            ? await TypeRename.NamedAsync(context.Editors, folder, context.Now(document), at.Offset) : null);
         TextSnapshot text = document.Text.Snapshot;
-        string old = text.GetText(RenamedAt(document, text, at.Offset));
+        string old = component?.Type.Type ?? text.GetText(RenamedAt(document, text, at.Offset));
         // The open files as the request went: what is typed meanwhile carries the answer on.
         using Asked asked = WorkspaceEdits.Track(context.Editors);
         // Asked of the server running now: one there before may have been started again since.
-        if (await context.Now(document).RenameAsync(at.Offset, name) is not { } edit)
+        System.Text.Json.JsonElement? renamed = component is null ? await context.Now(document).RenameAsync(at.Offset, name)
+            : context.CSharp?.Session is { } session ? await session.RenameAsync(component.Name, name) : null;
+        if (renamed is not { } edit)
         {
             return new RefactorOutcome("This can't be renamed", null, [], []);
         }

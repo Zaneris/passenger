@@ -16,13 +16,14 @@ namespace Passenger.App.CSharp;
 /// <summary>A type's rename and the files named after it: a C# file is named after a type it declares when its name up
 /// to the first dot is the type's (Foo.cs, Foo.Designer.cs), and the rename gives it the new name before that dot; a
 /// file declaring the type under another name (Shapes.cs) keeps its own. The markup a code-behind's class is made with
-/// follows it (<see cref="MarkupAsync"/>). The code's rename and the files' moves are one command, which Undo takes back
-/// whole (<see cref="CommandHistory"/>).</summary>
+/// follows it (<see cref="MarkupAsync"/>), as does a Razor component's own file, which declares its class where no
+/// code-behind does (<see cref="Component"/>). The code's rename and the files' moves are one command, which Undo takes
+/// back whole (<see cref="CommandHistory"/>).</summary>
 public static class TypeRename
 {
     /// <summary>A type a rename names: its name, the name an <c>x:Class</c> gives it where a namespace declares it (null
-    /// for one nested in another type), a file declaring it inside the folder, and those of its declarations' files that
-    /// are named after it.</summary>
+    /// for one nested in another type), a file declaring it inside the folder (a Razor component's own, for the class Razor
+    /// makes of it), and those of its declarations' C# files that are named after it.</summary>
     public sealed record Named(string Type, string? FullName, string Declaring, IReadOnlyList<string> Files);
 
     /// <summary>What a type's rename takes along of the markup its class is made with: the files moved with it, and the
@@ -31,20 +32,30 @@ public static class TypeRename
 
     /// <summary>The type whose name is at an offset of a file the server has open, and its declarations' files inside
     /// the folder that are named after it (the server's definitions of a partial type are all its parts); null when the
-    /// name is not a type's declared in the folder.</summary>
+    /// name is not a type's declared in the folder. A definition at the start of a Razor component's file, of the name
+    /// asked about, is the class Razor makes of it, where none of C#'s declares it.</summary>
     public static async Task<Named?> NamedAsync(EditorArea editors, string folder, LspDocument server, int offset)
     {
         // The open files as the question went: what is typed meanwhile moves the places the answer names in them.
         using Asked asked = WorkspaceEdits.Track(editors);
+        TextSnapshot text = server.Text.Snapshot;
+        string asking = text.GetText(TextNavigation.WordAt(text, offset));
         IReadOnlyList<LspLocation> definitions = await server.DefinitionAsync(offset);
         string? type = null;
         string? fullName = null;
         string? declaring = null;
+        string? component = null;
         List<string> files = [];
         foreach (LspLocation place in definitions)
         {
-            if (Local(folder, place) is not { } path || Declared(editors, asked, path, place) is not { } declared)
+            if (Local(folder, place) is not { } path)
             {
+                continue;
+            }
+            if (Declared(editors, asked, path, place) is not { } declared)
+            {
+                // Razor's code maps its class to no line of the file: the server gives the file's start.
+                component ??= place.Range.Start is { Line: 0, Character: 0 } && IsComponentFile(path) && Stem(path) == asking ? path : null;
                 continue;
             }
             if (type is null)
@@ -57,19 +68,46 @@ public static class TypeRename
                 files.Add(path);
             }
         }
+        if (type is null && component is not null)
+        {
+            return new Named(Stem(component), null, component, []);
+        }
         return type is null || declaring is null ? null : new Named(type, fullName, declaring, files);
     }
 
+    /// <summary>The class a Razor component's file makes, as the server holds it: the type a rename names, declared by the
+    /// file, its symbol, and its name's span in the C# Razor generates of the file, where the server takes the class.</summary>
+    public sealed record Component(Named Type, Roslyn.Extension.NamedSymbol Symbol, Roslyn.Extension.UriSpan Name);
+
+    /// <summary>The class a Razor component's file makes (<see cref="Component"/>); null for a file that is not one, of no
+    /// project's, or with no extension in the server to ask.</summary>
+    public static async Task<Component?> ComponentAsync(RoslynSession server, string path) =>
+        IsComponentFile(path) && await server.ComponentAsync(path) is { Symbol: { } symbol, Name: { } name }
+            ? new Component(new Named(symbol.Name, null, path, []), symbol, name)
+            : null;
+
+    /// <summary>The class a Razor component's file makes, for a place at the file's start where no name begins (its markup,
+    /// a directive): its definition lands there, and the file has no other place for it; null anywhere else.</summary>
+    public static async Task<Component?> ComponentAtAsync(RoslynSession? server, string path, TextSnapshot text, int offset) =>
+        server is not null && offset == 0 && (text.Length == 0 || !TextNavigation.IsWordChar(text[0])) ? await ComponentAsync(server, path) : null;
+
+    /// <summary>Whether a file is a Razor component's whose class Razor names as the file: a .razor file, not the folder's
+    /// imports, whose name is a C# name.</summary>
+    public static bool IsComponentFile(string path) =>
+        path.EndsWith(".razor", StringComparison.OrdinalIgnoreCase) && Path.GetFileNameWithoutExtension(path) is var name
+        && !name.Equals("_Imports", StringComparison.OrdinalIgnoreCase) && SyntaxFacts.IsValidIdentifier(name);
+
     /// <summary>What a type's rename to <paramref name="name"/> takes along of its markup. A Razor component's class is
-    /// named after its file, so the X.razor beside a code-behind X.razor.cs moves with the type, and the files named after
-    /// it beside it (X.razor.css, X.razor.js) with it, whether or not the type's own files are renamed. The XAML file
-    /// whose <c>x:Class</c> names the type (<see cref="ClassEdit"/>), moved with its files when named after it.</summary>
+    /// named after its file, so the X.razor beside a code-behind X.razor.cs, or the one declaring the type, moves with the
+    /// type, and the files named after it beside it (X.razor.css, X.razor.js) with it, whether or not the type's own files
+    /// are renamed. The XAML file whose <c>x:Class</c> names the type (<see cref="ClassEdit"/>), moved with its files when
+    /// named after it.</summary>
     public static async Task<Markup> MarkupAsync(XamlService? xaml, Named type, string name, bool renameFiles)
     {
         List<(string From, string To)> moves = [];
-        foreach (string file in type.Files.Where(f => f.EndsWith(RazorCodeBehind, StringComparison.OrdinalIgnoreCase)))
+        IEnumerable<string> components = type.Files.Where(f => f.EndsWith(RazorCodeBehind, StringComparison.OrdinalIgnoreCase)).Select(f => f[..^".cs".Length]);
+        foreach (string component in IsComponentFile(type.Declaring) ? components.Append(type.Declaring) : components)
         {
-            string component = file[..^".cs".Length];
             if (!File.Exists(component))
             {
                 continue;
@@ -160,15 +198,17 @@ public static class TypeRename
             ? path
             : null;
 
-    /// <summary>The type a file is named after, the C# file declaring it and where its name is in that file's text as it
-    /// is now: a C# file's own type of its name, or the class a XAML or Razor file's code-behind beside it declares of
-    /// the markup's name (a XAML file's only where its <c>x:Class</c> names that class); null for none.</summary>
+    /// <summary>The type a file is named after, the file declaring it and where its name is in that file's text as it is
+    /// now: a C# file's own type of its name, or the class a XAML or Razor file's code-behind beside it declares of the
+    /// markup's name (a XAML file's only where its <c>x:Class</c> names that class), else the class a Razor component's
+    /// file makes, declared by the file from its start; null for none.</summary>
     public static FileType? NamedAfterFile(EditorArea editors, string path)
     {
         string? declaring = IsCSharp(path) ? path : CodeBehind.PartnerOf(path);
+        FileType? component = IsComponentFile(path) ? new FileType(Stem(path), path, 0) : null;
         if (declaring is null || Syntax(editors, declaring) is not { } parsed)
         {
-            return null;
+            return component;
         }
         string stem = Stem(path);
         string? className = XamlService.IsXaml(path) ? ClassOf(editors, path) ?? string.Empty : null;
@@ -179,11 +219,11 @@ public static class TypeRename
                 return new FileType(stem, declaring, name.SpanStart);
             }
         }
-        return null;
+        return component;
     }
 
-    /// <summary>The type a file is named after (<see cref="NamedAfterFile"/>): its name, the C# file declaring it, and the
-    /// offset of its name there.</summary>
+    /// <summary>The type a file is named after (<see cref="NamedAfterFile"/>): its name, the file declaring it (a C# file,
+    /// or a Razor component's own), and the offset of its name there.</summary>
     public sealed record FileType(string Name, string Declaring, int Offset);
 
     /// <summary>The class a XAML file's <c>x:Class</c> names, in its text as it is now; null for none.</summary>

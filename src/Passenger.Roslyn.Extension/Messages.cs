@@ -30,12 +30,14 @@ public static class Handlers
     public const string SymbolsNamed = "Passenger.Roslyn.Extension.SymbolsNamed";
     public const string SymbolAt = "Passenger.Roslyn.Extension.SymbolAt";
     public const string WrittenPlaces = "Passenger.Roslyn.Extension.WrittenPlaces";
+    public const string ComponentClass = "Passenger.Roslyn.Extension.ComponentClass";
 
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
+        ComponentClass,
     ];
 }
 
@@ -92,6 +94,13 @@ public sealed record UriSpan(
 /// <summary>Spans whose places in the files their code was written in are asked for, and the answer: each in order, a
 /// generated document's in the file its generator wrote it from, any other as it was.</summary>
 public sealed record WrittenSpans([property: JsonPropertyName("spans")] IReadOnlyList<UriSpan> Spans);
+
+/// <summary>A Razor component's file, whose class is asked for.</summary>
+public sealed record ComponentAsked([property: JsonPropertyName("path")] string Path);
+
+/// <summary>The class a Razor component's file makes, and its name's span in the C# Razor generates of the file, where the
+/// server takes the class; both null for a file of no project's.</summary>
+public sealed record ComponentFound([property: JsonPropertyName("symbol")] NamedSymbol? Symbol, [property: JsonPropertyName("name")] UriSpan? Name);
 
 /// <summary>Where the caret is: what a describing message asks about.</summary>
 public sealed record Caret([property: JsonPropertyName("at")] Place At);

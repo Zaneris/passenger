@@ -1,6 +1,8 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Extensions;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.LanguageServer;
 using Microsoft.CodeAnalysis.Text;
 
 namespace Passenger.Roslyn.Extension;
@@ -24,9 +26,43 @@ public sealed class SymbolAt : IExtensionDocumentMessageHandler<Caret, SymbolsFo
     }
 }
 
+/// <summary>The class a Razor component's file makes (<see cref="SymbolNames.ComponentAsync"/>).</summary>
+public sealed class ComponentClass : IExtensionWorkspaceMessageHandler<ComponentAsked, ComponentFound>
+{
+    public Task<ComponentFound> ExecuteAsync(ComponentAsked message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+        SymbolNames.ComponentAsync(context.Solution, message.Path, cancellationToken);
+}
+
 internal static class SymbolNames
 {
     private static readonly SymbolDisplayFormat Short = SymbolDisplayFormat.CSharpShortErrorMessageFormat;
+
+    /// <summary>The class a Razor file makes, and its name's span in the C# Razor's generator makes of the file, a place the
+    /// server takes the class at, as the Razor file has none (its code maps the class to no line); none for a file of no
+    /// project's.</summary>
+    public static async Task<ComponentFound> ComponentAsync(Solution solution, string path, CancellationToken cancel)
+    {
+        foreach (DocumentId id in solution.GetDocumentIdsWithFilePath(path))
+        {
+            if (solution.GetAdditionalDocument(id) is not { FilePath: { } file } razor || !IsRazor(file) || MadeOf(razor.Project, file) is not { } made)
+            {
+                continue;
+            }
+            foreach (SourceGeneratedDocument generated in await razor.Project.GetSourceGeneratedDocumentsAsync(cancel).ConfigureAwait(false))
+            {
+                if (MadeOf(generated) != made
+                    || (await generated.GetSyntaxRootAsync(cancel).ConfigureAwait(false))?.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault() is not { } declared
+                    || (await generated.GetSemanticModelAsync(cancel).ConfigureAwait(false))?.GetDeclaredSymbol(declared, cancel) is not { } symbol)
+                {
+                    continue;
+                }
+                LinePositionSpan name = (await generated.GetTextAsync(cancel).ConfigureAwait(false)).Lines.GetLinePositionSpan(declared.Identifier.Span);
+                return new ComponentFound(Named(solution, symbol), new UriSpan(SourceGeneratedDocumentUri.Create(generated.Identity).UriString,
+                    new Place(name.Start.Line, name.Start.Character), new Place(name.End.Line, name.End.Character)));
+            }
+        }
+        return new ComponentFound(null, null);
+    }
 
     public static async Task<SymbolsFound> FindAsync(Solution solution, string name, int limit, CancellationToken cancel)
     {
@@ -146,19 +182,21 @@ internal static class SymbolNames
         return found;
     }
 
-    /// <summary>The Razor file a file of Razor's generator was made from: the one its hint name is made of (a path's every
-    /// character but a letter or digit an underscore, then ".g.cs"); null for any other generated file.</summary>
-    private static string? RazorFileOf(SourceGeneratedDocument generated)
-    {
-        if (!IsRazorGenerated(generated.HintName) || Path.GetDirectoryName(generated.Project.FilePath) is not { } folder)
-        {
-            return null;
-        }
-        string made = Identifier(generated.HintName[..^".g.cs".Length]);
-        return generated.Project.AdditionalDocuments.FirstOrDefault(d => IsRazor(d.FilePath) && Identifier(Path.GetRelativePath(folder, d.FilePath!)) == made)?.FilePath;
+    /// <summary>The Razor file a file of Razor's generator was made from; null for any other generated file.</summary>
+    private static string? RazorFileOf(SourceGeneratedDocument generated) => MadeOf(generated) is { } made
+        ? generated.Project.AdditionalDocuments.FirstOrDefault(d => IsRazor(d.FilePath) && MadeOf(generated.Project, d.FilePath!) == made)?.FilePath
+        : null;
 
-        static string Identifier(string path) => string.Concat(path.Select(c => char.IsLetterOrDigit(c) ? c : '_'));
-    }
+    /// <summary>What a file of Razor's generator was made from, as its hint name writes it (then ".g.cs"): the Razor file's
+    /// path in its project with every character but a letter or digit an underscore; null for any other generated file.</summary>
+    private static string? MadeOf(SourceGeneratedDocument generated) =>
+        IsRazorGenerated(generated.HintName) ? Identifier(generated.HintName[..^".g.cs".Length]) : null;
+
+    /// <summary>A Razor file's path in its project as the hint name of the file Razor's generator makes of it writes it.</summary>
+    private static string? MadeOf(Project project, string razor) =>
+        Path.GetDirectoryName(project.FilePath) is { } folder ? Identifier(Path.GetRelativePath(folder, razor)) : null;
+
+    private static string Identifier(string path) => string.Concat(path.Select(c => char.IsLetterOrDigit(c) ? c : '_'));
 
     private static bool IsRazor(string? path) =>
         path is not null && (path.EndsWith(".razor", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase));

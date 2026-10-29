@@ -14,7 +14,8 @@ namespace Passenger.Tests;
 /// <summary>A class renamed from its code-behind takes the markup it is made with along, in the window and for an agent
 /// attached to it: a Razor component's .razor file and its scoped style, which Razor names the class after, and an Avalonia
 /// window's x:Class with its .axaml file; and the markup's file renamed in the Solution view takes its class along the
-/// same way. The person's Undo takes each rename back whole, and the project builds after every rename.</summary>
+/// same way. A component with no code-behind is renamed whole from its file, its uses in C# and its tags. The person's
+/// Undo takes each rename back whole, and the project builds after every rename.</summary>
 public sealed class CodeBehindRenameTests : McpRig
 {
     private const string Greeting = "<p class=\"greeting\">Hello, @Name!</p>\n";
@@ -23,6 +24,8 @@ public sealed class CodeBehindRenameTests : McpRig
         + "    [Parameter]\n    public string Name { get; set; } = \"\";\n}\n";
 
     private const string GreetingStyle = ".greeting {\n    color: teal;\n}\n";
+
+    private const string GreetingAlone = Greeting + "\n@code {\n    [Parameter]\n    public string Name { get; set; } = \"\";\n}\n";
 
     private const string Home = "@page \"/\"\n\n<Greeting Name=\"Ada\" />\n";
 
@@ -213,6 +216,104 @@ public sealed class CodeBehindRenameTests : McpRig
         }
     }
 
+    /// <summary>A component with no code-behind, used by a tag in another component and by typeof in C#, renamed from its
+    /// .razor file in the Solution view, from the typeof and from the tag: each time its file and scoped style move, the tag
+    /// and the typeof follow, and the app builds, and one Undo puts all of it back. An agent attached finds its usages by
+    /// its name and renames it by its name the same way. The folder's _Imports.razor offers no class to rename.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_razor_component_with_no_code_behind_from_its_file_its_typeof_or_its_tag_renames_it_whole_and_one_undo_puts_it_back()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("razor-alone-rename-"));
+        TestFolders.Write(folder, "Shop.csproj", TestProjects.Web("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>"));
+        TestFolders.Write(folder, "Program.cs", "var builder = WebApplication.CreateBuilder(args);\nvar app = builder.Build();\napp.Run();\n");
+        TestFolders.Write(folder, "_Imports.razor", "@using Microsoft.AspNetCore.Components\n@using Microsoft.AspNetCore.Components.Web\n@using Shop.Components\n");
+        TestFolders.Write(folder, "Components/Greeting.razor", GreetingAlone);
+        TestFolders.Write(folder, "Components/Greeting.razor.css", GreetingStyle);
+        TestFolders.Write(folder, "Components/Home.razor", Home);
+        TestFolders.Write(folder, "Components/Registry.cs", Registry);
+        Restore.Run(folder);
+        string components = Path.Combine(folder, "Components");
+        MainWindow window = Opened(folder, "Components/Registry.cs");
+        List<string> asked = AnswerUndo(window);
+        McpClient? client = null;
+        try
+        {
+            Choose(window, Path.Combine(folder, "_Imports.razor"));
+            Ui.Run(window, AppActions.Rename);
+            NamePopup imports = Assert.IsType<NamePopup>(window.Popup);
+            Assert.True(imports.Option is null, $"Renaming _Imports.razor, which makes no component, offered: {imports.Option?.Content}");
+            Ui.Press(window, "ESCAPE");
+            Ui.WaitFor(() => !window.IsPopupOpen, "the rename popup to close");
+
+            RenameInSolutionView(window, Path.Combine(components, "Greeting.razor"), "Salute.razor", "Greeting");
+            RenamedWhole(window, folder, "Salute", "Greeting.razor was renamed with its class in the Solution view");
+            UndoInSolutionView(window, Path.Combine(components, "Salute.razor"));
+            PutBack(window, folder, asked, 1, "the Solution view's rename of Greeting.razor");
+
+            window.OpenFile(Path.Combine(components, "Registry.cs"));
+            Ui.Settle();
+            RenameAt(window, "typeof(Gree", "Salute", offersFiles: false);
+            RenamedWhole(window, folder, "Salute", "the component was renamed from its typeof");
+            UndoInEditor(window);
+            PutBack(window, folder, asked, 2, "the rename from the typeof");
+
+            window.OpenFile(Path.Combine(components, "Home.razor"));
+            Ui.Settle();
+            RenameAt(window, "<Gree", "Salute", offersFiles: false);
+            RenamedWhole(window, folder, "Salute", "the component was renamed from its tag");
+            UndoInEditor(window);
+            PutBack(window, folder, asked, 3, "the rename from the tag");
+            window.EditorArea.SaveAll();
+
+            client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+            JsonElement uses = Await(Waiting.Apart(() => Call(client, McpTools.Usages, new() { ["symbol"] = "Greeting" })), "the agent's usages of the component");
+            string[] found = [.. uses.GetProperty("files").EnumerateArray()
+                .SelectMany(f => f.GetProperty("places").EnumerateArray().Select(p => $"{f.GetProperty("path").GetString()}:{p.GetString()!.Split(' ')[0]}"))];
+            string[] expected = [Path.Combine("Components", "Home.razor") + ":3:2", Path.Combine("Components", "Registry.cs") + ":5:40"];
+            Assert.True(expected.All(found.Contains), $"The agent's usages of the component by its name: {Text(uses)}");
+            string said = Text(Allowed(window, client, McpTools.Rename, new() { ["symbol"] = "Greeting", ["newName"] = "Welcome" }));
+            Assert.True(said.Contains($"{Path.Combine("Components", "Greeting.razor")} to {Path.Combine("Components", "Welcome.razor")}", StringComparison.Ordinal),
+                $"The agent's rename of the component by its name answered: {said}");
+            RenamedWhole(window, folder, "Welcome", "the agent renamed the component by its name");
+        }
+        finally
+        {
+            Leave(client, window);
+        }
+    }
+
+    /// <summary>The component named Greeting with no code-behind renamed to <paramref name="name"/> whole: its file and scoped
+    /// style moved as they were, the tag and the typeof that use it renamed, and the app building.</summary>
+    private static void RenamedWhole(MainWindow window, string folder, string name, string after)
+    {
+        string components = Path.Combine(folder, "Components");
+        string[] files = [.. new[] { "Home.razor", "Registry.cs", $"{name}.razor", $"{name}.razor.css" }.Order(StringComparer.Ordinal)];
+        Assert.True(Names(components).SequenceEqual(files), $"The component's files after {after}: [{string.Join(", ", Names(components))}], {window.Status}");
+        Assert.Equal(GreetingAlone, File.ReadAllText(Path.Combine(components, $"{name}.razor")));
+        Assert.Equal(GreetingStyle, File.ReadAllText(Path.Combine(components, $"{name}.razor.css")));
+        Assert.Equal(Home.Replace("<Greeting", $"<{name}", StringComparison.Ordinal), Shown(window, Path.Combine(components, "Home.razor")));
+        Assert.Equal(Registry.Replace("typeof(Greeting)", $"typeof({name})", StringComparison.Ordinal), Shown(window, Path.Combine(components, "Registry.cs")));
+        Builds(window, folder, after);
+    }
+
+    /// <summary>One Undo of a rename of the component named Greeting with no code-behind, the person's <paramref name="undone"/>th,
+    /// asked about and putting its files, its tag and its typeof back as they were.</summary>
+    private static void PutBack(MainWindow window, string folder, List<string> asked, int undone, string rename)
+    {
+        string components = Path.Combine(folder, "Components");
+        Assert.True(asked.Count == undone && asked[^1].StartsWith("Undo Rename Greeting to Salute? It changes ", StringComparison.Ordinal),
+            $"The person's Undo of {rename} asked: {string.Join(" | ", asked)}");
+        Assert.True(Names(components).SequenceEqual(["Greeting.razor", "Greeting.razor.css", "Home.razor", "Registry.cs"]),
+            $"One Undo of {rename} did not put the component's files back: [{string.Join(", ", Names(components))}], {window.Status}");
+        Assert.Equal(GreetingAlone, File.ReadAllText(Path.Combine(components, "Greeting.razor")));
+        Assert.Equal(Home, Shown(window, Path.Combine(components, "Home.razor")));
+        Assert.Equal(Registry, Shown(window, Path.Combine(components, "Registry.cs")));
+    }
+
+    /// <summary>A file's text as the window shows it: its editor's where it is open, else the disk's.</summary>
+    private static string Shown(MainWindow window, string path) =>
+        window.EditorArea.Find(path)?.Text.Snapshot.ToString() ?? File.ReadAllText(path);
+
     /// <summary>A window's .axaml file renamed in the Solution view offers to rename its class, which its x:Class names after
     /// the file: taken, the x:Class, the code-behind's class and file and the code that makes the window follow, and the
     /// app builds; one Undo puts all of it back. A XAML file whose class is named otherwise offers nothing.</summary>
@@ -295,14 +396,15 @@ public sealed class CodeBehindRenameTests : McpRig
         return window;
     }
 
-    /// <summary>Rename at the end of a piece of the active file, the new name typed into its box once it has offered the
-    /// files named after the type, and Enter pressed.</summary>
-    private static void RenameAt(MainWindow window, string after, string name)
+    /// <summary>Rename at the end of a piece of the active file, the new name typed into its box once it is open (and has
+    /// offered the files named after the type, when <paramref name="offersFiles"/>), and Enter pressed.</summary>
+    private static void RenameAt(MainWindow window, string after, string name, bool offersFiles = true)
     {
         Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
         window.EditorArea.CodeEditor.Focus();
         Ui.Run(window, AppActions.Rename);
-        Ui.WaitFor(() => window.Assist.RenameOffersFiles.Count > 0, "the rename box to offer the files named after the class");
+        Ui.WaitFor(() => offersFiles ? window.Assist.RenameOffersFiles.Count > 0 : window.Assist.Renaming is not null,
+            offersFiles ? "the rename box to offer the files named after the class" : "the rename box to open");
         window.KeyTextInput(name);
         Ui.Press(window, "ENTER");
         Ui.Settle();
