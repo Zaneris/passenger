@@ -279,7 +279,9 @@ public sealed class ProjectLoadTests : IDisposable
             $"Problems lists the restore's failure as {failed.Severity} \"{failed.Message}\" under {failed.Project}");
 
         File.WriteAllText(config, reads);
-        LaunchUpToDateTests.Built(window, AppActions.Build, succeeds: true, "Web's build with its nuget.config reading");
+        // The build's own outcome: the language server's load after the restore may take the status bar first.
+        BuildOutcome built = Ui.Await(window.BuildAsync(), "Web's build with its nuget.config reading", TimeSpan.FromMinutes(2));
+        Assert.True(built.Succeeded, $"Web's build with its nuget.config reading did not succeed: {built.Message}");
         Ui.WaitFor(() => problems.ToolsetProblems.Count == 0, () => $"the restore's failure gone from Problems once a restore succeeded ({problems.ToolsetProblems.FirstOrDefault()?.Message})",
             TimeSpan.FromMinutes(2));
         window.Close();
