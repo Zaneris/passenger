@@ -218,7 +218,8 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **Shell.** `PassengerApp` (every open goes through `OpenProject`; a `.slnf` is `SolutionFilter`, the projects it leaves
   out unloaded but never saved as the person's own), `ProjectSession` (one folder's services made and ended together; a
   handler acts only while its session is bound, `Bind`), `StatusBar` (`StatusPlace` makes its words a
-  link), `IdeKeys` (the one keymap in every window but a dialog; a part with keys of its own is an `IOwnKeys`). The
+  link; a message naming a Settings page takes it from `SettingsDialog.PlaceOfPage`), `IdeKeys` (the one keymap in every
+  window but a dialog; a part with keys of its own is an `IOwnKeys`). The
   toolbar is the title bar: anything new on it goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press on
   it for the caption's. Logs are `logs/` under the state root (`IdeLog`; Settings › Diagnostics turns on protocol traces).
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; wire every editor through `ForEachEditor`;
@@ -229,10 +230,11 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **C#.** `CSharpService`, `ServerDiagnostics` (one pull at a time after a pause), `CodeAssist` (the window's wiring)
   over its parts; each language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a
   server's edit to a file not open is refused if it was written in the last 2 s (an agent's call waits, `Patience`).
-  `ServerWatches` watches for the server what it registers (`WatchedFiles`), beside the folder's watcher. A C# symbol's
-  uses in XAML come from one finder, `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to Declaration's resolver)
-  and `CodeSymbol`. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through `ServerCommands`, the
-  edits it sends back (`workspace/applyEdit`) one command of Undo.
+  `ServerWatches` watches for the server what it registers (`WatchedFiles`), beside the folder's watcher. A place the
+  server names in a source generator's document reaches the file it was written in through `RoslynSession.WrittenAsync`.
+  A C# symbol's uses in XAML come from one finder, `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to
+  Declaration's resolver) and `CodeSymbol`. A server's own command (TypeScript's refactorings, ESLint's fixes) runs
+  through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
   runs one tsserver (`useSyntaxServer` never): a syntax server answers rename and usages from the open files alone.
