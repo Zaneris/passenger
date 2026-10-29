@@ -836,7 +836,8 @@ public sealed class DebugSession
     }
 
     /// <summary>Sends a file's breakpoints at their built lines; one on a line written since the build is refused here, as
-    /// the debugger refuses a line with no code. The adapter keeps those sent as they were, hit counts and all.</summary>
+    /// the debugger refuses a line with no code. The adapter keeps those sent as they were, hit counts and all. Run to
+    /// Cursor's line stops: its own breakpoint is sent there, or the one there sent stopping, its count going on.</summary>
     private async Task SendBreakpointsAsync(string path)
     {
         // Muted, none is sent and each is as no debugger has said, though Run to Cursor's place still is.
@@ -844,9 +845,22 @@ public sealed class DebugSession
         List<LineBreakpoint> built = [.. sending.Where(b => lines.IsBuilt(path, b.Line))];
         List<LineBreakpoint> unbuilt = [.. sending.Where(b => !lines.IsBuilt(path, b.Line))];
         List<DapSourceBreakpoint> requests = [.. built.Select(b => Request(path, b))];
-        if (runToCursor is { } target && target.Path == path && requests.All(r => r.Line != target.At.Line))
+        if (runToCursor is { } target && target.Path == path)
         {
-            requests.Add(target.At);
+            bool held = false;
+            for (int i = 0; i < requests.Count; i++)
+            {
+                if (requests[i].Line == target.At.Line)
+                {
+                    // Its condition, hit count or going on set aside until the stop, which Run to Cursor makes whatever they say.
+                    requests[i] = requests[i] with { Condition = null, HitCondition = null, Suspend = true };
+                    held = true;
+                }
+            }
+            if (!held)
+            {
+                requests.Add(target.At);
+            }
         }
         sent[path] = Signature(path);
         SetBreakpointsResponse response = await connection.RequestAsync<SetBreakpointsResponse>(

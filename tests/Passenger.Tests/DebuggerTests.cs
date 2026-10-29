@@ -449,6 +449,47 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
+    /// <summary>Run to Cursor stops at its line whatever breakpoint stands there, one whose condition is false and a
+    /// tracepoint alike, each as it was once the stop is made: the condition passed by on the loop's later turns.</summary>
+    [AvaloniaFact]
+    public void Run_to_cursor_stops_at_a_line_holding_a_false_condition_or_a_tracepoint_each_as_it_was_after()
+    {
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(0, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        editor.GoTo(new TextPosition(3, 4));
+        Ui.Run(window, AppActions.EditBreakpoint);
+        Ui.Settle();
+        window.KeyTextInput("total > 100");
+        Ui.Press(window, "Enter");
+        Point gutter = Gutter(window, editor, 5);
+        window.MouseDown(gutter, MouseButton.Left, RawInputModifiers.Shift);
+        window.MouseUp(gutter, MouseButton.Left, RawInputModifiers.Shift);
+        Ui.Settle();
+        Assert.Contains(new LineMark(3, LineMarkKind.Breakpoint, Conditional: true), editor.LineMarks);
+        Assert.Contains(new LineMark(5, LineMarkKind.Breakpoint, Tracepoint: true), editor.LineMarks);
+
+        StartDebugging(window);
+        DebugSession session = window.Debugger.Session!;
+        WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 1 }, "the stop at the first line");
+        editor.GoTo(new TextPosition(3, 4));
+        Ui.Run(window, AppActions.RunToCursor);
+        WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 2 }, "Run to Cursor's stop at the line whose condition is false");
+        Assert.Contains(new LineMark(3, LineMarkKind.ExecutionPoint), editor.LineMarks);
+        Assert.Equal(("1", "0"), (Value(window, "i"), Value(window, "total")));
+
+        editor.GoTo(new TextPosition(5, 0));
+        Ui.Run(window, AppActions.RunToCursor);
+        WaitDebugging(window, () => session is { State: DebugState.Paused, Stops: 3 }, "Run to Cursor's stop at the tracepoint");
+        Assert.Contains(new LineMark(5, LineMarkKind.ExecutionPoint), editor.LineMarks);
+        Assert.Equal("6", Value(window, "total"));
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => session.State == DebugState.Ended, "the program to run to its end");
+        Assert.Contains("total 6", window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_hit_count_the_debugger_cannot_read_is_said_as_it_is_typed_and_the_breakpoint_refused()
     {

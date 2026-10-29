@@ -217,6 +217,35 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.True(added.Breakpoints[2].Verified, "the breakpoint added while paused binds");
     }
 
+    /// <summary>A breakpoint sent again at its line with its hit count set aside, as Run to Cursor sends one on its line, then
+    /// as it was: it stops on the hit it reaches meanwhile, and counts on from there to the hit its count names.</summary>
+    [Fact]
+    public async Task A_breakpoint_sent_again_at_its_line_with_other_settings_counts_on_from_its_hits()
+    {
+        bool startSuspended = true;
+        string file = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
+        await host
+            .InitializeAsync()
+            .AttachAsync(debuggee.Id)
+            .WaitForInitializedEvent();
+        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==5")]);
+        await host
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(debuggee.Id, startSuspended);
+        StoppedEvent third = await host.WaitForStoppedEvent();
+        Assert.Equal((CountUp, "2"), (third.ReadStopInfo().line, await Count(host, third)));
+
+        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount)]);
+        StoppedEvent reached = await host.ContinueAsync().WaitForStoppedEvent();
+        Assert.Equal((AfterCount, "3"), (reached.ReadStopInfo().line, await Count(host, reached)));
+        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==5")]);
+
+        // Its fifth hit, not five after it was sent back.
+        StoppedEvent fifth = await host.ContinueAsync().WaitForStoppedEvent();
+        Assert.Equal((AfterCount, "5"), (fifth.ReadStopInfo().line, await Count(host, fifth)));
+    }
+
     /// <summary>Hit counts the debugger cannot read, each set in turn with the program's code loaded, where one it took would
     /// bind at once: each is refused saying why, the breakpoint beside it binds, and the program never stops at it.</summary>
     [Gate]
