@@ -273,10 +273,11 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
             $"The script's rename did not reach package.json on disk:\n{manifest}");
     }
 
-    /// <summary>An agent's diagnostics answer from the checks of the text as it stands: TypeScript's problem in a file just
-    /// opened, then the edited text's own, and ESLint's in its first call as its server starts. Skipped without a Node.js.</summary>
+    /// <summary>An agent's diagnostics and ESLint's fixes answer from the checks of the text as it stands: TypeScript's problem
+    /// in a file just opened, then the edited text's own, ESLint's in its first call as its server starts, and ESLint's fix
+    /// listed, then applied, each in a file let go since the call before (as a pause lets it go). Skipped without a Node.js.</summary>
     [Fact]
-    public async Task An_agents_diagnostics_wait_for_typescript_and_eslint_to_check_the_text_as_it_stands()
+    public async Task An_agents_diagnostics_and_eslint_fixes_wait_for_the_checks_of_the_text_as_it_stands()
     {
         await WebLanguagesTests.SkipWithoutNodeAsync(typescript: true);
         await EslintPrettierTests.Project.SkipWithoutNodeAsync();
@@ -301,6 +302,13 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         await Call(client, McpTools.Edit, new() { ["path"] = main, ["oldText"] = "const count: number = \"two\";", ["newText"] = "const count: number = 2;\nconst label: string = count;" });
         string[] edited = Problems(await Call(client, McpTools.Diagnostics, new() { ["path"] = main }));
         Assert.True(edited is ["2: TS2322: Type 'number' is not assignable to type 'string'."], $"diagnostics right after an edit did not answer the edited text: {string.Join(" | ", edited)}");
+
+        Dictionary<string, object?> let = At(File.ReadAllText(Path.Combine(web, app)), app, "let t");
+        string[] actions = Strings(await Call(client, McpTools.CodeActions, let));
+        Assert.True(actions.Contains("ESLint: Fix 'prefer-const' [quickfix]"), $"ESLint's fix was not listed in a file let go: {string.Join(" | ", actions)}");
+        await Call(client, McpTools.Diagnostics, new() { ["path"] = main });
+        Assert.Equal($"Applied 'ESLint: Fix 'prefer-const'' to {app}", (await Call(client, McpTools.ApplyCodeAction, new(let) { ["title"] = "ESLint: Fix 'prefer-const'" })).GetString());
+        Assert.StartsWith("const total = 1", File.ReadAllText(Path.Combine(web, app)), StringComparison.Ordinal);
     }
 
     /// <summary>A project whose property comes from its Directory.Build.props and whose target another names: what MSBuild's

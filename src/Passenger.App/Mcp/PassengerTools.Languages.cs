@@ -225,10 +225,17 @@ public sealed partial class PassengerTools
         return $"Renamed {old} to {newName} in {Relative(document.Path)}{(runs == 0 ? string.Empty : $", and in {Plural.Of(runs, "script")} that run{(runs == 1 ? "s" : "")} it")}";
     }
 
-    /// <summary>ESLint's fixes for the problems on a web file's line, which Show Context Actions lists first; none where ESLint
-    /// does not check the file.</summary>
-    private async Task<IReadOnlyList<EslintFix>> LintFixes(Served served, int offset) =>
-        served is ServerServed { Web: not null } ? await window.Assist.Languages.Web.LintFixes(served.Document, offset) : [];
+    /// <summary>ESLint's fixes for the problems on a web file's line, which Show Context Actions lists first, once the file's
+    /// checks have answered its text (its server's fixes are asked by them too); none where ESLint does not check the file.</summary>
+    private async Task<IReadOnlyList<EslintFix>> LintFixes(Served served, int offset, CancellationToken cancel)
+    {
+        if (served is not ServerServed { Web: not null })
+        {
+            return [];
+        }
+        await Checked(served.Document, cancel);
+        return await window.Assist.Languages.Web.LintFixes(served.Document, offset);
+    }
 
     /// <summary>One of ESLint's fixes made, as choosing it makes it: its server's command, which hands the window its edit
     /// before it answers; the file saved.</summary>

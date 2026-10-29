@@ -482,7 +482,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             default:
                 int offset = Offset(served.Document, line, column);
                 await AspireMarked(served, cancel);
-                IReadOnlyList<EslintFix> linted = await LintFixes(served, offset);
+                IReadOnlyList<EslintFix> linted = await LintFixes(served, offset, cancel);
                 listed = [.. window.Assist.OwnFixes(served.Document, offset).Select(f => (f.Title, $"{f.Title} [quickfix]")),
                     .. linted.Select(f => (f.Title, f.Action.Kind is { Length: > 0 } kind ? $"{f.Title} [{kind}]" : f.Title)),
                     .. (await Actions((ServerServed)served, line, column, endLine, endColumn)).Select(a => (a.Title, Described(a, all: title is not null)))];
@@ -522,7 +522,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             return await ApplyOwnFix(served.Document, own, patience, name);
         }
-        IReadOnlyList<EslintFix> linted = await LintFixes(served, offset);
+        IReadOnlyList<EslintFix> linted = await LintFixes(served, offset, cancel);
         if (linted.FirstOrDefault(f => f.Title == title) is { } lint)
         {
             return await ApplyLintFix(server, lint);
