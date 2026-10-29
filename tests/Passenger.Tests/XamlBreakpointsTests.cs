@@ -103,6 +103,39 @@ public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisp
         window.Close();
     }
 
+    /// <summary>At a stop shown at its breakpoint rather than where the thread is (the window's Width, which XamlIl gives no
+    /// code of its own), Set Next Statement back to the window's element shows the stop there, where it went, and the
+    /// program then makes the window's XAML again from its start, stopping at the Width again.</summary>
+    [AvaloniaFact]
+    public void Set_next_statement_from_a_stop_shown_short_of_its_point_shows_the_stop_where_it_went()
+    {
+        MainWindow window = Opened();
+        Assert.Null(window.OpenFile(Xaml));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        int top = Line(Xaml, "Width=\"480\"");
+        int root = Line(Xaml, "<Window");
+        editor.GoTo(new TextPosition(top, Column(Xaml, top, "Width") + 1));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
+        DebugStop stop = Stopped(window, "the stop where the window's Width is set");
+        AssertAt(stop, Xaml, top, Column(Xaml, top, "Width"));
+
+        editor.GoTo(new TextPosition(root, 0));
+        Ui.Run(window, AppActions.SetNextStatement);
+        Ui.WaitFor(() => window.Debugger.Stop is { Reason: StopReasons.Goto }, () => $"Set Next Statement's stop (status: {window.Status})");
+        AssertAt(window.Debugger.Stop!, Xaml, root, Column(Xaml, root, "Window"));
+        Assert.Contains(new LineMark(root, LineMarkKind.ExecutionPoint), editor.LineMarks);
+
+        Resume(window);
+        stop = Stopped(window, "the stop where the window's Width is set again");
+        AssertAt(stop, Xaml, top, Column(Xaml, top, "Width"));
+
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");
+        window.Close();
+    }
+
     /// <summary>XamlIl counts lines as an XML reader does, ending one at a lone '\r' and at no U+0085, U+2028 or U+2029, so
     /// below a comment holding all four and past a lone '\r' in Save's tag the PDB's lines run two ahead of the editor's: the
     /// breakpoint on Save's Background stops there with the arrow on its line, the frame's row and an agent's place say it,

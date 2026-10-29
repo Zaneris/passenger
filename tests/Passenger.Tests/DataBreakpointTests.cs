@@ -134,6 +134,36 @@ public sealed class DataBreakpointTests : IClassFixture<RestoredFolders>, IDispo
         window.Close();
     }
 
+    /// <summary>At a data breakpoint's stop, shown at the write the thread has gone past, Set Next Statement onto the line
+    /// after it shows the stop there, and Step Over runs that line, stopping after it.</summary>
+    [AvaloniaFact]
+    public void At_a_data_breakpoints_stop_set_next_statement_shows_its_line_and_step_over_runs_that_line()
+    {
+        Assert.SkipUnless(Watches, OnlyOnWindowsX64);
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Passenger.App.ToolWindows.DebugModel view = PausedAtReady(window);
+        window.DebugWindow.VariablesList.SelectedItem = Member(view, "counter", "count");
+        Ui.ChooseFromMenu(window.DebugWindow.VariablesList, DataWatchOffer.Set);
+        DataBreakpoint watched = Assert.Single(window.Debugger.Breakpoints.Data);
+        Ui.WaitFor(() => watched.Status == BreakpointStatus.Bound, $"the debugger to take the data breakpoint, not to say {watched.Message}");
+        Ui.Run(window, AppActions.Resume);
+        Ui.WaitFor(() => window.Debugger.Session?.StopReason == "data breakpoint" || window.Debugger.Session?.State == DebugState.Ended, "the stop at the write");
+        Ui.WaitFor(() => editor.LineMarks.Contains(new LineMark(Writes, LineMarkKind.ExecutionPoint)), "the execution point at the line that wrote the field");
+
+        editor.GoTo(new TextPosition(Writes + 1, 8));
+        Ui.Run(window, AppActions.SetNextStatement);
+        Ui.WaitFor(() => editor.LineMarks.Contains(new LineMark(Writes + 1, LineMarkKind.ExecutionPoint)),
+            () => $"the arrow at the line Set Next Statement chose, not the write's (marks {string.Join(", ", editor.LineMarks)}; status: {window.Status})");
+        Ui.Run(window, AppActions.StepOver);
+        Ui.WaitFor(() => editor.LineMarks.Contains(new LineMark(Writes + 2, LineMarkKind.ExecutionPoint)),
+            () => $"Step Over to run the line and stop after it (marks {string.Join(", ", editor.LineMarks)})");
+        Assert.Contains("set 2", window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void The_breakpoints_window_lists_a_data_breakpoint_and_removing_it_there_lets_the_program_run_past_the_writes()
     {

@@ -74,9 +74,12 @@ public partial class ManagedDebugger
         }
         frame.SetIP(ilOffset);
         ForgetReturnedValues();
-        // Every frame and value of the thread was invalidated by the move: the stop is new.
+        // Every frame and value of the thread was invalidated by the move: the stop is new, shown where the thread now is.
         _variableManager.ClearAndDisposeHandleValues();
         _frameReferenceManager.Clear();
+        _stepInTargets.Clear();
+        _writtenAt = null;
+        _stoppedShort = null;
         ReportStop(threadId, StopReasons.Goto);
     }
 
