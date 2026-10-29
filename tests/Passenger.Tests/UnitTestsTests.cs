@@ -398,6 +398,56 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>The Unit Tests window's keys stay on the project chosen as Expand All puts the rows of the projects above it
+    /// in (#719), the view left where it is and the project pushed out of sight, Down then choosing the row under it.</summary>
+    [AvaloniaFact]
+    public void The_unit_tests_window_keeps_its_keys_on_the_row_chosen_as_expand_all_puts_rows_in_above_it()
+    {
+        string solution = NewFolder();
+        StringBuilder listed = new("<Solution>\n");
+        foreach (string name in (string[])["Alpha", "Beta", "Gamma"])
+        {
+            Write(solution, $"{name}.Tests/{name}.Tests.csproj", TestProject(TestProjects.Framework));
+            for (int i = 0; i < 6; i++)
+            {
+                Write(solution, $"{name}.Tests/Case{i}Tests.cs",
+                    $"using Xunit;\n\nnamespace {name};\n\npublic class Case{i}Tests\n{{\n    [Fact]\n    public void First() {{ }}\n\n    [Fact]\n    public void Second() {{ }}\n}}\n");
+            }
+            listed.Append($"  <Project Path=\"{name}.Tests/{name}.Tests.csproj\" />\n");
+        }
+        Write(solution, "Tests.slnx", listed.Append("</Solution>\n").ToString());
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        ListBox tree = Tree(window);
+        Ui.WaitFor(() => window.Tests.Tree.Rows.Count(r => r.Kind == TestNodeKind.Method) == 36, () => $"the tests from their code, the window listing [{string.Join(", ", Shown(window))}]");
+        ScrollViewer scroller = tree.GetVisualDescendants().OfType<ScrollViewer>().First();
+        Ui.Click(HeaderButton(window, AppActions.CollapseAll));
+        Assert.Equal(["Alpha.Tests", "Beta.Tests", "Gamma.Tests"], Shown(window));
+        TestNode gamma = window.Tests.Tree.Rows[2];
+        Ui.Click(tree.ContainerFromItem(gamma)!);
+        double offset = scroller.Offset.Y;
+
+        Ui.Click(HeaderButton(window, AppActions.ExpandAll));
+        Assert.True(window.Tests.Tree.Rows.IndexOf(gamma) > 30 && tree.SelectedItem == gamma && Keys() == "Gamma.Tests" && scroller.Offset.Y == offset,
+            $"Expand All put {window.Tests.Tree.Rows.IndexOf(gamma)} rows in above Gamma.Tests, chosen, and left {(tree.SelectedItem as TestNode)?.Name} chosen, the keys with {Keys()} "
+            + $"and the view moved from {offset} to {scroller.Offset.Y}: the next key pressed in the window goes nowhere");
+        Ui.Press(window, "DOWN");
+        Assert.True(tree.SelectedItem is TestNode { Name: "Gamma", Depth: 1 } && Keys() == "Gamma",
+            $"Down on Gamma.Tests chose {(tree.SelectedItem as TestNode)?.Name}, the keys with {Keys()}, where its namespace Gamma is next");
+        window.Close();
+
+        string Keys() => window.FocusManager?.GetFocusedElement() switch
+        {
+            Control { DataContext: TestNode row } => row.Name,
+            { } other => other.GetType().Name,
+            null => "nothing",
+        };
+    }
+
+    /// <summary>A button in the Unit Tests window's header.</summary>
+    private static Button HeaderButton(MainWindow window, string action) =>
+        window.BottomPanel.Tests.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains("toolPane"))
+            .GetVisualDescendants().OfType<Button>().First(b => b.Name == action);
+
     [Gate]
     [AvaloniaFact]
     public void A_solution_never_built_shows_its_xunit_nunit_and_mstest_tests_from_their_code_as_it_opens()

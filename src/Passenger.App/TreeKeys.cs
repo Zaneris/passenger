@@ -10,7 +10,8 @@ namespace Passenger.App;
 /// a closed row, Left closes an open one or, on one closed, goes to the row it sits under; Enter and F4 open what the row
 /// stands for, and Enter, on a row that stands for nothing to open, opens or closes it. Right and Left are the tree's on
 /// every row, never the list's to scroll by; a value typed in a row keeps its own keys. The list scrolls to its chosen
-/// row only as the choice changes (<see cref="FollowChoices"/>), so a row opened or closed stays where it was clicked.</summary>
+/// row only as the choice changes (<see cref="FollowChoices"/>), so a row opened or closed stays where it was clicked, and
+/// the keys stay on the chosen row however the rows change above it.</summary>
 public static class TreeKeys
 {
     /// <summary>Gives a list of rows the tree's keys: <paramref name="toggle"/> opens or closes a row, <paramref name="open"/>
@@ -36,27 +37,39 @@ public static class TreeKeys
 
     /// <summary>Brings the row a choice was made on (the anchor a Shift range runs from) into view as it changes, once the
     /// list shows if it is hidden then, and at no other time: rows opened, closed, added or taken out above it carry it
-    /// with them, out of sight if they push it there, so the view stays where the person opened or closed a row.</summary>
+    /// with them, out of sight if they push it there, so the view stays where the person opened or closed a row. A list
+    /// that has the keys keeps them on its chosen row however its rows change, the view left where it is, and one that
+    /// hasn't never takes them.</summary>
     private static void FollowChoices(ListBox list)
     {
         list.AutoScrollToSelectedItem = false;
         ISelectionModel selection = list.Selection;
         object? anchored = null;
         bool owed = false;
+        bool keys = false;
         void Pay()
         {
-            if (owed)
+            if (owed || keys)
             {
                 UiThread.Post(() =>
                 {
-                    // Hidden, or not laid out yet, the list stays owed its scroll until it shows.
-                    if (owed && list.Presenter is not null && list.IsEffectivelyVisible && TopLevel.GetTopLevel(list) is not null)
+                    bool give = keys;
+                    keys = false;
+                    // Hidden, or not laid out yet, the list stays owed its scroll until it shows, and never takes the keys.
+                    if (list.Presenter is null || !list.IsEffectivelyVisible || TopLevel.GetTopLevel(list) is not { } top)
                     {
-                        owed = false;
-                        if (selection.AnchorIndex >= 0)
-                        {
-                            list.ScrollIntoView(selection.AnchorIndex);
-                        }
+                        return;
+                    }
+                    bool scrolled = owed && selection.AnchorIndex >= 0;
+                    owed = false;
+                    if (scrolled)
+                    {
+                        list.ScrollIntoView(selection.AnchorIndex);
+                    }
+                    int chosen = selection.AnchorIndex >= 0 ? selection.AnchorIndex : selection.SelectedIndex;
+                    if (give && chosen >= 0 && Loose(list, top, chosen))
+                    {
+                        Hold(list, chosen, stay: !scrolled);
                     }
                 });
             }
@@ -74,7 +87,22 @@ public static class TreeKeys
             {
                 anchored = row;
                 owed = row is not null;
+                // A row chosen by code while another has the keys takes them (one a click or a key chose has them already).
+                keys |= row is not null && Keeper(list) is not null;
                 Pay();
+            }
+            else if (Keeper(list) is { } keeper)
+            {
+                // The list put the keys' place at the anchor's new index before its panel moved there, which would drop this row.
+                KeyboardNavigation.SetTabOnceActiveElement(list, keeper);
+            }
+        };
+        Control? holder = null;
+        list.GotFocus += (_, e) =>
+        {
+            if (e.Source is Control row && ItemsControl.ItemsControlFromItemContainer(row) == list)
+            {
+                holder = row;
             }
         };
         list.AttachedToVisualTree += (_, _) => Pay();
@@ -85,7 +113,45 @@ public static class TreeKeys
             {
                 Pay();
             }
+            else if (e.Property == InputElement.IsKeyboardFocusWithinProperty && e.NewValue is false && holder is { } gone
+                && (!gone.IsVisible || TopLevel.GetTopLevel(gone) is null))
+            {
+                // The keys went with the row that had them, let go of or made again; taken elsewhere, they stay there.
+                keys = true;
+                Pay();
+            }
         };
+    }
+
+    /// <summary>The row of the list that has the keys, if one has.</summary>
+    private static Control? Keeper(ListBox list) =>
+        TopLevel.GetTopLevel(list)?.FocusManager?.GetFocusedElement() is Control row && ItemsControl.ItemsControlFromItemContainer(row) == list ? row : null;
+
+    /// <summary>Whether the keys are the list's to give to its chosen row, its window in front: nothing has them, or another
+    /// of its rows has.</summary>
+    private static bool Loose(ListBox list, TopLevel top, int chosen) =>
+        top is not WindowBase { IsActive: false } && top.FocusManager?.GetFocusedElement() switch
+        {
+            null => true,
+            Control row when ItemsControl.ItemsControlFromItemContainer(row) == list => list.IndexFromContainer(row) != chosen,
+            _ => false,
+        };
+
+    /// <summary>Gives a row the keys, as a click on it does, the view kept where it is when <paramref name="stay"/>: a row
+    /// out of sight has no container to take them until it is laid out in view, and the view goes back once it has.</summary>
+    private static void Hold(ListBox list, int index, bool stay)
+    {
+        Vector offset = list.Scroll?.Offset ?? default;
+        if (list.ContainerFromIndex(index) is null)
+        {
+            list.ScrollIntoView(index);
+            list.UpdateLayout();
+        }
+        list.ContainerFromIndex(index)?.Focus();
+        if (stay && list.Scroll is { } scroll && scroll.Offset != offset)
+        {
+            scroll.Offset = offset;
+        }
     }
 
     private static bool Take<T>(ListBox list, Key key, T item, Func<T, ITreeRow> rowOf, Action<T> toggle, Func<T, bool>? open)

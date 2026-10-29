@@ -888,6 +888,91 @@ public sealed class SolutionViewTests : IDisposable
         }
     }
 
+
+    /// <summary>The Explorer's keys stay on the file chosen however rows come above it by code (#719): folders opened above
+    /// it, pushing it out of sight and further, the rows made again, and a file written above it, the view left where it
+    /// was, Down then choosing the next file; a file revealed while the Explorer has the keys takes them, and one revealed
+    /// while the editor has them leaves them there.</summary>
+    [AvaloniaFact]
+    public void The_explorer_keeps_its_keys_on_the_file_chosen_however_rows_come_above_it_and_takes_none_it_did_not_have()
+    {
+        for (int i = 0; i < 40; i++)
+        {
+            Write($"Shop.App/Models/Lines/Line{i:00}.cs", $"namespace Shop.App.Models.Lines;\n\npublic class Line{i:00}\n{{\n}}\n");
+        }
+        for (int i = 0; i < 10; i++)
+        {
+            Write($"Shop.App/Views/View{i:00}.cs", $"namespace Shop.App.Views;\n\npublic class View{i:00}\n{{\n}}\n");
+        }
+        for (int i = 0; i < 60; i++)
+        {
+            Write($"Shop.Core/Catalog/Item{i:00}.cs", $"namespace Shop.Core.Catalog;\n\npublic class Item{i:00}\n{{\n}}\n");
+        }
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        ExplorerView explorer = window.ExplorerView;
+        ScrollViewer scroller = explorer.Rows().GetVisualDescendants().OfType<ScrollViewer>().First();
+        string catalog = Path.Combine(folder, "Shop.Core", "Catalog");
+        ExplorerNode lines = Show(window, Path.Combine(folder, "Shop.App", "Models", "Lines"));
+        ExplorerNode views = Show(window, Path.Combine(folder, "Shop.App", "Views"));
+        explorer.Tree.Collapse(lines);
+        explorer.Tree.Collapse(views);
+        Ui.ClickRow(window, Show(window, Path.Combine(catalog, "Item20.cs")));
+        double offset = scroller.Offset.Y;
+
+        explorer.Tree.Expand(lines);
+        Kept("Item20.cs", "Lines opened above it by code, pushing it out of sight");
+        explorer.Tree.Expand(views);
+        Kept("Item20.cs", "Views opened above it too, while it was out of sight");
+        Next("Item21.cs");
+        explorer.Refresh();
+        Kept("Item21.cs", "the rows made again", viewKept: false);
+        Next("Item22.cs");
+        Write("Shop.Core/Catalog/Aaa.cs", "namespace Shop.Core.Catalog;\n\npublic class Aaa\n{\n}\n");
+        Ui.WaitFor(() => explorer.Tree.Rows.Any(r => r.Name == "Aaa.cs"), "the Explorer to show Aaa.cs, written on disk above Item22.cs");
+        Kept("Item22.cs", "Aaa.cs written above it");
+        Next("Item23.cs");
+        explorer.Reveal(Path.Combine(folder, "Shop.App", "Models", "Lines", "Line05.cs"));
+        Kept("Line05.cs", "Line05.cs revealed while the Explorer had the keys", viewKept: false);
+        Next("Line06.cs");
+
+        window.OpenFile(Path.Combine(catalog, "Item40.cs"));
+        Ui.WaitFor(() => window.EditorArea.CodeEditor.IsKeyboardFocusWithin, "the keys to go to Item40.cs opened");
+        explorer.Reveal(Path.Combine(catalog, "Item41.cs"));
+        explorer.Tree.Collapse(lines);
+        Ui.Settle();
+        Assert.True(window.EditorArea.CodeEditor.IsKeyboardFocusWithin && explorer.SelectedNodes is [{ Name: "Item41.cs" }],
+            $"Item41.cs revealed and Lines closed above it while the editor had the keys left them with {Keys()}, "
+            + $"[{string.Join(", ", explorer.SelectedNodes.Select(n => n.Name))}] chosen: the Explorer took keys it did not have");
+        window.Close();
+
+        string Keys() => window.FocusManager?.GetFocusedElement() switch
+        {
+            Control { DataContext: ExplorerNode row } => $"the Explorer's {row.Name}",
+            { } other => other.GetType().Name,
+            null => "nothing",
+        };
+
+        // The file chosen alone, with the keys on its row, and the view where it was unless the change moved it.
+        void Kept(string name, string after, bool viewKept = true)
+        {
+            Ui.Settle();
+            Assert.True(explorer.SelectedNodes is [{ } chosen] && chosen.Name == name && Keys() == $"the Explorer's {name}" && (!viewKept || scroller.Offset.Y == offset),
+                $"After {after}, [{string.Join(", ", explorer.SelectedNodes.Select(n => n.Name))}] chosen, the keys with {Keys()} and the view moved from {offset} "
+                + $"to {scroller.Offset.Y}: the next key pressed in the Explorer goes nowhere, or not on from {name}");
+            offset = scroller.Offset.Y;
+        }
+
+        // Down chooses the next file, and the keys go with it.
+        void Next(string name)
+        {
+            string from = Keys();
+            Ui.Press(window, "DOWN");
+            Assert.True(explorer.SelectedNodes is [{ } chosen] && chosen.Name == name && Keys() == $"the Explorer's {name}",
+                $"Down from {from} chose [{string.Join(", ", explorer.SelectedNodes.Select(n => n.Name))}], the keys then with {Keys()}, where {name} is next");
+            offset = scroller.Offset.Y;
+        }
+    }
+
     /// <summary>A solution filter naming one project of the solution, opened: its solution with that project alone loaded,
     /// the other shown unloaded, Build building the one and the language server loading the one; the filter changed on
     /// disk to name the other swaps them, and Reload Project loads the one it left out, none of which the folder keeps

@@ -96,14 +96,12 @@ public partial class ExplorerView : UserControl
         }
     }
 
-    /// <summary>Reads the folder again, keeping the folders that were open open, the chosen row chosen, and the keys on it
-    /// where the rows had them.</summary>
+    /// <summary>Reads the folder again, keeping the folders that were open open and the chosen row chosen.</summary>
     public void Refresh()
     {
         static string Key(ExplorerNode row) => (row.Kind == NodeKind.SolutionFolder ? row.SolutionPath : row.Path) ?? $"{row.Owner}/{row.Depth}/{row.Kind}/{row.Name}";
         HashSet<string> open = new(Tree.Rows.Where(r => r.IsExpanded).Select(Key), StringComparer.Ordinal);
         string? chosen = Selected is { } selected ? Key(selected) : null;
-        bool keys = Rows.IsKeyboardFocusWithin;
         ExplorerNode? again = null;
         Show(Tree.IsSolutionView);
         // Down the rows as they open: a folder's rows come in after it, so each folder is reached once its holder is open.
@@ -127,11 +125,6 @@ public partial class ExplorerView : UserControl
         if (revealing is { } waiting)
         {
             Reveal(waiting);
-        }
-        // The rows made again took the keys with them: they come back to the chosen row for the next key pressed here.
-        if (keys && Rows.SelectedIndex >= 0 && !Rows.IsKeyboardFocusWithin)
-        {
-            FocusRows();
         }
     }
 
@@ -194,11 +187,10 @@ public partial class ExplorerView : UserControl
     /// <summary>Reads again only the folders that changed on disk, the rows open and chosen kept.</summary>
     public void RefreshFolders(IEnumerable<string> folders) => Tree.RefreshFolders(folders);
 
-    /// <summary>A project unloaded or loaded again: its row made anew, chosen again if it was, the keys kept here, and every
-    /// other row as it was.</summary>
+    /// <summary>A project unloaded or loaded again: its row made anew, chosen again if it was, and every other row as it
+    /// was.</summary>
     public void ShowProjectAgain(string project)
     {
-        bool keys = Rows.IsKeyboardFocusWithin;
         bool chosen = Selected is { Kind: NodeKind.Project, Path: { } path } && path == project;
         if (!Tree.ShowProjectsAgain([project]))
         {
@@ -208,10 +200,6 @@ public partial class ExplorerView : UserControl
         if (chosen && Tree.Rows.FirstOrDefault(r => r.Kind == NodeKind.Project && r.Path == project) is { } again)
         {
             Rows.SelectedItem = again;
-        }
-        if (keys && Rows.SelectedIndex >= 0 && !Rows.IsKeyboardFocusWithin)
-        {
-            FocusRows();
         }
     }
 
