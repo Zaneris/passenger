@@ -82,9 +82,16 @@ public static class XamlNavigation
                 return AttributeName(file, attribute, offset);
             case XmlPlaceKind.AttributeValue when place.Attribute is { } attribute:
                 return Value(file, attribute, offset);
+            case XmlPlaceKind.Content when element.IsPropertyElement && element.LocalName.EndsWith(".Path", StringComparison.Ordinal) && element.Parent is { } binding
+                && IsBinding(file, binding):
+                return BindingElementStep(file, binding, offset);
         }
         return null;
     }
+
+    /// <summary>Whether an element is one of the framework's bindings written as an element (<c>&lt;Binding Path="Name"/&gt;</c>).</summary>
+    private static bool IsBinding(XamlFile file, XmlElement element) =>
+        !element.IsPropertyElement && element.LocalName is "Binding" or "CompiledBinding" or "ReflectionBinding" && file.UriOf(element, element.Prefix) == file.Dialect.PresentationUri;
 
     private static XamlSymbol? Tag(XamlFile file, XmlElement element, TextRange range, int offset)
     {
@@ -137,6 +144,10 @@ public static class XamlNavigation
         if (MarkupExtension.Parse(file.Text, attribute.ValueStart, attribute.ValueEnd) is { } root)
         {
             return Extension(file, attribute, root.InnermostAt(offset), offset);
+        }
+        if (attribute.Name == "Path" && IsBinding(file, element))
+        {
+            return BindingElementStep(file, element, offset);
         }
         XamlAttributeMeaning meaning = file.MeaningOf(attribute);
         TextRange whole = attribute.ValueRange;
@@ -269,12 +280,22 @@ public static class XamlNavigation
         return targets.Count == 0 ? null : new XamlSymbol(key.ValueRange, key.Value, targets);
     }
 
-    /// <summary>The step of a binding's path the caret is on, resolved from the data type through the steps before it;
-    /// a <c>#name</c> step, the element named so.</summary>
-    private static XamlSymbol? BindingStep(XamlFile file, XmlAttribute attribute, MarkupExtension binding, MarkupArgument path, int offset)
+    /// <summary>The step of a binding's path the caret is on, read from the data type through the steps before it
+    /// (<see cref="XamlFile.Walk"/>): a member, or a cast's type; a <c>#name</c> step, the element named so.</summary>
+    private static XamlSymbol? BindingStep(XamlFile file, XmlAttribute attribute, MarkupExtension binding, MarkupArgument path, int offset) =>
+        PathStepAt(file, attribute.Owner, binding.LocalName == "TemplateBinding" ? file.StyleTargetAt(attribute.Owner) : file.DataTypeOf(attribute, binding),
+            path.Value, path.ValueStart, offset);
+
+    /// <summary>The step of a binding element's path, its <c>Path</c> attribute's or its <c>&lt;Binding.Path&gt;</c>
+    /// text's, the caret is on: read as <c>{Binding}</c>'s from the data type it names or the one in scope.</summary>
+    private static XamlSymbol? BindingElementStep(XamlFile file, XmlElement binding, int offset) =>
+        file.PathOf(binding) is { } path
+            ? PathStepAt(file, binding, file.DataTypeNamedBy(binding, binding.Parent is { } holder && CompiledBindings.IsDataContextOf(holder)) ?? file.DataTypeOf(binding),
+                path.Text, path.Start, offset)
+            : null;
+
+    private static XamlSymbol? PathStepAt(XamlFile file, XmlElement scope, ClrType? type, string text, int start, int offset)
     {
-        ClrType? type = binding.LocalName == "TemplateBinding" ? file.StyleTargetAt(attribute.Owner) : file.DataTypeOf(attribute, binding);
-        string text = path.Value;
         int at = 0;
         while (at < text.Length && text[at] == '!')
         {
@@ -284,40 +305,24 @@ public static class XamlNavigation
         {
             int end = text.IndexOf('.', at);
             string name = end < 0 ? text[(at + 1)..] : text[(at + 1)..end];
-            TextRange range = new(path.ValueStart + at + 1, name.Length);
-            if (end < 0 || offset <= path.ValueStart + end)
+            TextRange range = new(start + at + 1, name.Length);
+            if (end < 0 || offset <= start + end)
             {
                 return ElementNamed(file, name, range);
             }
             type = file.Names.Where(n => n.Name == name).Select(n => file.ObjectOf(n.Attribute.Owner)).FirstOrDefault();
             at = end + 1;
         }
-        if (type is null)
+        if (type is null || file.Walk(scope, type, text[at..], start + at).At(offset) is not { } step)
         {
             return null;
         }
-        int start = path.ValueStart + at;
-        foreach (string step in text[at..].Split('.'))
+        if (step.Cast is { } cast)
         {
-            int bracket = step.IndexOf('[');
-            string member = (bracket < 0 ? step : step[..bracket]).Trim();
-            ClrMember? property = file.Types.MembersOf(type).FirstOrDefault(m => m.Kind == MemberKind.Property && !m.IsStatic && m.Name == member);
-            if (property is null)
-            {
-                return null;
-            }
-            if (offset <= start + step.Length)
-            {
-                return new XamlSymbol(new TextRange(start, member.Length), member, [MemberTarget(property)]);
-            }
-            if (file.Types.Resolve(property.Type) is not { } next)
-            {
-                return null;
-            }
-            type = next;
-            start += step.Length + 1;
+            int colon = file.Text.IndexOf(':', step.Range.Start, step.Range.Length);
+            return new XamlSymbol(colon < 0 ? step.Range : TextRange.FromBounds(colon + 1, step.Range.End), cast.Name, [TypeTarget(cast)]);
         }
-        return null;
+        return step.Member is { } member ? new XamlSymbol(step.Range, step.Name, [MemberTarget(member)]) : null;
     }
 
     private static XamlSymbol? ElementNamed(XamlFile file, string name, TextRange range)

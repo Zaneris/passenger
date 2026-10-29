@@ -1276,27 +1276,111 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Assert.Contains(window.BottomPanel.Problems.Problems, p => p.Code == "AVLN3000" && Path.GetFileName(p.Path) == "MainWindow.axaml" && p.Position.Line == 11);
         window.Close();
 
-        static void AssertListed(MainWindow window, string said, string where, string code)
-        {
-            ConfirmDialog asked = Listed(window);
-            string[] shown = [.. asked.GetVisualDescendants().OfType<Avalonia.Controls.TextBlock>().Select(t => t.Text ?? string.Empty)];
-            Assert.True(shown.Contains($"{said} that would no longer compile once it is deleted:") && shown.Contains(where) && shown.Contains(code),
-                $"Safe Delete did not name the XAML that would no longer compile, {where}: {string.Join(" | ", shown)}");
-            Ui.ClickButton(asked, "Cancel");
-        }
-
-        static ConfirmDialog Listed(MainWindow window)
-        {
-            Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), "Safe Delete to list the usages");
-            return DialogButtonsTests.Check(window.OwnedWindows.OfType<ConfirmDialog>().Single());
-        }
-
         static void Built(MainWindow window)
         {
             window.Perform(AppActions.Build);
             Ui.WaitFor(() => !window.IsBuilding, "the build", TimeSpan.FromMinutes(2));
             Assert.True(window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true, $"The app did not build once Safe Delete was refused: {Ui.Said(window)}");
         }
+    }
+
+    /// <summary>A view model's property used only in a <c>&lt;Binding&gt;</c> element, a <c>&lt;Binding.Path&gt;</c>'s
+    /// text, a <c>?.</c> path or a step after an indexer has that XAML among its usages: Find Usages from the C# lists it,
+    /// Safe Delete refuses naming it, and Go to Declaration from each lands on the property.</summary>
+    [AvaloniaFact]
+    public void A_property_bound_by_an_element_its_path_text_a_null_conditional_path_or_after_an_indexer_has_that_xaml_among_its_usages()
+    {
+        const string Forms = """
+            using System.Collections.Generic;
+
+            namespace Gallery.ViewModels;
+
+            public class FormsViewModel
+            {
+                public string InElement { get; set; } = "";
+
+                public string InPathText { get; set; } = "";
+
+                public Person? Chosen { get; set; }
+
+                public List<FormsViewModel> Children { get; } = [];
+
+                public string AfterIndex { get; set; } = "";
+            }
+
+            """;
+        const string View = """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                         xmlns:vm="using:Gallery.ViewModels"
+                         x:DataType="vm:FormsViewModel">
+                <StackPanel>
+                    <TextBlock>
+                        <TextBlock.Text>
+                            <MultiBinding StringFormat="{}{0}">
+                                <Binding Path="InElement" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                    <TextBlock>
+                        <TextBlock.Text>
+                            <Binding>
+                                <Binding.Path>InPathText</Binding.Path>
+                            </Binding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                    <TextBlock Text="{Binding Chosen?.Name}" />
+                    <TextBlock Text="{Binding Children[0].AfterIndex}" />
+                </StackPanel>
+            </UserControl>
+
+            """;
+        app.Write([("ViewModels/FormsViewModel.cs", Forms), ("FormsView.axaml", View)]);
+        (string Declared, string Property, int Line, string Code, string Bound)[] uses =
+        [
+            ("string InEl", "InElement", 9, "<Binding Path=\"InElement\" />", "<Binding Path=\"InEl"),
+            ("string InPa", "InPathText", 16, "<Binding.Path>InPathText</Binding.Path>", "<Binding.Path>InPa"),
+            ("Person? Cho", "Chosen", 20, "<TextBlock Text=\"{Binding Chosen?.Name}\" />", "{Binding Cho"),
+            ("string AfterI", "AfterIndex", 21, "<TextBlock Text=\"{Binding Children[0].AfterIndex}\" />", "Children[0].AfterI"),
+        ];
+        MainWindow window = app.Open(app.PathOf("ViewModels/FormsViewModel.cs"));
+        foreach ((string declared, string property, int line, string code, _) in uses)
+        {
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, declared);
+            IReadOnlyList<string> found = FoundUsages(window);
+            Assert.True(found.Contains($"FormsView.axaml:{line} {code}"), $"Find Usages of {property} left out the XAML that binds it, line {line}: {string.Join(" | ", found)}");
+            Ui.Run(window, AppActions.SafeDelete);
+            AssertListed(window, $"The property '{property}' has 1 usage", $"FormsView.axaml:{line}", code);
+        }
+
+        foreach ((string declared, string property, _, _, string bound) in uses)
+        {
+            window.OpenFile(app.PathOf("FormsView.axaml"));
+            Ui.Settle();
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, bound);
+            Ui.Run(window, AppActions.GoToDeclaration);
+            Ui.Settle();
+            string landed = $"public {declared[..declared.IndexOf(' ')]} |{property}";
+            Assert.True(window.EditorArea.Active?.Name == "FormsViewModel.cs" && CaretLine(window.EditorArea.CodeEditor).Contains(landed, StringComparison.Ordinal),
+                $"Go to Declaration from the XAML binding {property} did not land on it: {window.EditorArea.Active?.Name}: {CaretLine(window.EditorArea.CodeEditor)}");
+        }
+        window.Close();
+    }
+
+    /// <summary>Safe Delete's question names the XAML that would no longer compile, which the test then declines.</summary>
+    private static void AssertListed(MainWindow window, string said, string where, string code)
+    {
+        ConfirmDialog asked = Listed(window);
+        string[] shown = [.. asked.GetVisualDescendants().OfType<Avalonia.Controls.TextBlock>().Select(t => t.Text ?? string.Empty)];
+        Assert.True(shown.Contains($"{said} that would no longer compile once it is deleted:") && shown.Contains(where) && shown.Contains(code),
+            $"Safe Delete did not name the XAML that would no longer compile, {where}: {string.Join(" | ", shown)}");
+        Ui.ClickButton(asked, "Cancel");
+    }
+
+    private static ConfirmDialog Listed(MainWindow window)
+    {
+        Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), "Safe Delete to list the usages");
+        return DialogButtonsTests.Check(window.OwnedWindows.OfType<ConfirmDialog>().Single());
     }
 
     /// <summary>The usages Find Usages lists from the caret, each as its file's name, its line and its code.</summary>

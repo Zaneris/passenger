@@ -905,25 +905,18 @@ public static class XamlCompletion
         {
             return null;
         }
-        string[] steps = typed[at..].Split('.');
-        for (int i = 0; i < steps.Length - 1; i++)
+        string rest = typed[at..];
+        int dot = rest.LastIndexOf('.');
+        if (dot >= 0)
         {
-            string step = steps[i].Trim();
-            int bracket = step.IndexOf('[');
-            string member = bracket < 0 ? step : step[..bracket];
-            ClrMember? property = file.Types.MembersOf(type).FirstOrDefault(m => m.Kind == MemberKind.Property && m.Name == member && !m.IsStatic);
-            ClrType? next = property is null ? null : file.Types.Resolve(property.Type);
-            if (next is not null && bracket >= 0 && property!.Type.Arguments.Count > 0)
-            {
-                next = file.Types.Resolve(property.Type.Arguments[^1]);
-            }
-            if (next is null)
+            // What comes before the step being typed, up to its '.' or '?.'.
+            if (file.Walk(element, type, rest[..dot].TrimEnd('?')).Reached(file.Types) is not { } reached)
             {
                 return null;
             }
-            type = next;
+            type = reached;
         }
-        int last = start + typed.Length - steps[^1].Length;
+        int last = start + at + dot + 1;
         IEnumerable<ClrMember> members = file.Types.MembersOf(type).Where(m => m.Kind == MemberKind.Property && !m.IsStatic && (m.IsPublic || template));
         List<XamlItem> items = [.. members.Select(m => m.Name).Distinct(StringComparer.Ordinal).Select(n =>
         {

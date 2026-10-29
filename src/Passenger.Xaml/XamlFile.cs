@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Passenger.Xaml.Dialects;
+using Passenger.Xaml.Features;
 using Passenger.Xaml.Metadata;
 using Passenger.Xaml.Syntax;
 
@@ -538,7 +539,7 @@ public sealed class XamlFile
                 }
                 MarkupArgument? path = extension.Argument(null) ?? extension.Argument("Path");
                 return (true, NamesSource(extension) || path is not { Nested: null, Value.Length: > 0 } || DataTypeAt(items, stopAtTemplates: stopAtTemplates) is not { } context
-                    || PathType(context, path.Value.Trim()) is not { } collection ? null : ItemTypeOf(collection));
+                    || PathType(items, context, path.Value) is not { } collection ? null : ItemTypeOf(collection));
             }
             return ResolveType(items, extension.Name, extension: true) is { } made && (IsBinding(made) || made.FullName == "Avalonia.Markup.Xaml.MarkupExtensions.StaticResourceExtension")
                 ? (false, null)
@@ -600,7 +601,7 @@ public sealed class XamlFile
             return null;
         }
         string trimmed = path?.Trim() ?? string.Empty;
-        return trimmed is "" or "." ? above : Types.Resolve(PathType(above, trimmed));
+        return trimmed is "" or "." ? above : Types.Resolve(PathType(element, above, trimmed));
     }
 
     /// <summary>Whether a <c>{Binding}</c> or <c>&lt;Binding&gt;</c> at an element compiles: the project's default
@@ -621,6 +622,25 @@ public sealed class XamlFile
     /// is read where bindings compile.</summary>
     public bool IsBindingElement(XmlElement element) =>
         Dialect.CompilesBindings && !element.IsPropertyElement && element.LocalName == "Binding" && UriOf(element, element.Prefix) == Dialect.PresentationUri;
+
+    /// <summary>The path a binding element writes as text, its <c>Path</c> attribute's or its <c>&lt;Binding.Path&gt;</c>
+    /// element's, with where it starts; null for none, an extension, or text whose character references move its places.</summary>
+    public (string Text, int Start)? PathOf(XmlElement binding)
+    {
+        if (binding.Attribute("Path") is { } path)
+        {
+            return path.Value.Length > 0 && path.Value == path.RawValue && MarkupExtension.Parse(Text, path.ValueStart, path.ValueEnd) is null
+                ? (path.Value, path.ValueStart)
+                : null;
+        }
+        if (binding.Children.FirstOrDefault(c => c.IsPropertyElement && c.LocalName.EndsWith(".Path", StringComparison.Ordinal)) is not { Children.Count: 0 } given)
+        {
+            return null;
+        }
+        string content = Text[given.Content.Start..given.Content.End];
+        string trimmed = content.Trim();
+        return trimmed.Length > 0 && XmlEntities.Decode(trimmed) == trimmed ? (trimmed, given.Content.Start + content.Length - content.TrimStart().Length) : null;
+    }
 
     /// <summary>Whether a binding names where its path starts other than its data context: an element, a source, a data
     /// type, or a relative source but the data context's own (<c>{RelativeSource DataContext}</c>). An element's own
@@ -675,7 +695,7 @@ public sealed class XamlFile
             && element.Parent is { } parent && DataTypeAt(parent, stopAtTemplates: stopAtTemplates) is { } outer)
         {
             string path = (binding.Argument(null) ?? binding.Argument("Path"))?.Value.Trim() ?? ".";
-            return (true, path is "" or "." ? outer : Types.Resolve(PathType(outer, path)));
+            return (true, path is "" or "." ? outer : Types.Resolve(PathType(element, outer, path)));
         }
         return (true, null);
     }
@@ -704,7 +724,7 @@ public sealed class XamlFile
             || binding.Arguments.Any(a => a.Key is "Source" or "ElementName" or "RelativeSource")
             || (binding.Argument(null) ?? binding.Argument("Path")) is not { Nested: null, Value.Length: > 0 } path
             || DataTypeAt(items, stopAtTemplates: stopAtTemplates) is not { } context
-            || PathType(context, path.Value.Trim()) is not { } collection)
+            || PathType(items, context, path.Value) is not { } collection)
         {
             return null;
         }
@@ -717,32 +737,15 @@ public sealed class XamlFile
         !element.IsPropertyElement && TypeOf(element) is { } type
         && (Types.IsA(type, "System.Windows.Controls.DataGridColumn") || Types.IsA(type, "System.Windows.Controls.GridViewColumn"));
 
-    /// <summary>The type a binding path's last step has, each step a property of the one before; null where a step is not
-    /// one (an indexer, an attached property, a current item).</summary>
-    public TypeRef? PathType(ClrType start, string path)
-    {
-        ClrType current = start;
-        TypeRef? last = null;
-        foreach (string step in path.Split('.'))
-        {
-            string name = step.Trim();
-            if (last is not null)
-            {
-                if (Types.Resolve(last) is not { } next)
-                {
-                    return null;
-                }
-                current = next;
-            }
-            if (name.Length == 0 || name.IndexOfAny(['[', '(', '/', '!', '#', '$', '^']) >= 0
-                || Types.MembersOf(current).FirstOrDefault(m => m.Kind == MemberKind.Property && !m.IsStatic && m.Name == name) is not { } property)
-            {
-                return null;
-            }
-            last = property.Type;
-        }
-        return last;
-    }
+    /// <summary>A binding's path, written at <paramref name="at"/>, read from <paramref name="start"/> as this file's
+    /// dialect reads it (<see cref="BindingPath"/>), a cast's type named where <paramref name="scope"/> is.</summary>
+    public BindingPath Walk(XmlElement scope, ClrType start, string path, int at = 0) =>
+        BindingPath.Read(Types, start, path, at, Dialect.CompilesBindings, cast => ResolveType(scope, cast));
+
+    /// <summary>The type a binding's whole path has, read from <paramref name="start"/>; null where it is not read whole
+    /// (a negation, an attached property, a step not found).</summary>
+    private TypeRef? PathType(XmlElement scope, ClrType start, string path) =>
+        path.TrimStart().StartsWith('!') ? null : Walk(scope, start, path.Trim()) is { End: PathEnd.Whole } read ? read.Type : null;
 
     /// <summary>What a collection's type holds: an array's element, a generic collection's last argument
     /// (<c>ObservableCollection&lt;Person&gt;</c>), or what the collection type's own bases and interfaces hold.</summary>

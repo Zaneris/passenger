@@ -474,17 +474,18 @@ public static class XamlDiagnostics
     }
 
     /// <summary>A <c>&lt;Binding&gt;</c> element, which compiles as a <c>{Binding}</c> does where bindings compile: one
-    /// with no type to start from is marked, else its <c>Path</c> is read against the data type it names or the one in
-    /// scope.</summary>
+    /// with no type to start from is marked, else its <c>Path</c>, or its <c>&lt;Binding.Path&gt;</c> text, is read
+    /// against the data type it names or the one in scope.</summary>
     private static void BindingElement(XamlFile file, XmlElement binding, List<XamlDiagnostic> found)
     {
         bool dataContext = binding.Parent is { } holder && CompiledBindings.IsDataContextOf(holder);
         XmlAttribute? path = binding.Attribute("Path");
+        (string Text, int Start)? written = file.PathOf(binding);
         if (file.DataTypeNamedBy(binding, dataContext) is { } named)
         {
-            if (path is { Value.Length: > 0 } && path.Value == path.RawValue && MarkupExtension.Parse(file.Text, path.ValueStart, path.ValueEnd) is null)
+            if (written is { } typed)
             {
-                Steps(file, binding, named, path.Value, path.ValueStart, compiled: true, attribute: null, converted: false, found);
+                Steps(file, binding, named, typed.Text, typed.Start, compiled: true, attribute: null, converted: false, found);
             }
             return;
         }
@@ -506,113 +507,33 @@ public static class XamlDiagnostics
             });
             return;
         }
-        if (path is { Value.Length: > 0 } && path.Value == path.RawValue && file.DataTypeOf(binding, stopAtTemplates: true) is { } type)
+        if (written is { } read && file.DataTypeOf(binding, stopAtTemplates: true) is { } type)
         {
-            Steps(file, binding, type, path.Value, path.ValueStart, compiled: true, attribute: null, converted: false, found);
+            Steps(file, binding, type, read.Text, read.Start, compiled: true, attribute: null, converted: false, found);
         }
     }
 
-    /// <summary>A path's steps read from a type, each a property of the one before, the first that is not marked, with a
-    /// fix creating it where the binding is an attribute's. Where bindings compile, a cast (<c>((vm:Shop)Item)</c>, or
-    /// <c>(vm:Shop)</c> of what comes before) makes its type the next step's, and <c>?.</c> is a step too; a path of
-    /// anything else (an indexer, an element, a relative source, an attached property) is left to the compiler.</summary>
+    /// <summary>A path read from a type (<see cref="XamlFile.Walk"/>): the step its type lacks, or the cast nothing
+    /// resolves, is marked, with a fix creating the step where the binding is an attribute's; a path not read whole
+    /// otherwise is left to the compiler.</summary>
     private static void Steps(XamlFile file, XmlElement scope, ClrType type, string path, int start, bool compiled, XmlAttribute? attribute, bool converted, List<XamlDiagnostic> found)
     {
-        string text = path.TrimStart('!');
-        if (text.Length == 0 || text == "." || text.IndexOfAny(['$', '#', '^', '[', ' ', '/']) >= 0 || (!compiled && text.Contains('(', StringComparison.Ordinal)))
+        BindingPath read = file.Walk(scope, type, path, start);
+        if (read.Stop is not { } stop)
         {
             return;
         }
-        int offset = start + (path.Length - text.Length);
-        ClrType current = type;
-        for (int i = 0; i < text.Length;)
+        if (read.End == PathEnd.UnknownCast)
         {
-            string? cast = null;
-            int castAt = 0;
-            string step;
-            int stepAt;
-            if (text[i] == '(')
-            {
-                bool member = i + 1 < text.Length && text[i + 1] == '(';
-                castAt = i + (member ? 2 : 1);
-                int close = text.IndexOf(')', castAt);
-                int end = member && close > 0 ? text.IndexOf(')', close + 1) : close;
-                if (end < 0)
-                {
-                    return;
-                }
-                cast = text[castAt..close];
-                step = member ? text[(close + 1)..end] : string.Empty;
-                stepAt = close + 1;
-                i = end + 1;
-                // An attached property ((Grid.Row)), or a cast of one, is not followed.
-                if (cast.Length == 0 || cast.IndexOfAny(['.', '(']) >= 0 || step.IndexOfAny(['.', '(']) >= 0)
-                {
-                    return;
-                }
-            }
-            else
-            {
-                int end = compiled ? text.IndexOfAny(['.', '?', '('], i) : text.IndexOf('.', i);
-                end = end < 0 ? text.Length : end;
-                step = text[i..end];
-                stepAt = i;
-                i = end;
-            }
-            if (step.Length > 0)
-            {
-                ClrMember? property = file.Types.MembersOf(current).FirstOrDefault(m => m.Kind is MemberKind.Property or MemberKind.Method && !m.IsStatic && m.Name == step);
-                if (property is null)
-                {
-                    // An interface's members may come from the interfaces it extends, which only a compiler that reads them judges.
-                    if (current.Kind == ClrTypeKind.Interface && (!current.IsFromSource || !compiled))
-                    {
-                        return;
-                    }
-                    bool last = i >= text.Length && cast is null;
-                    IReadOnlyList<XamlFix> fixes = attribute is not null && CreateFromUsage.Property(file, current, step, attribute, last: last && !converted) is { } create
-                        ? [create]
-                        : [];
-                    found.Add(compiled
-                        ? new XamlDiagnostic(new TextRange(offset + stepAt, step.Length), XamlSeverity.Error, $"Cannot resolve property '{step}' on {current.Name}") { Fixes = fixes }
-                        : new XamlDiagnostic(new TextRange(offset + stepAt, step.Length), XamlSeverity.Warning, $"Cannot resolve property '{step}' in data context of type {current.Name}") { Fixes = fixes });
-                    return;
-                }
-                if (cast is null)
-                {
-                    if (file.Types.Resolve(property.Type) is not { } next || next.FullName == "System.Object")
-                    {
-                        return;
-                    }
-                    current = next;
-                }
-            }
-            if (cast is not null)
-            {
-                if (file.ResolveType(scope, cast.Trim()) is not { } castType)
-                {
-                    found.Add(new XamlDiagnostic(new TextRange(offset + castAt, cast.Length), XamlSeverity.Error, $"Cannot resolve symbol '{cast.Trim()}'"));
-                    return;
-                }
-                current = castType;
-            }
-            if (i >= text.Length)
-            {
-                return;
-            }
-            if (text[i] == '.')
-            {
-                i++;
-            }
-            else if (compiled && text.AsSpan(i).StartsWith("?.", StringComparison.Ordinal))
-            {
-                i += 2;
-            }
-            else if (text[i] != '(')
-            {
-                return;
-            }
+            found.Add(new XamlDiagnostic(stop.Range, XamlSeverity.Error, $"Cannot resolve symbol '{stop.Name}'"));
+            return;
         }
+        IReadOnlyList<XamlFix> fixes = attribute is not null && CreateFromUsage.Property(file, stop.On, stop.Name, attribute, last: read.StopsLast && !converted) is { } create
+            ? [create]
+            : [];
+        found.Add(compiled
+            ? new XamlDiagnostic(stop.Range, XamlSeverity.Error, $"Cannot resolve property '{stop.Name}' on {stop.On.Name}") { Fixes = fixes }
+            : new XamlDiagnostic(stop.Range, XamlSeverity.Warning, $"Cannot resolve property '{stop.Name}' in data context of type {stop.On.Name}") { Fixes = fixes });
     }
 
     private static void Selector(XamlFile file, XmlAttribute attribute, List<XamlDiagnostic> found)
