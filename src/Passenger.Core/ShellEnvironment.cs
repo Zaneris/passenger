@@ -15,8 +15,16 @@ public static class ShellEnvironment
     [IdentifierHome]
     private const string Written = "PASSENGER_SHELL_ENVIRONMENT";
 
-    /// <summary>What a shell sets for itself, never for the programs an IDE starts.</summary>
-    private static readonly HashSet<string> Own = ["_", "SHLVL", "PWD", "OLDPWD", "TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "PS1", "PS2", Written];
+    /// <summary>What profiles look for to know their environment is being read with no terminal, and skip what needs one
+    /// (an rc's <c>exec tmux</c>, oh-my-zsh's tmux autostart, a prompt's set-up): VSCODE_RESOLVING_ENVIRONMENT and
+    /// INTELLIJ_ENVIRONMENT_READER, each set to 1 for the read alone.</summary>
+    private static readonly string[] Reading = ["VSCODE_RESOLVING_ENVIRONMENT", "INTELLIJ_ENVIRONMENT_READER"];
+
+    /// <summary>What a shell sets for itself, never for the programs an IDE starts, and what the read sets for it.</summary>
+    private static readonly HashSet<string> Own = ["_", "SHLVL", "PWD", "OLDPWD", "TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "PS1", "PS2", Written, .. Reading];
+
+    /// <summary>The most of the shell's error output a failed read's log line quotes, from its end.</summary>
+    private const int QuotedErrors = 2048;
 
     /// <summary>Set once the read has ended, however it ended; null while nothing reads it.</summary>
     private static ManualResetEventSlim? readEnded;
@@ -53,16 +61,23 @@ public static class ShellEnvironment
         string shell = Environment.GetEnvironmentVariable("SHELL") is { Length: > 0 } named && File.Exists(named) ? named
             : OperatingSystem.IsMacOS() ? "/bin/zsh" : "/bin/sh";
         string? file = null;
+        string? errors = null;
         try
         {
             file = Path.GetTempFileName();
+            errors = Path.GetTempFileName();
             // Login and interactive, for an rc file's PATH; answered in a file, so no job the profile leaves holds a pipe.
             ProcessStartInfo start = ChildProcesses.Command("/bin/sh",
-                ["-c", "exec \"$@\" >/dev/null 2>&1", "sh", shell, "-l", "-i", "-c", "/usr/bin/env -0 > \"$" + Written + "\""]);
+                ["-c", "errors=$1; shift; exec \"$@\" >/dev/null 2>\"$errors\"", "sh", errors, shell, "-l", "-i", "-c", "/usr/bin/env -0 > \"$" + Written + "\""]);
             start.Environment[Written] = file;
+            foreach (string marker in Reading)
+            {
+                start.Environment[marker] = "1";
+            }
             ChildResult read = await ChildProcesses.RunAsync(start, limit: Limit);
             if (!read.Succeeded)
             {
+                Unread(shell, $"it exited with {read.ExitCode}{Said(errors)}");
                 return;
             }
             foreach (string pair in (await File.ReadAllTextAsync(file)).Split('\0', StringSplitOptions.RemoveEmptyEntries))
@@ -74,18 +89,25 @@ public static class ShellEnvironment
                 }
             }
         }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or UnauthorizedAccessException
-            or TimeoutException)
+        catch (TimeoutException)
         {
-            // No shell to ask, or one whose profile never finished: the environment stays as the IDE was given it.
+            Unread(shell, $"it had not ended after {Limit.TotalSeconds:0} s{(errors is null ? string.Empty : Said(errors))}");
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            Unread(shell, error.Message);
         }
         finally
         {
-            if (file is not null)
+            foreach (string? written in (string?[])[file, errors])
             {
+                if (written is null)
+                {
+                    continue;
+                }
                 try
                 {
-                    File.Delete(file);
+                    File.Delete(written);
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
@@ -93,6 +115,28 @@ public static class ShellEnvironment
                 }
             }
             reading.Set();
+        }
+    }
+
+    /// <summary>The log's word on a read that gave nothing: the shell, why, and the PATH programs are then looked for on.</summary>
+    private static void Unread(string shell, string why) =>
+        PassengerLog.Write($"The login shell's environment was not read, so programs are looked for on the PATH Passenger was given "
+            + $"({Environment.GetEnvironmentVariable("PATH")}): {shell} -l -i: {why}");
+
+    /// <summary>What the shell wrote to its errors, the end of it on one line after ": ", or nothing when it wrote none.</summary>
+    private static string Said(string errors)
+    {
+        try
+        {
+            using FileStream read = new(errors, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            read.Seek(Math.Max(0, read.Length - QuotedErrors), SeekOrigin.Begin);
+            using StreamReader text = new(read);
+            string said = string.Join(' ', text.ReadToEnd().Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+            return said.Length == 0 ? string.Empty : $": {said}";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
         }
     }
 }

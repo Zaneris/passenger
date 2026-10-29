@@ -706,6 +706,66 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>Started as the Finder starts it, over a login shell that fails with no terminal (as an rc's <c>exec tmux</c>
+    /// does), Passenger's log says the shell's environment was not read, naming the shell, in its words; a shell that skips
+    /// that step where its environment is being read, as profiles do for the variables that say so, gives Passenger its
+    /// PATH, those variables kept from the programs Passenger starts.</summary>
+    [Fact]
+    public async Task A_login_shell_that_fails_without_a_terminal_is_logged_in_its_words_and_one_that_skips_it_while_read_gives_its_path()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("A Windows program gets the person's whole environment, PATH included");
+            return;
+        }
+        string home = TestFolders.Create("home-");
+        string repository = TestFolders.Create("mcp-shell-fails-");
+        DeleteAtEnd(home);
+        DeleteAtEnd(repository);
+        await TestGit.RunAsync(repository, "init", "-q");
+        string fails = Path.Combine(home, "fails-without-terminal.sh");
+        Executable(fails, "#!/bin/sh\necho 'open terminal failed: not a terminal' >&2\nexit 1\n");
+        Dictionary<string, string?> environment = Launchd(home);
+        environment["SHELL"] = fails;
+        string log = Path.Combine(OwnState, "logs", "passenger.log");
+        await using (McpClient client = await Start(["--mcp", repository], languageServer: false, environment: environment))
+        {
+            await Call(client, McpTools.VcsStatus);
+            string said = string.Empty;
+            await Waiting.UntilAsync(() => Task.FromResult((said = File.Exists(log) ? Ui.Shared(log) : string.Empty)
+                .Contains("open terminal failed: not a terminal", StringComparison.Ordinal)), TimeSpan.FromSeconds(10), Cancel, TimeSpan.FromMilliseconds(200));
+            string? line = said.Split('\n').FirstOrDefault(l => l.Contains("The login shell's environment was not read", StringComparison.Ordinal));
+            Assert.True(line?.Contains($"{fails} -l -i: it exited with 1: open terminal failed: not a terminal", StringComparison.Ordinal) == true,
+                $"Over a login shell that fails with no terminal, Passenger's log does not say so, naming it, in its words: {line ?? said[Math.Max(0, said.Length - 2000)..]}");
+        }
+
+        // As oh-my-zsh's tmux autostart, failing with no terminal unless read; past it, no system profile moves its tools down.
+        string tools = Path.Combine(home, "tools");
+        Directory.CreateDirectory(tools);
+        string seen = Path.Combine(home, "git-environment");
+        Executable(Path.Combine(tools, "git"), $"#!/bin/sh\nenv > \"{seen}\"\nexec {(await global::Passenger.Core.Programs.GitAsync())!} \"$@\"\n");
+        string skips = Path.Combine(home, "skips-while-read.sh");
+        Executable(skips, "#!/bin/sh\nif [ \"$VSCODE_RESOLVING_ENVIRONMENT\" != 1 ] || [ \"$INTELLIJ_ENVIRONMENT_READER\" != 1 ]; then\n"
+            + $"  echo 'open terminal failed: not a terminal' >&2\n  exit 1\nfi\nPATH=\"{tools}:$PATH\"; export PATH\nshift 3\nexec /bin/sh -c \"$1\"\n");
+        environment["SHELL"] = skips;
+        await using (McpClient client = await Start(["--mcp", repository], languageServer: false, environment: environment))
+        {
+            await Call(client, McpTools.VcsStatus);
+        }
+        Assert.True(File.Exists(seen), "Over a login shell that skips what needs a terminal while its environment is read, Passenger never took its PATH");
+        string[] gitHad = File.ReadAllLines(seen);
+        Assert.True(!gitHad.Any(v => v.StartsWith("VSCODE_RESOLVING_ENVIRONMENT=", StringComparison.Ordinal) || v.StartsWith("INTELLIJ_ENVIRONMENT_READER=", StringComparison.Ordinal)),
+            $"The variables set while the login shell's environment was read reached the git Passenger started: {string.Join(", ", gitHad.Where(v => v.Contains("ENVIRONMENT", StringComparison.Ordinal)))}");
+    }
+
+    /// <summary>A script at <paramref name="path"/> that only its owner may change, as a shell or a tool on the PATH is.</summary>
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private static void Executable(string path, string script)
+    {
+        File.WriteAllText(path, script);
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
+
     /// <summary>A call whose arguments its tool does not take is answered with what is wrong and every parameter the tool
     /// takes, before the tool runs.</summary>
     [Gate]
