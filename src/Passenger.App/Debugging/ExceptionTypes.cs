@@ -48,7 +48,7 @@ public static class ExceptionTypes
     {
         try
         {
-            string shared = Path.Combine(Path.GetDirectoryName(Dotnet.Host())!, "shared", "Microsoft.NETCore.App");
+            string shared = Path.Combine(Dotnet.Root(), "shared", "Microsoft.NETCore.App");
             string? newest = Directory.Exists(shared)
                 ? Directory.GetDirectories(shared).OrderByDescending(d => Version.TryParse(Path.GetFileName(d).Split('-')[0], out Version? v) ? v : new Version()).FirstOrDefault()
                 : null;

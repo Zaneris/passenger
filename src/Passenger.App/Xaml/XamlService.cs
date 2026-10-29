@@ -29,7 +29,7 @@ public sealed class XamlService : IDisposable
     {
         try
         {
-            return Path.GetDirectoryName(Dotnet.Host());
+            return Dotnet.Root();
         }
         catch (FileNotFoundException)
         {

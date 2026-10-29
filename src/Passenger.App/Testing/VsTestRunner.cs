@@ -58,7 +58,7 @@ public sealed class VsTestRunner : ITestRunner
             throw new InvalidOperationException($"VSTest cannot start: the folder's .NET SDK could not be named ({unnamed.Message})", unnamed);
         }
         string host = Dotnet.Host();
-        string console = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(host))!, "sdk", sdk, "vstest.console.dll");
+        string console = System.IO.Path.Combine(Dotnet.Root(), "sdk", sdk, "vstest.console.dll");
         if (!File.Exists(console))
         {
             throw new FileNotFoundException($"The SDK {sdk} has no vstest.console", console);

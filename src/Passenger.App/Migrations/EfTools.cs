@@ -30,10 +30,9 @@ public sealed record EfTool(EfToolPlace Place, string Version, string Where)
             return ChildProcesses.DotnetCommand(["tool", "run", EfTools.Id, .. arguments], folder);
         }
         ProcessStartInfo start = ChildProcesses.DotnetCommand(arguments, folder);
-        string host = start.FileName;
         start.FileName = Where;
         // The tool's apphost finds the runtime the IDE runs builds on, whatever the PATH it was started with says.
-        start.Environment["DOTNET_ROOT"] = Path.GetDirectoryName(host)!;
+        start.Environment["DOTNET_ROOT"] = Dotnet.Root();
         return start;
     }
 

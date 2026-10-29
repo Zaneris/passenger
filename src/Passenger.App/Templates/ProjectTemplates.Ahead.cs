@@ -125,7 +125,7 @@ public static partial class ProjectTemplates
         }
         try
         {
-            string dotnet = Path.GetDirectoryName(PathNames.Canonical(Dotnet.Host()))!;
+            string dotnet = Dotnet.Root();
             places.AddRange(((string[])["sdk", "templates", "template-packs"]).Select(f => (Path.Combine(dotnet, f), "*")));
         }
         catch (FileNotFoundException)

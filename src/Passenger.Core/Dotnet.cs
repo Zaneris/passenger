@@ -94,6 +94,10 @@ public static partial class Dotnet
             ?? throw new FileNotFoundException("No .NET command line found: install the .NET SDK, or set DOTNET_ROOT to where it is.");
     }
 
+    /// <summary>The folder <see cref="Host"/> is installed in, its sdk, packs and shared folders beside it: the folder of the
+    /// host's real path, as a link to it (a Linux distribution's /usr/bin/dotnet) lies outside the installation.</summary>
+    public static string Root() => Path.GetDirectoryName(PathNames.Canonical(Host()))!;
+
     /// <summary>Where Microsoft's installers, the install script and the package managers put the .NET command line.</summary>
     private static IEnumerable<string> Installed(string name)
     {
