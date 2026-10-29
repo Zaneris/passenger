@@ -15,13 +15,19 @@ internal sealed class ProjectFiles
 
     /// <summary>Whether it is a file-based program's, whose folder on disk is not its own.</summary>
     private readonly bool program;
-    private readonly Dictionary<string, List<(string Name, string Path)>> files = new(PathNames.Comparer);
-    private readonly Dictionary<string, HashSet<string>> folders = new(PathNames.Comparer);
+
+    /// <summary>How the places in the project and the names in each compare, as its folder tells case.</summary>
+    private readonly StringComparer names;
+    private readonly Dictionary<string, List<(string Name, string Path)>> files;
+    private readonly Dictionary<string, HashSet<string>> folders;
 
     public ProjectFiles(ProjectModel project)
     {
         root = project.Folder;
         program = project.IsProgram;
+        names = PathNames.NamesIn(root);
+        files = new(names);
+        folders = new(names);
         HashSet<string> seen = new(PathNames.Comparer);
         foreach (EvaluatedItem item in project.Evaluated?.Items ?? [])
         {
@@ -64,11 +70,11 @@ internal sealed class ProjectFiles
         {
             int slash = relative.LastIndexOf('/');
             string parent = slash < 0 ? string.Empty : relative[..slash];
-            if (!folders.TryGetValue(parent, out HashSet<string>? names))
+            if (!folders.TryGetValue(parent, out HashSet<string>? held))
             {
-                folders[parent] = names = new(PathNames.Comparer);
+                folders[parent] = held = new(names);
             }
-            if (!names.Add(relative[(slash + 1)..]))
+            if (!held.Add(relative[(slash + 1)..]))
             {
                 return;
             }
@@ -97,18 +103,18 @@ internal sealed class ProjectFiles
     /// nothing in them.</summary>
     public IEnumerable<string> FoldersIn(string relative)
     {
-        HashSet<string> names = folders.TryGetValue(relative, out HashSet<string>? held) ? new(held, PathNames.Comparer) : new(PathNames.Comparer);
+        HashSet<string> shown = folders.TryGetValue(relative, out HashSet<string>? held) ? new(held, names) : new(names);
         if (program)
         {
-            return names;
+            return shown;
         }
         try
         {
             foreach (DirectoryInfo folder in new DirectoryInfo(PathOf(relative)).EnumerateDirectories())
             {
-                if (!folder.Name.StartsWith('.') && folder.Name is not ("bin" or "obj") && !names.Contains(folder.Name) && Empty(folder))
+                if (!folder.Name.StartsWith('.') && folder.Name is not ("bin" or "obj") && !shown.Contains(folder.Name) && Empty(folder))
                 {
-                    names.Add(folder.Name);
+                    shown.Add(folder.Name);
                 }
             }
         }
@@ -116,7 +122,7 @@ internal sealed class ProjectFiles
         {
             // Not on disk (a linked file's place), or gone: only what the project holds is there.
         }
-        return names;
+        return shown;
     }
 
     /// <summary>The files at a place, each with the name it shows by and its path.</summary>

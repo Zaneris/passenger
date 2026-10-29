@@ -49,7 +49,7 @@ public sealed class RunConfigurationsDialog : Window
     /// <summary>Set while the fields show a configuration, so what they hold then is no edit of it, and while the list is
     /// made again under the fields, which show its chosen row already.</summary>
     private bool showing;
-    private HashSet<string> runningAppHosts = new(StringComparer.FromComparison(Core.PathNames.Comparison));
+    private HashSet<string> runningAppHosts = new(Core.PathNames.Comparer);
 
     public RunConfigurationsDialog(IReadOnlyList<RunConfiguration> generated, IReadOnlyList<RunConfiguration> own,
         IReadOnlyList<ProjectModel> projects, string? chosen, Action<IReadOnlyList<RunConfiguration>, IReadOnlyList<RunConfiguration>, string?> apply,
@@ -550,7 +550,7 @@ public sealed class RunConfigurationsDialog : Window
 
     public void ShowRunningAppHosts(IEnumerable<string> paths)
     {
-        runningAppHosts = new HashSet<string>(paths, StringComparer.FromComparison(Core.PathNames.Comparison));
+        runningAppHosts = new HashSet<string>(paths, Core.PathNames.Comparer);
         showing = true;
         try
         {

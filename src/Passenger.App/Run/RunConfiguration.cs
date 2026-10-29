@@ -286,8 +286,7 @@ public sealed record RunConfiguration
     {
         Kind = Enum.IsDefined(Kind) ? Kind : RunKind.Project,
         Project = Project ?? string.Empty,
-        LinkedAppHosts = [.. (LinkedAppHosts ?? []).Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(
-            StringComparer.FromComparison(Core.PathNames.Comparison))],
+        LinkedAppHosts = [.. (LinkedAppHosts ?? []).Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(Core.PathNames.Comparer)],
         Framework = Framework ?? string.Empty,
         LaunchProfile = LaunchProfile ?? string.Empty,
         Program = Program ?? string.Empty,

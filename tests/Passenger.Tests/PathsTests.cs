@@ -230,6 +230,96 @@ public sealed class ProjectPathsTests : IDisposable
     }
 }
 
+/// <summary>In a folder that tells letter case apart (a case-sensitive APFS volume on macOS, a folder made case-sensitive on
+/// Windows, any folder on Linux), README.md and readme.md are two files: each opens as a document of its own with its own
+/// text, the Explorer lists each, and what is typed into one is saved to it alone.</summary>
+public sealed class CaseTellingFolderTests : IDisposable
+{
+    private readonly string root = PathNames.Canonical(TestFolders.Create("case-"));
+
+    public void Dispose() => TestFolders.Delete(root);
+
+    [AvaloniaFact]
+    public void Two_files_whose_names_differ_only_in_case_open_as_two_documents_each_saved_to_its_own_file()
+    {
+        (string place, bool mounted) = CaseTelling();
+        try
+        {
+            string folder = Path.Combine(place, "Notes");
+            string upper = TestFolders.Write(folder, "README.md", "UPPER readme\n");
+            string lower = TestFolders.Write(folder, "readme.md", "lower readme\n");
+            Assert.True(File.ReadAllText(upper) == "UPPER readme\n", $"{place} ignores letter case, so readme.md was written over README.md");
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            window.OpenFile(upper);
+            window.OpenFile(lower);
+            Ui.Settle();
+
+            string[] open = [.. window.EditorArea.Documents.Select(d => $"{Path.GetFileName(d.Path)}: {d.Text.Snapshot.ToString().Trim()}").Order(StringComparer.Ordinal)];
+            Assert.True(open.SequenceEqual(["README.md: UPPER readme", "readme.md: lower readme"]),
+                $"README.md and readme.md opened as [{string.Join("; ", open)}], so the editor shows one file's text for the other's and saves to the wrong one");
+            Assert.Equal(lower, window.EditorArea.Active?.Path);
+            string[] listed = [.. window.ExplorerView.Tree.Rows.Where(r => r.Name.Equals("readme.md", StringComparison.OrdinalIgnoreCase)).Select(r => r.Path!).Order(StringComparer.Ordinal)];
+            Assert.True(listed.SequenceEqual([upper, lower]), $"The Explorer lists [{string.Join("; ", listed)}] for README.md and readme.md");
+
+            window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);
+            window.KeyTextInput("edited ");
+            Ui.Settle();
+            Ui.Press(window, Ui.Shortcut(AppActions.Save));
+            Assert.True(File.ReadAllText(lower) == "edited lower readme\n" && File.ReadAllText(upper) == "UPPER readme\n",
+                $"Typed into readme.md and saved, readme.md holds \"{File.ReadAllText(lower).Trim()}\" and README.md \"{File.ReadAllText(upper).Trim()}\"");
+            window.Close();
+            Ui.AwaitPumped(window.Ended ?? Task.CompletedTask, "what the closed window started to end", MainWindow.EndLimit + TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            if (mounted)
+            {
+                Detach(place);
+            }
+        }
+    }
+
+    /// <summary>A folder of the test's that tells letter case apart, and whether it is a volume mounted there: on macOS a
+    /// case-sensitive APFS disk image of its own, on Windows a folder made case-sensitive. Skips where neither can be made.</summary>
+    private (string Folder, bool Mounted) CaseTelling()
+    {
+        string folder = Directory.CreateDirectory(Path.Combine(root, "volume")).FullName;
+        if (OperatingSystem.IsMacOS())
+        {
+            string disk = Path.Combine(root, "volume.dmg");
+            ChildResult made = Ran("/usr/bin/hdiutil", "create", "-size", "20m", "-fs", "Case-sensitive APFS", "-volname", "Passenger Case Tests", "-ov", disk, "-quiet");
+            Assert.SkipUnless(made.Succeeded, $"hdiutil made no case-sensitive disk image (exit code {made.ExitCode}): {made.Error}{made.Output}");
+            ChildResult attached = Ran("/usr/bin/hdiutil", "attach", disk, "-nobrowse", "-noautoopen", "-mountpoint", folder, "-quiet");
+            Assert.SkipUnless(attached.Succeeded, $"hdiutil attached no case-sensitive disk image (exit code {attached.ExitCode}): {attached.Error}{attached.Output}");
+            // Spotlight indexes a volume wherever it is mounted, unless it holds this marker.
+            File.WriteAllText(Path.Combine(folder, ".metadata_never_index"), string.Empty);
+            return (folder, true);
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            ChildResult made = Ran("fsutil.exe", "file", "setCaseSensitiveInfo", folder, "enable");
+            Assert.SkipUnless(made.Succeeded, $"Windows made no folder case-sensitive (fsutil exited with code {made.ExitCode}): {made.Output}{made.Error}");
+        }
+        return (folder, false);
+    }
+
+    /// <summary>The disk image detached, even while something still reads it.</summary>
+    private static void Detach(string volume)
+    {
+        ChildResult detached = null!;
+        Assert.True(Waiting.Until(() => (detached = Ran("/usr/bin/hdiutil", "detach", volume, "-force", "-quiet")).Succeeded, TimeSpan.FromSeconds(10), every: TimeSpan.FromSeconds(1)),
+            $"The test's volume {volume} could not be detached (hdiutil exited with code {detached.ExitCode}): {detached.Error}");
+    }
+
+    /// <summary>A system tool run on the thread pool and waited for with the window's loop running.</summary>
+    private static ChildResult Ran(string tool, params string[] arguments)
+    {
+        TimeSpan limit = TimeSpan.FromMinutes(1);
+        return Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tool, arguments), limit: limit.Scaled())),
+            $"{tool} {string.Join(' ', arguments)}", limit.Scaled() + TestFolders.Spare);
+    }
+}
+
 /// <summary>A solution with one console project at its folder's top, whose build has a step write the folder its shell is
 /// in, and what its restore and build name, each held to the folder as the disk spells it.</summary>
 internal static class DiskSpelled

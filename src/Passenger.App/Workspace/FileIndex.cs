@@ -442,6 +442,7 @@ public sealed class FileIndex
         public static Change Read(string root, IReadOnlyCollection<string> comeOrGone)
         {
             string top = PathNames.Canonical(root);
+            StringComparer namesIn = PathNames.NamesIn(top);
             List<string> gone = [];
             Dictionary<string, HashSet<string>> named = new(PathNames.Comparer);
             foreach (string path in comeOrGone)
@@ -460,7 +461,7 @@ public sealed class FileIndex
                 string folder = Path.GetDirectoryName(path)!;
                 if (!named.TryGetValue(folder, out HashSet<string>? names))
                 {
-                    named[folder] = names = new(PathNames.Comparer);
+                    named[folder] = names = new(namesIn);
                 }
                 names.Add(Path.GetFileName(path));
             }

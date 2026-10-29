@@ -12,14 +12,39 @@ public static partial class PathNames
     /// <summary>FILE_FLAG_BACKUP_SEMANTICS, without which a folder cannot be opened.</summary>
     private const uint BackupSemantics = 0x02000000;
 
-    /// <summary>How two paths compare: ignoring case where the file system does, on Windows and macOS. A canonical path
-    /// has the disk's case already; a name not made yet keeps the case it was given.</summary>
-    public static StringComparison Comparison { get; } =
-        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+    /// <summary>FILE_READ_ATTRIBUTES, all a folder's case sensitivity is read with.</summary>
+    private const uint ReadAttributes = 0x80;
 
-    /// <summary><see cref="Comparison"/> as a set's or a dictionary's: every collection keyed by paths (or by names in one
-    /// folder) takes this one.</summary>
-    public static StringComparer Comparer { get; } = StringComparer.FromComparison(Comparison);
+    /// <summary>FileCaseSensitiveInfo, and FILE_CS_FLAG_CASE_SENSITIVE_DIR in what it answers.</summary>
+    private const int CaseSensitiveInfo = 23;
+    private const uint CaseSensitiveFolder = 0x1;
+
+    /// <summary>pathconf's _PC_CASE_SENSITIVE, and the errors of a path that is not there (ENOENT, ENOTDIR).</summary>
+    private const int CaseSensitive = 11;
+    private const int NoEntry = 2;
+    private const int NotFolder = 20;
+
+    /// <summary>ERROR_FILE_NOT_FOUND and ERROR_PATH_NOT_FOUND.</summary>
+    private const int FileNotFound = 2;
+    private const int PathNotFound = 3;
+
+    /// <summary>Windows' and macOS's folders, asked whether they tell case apart; Linux's always do.</summary>
+    private static readonly PathComparer? Volumes = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? new(IgnoresCase) : null;
+
+    /// <summary>How two names compare where no folder is asked: ignoring case on Windows and macOS, whose own volumes do. A
+    /// path's folders are asked by <see cref="Comparer"/>, <see cref="Same"/> and <see cref="IsUnder"/>, names in one
+    /// folder by <see cref="NamesIn"/>.</summary>
+    public static StringComparison Comparison { get; } = Volumes is null ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+
+    /// <summary>How two paths compare: as one place where every name differing only in case is in a folder that ignores
+    /// case, as Windows' and macOS's do unless made case-sensitive (Linux's never do). A canonical path has the disk's case
+    /// already; a name not made yet keeps the case it was given. Every collection keyed by paths takes this one.</summary>
+    public static StringComparer Comparer { get; } = Volumes ?? StringComparer.Ordinal;
+
+    /// <summary>How the names in a folder, or paths below it given from it, compare: telling case apart where the folder
+    /// does, as it said when first asked.</summary>
+    public static StringComparer NamesIn(string folder) =>
+        Volumes is { } volumes && volumes.IgnoresCaseIn(folder) ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
     /// <summary>The path as the file system names it. Of a path that is not there (yet, or any more), the part that is
     /// there is resolved and the names below it are kept as given.</summary>
@@ -42,7 +67,7 @@ public static partial class PathNames
     }
 
     /// <summary>Whether two paths name the same place, compared as the file system compares names.</summary>
-    public static bool Same(string path, string other) => string.Equals(path, other, Comparison);
+    public static bool Same(string path, string other) => Comparer.Equals(path, other);
 
     /// <summary>Whether a path lies inside a folder, at any depth: the folder's name and then a separator begin it, so
     /// /x/app2/Foo.cs is not under /x/app. The folder itself is not under itself.</summary>
@@ -52,8 +77,12 @@ public static partial class PathNames
     public static bool IsUnder(ReadOnlySpan<char> path, string folder)
     {
         ReadOnlySpan<char> top = folder.AsSpan().TrimEnd(Separators);
-        return path.Length > top.Length + 1 && Separators.Contains(path[top.Length]) && path.StartsWith(top, Comparison);
+        return path.Length > top.Length + 1 && Separators.Contains(path[top.Length]) && Alike(path[..top.Length], top);
     }
+
+    /// <summary>Whether two spellings name one place, as <see cref="Comparer"/> compares them.</summary>
+    private static bool Alike(ReadOnlySpan<char> path, ReadOnlySpan<char> other) =>
+        Volumes is { } volumes ? volumes.Same(path, other) : path.SequenceEqual(other);
 
     /// <summary>The names from a folder down to a path under it ("src/App/App.cs"), as the path spells them; empty for the
     /// folder itself or a path outside it.</summary>
@@ -79,7 +108,7 @@ public static partial class PathNames
             return Path.GetRelativePath(folder, path);
         }
         ReadOnlySpan<char> top = folder.AsSpan().TrimEnd(Separators);
-        return path.AsSpan().TrimEnd(Separators).Equals(top, Comparison) ? Path.GetFileName(top).ToString() : path;
+        return Alike(path.AsSpan().TrimEnd(Separators), top) ? Path.GetFileName(top).ToString() : path;
     }
 
     /// <summary>A folder and the folders under it that <paramref name="enters"/> lets the walk into, nearest first,
@@ -238,11 +267,7 @@ public static partial class PathNames
     /// .NET and every tool spell without the prefix.</summary>
     private static unsafe string? FinalPath(string path)
     {
-        // Past MAX_PATH a name opens only with the prefix that turns Win32's parsing of it off.
-        string named = path.Length < 260 || path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path
-            : path.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + path[2..]
-            : @"\\?\" + path;
-        using SafeFileHandle handle = CreateFile(named, 0, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, BackupSemantics, IntPtr.Zero);
+        using SafeFileHandle handle = CreateFile(Openable(path), 0, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, BackupSemantics, IntPtr.Zero);
         if (handle.IsInvalid)
         {
             return null;
@@ -272,11 +297,42 @@ public static partial class PathNames
         }
     }
 
+    /// <summary>A Windows path as it opens: past MAX_PATH only with the prefix that turns Win32's parsing of it off.</summary>
+    private static string Openable(string path) =>
+        path.Length < 260 || path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path
+            : path.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + path[2..]
+            : @"\\?\" + path;
+
+    /// <summary>Whether a folder ignores case in its entries' names: on macOS as its volume says, on Windows as the folder
+    /// itself does (one made case-sensitive says so); null for one that is not there. One that cannot say ignores it.</summary>
+    private static unsafe bool? IgnoresCase(string folder)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            nint told = PathConf(folder, CaseSensitive);
+            return told >= 0 ? told == 0 : Marshal.GetLastPInvokeError() is NoEntry or NotFolder ? null : true;
+        }
+        using SafeFileHandle handle = CreateFile(Openable(folder), ReadAttributes, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, BackupSemantics, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            return Marshal.GetLastPInvokeError() is FileNotFound or PathNotFound ? null : true;
+        }
+        uint flags = 0;
+        return !GetFileInformationByHandleEx(handle, CaseSensitiveInfo, &flags, sizeof(uint)) || (flags & CaseSensitiveFolder) == 0;
+    }
+
     [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     private static partial SafeFileHandle CreateFile(string name, uint access, FileShare share, IntPtr security, FileMode mode, uint flags, IntPtr template);
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", SetLastError = true)]
     private static unsafe partial uint GetFinalPathNameByHandle(SafeFileHandle file, char* buffer, uint length, uint flags);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static unsafe partial bool GetFileInformationByHandleEx(SafeFileHandle file, int kind, uint* information, uint size);
+
+    [LibraryImport("libc", EntryPoint = "pathconf", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+    private static partial nint PathConf(string path, int name);
 
     [LibraryImport("libc", EntryPoint = "realpath", StringMarshalling = StringMarshalling.Utf8)]
     private static partial IntPtr RealPath(string path, IntPtr resolved);

@@ -40,6 +40,7 @@
     <Compile Include="../Passenger.Core/StartupHooks.cs" Link="StartupHooks.cs" />
     <!-- A XAML file's path as the disk names it, as the rest of Passenger reads one. -->
     <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
+    <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
     <!-- A property breakpoint's hit count is kept here, where its changes are seen, in the debugger's own words. -->
     <Compile Include="../Passenger.Dap/HitCondition.cs" Link="HitCondition.cs" />
   </ItemGroup>

@@ -304,7 +304,7 @@ public sealed class CommandHistory
             {
                 return $"{Path.GetFileName(there)} is no longer there";
             }
-            if (Exists(free) && !string.Equals(free, there, StringComparison.OrdinalIgnoreCase))
+            if (Exists(free) && !PathNames.Same(free, there))
             {
                 return $"{Path.GetFileName(free)} is already there";
             }
