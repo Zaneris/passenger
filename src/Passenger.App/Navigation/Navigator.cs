@@ -409,18 +409,25 @@ public sealed class Navigator
                 : "File Structure needs a file a language server has open";
             return;
         }
-        IReadOnlyList<SymbolRow>? outline = null;
+        Outline<SymbolRow>? outline = null;
         int caretLine = Editors.CodeEditor.CaretPosition.Line;
         SymbolPopup popup = new($"File Structure: {active.Name}", "Filter by name, CamelHumps too", async (query, cancel) =>
         {
             // The server's document now: one started again while the popup is open has a new one.
             Lsp.LspDocument lsp = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed($"no language server has {active.Name} open");
-            outline ??= ToolWindows.StructureView.Flatten(await lsp.OutlineAsync(cancel), 0, active.Path, Lsp.ServerLines.Of(lsp.Text.Snapshot));
-            return FilterOutline(outline, query.Trim());
+            if (outline is null)
+            {
+                IReadOnlyList<Lsp.DocumentSymbol> symbols = await lsp.OutlineAsync(cancel);
+                Lsp.ServerLines lines = Lsp.ServerLines.Of(lsp.Text.Snapshot);
+                outline ??= await BackgroundWork.Run(() => ToolWindows.StructureView.OutlineOf(symbols, active.Path, lines, cancel: cancel), cancel);
+            }
+            IReadOnlyList<SymbolRow> rows = outline.Rows;
+            string filter = query.Trim();
+            return filter.Length == 0 ? rows : await BackgroundWork.Run(() => FilterOutline(rows, filter), cancel);
         })
         {
             // The innermost member the caret is in.
-            Initial = rows => rows.Select((row, i) => (row, i)).LastOrDefault(p => p.row.Spans(caretLine), (null!, 0)).Item2,
+            Initial = _ => outline is { } shown ? Math.Max(0, shown.InnermostAt(caretLine)) : 0,
         };
         parts.Popups.Show(popup, row =>
         {
@@ -439,23 +446,27 @@ public sealed class Navigator
         }
         List<SymbolRow> shown = [];
         List<SymbolRow> path = [];
+        // How many of the containers, from the top, are shown already: a match shows all of them.
+        int pathShown = 0;
         foreach (SymbolRow row in outline)
         {
             while (path.Count > 0 && path[^1].Depth >= row.Depth)
             {
                 path.RemoveAt(path.Count - 1);
             }
+            pathShown = Math.Min(pathShown, path.Count);
             bool matches = row.Name.Contains(query, StringComparison.OrdinalIgnoreCase) || FuzzyMatch.Score(query, row.Name) is not null;
             if (matches)
             {
                 // The containers of a match stay, so it reads in its place.
-                foreach (SymbolRow container in path.Where(c => !shown.Contains(c)))
-                {
-                    shown.Add(container);
-                }
+                shown.AddRange(path.Skip(pathShown));
                 shown.Add(row);
             }
             path.Add(row);
+            if (matches)
+            {
+                pathShown = path.Count;
+            }
         }
         return shown;
     }

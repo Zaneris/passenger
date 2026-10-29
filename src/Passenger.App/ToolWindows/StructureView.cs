@@ -12,7 +12,8 @@ namespace Passenger.App.ToolWindows;
 
 /// <summary>The Structure window: the active file's outline (a C# file's types and members, a JSON file's keys),
 /// indented, from its language server, asked as it is shown and, while it is, following the editor (a moment after
-/// typing stops) and choosing the member the caret is in. A click or Enter goes to a member.</summary>
+/// typing stops) and choosing the member the caret is in. A click or Enter goes to a member. The rows are made off the
+/// window's thread, the list kept as it is where the outline did not change.</summary>
 public sealed class StructureView : DockPanel
 {
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(600);
@@ -26,6 +27,8 @@ public sealed class StructureView : DockPanel
 
     /// <summary>The file whose outline the rows are, from its server; null while they are no file's.</summary>
     private string? outlined;
+
+    private Outline<SymbolRow> outline = Outline<SymbolRow>.Empty;
 
     /// <summary>In the visual tree, as a tool window's content is only while it is open in its place or its own window.</summary>
     private bool shown;
@@ -157,9 +160,7 @@ public sealed class StructureView : DockPanel
         asking = null;
         if (source?.Invoke() is not { Lsp: { } lsp } now)
         {
-            list.ItemsSource = null;
-            outlined = null;
-            placeholder.IsVisible = true;
+            Show(Outline<SymbolRow>.Empty, null);
             return;
         }
         CancellationTokenSource mine = asking = new CancellationTokenSource();
@@ -167,15 +168,20 @@ public sealed class StructureView : DockPanel
         using IDisposable held = BackgroundWork.Scope();
         try
         {
-            IReadOnlyList<DocumentSymbol> outline = await lsp.OutlineAsync(mine.Token);
+            IReadOnlyList<DocumentSymbol> symbols = await lsp.OutlineAsync(mine.Token);
             if (mine.IsCancellationRequested)
             {
                 return;
             }
-            list.ItemsSource = Flatten(outline, 0, now.Path, ServerLines.Of(lsp.Text.Snapshot));
-            outlined = now.Path;
-            placeholder.IsVisible = Rows.Count == 0;
-            Choose(now.CaretLine);
+            ServerLines lines = ServerLines.Of(lsp.Text.Snapshot);
+            Outline<SymbolRow>? before = outlined == now.Path ? outline : null;
+            Outline<SymbolRow> made = await BackgroundWork.Run(() => OutlineOf(symbols, now.Path, lines, before, mine.Token), mine.Token);
+            if (mine.IsCancellationRequested)
+            {
+                return;
+            }
+            Show(made, now.Path);
+            Choose(source?.Invoke() is { } shown && shown.Path == now.Path ? shown.CaretLine : now.CaretLine);
         }
         catch (OperationCanceledException)
         {
@@ -194,21 +200,41 @@ public sealed class StructureView : DockPanel
         }
     }
 
+    /// <summary>A file's outline listed (none for <paramref name="path"/> null), the list handed its rows only when they are
+    /// not those it has.</summary>
+    private void Show(Outline<SymbolRow> rows, string? path)
+    {
+        outlined = path;
+        if (!ReferenceEquals(rows, outline))
+        {
+            outline = rows;
+            list.ItemsSource = rows.Rows;
+        }
+        placeholder.IsVisible = rows.Rows.Count == 0;
+    }
+
     private void Choose(int line)
     {
         choosing = true;
-        list.SelectedItem = Rows.LastOrDefault(r => r.Spans(line));
-        if (list.SelectedItem is not null)
+        int chosen = outline.InnermostAt(line);
+        list.SelectedIndex = chosen;
+        if (chosen >= 0)
         {
-            list.ScrollIntoView(list.SelectedItem);
+            list.ScrollIntoView(chosen);
         }
         choosing = false;
     }
 
     /// <summary>The outline as rows, a member's type after its name as Roslyn names it ("Main() : void"), at the editor's
-    /// lines of the text the server's lines are of.</summary>
-    public static IReadOnlyList<SymbolRow> Flatten(IReadOnlyList<DocumentSymbol> symbols, int depth, string path, ServerLines lines) =>
-        [.. symbols.SelectMany(symbol => (IEnumerable<SymbolRow>)[Row(symbol, depth, path, lines), .. Flatten(symbol.Children ?? [], depth + 1, path, lines)])];
+    /// lines of the text the server's lines are of; a row the outline <paramref name="before"/> has in its place unchanged
+    /// is that one. Made off the window's thread.</summary>
+    public static Outline<SymbolRow> OutlineOf(IReadOnlyList<DocumentSymbol> symbols, string path, ServerLines lines, Outline<SymbolRow>? before = null,
+        CancellationToken cancel = default) =>
+        Outline<SymbolRow>.Of(symbols, symbol => symbol.Children, (symbol, depth) =>
+        {
+            SymbolRow row = Row(symbol, depth, path, lines);
+            return (row, row.Position.Line, row.EndLine ?? row.Position.Line);
+        }, before, cancel);
 
     private static SymbolRow Row(DocumentSymbol symbol, int depth, string path, ServerLines lines)
     {

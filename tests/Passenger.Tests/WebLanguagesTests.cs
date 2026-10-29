@@ -718,6 +718,68 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         }
     }
 
+    /// <summary>A pause in typing in a JSON file of three megabytes, its hundred thousand keys listed in the Structure
+    /// window, costs the window's thread what one in a file of thirty kilobytes does: the rows are made off it, and the
+    /// key the caret is in is found without reading every row.</summary>
+    [AvaloniaFact]
+    public void A_typing_pause_in_a_three_megabyte_JSON_file_listed_in_structure_costs_the_window_what_one_in_a_small_file_does()
+    {
+        SkipWithoutNode();
+        string folder = TestFolders.Create("json-structure-");
+        File.WriteAllText(Path.Combine(folder, "small.json"), Items(200));
+        File.WriteAllText(Path.Combine(folder, "large.json"), Items(20_000));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
+        try
+        {
+            Ui.Run(window, AppActions.ShowStructure);
+            long small = PauseInStructure(window, Path.Combine(PathNames.Canonical(folder), "small.json"), 200);
+            long large = PauseInStructure(window, Path.Combine(PathNames.Canonical(folder), "large.json"), 20_000);
+            TestContext.Current.TestOutputHelper?.WriteLine($"A typing pause cost the UI thread {small / 1024} KB over 200 items, {large / 1024} KB over 20,000");
+            Assert.True(large <= small + (256 * 1024),
+                $"A typing pause in a JSON file of 20,000 items listed in Structure allocated {large / 1024} KB on the UI thread, against {small / 1024} KB "
+                + "in one of 200: the window's thread made the outline's rows, or read every one of them");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A JSON array of <paramref name="count"/> objects of four keys, about 150 bytes each.</summary>
+    private static string Items(int count) =>
+        "[\n" + string.Join(",\n", Enumerable.Range(0, count).Select(i =>
+            $"  {{\n    \"id\": {i},\n    \"name\": \"item {i}\",\n    \"kind\": \"thing\",\n    \"note\": \"a note about item {i}, long enough to fill out its line\"\n  }}")) + "\n]\n";
+
+    /// <summary>The bytes the UI thread allocates for a key typed into the first item's "name" key and the pause after it,
+    /// until Structure lists the key renamed and the window is quiet: the middle of three.</summary>
+    private static long PauseInStructure(MainWindow window, string path, int items)
+    {
+        window.OpenFile(path);
+        Passenger.App.ToolWindows.StructureView structure = window.StructureView;
+        Ui.WaitFor(() => structure.Rows.Count >= items * 5, () => $"the {items} items' keys in Structure, where it lists {structure.Rows.Count} rows");
+        int key = structure.Rows.Select((row, i) => (row, i)).First(p => p.row.Name == "name").i;
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "\"na");
+        editor.Focus();
+        Ui.Settle();
+        long[] bytes = new long[3];
+        string name = "na";
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            window.KeyTextInput("x");
+            name += "x";
+            string renamed = name + "me";
+            Ui.WaitFor(() => structure.Rows[key].Name == renamed, () => $"Structure to list the key typed into as {renamed}, where it lists {structure.Rows[key].Name}");
+            Ui.Settle();
+            bytes[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+        TestContext.Current.TestOutputHelper?.WriteLine($"The pauses over {items} items allocated {string.Join(", ", bytes.Select(b => $"{b / 1024} KB"))}");
+        Assert.True(ReferenceEquals(structure.Selected, structure.Rows[key]), $"Structure chose {structure.Selected?.Name ?? "nothing"} with the caret in {name}me");
+        Array.Sort(bytes);
+        return bytes[1];
+    }
+
     /// <summary>A stylesheet of <paramref name="rules"/> rules under a comment, the first <paramref name="empty"/> empty.</summary>
     private static string Rules(int rules, int empty) =>
         "/* top */\n" + string.Concat(Enumerable.Range(0, rules).Select(i => i < empty ? $".empty{i} {{}}\n" : $".full{i} {{ color: red; }}\n"));
