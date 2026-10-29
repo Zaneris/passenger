@@ -1,7 +1,9 @@
 using Passenger.App.Editors;
 using Passenger.App.Explorer;
+using Passenger.App.MSBuild;
 using Passenger.App.Templates;
 using Passenger.Core;
+using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App;
@@ -80,6 +82,7 @@ public partial class MainWindow
         async Task<string?> AddMadeAsync(CreatedProjects made)
         {
             using CommandHistory.Recording recording = Editors.Commands.RecordWrites($"New Project {Path.GetFileNameWithoutExtension(made.Projects[0])}");
+            string? unrestored = made.Central.Count > 0 ? await CentralizeAsync(made, recording) : made.Unrestored;
             if (await AddEachAsync(made.Projects, (file, project) => SolutionEdits.AddProject(file, into, project), Path.GetFileNameWithoutExtension, recording, projects: true) is not { } last)
             {
                 return status.Text;
@@ -90,10 +93,80 @@ public partial class MainWindow
             {
                 problem = status.Text = $"{Path.GetFileNameWithoutExtension(made.Projects[0])} could not be set up: {unlanded.Message}";
             }
+            if (problem is null && unrestored is not null)
+            {
+                problem = status.Text = unrestored;
+            }
             // What the template and the set-up made in the project's folder goes and comes back with the folder.
             recording.Leave(made.Folder);
             recording.Also(await MadeFolderAsync(made.Folder));
             return problem;
+        }
+    }
+
+    /// <summary>The projects New Project or New Solution made where packages are managed centrally put in that form (their
+    /// versions moved into the Directory.Packages.props that manages them, <see cref="CentralPackages"/>), within the command
+    /// given (else on their own), then what was made restored: why one could not be written or restored, else null.</summary>
+    private async Task<string?> CentralizeAsync(CreatedProjects made, CommandHistory.Recording? into)
+    {
+        string name = Path.GetFileNameWithoutExtension(made.Projects[0]);
+        List<string> paths = [.. made.Central.Select(c => c.Project), .. made.Central.Select(c => c.Central.Props).Distinct(PathNames.Comparer)];
+        if (SaveBeforeWriting(paths) is { } unsaved)
+        {
+            return $"{name} did not take central package management's form: {unsaved}";
+        }
+        foreach (string path in paths)
+        {
+            into?.Watch(path);
+        }
+        try
+        {
+            Following(paths, () =>
+            {
+                Dictionary<string, List<(string Id, string Version)>> pins = new(PathNames.Comparer);
+                foreach ((string project, CentralPackages central) in made.Central)
+                {
+                    (string text, IReadOnlyList<(string Id, string Version)> pinned) = ProjectEdits.Centralized(Written(project).Text, central.Versions, central.Overrides);
+                    Write(project, text);
+                    (pins.TryGetValue(central.Props, out List<(string Id, string Version)>? held) ? held : pins[central.Props] = []).AddRange(pinned);
+                }
+                foreach ((string props, List<(string Id, string Version)> pinned) in pins.Where(p => p.Value.Count > 0))
+                {
+                    Write(props, CentralPackages.Pinned(Written(props).Text, pinned));
+                }
+            });
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return $"{name} did not take central package management's form: {error.Message}";
+        }
+        finally
+        {
+            FollowWritten(paths);
+        }
+        if (await (into is null ? UnlandedAsync(paths) : UnlandedAsync(into)) is { } unlanded)
+        {
+            return $"{name} did not take central package management's form: {unlanded.Message}";
+        }
+        foreach (string project in made.Projects)
+        {
+            status.Text = $"Restoring {Path.GetFileNameWithoutExtension(project)}…";
+            if (await ProjectTemplates.RestoreAsync(project, made.Folder) is { } said)
+            {
+                return $"{Path.GetFileNameWithoutExtension(project)} did not restore: {said}";
+            }
+        }
+        return null;
+
+        static FileText Written(string path) => FileText.Load(path) ?? throw new IOException($"{Path.GetFileName(path)} is not a text file");
+
+        static void Write(string path, string text)
+        {
+            FileText file = Written(path);
+            if (file.Text != text)
+            {
+                FileText.Save(path, text, file.Encoding, file.HasBom, file.CrBreaks);
+            }
         }
     }
 
@@ -107,8 +180,13 @@ public partial class MainWindow
     private async Task OpenNewSolutionAsync(string solution, CreatedProjects made)
     {
         IReadOnlyList<string> projects = made.Projects;
+        string? unrestored = made.Central.Count > 0 ? await CentralizeAsync(made, null) : made.Unrestored;
         List<string> refused = [.. projects.Select(project => Change(() => SolutionEdits.AddProject(solution, null, project), Path.GetFileNameWithoutExtension(solution)))
             .OfType<string>().Where(problem => !problem.EndsWith("is already in the solution", StringComparison.Ordinal))];
+        if (unrestored is not null)
+        {
+            refused.Add(unrestored);
+        }
         if (await UnlandedAsync([solution]) is { } unlanded)
         {
             refused.Add($"{Path.GetFileNameWithoutExtension(solution)} could not be changed: {unlanded.Message}");

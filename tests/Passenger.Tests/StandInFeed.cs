@@ -44,7 +44,11 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
     /// <summary>Where its service index says its search is: its own, unless another host's is given.</summary>
     public Uri? SearchAt { get; set; }
 
-    public void Add(string id, string version) => (packages.TryGetValue(id, out Dictionary<string, byte[]>? versions) ? versions : packages[id] = [])[version] = Package(id, version);
+    public void Add(string id, string version) => Add(id, version, null);
+
+    /// <summary>A package served with the files given in it, each by its path in the package and its text (<see cref="Package"/>).</summary>
+    public void Add(string id, string version, IReadOnlyDictionary<string, string>? files) =>
+        (packages.TryGetValue(id, out Dictionary<string, byte[]>? versions) ? versions : packages[id] = [])[version] = Package(id, version, files);
 
     /// <summary>A known vulnerability of a package's versions (a NuGet range, "[1.0.0, 1.0.1)"), at NuGet's severity (0
     /// low to 3 critical), with its advisory's address.</summary>

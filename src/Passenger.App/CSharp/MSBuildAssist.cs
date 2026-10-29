@@ -266,7 +266,7 @@ internal sealed class MSBuildAssist : LanguageAssist
 
     /// <summary>The PackageVersion a package takes in Directory.Packages.props: beside the others, in their order, with
     /// their indent; in an ItemGroup of its own before the end when there are none. Null when it has one.</summary>
-    private static TextEdit? CentralVersion(string text, PackageChoice package)
+    internal static TextEdit? CentralVersion(string text, PackageChoice package)
     {
         XmlTree tree = XmlTree.Parse(text);
         List<XmlElement> versions = [.. tree.Elements.Where(e => e.LocalName == "PackageVersion" && MSBuildSyntax.RoleOf(e) == MSBuildRole.Item)];

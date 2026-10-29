@@ -62,6 +62,61 @@ public static class ProjectEdits
     public static bool HasPackage(string text, string id) =>
         Read(text) is { } xml && PackageReferences(xml).Any(r => string.Equals((string?)r.Attribute("Include"), id, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>The package references a project file's text gives a version, each by its package and that version, in the
+    /// file's order; none for text that does not read as XML.</summary>
+    public static IReadOnlyList<(string Id, string Version)> VersionedPackages(string text) =>
+        Read(text) is { } xml ? [.. PackageReferences(xml).Select(Versioned).OfType<(string, string)>()] : [];
+
+    /// <summary>A project file's text in central package management's form, its versions held by Directory.Packages.props
+    /// (<paramref name="central"/>, by package): each package reference of those given (all, with none given) has its
+    /// version taken out, kept as a VersionOverride where it differs from the central one and the folder allows one
+    /// (<paramref name="overrides"/>); a package with no central version is named, with its version, among those to pin
+    /// there. The text unchanged and nothing to pin where it does not read as XML.</summary>
+    public static (string Text, IReadOnlyList<(string Id, string Version)> Pinned) Centralized(string text, IReadOnlyDictionary<string, string> central,
+        bool overrides, IReadOnlyCollection<string>? only = null)
+    {
+        if (Read(text) is not { } xml)
+        {
+            return (text, []);
+        }
+        List<(string Id, string Version)> pinned = [];
+        // Each change reads the text again, so the next reference to change is looked up afresh.
+        while (PackageReferences(xml).FirstOrDefault(r => Versioned(r) is { } named && (only is null || only.Contains(named.Id, StringComparer.OrdinalIgnoreCase)))
+            is { } reference)
+        {
+            (string id, string version) = Versioned(reference)!.Value;
+            string? held = central.GetValueOrDefault(id) ?? pinned.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase)).Version;
+            if (held is null)
+            {
+                pinned.Add((id, version));
+            }
+            bool overriding = overrides && held is not null && !string.Equals(held, version, StringComparison.OrdinalIgnoreCase);
+            if (reference.Attribute("Version") is not null)
+            {
+                if (overriding)
+                {
+                    xml.RenameAttribute(reference, "Version", "VersionOverride");
+                }
+                else
+                {
+                    xml.RemoveAttribute(reference, "Version");
+                }
+            }
+            else if (reference.Elements().FirstOrDefault(e => e.Name.LocalName == "Version" && !e.HasElements) is { } element)
+            {
+                if (overriding)
+                {
+                    xml.Replace(element, $"<VersionOverride>{XmlText.Quoted(version)}</VersionOverride>");
+                }
+                else
+                {
+                    xml.Remove(element);
+                }
+            }
+        }
+        return (xml.Text, pinned);
+    }
+
     public static string? RemoveReference(string project, string referenced) => Change(project, xml =>
     {
         if (References(xml, project).FirstOrDefault(r => PathNames.Same(r.Path, referenced)).Element is not { } reference)
@@ -294,6 +349,13 @@ public static class ProjectEdits
     }
 
     private static List<XElement> PackageReferences(XmlText xml) => [.. xml.Root.Descendants().Where(e => e.Name.LocalName == "PackageReference")];
+
+    /// <summary>A package reference's package and the version it writes (its Version attribute, else element); null for
+    /// one that writes none.</summary>
+    private static (string Id, string Version)? Versioned(XElement reference) =>
+        ((string?)reference.Attribute("Include"))?.Trim() is { Length: > 0 } id
+        && ((string?)reference.Attribute("Version") ?? reference.Elements().FirstOrDefault(e => e.Name.LocalName == "Version" && !e.HasElements)?.Value)?.Trim() is { Length: > 0 } version
+            ? (id, version) : null;
 
     /// <summary>The project's own property groups that no condition holds, in the file's order.</summary>
     private static List<XElement> PropertyGroups(XmlText xml) =>

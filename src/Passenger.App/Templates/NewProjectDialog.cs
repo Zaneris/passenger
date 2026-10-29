@@ -7,9 +7,12 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Passenger.App.MSBuild;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Templates;
 
@@ -20,7 +23,15 @@ public sealed record ProjectTarget(string Solution, string? Folder, IReadOnlyLis
 
 /// <summary>What Create made, canonical: New Solution's solution (null for Add New Project's), the projects, the folder it
 /// made them in, and how the first is to run, set up once it is open.</summary>
-public sealed record CreatedProjects(string? Solution, IReadOnlyList<string> Projects, string Folder, ProjectSetup Setup);
+public sealed record CreatedProjects(string? Solution, IReadOnlyList<string> Projects, string Folder, ProjectSetup Setup)
+{
+    /// <summary>The projects made where packages are managed centrally, each with what manages them there: left unrestored,
+    /// for the window to put them in that form first. With none, what was made was restored here.</summary>
+    public IReadOnlyList<(string Project, CentralPackages Central)> Central { get; init; } = [];
+
+    /// <summary>Why the restore of what was made failed, in dotnet's words; null when it restored or is left to the window.</summary>
+    public string? Unrestored { get; init; }
+}
 
 /// <summary>How a new service runs, set up with it: as its own launch profiles say, in a container its Dockerfile or the
 /// .NET SDK makes, as a service of the solution's compose.yaml, or as a resource of an Aspire AppHost.</summary>
@@ -482,15 +493,29 @@ public sealed class NewProjectDialog : Window
                 await FailedAsync($"{NameGiven} could not be created: {CSharp.WorkspaceEdits.Unwritten(unwritten, notLanded)}", plan, existed);
                 return;
             }
-            if (Variant().SkipRestoreOption is not null)
+            List<(string Project, CentralPackages Central)> central = [];
+            foreach (string project in projects)
             {
-                // The template's own restore, after the take-out; one that fails, as its own may, leaves the build to say why.
+                if (FileText.Load(project) is { } file && ProjectEdits.VersionedPackages(file.Text).Count > 0)
+                {
+                    progress.Text = $"Reading how {Path.GetFileNameWithoutExtension(project)}'s packages are managed…";
+                    if (await CentralPackages.OfAsync(project, null, cancel.Token) is { } managed)
+                    {
+                        central.Add((project, managed));
+                    }
+                }
+            }
+            string? unrestored = null;
+            if (central.Count == 0 && Variant().SkipRestoreOption is not null)
+            {
+                // The template's own restore, after the take-out.
                 foreach (string project in projects)
                 {
                     progress.Text = $"Restoring {Path.GetFileNameWithoutExtension(project)}…";
-                    Task<ChildResult> restore = ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["restore", project], plan.Root), limit: TimeSpan.FromMinutes(10), cancel: cancel.Token);
-                    BackgroundWork.Track(restore);
-                    await restore;
+                    if (await ProjectTemplates.RestoreAsync(project, plan.Root, cancel.Token) is { } said)
+                    {
+                        unrestored ??= $"{Path.GetFileNameWithoutExtension(project)} did not restore: {said}";
+                    }
                 }
             }
             string? madeSolution = plan.Solution;
@@ -508,7 +533,11 @@ public sealed class NewProjectDialog : Window
                     madeSolution = plan.Solution;
                 }
             }
-            Created = new CreatedProjects(madeSolution is null ? null : PathNames.Canonical(madeSolution), projects, PathNames.Canonical(plan.ProjectFolder), setUp);
+            Created = new CreatedProjects(madeSolution is null ? null : PathNames.Canonical(madeSolution), projects, PathNames.Canonical(plan.ProjectFolder), setUp)
+            {
+                Central = central,
+                Unrestored = unrestored,
+            };
             creating = null;
             Close(Created);
         }

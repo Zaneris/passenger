@@ -11,6 +11,8 @@ using Passenger.App.Explorer;
 using Passenger.App.Settings;
 using Passenger.App.Templates;
 using Passenger.Core;
+using Passenger.Editor;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -318,6 +320,84 @@ public sealed class NewSolutionTests : IDisposable
         Assert.False(ReferenceEquals(server, window.CSharpService), "The language server was not started again with the new project");
         Assert.Equal(solution, window.CSharpService?.Session?.Solution);
         window.Close();
+    }
+
+    /// <summary>New Project of an xUnit project in a solution whose packages are managed centrally: its references name no
+    /// version, Directory.Packages.props gains those it lacked beside those it has (one it pins at another version kept as
+    /// the reference's VersionOverride), and the project restores, from the stand-in feed alone, and builds; one Undo takes
+    /// the project and the versions back.</summary>
+    [AvaloniaFact]
+    public void New_Project_where_packages_are_managed_centrally_puts_its_versions_in_Directory_Packages_props_so_it_restores_and_builds()
+    {
+        // The versions xUnit's template writes, each a stand-in on the feed; xunit's carries the Fact its test compiles with.
+        string probe = Path.Combine(TestFolders.Create("xunit-probe-"), "Probe");
+        ChildResult probed = Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ProjectTemplates.NewCommand(
+            ["xunit", "--name", "Probe", "--output", probe, "--framework", TestProjects.Framework, "--no-restore", "--no-update-check"], place), limit: TimeSpan.FromMinutes(3))),
+            "dotnet new xunit to read the versions it writes", TimeSpan.FromMinutes(3) + TestFolders.Spare);
+        Assert.True(probed.Succeeded, $"dotnet new xunit made nothing to read its versions from:\n{probed.Output}{probed.Error}");
+        Dictionary<string, string> written = ProjectEdits.VersionedPackages(File.ReadAllText(Path.Combine(probe, "Probe.csproj")))
+            .ToDictionary(p => p.Id, p => p.Version, StringComparer.OrdinalIgnoreCase);
+        TestFolders.Delete(Path.GetDirectoryName(probe)!);
+        Assert.True(written.ContainsKey("xunit") && written.ContainsKey("coverlet.collector") && written.Count > 2,
+            $"xUnit's template no longer writes the packages this test pins: [{string.Join(", ", written)}]");
+        using StandInFeed feed = new();
+        foreach ((string id, string version) in written)
+        {
+            feed.Add(id, version, id != "xunit" ? null : new Dictionary<string, string>
+            {
+                ["build/xunit.targets"] = "<Project>\n  <ItemGroup>\n    <Compile Include=\"$(MSBuildThisFileDirectory)Fact.cs\" Visible=\"false\" />\n  </ItemGroup>\n</Project>\n",
+                ["build/Fact.cs"] = "namespace Xunit;\n\npublic sealed class FactAttribute : System.Attribute\n{\n}\n",
+            });
+        }
+        Write("nuget.config", $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="stand-in" value="{feed.Index}" protocolVersion="3" allowInsecureConnections="true" />
+              </packageSources>
+              <config>
+                <add key="globalPackagesFolder" value="packages" />
+              </config>
+            </configuration>
+            """);
+        string Pinned(string id, string version) => $"    <PackageVersion Include=\"{id}\" Version=\"{version}\" />\n";
+        string Props(IEnumerable<(string Id, string Version)> pins) =>
+            "<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n  <ItemGroup>\n"
+            + string.Concat(pins.OrderBy(p => p.Id, StringComparer.OrdinalIgnoreCase).Select(p => Pinned(p.Id, p.Version))) + "  </ItemGroup>\n</Project>\n";
+        Write("Directory.Packages.props", Props([("coverlet.collector", "0.9.0"), ("xunit", written["xunit"])]));
+        string props = PathNames.Canonical(Path.Combine(place, "Directory.Packages.props"));
+        byte[] before = File.ReadAllBytes(props);
+        WriteShop("slnx");
+        MainWindow window = Ui.OpenFolder(place, languageServer: false);
+        try
+        {
+            Ui.Run(window, AppActions.NewProject);
+            NewProjectDialog dialog = NewServiceSetupTests.Opened(window);
+            NewServiceSetupTests.Choose(dialog, "xunit");
+            dialog.ProjectName = "Shop.Tests";
+            dialog.Framework = TestProjects.Framework;
+            NewServiceSetupTests.Created(dialog, "the xUnit project");
+            Assert.Null(NewServiceSetupTests.SetUp(window));
+
+            string folder = Path.Combine(PathNames.Canonical(place), "Shop.Tests");
+            string project = File.ReadAllText(Path.Combine(folder, "Shop.Tests.csproj"));
+            Assert.True(!Regex.IsMatch(project, "\\sVersion=") && project.Contains($"<PackageReference Include=\"coverlet.collector\" VersionOverride=\"{written["coverlet.collector"]}\" />", StringComparison.Ordinal),
+                $"The new project's references are not in central package management's form, coverlet.collector's version its override:\n{project}");
+            Assert.Equal(Props(written.Select(w => (w.Key, w.Key == "coverlet.collector" ? "0.9.0" : w.Value))), File.ReadAllText(props));
+            Assert.True(File.Exists(Path.Combine(folder, "obj", "project.assets.json")), $"The new project was not restored: {window.Status}");
+            LaunchUpToDateTests.Built(window, AppActions.Build, succeeds: true, "Build Solution with the new project");
+
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Ui.ClickRow(window, Row(window, NodeKind.Solution, "Shop"));
+            Ui.Run(window, EditorActions.Undo);
+            Assert.False(Directory.Exists(folder), $"Undo left the new project's folder: {window.Status}");
+            Assert.True(before.AsSpan().SequenceEqual(File.ReadAllBytes(props)), $"Undo left Directory.Packages.props as\n{File.ReadAllText(props)}");
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     /// <summary>That the templates the dialog lists are those dotnet new list reports, Console App first.</summary>

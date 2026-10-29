@@ -174,6 +174,46 @@ internal sealed class XmlText
         }
     }
 
+    /// <summary>Takes one attribute out of an element's start tag, with the space before it, the rest of the tag as it was.</summary>
+    public void RemoveAttribute(XElement element, string name)
+    {
+        if (AttributeAt(element, name) is not { } at)
+        {
+            return;
+        }
+        int from = at.Start;
+        while (char.IsWhiteSpace(Text[from - 1]))
+        {
+            from--;
+        }
+        Splice(from, at.End - from, string.Empty);
+    }
+
+    /// <summary>Names one attribute of an element's start tag anew, its value and place as they were.</summary>
+    public void RenameAttribute(XElement element, string name, string to)
+    {
+        if (AttributeAt(element, name) is { } at)
+        {
+            Splice(at.Start, name.Length, to);
+        }
+    }
+
+    /// <summary>Where an attribute is in an element's start tag: from its name to its closing quote; null when the tag has
+    /// none of that name.</summary>
+    private (int Start, int End)? AttributeAt(XElement element, string name)
+    {
+        if (ValueOf(element, name) is not { } value)
+        {
+            return null;
+        }
+        int start = Text.LastIndexOf('=', value.Start - 1);
+        while (char.IsWhiteSpace(Text[start - 1]))
+        {
+            start--;
+        }
+        return (start - name.Length, value.Start + value.Length + 1);
+    }
+
     /// <summary>Where an element's content is, between its tags, as written; null for one written short.</summary>
     public (int Start, int Length)? InnerOf(XElement element)
     {

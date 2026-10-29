@@ -120,6 +120,16 @@ public static partial class ProjectTemplates
     public static System.Diagnostics.ProcessStartInfo NewCommand(IEnumerable<string> arguments, string folder) =>
         ChildProcesses.DotnetCommand(New(arguments), folder);
 
+    /// <summary><c>dotnet restore</c> of a project a template made, run in a folder: null once restored, else what dotnet
+    /// said why not.</summary>
+    public static async Task<string?> RestoreAsync(string project, string folder, CancellationToken cancel = default)
+    {
+        Task<ChildResult> restore = ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["restore", project], folder), limit: TimeSpan.FromMinutes(10), cancel: cancel);
+        BackgroundWork.Track(restore);
+        ChildResult restored = await restore;
+        return restored.Succeeded ? null : restored.Said;
+    }
+
     /// <summary>Lets go of the templates read, once a package is installed, so the next read lists its templates.</summary>
     public static void Forget() => Read.Clear();
 
