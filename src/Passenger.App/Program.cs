@@ -41,6 +41,7 @@ internal static class Program
             _ = Mcp.AgentCall.Every;
             _ = Dap.AdapterEnvironment.EvaluationTimeout;
             _ = Text.TextSearch.Apart;
+            _ = Languages.TextMate.TextMateHighlighter.LineTime;
             _ = Waits.Scale;
         }
         catch (FormatException error)

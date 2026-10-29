@@ -22,7 +22,9 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     /// <summary>Lines a pass reads before a newer key may end it: a screen's worth past the edit, at least.</summary>
     private const int LinesBeforeStopping = 512;
 
-    private static readonly TimeSpan LineLimit = TimeSpan.FromSeconds(1);
+    /// <summary>The variable that gives <see cref="LineTime"/> in milliseconds.</summary>
+    [IdentifierHome]
+    public const string LineTimeVariable = "PASSENGER_GRAMMAR_LINE_MS";
 
     /// <summary>How often a long pass shows what it has read so far.</summary>
     private static readonly TimeSpan ShowEvery = TimeSpan.FromMilliseconds(60);
@@ -39,6 +41,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     private bool running;
     private bool disposed;
     private long linesRead;
+    private long linesOutOfTime;
     private int passes;
     private long workTicks;
 
@@ -59,6 +62,18 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     /// they took.</summary>
     public (long Lines, int Passes, TimeSpan Time) Worked =>
         (Interlocked.Read(ref linesRead), Volatile.Read(ref passes), Stopwatch.GetElapsedTime(0, Interlocked.Read(ref workTicks)));
+
+    /// <summary>How long the grammar may read one line, checked between its searches: 1 s, or what
+    /// <see cref="LineTimeVariable"/> gives; a value there that is no whole number of milliseconds above 0 is fatal.</summary>
+    public static TimeSpan LineTime => Environment.GetEnvironmentVariable(LineTimeVariable) is { Length: > 0 } given
+        ? int.TryParse(given, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int milliseconds) && milliseconds > 0
+            ? TimeSpan.FromMilliseconds(milliseconds)
+            : throw new FormatException($"{LineTimeVariable} takes a whole number of milliseconds above 0, not '{given}'")
+        : TimeSpan.FromSeconds(1);
+
+    /// <summary>How many times a line ran out of <see cref="LineTime"/> twice over, read once more and out of it again: each
+    /// kept the colours found and ended in the state it began in.</summary>
+    public long LinesOutOfTime => Interlocked.Read(ref linesOutOfTime);
 
     /// <summary>Why the grammar could not colour the file, when it could not.</summary>
     public Exception? Failure { get; private set; }
@@ -172,6 +187,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     {
         long began = Stopwatch.GetTimestamp();
         Tokenizer rules = grammar.Rules;
+        TimeSpan limit = LineTime;
         int count = text.LineCount;
         int oldCount = old?.Count ?? 0;
         int delta = count - oldCount;
@@ -197,7 +213,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             {
                 for (; line < until; line++)
                 {
-                    TokenLine read = Read(rules, text, line, state, scratch, ref buffer);
+                    TokenLine read = Read(rules, limit, text, line, state, scratch, ref buffer);
                     built.Add(read);
                     state = read.End;
                     int next = line + 1;
@@ -264,8 +280,10 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>One line's colours and the state it ends in, reusing the pass's buffer between lines.</summary>
-    private TokenLine Read(Tokenizer rules, TextSnapshot text, int line, StateStack? state, List<SyntaxSpan> scratch, ref char[] buffer)
+    /// <summary>One line's colours and the state it ends in, reusing the pass's buffer between lines. A line read past
+    /// <paramref name="limit"/> is read once more, its grammar's patterns now parsed; past it again, it keeps the colours
+    /// found and ends in the state it began in, so a rule it was stopped inside never reaches the lines after it.</summary>
+    private TokenLine Read(Tokenizer rules, TimeSpan limit, TextSnapshot text, int line, StateStack? state, List<SyntaxSpan> scratch, ref char[] buffer)
     {
         LineSpan span = text.GetLine(line);
         if (span.Length > LongestLine)
@@ -278,8 +296,18 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         }
         // Tint accepts the line without its break and appends it in a reusable buffer.
         text.CopyTo(span.Start, buffer.AsSpan(0, span.Length));
-        rules.TimeBudget = LineLimit;
-        ReadOnlySpan<EncodedToken> tokens = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), state ?? StateStack.Initial, out StateStack next);
+        rules.TimeBudget = limit;
+        StateStack before = state ?? StateStack.Initial;
+        ReadOnlySpan<EncodedToken> tokens = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), before, out StateStack next);
+        if (rules.StoppedEarly)
+        {
+            tokens = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), before, out next);
+            if (rules.StoppedEarly)
+            {
+                Interlocked.Increment(ref linesOutOfTime);
+                next = before;
+            }
+        }
         scratch.Clear();
         for (int i = 0; i < tokens.Length; i++)
         {

@@ -240,6 +240,33 @@ public sealed class FileColoursTests : FileColoursFolder
         window.Close();
     }
 
+    /// <summary>A script whose first line, a comment, the grammar runs out of its time reading, as a grammar reading its
+    /// patterns for the first time on a busy machine does: the line keeps its comment's colour, and the next line is read
+    /// from where the comment's line began, its keyword a keyword rather than more of the comment.</summary>
+    [AvaloniaFact]
+    public void A_comment_line_the_grammar_runs_out_of_time_on_leaves_the_next_lines_keyword_a_keyword()
+    {
+        string? was = Environment.GetEnvironmentVariable(TextMateHighlighter.LineTimeVariable);
+        Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, "1");
+        MainWindow window = Window();
+        try
+        {
+            // Each "<a" sends the grammar's first search of the line far along it: tens of milliseconds in all, however warm.
+            string comment = "// " + string.Concat(Enumerable.Repeat("<a ", 6400));
+            CodeEditor editor = Open(window, "site.js", comment + "\nfunction greet(name) {\n    return \"Hello, \" + name;\n}\n");
+            TextMateHighlighter colours = (TextMateHighlighter)window.EditorArea.Active!.Highlighter!;
+            Assert.True(colours.LinesOutOfTime > 0, "The grammar read the long comment within a millisecond, twice, so nothing here ran out of its time");
+            Assert.True(KindOf(editor, "function") == TokenKind.Keyword,
+                $"The line after a comment the grammar ran out of time on is coloured {KindOf(editor, "function")?.ToString() ?? "in several kinds"}: the comment's rule reached past its line");
+            Assert.Equal(TokenKind.Comment, KindOf(editor, comment[..30]));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, was);
+            window.Close();
+        }
+    }
+
     /// <summary>Razor's grammar includes both HTML and C#: colouring a standalone file must not depend on a
     /// language server, a Blazor project, or the SDK's project templates.</summary>
     [AvaloniaFact]

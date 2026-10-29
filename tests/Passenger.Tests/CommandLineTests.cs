@@ -76,6 +76,7 @@ public sealed class CommandLineTests : IDisposable
 
     [Theory]
     [InlineData(global::Passenger.App.CSharp.CSharpService.SlowLoadVariable, "5m", Milliseconds)]
+    [InlineData(global::Passenger.Languages.TextMate.TextMateHighlighter.LineTimeVariable, "1s", Milliseconds)]
     public Task A_malformed_variable_the_gate_has_no_record_of_yet_ends_Passenger_with_exit_code_2_and_the_reason(string variable, string value, string takes) =>
         A_malformed_variable_ends_Passenger_with_exit_code_2_and_the_reason_before_anything_starts(variable, value, takes);
 
