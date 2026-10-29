@@ -119,6 +119,31 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
             (await Call(client, McpTools.EditorText, new() { ["path"] = "Helper.cs", ["from"] = 3, ["to"] = 3 })).GetString(), StringComparison.Ordinal);
     }
 
+    /// <summary>find_in_files and replace_in_files in a directory inside a folder the folder's search passes over
+    /// (node_modules, bin) search its files all the same, which the solution's search still leaves out.</summary>
+    [Fact]
+    public async Task An_agents_directory_scope_inside_node_modules_or_bin_finds_and_replaces_what_its_files_hold()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-passed-over-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "node_modules/pkg/index.js", "// needle in package\n");
+        TestFolders.Write(folder, "bin/Debug/out.txt", "needle in bin\n");
+        TestFolders.Write(folder, "src/a.js", "// needle in src\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+
+        Assert.Equal([Path.Combine("src", "a.js") + ":1"], Places(await Call(client, McpTools.FindInFiles, new() { ["text"] = "needle" })));
+        foreach ((string directory, string file) in new[] { ("node_modules/pkg", Path.Combine("node_modules", "pkg", "index.js")), ("bin/Debug", Path.Combine("bin", "Debug", "out.txt")) })
+        {
+            string[] found = Places(await Call(client, McpTools.FindInFiles, new() { ["text"] = "needle", ["scope"] = "directory", ["directory"] = directory }));
+            Assert.True(found.SequenceEqual([file + ":1"]), $"find_in_files in the directory {directory} found [{string.Join(", ", found)}], where its {Path.GetFileName(file)} holds needle");
+        }
+        Assert.Equal($"Replaced 1 match in 1 file: {Path.Combine("bin", "Debug", "out.txt")}", (await Call(client, McpTools.ReplaceInFiles,
+            new() { ["text"] = "needle", ["replacement"] = "pin", ["scope"] = "directory", ["directory"] = "bin/Debug" })).GetString());
+        Assert.Equal("pin in bin\n", File.ReadAllText(Path.Combine(folder, "bin", "Debug", "out.txt")));
+        Assert.Equal("// needle in package\n", File.ReadAllText(Path.Combine(folder, "node_modules", "pkg", "index.js")));
+        Assert.Equal("// needle in src\n", File.ReadAllText(Path.Combine(folder, "src", "a.js")));
+    }
+
     /// <summary>An agent on the person's window reads their settings and changes them as Settings does: asked first, a number
     /// brought into its range, kept in settings.json and in force in the window at once; a name or choice Settings lacks
     /// changes nothing, and Enable MCP Server stays the person's.</summary>

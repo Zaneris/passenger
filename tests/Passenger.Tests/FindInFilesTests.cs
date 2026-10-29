@@ -1035,6 +1035,65 @@ public sealed class FindInFilesTests : IDisposable
         }
     }
 
+    /// <summary>A directory chosen inside a folder the folder's search passes over (node_modules, bin) is searched all the
+    /// same, from the Explorer's menu on its dimmed row or named in the popup, and Replace in Files changes its files
+    /// alone.</summary>
+    [AvaloniaFact]
+    public void A_directory_scope_inside_node_modules_or_bin_is_searched_and_replaced_in_though_the_folders_search_passes_over_it()
+    {
+        TestFolders.Write(folder, "node_modules/pkg/index.js", "// needle in package\n");
+        TestFolders.Write(folder, "bin/Debug/out.txt", "needle in bin\n");
+        TestFolders.Write(folder, "src/a.js", "// needle in src\n");
+        string root = PathNames.Canonical(folder);
+        string package = Path.Combine(root, "node_modules", "pkg");
+        string output = Path.Combine(root, "bin", "Debug");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
+            Search(popup, "needle");
+            Assert.Equal([Path.Combine("src", "a.js")], Found(popup, root));
+            Ui.Press(window, "ESCAPE");
+
+            window.ExplorerView.Reveal(package);
+            Ui.Settle();
+            ExplorerNode row = window.ExplorerView.Selected ?? throw new InvalidOperationException("The Explorer shows no node_modules/pkg");
+            Assert.True(row.IsDimmed, "The Explorer shows node_modules/pkg as the person's code, though the folder's search passes over it");
+            Ui.ChooseFromRowMenu(window, row, "Edit", "Find in Files…");
+            popup = Assert.IsType<FindInFilesPopup>(window.Popup);
+            Assert.Equal((SearchScopeKind.Directory, package), (popup.ScopeKind, popup.Directory));
+            Search(popup, "needle");
+            string[] found = Found(popup, root);
+            Assert.True(found.SequenceEqual([Path.Combine("node_modules", "pkg", "index.js")]),
+                $"Find in Files on node_modules/pkg found [{string.Join(", ", found)}], where its index.js holds needle");
+            Ui.Press(window, "ESCAPE");
+
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            popup = window.ShowFindInFiles(replace: true)!;
+            popup.ScopeKind = SearchScopeKind.Directory;
+            popup.Directory = output;
+            Search(popup, "needle");
+            found = Found(popup, root);
+            Assert.True(found.SequenceEqual([Path.Combine("bin", "Debug", "out.txt")]),
+                $"Find in Files on bin/Debug found [{string.Join(", ", found)}], where its out.txt holds needle");
+            popup.Replacement = "pin";
+            popup.RequestReplace();
+            Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, "the replacement in bin/Debug");
+            Assert.Equal("Replaced 1 match in 1 file", window.Status);
+            Assert.Equal("pin in bin\n", File.ReadAllText(Path.Combine(output, "out.txt")));
+            Assert.Equal("// needle in package\n", File.ReadAllText(Path.Combine(package, "index.js")));
+            Assert.Equal("// needle in src\n", File.ReadAllText(Path.Combine(root, "src", "a.js")));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The files a popup's matches are in, from the folder, each once, in order.</summary>
+    private static string[] Found(FindInFilesPopup popup, string root) =>
+        [.. popup.Matches.Select(m => Path.GetRelativePath(root, m.Path)).Distinct().Order(StringComparer.Ordinal)];
+
     /// <summary>Whether a line draws = and > as the font's own glyphs for them, not a ligature's.</summary>
     private static bool PlainArrow(TextBlock line)
     {

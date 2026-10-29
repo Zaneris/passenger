@@ -605,7 +605,7 @@ public sealed class FileIndex
     }
 
     /// <summary>The files under a folder, by their paths from it, left out and limited as the index's are: what Find in
-    /// Files reads of a directory outside the open folder.</summary>
+    /// Files reads of a directory the index holds none of, outside the open folder or in a folder it passes over.</summary>
     internal static List<string> Walk(string root)
     {
         string top = PathNames.Canonical(root);

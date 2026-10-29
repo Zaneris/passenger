@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Passenger.App.State;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App.Workspace;
 
@@ -97,20 +98,21 @@ public sealed class FileMask
 
 /// <summary>The files a search reads, as the window resolves a scope: every file of the folder's index, or those under
 /// any of the folders (only a folder's own files unless recursive) but those under a folder left out, then the files
-/// named (a project's walked as the search reads them); each must pass the mask. A folder outside the index is walked
-/// for its files.</summary>
+/// named (a project's walked as the search reads them); each must pass the mask. A folder the index holds none of, outside
+/// the open folder or in one it passes over (node_modules, bin), is walked for its files.</summary>
 public sealed record SearchPlace(bool All, IReadOnlyList<string> Folders, bool Recursive, IReadOnlyList<string> LeftOut, IEnumerable<string> Files, FileMask? Mask)
 {
     public static SearchPlace Everything(FileMask? mask) => new(true, [], true, [], [], mask);
 
-    /// <summary>The paths to read, canonical and each once: the index's first, in its order.</summary>
+    /// <summary>The paths to read, canonical and each once: the index's first, in its order. A worker's, as what is walked
+    /// is read from the disk.</summary>
     internal IEnumerable<string> Paths(string root, IReadOnlyList<string> indexed)
     {
         HashSet<string> seen = new(StringComparer.Ordinal);
         IEnumerable<string> inIndex = indexed.Select(relative => Path.Combine(root, relative)).Where(full => All || Holds(full));
-        IEnumerable<string> outside = Folders.Where(f => !PathNames.Within(f, root))
+        IEnumerable<string> walked = Folders.Where(f => !PathNames.Within(f, root) || IgnoredFolders.AnyIn(root, PathNames.Below(f, root)))
             .SelectMany(folder => FileIndex.Walk(folder).Select(relative => Path.Combine(folder, relative)).Where(Holds));
-        foreach (string full in inIndex.Concat(outside).Where(Passes))
+        foreach (string full in inIndex.Concat(walked).Where(Passes))
         {
             string path = PathNames.Canonical(full);
             if (seen.Add(path))

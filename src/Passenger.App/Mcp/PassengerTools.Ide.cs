@@ -170,8 +170,8 @@ public sealed partial class PassengerTools
 
     [McpServerTool(Name = McpTools.FindInFiles, Title = "Find in Files", ReadOnly = true), Description(
         "Every match of text in the folder's files, as Find in Files finds them: an open file as the editor has it, every " +
-        "other text file on disk (build output, version control, binary and very large files left out), each with its line's " +
-        "text, at most limit (1000; capped says so); stopped names the files a regex ran too long in. scope: solution (the default), project (project's name or .csproj), " +
+        "other text file on disk (binary and very large files left out, and build output, dependencies and version control " +
+        "unless the directory scope is inside one), each with its line's text, at most limit (1000; capped says so); stopped names the files a regex ran too long in. scope: solution (the default), project (project's name or .csproj), " +
         "directory (directory, its subdirectories unless recursive is false), openFiles, currentFile or recentlyViewed. mask: " +
         "names by * and ?, comma-separated, ! leaving one out (\"*.cs, !*.g.cs\").")]
     public Task<FindInFilesResult> FindInFiles(string text, bool matchCase = false, bool wholeWords = false, bool regex = false,
