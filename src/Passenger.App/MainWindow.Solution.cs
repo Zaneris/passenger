@@ -61,7 +61,8 @@ public partial class MainWindow
     }
 
     /// <summary>Remove on a solution folder: once the person agrees to what goes with it (its projects, the folders and
-    /// files in it), all of it leaves the solution; every file stays on disk.</summary>
+    /// files in it), all of it leaves the solution, and its projects the solution filter open, as one command Undo takes
+    /// back whole; every file stays on disk.</summary>
     public async Task<bool> RemoveSolutionFolderAsync(string path)
     {
         if (Solution is not { } solution || FindFolder(solution.Entries, path) is not { } removing)
@@ -80,7 +81,8 @@ public partial class MainWindow
         {
             return false;
         }
-        return await EditSolutionAsync(file => SolutionEdits.RemoveFolder(file, path), $"Removed solution folder {removing.Name} from {solution.Name}") is null;
+        return await EditSolutionAsync(file => SolutionEdits.RemoveFolder(file, path), $"Removed solution folder {removing.Name} from {solution.Name}",
+            [.. under.OfType<ProjectModel>().Select(p => p.Path)], $"Remove Solution Folder {removing.Name}") is null;
 
         void Name(IEnumerable<SolutionEntry> entries, string kind)
         {
@@ -195,24 +197,40 @@ public partial class MainWindow
     }
 
     /// <summary>Makes one change to the open solution's file and, once it has landed, reads the solution again: null when it
-    /// was made, else why not, which the status bar says too.</summary>
-    private async Task<string?> EditSolutionAsync(Func<string, string?> edit, string done)
+    /// was made, else why not, which the status bar says too. The projects it takes out (<paramref name="leaving"/>) leave
+    /// the solution filter open too, both files changed in one command Undo takes back whole, named
+    /// <paramref name="command"/>.</summary>
+    private async Task<string?> EditSolutionAsync(Func<string, string?> edit, string done, IReadOnlyCollection<string>? leaving = null, string? command = null)
     {
         if (Solution is not { } solution)
         {
             return Refusals.NoSolution;
         }
-        string? problem = SaveBeforeWriting([solution.Path]) is { } unsaved ? $"{solution.Name} could not be changed: {unsaved}" : Change(() => edit(solution.Path), solution.Name);
-        if (problem is null && await UnlandedAsync([solution.Path]) is { } unlanded)
+        // Opened again, the filter would name a project the solution no longer has.
+        string? filter = leaving is not null && session.Workspace?.Filter is { } open && leaving.Any(open.Projects.Contains) ? open.Path : null;
+        string[] writing = filter is null ? [solution.Path] : [solution.Path, filter];
+        using CommandHistory.Recording? recording = command is null ? null : Editors.Commands.RecordWrites(command);
+        string? problem = SaveBeforeWriting(writing) is { } unsaved ? $"{solution.Name} could not be changed: {unsaved}" : null;
+        string? unfiltered = null;
+        if (problem is null)
+        {
+            foreach (string path in writing)
+            {
+                recording?.Watch(path);
+            }
+            problem = Change(() => edit(solution.Path), solution.Name);
+            unfiltered = problem is null && filter is not null ? Change(() => SolutionEdits.RemoveFromFilter(filter, leaving!), Path.GetFileName(filter)) : null;
+        }
+        if (problem is null && await UnlandedAsync(writing) is { } unlanded)
         {
             problem = $"{solution.Name} could not be changed: {unlanded.Message}";
         }
-        FollowWritten([solution.Path]);
+        FollowWritten(writing);
         if (problem is null)
         {
             ReloadSolution();
         }
-        status.Text = problem ?? done;
+        status.Text = problem ?? (unfiltered is null ? done : $"{done}; {unfiltered}");
         return problem;
     }
 

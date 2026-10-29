@@ -221,11 +221,11 @@ public partial class MainWindow
         return canonical.ToDictionary(p => p.Key, p => found.GetValueOrDefault(p.Value) ?? [], StringComparer.Ordinal);
     }
 
-    /// <summary>What names the files moved follows them: the solution's projects and files, every project's paths naming
-    /// one (an item, a DependentUpon, an Import or a HintPath, a reference to a project moved), and every program's
-    /// directives naming one (a <c>#:project</c>, <c>#:include</c> or <c>#:ref</c>), each file watched first by the command
-    /// recording, for its undo. A project or program moved is read again at its new path. Null once they follow, else why
-    /// one could not.</summary>
+    /// <summary>What names the files moved follows them: the solution's projects and files, the open solution filter's
+    /// solution and projects, every project's paths naming one (an item, a DependentUpon, an Import or a HintPath, a
+    /// reference to a project moved), and every program's directives naming one (a <c>#:project</c>, <c>#:include</c> or
+    /// <c>#:ref</c>), each file watched first by the command recording, for its undo. A project or program moved is read
+    /// again at its new path. Null once they follow, else why one could not.</summary>
     private string? FollowMoved(IReadOnlyList<(string From, string To)> moved, CommandHistory.Recording? recording)
     {
         string Now(string path) => moved.FirstOrDefault(m => PathNames.Within(path, m.From)) is { From: not null } move ? PathNames.Moved(path, move.From, move.To) : path;
@@ -237,6 +237,12 @@ public partial class MainWindow
         if (Solution is { } solution)
         {
             naming.Add((Now(solution.Path), false, path => SolutionEdits.Move(path, moved)));
+        }
+        if (session.Workspace?.Filter is { } filter)
+        {
+            // Opened again, the filter would leave out a project it names where it was.
+            string now = Now(filter.Path);
+            naming.Add((now, now != filter.Path, path => SolutionEdits.MoveInFilter(path, moved)));
         }
         foreach (ProjectModel project in session.Workspace?.Projects ?? [])
         {

@@ -8,10 +8,11 @@ using Passenger.Text;
 namespace Passenger.Workspace;
 
 /// <summary>The Solution view's edits to a solution's file, a .sln or a .slnx: solution folders added, renamed and
-/// removed with all they hold, projects and files put in a folder, taken out again and followed where they moved, and a
-/// project put in a solution filter's list. Each changes only the lines or elements it is about, the rest kept in its
-/// encoding, line endings and indentation. A folder is named by its path in the solution, <see cref="SolutionFolder.Path"/>.
-/// An edit returns null when done, else why not; a file that cannot be read or written throws.</summary>
+/// removed with all they hold, projects and files put in a folder, taken out again and followed where they moved; and a
+/// solution filter's list of projects changed as the solution's are. Each changes only the lines or elements it is about,
+/// the rest kept in its encoding, line endings and indentation. A folder is named by its path in the solution,
+/// <see cref="SolutionFolder.Path"/>. An edit returns null when done, else why not; a file that cannot be read or written
+/// throws.</summary>
 public static class SolutionEdits
 {
     public static string? AddFolder(string solution, string? parent, string name) =>
@@ -32,43 +33,69 @@ public static class SolutionEdits
     /// <summary>Puts a project of the solution (a canonical path) in a solution filter's list of those it keeps, from the
     /// solution's folder with the separator the list's first is written with (a backslash, as dotnet sln writes it, when
     /// it has none), the rest of the file as it was. Null once the filter keeps it, else why not.</summary>
-    public static string? AddToFilter(string filter, string project)
-    {
-        string name = Path.GetFileName(filter);
-        if (SolutionFilter.Read(filter) is not { } read)
+    public static string? AddToFilter(string filter, string project) =>
+        EditFilter(filter, filter, filter, (text, read) =>
         {
-            return $"{name} does not read as a solution filter";
-        }
-        if (read.Projects.Contains(project))
-        {
-            return null;
-        }
-        FileText file = FileText.Load(filter) ?? throw new IOException($"{name} is not a text file");
-        string relative = Path.GetRelativePath(Path.GetDirectoryName(read.Solution)!, project);
-        relative = Slashed(file.Text) ? relative.Replace('\\', '/') : relative.Replace('/', '\\');
-        (string? text, string? problem) = JsonText.AddToArray(file.Text, ["solution", "projects"], JsonValue.Create(relative));
-        if (text is null)
-        {
-            return $"{name} cannot keep {Path.GetFileNameWithoutExtension(project)}: {problem}";
-        }
-        FileText.Save(filter, text, file.Encoding, file.HasBom, file.CrBreaks);
-        return null;
+            if (read.Projects.Contains(project))
+            {
+                return (text, null);
+            }
+            string relative = Written(Path.GetRelativePath(Path.GetDirectoryName(read.Solution)!, project), FirstListed(text));
+            (string? added, string? problem) = JsonText.AddToArray(text, Listed, JsonValue.Create(relative));
+            return (added, added is null ? $"{Path.GetFileName(filter)} cannot keep {Path.GetFileNameWithoutExtension(project)}: {problem}" : null);
+        }).Problem;
 
-        static bool Slashed(string text)
+    /// <summary>Takes projects of the solution (canonical paths) out of a solution filter's list, each with its line, the
+    /// rest of the file as it was. Null once the filter keeps none of them, else why not.</summary>
+    public static string? RemoveFromFilter(string filter, IReadOnlyCollection<string> projects)
+    {
+        HashSet<string> going = new(projects, PathNames.Comparer);
+        return EditFilter(filter, filter, filter, (text, read) =>
         {
-            try
+            string root = Path.GetDirectoryName(read.Solution)!;
+            (string? kept, string? problem) = JsonText.ChangeItems(text, Listed, item =>
+                item is JsonValue value && value.TryGetValue(out string? written) && going.Contains(SolutionFilter.Named(written, root)) ? null : item);
+            return (kept, kept is null ? $"{Path.GetFileName(filter)} cannot let go of {Path.GetFileNameWithoutExtension(projects.First())}: {problem}" : null);
+        }).Problem;
+    }
+
+    /// <summary>A solution filter following files and folders that moved or were renamed, itself among them: the solution
+    /// and each project it names named where they went, from where it is now, each with the separator it was written with,
+    /// the rest of the file as it was. Whether it changed.</summary>
+    public static bool MoveInFilter(string filter, IReadOnlyList<(string From, string To)> moves)
+    {
+        string Now(string path) => moves.FirstOrDefault(m => PathNames.Within(path, m.From)) is { From: not null } move ? PathNames.Moved(path, move.From, move.To) : path;
+        // Read from where it was, it names the paths as they were before the moves.
+        string was = moves.FirstOrDefault(m => PathNames.Within(filter, m.To)) is { To: not null } back ? PathNames.Moved(filter, back.To, back.From) : filter;
+        return EditFilter(filter, filter, was, (text, read) =>
+        {
+            string solution = Now(read.Solution);
+            string before = Path.GetDirectoryName(read.Solution)!;
+            string after = Path.GetDirectoryName(solution)!;
+            if (!PathNames.Same(solution, read.Solution) || !PathNames.Same(Path.GetDirectoryName(filter)!, Path.GetDirectoryName(was)!))
             {
-                using JsonDocument read = JsonDocument.Parse(text, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-                return read.RootElement.ValueKind == JsonValueKind.Object && read.RootElement.TryGetProperty("solution", out JsonElement solution)
-                    && solution.ValueKind == JsonValueKind.Object && solution.TryGetProperty("projects", out JsonElement projects)
-                    && projects.ValueKind == JsonValueKind.Array && projects.EnumerateArray().FirstOrDefault() is { ValueKind: JsonValueKind.String } first
-                    && first.GetString() is { } written && written.Contains('/') && !written.Contains('\\');
+                string named = JsonNode.Parse(text, documentOptions: JsonText.Lenient)!["solution"]!["path"]!.GetValue<string>();
+                (string? renamed, string? unrenamed) = JsonText.SetInRoot(text, "solution", "path",
+                    JsonValue.Create(Written(Path.GetRelativePath(Path.GetDirectoryName(filter)!, solution), named)));
+                if (renamed is null)
+                {
+                    return (null, unrenamed);
+                }
+                text = renamed;
             }
-            catch (JsonException)
+            return JsonText.ChangeItems(text, Listed, item =>
             {
-                return false;
-            }
-        }
+                if (item is not JsonValue value || !value.TryGetValue(out string? written))
+                {
+                    return item;
+                }
+                string project = SolutionFilter.Named(written, before);
+                string moved = Now(project);
+                return PathNames.Same(moved, project) && PathNames.Same(before, after)
+                    ? item
+                    : JsonValue.Create(Written(Path.GetRelativePath(after, moved), written));
+            });
+        }).Changed;
     }
 
     /// <summary>Puts a file (a canonical path) in a folder, as a Solution Item.</summary>
@@ -94,6 +121,52 @@ public static class SolutionEdits
         name.Trim().Length == 0 ? "A name is needed"
         : name.Trim() is "." or ".." || name.IndexOfAny(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) >= 0 ? $"{name} is not a solution folder name"
         : null;
+
+    /// <summary>Where a solution filter lists the projects it keeps.</summary>
+    private static readonly string[] Listed = ["solution", "projects"];
+
+    /// <summary>One change to a solution filter's file, or to the <paramref name="file"/> holding its text in its place, read
+    /// as a save reads a file and as the filter at <paramref name="at"/> names its paths; written back only when the change
+    /// made another text. Whether it did, else why not.</summary>
+    private static (bool Changed, string? Problem) EditFilter(string filter, string file, string at,
+        Func<string, SolutionFilter, (string? Text, string? Problem)> change)
+    {
+        string name = Path.GetFileName(filter);
+        FileText read = FileText.Load(file) ?? throw new IOException($"{name} is not a text file");
+        if (SolutionFilter.Read(at, read.Text) is not { } listed)
+        {
+            return (false, $"{name} does not read as a solution filter");
+        }
+        (string? text, string? problem) = change(read.Text, listed);
+        if (text is null || text == read.Text)
+        {
+            return (false, problem);
+        }
+        FileText.Save(file, text, read.Encoding, read.HasBom, read.CrBreaks);
+        return (true, null);
+    }
+
+    /// <summary>A path from a filter's folder or its solution's written with the separator <paramref name="like"/> is: a slash
+    /// where it has slashes and no backslash, else a backslash, as dotnet sln writes one.</summary>
+    private static string Written(string relative, string? like) =>
+        like is not null && like.Contains('/') && !like.Contains('\\') ? relative.Replace('\\', '/') : relative.Replace('/', '\\');
+
+    /// <summary>The first project a filter's text lists as written, null with none.</summary>
+    private static string? FirstListed(string text)
+    {
+        try
+        {
+            using JsonDocument read = JsonDocument.Parse(text, JsonText.Lenient);
+            return read.RootElement.ValueKind == JsonValueKind.Object && read.RootElement.TryGetProperty("solution", out JsonElement solution)
+                && solution.ValueKind == JsonValueKind.Object && solution.TryGetProperty("projects", out JsonElement projects)
+                && projects.ValueKind == JsonValueKind.Array && projects.EnumerateArray().FirstOrDefault() is { ValueKind: JsonValueKind.String } first
+                ? first.GetString() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     private static string? Edit(string solution, Func<SolutionText, string?> change)
     {

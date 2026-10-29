@@ -437,9 +437,9 @@ public partial class MainWindow
     /// changed once it is done.</summary>
     private List<string>? movesFollowed;
 
-    /// <summary>Delete on a project: it leaves the solution and its files stay. Moving its folder to the Trash is a
-    /// second question, never asked of the open folder, a folder above it, or one holding the solution or another of
-    /// its projects.</summary>
+    /// <summary>Delete on a project: it leaves the solution, and the solution filter open, as one command Undo takes back
+    /// whole, and its files stay. Moving its folder to the Trash is a second question, never asked of the open folder, a
+    /// folder above it, or one holding the solution or another of its projects.</summary>
     public async Task<bool> RemoveProjectAsync(string project)
     {
         string name = Path.GetFileNameWithoutExtension(project);
@@ -452,7 +452,7 @@ public partial class MainWindow
         {
             return false;
         }
-        if (await EditSolutionAsync(file => SolutionEdits.RemoveProject(file, project), $"Removed {name} from {solution.Name}") is { } problem)
+        if (await EditSolutionAsync(file => SolutionEdits.RemoveProject(file, project), $"Removed {name} from {solution.Name}", [project], $"Remove Project {name}") is { } problem)
         {
             status.Text = $"{name} could not be removed: {problem}";
             return false;

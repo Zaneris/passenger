@@ -978,6 +978,107 @@ public sealed class SolutionViewTests : IDisposable
             string.Join(", ", shown.ExplorerView.Tree.Rows.Where(r => r.Kind == NodeKind.Project).Select(r => $"{r.Name} {(r.IsDimmed ? "unloaded" : "loaded")}"));
     }
 
+    /// <summary>Projects renamed, moved and removed while a solution filter is open take the filter's list with them, each
+    /// in the command of Undo that changes the solution (Undo of a move and of the removal putting it back, Redo of the
+    /// removal taking it out again): opened again, the filter loads the project renamed under its new name and the one
+    /// moved where it went, and names none the solution let go, the project it leaves out still unloaded.</summary>
+    [AvaloniaFact]
+    public void Projects_renamed_moved_and_removed_under_an_open_solution_filter_take_its_list_with_them_so_the_filter_opened_again_loads_them()
+    {
+        const string Filter = "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [\n      \"Shop.App\\\\Shop.App.csproj\",\n"
+            + "      \"Shop.Core\\\\Shop.Core.csproj\",\n      \"Shop.Tools\\\\Shop.Tools.csproj\"\n    ]\n  }\n}\n";
+        Write("Shop.Tools/Shop.Tools.csproj", Library);
+        Write("Shop.Docs/Shop.Docs.csproj", Library);
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Shop.App/Shop.App.csproj\" />\n  <Project Path=\"Shop.Core/Shop.Core.csproj\" />\n"
+            + "  <Project Path=\"Shop.Docs/Shop.Docs.csproj\" />\n  <Project Path=\"Shop.Tools/Shop.Tools.csproj\" />\n</Solution>\n");
+        Write("Shop.App.slnf", Filter);
+        string src = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(folder, "src")).FullName);
+        string apps = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(folder, "apps")).FullName);
+        string filter = PathNames.Canonical(Path.Combine(folder, "Shop.App.slnf"));
+        string solution = Path.Combine(folder, "Shop.slnx");
+        string renamed = Filter.Replace("Shop.Core\\\\Shop.Core.csproj", "Shop.Core\\\\Shop.Domain.csproj", StringComparison.Ordinal);
+        string Moved(string into) => renamed.Replace("\"Shop.App\\\\Shop.App.csproj\"", $"\"{into}\\\\Shop.App\\\\Shop.App.csproj\"", StringComparison.Ordinal);
+        string moved = Moved("apps");
+        string removed = moved.Replace(",\n      \"Shop.Tools\\\\Shop.Tools.csproj\"", string.Empty, StringComparison.Ordinal);
+        MainWindow window = Ui.OpenFolder(filter, languageServer: false);
+        try
+        {
+            List<string> asked = [];
+            window.Confirm = (title, _, _) =>
+            {
+                asked.Add(title);
+                return Task.FromResult(title != "Delete Project Files");
+            };
+            Ui.ClickRow(window, Row(window, NodeKind.Project, "Shop.Core"));
+            Ui.Run(window, AppActions.Rename);
+            NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+            popup.Text = string.Empty;
+            window.KeyTextInput("Shop.Domain");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => Loaded(window) == "Shop.App loaded, Shop.Docs unloaded, Shop.Domain loaded, Shop.Tools loaded",
+                () => $"Shop.Core to be renamed Shop.Domain, still loaded ({Loaded(window)}): {window.Status}");
+            Assert.True(File.ReadAllText(filter) == renamed, $"The filter open still names Shop.Core, so opened again it leaves Shop.Domain out:\n{File.ReadAllText(filter)}");
+
+            CutAndPaste(src);
+            Ui.ClickRow(window, Row(window, NodeKind.Project, "Shop.App"));
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => window.Status?.StartsWith("Undone", StringComparison.Ordinal) == true, () => $"Undo to move Shop.App back: {window.Status}");
+            Assert.True(File.Exists(Path.Combine(folder, "Shop.App", "Shop.App.csproj")) && File.ReadAllText(filter) == renamed,
+                $"Undo left Shop.App in src, or the filter naming it there: {window.Status}\n{File.ReadAllText(filter)}");
+            CutAndPaste(apps);
+
+            string listed = File.ReadAllText(solution);
+            Ui.ClickRow(window, Row(window, NodeKind.Project, "Shop.Tools"));
+            Ui.Press(window, "BACK_SPACE");
+            Ui.WaitFor(() => Loaded(window) == "Shop.App loaded, Shop.Docs unloaded, Shop.Domain loaded", () => $"Shop.Tools to be removed ({Loaded(window)}): {window.Status}");
+            Assert.True(File.ReadAllText(filter) == removed, $"The filter open still names Shop.Tools, which the solution let go:\n{File.ReadAllText(filter)}");
+            Ui.ClickRow(window, Row(window, NodeKind.Project, "Shop.Docs"));
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => window.Status?.StartsWith("Undone", StringComparison.Ordinal) == true && Loaded(window) == "Shop.App loaded, Shop.Docs unloaded, Shop.Domain loaded, Shop.Tools loaded",
+                () => $"Undo to put Shop.Tools back ({Loaded(window)}): {window.Status}");
+            Assert.True((File.ReadAllText(filter), File.ReadAllText(solution)) == (moved, listed), $"Undo left the filter or the solution without Shop.Tools: {window.Status}\n{File.ReadAllText(filter)}");
+            Ui.ClickRow(window, Row(window, NodeKind.Project, "Shop.Docs"));
+            Ui.Run(window, EditorActions.Redo);
+            Ui.WaitFor(() => window.Status?.StartsWith("Redone", StringComparison.Ordinal) == true && Loaded(window) == "Shop.App loaded, Shop.Docs unloaded, Shop.Domain loaded",
+                () => $"Redo to remove Shop.Tools again ({Loaded(window)}): {window.Status}");
+            Assert.Equal(removed, File.ReadAllText(filter));
+            Assert.Equal(["Undo", "Remove Project", "Delete Project Files", "Undo", "Redo"], asked);
+        }
+        finally
+        {
+            window.Close();
+        }
+        window = Ui.OpenFolder(filter, languageServer: false);
+        try
+        {
+            Assert.Equal("Shop.App loaded, Shop.Docs unloaded, Shop.Domain loaded", Loaded(window));
+            Assert.Equal(Path.Combine(apps, "Shop.App", "Shop.App.csproj"), Row(window, NodeKind.Project, "Shop.App").Path);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // Cut and pasted in the File System view, where a project's folder is a row of its own.
+        void CutAndPaste(string into)
+        {
+            Button views = window.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) is string tip && tip.StartsWith("Switch between the solution", StringComparison.Ordinal));
+            Ui.Click(views);
+            Ui.ClickRow(window, Show(window, Path.Combine(folder, "Shop.App")));
+            Ui.Run(window, EditorActions.Cut);
+            Ui.ClickRow(window, Show(window, into));
+            Ui.Run(window, EditorActions.Paste);
+            Assert.Equal($"Moved Shop.App to {Path.GetFileName(into)}", window.Status);
+            Assert.True(File.ReadAllText(filter) == Moved(Path.GetFileName(into)), $"The filter open still names Shop.App where it was, so opened again it leaves it out:\n{File.ReadAllText(filter)}");
+            Ui.Click(views);
+            Ui.WaitFor(() => Loaded(window) == "Shop.App loaded, Shop.Docs unloaded, Shop.Domain loaded, Shop.Tools loaded",
+                () => $"Shop.App moved to stay loaded ({Loaded(window)}): {window.Status}");
+        }
+
+        static string Loaded(MainWindow shown) => string.Join(", ", shown.ExplorerView.Tree.Rows.Where(r => r.Kind == NodeKind.Project)
+            .Select(r => $"{r.Name} {(!r.IsDimmed ? "loaded" : r.Detail == "(unloaded)" ? "unloaded" : "missing")}").Order(StringComparer.Ordinal));
+    }
+
     /// <summary>A file deleted takes its own row out, and Unload Project and Reload Project make the project's row again,
     /// dimmed and then open to open: every other row shown stays the row it was, rather than every row of the tree being
     /// made again for one.</summary>

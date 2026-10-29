@@ -12,6 +12,9 @@ public static class JsonText
 {
     internal static readonly JsonSerializerOptions Written = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
+    /// <summary>JSON as .NET's readers of these files take it: comments passed over and trailing commas allowed.</summary>
+    internal static readonly JsonDocumentOptions Lenient = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
+
     /// <summary>The text with an entry of an object member of its root set (appsettings.json's <c>Parameters</c>'
     /// <c>password</c>), the member made when the root has none, or with a member of the root set when no entry is given;
     /// null with why when the text does not read as JSON or its root is no object.</summary>
@@ -82,6 +85,77 @@ public static class JsonText
     /// object, or the last no array.</summary>
     public static (string? Text, string? Problem) AddToArray(string text, IReadOnlyList<string> path, JsonNode item)
     {
+        (Node? root, Node? holder, int reached, string? problem) = ArrayAt(text, path);
+        if (root is null || holder is null)
+        {
+            return (null, problem);
+        }
+        Layout layout = new(text, Unit(text, root));
+        if (reached == path.Count)
+        {
+            return (layout.Append(holder, item), null);
+        }
+        JsonNode made = new JsonArray(item.DeepClone());
+        for (int j = path.Count - 1; j > reached; j--)
+        {
+            made = new JsonObject { [path[j]] = made };
+        }
+        return (layout.Add(holder, path[reached], made), null);
+    }
+
+    /// <summary>The text with each item of an array a path of members from its root names (a solution filter's
+    /// <c>solution</c>, <c>projects</c>) as <paramref name="change"/> answers for it: the item it was given kept as written,
+    /// another written where it stands, null taken out with its line. A null item, or one .NET does not read, is kept
+    /// unasked, and an array the path does not reach changes nothing. Null with why when the text does not read as JSON,
+    /// its root or a member on the path is no object, or the last no array.</summary>
+    public static (string? Text, string? Problem) ChangeItems(string text, IReadOnlyList<string> path, Func<JsonNode, JsonNode?> change)
+    {
+        (Node? root, Node? array, int reached, string? problem) = ArrayAt(text, path);
+        if (root is null || array is null)
+        {
+            return (null, problem);
+        }
+        if (reached < path.Count)
+        {
+            return (text, null);
+        }
+        List<(int Index, JsonNode? Value)> changes = [];
+        for (int i = 0; i < array.Items.Count; i++)
+        {
+            Node item = array.Items[i];
+            if (Read(text[item.Start..item.End]) is { } read && change(read) is var now && !ReferenceEquals(now, read))
+            {
+                changes.Add((i, now));
+            }
+        }
+        string unit = Unit(text, root);
+        // From the last to the first, each read again where it stands now: those before it are where they were.
+        for (int c = changes.Count - 1; c >= 0; c--)
+        {
+            Node items = ArrayAt(text, path).Holder!;
+            Layout layout = new(text, unit);
+            text = changes[c].Value is { } value ? layout.Rewrite(items.Items[changes[c].Index], value) : layout.Remove(items, changes[c].Index);
+        }
+        return (text, null);
+
+        static JsonNode? Read(string item)
+        {
+            try
+            {
+                return JsonNode.Parse(item, documentOptions: Lenient);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <summary>The text's root and the array a path of members from it names, or the object holding the first member the
+    /// path lacks, with how many of the path's members it reached; no root, with why, when the text does not read as JSON,
+    /// its root or a member on the path is no object, or the last no array.</summary>
+    private static (Node? Root, Node? Holder, int Reached, string? Problem) ArrayAt(string text, IReadOnlyList<string> path)
+    {
         Node root;
         try
         {
@@ -89,36 +163,30 @@ public static class JsonText
         }
         catch (FormatException unreadable)
         {
-            return (null, $"it does not read as JSON: {unreadable.Message}");
+            return (null, null, 0, $"it does not read as JSON: {unreadable.Message}");
         }
         if (root.Kind != Kind.Object)
         {
-            return (null, "its root is not an object");
+            return (null, null, 0, "its root is not an object");
         }
-        Layout layout = new(text, Unit(text, root));
         Node holder = root;
         for (int i = 0; i < path.Count; i++)
         {
             if (holder.Member(path[i]) is not { } member)
             {
-                JsonNode made = new JsonArray(item.DeepClone());
-                for (int j = path.Count - 1; j > i; j--)
-                {
-                    made = new JsonObject { [path[j]] = made };
-                }
-                return (layout.Add(holder, path[i], made), null);
+                return (root, holder, i, null);
             }
             if (i == path.Count - 1)
             {
-                return member.Value.Kind == Kind.Array ? (layout.Append(member.Value, item), null) : (null, $"its {path[i]} is not a list");
+                return member.Value.Kind == Kind.Array ? (root, member.Value, path.Count, null) : (null, null, i, $"its {path[i]} is not a list");
             }
             if (member.Value.Kind != Kind.Object)
             {
-                return (null, $"its {path[i]} is not an object");
+                return (null, null, i, $"its {path[i]} is not an object");
             }
             holder = member.Value;
         }
-        return (text, null);
+        return (null, null, 0, "its root is not a list");
     }
 
     /// <summary>A value written as dotnet new lays out launchSettings.json: each member and item of an object or array on a
@@ -265,23 +333,38 @@ public static class JsonText
                 : Replace(after, after, $"{comma} {member}{trailing}");
         }
 
-        /// <summary>A member taken out with its comma, and where it has a line of its own, with that line; the last without a
-        /// comma of its own takes the one before it; the only one leaves the object empty.</summary>
+        /// <summary>An array's item written in its place.</summary>
+        public string Rewrite(Node item, JsonNode value) => Replace(item.Start, item.End, value.ToJsonString(Written));
+
+        /// <summary>An array's item taken out as <see cref="Cut"/> takes one.</summary>
+        public string Remove(Node array, int index)
+        {
+            Node item = array.Items[index];
+            return Cut(array, array.Items.Count, item.Start, item.End, item.Comma, index > 0 ? array.Items[index - 1].Comma : -1);
+        }
+
         private string Remove(Node holder, Member member)
         {
             int index = holder.Members.IndexOf(member);
-            if (holder.Members.Count == 1)
+            return Cut(holder, holder.Members.Count, member.Start, member.Value.End, member.Comma, index > 0 ? holder.Members[index - 1].Comma : -1);
+        }
+
+        /// <summary>A member or item (from <paramref name="start"/> to <paramref name="end"/>) taken out with its comma, and where
+        /// it has a line of its own, with that line; the last without a comma of its own takes the one before it
+        /// (<paramref name="before"/>); the only one leaves its object or array empty.</summary>
+        private string Cut(Node holder, int count, int start, int end, int comma, int before)
+        {
+            if (count == 1)
             {
                 return Replace(holder.Start + 1, holder.Close, string.Empty);
             }
-            if (member.Comma < 0)
+            if (comma < 0)
             {
-                return Replace(holder.Members[index - 1].Comma, member.Value.End, string.Empty);
+                return Replace(before, end, string.Empty);
             }
-            int start = member.Start;
-            int end = member.Comma + 1;
-            int lineStart = LineStart(text, member.Start);
-            if (text.AsSpan(lineStart, member.Start - lineStart).IsWhiteSpace())
+            end = comma + 1;
+            int lineStart = LineStart(text, start);
+            if (text.AsSpan(lineStart, start - lineStart).IsWhiteSpace())
             {
                 int rest = end;
                 while (rest < text.Length && text[rest] is ' ' or '\t')

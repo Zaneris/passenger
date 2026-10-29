@@ -17,31 +17,55 @@ public sealed record SolutionFilter(string Path, string Solution, IReadOnlySet<s
         try
         {
             using JsonDocument read = SharedRead.Json(path);
-            if (read.RootElement.ValueKind != JsonValueKind.Object || !read.RootElement.TryGetProperty("solution", out JsonElement solution)
-                || solution.ValueKind != JsonValueKind.Object || !solution.TryGetProperty("path", out JsonElement named)
-                || named.GetString() is not { Length: > 0 } relative)
-            {
-                return null;
-            }
-            string solutionPath = PathNames.Canonical(System.IO.Path.GetFullPath(Separated(relative), System.IO.Path.GetDirectoryName(path)!));
-            string root = System.IO.Path.GetDirectoryName(solutionPath)!;
-            HashSet<string> projects = new(PathNames.Comparer);
-            if (solution.TryGetProperty("projects", out JsonElement listed) && listed.ValueKind == JsonValueKind.Array)
-            {
-                foreach (JsonElement project in listed.EnumerateArray())
-                {
-                    if (project.ValueKind == JsonValueKind.String && project.GetString() is { Length: > 0 } each)
-                    {
-                        projects.Add(PathNames.Canonical(System.IO.Path.GetFullPath(Separated(each), root)));
-                    }
-                }
-            }
-            return new SolutionFilter(path, solutionPath, projects);
+            return Of(path, read);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException or ArgumentException)
         {
             return null;
         }
+    }
+
+    /// <summary>The filter a text holds, its paths taken from where a file of it is (a canonical path); null for one that
+    /// does not read or names no solution.</summary>
+    public static SolutionFilter? Read(string path, string text)
+    {
+        try
+        {
+            using JsonDocument read = JsonDocument.Parse(text, JsonText.Lenient);
+            return Of(path, read);
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Where a path the filter writes names, from the folder it is written from (the filter's for the solution, the
+    /// solution's for a project), canonical.</summary>
+    public static string Named(string written, string from) => PathNames.Canonical(System.IO.Path.GetFullPath(Separated(written), from));
+
+    private static SolutionFilter? Of(string path, JsonDocument read)
+    {
+        if (read.RootElement.ValueKind != JsonValueKind.Object || !read.RootElement.TryGetProperty("solution", out JsonElement solution)
+            || solution.ValueKind != JsonValueKind.Object || !solution.TryGetProperty("path", out JsonElement named)
+            || named.GetString() is not { Length: > 0 } relative)
+        {
+            return null;
+        }
+        string solutionPath = Named(relative, System.IO.Path.GetDirectoryName(path)!);
+        string root = System.IO.Path.GetDirectoryName(solutionPath)!;
+        HashSet<string> projects = new(PathNames.Comparer);
+        if (solution.TryGetProperty("projects", out JsonElement listed) && listed.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement project in listed.EnumerateArray())
+            {
+                if (project.ValueKind == JsonValueKind.String && project.GetString() is { Length: > 0 } each)
+                {
+                    projects.Add(Named(each, root));
+                }
+            }
+        }
+        return new SolutionFilter(path, solutionPath, projects);
     }
 
     /// <summary>Whether another read of a filter keeps the same projects of the same solution.</summary>
