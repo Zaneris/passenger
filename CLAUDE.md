@@ -136,7 +136,8 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   fix, Undo and Redo) says it is done only once its own writes have landed (`WorkspaceEdits.LandedAsync`,
   `EditorArea.LandedAsync(paths, …)`), every command waiting inside its recording (`Recording.LandedAsync`,
   `WorkspaceEdits.LandedAsync(recording, …)`: the open files' changes taken first, a file never written left out;
-  `TypeRename.Apply` and `ApplyAsCommand` take the caller's), the window's words through `UnlandedAsync`. A file shown
+  `TypeRename.Apply` and `ApplyAsCommand` take the caller's), the window's words through `UnlandedAsync`; a command that
+  waits between its writes records with `Commands.RecordWrites`, so only what it wrote is its own. A file shown
   read-only refuses every change to its text (`TextDocument.IsReadOnly`, set only by `OpenDocument`), and an action on
   it greys with `Refusals.ReadOnly`.
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
@@ -225,10 +226,12 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **Docking.** A kept layout records windows by `ToolWindowIds`, so a value never changes; add a window with one
   `Dock.Add`. A view is built when first shown: what the IDE writes while it's hidden lives in a model, and code reaches
   a view only through a property that builds it for a person's action.
-- **C#.** `CSharpService`, `ServerDiagnostics` (one pull at a time after a pause), `CodeAssist` (the window's wiring) over
-  its parts; each language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a
+- **C#.** `CSharpService`, `ServerDiagnostics` (one pull at a time after a pause), `CodeAssist` (the window's wiring)
+  over its parts; each language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a
   server's edit to a file not open is refused if it was written in the last 2 s (an agent's call waits, `Patience`).
-  `ServerWatches` watches for the server what it registers (`WatchedFiles`), beside the folder's watcher.
+  `ServerWatches` watches for the server what it registers (`WatchedFiles`), beside the folder's watcher. A C# symbol's
+  uses in XAML come from one finder, `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to Declaration's resolver)
+  and `CodeSymbol`.
 - **Web languages.** `WebLanguages` (one Node.js server per kind; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`.
 - **Build and run.** `BuildRunController` (partials), `ConsoleSink` (every console through one `PumpAsync`),
