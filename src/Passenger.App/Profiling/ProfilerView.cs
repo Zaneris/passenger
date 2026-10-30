@@ -43,6 +43,10 @@ public sealed class CallRow(CallNode node, int depth, TreeRows<CallRow> list, st
     }
 }
 
+/// <summary>A method a row of the profiler window names: as the profiler gives it, and its module and token, which find
+/// its source by its PDB; none for a native frame.</summary>
+public readonly record struct ProfiledMethod(string Name, MethodCode? Code);
+
 /// <summary>The profiler window's pages, in the order of their tabs.</summary>
 public enum ProfilerPage
 {
@@ -106,7 +110,7 @@ public sealed class ProfilerView : DockPanel
         {
             if (tree.SelectedItem is CallRow row)
             {
-                Open(row.Node.Name);
+                Open(row.Node.Name, row.Node.Code);
             }
         };
         TreeKeys.Attach<CallRow>(tree, Toggle, OpenRow);
@@ -119,7 +123,7 @@ public sealed class ProfilerView : DockPanel
         {
             if (spots.SelectedItem is HotSpot spot)
             {
-                Open(spot.Name);
+                Open(spot.Name, spot.Code);
             }
         };
         types = new ListBox
@@ -139,7 +143,7 @@ public sealed class ProfilerView : DockPanel
         {
             if (backTraces.SelectedItem is CallRow row)
             {
-                Open(row.Node.Name);
+                Open(row.Node.Name, row.Node.Code);
             }
         };
         allocations = new Grid { ColumnDefinitions = new ColumnDefinitions("2*,1,3*") };
@@ -323,8 +327,8 @@ public sealed class ProfilerView : DockPanel
     /// <summary>Open Snapshot pressed: a .nettrace file to read.</summary>
     public event EventHandler? OpenSnapshotRequested;
 
-    /// <summary>A method to find in the source, by its name as the profiler gives it.</summary>
-    public event EventHandler<string>? OpenRequested;
+    /// <summary>A method to find in the source: its name as the profiler gives it, and where it is.</summary>
+    public event EventHandler<ProfiledMethod>? OpenRequested;
 
     public Snapshot? Snapshot { get; private set; }
 
@@ -580,16 +584,16 @@ public sealed class ProfilerView : DockPanel
     }
 
     /// <summary>A row's method opened at its source; false for a thread or a type, at the top, which stand for no method.</summary>
-    private bool OpenRow(CallRow row) => row.Depth > 0 && Open(row.Node.Name);
+    private bool OpenRow(CallRow row) => row.Depth > 0 && Open(row.Node.Name, row.Node.Code);
 
     /// <summary>Goes to a method's source; false for a row no source has (a thread, the runtime's own frames).</summary>
-    private bool Open(string method)
+    private bool Open(string method, MethodCode? code)
     {
         if (method.StartsWith('[') || method.StartsWith("Thread ", StringComparison.Ordinal))
         {
             return false;
         }
-        OpenRequested?.Invoke(this, method);
+        OpenRequested?.Invoke(this, new ProfiledMethod(method, code));
         return true;
     }
 

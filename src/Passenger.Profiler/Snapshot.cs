@@ -8,7 +8,7 @@ namespace Passenger.Profiler;
 /// <summary>A node of the call tree: a method called along one path from a thread's first frame, with how many samples
 /// found the thread in it (Total) and in it and no deeper (Self). Most nodes have one callee, which is kept without a
 /// table by name; the callees are listed once, when first asked for, the tree being whole by then.</summary>
-public sealed class CallNode(string name, string module, CallNode? parent)
+public sealed class CallNode(string name, string module, CallNode? parent, MethodCode? code = null)
 {
     /// <summary>The callee while there is one.</summary>
     private CallNode? only;
@@ -21,6 +21,9 @@ public sealed class CallNode(string name, string module, CallNode? parent)
 
     public string Name { get; internal set; } = name;
     public string Module { get; } = module;
+
+    /// <summary>Where its method is, as <see cref="HotSpot.Code"/> says it; none for a thread, a type or a native frame.</summary>
+    public MethodCode? Code { get; } = code;
     public CallNode? Parent { get; } = parent;
     public int Total { get; internal set; }
     public int Self { get; internal set; }
@@ -29,11 +32,11 @@ public sealed class CallNode(string name, string module, CallNode? parent)
     /// <summary>The children, the heaviest first, as the call tree lists them.</summary>
     public IReadOnlyList<CallNode> Ordered => ordered ??= children is not null ? Sorted(children) : only is not null ? [only] : [];
 
-    internal CallNode Child(string method, string module)
+    internal CallNode Child(string method, string module, MethodCode? code)
     {
         if (children is null && (only is null || only.Name == method))
         {
-            return only ??= new CallNode(method, module, this);
+            return only ??= new CallNode(method, module, this, code);
         }
         if (children is null)
         {
@@ -42,7 +45,7 @@ public sealed class CallNode(string name, string module, CallNode? parent)
         }
         if (!children.TryGetValue(method, out CallNode? child))
         {
-            children[method] = child = new CallNode(method, module, this);
+            children[method] = child = new CallNode(method, module, this, code);
             ordered = null;
         }
         return child;
@@ -308,7 +311,7 @@ public sealed class Snapshot
         {
             if (!threads.TryGetValue(thread, out CallNode? node))
             {
-                threads[thread] = node = all.Child(threadNames.GetValueOrDefault(thread, $"Thread {thread}"), string.Empty);
+                threads[thread] = node = all.Child(threadNames.GetValueOrDefault(thread, $"Thread {thread}"), string.Empty, null);
             }
             int[] caught = stacks[stack];
             all.Total += count;
@@ -317,7 +320,7 @@ public sealed class Snapshot
             for (int i = caught.Length - 1; i >= 0; i--)
             {
                 (string method, string module) = frames[caught[i]];
-                node = node.Child(method, module);
+                node = node.Child(method, module, codes[caught[i]]);
                 node.Total += count;
             }
             node.Self += count;
@@ -378,7 +381,7 @@ public sealed class Snapshot
             CallNode at = so.Root;
             foreach (int frame in stacks[tick.Stack])
             {
-                at = at.Child(frames[frame].Method, frames[frame].Module);
+                at = at.Child(frames[frame].Method, frames[frame].Module, codes[frame]);
                 at.Total += kilobytes;
             }
             at.Self += kilobytes;

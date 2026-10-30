@@ -165,6 +165,115 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         window.Close();
     }
 
+    /// <summary>Go to Source on a hot spot opens its method where its PDB says it is, at its first statement's line, in a
+    /// folder with no language server to look a name up in: an async method's (its state machine's MoveNext), a nested
+    /// type's, a generic type's (shared code, its type argument __Canon) and a lambda's; and Enter on the call tree's row of
+    /// the nested type's method opens it too.</summary>
+    [AvaloniaFact]
+    public void Go_to_Source_opens_each_profiled_method_where_its_PDB_says_async_nested_generic_and_lambda_alike()
+    {
+        string project = Project("Shapes", """
+            using System.Runtime.CompilerServices;
+
+            public static class Program
+            {
+                public static void Main()
+                {
+                    DateTime until = DateTime.UtcNow.AddSeconds(3);
+                    Func<int, long> spin = n => { long sum = 0; for (int i = 0; i < n; i++) { sum += i % 7; } return sum; };
+                    while (DateTime.UtcNow < until)
+                    {
+                        Worker.CrunchAsync().GetAwaiter().GetResult();
+                        Outer.Inner.Spin();
+                        Box<string>.Churn();
+                        GC.KeepAlive(spin(1_000_000));
+                    }
+                }
+            }
+
+            public static class Worker
+            {
+                public static async Task CrunchAsync()
+                {
+                    await Task.CompletedTask;
+                    long sum = 0;
+                    for (int i = 0; i < 2_000_000; i++) { sum += i % 13; }
+                    GC.KeepAlive(sum);
+                }
+            }
+
+            public static class Outer
+            {
+                public static class Inner
+                {
+                    [MethodImpl(MethodImplOptions.NoInlining)]
+                    public static void Spin()
+                    {
+                        long sum = 0;
+                        for (int i = 0; i < 8_000_000; i++) { sum += i % 11; }
+                        GC.KeepAlive(sum);
+                    }
+                }
+            }
+
+            public static class Box<T>
+            {
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                public static void Churn()
+                {
+                    long sum = 0;
+                    for (int i = 0; i < 2_000_000; i++) { sum += i % 5; }
+                    GC.KeepAlive(sum);
+                }
+            }
+            """);
+        string program = PathNames.Canonical(Path.Combine(project, "Program.cs"));
+        string[] lines = File.ReadAllLines(program);
+        // The line (from zero) of a method's opening brace, its first statement in its PDB; a lambda's is on its own line.
+        int Brace(string signature) => Array.FindIndex(lines, l => l.Contains(signature, StringComparison.Ordinal)) + 1;
+        int lambda = Array.FindIndex(lines, l => l.Contains("Func<int, long> spin", StringComparison.Ordinal));
+        MainWindow window = Ui.OpenFolder(project, languageServer: false);
+        try
+        {
+            Ui.Launched(window, window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => window.ProfilerView.Snapshot is not null, "the program's end to show its snapshot", TimeSpan.FromMinutes(2));
+            Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
+            view.ShowPage(Passenger.App.Profiling.ProfilerPage.HotSpots);
+            Ui.Settle();
+            Avalonia.Controls.ListBox spots = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.ListBox>()
+                .Single(l => ReferenceEquals(l.ItemsSource, view.Snapshot!.HotSpots));
+            foreach ((string frame, int line) in (ReadOnlySpan<(string, int)>)[("Worker+<CrunchAsync>d__0.MoveNext(", Brace("static async Task CrunchAsync()")),
+                ("Outer+Inner.Spin(", Brace("static void Spin()")), ("Box`1[System.__Canon].Churn(", Brace("static void Churn()")), ("Program+<>c.<Main>b__", lambda)])
+            {
+                HotSpot spot = view.Snapshot!.HotSpots.FirstOrDefault(h => h.Name.StartsWith(frame, StringComparison.Ordinal))
+                    ?? throw new Xunit.Sdk.XunitException($"No hot spot is {frame}…: {string.Join(", ", view.Snapshot.HotSpots.Take(12).Select(h => h.Name))}");
+                window.OpenFile(Path.Combine(project, "Shapes.csproj"));
+                Ui.DoubleClick(Ui.Row(spots, spot));
+                Ui.WaitFor(() => window.EditorArea.Active?.Path is { } open && PathNames.Same(open, program),
+                    () => $"Go to Source on {spot.Name} to open Program.cs, where {window.EditorArea.Active?.Path} is open ({window.Status})");
+                Assert.True(window.EditorArea.CodeEditor.CaretPosition.Line == line,
+                    $"Go to Source on {spot.Name} opened line {window.EditorArea.CodeEditor.CaretPosition.Line + 1}, not its method's first line, {line + 1}");
+            }
+
+            view.ShowPage(Passenger.App.Profiling.ProfilerPage.CallTree);
+            Ui.Settle();
+            Passenger.App.Profiling.CallRow spin = view.Rows.FirstOrDefault(r => r.Node.Name.StartsWith("Outer+Inner.Spin(", StringComparison.Ordinal))
+                ?? throw new Xunit.Sdk.XunitException($"The call tree's hot path does not reach Outer+Inner.Spin: {string.Join(" > ", view.Rows.Select(r => r.Node.Name))}");
+            Avalonia.Controls.ListBox tree = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.ListBox>()
+                .Single(l => ReferenceEquals(l.ItemsSource, view.Rows));
+            window.OpenFile(Path.Combine(project, "Shapes.csproj"));
+            Ui.Click(Ui.Row(tree, spin));
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.EditorArea.Active?.Path is { } open && PathNames.Same(open, program),
+                () => $"Enter on the call tree's {spin.Node.Name} to open Program.cs, where {window.EditorArea.Active?.Path} is open ({window.Status})");
+            Assert.Equal(Brace("static void Spin()"), window.EditorArea.CodeEditor.CaretPosition.Line);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Opening a profile costs a stack what keeping it takes, not a name made again for each frame: from a thousand
     /// stacks about seventy frames deep to ten thousand, under 12 KB a stack more (on every thread, the least of three). Over
     /// the larger, a drag's pointer move across the timeline costs the UI thread no more 2,400 wide than 800 wide, and under
