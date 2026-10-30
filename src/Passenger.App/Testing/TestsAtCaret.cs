@@ -11,11 +11,14 @@ namespace Passenger.App.Testing;
 /// run only through the types deriving from them.</summary>
 public sealed record DeclaredTest(string Type, string Method, int Line, IReadOnlyList<KeyValuePair<string, string>> Traits, bool Abstract)
 {
+    /// <summary>The names its cases are given as string literals (NUnit's TestCase TestName), each a runner's test name.</summary>
+    public IReadOnlyList<string> Cases { get; init; } = [];
+
     public bool SameAs(DeclaredTest other) => Line == other.Line && SameTest(other);
 
     /// <summary>The same test, on whatever line.</summary>
     public bool SameTest(DeclaredTest other) =>
-        Type == other.Type && Method == other.Method && Abstract == other.Abstract && Traits.SequenceEqual(other.Traits);
+        Type == other.Type && Method == other.Method && Abstract == other.Abstract && Traits.SequenceEqual(other.Traits) && Cases.SequenceEqual(other.Cases);
 }
 
 /// <summary>What a C# file declares for testing: the types that hold tests and the tests, with the lines their names
@@ -177,7 +180,7 @@ public static class TestsAtCaret
                 any = true;
                 typeTraits ??= Traits(type.AttributeLists);
                 tests.Add(new DeclaredTest(name, method.Identifier.ValueText, syntax.Text.GetLineFromOffset(method.Identifier.SpanStart),
-                    [.. typeTraits, .. Traits(method.AttributeLists)], inherited));
+                    [.. typeTraits, .. Traits(method.AttributeLists)], inherited) { Cases = Cases(method.AttributeLists) });
             }
             if (any)
             {
@@ -241,6 +244,14 @@ public static class TestsAtCaret
         }
         return traits;
     }
+
+    /// <summary>The names TestCase attributes give their cases as string literals (TestName = "Adds"), but those NUnit makes
+    /// from a pattern ("{m}({a})").</summary>
+    private static string[] Cases(SyntaxList<AttributeListSyntax> lists) =>
+        [.. lists.SelectMany(l => l.Attributes).Where(a => Name(a) == "TestCase").SelectMany(a => a.ArgumentList?.Arguments ?? [])
+            .Where(a => a.NameEquals?.Name.Identifier.ValueText == "TestName")
+            .Select(a => a.Expression is LiteralExpressionSyntax { RawKind: (int)SyntaxKind.StringLiteralExpression } literal ? literal.Token.ValueText : null)
+            .OfType<string>().Where(n => n.Length > 0 && !n.Contains('{', StringComparison.Ordinal))];
 
     private static string Name(AttributeSyntax attribute) => Simple(attribute.Name);
 

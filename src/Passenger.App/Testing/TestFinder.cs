@@ -337,6 +337,7 @@ public sealed class TestFinder
                     Path = path,
                     Line = t.Line + 1,
                     Traits = t.Traits,
+                    Cases = t.Cases,
                 }));
             }
             told[project.Path] = new(new CodeTests(tests, files.ToDictionary(f => f.Key, f => f.Value.Methods, StringComparer.Ordinal)), files, tests, starts);

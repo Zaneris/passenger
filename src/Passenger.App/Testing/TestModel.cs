@@ -21,6 +21,10 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
     /// <summary>Its traits, categories included, as name and value.</summary>
     public IReadOnlyList<KeyValuePair<string, string>> Traits { get; init; } = [];
 
+    /// <summary>The names a test found in the code gives its cases (NUnit's TestName), which a runner names them by in
+    /// place of the method's.</summary>
+    public IReadOnlyList<string> Cases { get; init; } = [];
+
     /// <summary>The method it is or runs: its full name without the arguments NUnit names a case or a fixture's
     /// instance by.</summary>
     public string Method => MethodOf(FullyQualifiedName);
@@ -65,8 +69,16 @@ public sealed record TestItem(string Project, string FullyQualifiedName, string 
         }
         string method = MethodOf(fullyQualifiedName);
         int dot = method.LastIndexOf('.');
-        string shown = dot > 0 && displayName.StartsWith(method[..(dot + 1)], StringComparison.Ordinal) ? displayName[(dot + 1)..] : displayName;
+        string shown = Shown(method, displayName);
         return shown == method[(dot + 1)..] || shown == method || (!shown.Contains('(', StringComparison.Ordinal) && method.Length == fullyQualifiedName.Length) ? null : shown;
+    }
+
+    /// <summary>A display name less the type its method's full name begins with ("Doubles(value: 1)" of
+    /// "A.B.Class.Doubles(value: 1)"): a data row's name as the tree shows it.</summary>
+    public static string Shown(string method, string displayName)
+    {
+        int dot = method.LastIndexOf('.');
+        return dot > 0 && displayName.StartsWith(method[..(dot + 1)], StringComparison.Ordinal) ? displayName[(dot + 1)..] : displayName;
     }
 
     /// <summary>A test of a fixture's instance, its class named with the arguments or type arguments it was made with, as

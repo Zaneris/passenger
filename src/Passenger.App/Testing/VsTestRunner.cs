@@ -301,15 +301,51 @@ public sealed class VsTestRunner : ITestRunner
             .Select(test => (Assembly: bySource.GetValueOrDefault(cases.Canonical(test.Source)), Test: test))
             .Where(pair => pair.Assembly is not null)
             .Select(pair => (pair.Assembly!, pair.Test));
-        return cases.Tell(assemblies, inAssemblies, test => test.Id.ToString(), (assembly, test) => new TestItem(assembly.Project.Path, test.FullyQualifiedName, test.DisplayName)
+        return cases.Tell(assemblies, inAssemblies, test => test.Id.ToString(), (assembly, test) => Told(assembly, test, ManagedName(test) ?? test.FullyQualifiedName),
+            (_, test) => test);
+    }
+
+    /// <summary>A test case as the IDE's test, by the full name given, which a data row's arguments may follow.</summary>
+    private TestItem Told(TestAssembly assembly, TestCase test, string name) =>
+        new(assembly.Project.Path, name, test.DisplayName)
         {
             Framework = assembly.Framework,
-            Row = TestItem.RowOf(test.FullyQualifiedName, test.DisplayName),
+            Row = TestItem.RowOf(name, test.DisplayName),
             Path = string.IsNullOrEmpty(test.CodeFilePath) ? null : cases.Canonical(test.CodeFilePath),
             Line = test.LineNumber,
             Traits = [.. test.Traits.Select(t => new KeyValuePair<string, string>(t.Name, t.Value))],
-        }, (_, test) => test);
+        };
+
+    /// <summary>A test case's method as its adapter names it apart from its display (MSTest's and xUnit's adapters do), its
+    /// type's full name and the method's without its parameters: a case its framework names otherwise is its method's
+    /// all the same. Null where the adapter names none.</summary>
+    private static string? ManagedName(TestCase test)
+    {
+        string? type = null;
+        string? method = null;
+        foreach (TestProperty property in test.Properties)
+        {
+            if (property.Id == ManagedType)
+            {
+                type = test.GetPropertyValue(property) as string;
+            }
+            else if (property.Id == ManagedMethod)
+            {
+                method = test.GetPropertyValue(property) as string;
+            }
+        }
+        if (type is not { Length: > 0 } || method is not { Length: > 0 })
+        {
+            return null;
+        }
+        int end = method.AsSpan().IndexOfAny('(', '`');
+        return $"{type}.{(end < 0 ? method : method[..end])}";
     }
+
+    /// <summary>The test case properties VSTest's adapters name a test's type and method by.</summary>
+    private const string ManagedType = "TestCase.ManagedType";
+
+    private const string ManagedMethod = "TestCase.ManagedMethod";
 
     private static TestOutcome Outcome(TestItem test, VsResult result) => new(test, StateOf(result.Outcome), result.Duration)
     {

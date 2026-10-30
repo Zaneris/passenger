@@ -764,11 +764,11 @@ public sealed class TestTree
             {
                 copies.Add((method, first[entry.Identity]));
             }
-            foreach (TestItem test in entry.Items.OrderBy(t => t.Row, StringComparer.Ordinal))
+            foreach (TestItem test in entry.Items.OrderBy(t => t.Row ?? entry.Named.GetValueOrDefault(t), StringComparer.Ordinal))
             {
                 method.Items.Add(test);
                 TestNode shows = method;
-                if (test.Row is { } row)
+                if ((test.Row ?? entry.Named.GetValueOrDefault(test)) is { } row)
                 {
                     shows = Node(method, TestNodeKind.Row, row, $"{key}/{(int)TestNodeKind.Row}:{row}", $"{entry.Identity}::{row}");
                     shows.Item = test;
@@ -876,7 +876,8 @@ public sealed class TestTree
     }
 
     /// <summary>Each project's test methods, a multi-targeted project's once for each framework: the code's tests and the
-    /// runner's merged on their method.</summary>
+    /// runner's merged on their method. A runner's test named by a case name the code gives a method (NUnit's TestName) is
+    /// a row of that method, named as the runner shows it.</summary>
     private List<Entry> Entries()
     {
         List<Entry> entries = [];
@@ -885,6 +886,15 @@ public sealed class TestTree
         for (int order = 0; order < inputs.Count; order++)
         {
             ProjectTests project = inputs[order];
+            Dictionary<string, TestItem> cases = new(StringComparer.Ordinal);
+            foreach (TestItem declared in project.Code.Tests.Where(t => t.Cases.Count > 0))
+            {
+                string type = declared.Method[..(declared.Method.LastIndexOf('.') + 1)];
+                foreach (string name in declared.Cases)
+                {
+                    cases.TryAdd(type + name, declared);
+                }
+            }
             bool several = project.Discovered.Count > 1;
             IEnumerable<(string? Framework, IReadOnlyList<TestItem> Found)> tops = several
                 ? project.Discovered.Select(s => ((string?)s.Framework, s.Tests))
@@ -896,13 +906,15 @@ public sealed class TestTree
                     frameworks.TryAdd(framework, frameworks.Count);
                 }
                 IEnumerable<TestItem> kept = found.Where(t => t.Path is null || !project.Code.MethodsByFile.TryGetValue(t.Path, out IReadOnlySet<string>? declared)
-                    || declared.Contains(t.Method[(t.Method.LastIndexOf('.') + 1)..]));
+                    || declared.Contains(t.Method[(t.Method.LastIndexOf('.') + 1)..]) || cases.ContainsKey(t.Method));
                 foreach (TestItem test in kept.Concat(project.Code.Tests))
                 {
-                    string identity = $"{(several ? framework : null)}|{project.Project}::{test.Method}";
+                    TestItem? named = test.Framework is not null && test.Row is null && cases.TryGetValue(test.Method, out TestItem? owner) ? owner : null;
+                    string method = named?.Method ?? test.Method;
+                    string identity = $"{(several ? framework : null)}|{project.Project}::{method}";
                     if (!byIdentity.TryGetValue(identity, out Entry? entry))
                     {
-                        entry = new Entry(project, order, framework, several, test.Method, identity, entries.Count, frameworks);
+                        entry = new Entry(project, order, framework, several, method, identity, entries.Count, frameworks);
                         byIdentity[identity] = entry;
                         entries.Add(entry);
                     }
@@ -913,6 +925,10 @@ public sealed class TestTree
                     else
                     {
                         entry.Items.Add(test);
+                        if (named is not null)
+                        {
+                            entry.Named[test] = TestItem.Shown(test.Method, test.DisplayName);
+                        }
                     }
                 }
             }
@@ -1103,6 +1119,9 @@ public sealed class TestTree
         public TestItem? FromCode { get; set; }
 
         public List<TestItem> Items { get; } = [];
+
+        /// <summary>The rows of its tests a runner names by a case name its code gives (<see cref="TestItem.Cases"/>).</summary>
+        public Dictionary<TestItem, string> Named { get; } = new(ReferenceEqualityComparer.Instance);
     }
 
     /// <summary>A group a method is under: its kind, its name, its place among its kind's (a project's among the test

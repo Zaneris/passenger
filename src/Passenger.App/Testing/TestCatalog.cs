@@ -5,8 +5,9 @@ namespace Passenger.App.Testing;
 
 /// <summary>The tests a runner found, each told as the IDE's (<see cref="TestItem"/>) and kept by its key with what the
 /// runner runs it by (VSTest's test case, a Testing Platform node). An assembly looked at again replaces what it had; a
-/// test it names twice by its id is told once; two whose keys are one (an MSTest data row named as its method) are told
-/// as rows named by the order they came in. Touched only by one discovery or run at a time, as the controller asks.</summary>
+/// test it names twice by its id is told once; tests of one method that its runner names as the method (an MSTest data
+/// row given a DisplayName) are each a row named as the runner shows it, two shown alike told apart by the order they came
+/// in. Touched only by one discovery or run at a time, as the controller asks.</summary>
 public sealed class TestCatalog<THandle>
     where THandle : class
 {
@@ -48,14 +49,21 @@ public sealed class TestCatalog<THandle>
             byAssembly[assembly.Path] = [];
         }
         HashSet<(string, string)> ids = [];
-        List<TestItem> told = [];
+        List<(TestAssembly Assembly, T Test, TestItem Made)> each = [];
+        Dictionary<(string, string), int> ofMethod = [];
         foreach ((TestAssembly assembly, T test) in found)
         {
-            if (!ids.Add((assembly.Path, id(test))))
+            if (ids.Add((assembly.Path, id(test))))
             {
-                continue;
+                TestItem made = item(assembly, test);
+                each.Add((assembly, test, made));
+                ofMethod[(assembly.Path, made.Method)] = ofMethod.GetValueOrDefault((assembly.Path, made.Method)) + 1;
             }
-            TestItem made = item(assembly, test);
+        }
+        List<TestItem> told = [];
+        foreach ((TestAssembly assembly, T test, TestItem named) in each)
+        {
+            TestItem made = named.Row is null && ofMethod[(assembly.Path, named.Method)] > 1 ? named with { Row = TestItem.Shown(named.Method, named.DisplayName) } : named;
             string row = made.Row ?? made.DisplayName;
             for (int again = 2; handles.ContainsKey(made.Key); again++)
             {

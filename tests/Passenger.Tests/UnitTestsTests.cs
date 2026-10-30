@@ -398,6 +398,48 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         }
     }
 
+    /// <summary>NUnit's cases named by TestName and MSTest's data rows named by DisplayName are rows of their methods, by
+    /// the names given: each runs, a failing one's failure is told, and the tally and the outcome filters count each.</summary>
+    [AvaloniaFact]
+    public void Nunit_cases_named_by_test_name_and_mstest_rows_named_by_display_name_are_rows_of_their_methods_that_run_and_count()
+    {
+        string solution = NewFolder();
+        Write(solution, "Named.NUnit/Named.NUnit.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
+            "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"NUnit\" Version=\"4.4.0\" />\n" +
+            "    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"5.2.0\" />\n  </ItemGroup>\n</Project>\n");
+        Write(solution, "Named.NUnit/NamedCases.cs",
+            "using NUnit.Framework;\n\nnamespace Named.NUnit;\n\npublic class NamedCases\n{\n    [TestCase(1, 1, 2, TestName = \"OnePlusOne\")]\n" +
+            "    [TestCase(2, 2, 5, TestName = \"TwoPlusTwoIsFive\")]\n    public void Sums(int a, int b, int sum) => Assert.That(a + b, Is.EqualTo(sum));\n}\n");
+        Write(solution, "Named.MSTest/Named.MSTest.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
+            "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"MSTest.TestAdapter\" Version=\"3.10.0\" />\n" +
+            "    <PackageReference Include=\"MSTest.TestFramework\" Version=\"3.10.0\" />\n  </ItemGroup>\n</Project>\n");
+        Write(solution, "Named.MSTest/NamedRows.cs",
+            "using Microsoft.VisualStudio.TestTools.UnitTesting;\n\nnamespace Named.MSTest;\n\n[TestClass]\npublic class NamedRows\n{\n    [TestMethod]\n" +
+            "    [DataRow(1, 1, 2, DisplayName = \"small\")]\n    [DataRow(2, 2, 5, DisplayName = \"wrong\")]\n    [DataRow(3, 3, 6)]\n" +
+            "    public void Sums(int a, int b, int sum) => Assert.AreEqual(sum, a + b);\n}\n");
+        Write(solution, "Named.slnx", "<Solution>\n  <Project Path=\"Named.NUnit/Named.NUnit.csproj\" />\n  <Project Path=\"Named.MSTest/Named.MSTest.csproj\" />\n</Solution>\n");
+        Restore.Run(Path.Combine(solution, "Named.slnx"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        Tree(window);
+        Ui.WaitFor(() => window.Tests.Tree.Methods.Count(m => m.Name == "Sums") == 2, "both Sums from their code");
+
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy, "the run of every test", TimeSpan.FromSeconds(180));
+        TestNode cases = window.Tests.Tree.Methods.Single(m => m.FullName == "Named.NUnit.NamedCases.Sums");
+        TestNode rows = window.Tests.Tree.Methods.Single(m => m.FullName == "Named.MSTest.NamedRows.Sums");
+        Assert.Equal([("OnePlusOne", TestState.Passed), ("TwoPlusTwoIsFive", TestState.Failed)], cases.Children.Select(r => (r.Name, r.State)));
+        Assert.Equal([("Sums (3,3,6)", TestState.Passed), ("small", TestState.Passed), ("wrong", TestState.Failed)],
+            rows.Children.Select(r => (r.Name, r.State)).OrderBy(r => r.Name, StringComparer.Ordinal));
+        Assert.Contains("TwoPlusTwoIsFive: Failed", cases.Details, StringComparison.Ordinal);
+        Assert.Contains("wrong: Failed", rows.Details, StringComparison.Ordinal);
+        Assert.StartsWith("Tests passed: 3, failed: 2 of 5", window.BottomPanel.Tests.Status, StringComparison.Ordinal);
+        Assert.Equal(["5", "3", "2"], new[] { "All Tests", "Passed Tests", "Failed Tests" }.Select(f => Count(window, f)));
+        Assert.True(window.Tests.Tree.Methods.Count == 2, $"The tree shows methods besides the two Sums: [{string.Join(", ", window.Tests.Tree.Methods.Select(m => m.FullName))}]");
+        window.Close();
+    }
+
     /// <summary>A run broken off by its test host's crash, a test calling Environment.Exit(3), says why in its tally, which
     /// an agent's tests_run answers with, in the Unit Tests window and on the status bar: the crash as VSTest tells it, and
     /// the test running then.</summary>
