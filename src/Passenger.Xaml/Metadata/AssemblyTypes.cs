@@ -29,7 +29,7 @@ public sealed class AssemblyTypes
     private readonly MetadataReader reader;
     private readonly object gate = new();
 
-    private AssemblyTypes(string path, PEReader pe)
+    private AssemblyTypes(string path, PEReader pe, Stream file)
     {
         Path = path;
         this.pe = pe;
@@ -37,6 +37,7 @@ public sealed class AssemblyTypes
         Name = reader.IsAssembly ? reader.GetString(reader.GetAssemblyDefinition().Name) : System.IO.Path.GetFileNameWithoutExtension(path);
         Types = ReadTypes();
         Attributes = reader.IsAssembly ? ReadAttributes(reader.GetAssemblyDefinition().GetCustomAttributes()) : [];
+        ClassXamlFiles = ReadClassXamlFiles(file);
     }
 
     public string Path { get; }
@@ -76,6 +77,11 @@ public sealed class AssemblyTypes
     }
 
     private List<string>? xamlFiles;
+
+    /// <summary>The XAML files compiled into one of its classes (<c>x:Class</c>), by their paths in its project
+    /// (<c>/FluentTheme.xaml</c>), as the index of classes Avalonia's compiler keeps among its resources names them: a
+    /// theme's root, which merges in the rest, among them.</summary>
+    public IReadOnlyList<string> ClassXamlFiles { get; }
 
     /// <summary>The string constants its code holds: what XAML compiled into it keeps of its resources' keys.</summary>
     public IReadOnlyList<string> Strings
@@ -125,11 +131,74 @@ public sealed class AssemblyTypes
                 pe.Dispose();
                 return null;
             }
-            return new AssemblyTypes(path, pe);
+            return new AssemblyTypes(path, pe, stream);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or BadImageFormatException or InvalidOperationException)
         {
             return null;
+        }
+    }
+
+    /// <summary>The XAML files of its classes, read from the file while it is open: only the index of Avalonia's resources
+    /// and the entry naming them, never the rest (a font library's fonts are among them).</summary>
+    private IReadOnlyList<string> ReadClassXamlFiles(Stream file)
+    {
+        if (!reader.IsAssembly || pe.PEHeaders.CorHeader is not { } cor || !pe.PEHeaders.TryGetDirectoryOffset(cor.ResourcesDirectory, out int resources))
+        {
+            return [];
+        }
+        foreach (ManifestResourceHandle handle in reader.ManifestResources)
+        {
+            ManifestResource resource = reader.GetManifestResource(handle);
+            if (resource.Implementation.IsNil && reader.StringComparer.Equals(resource.Name, "!AvaloniaResources"))
+            {
+                file.Position = resources + resource.Offset;
+                return XamlClassFiles(file);
+            }
+        }
+        return [];
+    }
+
+    /// <summary>The paths of the XAML compiled into classes, from Avalonia's resources (the length the assembly gives
+    /// them, then their index and entries) read from where a stream stands: none where they hold no such entry, or are
+    /// not as Avalonia 11 and later write them.</summary>
+    public static IReadOnlyList<string> XamlClassFiles(Stream resources)
+    {
+        try
+        {
+            using BinaryReader read = new(resources, System.Text.Encoding.UTF8, leaveOpen: true);
+            long length = read.ReadUInt32();
+            long start = resources.Position;
+            int indexSize = read.ReadInt32();
+            if (indexSize < 8 || indexSize > length - 4 || read.ReadInt32() != 2)
+            {
+                return [];
+            }
+            int count = read.ReadInt32();
+            for (int i = 0; i < count && resources.Position < start + 4 + indexSize; i++)
+            {
+                string path = read.ReadString();
+                int offset = read.ReadInt32();
+                int size = read.ReadInt32();
+                if (path != "/!AvaloniaResourceXamlInfo")
+                {
+                    continue;
+                }
+                if (offset < 0 || size is < 0 or > 16 << 20 || 4L + indexSize + offset + size > length)
+                {
+                    return [];
+                }
+                resources.Position = start + 4 + indexSize + offset;
+                using MemoryStream info = new(read.ReadBytes(size));
+                using System.Xml.XmlReader xml = System.Xml.XmlReader.Create(info, new System.Xml.XmlReaderSettings { DtdProcessing = System.Xml.DtdProcessing.Prohibit, XmlResolver = null });
+                return [.. System.Xml.Linq.XDocument.Load(xml).Descendants().Where(e => e.Name.LocalName == "Value" && e.Parent?.Name.LocalName == "KeyValueOfstringstring")
+                    .Select(e => e.Value).Where(v => v.StartsWith('/'))];
+            }
+            return [];
+        }
+        catch (Exception error) when (error is IOException or System.Xml.XmlException)
+        {
+            return [];
         }
     }
 

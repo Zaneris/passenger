@@ -328,8 +328,9 @@ internal sealed partial class XamlAssist : LanguageAssist
 
     /// <summary>Where in the theme library's own XAML (Fluent's) a control's theme, a part of its template, or a resource
     /// the theme defines is written, its file had from the library's Source Link (to open read-only), and what to say of it;
-    /// no place, and why, where it cannot be had. The files are those compiled into the theme, and those its control list
-    /// merges in (Fluent's Button.xaml, in FluentControls.xaml), whose own text says them.</summary>
+    /// no place, and why, where it cannot be had. The files are those compiled into the theme, then, where none of those
+    /// named for the target has it, those the files that merge others merge in: the theme's root (Fluent's FluentTheme.xaml,
+    /// merging its resources in) and its control list (FluentControls.xaml, merging Button.xaml in), whose own text says them.</summary>
     internal async Task<((string Path, TextPosition Position)? Place, string Said)> ThemePlaceAsync(XamlTarget target, XamlFile file)
     {
         if (context.Xaml?.Invoke() is not { } service)
@@ -344,7 +345,9 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
         Said said = new();
         string assembly = LibrarySources.Implementation(theme.Path);
-        List<string> known = [.. theme.XamlFiles];
+        List<string> known = [.. theme.XamlFiles.Union(theme.ClassXamlFiles, StringComparer.Ordinal)];
+        // What the theme's root merges in, where a resource the controls' files share is kept.
+        List<string> merged = [];
         Task<string?> Fetch(string path)
         {
             context.Say($"Reading {theme.Name}'s {path.TrimStart('/')} from its Source Link…");
@@ -352,41 +355,53 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
         IReadOnlyList<string> names = target.Type is { } type ? [.. file.Types.SelfAndBases(type).Select(t => t.Name)] : [];
         string? Named() => names.Select(n => known.FirstOrDefault(f => Path.GetFileNameWithoutExtension(f) == n)).FirstOrDefault(f => f is not null);
-        bool Prefixed() => target.Part is { } key && known.Any(f => key.StartsWith(Path.GetFileNameWithoutExtension(f), StringComparison.Ordinal));
-        if (target.Type is not null ? Named() is null : !Prefixed())
+        IEnumerable<string> Candidates()
         {
-            foreach (string hub in theme.XamlFiles.Where(f => f.EndsWith("Controls.xaml", StringComparison.Ordinal)))
+            if (target.Type is not null)
+            {
+                return Named() is { } named ? [named] : [];
+            }
+            if (target.Part is not { } key)
+            {
+                return [];
+            }
+            return known.Where(f => key.StartsWith(Path.GetFileNameWithoutExtension(f), StringComparison.Ordinal)).OrderByDescending(f => Path.GetFileNameWithoutExtension(f).Length)
+                .Concat(merged).Concat(known.Where(f => f.Contains("/Accents/", StringComparison.Ordinal)));
+        }
+        HashSet<string> tried = new(StringComparer.Ordinal);
+        async Task<(string Path, TextPosition Position, string Said)?> FoundAsync()
+        {
+            foreach (string candidate in Candidates().Distinct(StringComparer.Ordinal).Where(c => !tried.Contains(c)).ToList())
+            {
+                if (tried.Count >= 12)
+                {
+                    break;
+                }
+                tried.Add(candidate);
+                if (await Fetch(candidate) is { } local && EditorArea.ReadText(local) is { } text && XamlNavigation.ThemePlace(target, text) is { } at)
+                {
+                    return (local, TextSnapshot.From(text).GetPosition(at), $"{theme.Name}'s {candidate.TrimStart('/')}, from its Source Link");
+                }
+            }
+            return null;
+        }
+        bool namedFor = target.Type is not null ? Named() is not null
+            : target.Part is { } part && known.Any(f => part.StartsWith(Path.GetFileNameWithoutExtension(f), StringComparison.Ordinal));
+        (string Path, TextPosition Position, string Said)? found = namedFor ? await FoundAsync() : null;
+        if (found is null)
+        {
+            foreach (string hub in theme.ClassXamlFiles.Concat(theme.XamlFiles.Where(f => f.EndsWith("Controls.xaml", StringComparison.Ordinal))).Distinct(StringComparer.Ordinal))
             {
                 if (await Fetch(hub) is { } local)
                 {
-                    known.AddRange(Included(EditorArea.ReadText(local) ?? string.Empty, hub, theme.Name).Where(f => !known.Contains(f)));
+                    List<string> included = [.. Included(EditorArea.ReadText(local) ?? string.Empty, hub, theme.Name)];
+                    known.AddRange(included.Where(f => !known.Contains(f)));
+                    merged.AddRange(theme.ClassXamlFiles.Contains(hub) ? included.Where(f => !merged.Contains(f)) : []);
                 }
             }
+            found = await FoundAsync();
         }
-        List<string> candidates = [];
-        if (target.Type is not null)
-        {
-            candidates.AddRange(Named() is { } named ? [named] : []);
-        }
-        else if (target.Part is { } key)
-        {
-            candidates.AddRange(known.Where(f => key.StartsWith(Path.GetFileNameWithoutExtension(f), StringComparison.Ordinal))
-                .OrderByDescending(f => Path.GetFileNameWithoutExtension(f).Length));
-            candidates.AddRange(known.Where(f => f.Contains("/Accents/", StringComparison.Ordinal) && !candidates.Contains(f)));
-        }
-        foreach (string candidate in candidates.Take(12))
-        {
-            if (await Fetch(candidate) is not { } local)
-            {
-                continue;
-            }
-            string text = EditorArea.ReadText(local) ?? string.Empty;
-            if (XamlNavigation.ThemePlace(target, text) is { } at)
-            {
-                return ((local, TextSnapshot.From(text).GetPosition(at)), $"{theme.Name}'s {candidate.TrimStart('/')}, from its Source Link");
-            }
-        }
-        return (null, said.Last ?? $"{target.Name} is not in {theme.Name}'s XAML");
+        return found is { } place ? ((place.Path, place.Position), place.Said) : (null, said.Last ?? $"{target.Name} is not in {theme.Name}'s XAML");
     }
 
     /// <summary>The files a theme's XAML merges in, as paths in its project: avares:// ones of its own assembly, and those

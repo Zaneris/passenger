@@ -1613,7 +1613,8 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Assert.Equal("Button.xaml", theme.Name);
         Assert.True(theme.IsReadOnly, "the theme's XAML opened editable");
         Assert.Contains("<|ControlTheme x:Key=\"{x:Type Button}\" TargetType=\"Button\">", CaretLine(window.EditorArea.CodeEditor), StringComparison.Ordinal);
-        Assert.Equal([("Avalonia.Themes.Fluent", "/Controls/FluentControls.xaml"), ("Avalonia.Themes.Fluent", "/Controls/Button.xaml")], sources.Asked);
+        Assert.Equal([("Avalonia.Themes.Fluent", "/FluentTheme.xaml"), ("Avalonia.Themes.Fluent", "/Controls/FluentControls.xaml"), ("Avalonia.Themes.Fluent", "/Controls/Button.xaml")],
+            sources.Asked);
 
         window.OpenFile(app.PathOf("App.axaml"));
         Ui.Settle();
@@ -1630,8 +1631,34 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "{DynamicResource ButtonBack");
         Ui.Run(window, AppActions.GoToDeclaration);
         Ui.Settle();
-        Assert.Equal("Button.xaml", window.EditorArea.Active?.Name);
+        Assert.Equal("FluentControlResources.xaml", window.EditorArea.Active?.Name);
         Assert.Contains("x:Key=\"|ButtonBackground\"", CaretLine(window.EditorArea.CodeEditor), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>Fluent's common resources (a control's colours, its font size, the system brushes) are kept in the files the
+    /// theme's root merges in, by theme variant or not, none of them compiled on its own: Go to Declaration from a use of
+    /// each lands on its key there, the first variant's where each variant keys it.</summary>
+    [AvaloniaFact]
+    public void Go_to_declaration_reaches_a_fluent_resource_kept_in_a_file_the_themes_root_merges_in()
+    {
+        (string Property, string Key, string File)[] keys = [("Background", "ButtonBackground", "FluentControlResources.xaml"), ("Foreground", "TextControlBackground", "FluentControlResources.xaml"),
+            ("FontSize", "ControlContentThemeFontSize", "BaseResources.xaml"), ("BorderBrush", "SystemControlForegroundBaseHighBrush", "BaseResources.xaml")];
+        app.Rewrite("App.axaml", Gallery.AppXaml.Replace("<FluentTheme />", "<FluentTheme />\n        <Style Selector=\"Button\">\n"
+            + string.Concat(keys.Select(k => $"            <Setter Property=\"{k.Property}\" Value=\"{{DynamicResource {k.Key}}}\" />\n")) + "        </Style>", StringComparison.Ordinal));
+        MainWindow window = app.Open(app.PathOf("App.axaml"));
+        window.XamlService.LibraryFiles = new ThemeSources(TestFolders.Create("xaml-theme-"));
+        foreach ((_, string key, string file) in keys)
+        {
+            window.OpenFile(app.PathOf("App.axaml"));
+            Ui.Settle();
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, $"{{DynamicResource {key[..4]}");
+            Ui.Run(window, AppActions.GoToDeclaration);
+            Ui.Settle();
+            string landed = $"{window.EditorArea.Active?.Name}: {CaretLine(window.EditorArea.CodeEditor)}";
+            Assert.True(landed.StartsWith($"{file}: ", StringComparison.Ordinal) && landed.Contains($"x:Key=\"|{key}\"", StringComparison.Ordinal),
+                $"Go to Declaration from {key} landed at {landed}, not at its key in the theme's {file} (status: {window.Status})");
+        }
         window.Close();
     }
 
@@ -1645,10 +1672,10 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             + "            <Setter Property=\"Foreground\" Value=\"{DynamicResource ButtonForeground}\" />\n        </Style>", StringComparison.Ordinal));
         MainWindow window = app.Open(app.PathOf("App.axaml"));
         window.XamlService.LibraryFiles = new ThemeSources(TestFolders.Create("xaml-theme-"), text => text
-            .Replace("Source=\"Button.xaml\"", "Source='Button.xaml'", StringComparison.Ordinal)
+            .Replace("Source=\"/Accents/FluentControlResources.xaml\"", "Source='/Accents/FluentControlResources.xaml'", StringComparison.Ordinal)
             .Replace("<StaticResource x:Key=\"ButtonBackground\" ResourceKey=\"ControlFillColorDefaultBrush\" />",
                 "<StaticResource x:Key='ButtonBackground' ResourceKey=\"ControlFillColorDefaultBrush\" />\n"
-                + "  <StaticResource x:Key = \"ButtonForeground\" ResourceKey=\"TextFillColorPrimaryBrush\" />", StringComparison.Ordinal));
+                + "      <StaticResource x:Key = \"ButtonForeground\" ResourceKey=\"TextFillColorPrimaryBrush\" />", StringComparison.Ordinal));
         foreach ((string use, string key) in ((string, string)[])[("{DynamicResource ButtonBack", "x:Key='|ButtonBackground'"), ("{DynamicResource ButtonFore", "x:Key = \"|ButtonForeground\"")])
         {
             window.OpenFile(app.PathOf("App.axaml"));
@@ -1657,7 +1684,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             Ui.Run(window, AppActions.GoToDeclaration);
             Ui.Settle();
             string landed = $"{window.EditorArea.Active?.Name}: {CaretLine(window.EditorArea.CodeEditor)}";
-            Assert.True(landed.StartsWith("Button.xaml: ", StringComparison.Ordinal) && landed.Contains(key, StringComparison.Ordinal),
+            Assert.True(landed.StartsWith("FluentControlResources.xaml: ", StringComparison.Ordinal) && landed.Contains(key, StringComparison.Ordinal),
                 $"Go to Declaration from {use}… landed at {landed}, not at {key} in the theme's XAML (status: {window.Status})");
         }
         window.Close();
@@ -1701,10 +1728,14 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         }
     }
 
-    /// <summary>A theme library's files as its Source Link would give them, written into a folder of the test's, each as
-    /// <paramref name="written"/> rewrites it where given; what was asked for, in order.</summary>
+    /// <summary>A theme library's files as its Source Link would give them, laid out as Fluent 12's are, written into a
+    /// folder of the test's, each as <paramref name="written"/> rewrites it where given; what was asked for, in order. The
+    /// theme's root merges in the resources its controls share (by theme variant, as Fluent keeps a control's colours) and
+    /// includes the control list, which merges in each control's file.</summary>
     private sealed class ThemeSources(string folder, Func<string, string>? written = null) : Passenger.App.Xaml.ILibraryFiles
     {
+        private const string Namespaces = "xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\"";
+
         public List<(string Assembly, string Path)> Asked { get; } = [];
 
         public Task<string?> FileAsync(string assembly, string assemblyName, string path, IProgress<string>? why, CancellationToken cancel)
@@ -1712,10 +1743,26 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             Asked.Add((assemblyName, path));
             string? text = path switch
             {
-                "/Controls/FluentControls.xaml" => "<ResourceDictionary xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\">\n"
-                    + "  <ResourceDictionary.MergedDictionaries>\n    <MergeResourceInclude Source=\"Button.xaml\" />\n  </ResourceDictionary.MergedDictionaries>\n</ResourceDictionary>\n",
-                "/Controls/Button.xaml" => "<ResourceDictionary xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\">\n"
-                    + "  <StaticResource x:Key=\"ButtonBackground\" ResourceKey=\"ControlFillColorDefaultBrush\" />\n"
+                "/FluentTheme.xaml" => $"<Styles x:Class=\"Avalonia.Themes.Fluent.FluentTheme\" {Namespaces}>\n  <Styles.Resources>\n    <ResourceDictionary>\n"
+                    + "      <ResourceDictionary.MergedDictionaries>\n        <ResourceInclude Source=\"/Accents/BaseColorsPalette.xaml\" />\n"
+                    + "        <MergeResourceInclude Source=\"/Accents/BaseResources.xaml\" />\n        <MergeResourceInclude Source=\"/Accents/FluentControlResources.xaml\" />\n"
+                    + "      </ResourceDictionary.MergedDictionaries>\n    </ResourceDictionary>\n  </Styles.Resources>\n"
+                    + "  <StyleInclude Source=\"/Controls/FluentControls.xaml\" />\n</Styles>\n",
+                "/Accents/BaseResources.xaml" => $"<ResourceDictionary {Namespaces} xmlns:sys=\"using:System\">\n"
+                    + "  <sys:Double x:Key=\"ControlContentThemeFontSize\">14</sys:Double>\n  <ResourceDictionary.ThemeDictionaries>\n    <ResourceDictionary x:Key=\"Default\">\n"
+                    + "      <SolidColorBrush x:Key=\"SystemControlForegroundBaseHighBrush\" Color=\"{StaticResource SystemBaseHighColor}\" />\n    </ResourceDictionary>\n"
+                    + "    <ResourceDictionary x:Key=\"Dark\">\n      <SolidColorBrush x:Key=\"SystemControlForegroundBaseHighBrush\" Color=\"{StaticResource SystemBaseHighColor}\" />\n"
+                    + "    </ResourceDictionary>\n  </ResourceDictionary.ThemeDictionaries>\n</ResourceDictionary>\n",
+                "/Accents/FluentControlResources.xaml" => $"<ResourceDictionary {Namespaces}>\n  <ResourceDictionary.ThemeDictionaries>\n    <ResourceDictionary x:Key=\"Default\">\n"
+                    + "      <StaticResource x:Key=\"ButtonBackground\" ResourceKey=\"ControlFillColorDefaultBrush\" />\n"
+                    + "      <StaticResource x:Key=\"TextControlBackground\" ResourceKey=\"SystemControlBackgroundAltMediumLowBrush\" />\n    </ResourceDictionary>\n"
+                    + "    <ResourceDictionary x:Key=\"Dark\">\n      <StaticResource x:Key=\"ButtonBackground\" ResourceKey=\"ControlFillColorDefaultBrush\" />\n"
+                    + "      <StaticResource x:Key=\"TextControlBackground\" ResourceKey=\"SystemControlBackgroundAltMediumLowBrush\" />\n    </ResourceDictionary>\n"
+                    + "  </ResourceDictionary.ThemeDictionaries>\n</ResourceDictionary>\n",
+                "/Controls/FluentControls.xaml" => $"<Styles {Namespaces}>\n  <Styles.Resources>\n    <ResourceDictionary>\n      <ResourceDictionary.MergedDictionaries>\n"
+                    + "        <MergeResourceInclude Source=\"avares://Avalonia.Themes.Fluent/Controls/Button.xaml\" />\n"
+                    + "      </ResourceDictionary.MergedDictionaries>\n    </ResourceDictionary>\n  </Styles.Resources>\n</Styles>\n",
+                "/Controls/Button.xaml" => $"<ResourceDictionary {Namespaces}>\n"
                     + "  <ControlTheme x:Key=\"{x:Type Button}\" TargetType=\"Button\">\n    <Setter Property=\"Template\">\n      <ControlTemplate>\n"
                     + "        <ContentPresenter x:Name=\"PART_ContentPresenter\" Content=\"{TemplateBinding Content}\" />\n      </ControlTemplate>\n    </Setter>\n"
                     + "  </ControlTheme>\n</ResourceDictionary>\n",

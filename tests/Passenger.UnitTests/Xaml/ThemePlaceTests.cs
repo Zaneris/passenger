@@ -4,7 +4,8 @@ using Passenger.Xaml.Metadata;
 namespace Passenger.UnitTests.Xaml;
 
 /// <summary>Where a theme library's XAML writes a resource's key, a template part's name and a type's control theme, and
-/// the files it merges in, read from its markup however each value is quoted or spaced round its equals sign.</summary>
+/// the files it merges in, read from its markup however each value is quoted or spaced round its equals sign; and its root,
+/// the XAML compiled into its class, found in the index of the assembly's Avalonia resources.</summary>
 public sealed class ThemePlaceTests
 {
     private const string Theme = """
@@ -56,6 +57,44 @@ public sealed class ThemePlaceTests
     {
         Assert.Null(XamlNavigation.ThemePlace(new XamlTarget(XamlTargetKind.Theme, "Missing in the theme") { Part = "Missing" }, Theme));
         Assert.Null(XamlNavigation.ThemePlace(new XamlTarget(XamlTargetKind.Theme, "PART_ContentPresenter in the theme") { Part = "PART_ContentPresenter" }, Theme));
+    }
+
+    [Fact]
+    public void The_xaml_compiled_into_a_class_is_read_from_avalonias_resources_past_the_entries_before_it()
+    {
+        const string Info = "<AvaloniaResourceXamlInfo xmlns=\"http://schemas.datacontract.org/2004/07/Avalonia.Markup.Xaml.PortableXaml\">"
+            + "<ClassToResourcePathIndex xmlns:a=\"http://schemas.microsoft.com/2003/10/Serialization/Arrays\"><a:KeyValueOfstringstring>"
+            + "<a:Key>Avalonia.Themes.Fluent.FluentTheme</a:Key><a:Value>/FluentTheme.xaml</a:Value></a:KeyValueOfstringstring></ClassToResourcePathIndex></AvaloniaResourceXamlInfo>";
+        byte[] font = new byte[1000];
+        byte[] info = System.Text.Encoding.UTF8.GetBytes(Info);
+        using MemoryStream index = new();
+        using (BinaryWriter writer = new(index, System.Text.Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write(2);
+            writer.Write(2);
+            writer.Write("/Assets/Inter-Bold.ttf");
+            writer.Write(0);
+            writer.Write(font.Length);
+            writer.Write("/!AvaloniaResourceXamlInfo");
+            writer.Write(font.Length);
+            writer.Write(info.Length);
+        }
+        // As an assembly holds them: their length, then the index's size, the index and the entries, after bytes of its own.
+        using MemoryStream resources = new();
+        using (BinaryWriter writer = new(resources, System.Text.Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write(new byte[16]);
+            writer.Write(4 + (int)index.Length + font.Length + info.Length);
+            writer.Write((int)index.Length);
+            writer.Write(index.ToArray());
+            writer.Write(font);
+            writer.Write(info);
+        }
+        resources.Position = 16;
+        IReadOnlyList<string> files = AssemblyTypes.XamlClassFiles(resources);
+        Assert.True(files.SequenceEqual(["/FluentTheme.xaml"]), $"The theme's root was read as {string.Join(", ", files)}: its resources are not looked in");
+        resources.Position = 16 + 4;
+        Assert.Empty(AssemblyTypes.XamlClassFiles(resources));
     }
 
     [Fact]
