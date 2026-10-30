@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Text;
@@ -7,7 +8,9 @@ using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger.ExpressionEvaluator.Cil;
 
-internal readonly record struct CilInterpretationResult(ICorDebugValue Value, ICorDebugHandleValue? OwnedResultHandle);
+/// <summary>An expression's value in the program, or a string the evaluation made that the program could not be given
+/// (<see cref="Text"/>: it runs no code where it is stopped), with no value in the program.</summary>
+internal readonly record struct CilInterpretationResult(ICorDebugValue? Value, ICorDebugHandleValue? OwnedResultHandle, string? Text = null);
 
 internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPrimitiveTypeClasses primitiveTypes)
 {
@@ -29,9 +32,17 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         Interpretation run = new Interpretation(compiled, resolver, context, handles, delegateAssemblyLoader, Stopwatch.GetTimestamp() + (long)(Extensions.EvaluationTimeout.TotalSeconds * Stopwatch.Frequency),
             debugger.EvalStatus.Leaving);
         CilValue result = await InterpretAsync(run, decoded, arguments, locals);
-        ICorDebugValue value = result.Value is EvaluationDelegate
-            ? await MaterializeDelegateAsync(result, compiled, resolver, delegateAssemblyLoader, context, handles)
-            : await MaterializeAsync(result, context, handles, resolver.ResolveMethodReturnType(compiled.EntryMethod), resolver);
+        ICorDebugValue value;
+        try
+        {
+            value = result.Value is EvaluationDelegate
+                ? await MaterializeDelegateAsync(result, compiled, resolver, delegateAssemblyLoader, context, handles)
+                : await MaterializeAsync(result, context, handles, resolver.ResolveMethodReturnType(compiled.EntryMethod), resolver);
+        }
+        catch (ManagedDebugger.EvalRefusedException) when (result is { Value: string, CorValue: null })
+        {
+            return new CilInterpretationResult(null, null, (string)result.Value);
+        }
         return new CilInterpretationResult(value, handles.DetachIfOwned(value));
     }
 
@@ -1950,23 +1961,56 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             return string.Empty;
         }
 
-        ICorDebugValue receiver;
-        if (value.Value is { } primitive && PrimitiveCilType(primitive) is not null && !WrittenAlikeInEveryCulture(primitive, format))
-        {
-            // The program's culture decides its separators, signs and symbols, so the program writes it.
-            receiver = await MaterializeReceiverAsync(value, context, null, resolver, handles);
-        }
-        else if (value.Value is IFormattable formattable)
+        // The program's culture decides a number's separators, signs and symbols, so the program writes it.
+        IFormattable? number = value.Value is { } primitive && PrimitiveCilType(primitive) is not null && !WrittenAlikeInEveryCulture(primitive, format)
+            ? (IFormattable)primitive
+            : null;
+        if (number is null && value.Value is IFormattable formattable)
         {
             return formattable.ToString(format, null);
         }
-        else if (value.Value is not null)
+        if (number is null && value.Value is not null)
         {
             return value.Value.ToString() ?? string.Empty;
         }
-        else if (value.GetStringText() is { } text)
+        if (number is null && value.GetStringText() is { } text)
         {
             return text;
+        }
+        try
+        {
+            return await WrittenByProgramAsync(value, format, resolver, context, handles);
+        }
+        catch (ManagedDebugger.EvalRefusedException refused) when (number is not null)
+        {
+            // Nothing ran: the program runs no code where it is stopped, so its culture is read and the number written here.
+            debugger.Log($"The program could not write {number}: {refused.Message}");
+            if (debugger.ProgramNumberFormat(context.ThreadId, context.StackDepth) is { } numbers)
+            {
+                return number.ToString(format, numbers);
+            }
+            debugger.Say("A number in the interpolated string is written in the invariant culture: the program runs no code where it is stopped, and its culture could not be read.");
+            return number.ToString(format, CultureInfo.InvariantCulture);
+        }
+        catch (ManagedDebugger.EvalRefusedException refused)
+        {
+            throw new ManagedDebugger.EvalException($"Only the program's own ToString writes {TypeNameOf(value)}, and it runs no code where it is stopped: {refused.Message}");
+        }
+    }
+
+    /// <summary>A value of the program written by the program: a number in its culture, anything else by its own ToString,
+    /// both with the hole's format.</summary>
+    private async Task<string> WrittenByProgramAsync(
+        CilValue value,
+        string? format,
+        EvaluationMetadataResolver resolver,
+        CompiledExpressionEvaluationContext context,
+        EvaluationHandleScope handles)
+    {
+        ICorDebugValue receiver;
+        if (value.Value is not null)
+        {
+            receiver = await MaterializeReceiverAsync(value, context, null, resolver, handles);
         }
         else
         {
@@ -1994,6 +2038,19 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                 debugger.ProcessRuntimeEventsUntilEvalEvent, debugger.EvalStatus, formatted.Function, 0, null, 2, [composite, receiver], throwOnException: true));
         }
         return result?.UnwrapDebugValue() is ICorDebugStringValue stringValue ? stringValue.String : string.Empty;
+    }
+
+    /// <summary>A value's type as the debugger names it (System.Version), or "this value" where it cannot be read.</summary>
+    private static string TypeNameOf(CilValue value)
+    {
+        try
+        {
+            return value.CorValue?.UnwrapDebugValue().ExactType is { } type ? ManagedDebugger.GetCorDebugTypeFriendlyName(type) : "this value";
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return "this value";
+        }
     }
 
     /// <summary>Whether a primitive is written alike in every culture, as the program would write it: a bool or a char, or

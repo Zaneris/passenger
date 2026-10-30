@@ -59,6 +59,31 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         AssertInLoop(await host.TopFrameAsync(stepped.ThreadId!.Value));
     }
 
+    /// <summary>Paused in its sleep, where none of the program's code can run, an interpolated number is written by the
+    /// debugger as the program writes it in its own culture (fr-FR), and a value only its own ToString writes is refused,
+    /// saying why.</summary>
+    [Fact]
+    public async Task An_interpolation_paused_in_a_sleep_writes_numbers_in_the_programs_culture_and_refuses_a_value_only_its_ToString_writes()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await Start(host, ["asleep"]);
+        OutputEvent written = await host.WaitForEvent<OutputEvent>(output => output.Output.Contains("asleep", StringComparison.Ordinal));
+
+        StoppedEvent stopped = await Pause(host);
+        StackTraceResponse stack = await host.StackTraceAsync(stopped.ThreadId!.Value, levels: null);
+        DapStackFrame main = stack.StackFrames.First(f => f.Source?.Path?.EndsWith("Program.cs", StringComparison.Ordinal) == true);
+        EvaluateResponse count = await host.EvaluateAsync(main.Id, "$\"{count}\"");
+        EvaluateResponse ratio = await host.EvaluateAsync(main.Id, "$\"{ratio:N1}\"");
+        Assert.True($"asleep {Unquoted(count)} {Unquoted(ratio)} dreaming" == written.Output.TrimEnd(),
+            $"Paused in its sleep, $\"{{count}}\" answered {count.Result} and $\"{{ratio:N1}}\" {ratio.Result}, where the program wrote {written.Output.TrimEnd()}");
+
+        EvaluateResponse dream = await host.EvaluateAsync(main.Id, "$\"{someObject}\"");
+        Assert.True(dream.PresentationHint?.Attributes?.Contains("failedEvaluation") == true && dream.Result.Contains("ToString", StringComparison.Ordinal),
+            $"Paused in its sleep, $\"{{someObject}}\", which only its own ToString writes, answered {dream.Result}, where it was to be refused saying why");
+
+        static string Unquoted(EvaluateResponse answer) => answer.Result is ['"', .. string text, '"'] ? text : $"(not a string: {answer.Result})";
+    }
+
     /// <summary>Stopped while another thread counts: listing an object's properties, whose getter takes a while, leaves that
     /// thread where it was; and an evaluation that waits on it is stopped saying why, the next one running as ever.</summary>
     [Fact]

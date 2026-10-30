@@ -1,5 +1,6 @@
 using System.Reflection.Metadata;
 using System.Text;
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Debugger.ExpressionEvaluator;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.Interop;
@@ -112,6 +113,10 @@ public partial class ManagedDebugger
             using EvaluationResult result = await _expressionEvaluator!.Evaluate(expression, context);
             // "nq" (no quotes) and "raw" (as it is, which CoreLib's spans use for their ToString()) show a string bare.
             bool quoted = !specifiers.Contains("nq") && !specifiers.Contains("raw");
+            if (result.Text is { } text)
+            {
+                return (quoted ? SymbolDisplay.FormatLiteral(text, quote: true) : text, false);
+            }
             if ((result.Error is not null || result.Value is null) && target is not null && IsDottedName(expression)
                 && await target.GetPropertyValue(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, GetIlFrameForThreadIdAndStackDepth(threadId, frameStackDepth), expression) is { } implemented)
             {

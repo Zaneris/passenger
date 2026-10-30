@@ -10,6 +10,7 @@
 // together, either first; with "race throws" the second throws and catches an exception there too, and the call runs on
 // a while longer each turn, so over the turns the step's end meets the exception's handler found. With "returns" it calls
 // a method that returns a value each turn, which a debugger attaches to (LoopingConsoleAppOptimized is it built optimized).
+// With "asleep" it writes its numbers in a culture of its own and a value by its own ToString, then sleeps for good.
 if (args is ["count"])
 {
     Thread counting = new(() =>
@@ -94,6 +95,18 @@ if (args is ["returns"])
         Thread.Sleep(20);
     }
 }
+if (args is ["asleep"])
+{
+    System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("fr-FR");
+    int count = -1234;
+    double ratio = 1234.5;
+    Dream someObject = new();
+    Console.WriteLine($"asleep {count} {ratio:N1} {someObject}");
+    while (true)
+    {
+        Thread.Sleep(500);
+    }
+}
 long turns = 0;
 bool sleeps = args is ["sleep", ..];
 // Shown by its own ToString, which a thread paused in the sleep cannot run.
@@ -134,6 +147,11 @@ internal static class Counter
             return Value;
         }
     }
+}
+
+internal sealed class Dream
+{
+    public override string ToString() => "dreaming";
 }
 
 internal class Slow

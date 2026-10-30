@@ -43,7 +43,10 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
 
             Lazy<DelegateMaterializerAssembly> delegateMaterializer = new Lazy<DelegateMaterializerAssembly>(() => _compiler.GetDelegateMaterializer(context));
             CilInterpretationResult interpretationResult = await _interpreter.InterpretAsync(compiled, context, delegateMaterializer);
-            return new EvaluationResult { Value = interpretationResult.Value, OwnedResultHandle = interpretationResult.OwnedResultHandle, Declared = DeclaredOf(compiled) };
+            return new EvaluationResult
+            {
+                Value = interpretationResult.Value, OwnedResultHandle = interpretationResult.OwnedResultHandle, Declared = DeclaredOf(compiled), Text = interpretationResult.Text,
+            };
         }
         catch (Exception ex)
         {
@@ -138,6 +141,10 @@ internal sealed class EvaluationResult : IDisposable
     /// <summary>The type the expression's value is as it compiles; null where none is known (the debugger's own names).</summary>
     public DeclaredType? Declared { get; init; }
     public string? Error { get; init; }
+
+    /// <summary>A string the evaluation made that the program could not be given, as it runs no code where it is stopped: the
+    /// value, where <see cref="Value"/> is null.</summary>
+    public string? Text { get; init; }
     public ICorDebugHandleValue? OwnedResultHandle
     {
         init => _ownedResultHandle = value;
