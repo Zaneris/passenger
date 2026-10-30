@@ -34,8 +34,10 @@ public partial class MainWindow
             return true;
         }
         ClosePicker();
+        Swatch swatch = Swatch.Of(Editors, use.WritePath ?? document.Path, use.WriteRange.Value);
         ColourPicker opened = new(use.Colour, Unwritable(document, use));
         picker = opened;
+        opened.DetachedFromVisualTree += (_, _) => swatch.Held?.Remove();
         Canvas layer = Editors.AssistLayer;
         layer.Children.Add(opened);
         Point at = editor.TranslatePoint(click.Position, layer) ?? click.Position;
@@ -44,11 +46,13 @@ public partial class MainWindow
         Canvas.SetTop(opened, Math.Clamp(at.Y + 12, 0, Math.Max(0, layer.Bounds.Height - opened.DesiredSize.Height - 8)));
         opened.Chosen += (_, colour) =>
         {
+            // Read before the picker goes, which lets go of the swatch's text.
+            TextRange? now = swatch.Now(Editors);
             ClosePicker();
             editor.Focus();
             if (colour is { } chosen)
             {
-                IdeErrors.Observe(WriteColourAsync(document, use, chosen));
+                IdeErrors.Observe(WriteColourAsync(document, use, swatch with { Range = now ?? swatch.Range }, chosen));
             }
         };
         return true;
@@ -67,11 +71,30 @@ public partial class MainWindow
     private string? Unwritable(OpenDocument document, ColourUse use) =>
         Editors.Find(use.WritePath ?? document.Path) is { IsReadOnly: true } open ? Refusals.ReadOnly(open.Name) : null;
 
-    /// <summary>A colour written where a swatch's colour is, in its form, unless that text changed meanwhile; in a file not
-    /// open, said once the write has landed.</summary>
-    private async Task WriteColourAsync(OpenDocument document, ColourUse use, Argb colour)
+    /// <summary>Where a swatch's colour is written as its picker opens: the file, the open file holding it then, the stretch
+    /// it is written in, held there through what changes that file meanwhile, and the text it holds (null where the stretch
+    /// is past the text's end).</summary>
+    private sealed record Swatch(string Path, OpenDocument? Open, AnchoredRange? Held, TextRange Range, string? Was)
     {
-        string path = use.WritePath ?? document.Path;
+        public static Swatch Of(EditorArea editors, string path, TextRange range)
+        {
+            OpenDocument? open = editors.Find(path) is { HoldsText: true } holding ? holding : null;
+            TextSnapshot? text = editors.TextOf(path);
+            // What is typed at either end stays out of it.
+            return new Swatch(path, open, open?.Text.RangeAt(range, AnchorGravity.After, AnchorGravity.Before), range,
+                text is not null && range.End <= text.Length ? text.GetText(range) : null);
+        }
+
+        /// <summary>The stretch now, carried through what changed its open file; null where that file is no longer the one
+        /// open.</summary>
+        public TextRange? Now(EditorArea editors) => Held is { IsLive: true } held && Open is not null && editors.Find(Path) == Open ? held.Range : null;
+    }
+
+    /// <summary>A colour written where a swatch's colour is, in its form, unless the text there is no longer what it was as
+    /// the picker opened; in a file not open, said once the write has landed.</summary>
+    private async Task WriteColourAsync(OpenDocument document, ColourUse use, Swatch swatch, Argb colour)
+    {
+        string path = swatch.Path;
         OpenDocument? open = Editors.Find(path);
         if (Unwritable(document, use) is { } why)
         {
@@ -83,9 +106,9 @@ public partial class MainWindow
             status.Text = $"{Path.GetFileName(path)} could not be read";
             return;
         }
-        TextRange range = use.WriteRange!.Value;
+        TextRange range = swatch.Range;
         string? written = range.End <= text.Length ? text[range.Start..range.End] : null;
-        if (written is null || (use.Form == ColourForm.Text && KnownColours.Parse(written) != use.Colour))
+        if (written is null || written != swatch.Was || (use.Form == ColourForm.Text && KnownColours.Parse(written) != use.Colour))
         {
             status.Text = "The colour was edited meanwhile: choose it again";
             return;
