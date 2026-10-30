@@ -81,6 +81,7 @@ internal interface IHotReloadTarget
 public sealed class HotReload
 {
     private readonly DebugSession debug;
+    private readonly BuiltLines lines;
     private readonly Func<RoslynSession?> server;
     private readonly EditorArea editors;
     private int? id;
@@ -95,23 +96,38 @@ public sealed class HotReload
     private readonly Dictionary<string, string> originals = new(StringComparer.Ordinal);
     private readonly HashSet<string> given = new(StringComparer.Ordinal);
 
-    /// <summary>Hot Reload for a session just launched. Roslyn's session begins at the first edit (most sessions have none,
-    /// and its start reads every document), given each edited file's text from before its edits, the build's.</summary>
-    public HotReload(DebugSession debug, Func<RoslynSession?> server, EditorArea editors)
+    /// <summary>The edits made to the files, counted; how many Roslyn had when last asked for an update; and how many the
+    /// program has taken in (or a restart for them was declined).</summary>
+    private int edits;
+    private int read;
+    private int settled;
+
+    /// <summary>Hot Reload for a session just launched, whose built lines are <paramref name="lines"/>. Roslyn's session
+    /// begins at the first edit (most sessions have none, and its start reads every document), given each edited file's
+    /// text from before its edits, the build's.</summary>
+    public HotReload(DebugSession debug, BuiltLines lines, Func<RoslynSession?> server, EditorArea editors)
     {
         this.debug = debug;
+        this.lines = lines;
         this.server = server;
         this.editors = editors;
     }
 
-    /// <summary>Whether the files have been edited since the launch or the last update applied.</summary>
-    public bool Changed { get; set; }
+    /// <summary>Whether the files have been edited since the launch or since the edits the last update was made of.</summary>
+    public bool Changed => edits != settled;
+
+    /// <summary>A restart for the edits Roslyn last read was declined: they are not applied, or asked about, again until the
+    /// next edit.</summary>
+    public void RestartDeclined() => settled = read;
+
+    /// <summary>The apply is over: its update's text is no longer kept apart in the built lines.</summary>
+    internal void Over() => lines.Unmark();
 
     /// <summary>A C# file edited while the program runs: its text before its first edit is kept, and Roslyn's session begins.</summary>
     public void Edited(string path, TextSnapshot before)
     {
         UiThread.Check();
-        Changed = true;
+        edits++;
         if (!originals.ContainsKey(path))
         {
             originals[path] = before.ToString();
@@ -163,8 +179,8 @@ public sealed class HotReload
     /// <summary>Applies the edits made since the launch or the last update: Roslyn emits them against the program's code and
     /// the debugger applies them; an edit the runtime cannot take, or code that does not compile, stops it, and nothing is
     /// applied. A running program is held stopped from the reading of its threads' statements to the update's end, so
-    /// Roslyn places every frame in a method the update changes. On an update applied, the session's built lines are the
-    /// files' lines now.</summary>
+    /// Roslyn places every frame in a method the update changes. An edit made once Roslyn is asked waits for the next update,
+    /// the built lines keeping the text Roslyn compiled apart from it until <see cref="Over"/>.</summary>
     public async Task<HotReloadOutcome> ApplyAsync()
     {
         UiThread.Check();
@@ -233,6 +249,9 @@ public sealed class HotReload
         HotReloadEmitted emitted;
         try
         {
+            // Roslyn compiles the text as it is now: an edit made while it works waits for the next update, at its lines.
+            read = edits;
+            lines.Mark();
             emitted = await roslyn.ExtensionAsync<HotReloadEmitted>(HotReloadHandlers.Emit, new HotReloadEmit(session, paused, state.Held, capabilities,
                 [.. state.Modules.Where(m => m.Editable).Select(m => m.Mvid)],
                 [.. state.ActiveStatements.Select(s => new HotReloadActiveStatement(s.Module, s.Token, s.Version, s.ILOffset, s.Document,
@@ -253,7 +272,7 @@ public sealed class HotReload
         switch (emitted.Status)
         {
             case "none":
-                Changed = false;
+                settled = read;
                 return new HotReloadOutcome(HotReloadResult.NothingToApply, NothingApplied(problems))
                 {
                     Problems = problems,
@@ -291,7 +310,7 @@ public sealed class HotReload
             return new HotReloadOutcome(HotReloadResult.Failed, stopped) { Problems = problems, Took = took.Elapsed };
         }
         await TellAsync(roslyn, HotReloadHandlers.Commit, session);
-        Changed = false;
+        settled = read;
         int methods = emitted.Updates.Sum(u => u.UpdatedMethods.Count);
         List<string> files = [.. emitted.ChangedDocuments];
         string named = files.Count == 0 ? string.Empty : $": {string.Join(", ", files.Select(Path.GetFileName))}";

@@ -20,6 +20,10 @@ public sealed class BuiltLines
     /// <summary>A file's text as the editor has it, else as on disk: the built text until the file's first edit.</summary>
     private readonly Func<string, TextSnapshot?> texts;
 
+    /// <summary>While a mark is kept (<see cref="Mark"/>), each file edited since: its lines then mapped to its lines now, and
+    /// its lines then as its compiler counts them.</summary>
+    private Dictionary<string, (Lines Lines, ServerLines? Compiled)>? marked;
+
     public BuiltLines(Func<string, TextSnapshot?> texts) => this.texts = texts;
 
     /// <summary>Carries a file's lines through an edit to it.</summary>
@@ -39,16 +43,38 @@ public sealed class BuiltLines
             files[path] = lines;
         }
         lines.Follow(change);
+        if (marked is not null)
+        {
+            if (!marked.TryGetValue(path, out (Lines Lines, ServerLines? Compiled) since))
+            {
+                since = (new Lines(change.Before.LineCount), ServerPlaces.CountedApart(path) ? ServerPlaces.Compiled(path, change.Before) : null);
+                marked[path] = since;
+            }
+            since.Lines.Follow(change);
+        }
     }
 
     /// <summary>The files edited since the build.</summary>
     public IReadOnlyCollection<string> Files => files.Keys;
 
-    /// <summary>A file's lines as they are now are the built lines: Hot Reload has given the program its code as it is.</summary>
+    /// <summary>Keeps the files' lines as they are now apart from their edits to come, until <see cref="Unmark"/>: the text
+    /// Hot Reload's update is being made of.</summary>
+    public void Mark() => marked = new Dictionary<string, (Lines Lines, ServerLines? Compiled)>(StringComparer.Ordinal);
+
+    /// <summary>Ends the mark: each file's lines follow its edits as one map again.</summary>
+    public void Unmark() => marked = null;
+
+    /// <summary>A file's lines at the mark (or now, with none kept) are the built lines, its edits since carried on from
+    /// them: Hot Reload has given the program its code as the update was made of it.</summary>
     public void Reset(string path)
     {
         files.Remove(path);
         compiled.Remove(path);
+        if (marked is not null && marked.Remove(path, out (Lines Lines, ServerLines? Compiled) since))
+        {
+            files[path] = since.Lines;
+            compiled[path] = since.Compiled;
+        }
     }
 
     /// <summary>Where a built line (from zero, the compiler's) of a file is now, as the editor counts lines.</summary>

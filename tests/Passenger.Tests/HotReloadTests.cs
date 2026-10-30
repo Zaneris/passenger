@@ -439,6 +439,71 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
         }
     }
 
+    /// <summary>Two lines typed above the greeting while an apply's update of another edit is being made, after Roslyn
+    /// compiled that edit, are not the program's yet: a breakpoint on the greeting, two lines down, binds to the greeting's
+    /// code, and Continue applies the two lines before the program goes on, which prints them and stops at the greeting.</summary>
+    [AvaloniaFact]
+    public void An_edit_typed_while_an_apply_works_is_applied_by_the_next_continue_and_a_breakpoint_below_it_binds_to_its_line()
+    {
+        MainWindow window = Open();
+        try
+        {
+            window.OpenFile(ProgramPath);
+            window.EditorArea.CodeEditor.GoTo(new TextPosition(2, 4));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Debug);
+            Paused(window, "the program to stop before its first greeting");
+
+            window.OpenFile(GreeterPath);
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Replace(window, "Hello", "Howdy");
+            TaskCompletionSource emitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task held = window.CSharpService!.Session!.Server.HoldNextAnswer(Passenger.Lsp.LspMethods.DispatchExtensionMessage, Emits, emitted.Task);
+            try
+            {
+                Ui.Run(window, AppActions.ApplyHotReloadChanges, settle: false);
+                Ui.PumpUntil(() => held.IsCompleted, "Roslyn's update of the first edit, made and held", TimeSpan.FromMinutes(1));
+                editor.Focus();
+                editor.GoTo(new TextPosition(3, 5));
+                Ui.Press(window, "ENTER", settle: false);
+                window.KeyTextInput("Console.WriteLine(\"second\");");
+                Ui.Press(window, "ENTER", settle: false);
+                window.KeyTextInput("Console.WriteLine(\"third\");");
+            }
+            finally
+            {
+                emitted.SetResult();
+            }
+            HotReloadOutcome first = Applied(window);
+            Assert.True(first.Result == HotReloadResult.Applied, $"The first edit should apply: {first.Said}");
+            // The update showed the stop again, in Program.cs.
+            window.OpenFile(GreeterPath);
+            editor = window.EditorArea.CodeEditor;
+            Assert.Equal("static class Greeter\n{\n    public static void Greet(int i)\n    {\n        Console.WriteLine(\"second\");\n        Console.WriteLine(\"third\");\n"
+                + "        Console.WriteLine($\"Howdy {i}\");\n    }\n}\n", editor.Document.Snapshot.ToString());
+
+            editor.GoTo(new TextPosition(6, 8));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.WaitFor(() => editor.LineMarks.Contains(new LineMark(6, LineMarkKind.BreakpointBound)),
+                () => $"the breakpoint on the greeting, below the lines the program does not run yet, to bind to the greeting (marks {string.Join(", ", editor.LineMarks)})");
+
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && editor.LineMarks.Contains(new LineMark(6, LineMarkKind.ExecutionPoint)),
+                () => $"Continue to apply the two lines and the program to stop at the greeting (applied: {window.Debugger.LastApplied?.Said}; marks {string.Join(", ", editor.LineMarks)}; output: {Output(window)})");
+            Assert.True(Output(window).Replace("\r\n", "\n", StringComparison.Ordinal).Contains("second\nthird\n", StringComparison.Ordinal),
+                $"The program should run the lines typed while the first edit was applied before stopping at the greeting: {Output(window)}");
+            Assert.DoesNotContain("Howdy", Output(window), StringComparison.Ordinal);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Whether a request to the language server asks Roslyn for Hot Reload's update.</summary>
+    private static bool Emits(object parameters) =>
+        parameters is Passenger.Lsp.RoslynExtension.DispatchWorkspaceMessageParams { MessageName: Passenger.Roslyn.Extension.HotReloadHandlers.Emit };
+
     /// <summary>The number of each greeting the program printed, in order.</summary>
     private static List<int> Greeted(MainWindow window) =>
         [.. Output(window).Split('\n').Select(l => l.Trim().Split(' ')).Where(w => w is ["Hello", _]).Select(w => int.Parse(w[1], System.Globalization.CultureInfo.InvariantCulture))];

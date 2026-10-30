@@ -324,10 +324,7 @@ public sealed class DebugController : IDisposable
         {
             return true;
         }
-        if (applied.HotReload is { } reload)
-        {
-            reload.Changed = false;
-        }
+        applied.HotReload?.RestartDeclined();
         return false;
     }
 
@@ -393,19 +390,30 @@ public sealed class DebugController : IDisposable
         }
         Message?.Invoke(this, "Applying Hot Reload changes…");
         List<(IHotReloadTarget Target, DebugSession? Session, HotReloadOutcome Outcome)> each = [];
-        foreach (IHotReloadTarget target in targets)
-        {
-            DebugSession? session = (target as DebugTab)?.Session;
-            each.Add((target, session, target.HotReload is { } reload ? await reload.ApplyAsync()
-                : new HotReloadOutcome(HotReloadResult.Failed, $"{target.Name} is not debugged with Hot Reload")));
-        }
-        List<(DebugTab Tab, DebugSession? Session, HotReloadOutcome Outcome)> tabs = [.. each.Where(e => !e.Target.Quiet).Select(e => ((DebugTab)e.Target, e.Session, e.Outcome))];
-        List<(IHotReloadTarget Target, HotReloadOutcome Outcome)> quiet = [.. each.Where(e => e.Target.Quiet).Select(e => (e.Target, e.Outcome))];
+        List<(DebugTab Tab, DebugSession? Session, HotReloadOutcome Outcome)> tabs;
         bool marked = false;
-        foreach ((DebugTab tab, DebugSession? session, HotReloadOutcome its) in tabs)
+        try
         {
-            marked |= await TakenAsync(tab, session, its);
+            foreach (IHotReloadTarget target in targets)
+            {
+                DebugSession? session = (target as DebugTab)?.Session;
+                each.Add((target, session, target.HotReload is { } reload ? await reload.ApplyAsync()
+                    : new HotReloadOutcome(HotReloadResult.Failed, $"{target.Name} is not debugged with Hot Reload")));
+            }
+            tabs = [.. each.Where(e => !e.Target.Quiet).Select(e => ((DebugTab)e.Target, e.Session, e.Outcome))];
+            foreach ((DebugTab tab, DebugSession? session, HotReloadOutcome its) in tabs)
+            {
+                marked |= await TakenAsync(tab, session, its);
+            }
         }
+        finally
+        {
+            foreach (IHotReloadTarget target in targets)
+            {
+                target.HotReload?.Over();
+            }
+        }
+        List<(IHotReloadTarget Target, HotReloadOutcome Outcome)> quiet = [.. each.Where(e => e.Target.Quiet).Select(e => (e.Target, e.Outcome))];
         if (marked)
         {
             UpdateAllMarks();
@@ -438,9 +446,9 @@ public sealed class DebugController : IDisposable
         static bool Unapplied(HotReloadOutcome its) => its.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply);
     }
 
-    /// <summary>A tab's program that took an apply: the files' lines are its program's from now (the built lines forget their
-    /// edits), their breakpoints are bound again in the new code, and a paused program's stop shown is read again where it
-    /// now is. True when it took the edits, its marks to be drawn again.</summary>
+    /// <summary>A tab's program that took an apply: the files' lines as the update was made of them are its program's from
+    /// now (the built lines forget the edits it took in), their breakpoints are bound again in the new code, and a paused
+    /// program's stop shown is read again where it now is. True when it took the edits, its marks to be drawn again.</summary>
     private async Task<bool> TakenAsync(DebugTab tab, DebugSession? applied, HotReloadOutcome its)
     {
         if (its.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply) || disposed || tab.Session is not { } session || session != applied || !tab.IsLive)
@@ -726,7 +734,7 @@ public sealed class DebugController : IDisposable
                 tab.OnStateChanged();
                 return $"Debugging {name} ended before launch completed";
             }
-            tab.HotReload = hotReloadOn ? new HotReload(session, Server, editors) : null;
+            tab.HotReload = hotReloadOn ? new HotReload(session, built, Server, editors) : null;
             if (launched && !inTerminal)
             {
                 shown.Input = new ConsoleInput(text => Send(session.InputAsync(text)), () => Send(session.CloseInputAsync()));
@@ -861,7 +869,7 @@ public sealed class DebugController : IDisposable
             {
                 throw new OperationCanceledException("The workspace ended during Hot Reload attach");
             }
-            RunningReload reload = new(name, session, new HotReload(session, Server, editors), says);
+            RunningReload reload = new(name, session, new HotReload(session, built, Server, editors), says);
             running.Add(reload);
             session.StateChanged += (_, _) =>
             {
@@ -907,7 +915,7 @@ public sealed class DebugController : IDisposable
         }
         foreach (RunningReload reload in running.Where(r => outcome.Restart.Contains(r.Name)))
         {
-            reload.Reload.Changed = false;
+            reload.Reload.RestartDeclined();
         }
         return false;
     }
