@@ -10,7 +10,8 @@ namespace Passenger.App.Containers;
 
 /// <summary>Passenger's one rule for what is a secret, and its one mask: a value whose name says it is one
 /// (<see cref="Secret(string)"/>) shows as the same dots whatever its length; in any other value, a URL's password
-/// (<c>postgres://app:••••••@db</c>) and a connection string's part so named (<c>Password=••••••</c>); on a command line,
+/// (<c>postgres://app:••••••@db</c>), a connection string's part and a URL's query part so named (<c>Password=••••••</c>,
+/// <c>&amp;sig=••••••</c>); on a command line,
 /// the word after a flag so named (<c>--password ••••••</c>, <see cref="SecretFlag"/>) but one itself a flag. An empty
 /// value hides nothing and shows as it is; a secret's file, name or address shows (<c>--key-file deploy/id</c>).</summary>
 public static partial class ContainerSecrets
@@ -22,9 +23,12 @@ public static partial class ContainerSecrets
     private static readonly SearchValues<string> Anywhere =
         SearchValues.Create(["PASSWORD", "PASSWD", "SECRET", "TOKEN", "CREDENTIAL", "CONNECTIONSTRING"], StringComparison.Ordinal);
 
-    /// <summary>What makes a name a secret's as a word of it (DB_PASS, MYSQL_PW, DB_PWD, API_KEY), or its plural.</summary>
-    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> Whole =
-        new HashSet<string>(StringComparer.Ordinal) { "PASS", "PW", "PWD", "KEY", "AUTHORIZATION" }.GetAlternateLookup<ReadOnlySpan<char>>();
+    /// <summary>What makes a name a secret's as a word of it (DB_PASS, MYSQL_PW, DB_PWD, API_KEY), or its plural: a signed
+    /// URL's signature among them (an Azure SAS's sig, SharedAccessSignature, X-Amz-Signature, X-Goog-Signature).</summary>
+    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> Whole = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "PASS", "PW", "PWD", "KEY", "AUTHORIZATION", "SIG", "SIGNATURE",
+    }.GetAlternateLookup<ReadOnlySpan<char>>();
 
     /// <summary>The words that end in KEY and name no key (a word ending in KEY otherwise is one: APIKEY, ACCESSKEY).</summary>
     private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> Ordinary = new HashSet<string>(StringComparer.Ordinal)
@@ -250,8 +254,8 @@ public static partial class ContainerSecrets
     /// <summary>A variable's value as it is shown.</summary>
     public static string Shown(string name, string value) => value.Length > 0 && Secret(name) ? Masked : InValue(value);
 
-    /// <summary>A value whose name says nothing, as it is shown: a URL's password and a connection string's part named
-    /// as a secret's masked, the rest as it is (the value itself when nothing is).</summary>
+    /// <summary>A value whose name says nothing, as it is shown: a URL's password, and a URL's query part and a connection
+    /// string's part named as a secret's, masked, the rest as it is (the value itself when nothing is).</summary>
     public static string InValue(string value)
     {
         if (value.Length == 0 || !MasksInValue(value))
@@ -260,6 +264,8 @@ public static partial class ContainerSecrets
         }
         string bare = AuthorizationCredentials().Replace(value, $"${{scheme}} {Masked}");
         bare = UrlPassword().Replace(bare, $"${{head}}{Masked}@");
+        bare = QueryPart().Replace(bare, part => part.Groups["value"].Length > 0 && Secret(part.Groups["name"].ValueSpan)
+            ? $"{part.Groups["head"].Value}{Masked}" : part.Value);
         return ConnectionPart().Replace(bare, part => PartSecret(part.Groups["name"].ValueSpan.Trim()) && part.Groups["value"].Length > 0
             ? $"{part.Groups["head"].Value}{Masked}" : part.Value);
     }
@@ -277,12 +283,22 @@ public static partial class ContainerSecrets
     public static bool InValueMasks(ReadOnlySpan<char> value) => value.Length > 0 && MasksInValue(value);
 
     /// <summary>Whether <see cref="InValue"/> may mask something in a value: a Bearer's or Basic's credentials, a URL's
-    /// password, or a connection string's part whose name is a secret's and whose value is not empty.</summary>
+    /// password, or a URL's query part or a connection string's part whose name is a secret's and whose value is not empty.</summary>
     private static bool MasksInValue(ReadOnlySpan<char> value)
     {
         if (AuthorizationCredentials().IsMatch(value) || UrlPassword().IsMatch(value))
         {
             return true;
+        }
+        foreach (ValueMatch part in QueryPart().EnumerateMatches(value))
+        {
+            // The part's name after the '?' or '&' that begins it, to its '=', and its value after.
+            ReadOnlySpan<char> found = value.Slice(part.Index, part.Length);
+            int equals = found.IndexOf('=');
+            if (equals + 1 < found.Length && Secret(found[1..equals]))
+            {
+                return true;
+            }
         }
         foreach (ValueMatch part in ConnectionPart().EnumerateMatches(value))
         {
@@ -760,6 +776,10 @@ public static partial class ContainerSecrets
     /// <summary>A connection string's part, "name=value" between semicolons.</summary>
     [GeneratedRegex(@"(?<head>(?:^|;)(?<name>[^=;]+)=)(?<value>[^;]*)")]
     private static partial Regex ConnectionPart();
+
+    /// <summary>A URL's query part, "name=value" after its '?' or an '&amp;' (<c>?sv=2025-01-05&amp;sig=…</c>).</summary>
+    [GeneratedRegex(@"(?<head>[?&](?<name>[^=&#?\s]+)=)(?<value>[^&#\s]*)")]
+    private static partial Regex QueryPart();
 
     [GeneratedRegex(@"[A-Za-z][A-Za-z0-9+.\-]*://[^\s/@]*:[^\s/@]*$")]
     private static partial Regex UserBefore();
