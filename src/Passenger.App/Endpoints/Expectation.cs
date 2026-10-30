@@ -9,7 +9,7 @@ namespace Passenger.App.Endpoints;
 /// <c>status 2xx</c>, <c>time &lt; 500</c>, <c>header Content-Type contains json</c>, <c>body contains "id"</c>,
 /// <c>json $.items[0].name equals "Ada"</c>. A status or time takes 200, 2xx, 200-299, 200,201, &lt;400 or &gt;=200;
 /// a header, body or JSON value takes exists, missing, empty, equals, not-equals, contains, not-contains or matches.</summary>
-public sealed record Expectation(string Kind, string Subject, string Op, string Value)
+public sealed partial record Expectation(string Kind, string Subject, string Op, string Value)
 {
     /// <summary>A response with no criteria of its own passes when it came and is no error (below 400).</summary>
     public static readonly Expectation Answered = new("status", string.Empty, string.Empty, "<400");
@@ -69,6 +69,11 @@ public sealed record Expectation(string Kind, string Subject, string Op, string 
             if (subject.Length == 0)
             {
                 why = kind == "header" ? "header takes the header's name" : "json takes a path, as $.items[0].name";
+                return false;
+            }
+            if (kind == "json" && Steps(subject) is null)
+            {
+                why = $"\"{subject}\" is no path: each step a .name, an [index] or a [\"name\"], as $.items[0].name";
                 return false;
             }
         }
@@ -180,24 +185,26 @@ public sealed record Expectation(string Kind, string Subject, string Op, string 
         }
     }
 
-    /// <summary>The element a path names ($.a.b[0], a.b[0], or $ for the root), or null where there is none.</summary>
+    /// <summary>The element a path names ($.a.b[0], a.b[0], or $ for the root), or null where there is none or the path is
+    /// none (<see cref="Steps"/>).</summary>
     internal static JsonElement? Walk(JsonElement root, string path)
     {
-        string rest = path.StartsWith('$') ? path[1..] : "." + path;
-        JsonElement at = root;
-        foreach (Match step in Regex.Matches(rest, @"\.([^.\[\]]+)|\[(\d+)\]|\[""([^""]*)""\]|\['([^']*)'\]"))
+        if (Steps(path) is not { } steps)
         {
-            if (step.Groups[2].Success)
+            return null;
+        }
+        JsonElement at = root;
+        foreach ((string? name, int index) in steps)
+        {
+            if (name is null)
             {
-                int index = int.Parse(step.Groups[2].Value, CultureInfo.InvariantCulture);
-                if (at.ValueKind != JsonValueKind.Array || index >= at.GetArrayLength())
+                if (at.ValueKind != JsonValueKind.Array || index < 0 || index >= at.GetArrayLength())
                 {
                     return null;
                 }
                 at = at[index];
                 continue;
             }
-            string name = step.Groups[1].Success ? step.Groups[1].Value : step.Groups[3].Success ? step.Groups[3].Value : step.Groups[4].Value;
             if (at.ValueKind != JsonValueKind.Object || !at.TryGetProperty(name, out JsonElement next))
             {
                 return null;
@@ -206,6 +213,30 @@ public sealed record Expectation(string Kind, string Subject, string Op, string 
         }
         return at;
     }
+
+    /// <summary>A path's steps, a name (.name, ["name"], ['name']) or an index ([0]) each, which must cover it whole; null
+    /// for a path with anything else in it. An index too large for any array is -1, which finds nothing.</summary>
+    private static IReadOnlyList<(string? Name, int Index)>? Steps(string path)
+    {
+        string rest = path.StartsWith('$') ? path[1..] : "." + path;
+        List<(string? Name, int Index)> steps = [];
+        for (int at = 0; at < rest.Length;)
+        {
+            Match step = PathStep().Match(rest, at);
+            if (!step.Success)
+            {
+                return null;
+            }
+            steps.Add(step.Groups[2].Success
+                ? (null, int.TryParse(step.Groups[2].ValueSpan, NumberStyles.None, CultureInfo.InvariantCulture, out int index) ? index : -1)
+                : (step.Groups[1].Success ? step.Groups[1].Value : step.Groups[3].Success ? step.Groups[3].Value : step.Groups[4].Value, 0));
+            at += step.Length;
+        }
+        return steps;
+    }
+
+    [GeneratedRegex(@"\G(?:\.([^.\[\]]+)|\[(\d+)\]|\[""([^""]*)""\]|\['([^']*)'\])")]
+    private static partial Regex PathStep();
 
     /// <summary>Whether a number meets a pattern (200, 2xx, 200-299, 200,201, &lt;400, &gt;=200, !=500), or null when the
     /// pattern is none of those.</summary>
