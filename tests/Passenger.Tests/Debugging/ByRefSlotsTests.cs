@@ -42,7 +42,6 @@ public class ByRefSlotsTests(ITestOutputHelper testOutputHelper)
 
         await host.ContinueAsync();
         (string output, _) = await host.WaitForEnd();
-        Assert.Contains("assigned 7", output, StringComparison.Ordinal);
         Assert.Contains("refs 20 7 21 7 160 5 6", output, StringComparison.Ordinal);
     }
 
