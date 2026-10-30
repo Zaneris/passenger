@@ -9,6 +9,7 @@ using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.ToolWindows;
+using Passenger.App.Vcs;
 using Passenger.Core;
 using Passenger.Vcs;
 
@@ -115,6 +116,48 @@ public sealed class GitLogTests : IDisposable
             Color dot = Ui.Pixel(window, graph.TranslatePoint(new Point(10, graph.Bounds.Height / 2), window)!.Value);
             Assert.True(dot == Lane(theme), $"In the {theme} theme lane 0's dot is drawn {dot}, not its {Lane(theme)}");
         }
+    }
+
+    /// <summary>A merge commit chosen in the log lists what the branch it merged brought in, against its first parent, and a
+    /// file of it opens its diff against that parent.</summary>
+    [AvaloniaFact]
+    public void A_merge_commit_lists_the_merged_branchs_files_each_opening_its_diff_against_the_first_parent()
+    {
+        const string Shop = "class Shop\n{\n    int count;\n}\n";
+        string root = PathNames.Canonical(TestFolders.Create("gitlog-merge-"));
+        folders.Add(root);
+        File.WriteAllText(Path.Combine(root, "Shop.cs"), Shop);
+        TestGit.Init(root);
+        TestGit.Run(root, "switch", "-q", "-c", "side");
+        string merged = Shop.Replace("int count", "long count", StringComparison.Ordinal);
+        File.WriteAllText(Path.Combine(root, "Shop.cs"), merged);
+        File.WriteAllText(Path.Combine(root, "Side.md"), "side\n");
+        TestGit.Run(root, "add", "-A");
+        TestGit.Run(root, "commit", "-q", "-m", "Side");
+        TestGit.Run(root, "switch", "-q", "main");
+        File.WriteAllText(Path.Combine(root, "Main.md"), "main\n");
+        TestGit.Run(root, "add", "-A");
+        TestGit.Run(root, "commit", "-q", "-m", "Main");
+        TestGit.Run(root, "merge", "-q", "--no-ff", "-m", "Merge side", "side");
+
+        MainWindow window = Ui.OpenFolder(root, languageServer: false);
+        window.Perform(AppActions.ShowGit);
+        GitLogView log = window.GitLog;
+        Ui.Landed(() => log.Rows.Any(r => r.Commit.Subject == "Merge side"), "the log with the merge");
+        CommitInfo merge = log.Rows.First(r => r.Commit.Subject == "Merge side").Commit;
+        log.Select(merge);
+        Ui.Landed(() => log.Details.Contains("Merge side", StringComparison.Ordinal), "the merge commit's details");
+        string listed = string.Join(", ", log.Files.Select(f => $"{f.Name} ({f.Kind})").Order(StringComparer.Ordinal));
+        Assert.True(listed == "Shop.cs (Modified), Side.md (Added)", $"The merge commit chosen in the log listed [{listed}], where the branch it merged brought in Shop.cs and Side.md");
+
+        ListBox files = log.GetVisualDescendants().OfType<ListBox>().First(l => ReferenceEquals(l.ItemsSource, log.Files));
+        Ui.DoubleClick(Ui.Row(files, log.Files.First(f => f.Name == "Shop.cs")));
+        Ui.Landed(() => window.Frontmost is DiffWindow, "the diff of Shop.cs in the merge");
+        DiffView diff = ((DiffWindow)window.Frontmost).View;
+        Assert.True(diff.Left.Document.Snapshot.ToString() == Shop, $"The merge's diff of Shop.cs has on its left \"{diff.Left.Document.Snapshot}\", not the first parent's text");
+        Assert.Equal(merged, diff.Right.Document.Snapshot.ToString());
+        ((DiffWindow)window.Frontmost).Close();
+        window.Close();
     }
 
     private static Color Lane(ThemeVariant theme) =>

@@ -427,7 +427,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         // A history's commit lists what it did there, which the history read with it.
         IReadOnlyList<FileChange> changed = Scope is not null && changes.TryGetValue(commit.Hash, out IReadOnlyList<FileChange>? there)
             ? there
-            : await repository.CommitFilesAsync(commit.Hash);
+            : await repository.CommitFilesAsync(commit);
         string message = await repository.MessageAsync(commit.Hash);
         if (reading != showing)
         {

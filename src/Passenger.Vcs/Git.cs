@@ -1034,10 +1034,13 @@ public sealed class Git
         return show.Succeeded ? show.Output.TrimEnd() : string.Empty;
     }
 
-    /// <summary>The files a commit changed against its first parent (all of them for the first commit), renames found.</summary>
-    public async Task<IReadOnlyList<FileChange>> CommitFilesAsync(string hash)
+    /// <summary>The files a commit changed against its first parent (all of them for the first commit, and for a merge
+    /// those the branches it merged brought in), renames found.</summary>
+    public async Task<IReadOnlyList<FileChange>> CommitFilesAsync(CommitInfo commit)
     {
-        GitResult files = await RunAsync(Root, ["diff-tree", "--no-commit-id", "--name-status", "-r", "-z", "-M", "--root", "--end-of-options", hash]);
+        // Of a merge's one commit diff-tree prints nothing: it is compared with its first parent by name.
+        string[] commits = commit.Parents.Count > 1 ? [commit.Parents[0], commit.Hash] : [commit.Hash];
+        GitResult files = await RunAsync(Root, ["diff-tree", "--no-commit-id", "--name-status", "-r", "-z", "-M", "--root", "--end-of-options", .. commits]);
         return files.Succeeded ? NameStatus(files.Output) : [];
     }
 
