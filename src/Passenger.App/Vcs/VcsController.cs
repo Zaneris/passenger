@@ -1077,9 +1077,9 @@ public sealed class VcsController : IDisposable
     }
 
     /// <summary>A conflicted file's three versions as the merge window lays them out: the one both sides came from, and
-    /// yours on the left and theirs on the right (empty where a side deleted it), with the words for each. Each is read
-    /// as checking it out would write it, in the file's encoding (<see cref="InConflict"/>), so a Windows-1252 letter is
-    /// itself on every side rather than a replacement character UTF-8 makes of it.</summary>
+    /// yours on the left and theirs on the right (empty where a side deleted it), with the words for each; null where a
+    /// side is binary. Each is read as checking it out would write it, in the file's encoding (<see cref="InConflict"/>),
+    /// so a Windows-1252 letter is itself on every side rather than a replacement character UTF-8 makes of it.</summary>
     public async Task<MergeTexts?> MergeTextsAsync(string path)
     {
         UiThread.Check();
@@ -1090,6 +1090,10 @@ public sealed class VcsController : IDisposable
         ConflictSides sides = Sides;
         System.Text.Encoding? encoding = InConflict(path)?.Encoding;
         (byte[]? common, byte[]? ours, byte[]? theirs) = await repository.StagesAsync(path);
+        if (new[] { common, ours, theirs }.Any(b => b is not null && FileText.LooksBinary(b)))
+        {
+            return null;
+        }
         string Read(byte[]? bytes) => bytes is null ? string.Empty : FileVersion.Read(bytes, encoding, path).Text ?? string.Empty;
         return new MergeTexts(path, Read(common), Read(sides.Swapped ? theirs : ours), Read(sides.Swapped ? ours : theirs), sides);
     }
@@ -1116,6 +1120,10 @@ public sealed class VcsController : IDisposable
         if (git is not { } repository)
         {
             return Report(false, NoRepository);
+        }
+        if (Conflicts.FirstOrDefault(c => PathNames.Same(c.Path, path)) is { IsBinary: true } binary)
+        {
+            return Report(false, $"{binary.Name} is binary, so no text is written over it: Accept Yours or Accept Theirs keeps that side's file whole");
         }
         return await OneAtATimeAsync(async () =>
         {
@@ -1209,6 +1217,23 @@ public sealed class VcsController : IDisposable
 
         static async Task<byte[]?> BytesOrOriginAsync(Git repository, string revision, string path, string origin) =>
             await repository.BytesAtAsync(revision, path) ?? await repository.BytesAtAsync(revision, origin);
+    }
+
+    /// <summary>How a file's bytes differ from the last commit's where either is binary, which have no lines to compare;
+    /// null where both are text, or the file is in neither.</summary>
+    public async Task<BinaryChange?> BinaryChangeAsync(string path)
+    {
+        UiThread.Check();
+        Task<FileVersion?> version = HeadAsync(path);
+        Task<byte[]?> committed = heads.TryGetValue(path, out HeadBytes? read) ? read.Bytes : Task.FromResult<byte[]?>(null);
+        FileVersion? head = await version;
+        byte[]? now = await BackgroundWork.Run(() => File.Exists(path) ? FileText.Read(path) : null);
+        if (head is not { IsBinary: true } && (now is null || !FileText.LooksBinary(now)))
+        {
+            return null;
+        }
+        byte[]? before = head is null ? null : await committed;
+        return new BinaryChange(before?.Length, now?.Length, before is not null && now is not null && before.AsSpan().SequenceEqual(now));
     }
 
     /// <summary>A file as a revision has it, read in the open file's encoding, or null when the revision has no such
@@ -1406,6 +1431,24 @@ public sealed class VcsController : IDisposable
         public Task<byte[]?> Bytes { get; } = bytes;
         public (System.Text.Encoding? In, Task<FileVersion?> Version)? Read { get; set; }
     }
+}
+
+/// <summary>A binary file's change since the last commit: its sizes there and now (null where it is not), and whether
+/// its bytes are the same.</summary>
+public sealed record BinaryChange(long? Before, long? After, bool Same)
+{
+    /// <summary>The change as git's diff says it, of a file by its name from the tree's top.</summary>
+    public string Unified(string name) => Same ? "No changes"
+        : $"Binary files {(Before is null ? "/dev/null" : $"a/{name}")} and {(After is null ? "/dev/null" : $"b/{name}")} differ";
+
+    /// <summary>The change in a person's words, of a file by its name.</summary>
+    public string Said(string name) => (Before, After) switch
+    {
+        _ when Same => $"{name} is binary, and as the last commit has it",
+        (null, { } after) => $"{name} is a new binary file of {Plural.Of(after, "byte")}",
+        ({ } before, null) => $"{name}, a binary file of {Plural.Of(before, "byte")} in the last commit, is deleted",
+        _ => $"Binary files differ: {name} is {Plural.Of(After ?? 0, "byte")} now and {Plural.Of(Before ?? 0, "byte")} in the last commit",
+    };
 }
 
 /// <summary>A conflicted file's versions as the merge window shows them: the one both sides came from, yours (left) and

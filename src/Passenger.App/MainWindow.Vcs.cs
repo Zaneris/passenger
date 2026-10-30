@@ -328,12 +328,17 @@ public partial class MainWindow
 
     /// <summary>Show Diff: the last commit's text beside the file's, in a window over this one. The right side is the
     /// open file's own text when it is open, so an edit or a change put back there is the file's, in the file's colours as
-    /// they change.</summary>
+    /// they change. A binary file has no lines to compare: the status bar says how it differs.</summary>
     public async Task<DiffWindow?> ShowDiffAsync(string path)
     {
         if (session.Vcs.Repository is null)
         {
             status.Text = session.Vcs.NoRepository;
+            return null;
+        }
+        if (await session.Vcs.BinaryChangeAsync(path) is { } binary)
+        {
+            status.Text = binary.Said(Path.GetFileName(path));
             return null;
         }
         OpenDocument? open = Editors.Find(path) is { HoldsText: true } held ? held : null;

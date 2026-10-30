@@ -76,8 +76,9 @@ public partial class MainWindow
     }
 
     /// <summary>The merge window on a conflicted file, over the Conflicts dialog (or this window), done once it closes:
-    /// whether the file was resolved there. A file a side lacks has nothing to merge, and never becomes an empty file:
-    /// the Conflicts dialog shows it chosen instead, its Accept Yours and Accept Theirs keeping or deleting it.</summary>
+    /// whether the file was resolved there. A file a side lacks, or a binary one, has nothing to merge line by line, and
+    /// never becomes an empty file: the Conflicts dialog shows it chosen instead, its Accept Yours and Accept Theirs
+    /// keeping a side's bytes or deleting it.</summary>
     public async Task<bool> MergeAsync(string path, Window? over = null)
     {
         if (session.Vcs.Repository is not { } repository || session.Vcs.Conflicts.FirstOrDefault(c => c.Path == path) is not { } conflict)
@@ -97,6 +98,11 @@ public partial class MainWindow
         }
         if (await session.Vcs.MergeTextsAsync(path) is not { } texts)
         {
+            // A side binary as checked out (an LFS file's), which git keeps as text.
+            if (session.Vcs.Repository is not null)
+            {
+                Unmergeable(conflict with { IsBinary = true });
+            }
             return false;
         }
         MergeView view = DiffPanes.ForMerge(texts, path);
@@ -110,13 +116,16 @@ public partial class MainWindow
         return window.Resolved;
     }
 
-    /// <summary>The Conflicts dialog with a file one side lacks chosen, and the status bar saying which keeps it.</summary>
+    /// <summary>The Conflicts dialog with a file one side lacks (or a binary one) chosen, and the status bar saying how
+    /// it is resolved.</summary>
     private void Unmergeable(GitConflict conflict)
     {
         ConflictSides sides = session.Vcs.Sides;
         bool yours = sides.YoursHas(conflict);
         bool theirs = sides.TheirsHas(conflict);
-        string why = yours || theirs
+        string why = conflict.IsBinary && yours && theirs
+            ? $"{conflict.Name} is binary, so it has no lines to merge: Accept Yours or Accept Theirs keeps that side's file whole"
+            : yours || theirs
             ? $"{conflict.Name} is only in {(yours ? "yours" : "theirs")}, so there is nothing to merge: Accept {(yours ? "Yours" : "Theirs")} keeps it, Accept {(yours ? "Theirs" : "Yours")} deletes it"
             : $"{conflict.Name} is in neither side, so there is nothing to merge: Accept Yours or Accept Theirs deletes it";
         if (ShowConflicts() is { } dialog)

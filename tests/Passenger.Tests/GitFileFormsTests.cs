@@ -1,6 +1,7 @@
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.Vcs;
 using Passenger.App.Workspace;
 using Passenger.Text;
 using Passenger.Vcs;
@@ -67,6 +68,25 @@ public sealed class GitFileFormsTests : IDisposable
         Ui.Settle();
         Assert.True(File.ReadAllBytes(Path.Combine(folder, "Legacy.txt")).AsSpan().SequenceEqual(legacy),
             $"Rollback Lines and a save left Legacy.txt as {Convert.ToHexString(File.ReadAllBytes(Path.Combine(folder, "Legacy.txt")))}, not its Windows-1252 bytes");
+        window.Close();
+    }
+
+    /// <summary>A binary file changed since the last commit has no lines to compare: Show Diff says the binary files
+    /// differ, by their sizes, and opens no diff of what reads as no text on one side and lines deleted on the other.</summary>
+    [AvaloniaFact]
+    public void Show_diff_of_a_changed_binary_file_says_the_binary_files_differ_by_their_sizes()
+    {
+        byte[] image = [0x89, (byte)'P', (byte)'N', (byte)'G', 0, 1, 2, 3];
+        File.WriteAllBytes(Path.Combine(folder, "image.png"), image);
+        Git("add", "image.png");
+        Git("commit", "-q", "-m", "Image");
+        File.WriteAllBytes(Path.Combine(folder, "image.png"), [.. image, 4, 5]);
+
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.Landed(() => window.Vcs.Changes.Any(c => c.Name == "image.png"), "image.png listed as changed");
+        DiffWindow? diff = Ui.Landed(window.ShowDiffAsync(window.Vcs.Changes.Single(c => c.Name == "image.png").Path), "Show Diff on image.png");
+        Assert.True(diff is null, $"Show Diff on a binary file opened a diff of {diff?.View.Left.Document.Snapshot.Length} and {diff?.View.Right.Document.Snapshot.Length} characters");
+        Assert.Equal("Binary files differ: image.png is 10 bytes now and 8 bytes in the last commit", window.Status);
         window.Close();
     }
 

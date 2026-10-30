@@ -120,13 +120,15 @@ public sealed record BlameLine(string Hash, string Author, DateTimeOffset Time, 
 public sealed record GitStatus(string? Branch, string? Head, IReadOnlyList<FileChange> Changes, IReadOnlyList<GitConflict> Conflicts);
 
 /// <summary>A file in conflict and which of git's three versions of it there are: the one both sides came from (stage
-/// 1), ours (stage 2, HEAD's side) and theirs (stage 3, the side brought in); a side without one deleted the file.</summary>
-public sealed record GitConflict(string Path, bool HasBase, bool HasOurs, bool HasTheirs)
+/// 1), ours (stage 2, HEAD's side) and theirs (stage 3, the side brought in); a side without one deleted the file.
+/// <see cref="IsBinary"/> when any of them is binary (<see cref="FileText.LooksBinary"/>).</summary>
+public sealed record GitConflict(string Path, bool HasBase, bool HasOurs, bool HasTheirs, bool IsBinary = false)
 {
     public string Name => System.IO.Path.GetFileName(Path);
 
-    /// <summary>Whether both sides have the file, so there is something to merge; else it is kept or deleted whole.</summary>
-    public bool CanMerge => HasOurs && HasTheirs;
+    /// <summary>Whether both sides have the file as text, so there is something to merge line by line; else it is kept
+    /// or deleted whole.</summary>
+    public bool CanMerge => HasOurs && HasTheirs && !IsBinary;
 }
 
 /// <summary>A stash: its place in the list (stash@{Index}) when the list was read, its commit, what it says, and when it
@@ -294,6 +296,7 @@ public sealed class Git
         string? head = null;
         List<FileChange> changes = [];
         List<GitConflict> conflicts = [];
+        List<string[]> stages = [];
         string[] entries = status.Output.Split('\0');
         for (int i = 0; i < entries.Length; i++)
         {
@@ -326,6 +329,7 @@ public sealed class Git
                     string path = Full(unmerged[10]);
                     changes.Add(new FileChange(path, ChangeKind.Conflicted));
                     conflicts.Add(new GitConflict(path, Staged(unmerged[3]), Staged(unmerged[4]), Staged(unmerged[5])));
+                    stages.Add([.. Enumerable.Range(3, 3).Where(i => Staged(unmerged[i])).Select(i => unmerged[i + 4])]);
                     break;
                 // A save under way as git read the folder: the saved file's change, which the read after the save lists.
                 case '?' when FileText.IsSaving(entry):
@@ -333,6 +337,14 @@ public sealed class Git
                 case '?':
                     changes.Add(new FileChange(Full(entry[2..]), ChangeKind.Unversioned));
                     break;
+            }
+        }
+        if (conflicts.Count > 0)
+        {
+            await BinaryBlobsAsync(stages.SelectMany(s => s));
+            for (int i = 0; i < conflicts.Count; i++)
+            {
+                conflicts[i] = conflicts[i] with { IsBinary = stages[i].Any(blob => binaryBlobs.GetValueOrDefault(blob)) };
             }
         }
         return new GitStatus(branch, head, changes, conflicts);
@@ -350,6 +362,39 @@ public sealed class Git
             : SubmoduleChange.None;
 
         static bool Staged(string mode) => mode.Any(c => c != '0');
+    }
+
+    /// <summary>Whether each blob a conflict's stages name is binary, by the blob's hash, which names those bytes for good.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> binaryBlobs = new(StringComparer.Ordinal);
+
+    /// <summary>Reads, by one git, each of these blobs not read before, and keeps whether it is binary.</summary>
+    private async Task BinaryBlobsAsync(IEnumerable<string> blobs)
+    {
+        string[] unread = [.. blobs.Distinct(StringComparer.Ordinal).Where(b => !binaryBlobs.ContainsKey(b))];
+        if (unread.Length == 0)
+        {
+            return;
+        }
+        (_, byte[] output) = await ExchangeAsync(Root, ["cat-file", "--batch"], Encoding.ASCII.GetBytes(string.Concat(unread.Select(b => $"{b}\n"))));
+        int at = 0;
+        foreach (string blob in unread)
+        {
+            // "<object> blob <size>", the object's bytes and a line break; or "<object> missing" (a submodule's commit).
+            int end = Array.IndexOf(output, (byte)'\n', at);
+            string[] header = end < 0 ? [] : Encoding.ASCII.GetString(output, at, end - at).Split(' ');
+            if (header is [_, "missing"])
+            {
+                binaryBlobs[blob] = false;
+                at = end + 1;
+                continue;
+            }
+            if (header is not [_, "blob", { } length] || !int.TryParse(length, System.Globalization.CultureInfo.InvariantCulture, out int size) || size > output.Length - end - 1)
+            {
+                break;
+            }
+            binaryBlobs[blob] = FileText.LooksBinary(output.AsSpan(end + 1, size));
+            at = end + 1 + size + 1;
+        }
     }
 
     /// <summary>What the tree is in the middle of (a merge, a rebase, a cherry-pick or a revert stopped for its

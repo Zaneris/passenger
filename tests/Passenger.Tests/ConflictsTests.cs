@@ -184,6 +184,48 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A binary file both sides changed has no lines to merge: Merge… is off for it and, asked for, shows it chosen
+    /// in the Conflicts dialog saying so, and Accept Theirs or Accept Yours keeps that side's bytes, staged as they are.</summary>
+    [AvaloniaFact]
+    public void A_binary_files_conflict_is_never_merged_and_accept_yours_or_theirs_keeps_that_sides_bytes()
+    {
+        static byte[] Image(byte mark) => [0x89, (byte)'P', (byte)'N', (byte)'G', 0, 1, 2, mark, 0];
+        string image = Path.Combine(folder, "image.png");
+        string icon = Path.Combine(folder, "icon.png");
+        File.WriteAllBytes(image, Image(0));
+        File.WriteAllBytes(icon, Image(0));
+        Git("add", "-A");
+        Git("commit", "-q", "-m", "Images");
+        Git("switch", "-q", "-c", "feature");
+        File.WriteAllBytes(image, Image(2));
+        File.WriteAllBytes(icon, Image(2));
+        Git("commit", "-q", "-am", "Feature images");
+        Git("switch", "-q", "main");
+        File.WriteAllBytes(image, Image(1));
+        File.WriteAllBytes(icon, Image(1));
+        Git("commit", "-q", "-am", "Main images");
+        Conflicting("merge", "feature");
+
+        MainWindow window = Open();
+        Ui.Landed(() => window.Vcs.Conflicts.Count == 2 && window.Vcs.Conflicts.All(c => c.IsBinary), "the two images in conflict, binary");
+        Assert.False(Ui.Await(window.MergeAsync(PathNames.Canonical(image)), "Merge… on image.png"), "image.png was merged");
+        ConflictsDialog dialog = Chosen(window, "image.png", "Modified Modified");
+        Assert.Equal("image.png is binary, so it has no lines to merge: Accept Yours or Accept Theirs keeps that side's file whole", window.Status);
+        Assert.True(window.Frontmost is not MergeWindow, "A merge window opened on a binary file");
+
+        Press(dialog, "Accept Theirs");
+        Ui.Landed(() => !Unmerged().Contains("image.png"), "image.png resolved");
+        Assert.Equal(Image(2), File.ReadAllBytes(image));
+        Assert.Equal(Git("hash-object", "image.png").Trim(), Git("rev-parse", ":image.png").Trim());
+
+        dialog.Chosen = [dialog.Rows.Single()];
+        Press(dialog, "Accept Yours");
+        Ui.Landed(() => window.ConflictsWindow is null, "the dialog closed with nothing left in conflict");
+        Assert.Equal(Image(1), File.ReadAllBytes(icon));
+        Assert.Equal(Git("hash-object", "icon.png").Trim(), Git("rev-parse", ":icon.png").Trim());
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_Windows_1252_file_merged_under_core_autocrlf_shows_each_sides_letters_and_is_written_in_1252_with_CRLF()
     {

@@ -531,6 +531,27 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             .Select(c => $"{c.GetProperty("path").GetString()} {c.GetProperty("kind").GetString()}").Order(StringComparer.Ordinal));
     }
 
+    /// <summary>vcs_status with the path of a binary file changed since the last commit answers as git's diff does, that the
+    /// binary files differ, never its old bytes as lines deleted; the file put back as committed has no changes.</summary>
+    [Fact]
+    public async Task An_agents_diff_of_a_changed_binary_file_says_the_binary_files_differ()
+    {
+        string repository = TestFolders.Create("mcp-binary-");
+        DeleteAtEnd(repository);
+        byte[] image = [0x89, (byte)'P', (byte)'N', (byte)'G', 0, 1, 2, 3];
+        string path = Path.Combine(repository, "image.png");
+        File.WriteAllBytes(path, image);
+        await TestGit.InitAsync(repository);
+        File.WriteAllBytes(path, [.. image, 4, 5]);
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        Dictionary<string, object?> asked = new() { ["path"] = "image.png" };
+        string diff = (await Call(client, McpTools.VcsStatus, asked)).GetString()!;
+        Assert.True(diff == "Binary files a/image.png and b/image.png differ", $"vcs_status of a changed binary file answered:\n{diff}");
+        File.WriteAllBytes(path, image);
+        Assert.Equal("No changes", (await Call(client, McpTools.VcsStatus, asked)).GetString());
+    }
+
     /// <summary>vcs_status with the path of a file git mv renamed, one line of it changed since, answers that one line, as
     /// the file was where the last commit has it.</summary>
     [Fact]

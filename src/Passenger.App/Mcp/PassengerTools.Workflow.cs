@@ -80,6 +80,10 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException(Session.Vcs.NoRepository);
         }
+        if (await Session.Vcs.BinaryChangeAsync(full) is { } binary)
+        {
+            return binary.Unified(name);
+        }
         string head = await Session.Vcs.HeadTextAsync(full) ?? string.Empty;
         Passenger.App.Editors.OpenTexts texts = Editors.Texts();
         // Reading and comparing a large file would hold the person's window: the thread pool does both.
