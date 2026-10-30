@@ -62,6 +62,9 @@ public sealed class LiveRequest(string trace, string method, string path, string
     /// <summary>Its own id, as the app told it, by which it is found and forgotten.</summary>
     internal string Request { get; init; } = string.Empty;
 
+    /// <summary>Its activity's id, by which its commands are found for it and it is forgotten; empty where the app told none.</summary>
+    internal string Activity { get; set; } = string.Empty;
+
     public WebRoute? Route { get; internal set; }
 
     /// <summary>The program that served it, as the window names it.</summary>
@@ -92,7 +95,7 @@ public sealed class LiveRequest(string trace, string method, string path, string
 public sealed record RequestChanges(IReadOnlyList<LiveRequest> Came, IReadOnlyCollection<LiveRequest> Changed, IReadOnlyCollection<LiveRequest> Went, bool All = false);
 
 /// <summary>The live requests of the app followed, newest last, as many as <see cref="Most"/>: each event the stream thread
-/// hears queued and taken on the UI thread a batch at a time, a command tied to its request by its activity's root id. What
+/// hears queued and taken on the UI thread a batch at a time, a command tied to its request by the activity it ran under. What
 /// the Requests window shows, kept whether or not its view is built (#447), with what the window says it follows.</summary>
 public sealed class RequestLog
 {
@@ -114,6 +117,28 @@ public sealed class RequestLog
     /// a request one service makes of another carries its trace on, so a root id alone names a request in each.</summary>
     private readonly Dictionary<(string From, string Id), LiveRequest> byTrace = [];
     private readonly Dictionary<(string From, string Id), LiveRequest> byRequest = [];
+
+    /// <summary>Requests by the program that served them and their own activity's id, and its span's: two requests of one
+    /// trace in one program are told apart by these.</summary>
+    private readonly Dictionary<(string From, string Id), LiveRequest> byActivity = [];
+
+    /// <summary>The request a command ran for: the one whose activity it ran under or under a parent of, else the latest
+    /// of its trace.</summary>
+    private LiveRequest? Issuer(string from, IReadOnlyList<string> under, string trace)
+    {
+        foreach (string activity in under)
+        {
+            if (byActivity.TryGetValue((from, activity), out LiveRequest? found))
+            {
+                return found;
+            }
+        }
+        return trace.Length > 0 && byTrace.TryGetValue((from, trace), out LiveRequest? traced) ? traced : null;
+    }
+
+    /// <summary>The span id in a W3C activity id ("00-trace-span-flags"), or null for an id of another form.</summary>
+    private static string? SpanOf(string activity) =>
+        activity.Length == 55 && activity[2] == '-' && activity[35] == '-' && activity[52] == '-' ? activity.Substring(36, 16) : null;
 
     /// <summary>A program's request by its own id, else by its activity's root id.</summary>
     private LiveRequest? Of(string from, string request, string trace) =>
@@ -192,6 +217,7 @@ public sealed class RequestLog
         requests.Clear();
         byTrace.Clear();
         byRequest.Clear();
+        byActivity.Clear();
         came.Clear();
         changed.Clear();
         went.Clear();
@@ -243,6 +269,15 @@ public sealed class RequestLog
                 {
                     byRequest[(from, began.Request)] = request;
                 }
+                if (began.Activity.Length > 0)
+                {
+                    request.Activity = began.Activity;
+                    byActivity[(from, began.Activity)] = request;
+                    if (SpanOf(began.Activity) is { } span)
+                    {
+                        byActivity[(from, span)] = request;
+                    }
+                }
                 if (requests.Count > Most)
                 {
                     LiveRequest oldest = requests[0];
@@ -253,6 +288,14 @@ public sealed class RequestLog
                     if (byRequest.TryGetValue((oldest.From, oldest.Request), out LiveRequest? named) && named == oldest)
                     {
                         byRequest.Remove((oldest.From, oldest.Request));
+                    }
+                    if (oldest.Activity.Length > 0)
+                    {
+                        byActivity.Remove((oldest.From, oldest.Activity));
+                        if (SpanOf(oldest.Activity) is { } span)
+                        {
+                            byActivity.Remove((oldest.From, span));
+                        }
                     }
                     requests.RemoveAt(0);
                     went.Add(oldest);
@@ -267,7 +310,7 @@ public sealed class RequestLog
                 broke.Error = failed.Error;
                 changed.Add(broke);
                 return;
-            case CommandRan ran when byTrace.TryGetValue((from, ran.Trace), out LiveRequest? issuer):
+            case CommandRan ran when Issuer(from, ran.Under, ran.Trace) is { } issuer:
                 LiveCommand command = new(ran.Id, ran.Text, ran.Milliseconds, ran.Rows, ran.Error);
                 if (!issuer.ByText.TryGetValue(ran.Text, out List<LiveCommand>? same))
                 {
@@ -291,11 +334,11 @@ public sealed class RequestLog
                 }
                 changed.Add(issuer);
                 return;
-            case CommandRead read when byTrace.TryGetValue((from, read.Trace), out LiveRequest? reader) && Last(reader, read.Id) is { } readCommand:
+            case CommandRead read when Issuer(from, read.Under, read.Trace) is { } reader && Last(reader, read.Id) is { } readCommand:
                 readCommand.Reads = read.Reads;
                 changed.Add(reader);
                 return;
-            case CommandLogged log when byTrace.TryGetValue((from, log.Trace), out LiveRequest? logger):
+            case CommandLogged log when Issuer(from, log.Span.Length > 0 ? [log.Span] : [], log.Trace) is { } logger:
                 if (Unnamed(logger, log.Message) is { } unnamed)
                 {
                     unnamed.Parameters = CommandParameters.Of(log.Message);

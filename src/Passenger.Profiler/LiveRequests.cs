@@ -13,7 +13,11 @@ namespace Passenger.Profiler;
 public abstract record WebEvent(string Trace, DateTime At);
 
 /// <summary>ASP.NET Core began a request, its own id (<c>HttpContext.TraceIdentifier</c>) in <paramref name="Request"/>.</summary>
-public sealed record RequestBegan(string Trace, DateTime At, string Request, string Method, string Path, string Query) : WebEvent(Trace, At);
+public sealed record RequestBegan(string Trace, DateTime At, string Request, string Method, string Path, string Query) : WebEvent(Trace, At)
+{
+    /// <summary>The id of the request's own activity, which what it runs runs under; empty where the app made none.</summary>
+    public string Activity { get; init; } = string.Empty;
+}
 
 /// <summary>ASP.NET Core ended a request with its status: told by the request's own id, since a request an exception ended
 /// is ended outside its activity.</summary>
@@ -23,38 +27,57 @@ public sealed record RequestEnded(string Trace, DateTime At, string Request, int
 public sealed record RequestFailed(string Trace, DateTime At, string Request, string Error) : WebEvent(Trace, At);
 
 /// <summary>EF Core ran a command for a request: its id, text, time and the rows a non-query changed; or why it failed.</summary>
-public sealed record CommandRan(string Trace, DateTime At, string Id, string Text, double Milliseconds, int? Rows, string? Error) : WebEvent(Trace, At);
+public sealed record CommandRan(string Trace, DateTime At, string Id, string Text, double Milliseconds, int? Rows, string? Error) : WebEvent(Trace, At)
+{
+    /// <summary>The ids of the activity it ran under and of that activity's parents, the nearest first: its request's among them.</summary>
+    public IReadOnlyList<string> Under { get; init; } = [];
+}
 
 /// <summary>A command's reader closed after so many reads (EF Core's ReadCount: each Read asked, the last that found no row too).</summary>
-public sealed record CommandRead(string Trace, DateTime At, string Id, int Reads) : WebEvent(Trace, At);
+public sealed record CommandRead(string Trace, DateTime At, string Id, int Reads) : WebEvent(Trace, At)
+{
+    /// <inheritdoc cref="CommandRan.Under"/>
+    public IReadOnlyList<string> Under { get; init; } = [];
+}
 
 /// <summary>EF Core logged a command it ran (event 20101, as the app's own logging writes it): its words, the parameters among
 /// them, with their values only where the app logs those (EF's sensitive data logging), else as '?'.</summary>
-public sealed record CommandLogged(string Trace, DateTime At, string Message) : WebEvent(Trace, At);
+public sealed record CommandLogged(string Trace, DateTime At, string Message) : WebEvent(Trace, At)
+{
+    /// <summary>The span id of the activity it was logged under; empty where there was none.</summary>
+    public string Span { get; init; } = string.Empty;
+}
 
 /// <summary>A running web app's requests and the database commands each issued, heard live with no change to the app: ASP.NET
 /// Core's hosting events and EF Core's command events through the runtime's DiagnosticSource bridge
 /// (<c>Microsoft-Diagnostics-DiagnosticSource</c>) over an EventPipe session at the program's own diagnostic port, each told
-/// with the root id of the activity it ran under, which ties a command to its request. Nothing is asked of the app while
-/// no one listens: the session lasts from <see cref="AttachAsync"/> to <see cref="DisposeAsync"/>.</summary>
+/// with the activity it ran under: a command is tied to the request whose activity is that one or a parent of it, else to
+/// the latest request of the activity's root id. Nothing is asked of the app while no one listens: the session lasts from
+/// <see cref="AttachAsync"/> to <see cref="DisposeAsync"/>.</summary>
 public sealed class LiveRequests : IAsyncDisposable
 {
     private const string Bridge = "Microsoft-Diagnostics-DiagnosticSource";
 
     private const string Logging = "Microsoft-Extensions-Logging";
 
+    /// <summary>The activity a command ran under and its parents, as many as a command is looked for its request in: an app's
+    /// own activities between a request's and its commands are seldom more.</summary>
+    private const string Under = "Under0=*Activity.Id;Under1=*Activity.Parent.Id;Under2=*Activity.Parent.Parent.Id;Under3=*Activity.Parent.Parent.Parent.Id";
+
+    private static readonly string[] UnderNames = ["Under0", "Under1", "Under2", "Under3"];
+
     /// <summary>The events asked for and the values each takes from its payload (<c>*Activity</c> is the activity it ran under).</summary>
     internal static readonly string Specs = string.Join("\n",
     [
         // Asked by its name, so ASP.NET Core makes each request's activity for its listeners too.
         "Microsoft.AspNetCore/Microsoft.AspNetCore.Hosting.HttpRequestIn:-",
-        "Microsoft.AspNetCore/Microsoft.AspNetCore.Hosting.HttpRequestIn.Start:-Method=Request.Method;Path=Request.Path;Query=Request.QueryString;Request=TraceIdentifier;Trace=*Activity.RootId",
+        "Microsoft.AspNetCore/Microsoft.AspNetCore.Hosting.HttpRequestIn.Start:-Method=Request.Method;Path=Request.Path;Query=Request.QueryString;Request=TraceIdentifier;Trace=*Activity.RootId;Activity=*Activity.Id",
         "Microsoft.AspNetCore/Microsoft.AspNetCore.Hosting.HttpRequestIn.Stop:-Status=Response.StatusCode;Request=TraceIdentifier;Trace=*Activity.RootId",
         "Microsoft.AspNetCore/Microsoft.AspNetCore.Hosting.UnhandledException:-Error=exception;Request=httpContext.TraceIdentifier;Trace=*Activity.RootId",
         "Microsoft.AspNetCore/Microsoft.AspNetCore.Diagnostics.UnhandledException:-Error=exception;Request=httpContext.TraceIdentifier;Trace=*Activity.RootId",
-        "Microsoft.EntityFrameworkCore/Microsoft.EntityFrameworkCore.Database.Command.CommandExecuted:-Id=CommandId;Text=Command.CommandText;Ms=Duration.TotalMilliseconds;Result=Result;Trace=*Activity.RootId",
-        "Microsoft.EntityFrameworkCore/Microsoft.EntityFrameworkCore.Database.Command.CommandError:-Id=CommandId;Text=Command.CommandText;Ms=Duration.TotalMilliseconds;Error=Exception.Message;Trace=*Activity.RootId",
-        "Microsoft.EntityFrameworkCore/Microsoft.EntityFrameworkCore.Database.Command.DataReaderDisposing:-Id=CommandId;Reads=ReadCount;Trace=*Activity.RootId",
+        $"Microsoft.EntityFrameworkCore/Microsoft.EntityFrameworkCore.Database.Command.CommandExecuted:-Id=CommandId;Text=Command.CommandText;Ms=Duration.TotalMilliseconds;Result=Result;Trace=*Activity.RootId;{Under}",
+        $"Microsoft.EntityFrameworkCore/Microsoft.EntityFrameworkCore.Database.Command.CommandError:-Id=CommandId;Text=Command.CommandText;Ms=Duration.TotalMilliseconds;Error=Exception.Message;Trace=*Activity.RootId;{Under}",
+        $"Microsoft.EntityFrameworkCore/Microsoft.EntityFrameworkCore.Database.Command.DataReaderDisposing:-Id=CommandId;Reads=ReadCount;Trace=*Activity.RootId;{Under}",
     ]);
 
     /// <summary>The logs asked of the app's logging: EF Core's commands' category, with no level of its own, so the
@@ -209,6 +232,9 @@ public sealed class LiveRequests : IAsyncDisposable
             // EF Core's CommandExecuted (20101), tied to its request by the activity the app's logging names.
             return data.EventName == "FormattedMessage" && data.PayloadByName("EventId") is int and 20101 && data.PayloadByName("FormattedMessage") is string message
                 ? new CommandLogged(data.PayloadByName("ActivityTraceId") as string ?? string.Empty, data.TimeStamp.ToUniversalTime(), message)
+                {
+                    Span = data.PayloadByName("ActivitySpanId") as string is { } span && span.Trim('0').Length > 0 ? span : string.Empty,
+                }
                 : null;
         }
         if (data.PayloadByName("EventName") is not string name || data.PayloadByName("Arguments") is not IEnumerable<object> arguments)
@@ -226,19 +252,20 @@ public sealed class LiveRequests : IAsyncDisposable
         string trace = values.GetValueOrDefault("Trace") ?? string.Empty;
         string request = values.GetValueOrDefault("Request") ?? string.Empty;
         DateTime at = data.TimeStamp.ToUniversalTime();
+        string[] under = [.. UnderNames.Select(n => values.GetValueOrDefault(n)).OfType<string>().Where(id => id.Length > 0)];
         return name switch
         {
             "Microsoft.AspNetCore.Hosting.HttpRequestIn.Start" => new RequestBegan(trace, at, request, values.GetValueOrDefault("Method") ?? string.Empty,
-                values.GetValueOrDefault("Path") ?? string.Empty, values.GetValueOrDefault("Query") ?? string.Empty),
+                values.GetValueOrDefault("Path") ?? string.Empty, values.GetValueOrDefault("Query") ?? string.Empty) { Activity = values.GetValueOrDefault("Activity") ?? string.Empty },
             "Microsoft.AspNetCore.Hosting.HttpRequestIn.Stop" => new RequestEnded(trace, at, request, Number(values.GetValueOrDefault("Status")) ?? 0),
             "Microsoft.AspNetCore.Hosting.UnhandledException" or "Microsoft.AspNetCore.Diagnostics.UnhandledException" =>
                 new RequestFailed(trace, at, request, values.GetValueOrDefault("Error") ?? string.Empty),
             "Microsoft.EntityFrameworkCore.Database.Command.CommandExecuted" or "Microsoft.EntityFrameworkCore.Database.Command.CommandError" =>
                 new CommandRan(trace, at, values.GetValueOrDefault("Id") ?? string.Empty, values.GetValueOrDefault("Text") ?? string.Empty,
                     double.TryParse(values.GetValueOrDefault("Ms"), NumberStyles.Float, CultureInfo.InvariantCulture, out double ms) ? ms : 0,
-                    Number(values.GetValueOrDefault("Result")), values.GetValueOrDefault("Error")),
+                    Number(values.GetValueOrDefault("Result")), values.GetValueOrDefault("Error")) { Under = under },
             "Microsoft.EntityFrameworkCore.Database.Command.DataReaderDisposing" =>
-                new CommandRead(trace, at, values.GetValueOrDefault("Id") ?? string.Empty, Number(values.GetValueOrDefault("Reads")) ?? 0),
+                new CommandRead(trace, at, values.GetValueOrDefault("Id") ?? string.Empty, Number(values.GetValueOrDefault("Reads")) ?? 0) { Under = under },
             _ => null,
         };
 

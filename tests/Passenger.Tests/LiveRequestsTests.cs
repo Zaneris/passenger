@@ -202,6 +202,81 @@ public sealed class LiveRequestsTests
         }
     }
 
+    /// <summary>Two requests of one trace (a page's two calls carrying its trace on) served at once by one app, each running
+    /// a query of its own, each list only their own command: a command is tied to the request whose activity it ran under,
+    /// not to the trace's latest.</summary>
+    [AvaloniaFact]
+    public void Two_requests_of_one_trace_served_at_once_each_list_only_their_own_commands()
+    {
+        using HeldPort port = new();
+        string folder = TestFolders.Create("requests-pair-");
+        WriteShop(folder, port.Port, Program.Replace("app.MapGet(\"/boom\", Fail);", Paired, StringComparison.Ordinal) + PairedTypes);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Requests);
+            port.LetGo(Path.Combine(folder, "gate"));
+            Assert.True(window.SelectConfiguration("Shop: http"), $"No configuration Shop: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
+            Ui.Launched(window, window.RunAsync(), "the shop to start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the shop to listen",
+                TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.RequestLog.Following.StartsWith("Following", StringComparison.Ordinal) && window.RequestLog.Following.Contains("process", StringComparison.Ordinal),
+                () => $"the Requests window to follow the shop; it says: {window.RequestLog.Following}", TimeSpan.FromMinutes(1));
+
+            using HttpClient client = new();
+            string[] answers = Asked(() => Task.WhenAll(Traced(client, port.Port, "orders"), Traced(client, port.Port, "customers")), "the shop's answers to the two requests");
+            Assert.Equal(["3 orders", "0 customers"], answers);
+            LiveRequest[] Pair() => [.. window.RequestLog.Requests.Where(r => r.Path.StartsWith("/pair/", StringComparison.Ordinal))];
+            Ui.WaitFor(() => Pair().Count(r => r.Status is not null) == 2 && Pair().Sum(r => r.Commands.Count) == 2,
+                () => $"the two requests, listed as they ended, with their two commands: [{string.Join("; ", Pair().Select(r => $"{r.Path} status {r.Status}: {string.Join(" | ", r.Commands.Select(c => c.Text))}"))}]",
+                TimeSpan.FromSeconds(30));
+            LiveRequest orders = Pair().Single(r => r.Path == "/pair/orders");
+            LiveRequest customers = Pair().Single(r => r.Path == "/pair/customers");
+            Assert.True(orders.Trace.Length > 0 && orders.Trace == customers.Trace, $"The two requests are not of one trace: {orders.Trace} and {customers.Trace}");
+            Assert.Contains("FROM \"Orders\"", Assert.Single(orders.Commands).Text, StringComparison.Ordinal);
+            Assert.Contains("FROM \"Customers\"", Assert.Single(customers.Commands).Text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning, "the shop to stop");
+            window.Close();
+        }
+
+        // Both carry one trace, as a page's calls carry the page's on.
+        static async Task<string> Traced(HttpClient client, int port, string side)
+        {
+            using HttpRequestMessage request = new(HttpMethod.Get, $"http://127.0.0.1:{port}/pair/{side}");
+            request.Headers.Add("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
+            using HttpResponseMessage answer = await client.SendAsync(request);
+            return await answer.Content.ReadAsStringAsync();
+        }
+    }
+
+    /// <summary>A route whose two requests wait for each other before each runs its own query, so they are served at once.</summary>
+    private const string Paired = """
+        app.MapGet("/pair/{side}", async (string side, Shop db) =>
+        {
+            if (Interlocked.Increment(ref Pair.Arrived) == 2)
+            {
+                Pair.Both.TrySetResult();
+            }
+            await Pair.Both.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            return side == "orders" ? $"{await db.Orders.CountAsync()} orders" : $"{await db.Customers.CountAsync()} customers";
+        });
+        app.MapGet("/boom", Fail);
+        """;
+
+    private const string PairedTypes = """
+
+        static class Pair
+        {
+            public static int Arrived;
+
+            public static readonly TaskCompletionSource Both = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        """;
+
     /// <summary>A web app whose configuration runs it in the terminal has its requests followed as one in the Run console
     /// does: Run's program is the same wherever it runs.</summary>
     [AvaloniaFact]
@@ -611,27 +686,27 @@ public sealed class LiveRequestsTests
     /// <summary>The shop written into a folder and restored from the run's local feed, its launch profile serving at the port
     /// given: this class's and an agent's test of the requests (McpRequestsTests); restored from the UI thread, the
     /// window's loop running meanwhile.</summary>
-    internal static void WriteShop(string folder, int port)
+    internal static void WriteShop(string folder, int port, string program = Program)
     {
-        Write(folder, port);
+        Write(folder, port, program);
         Restore.Run(folder);
     }
 
     /// <inheritdoc cref="WriteShop"/>
     internal static Task WriteShopAsync(string folder, int port)
     {
-        Write(folder, port);
+        Write(folder, port, Program);
         return Restore.RunAsync(folder);
     }
 
-    private static void Write(string folder, int port)
+    private static void Write(string folder, int port, string program)
     {
         AvaloniaApp.UseFeed(folder);
         TestFolders.Write(folder, "Shop.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>", "<Nullable>enable</Nullable>")
             .With($"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.EntityFrameworkCore.Sqlite\" Version=\"{ShopApp.Version}\" />\n  </ItemGroup>\n"));
         TestFolders.Write(folder, "Properties/launchSettings.json",
             $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port}\" }}\n  }}\n}}\n");
-        TestFolders.Write(folder, "Program.cs", Program);
+        TestFolders.Write(folder, "Program.cs", program);
     }
 
     /// <summary>The app's answer at the address, asked from the UI thread with the window's loop running meanwhile, never
