@@ -36,8 +36,9 @@ public static class ProjectEdits
     });
 
     /// <summary>A package reference added as dotnet add package writes one, its version given (none under central package
-    /// management, whose Directory.Packages.props holds it): after the project's last package reference, else in an item
-    /// group of its own before &lt;/Project&gt;. Null once done, else why not.</summary>
+    /// management, whose Directory.Packages.props holds it): after the project's last package reference that every build
+    /// sees (no condition on it or its item group), else in an item group of its own before &lt;/Project&gt;. Null once
+    /// done, else why not.</summary>
     public static string? AddPackage(string project, string id, string? version) => Change(project, xml =>
     {
         List<XElement> references = PackageReferences(xml);
@@ -47,7 +48,7 @@ public static class ProjectEdits
         }
         string include = XmlText.Quoted(id, '"');
         string element = version is null ? $"<PackageReference Include=\"{include}\" />" : $"<PackageReference Include=\"{include}\" Version=\"{XmlText.Quoted(version, '"')}\" />";
-        if (references.LastOrDefault() is { } last)
+        if (references.LastOrDefault(Unconditioned) is { } last)
         {
             xml.After(last, element);
         }
@@ -368,6 +369,11 @@ public static class ProjectEdits
         [.. xml.Root.Elements().Where(e => e.Name.LocalName == "PropertyGroup" && !Conditioned(e))];
 
     private static bool IsItemGroup(XElement element) => element.Name.LocalName == "ItemGroup";
+
+    /// <summary>Whether every build sees an item: neither it nor its item group has a condition, and the group is the
+    /// project's own, in no Choose or Target.</summary>
+    private static bool Unconditioned(XElement item) =>
+        !Conditioned(item) && item.Parent is { } group && IsItemGroup(group) && !Conditioned(group) && group.Parent?.Name.LocalName == "Project";
 
     private static bool Conditioned(XElement element) => element.Attributes().Any(a => a.Name.LocalName.Equals("Condition", StringComparison.OrdinalIgnoreCase));
 
