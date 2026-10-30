@@ -80,7 +80,7 @@ internal static class MemberMoves
                 sourceEditor.ReplaceNode(declared, (current, generator) => generator.WithModifiers(current, generator.GetModifiers(current).WithIsAbstract(false).WithIsVirtual(false).WithIsOverride(true)));
                 continue;
             }
-            SyntaxNode moved = member.DeclaredAccessibility == Accessibility.Private ? targetEditor.Generator.WithAccessibility(declared, Accessibility.Protected) : declared;
+            SyntaxNode moved = member.DeclaredAccessibility == Accessibility.Private ? targetEditor.Generator.WithAccessibility(Alone(declared), Accessibility.Protected) : Alone(declared);
             editors.AddMember(targetEditor, into, moved);
             Remove(sourceEditor, declared);
         }
@@ -131,14 +131,14 @@ internal static class MemberMoves
             }
             foreach ((INamedTypeSymbol target, TypeDeclarationSyntax into) in targets.Zip(intos))
             {
-                if (target.GetMembers(member.Name).Any(m => m.Kind == member.Kind && !m.IsImplicitlyDeclared))
+                if (Declares(target, member))
                 {
                     continue;
                 }
                 DocumentEditor targetEditor = await editors.OfAsync(into).ConfigureAwait(false);
                 SyntaxNode copy = keepAbstract || member.IsAbstract
                     ? targetEditor.Generator.WithModifiers(declared, targetEditor.Generator.GetModifiers(declared).WithIsAbstract(false).WithIsVirtual(false).WithIsOverride(true))
-                    : declared;
+                    : Alone(declared);
                 editors.AddMember(targetEditor, into, copy);
             }
             if (keepAbstract)
@@ -212,6 +212,28 @@ internal static class MemberMoves
         SyntaxNode node = await member.DeclaringSyntaxReferences[0].GetSyntaxAsync(cancel).ConfigureAwait(false);
         return node is VariableDeclaratorSyntax { Parent.Parent: BaseFieldDeclarationSyntax field } && field.Declaration.Variables.Count == 1 ? field : node;
     }
+
+    /// <summary>A member's declaration as it goes into another type: one variable of a field declaring several as a field
+    /// declaration of its own, with the field's modifiers, attributes and comment.</summary>
+    private static SyntaxNode Alone(SyntaxNode declared) => declared is VariableDeclaratorSyntax { Parent: VariableDeclarationSyntax { Parent: BaseFieldDeclarationSyntax field } list } variable
+        ? field.WithDeclaration(list.WithVariables(SyntaxFactory.SingletonSeparatedList(variable.WithoutTrivia())))
+        : declared;
+
+    /// <summary>Whether a type already declares a member as the one moved would be declared there: a method or indexer
+    /// of the same parameters, anything else of the same name and kind.</summary>
+    private static bool Declares(INamedTypeSymbol type, ISymbol member) => type.GetMembers(member.Name).Any(m => m.Kind == member.Kind && !m.IsImplicitlyDeclared && (m, member) switch
+    {
+        (IMethodSymbol theirs, IMethodSymbol ours) => theirs.Arity == ours.Arity
+            && SameParameters((theirs.Arity == 0 ? theirs : theirs.Construct([.. ours.TypeParameters])).Parameters, ours.Parameters),
+        (IPropertySymbol theirs, IPropertySymbol ours) => SameParameters(theirs.Parameters, ours.Parameters),
+        _ => true,
+    });
+
+    /// <summary>Whether two lists of parameters overload as one: the same types, each passed by reference or by value
+    /// alike.</summary>
+    private static bool SameParameters(IReadOnlyList<IParameterSymbol> theirs, IReadOnlyList<IParameterSymbol> ours) =>
+        theirs.Count == ours.Count && theirs.Zip(ours).All(p => SymbolEqualityComparer.Default.Equals(p.First.Type, p.Second.Type)
+            && (p.First.RefKind == RefKind.None) == (p.Second.RefKind == RefKind.None));
 
     private static async Task<TypeDeclarationSyntax> DeclarationAsync(INamedTypeSymbol type, CancellationToken cancel) =>
         (TypeDeclarationSyntax)await type.DeclaringSyntaxReferences[0].GetSyntaxAsync(cancel).ConfigureAwait(false);

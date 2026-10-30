@@ -275,6 +275,35 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(["Coins.cs changed"], Files(handled));
     }
 
+    /// <summary>Push Members Down gives a method to a derived class that declares only another overload of it, and Pull
+    /// Members Up takes one variable of a field declaring two as a field of its own, the other staying: no member is lost
+    /// on the way, so the project still builds.</summary>
+    [Fact]
+    public async Task An_agent_pushing_down_an_overload_or_pulling_up_one_of_two_fields_finds_each_where_it_went()
+    {
+        await TakeFolderAsync();
+        const string Shape = "namespace Shop;\n\npublic class Shape\n{\n    public string Name(string prefix) => prefix + \"shape\";\n}\n";
+        const string Square = "namespace Shop;\n\npublic class Square : Shape\n{\n    public int a, b;\n\n    public string Name(int sides) => $\"{sides}\";\n}\n";
+        Shop(("Shape.cs", Shape), ("Square.cs", Square));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        JsonElement pushed = await Call(client, McpTools.Refactor, Place("push_members_down", "Shape.cs", Shape, "class Sha", new { members = new[] { "Name(string): string" } }));
+        Assert.Equal(["Shape.cs changed", "Square.cs changed"], Files(pushed));
+        string square = File.ReadAllText(PathOf("Square.cs"));
+        Assert.True(square.Contains("    public string Name(string prefix) => prefix + \"shape\";\n", StringComparison.Ordinal)
+            && square.Contains("    public string Name(int sides) => $\"{sides}\";\n", StringComparison.Ordinal),
+            $"Pushing Name(string) down into a class declaring Name(int) left it so:\n{square}");
+        Assert.DoesNotContain("Name(", File.ReadAllText(PathOf("Shape.cs")), StringComparison.Ordinal);
+
+        JsonElement pulled = await Call(client, McpTools.Refactor, Place("pull_members_up", "Square.cs", square, "class Squ", new { members = new[] { "a" } }));
+        Assert.Equal(["Shape.cs changed", "Square.cs changed"], Files(pulled));
+        string shape = File.ReadAllText(PathOf("Shape.cs"));
+        square = File.ReadAllText(PathOf("Square.cs"));
+        Assert.True(shape.Contains("    public int a;\n", StringComparison.Ordinal) && square.Contains("    public int b;\n", StringComparison.Ordinal)
+            && !square.Contains(" a,", StringComparison.Ordinal), $"Pulling a of 'int a, b;' up left Shape.cs so:\n{shape}\nand Square.cs so:\n{square}");
+        await Compiles(client, "the members moved");
+    }
+
     [Fact]
     public async Task An_agent_that_writes_a_new_class_and_its_caller_and_at_once_renames_it_or_asks_its_usages_has_the_caller_counted()
     {
@@ -519,6 +548,13 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         ChildResult built = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", Folder, "--no-restore", "-nologo", "-v:q"]), limit: TimeSpan.FromMinutes(3)),
             "the project to build", TimeSpan.FromMinutes(4));
         Assert.True(built.Succeeded, $"The project does not build after {after}:\n{built.Output}{built.Error}");
+    }
+
+    /// <summary>The agent's build of the project, as an agent checks what a refactoring left.</summary>
+    private async Task Compiles(McpClient client, string after)
+    {
+        JsonElement built = await Call(client, McpTools.Build);
+        Assert.True(built.GetProperty("succeeded").GetBoolean(), $"The project does not build after {after}: {built}");
     }
 
     /// <summary>The agent goes, then the window closes.</summary>
