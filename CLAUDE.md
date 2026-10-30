@@ -314,9 +314,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   Directory.Packages.props, one command of Undo, put back when it fails; credentials only to their feed's host),
   `Workspace` (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`; a version
   written where packages are managed centrally goes through `CentralPackages`), `Templates` (every `dotnet new` through
-  `ProjectTemplates`; a new service's container or Aspire set-up after Create through Add's own actions,
-  `MainWindow.ServiceSetup`), `Updates` (only an installed copy updates itself; What's New from
-  `docs/release-notes/X.Y.Z.md`).
+  `ProjectTemplates`, what it writes above the new folder part of its command, `FilesAbove`; a new service's container
+  or Aspire set-up after Create through Add's own actions, `MainWindow.ServiceSetup`), `Updates` (only an installed copy
+  updates itself; What's New from `docs/release-notes/X.Y.Z.md`).
 - **MCP.** `PassengerTools` (every tool, run on the UI thread, answering with what its operation returned), `McpHost`
   (`--mcp FOLDER`, a window's socket, `--mcp-attach` through `McpProxy`), `HeadStart` (an `--mcp` folder's opening
   begun before its window, which its first session takes up), `AgentConnection` (admission and questions). A relay
@@ -579,7 +579,7 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
   `Answers`, `Bar`, `Page`) in a `Border.footerBar`; lists in a page `Border.framed`; rules `Passenger.Separator`
   (`Passenger.Divider` between panels); menus' value in force `MenuChoice` (`Holding` makes its submenu as it opens); a
   menu the menu key opens `ListMenus.PlaceForKeys`; tool window tabs `ToolTabs.Tab`; popups' widths `PopupFrame`, titles
-  `popupTitle`; every row `ListRow.Height` (24); empty states `TextBlock.emptyText`; toolbar icon buttons
+  `popupTitle`; every row `ListRow.Height` (24); empty states `TextBlock.emptyText` (with an action's link `EmptyState`); toolbar icon buttons
   `ToolButtons.Of`/`Toggle` (never focusable); muted words `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`;
   rounded borders `Border.kindBadge`, `tag` or `box`, never a literal radius; lists of what runs `RunRows`, Details tabs
   `DetailsTables`, merged consoles `MergedLog` (a console's Find `OutputView.Find`); a tree window's Expand and Collapse
