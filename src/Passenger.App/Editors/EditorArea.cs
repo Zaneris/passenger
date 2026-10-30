@@ -598,13 +598,26 @@ public sealed partial class EditorArea : UserControl
         return all;
     }
 
-    /// <summary>Saves every changed file, then waits for the saves still landing (<see cref="LandedAsync"/>): what the IDE
-    /// does before it hands the files to another program. Null once each is on disk, else why not.</summary>
-    public Task<string?> SaveAllLandedAsync(Working? work, CancellationToken stopping)
+    /// <summary>Saves every changed file as <see cref="SaveAll"/> does: null once each was written, else why the first that
+    /// could not be was not, naming it.</summary>
+    public string? SaveAllSaying()
     {
-        SaveAll();
-        return LandedAsync(work, stopping);
+        string? unsaved = null;
+        foreach (OpenDocument document in documents.Where(d => d.IsModified).ToList())
+        {
+            if (TrySave(document) is { } why)
+            {
+                unsaved ??= $"{document.Name} could not be saved: {why}";
+            }
+        }
+        return unsaved;
     }
+
+    /// <summary>Saves every changed file, then waits for the saves still landing (<see cref="LandedAsync"/>): what the IDE
+    /// does before it hands the files to another program. Null once each is on disk, else why not: a file that could not be
+    /// saved at once is named as one whose save never landed is, nothing waited for.</summary>
+    public Task<string?> SaveAllLandedAsync(Working? work, CancellationToken stopping) =>
+        SaveAllSaying() is { } unsaved ? Task.FromResult<string?>(unsaved) : LandedAsync(work, stopping);
 
     /// <summary>Waits off the window's thread for every save still landing (<see cref="FileText.Landed(string)"/>), so the
     /// program the IDE hands the files to next (a build, Git, a restore, an agent's shell) reads what was saved, never the

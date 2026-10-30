@@ -577,6 +577,29 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's edit the IDE could not save (its file read-only) is never committed as the disk's older text:
+    /// vcs_commit is refused naming the file, and nothing is committed.</summary>
+    [Fact]
+    public async Task An_agents_commit_with_an_edit_whose_save_was_refused_is_refused_naming_the_file()
+    {
+        string repository = TestFolders.Create("mcp-unsaved-");
+        DeleteAtEnd(repository);
+        string notes = Path.Combine(repository, "Notes.txt");
+        File.WriteAllText(notes, "one\ntwo\n");
+        await TestGit.InitAsync(repository);
+        File.WriteAllText(notes, "one\n2\n");
+        File.SetAttributes(notes, FileAttributes.ReadOnly);
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        string edited = Text(await Call(client, McpTools.Edit, new() { ["path"] = "Notes.txt", ["oldText"] = "2\n", ["newText"] = "two, edited\n" }));
+        Assert.Contains("not saved: Notes.txt is read-only", edited, StringComparison.Ordinal);
+        CallToolResult refused = await Result(client, McpTools.VcsCommit, new() { ["message"] = "The disk's text" });
+        Assert.True(refused.IsError == true && Text(refused).Contains("Notes.txt could not be saved: Notes.txt is read-only", StringComparison.Ordinal),
+            $"vcs_commit with Notes.txt's edit unsaved answered: {Text(refused)}");
+        Assert.Equal("First", (await TestGit.RunAsync(repository, "log", "-1", "--format=%s")).Trim());
+        File.SetAttributes(notes, FileAttributes.Normal);
+    }
+
     /// <summary>vcs_status with the path of a file git mv renamed, one line of it changed since, answers that one line, as
     /// the file was where the last commit has it.</summary>
     [Fact]

@@ -1286,6 +1286,49 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>An edit whose save is refused (its file read-only, as one not checked out is) stays unsaved in the editor, and
+    /// Build and Commit, which would take the disk's older text, are refused naming the file, nothing built or committed.</summary>
+    [AvaloniaFact]
+    public void Build_and_commit_are_refused_naming_a_file_whose_save_was_refused()
+    {
+        const string Refused = "Program.cs could not be saved: Program.cs is read-only";
+        string program = Path.Combine(Folder, "src", "Hello", "Program.cs");
+        TestGit.Init(Folder);
+        File.WriteAllText(program, "Console.WriteLine(\"Changed on disk\");\n");
+        File.SetAttributes(program, FileAttributes.ReadOnly);
+        MainWindow window = Open();
+        try
+        {
+            window.Confirm = (_, _, _) => Task.FromResult(false);
+            window.OpenFile(program);
+            Ui.Settle();
+            window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);
+            window.KeyTextInput("// Unsaved ");
+            Ui.Settle();
+            Assert.True(window.EditorArea.Active is { Name: "Program.cs", IsModified: true }, "The edit of the read-only Program.cs was not kept unsaved");
+
+            BuildOutcome built = Ui.Landed(window.BuildAsync(), "the build's outcome");
+            Assert.True(built.Status == BuildStatus.NotStarted && built.Message == Refused,
+                $"A build with Program.cs's edit unsaved ended {built.Status}, saying \"{built.Message}\": it built the disk's older text");
+            Assert.Equal(Refused, window.Status);
+
+            window.Perform(AppActions.Commit);
+            CommitView commit = window.CommitView;
+            Ui.Landed(() => commit.Chosen.Any(c => c.Name == "Program.cs"), "Program.cs listed as modified");
+            commit.Message = "The disk's text";
+            Assert.False(Ui.Landed(commit.CommitAsync(push: false), "the commit's answer"), "The commit was made of Program.cs's older text on disk");
+            Assert.Equal(Refused, window.Status);
+            Assert.Equal("First", TestGit.Run(Folder, "log", "-1", "--format=%s").Trim());
+            Assert.True(window.EditorArea.Active!.IsModified, "Program.cs's edit was taken for saved");
+        }
+        finally
+        {
+            File.SetAttributes(program, FileAttributes.Normal);
+            Ui.Press(window, Ui.Shortcut(AppActions.Save));
+            window.Close();
+        }
+    }
+
     /// <summary>A program that runs until it is ended: the Run window's Rerun while it runs stops it and runs it again, and the
     /// one run again, still running when the window closes, ends with it.</summary>
     [Gate]

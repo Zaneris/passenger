@@ -341,7 +341,7 @@ public sealed partial class BuildRunController
         // A start's own build checks and keeps its projects itself (BuildForAsync).
         checking = kind is BuildKind.Build or BuildKind.Rebuild && publish is null && side is null && cause != BuildCause.BeforeLaunch ? [] : null;
         made.Clear();
-        parts.Editors.SaveAll();
+        string? unsaved = parts.Editors.SaveAllSaying();
         session.Problems.Clear();
         reading = null;
         builtTexts = null;
@@ -357,7 +357,12 @@ public sealed partial class BuildRunController
         BackgroundWork.Track(building.Task);
         // A build is a start Stop ends, as the Build window's Stop does; held until it ends, whoever began it.
         buildWork = work ?? parts.Work.Begin(AppActions.Build, $"Building {together?.Shown ?? Path.GetFileName(buildQueue.Peek())}…");
-        if (FileText.Landings().Count == 0)
+        if (unsaved is not null)
+        {
+            // It would compile the text on disk, not what the editor shows.
+            FinishBuild(new BuildOutcome(BuildStatus.NotStarted, unsaved));
+        }
+        else if (FileText.Landings().Count == 0)
         {
             BuildNext(first: true);
         }
