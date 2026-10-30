@@ -87,9 +87,36 @@ internal sealed record FunctionBreakpointPattern(string? TypeName, string Method
         return (value[..genericStart].Trim(), arguments.Count);
     }
 
+    /// <summary>A parameter's type as C# writes it, as the method's signature names it: aliases as the runtime's types, a
+    /// nullable value type as Nullable`1, a generic's arity, and an array's rank specifiers innermost first, where C#
+    /// writes them outermost first (int[,][] is a two-dimensional array of int[], System.Int32[][,]).</summary>
     private static string NormalizeType(string value)
     {
         value = string.Concat(value.Where(c => !char.IsWhiteSpace(c)));
+        string ranks = "";
+        while (true)
+        {
+            // An array's nullable annotation (string[]?) is no type of its own.
+            if (value.EndsWith("]?", StringComparison.Ordinal))
+            {
+                value = value[..^1];
+            }
+            if (!value.EndsWith(']'))
+            {
+                break;
+            }
+            int open = value.LastIndexOf('[');
+            if (open <= 0 || value[(open + 1)..^1].Any(c => c != ','))
+            {
+                throw new ArgumentException($"Array type '{value}' is not a type and its rank.");
+            }
+            ranks += value[open..];
+            value = value[..open];
+        }
+        if (ranks.Length > 0)
+        {
+            return NormalizeType(value) + ranks;
+        }
         if (value.EndsWith('?'))
         {
             return $"System.Nullable`1<{NormalizeType(value[..^1])}>";
@@ -180,6 +207,7 @@ internal sealed record FunctionBreakpointPattern(string? TypeName, string Method
         return -1;
     }
 
+    /// <summary>A list split at each separator outside a generic's arguments and an array's rank, whose commas are their own.</summary>
     private static List<string> SplitTopLevel(string value, char separator)
     {
         List<string> result = new List<string>();
@@ -187,11 +215,11 @@ internal sealed record FunctionBreakpointPattern(string? TypeName, string Method
         int start = 0;
         for (int i = 0; i < value.Length; i++)
         {
-            if (value[i] == '<')
+            if (value[i] is '<' or '[')
             {
                 depth++;
             }
-            else if (value[i] == '>')
+            else if (value[i] is '>' or ']')
             {
                 depth--;
             }
