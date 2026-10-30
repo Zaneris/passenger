@@ -295,6 +295,27 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
+    /// <summary>A line too long to colour, a script's holding a long string, that opens a block comment closed on the next
+    /// line: the next line's text is coloured as the comment it is in, and the code after the comment as code.</summary>
+    [AvaloniaFact]
+    public void A_line_too_long_to_colour_that_opens_a_comment_leaves_the_next_line_in_the_comment()
+    {
+        MainWindow window = Window();
+        try
+        {
+            string longLine = "var text = \"" + new string('a', 30_000) + "\"; /* opens";
+            CodeEditor editor = Open(window, "bundle.js", longLine + "\nstill the comment */ function after() {}\n");
+            TokenKind? still = KindOf(editor, "still the comment");
+            Assert.True(still == TokenKind.Comment,
+                $"The line after a {longLine.Length:N0}-character line opening a comment is coloured {still?.ToString() ?? "in several kinds"}: the long line's comment never reached it");
+            Assert.Equal(TokenKind.Keyword, KindOf(editor, "function"));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A shared tokenizer's scratch buffers must not become a document's saved state or colours. Leave
     /// a comment open in one file, then edit both files before comparing their colours with fresh passes.</summary>
     [AvaloniaFact]

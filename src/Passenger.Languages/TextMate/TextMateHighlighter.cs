@@ -13,7 +13,7 @@ namespace Passenger.Languages.TextMate;
 /// newer key ends it a little way on, the next pass going on from there.</summary>
 public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, IDisposable
 {
-    /// <summary>A line longer than this (minified, generated) is left plain and its state carried over.</summary>
+    /// <summary>A line longer than this (minified, generated) is left plain, read only for the state it ends in.</summary>
     private const int LongestLine = 20_000;
 
     /// <summary>Lines read under one hold of the grammar's lock, between looks at whether the text has moved on.</summary>
@@ -282,14 +282,12 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
 
     /// <summary>One line's colours and the state it ends in, reusing the pass's buffer between lines. A line read past
     /// <paramref name="limit"/> is read once more, its grammar's patterns now parsed; past it again, it keeps the colours
-    /// found and ends in the state it began in, so a rule it was stopped inside never reaches the lines after it.</summary>
+    /// found and ends in the state it began in, so a rule it was stopped inside never reaches the lines after it. A line
+    /// longer than <see cref="LongestLine"/> is read so too, for the state it ends in alone.</summary>
     private TokenLine Read(Tokenizer rules, TimeSpan limit, TextSnapshot text, int line, StateStack? state, List<SyntaxSpan> scratch, ref char[] buffer)
     {
         LineSpan span = text.GetLine(line);
-        if (span.Length > LongestLine)
-        {
-            return new TokenLine([], state);
-        }
+        bool plain = span.Length > LongestLine;
         if (buffer.Length < span.Length)
         {
             buffer = new char[Math.Max(span.Length, Math.Min(LongestLine, buffer.Length * 2))];
@@ -307,6 +305,10 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
                 Interlocked.Increment(ref linesOutOfTime);
                 next = before;
             }
+        }
+        if (plain)
+        {
+            return new TokenLine([], next);
         }
         scratch.Clear();
         for (int i = 0; i < tokens.Length; i++)
