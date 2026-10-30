@@ -180,7 +180,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         CheckBox option = popup.Option ?? throw new Xunit.Sdk.XunitException("Renaming Order.cs did not offer to rename the class Order");
         Assert.Equal("Rename type 'Order' to match the new file name", option.Content);
         Assert.True(option.IsChecked, "Rider renames the type with its file unless asked not to");
-        window.KeyTextInput("Purchase.cs");
+        window.KeyTextInput("Purchase");
         FilesFollowed.Check(window, "Renaming Order.cs with its class", [OrderPath, PurchasePath], () =>
         {
             Ui.Press(window, "ENTER");
@@ -206,7 +206,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         Ui.Run(window, AppActions.Rename);
         popup = Assert.IsType<NamePopup>(window.Popup);
         Assert.True(popup.Option?.IsChecked == true, "Renaming Form1.cs did not offer to rename the class Form1 with it");
-        window.KeyTextInput("Window1.cs");
+        window.KeyTextInput("Window1");
         Ui.Press(window, "ENTER");
         Ui.WaitFor(() => !window.IsPopupOpen, $"the rename to finish: {popup.Problem}");
         Assert.Equal(["Window1.Designer.cs", "Window1.cs", "Window1.resx"], Directory.GetFiles(folder, "Window1*").Select(Path.GetFileName).Order(StringComparer.Ordinal));
@@ -226,7 +226,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         Ui.Run(window, AppActions.Rename);
         popup = Assert.IsType<NamePopup>(window.Popup);
         Assert.Null(popup.Option);
-        window.KeyTextInput("Figures.cs");
+        window.KeyTextInput("Figures");
         Ui.Press(window, "ENTER");
         Ui.WaitFor(() => !window.IsPopupOpen, $"the rename to finish: {popup.Problem}");
         Assert.False(File.Exists(shapes), "Shapes.cs is still there");
@@ -507,7 +507,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         Ui.Run(window, AppActions.Rename);
         NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
         Assert.True(popup.Option?.IsChecked == true, "Renaming Basket.cs did not offer to rename the class Basket with it");
-        window.KeyTextInput("Cart.cs");
+        window.KeyTextInput("Cart");
         window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
         window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(0, 0, "// typed meanwhile\n")]);
         Ui.WaitFor(() => !window.IsPopupOpen, $"the rename to finish: {popup.Problem}");
@@ -537,7 +537,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(0, 0, Written)]);
         Ui.Settle();
         Assert.True(window.Popup == popup, "The rename popup closed as its file was written");
-        window.KeyTextInput("Purchase.cs");
+        window.KeyTextInput("Purchase");
         Ui.Press(window, "ENTER");
         Ui.WaitFor(() => !window.IsPopupOpen, $"the rename to finish: {popup.Problem}");
 

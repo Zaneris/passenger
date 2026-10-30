@@ -280,6 +280,45 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Rename on a file in the Explorer selects its name before its extension, so a name typed over the selection
+    /// keeps the extension: Program.cs becomes Main.cs. A folder's rename selects its whole name, dots and all, and an
+    /// extensionless file's too.</summary>
+    [AvaloniaFact]
+    public void A_files_rename_selects_its_name_before_the_extension_and_a_folders_or_extensionless_files_its_whole_name()
+    {
+        string root = PathNames.Canonical(folder);
+        string program = Path.Combine(root, "Program.cs");
+        File.WriteAllText(program, "System.Console.WriteLine(\"Hello\");\n");
+        string makefile = Path.Combine(root, "Makefile");
+        File.WriteAllText(makefile, "all:\n");
+        string assets = Path.Combine(root, "My.Assets");
+        Directory.CreateDirectory(assets);
+        MainWindow window = Open();
+
+        Renamed(program, "Program", "Main");
+        Assert.True(File.Exists(Path.Combine(root, "Main.cs")), $"Program.cs renamed by typing Main over its selected name did not become Main.cs: [{string.Join(", ", Left(root))}]");
+        Assert.False(File.Exists(program), "Program.cs is still there after its rename");
+        Renamed(assets, "My.Assets", "Assets");
+        Assert.True(Directory.Exists(Path.Combine(root, "Assets")), $"My.Assets renamed by typing over its whole name did not become Assets: [{string.Join(", ", Left(root))}]");
+        Renamed(makefile, "Makefile", "GNUmakefile");
+        Assert.True(File.Exists(Path.Combine(root, "GNUmakefile")), $"Makefile renamed by typing over its whole name did not become GNUmakefile: [{string.Join(", ", Left(root))}]");
+        window.Close();
+
+        void Renamed(string path, string selected, string typed)
+        {
+            window.ExplorerView.Reveal(path);
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == path));
+            Ui.Run(window, AppActions.Rename);
+            NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+            TextBox box = popup.GetVisualDescendants().OfType<TextBox>().Single();
+            Assert.True(box.SelectedText == selected, $"Rename on {Path.GetFileName(path)} selected '{box.SelectedText}', so typing over it would not give what a person expects");
+            window.KeyTextInput(typed);
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => !window.IsPopupOpen, () => $"the rename of {Path.GetFileName(path)} to finish: {popup.Problem}");
+        }
+    }
+
     /// <summary>A file-based program's directives follow what they name: the project its <c>#:project</c> names renamed in
     /// the Explorer, its value names the new folder and the program evaluates with the project there; the program cut and
     /// pasted into a deeper folder, its <c>#:project</c> and <c>#:include</c> name from there what they named before. One

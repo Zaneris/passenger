@@ -131,7 +131,7 @@ public partial class MainWindow
             string target = Path.Combine(into, name);
             if (PathNames.Same(target, source))
             {
-                if (!copy || await AskNameAsync($"Duplicate {name}", name, other => Invalid(other) ?? Taken(into, other)) is not { } other)
+                if (!copy || await AskNameAsync($"Duplicate {name}", name, other => Invalid(other) ?? Taken(into, other), BeforeExtension(source)) is not { } other)
                 {
                     continue;
                 }

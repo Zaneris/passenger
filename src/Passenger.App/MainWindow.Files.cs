@@ -42,16 +42,17 @@ public partial class MainWindow
 
     private void AskName(string title, string initial, Func<string, string?> attempt) => AskName(title, initial, name => Task.FromResult(attempt(name)));
 
-    /// <summary>Asks for a name in a popup, which stays open saying why while <paramref name="attempt"/> refuses it.</summary>
-    private void AskName(string title, string initial, Func<string, Task<string?>> attempt)
+    /// <summary>Asks for a name in a popup, which stays open saying why while <paramref name="attempt"/> refuses it, the
+    /// first <paramref name="selected"/> characters of the initial name selected (all of them when null).</summary>
+    private void AskName(string title, string initial, Func<string, Task<string?>> attempt, int? selected = null)
     {
-        Vcs.NamePopup popup = new(title, initial, attempt);
+        Vcs.NamePopup popup = new(title, initial, attempt, selected: selected);
         popups.Show(popup, _ => { });
     }
 
     /// <summary>Asks for a name as <see cref="AskName"/> does, answering with the one taken, or null once the popup closes
     /// without one (Escape, a click outside it).</summary>
-    private Task<string?> AskNameAsync(string title, string initial, Func<string, string?> refuse)
+    private Task<string?> AskNameAsync(string title, string initial, Func<string, string?> refuse, int? selected = null)
     {
         TaskCompletionSource<string?> answer = new();
         string? taken = null;
@@ -60,7 +61,7 @@ public partial class MainWindow
             string? why = refuse(name);
             taken = why is null ? name : null;
             return Task.FromResult(why);
-        });
+        }, selected: selected);
         popup.DetachedFromVisualTree += (_, _) => answer.TrySetResult(taken);
         popups.Show(popup, _ => { });
         return answer.Task;
@@ -207,14 +208,15 @@ public partial class MainWindow
     {
         if (TypeRename.NamedAfterFile(Editors, path) is not { } type)
         {
-            AskName("Rename", Path.GetFileName(path), name => RenameAsync(path, name));
+            AskName("Rename", Path.GetFileName(path), name => RenameAsync(path, name), BeforeExtension(path));
             return;
         }
         OpenDocument? declaring = Editors.Find(type.Declaring);
         Anchor? held = declaring?.Text.AnchorAt(type.Offset, AnchorGravity.After);
         Vcs.NamePopup? popup = null;
+        // The type's name selected, so what is typed over it keeps what follows (Main.xaml.cs's .xaml.cs).
         popup = new Vcs.NamePopup("Rename", Path.GetFileName(path), Attempt,
-            option: ($"Rename type '{type.Name}' to match the new file name", assist.RenameSettings.RenameType));
+            option: ($"Rename type '{type.Name}' to match the new file name", assist.RenameSettings.RenameType), selected: TypeRename.Stem(path).Length);
         popup.OptionChanged += (_, on) => assist.RenameSettings = assist.RenameSettings with { RenameType = on };
         popup.DetachedFromVisualTree += (_, _) => held?.Remove();
         popups.Show(popup, _ => { });
@@ -223,6 +225,15 @@ public partial class MainWindow
             popup?.Option?.IsChecked != true || TypeRename.Stem(name) == type.Name ? RenameAsync(path, name)
             : TypeNow(path, type, declaring, held) is { } now ? RenameWithTypeAsync(path, name, now, renameType: true)
             : Task.FromResult<string?>($"{Path.GetFileName(type.Declaring)} no longer declares {type.Name}: turn renaming the type off to rename the file alone");
+    }
+
+    /// <summary>How much of a file's name its rename selects: what comes before its extension, so a name typed over it keeps
+    /// the extension; null (all of it) for a folder and a file with no extension or no name before it (.gitignore).</summary>
+    private static int? BeforeExtension(string path)
+    {
+        string name = Path.GetFileName(path);
+        string stem = Path.GetFileNameWithoutExtension(path);
+        return Directory.Exists(path) || stem.Length == 0 || stem.Length == name.Length ? null : stem.Length;
     }
 
     /// <summary>The type a popup's rename offers as it stands now: at its name's place held in the open file that declares

@@ -102,7 +102,7 @@ public sealed class CodeBehindRenameTests : McpRig
             Ui.Run(window, AppActions.Rename);
             NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
             Assert.True(popup.Option?.IsChecked == true, "Renaming Welcome.razor.cs in the Solution view did not offer to rename the class Welcome with it");
-            window.KeyTextInput("Greeting.razor.cs");
+            window.KeyTextInput("Greeting");
             Ui.Press(window, "ENTER");
             Ui.WaitFor(() => !window.IsPopupOpen, $"the rename to finish: {popup.Problem}");
             Assert.True(Names(components).SequenceEqual(["Greeting.razor", "Greeting.razor.cs", "Greeting.razor.css", "Home.razor"]),
@@ -222,7 +222,7 @@ public sealed class CodeBehindRenameTests : McpRig
         List<string> asked = AnswerUndo(window);
         try
         {
-            RenameInSolutionView(window, Path.Combine(components, "Greeting.razor"), "Salute.razor", "Greeting");
+            RenameInSolutionView(window, Path.Combine(components, "Greeting.razor"), "Salute", "Greeting");
             Assert.True(Names(components).SequenceEqual(["Home.razor", "Registry.cs", "Salute.razor", "Salute.razor.cs", "Salute.razor.css"]),
                 $"The component's files after Greeting.razor was renamed with its class in the Solution view: [{string.Join(", ", Names(components))}], {window.Status}");
             Assert.Equal(Greeting, File.ReadAllText(Path.Combine(components, "Salute.razor")));
@@ -275,7 +275,7 @@ public sealed class CodeBehindRenameTests : McpRig
             Ui.Press(window, "ESCAPE");
             Ui.WaitFor(() => !window.IsPopupOpen, "the rename popup to close");
 
-            RenameInSolutionView(window, Path.Combine(components, "Greeting.razor"), "Salute.razor", "Greeting");
+            RenameInSolutionView(window, Path.Combine(components, "Greeting.razor"), "Salute", "Greeting");
             RenamedWhole(window, folder, "Salute", "Greeting.razor was renamed with its class in the Solution view");
             UndoInSolutionView(window, Path.Combine(components, "Salute.razor"));
             PutBack(window, folder, asked, 1, "the Solution view's rename of Greeting.razor");
@@ -371,7 +371,7 @@ public sealed class CodeBehindRenameTests : McpRig
             Ui.Press(window, "ESCAPE");
             Ui.WaitFor(() => !window.IsPopupOpen, "the rename popup to close");
 
-            RenameInSolutionView(window, Path.Combine(folder, "MainWindow.axaml"), "MainView.axaml", "MainWindow");
+            RenameInSolutionView(window, Path.Combine(folder, "MainWindow.axaml"), "MainView", "MainWindow");
             Assert.True(Names(folder, "*.axaml*").SequenceEqual(["App.axaml", "App.axaml.cs", "Card.axaml", "Card.axaml.cs", "MainView.axaml", "MainView.axaml.cs"]),
                 $"The window's files after MainWindow.axaml was renamed with its class in the Solution view: [{string.Join(", ", Names(folder, "*.axaml*"))}], {window.Status}");
             Assert.Equal(Window.Replace("Gallery.MainWindow", "Gallery.MainView", StringComparison.Ordinal), File.ReadAllText(Path.Combine(folder, "MainView.axaml")));
@@ -394,7 +394,7 @@ public sealed class CodeBehindRenameTests : McpRig
     }
 
     /// <summary>Rename on a file's row in the Solution view, the type it is named after offered with it and left checked,
-    /// the new name typed and Enter pressed, until the popup closes.</summary>
+    /// the type's new name typed over the type's name the box selects and Enter pressed, until the popup closes.</summary>
     private static void RenameInSolutionView(MainWindow window, string path, string name, string type)
     {
         Choose(window, path);

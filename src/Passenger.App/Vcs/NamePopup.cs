@@ -25,8 +25,9 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
     /// <param name="attempt">Tries the name: null when it worked, else why not.</param>
     /// <param name="kinds">What can be made, each with its icon, the first chosen; none to ask for the name alone.</param>
     /// <param name="option">A check box's words and whether it starts checked; none for no option.</param>
+    /// <param name="selected">How much of the initial name starts selected, from its start; all of it when null.</param>
     public NamePopup(string title, string initial, Func<string, Task<string?>> attempt, IReadOnlyList<(string Name, Control Icon)>? kinds = null,
-        (string Text, bool On)? option = null)
+        (string Text, bool On)? option = null, int? selected = null)
     {
         this.attempt = attempt;
         Width = PopupFrame.Narrow;
@@ -72,6 +73,10 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
         {
             name.Focus();
             name.SelectAll();
+            if (selected is { } length)
+            {
+                name.SelectionEnd = Math.Min(length, name.Text?.Length ?? 0);
+            }
         }, DispatcherPriority.Loaded);
     }
 
