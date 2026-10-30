@@ -21,7 +21,8 @@ public sealed partial class BuildRunController
 
     /// <summary>Holds the next container run's <c>up</c> until <paramref name="until"/> ends, its override written and its
     /// ports chosen (<see cref="ContainerPlan.Ports"/>), or the next restart of a run's services (Rerun's, Hot Reload's), its
-    /// build done and their sessions ended, for a test of what goes on meanwhile. Done once it is held.</summary>
+    /// build done and their sessions ended; as deployed, once the files its images are built from are saved. For a test of
+    /// what goes on meanwhile. Done once it is held.</summary>
     public Task HoldNextUp(Task until)
     {
         TaskCompletionSource holding = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -219,11 +220,13 @@ public sealed partial class BuildRunController
         {
             return Said($"Nothing to {(how == RunStart.Debug ? "debug" : "profile")}: {chosen.Name} starts no .NET service");
         }
+        // Those a session of the debugger or Hot Reload attaches to, which follow the edits from their build's save.
+        List<(string Service, bool HotReload)> sessions = [.. holding.Where(h => h.How != RunStart.Profile)
+            .Select(h => (h.Service.Service, h.How == RunStart.HotReload || session.Debug.HotReloadOn()))];
         if (plan.Builds.Count > 0)
         {
             work.Say($"Building {string.Join(", ", plan.Builds.Select(Path.GetFileNameWithoutExtension))}…");
-            BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping, work,
-                reading: () => FollowBuilt(holding.Where(h => h.How != RunStart.Profile).Select(h => (h.Service.Service, h.How == RunStart.HotReload || session.Debug.HotReloadOn()))));
+            BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping, work, reading: () => FollowBuilt(sessions));
             if (!built.Succeeded)
             {
                 return Checkpoint(work, chosen.Name) is { } stopped ? Said(stopped) : built.Message;
@@ -320,17 +323,26 @@ public sealed partial class BuildRunController
         {
             notes.Add(overHttp);
         }
-        string? failed;
+        string? failed = null;
         try
         {
-            if (upHeld is { } hold)
+            // As deployed, the images are built from the files as saved now: an edit made after is one their sessions apply.
+            if (plan.Mode == ContainerMode.Images)
             {
-                upHeld = null;
-                hold.Holding.TrySetResult();
-                await hold.Until.WaitAsync(work.Stopping);
+                FollowBuilt(sessions);
+                failed = await parts.Editors.SaveAllLandedAsync(work, work.Stopping);
             }
-            failed = await run.PublishAsync(work.Stopping)
-                ?? await run.UpAsync(work.Stopping, debugged.Count == 0 ? null : (up, stop) => AttachAllAsync(run, debugged, up, notes, work, stop, how == RunStart.Profile ? how : null));
+            if (failed is null)
+            {
+                if (upHeld is { } hold)
+                {
+                    upHeld = null;
+                    hold.Holding.TrySetResult();
+                    await hold.Until.WaitAsync(work.Stopping);
+                }
+                failed = await run.PublishAsync(work.Stopping)
+                    ?? await run.UpAsync(work.Stopping, debugged.Count == 0 ? null : (up, stop) => AttachAllAsync(run, debugged, up, notes, work, stop, how == RunStart.Profile ? how : null));
+            }
         }
         catch (OperationCanceledException)
         {

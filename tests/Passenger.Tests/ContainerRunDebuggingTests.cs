@@ -354,6 +354,81 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         window.Close();
     }
 
+    /// <summary>Images as deployed under Run with Hot Reload, each image carrying the build made here of the files as saved:
+    /// an edit typed while the start is held after it saved the files for the images' build, and one typed while the
+    /// Containers window's Restart of web is held after its own save, is one Apply Hot Reload Changes applies once web runs
+    /// again, each session following the edits from its images' save, not from its attach.</summary>
+    [AvaloniaFact]
+    public void In_images_mode_an_edit_made_while_the_start_or_a_restart_builds_the_images_is_applied_once_the_service_runs()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string folder, string project) = Shop("imgreload");
+        foreach (string app in (string[])["Web", "Api"])
+        {
+            TestFolders.Write(folder, $"{app}/Dockerfile", "FROM mcr.microsoft.com/dotnet/aspnet:10.0\nWORKDIR /src\nCOPY . .\nEXPOSE 8080\n"
+                + $"ENTRYPOINT [\"dotnet\", \"/src/{app}/out/{app}.dll\"]\n");
+            ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", Path.Combine(folder, app, $"{app}.csproj"),
+                "-o", Path.Combine(folder, app, "out"), "-nologo", "-v:q"], folder), null, TimeSpan.FromMinutes(5).Scaled(), CancellationToken.None)),
+                $"{app}'s build", TimeSpan.FromMinutes(5) + TestFolders.Spare);
+            Assert.True(built.Succeeded, $"{app} did not build: {built.Output}{built.Error}");
+        }
+        MainWindow window = ContainerRunsTests.Open(folder, languageServer: true);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to load the projects ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        RunConfiguration images = window.Configurations.First(c => c.Kind == RunKind.Compose).Copied() with
+        {
+            Name = "Shop as deployed",
+            Mode = ContainerMode.Images,
+            Generated = false,
+        };
+        window.SetConfigurations([images], images.Name);
+        TaskCompletionSource startEdited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource restartEdited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            window.OpenFile(Path.Combine(folder, "Web", "Message.cs"));
+            Ui.Settle();
+            Task startHeld = window.Builds.HoldNextUp(startEdited.Task);
+            Task<string?> running = window.Builds.RunAsync(hotReload: true);
+            Ui.PumpUntil(() => startHeld.IsCompleted || running.IsCompleted, "Run with Hot Reload to save the files for its images and come to its up", TimeSpan.FromMinutes(5));
+            Assert.False(running.IsCompleted, $"Run with Hot Reload ended before its up: {(running.IsCompleted ? running.Result : null)}");
+            Typed(window, "web 1", "web 2");
+            startEdited.SetResult();
+            string? refused = Ui.Await(running, "the images to be built and come up with Hot Reload", TimeSpan.FromMinutes(5));
+            Assert.True(refused is null, $"{refused}\n{ContainerRunsTests.Run(window)}");
+            Ui.WaitFor(() => window.Debugger.Running.Count == 2, "web and api to be attached to for Hot Reload");
+            int port = ContainerRunsTests.Published(project, "web");
+            Assert.Equal("web 1", Ui.Await(Get(port), "web's answer as its image carries it", TimeSpan.FromMinutes(1)));
+            Applied(window, "The edit made while the start's images were held after its save");
+            Assert.Equal("web 2", Ui.Await(Get(port), "web's answer after Apply", TimeSpan.FromMinutes(1)));
+
+            // Back as built, so the restart's save leaves the files as the images carry them.
+            Typed(window, "web 2", "web 1");
+            Applied(window, "The edit back to the text built");
+            ContainersView view = ContainerServicesTests.Shown(window);
+            Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Service && r.Project?.Name == project && r.Service == "web"), "web's row");
+            Task restartHeld = window.Builds.HoldNextUp(restartEdited.Task);
+            Assert.True(window.Perform(AppActions.ContainerRestart), $"Restart could not run on web: {window.Status}");
+            Ui.PumpUntil(() => restartHeld.IsCompleted, "web's restart to save the files for its image and come to its up", TimeSpan.FromMinutes(3));
+            Typed(window, "web 1", "web 3");
+            restartEdited.SetResult();
+            Ui.WaitFor(() => window.Actions.Work.Of(AppActions.ContainerRestart) is null, "web's restart", TimeSpan.FromMinutes(3));
+            Assert.Equal("Shop as deployed: restarted web", window.Status);
+            Ui.WaitFor(() => window.Debugger.Running.Count == 2, "web to be attached to again after its restart");
+            port = ContainerRunsTests.Published(project, "web");
+            Assert.Equal("web 1", Ui.Await(Get(port), "web's answer as its image carries it, restarted", TimeSpan.FromMinutes(1)));
+            Applied(window, "The edit made while the restart's image was held after its save");
+            Assert.Equal("web 3", Ui.Await(Get(port), "web's answer after Apply", TimeSpan.FromMinutes(1)));
+        }
+        finally
+        {
+            startEdited.TrySetResult();
+            restartEdited.TrySetResult();
+            Docker.Stopped(window, project, "Stop to take every container down");
+        }
+        Ui.WaitFor(() => window.Debugger.Running.Count == 0, "the Hot Reload sessions to end with Stop");
+        window.Close();
+    }
+
     /// <summary>Runs the chosen configuration with Hot Reload, waiting for web and api to be attached to for it.</summary>
     private static void HotReloadRun(MainWindow window)
     {

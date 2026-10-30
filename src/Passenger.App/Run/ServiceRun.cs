@@ -310,6 +310,10 @@ public abstract class ServiceRun
     /// since, so its next session takes the ended one's edits as still to apply.</summary>
     public virtual bool RestartsOnItsBuild(IRunService service) => false;
 
+    /// <summary>Whether a restart builds what its services run from the files as they are on disk (an image as deployed),
+    /// so the files are saved just before it and its next sessions follow the edits from that save.</summary>
+    public virtual bool BuildsAsItRestarts => false;
+
     /// <summary>Whether a failure of a service's action is one its kind says (an engine's refusal, a file it could not
     /// write), said as the action's failure rather than reported as Passenger's.</summary>
     public abstract bool Refused(Exception failure);

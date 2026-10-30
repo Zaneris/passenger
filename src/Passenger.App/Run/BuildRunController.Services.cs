@@ -170,6 +170,15 @@ public sealed partial class BuildRunController
         await EndSessionsAsync(run, services);
         try
         {
+            // Built as they restart from the files as saved now: an edit made after is one their next sessions apply.
+            if (run.BuildsAsItRestarts)
+            {
+                FollowBuilt(sessions.Select(a => (a.Service.Name, a.HotReload)));
+                if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
+                {
+                    return unsaved;
+                }
+            }
             if (upHeld is { } hold)
             {
                 upHeld = null;
@@ -512,11 +521,10 @@ public sealed partial class BuildRunController
         using (work)
         {
             using IDisposable held = BackgroundWork.Scope();
-            // Their build reads the files as saved now, here or as their images are built: an edit made after is their sessions'.
+            // Built here first, or as their images are built in their restart, each saving the files and following from there.
             List<(string Service, bool HotReload)> again = [.. Reattached(run, services).Select(a => (a.Service.Name, a.HotReload))];
             try
             {
-                FollowBuilt(again);
                 if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
                 {
                     parts.Say(unsaved);
