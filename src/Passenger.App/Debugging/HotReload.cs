@@ -117,6 +117,19 @@ public sealed class HotReload
     /// <summary>The program's session is open: Apply Changes takes the edits to it from now.</summary>
     public void Opened(DebugSession session) => debug = session;
 
+    /// <summary>Hot Reload for this program restarted on the same build, without the edits it took in, whose built lines are
+    /// <paramref name="restarted"/>: the files' texts from before their edits kept, every edit since the build one to apply.</summary>
+    public HotReload Carried(BuiltLines restarted)
+    {
+        HotReload carried = new(restarted, server, editors);
+        foreach ((string path, string text) in originals)
+        {
+            carried.originals[path] = text;
+        }
+        carried.edits = edits;
+        return carried;
+    }
+
     /// <summary>Whether the files have been edited since the launch or since the edits the last update was made of.</summary>
     public bool Changed => edits != settled;
 

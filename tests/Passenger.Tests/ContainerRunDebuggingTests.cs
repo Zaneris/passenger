@@ -247,6 +247,138 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         window.Close();
     }
 
+    /// <summary>Under Run with Hot Reload, an edit typed while Rerun's restart of web, and then Hot Reload's restart of both
+    /// services for edits it cannot apply, is held after their build is one Apply Hot Reload Changes applies once they run
+    /// again: each restarted session follows the edits from its build's save, not from its attach.</summary>
+    [AvaloniaFact]
+    public void An_edit_made_while_Rerun_or_Hot_Reloads_restart_is_held_after_its_build_is_applied_once_the_services_run_again()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string folder, string project) = Shop("restarted");
+        MainWindow window = ContainerRunsTests.Open(folder, languageServer: true);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to load the projects ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        TaskCompletionSource rerunEdited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource restartEdited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
+            HotReloadRun(window);
+            int port = ContainerRunsTests.Published(project, "web");
+
+            window.OpenFile(Path.Combine(folder, "Web", "Message.cs"));
+            Ui.Settle();
+            Typing.Replace(window, "\"web 1\"", "\"web 2\"");
+            // Saved, so the save's apply has ended before Rerun builds the edit.
+            Assert.True(window.Perform(AppActions.Save), $"Save could not run: {window.Status}");
+            Ui.Settle();
+            Task rerunHeld = window.Builds.HoldNextUp(rerunEdited.Task);
+            Task<string?> rerunning = window.Builds.RerunAsync();
+            Ui.PumpUntil(() => rerunHeld.IsCompleted || rerunning.IsCompleted, "Rerun to build web and come to its restart", TimeSpan.FromMinutes(5));
+            Assert.False(rerunning.IsCompleted, $"Rerun ended before its restart: {(rerunning.IsCompleted ? rerunning.Result : null)}");
+            Typed(window, "web 2", "web 3");
+            rerunEdited.SetResult();
+            string? reran = Ui.Await(rerunning, "Rerun to restart web", TimeSpan.FromMinutes(5));
+            Assert.True(reran?.Contains("restarted web with the new build", StringComparison.Ordinal) == true, $"{reran}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
+            Ui.WaitFor(() => window.Debugger.Running.Count == 2, "web to be attached to again after Rerun");
+            Assert.Equal("web 2", Ui.Await(Get(port), "web's answer as Rerun built it", TimeSpan.FromMinutes(1)));
+            Applied(window, "The edit made while Rerun's restart was held");
+            Assert.Equal("web 3", Ui.Await(Get(port), "web's answer after Apply", TimeSpan.FromMinutes(1)));
+
+            // A field's type the runtime cannot change, in each service, so both are built again and restarted.
+            window.OpenFile(Path.Combine(folder, "Api", "Message.cs"));
+            Ui.Settle();
+            Typing.Replace(window, "public static int Count;", "public static long Count;");
+            window.OpenFile(Path.Combine(folder, "Web", "Message.cs"));
+            Ui.Settle();
+            Typing.Replace(window, "public static int Count;", "public static long Count;");
+            Typing.Replace(window, "\"web 3\"", "\"web 4\"");
+            Task restartHeld = window.Builds.HoldNextUp(restartEdited.Task);
+            Ui.Run(window, AppActions.ApplyHotReloadChanges, settle: false);
+            Ui.PumpUntil(() => restartHeld.IsCompleted, "Hot Reload's restart to build and come to its restart", TimeSpan.FromMinutes(5));
+            Typed(window, "web 4", "web 5");
+            restartEdited.SetResult();
+            Ui.WaitFor(() => window.Status?.Contains("to apply changes", StringComparison.Ordinal) == true && window.Debugger.Running.Count == 2,
+                $"web and api to be restarted for the edits and attached to again: {window.Status}", TimeSpan.FromMinutes(3));
+            Assert.Equal(HotReloadResult.RestartNeeded, window.Debugger.LastApplied?.Result);
+            Assert.Equal("web 4", Ui.Await(Get(ContainerRunsTests.Published(project, "web")), "web's answer as its restart built it", TimeSpan.FromMinutes(1)));
+            Applied(window, "The edit made while Hot Reload's restart was held");
+            Assert.Equal("web 5", Ui.Await(Get(ContainerRunsTests.Published(project, "web")), "web's answer after Apply", TimeSpan.FromMinutes(1)));
+        }
+        finally
+        {
+            rerunEdited.TrySetResult();
+            restartEdited.TrySetResult();
+            Docker.Stopped(window, project, "Stop to take every container down");
+        }
+        Ui.WaitFor(() => window.Debugger.Running.Count == 0, "the Hot Reload sessions to end with Stop");
+        window.Close();
+    }
+
+    /// <summary>Under Run with Hot Reload, an edit applied to web and then the Containers window's Restart of web, which runs
+    /// it again on its build without the edit: Apply Hot Reload Changes applies the edit again, the restarted session taking
+    /// the ended one's edits since the build as still to apply.</summary>
+    [AvaloniaFact]
+    public void An_edit_applied_before_a_Restart_without_a_build_is_applied_again_once_the_service_runs()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string folder, string project) = Shop("again");
+        MainWindow window = ContainerRunsTests.Open(folder, languageServer: true);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to load the projects ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        try
+        {
+            Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
+            HotReloadRun(window);
+            int port = ContainerRunsTests.Published(project, "web");
+            window.OpenFile(Path.Combine(folder, "Web", "Message.cs"));
+            Ui.Settle();
+            Typing.Replace(window, "\"web 1\"", "\"web 2\"");
+            Applied(window, "The edit before the restart");
+            Assert.Equal("web 2", Ui.Await(Get(port), "web's answer after Apply", TimeSpan.FromMinutes(1)));
+
+            ContainersView view = ContainerServicesTests.Shown(window);
+            Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Service && r.Project?.Name == project && r.Service == "web"), "web's row");
+            Assert.True(window.Perform(AppActions.ContainerRestart), $"Restart could not run on web: {window.Status}");
+            Ui.WaitFor(() => window.Actions.Work.Of(AppActions.ContainerRestart) is null, "web's restart", TimeSpan.FromMinutes(3));
+            Assert.Equal("Compose: compose.yaml: restarted web", window.Status);
+            Ui.WaitFor(() => window.Debugger.Running.Count == 2, "web to be attached to again after its restart");
+            port = ContainerRunsTests.Published(project, "web");
+            Assert.Equal("web 1", Ui.Await(Get(port), "web's answer as built, restarted without a build", TimeSpan.FromMinutes(1)));
+            Applied(window, "The edit applied before the restart");
+            Assert.Equal("web 2", Ui.Await(Get(port), "web's answer after Apply", TimeSpan.FromMinutes(1)));
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take every container down");
+        }
+        Ui.WaitFor(() => window.Debugger.Running.Count == 0, "the Hot Reload sessions to end with Stop");
+        window.Close();
+    }
+
+    /// <summary>Runs the chosen configuration with Hot Reload, waiting for web and api to be attached to for it.</summary>
+    private static void HotReloadRun(MainWindow window)
+    {
+        string? refused = Ui.Await(window.Builds.RunAsync(hotReload: true), "the services to come up with Hot Reload", TimeSpan.FromMinutes(5));
+        Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
+        Ui.WaitFor(() => window.Debugger.Running.Count == 2, "web and api to be attached to for Hot Reload");
+    }
+
+    /// <summary>Apply Hot Reload Changes, which applies <paramref name="what"/>.</summary>
+    private static void Applied(MainWindow window, string what)
+    {
+        Ui.Run(window, AppActions.ApplyHotReloadChanges);
+        Assert.True(window.Debugger.LastApplied?.Result == HotReloadResult.Applied, $"{what} was not applied: {window.Debugger.LastApplied?.Said}");
+    }
+
+    /// <summary>Types over text in the editor shown while a start or restart holds the window's background work, so unsettled.</summary>
+    private static void Typed(MainWindow window, string old, string typed)
+    {
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        editor.Select(new Passenger.Text.TextRange(editor.Document.Snapshot.ToString().IndexOf(old, StringComparison.Ordinal), old.Length));
+        window.KeyTextInput(typed);
+        Assert.Contains(typed, editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+    }
+
     /// <summary>Images as deployed, of builds made here naming the images' own paths (/src, where each Dockerfile copies the
     /// context), so only the path map puts web's stop in the workspace's file, with no SDK image needed; api is a Release
     /// build, which is said, and a third service of api's image with its runtime's diagnostics off runs on undebugged, saying

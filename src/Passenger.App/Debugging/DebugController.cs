@@ -281,7 +281,29 @@ public sealed class DebugController : IDisposable
     {
         UiThread.Check();
         BuiltLines lines = new(path => CSharp.ServerPlaces.TextOf(editors, path));
-        BuiltEdits edits = new(lines, hotReload ? new HotReload(lines, Server, editors) : null, done => building.Remove(done));
+        return Followed(lines, hotReload ? new HotReload(lines, Server, editors) : null);
+    }
+
+    /// <summary>Begins following the edits for a program restarted on the build a live session's program (by its name) was
+    /// started from: the build's lines as they stand now and, with <paramref name="hotReload"/>, the session's texts from
+    /// before its edits, every edit since the build one Apply applies again, as the program restarted runs none Hot Reload
+    /// gave the last. Null with no such session; let go if no session takes them.</summary>
+    public BuiltEdits? Carried(string name, bool hotReload)
+    {
+        UiThread.Check();
+        (BuiltLines? lines, HotReload? reload) = view.Sessions.FirstOrDefault(t => t.Name == name && t.IsLive) is { Lines: { } shown } tab ? (shown, tab.HotReload)
+            : running.FirstOrDefault(r => r.Name == name) is { } quiet ? (quiet.Lines, quiet.Reload) : (null, null);
+        if (lines is null)
+        {
+            return null;
+        }
+        BuiltLines carried = lines.FromBuild();
+        return Followed(carried, hotReload ? reload?.Carried(carried) ?? new HotReload(carried, Server, editors) : null);
+    }
+
+    private BuiltEdits Followed(BuiltLines lines, HotReload? reload)
+    {
+        BuiltEdits edits = new(lines, reload, done => building.Remove(done));
         building.Add(edits);
         return edits;
     }
@@ -854,8 +876,8 @@ public sealed class DebugController : IDisposable
 
     /// <summary>A program run with Hot Reload through the debugger rather than dotnet watch (a container run's service, whose
     /// image has no SDK): attached quietly, no breakpoint sent and no stop shown, so Apply Hot Reload Changes and a save
-    /// apply the edits to it; ended with its run.</summary>
-    public sealed record RunningReload(string Name, DebugSession Session, HotReload Reload, Action<string, bool> Says) : IHotReloadTarget
+    /// apply the edits to it; ended with its run. Its built lines follow the edits for a restart on its build.</summary>
+    public sealed record RunningReload(string Name, DebugSession Session, HotReload Reload, BuiltLines Lines, Action<string, bool> Says) : IHotReloadTarget
     {
         HotReload? IHotReloadTarget.HotReload => Reload;
 
@@ -903,7 +925,7 @@ public sealed class DebugController : IDisposable
             {
                 throw new OperationCanceledException("The workspace ended during Hot Reload attach");
             }
-            RunningReload reload = new(name, session, tracked, says);
+            RunningReload reload = new(name, session, tracked, built, says);
             tracked.Opened(session);
             own.Take();
             running.Add(reload);
@@ -1507,9 +1529,13 @@ public sealed class DebugController : IDisposable
                     pending.Reload?.Edited(document.Path, change.Before);
                 }
             }
-            foreach (RunningReload run in code ? running : [])
+            foreach (RunningReload run in running)
             {
-                run.Reload.Edited(document.Path, change.Before);
+                run.Lines.Follow(document.Path, change);
+                if (code)
+                {
+                    run.Reload.Edited(document.Path, change.Before);
+                }
             }
             Breakpoints.Follow(document.Path);
             FollowLambdas(document);

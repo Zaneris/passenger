@@ -1050,6 +1050,9 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
     /// its restart builds its image.</summary>
     public override bool BuildsBeforeRestart => Plan.Mode == ContainerMode.Fast;
 
+    /// <summary>In fast mode, while its build here is the one it started on; as deployed, a restart builds its image again.</summary>
+    public override bool RestartsOnItsBuild(IRunService service) => Plan.Mode == ContainerMode.Fast && Changed().All(d => d.Service != service.Name);
+
     /// <summary>In the run's console, beside the services' logs, named for the service.</summary>
     public override void Say(IRunService service, string line, bool error) =>
         console.Write($"{service.Name}: {line}\n", error ? ConsoleStream.Error : ConsoleStream.Output);

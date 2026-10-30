@@ -158,9 +158,24 @@ public sealed partial class BuildRunController
     {
         List<IRunService> held = run.AttachesItsStarts ? [] : [.. run.Held.Where(h => services.Any(s => run.KeyOf(s) == run.KeyOf(h)))];
         List<IRunService> running = [.. services.Where(s => run.AttachedRunning.Contains(run.KeyOf(s)) && run.HeldFor(s) is null)];
+        List<(IRunService Service, bool HotReload)> sessions = Reattached(run, services);
+        // Restarted on the build its program runs, none followed since: its next session takes the ended one's edits.
+        foreach ((IRunService service, bool hotReload) in sessions.Where(a => !build && !builtEdits.ContainsKey(a.Service.Name) && run.RestartsOnItsBuild(a.Service)))
+        {
+            if (session.Debug.Carried(run.SessionName(service), hotReload) is { } carried)
+            {
+                builtEdits[service.Name] = carried;
+            }
+        }
         await EndSessionsAsync(run, services);
         try
         {
+            if (upHeld is { } hold)
+            {
+                upHeld = null;
+                hold.Holding.TrySetResult();
+                await hold.Until.WaitAsync(work.Stopping);
+            }
             if (await run.RestartAsync(services, work.Stopping, why, build) is { } failed)
             {
                 return failed;
@@ -195,7 +210,18 @@ public sealed partial class BuildRunController
         {
             return $"{string.Join(", ", services.Select(s => s.Name))} of {run.Name} could not be restarted: {failed.Message}";
         }
+        finally
+        {
+            LetGoBuilt(sessions.Select(a => a.Service.Name));
+        }
     }
+
+    /// <summary>The services of those given whose restart a session of the debugger or Hot Reload attaches to again (held for
+    /// either, or attached to as they ran), each with whether it applies Hot Reload; none where the run's kind attaches to
+    /// each start itself.</summary>
+    private List<(IRunService Service, bool HotReload)> Reattached(ServiceRun run, IEnumerable<IRunService> services) => run.AttachesItsStarts ? []
+        : [.. services.Where(s => run.HeldFor(s) is RunStart.Debug or RunStart.HotReload || run.HeldFor(s) is null && run.AttachedRunning.Contains(run.KeyOf(s)))
+            .Select(s => (s, run.HeldFor(s) == RunStart.HotReload || session.Debug.HotReloadOn()))];
 
     /// <summary>A .NET service of the container run under way, by its name, or why there is none to act on.</summary>
     public (IRunService? Service, string? WhyNot) ServiceOfRun(string? name) => Containers is { } run && IsRunning ? ServiceOf(run, name)
@@ -242,42 +268,51 @@ public sealed partial class BuildRunController
         {
             return unfit;
         }
-        if (run.BuildsBeforeRestart)
+        try
         {
-            work.Say($"Building {Path.GetFileNameWithoutExtension(service.Project)}…");
-            BuildOutcome built = await BuildForAsync([service.Project], work.Stopping, work);
-            work.Stopping.ThrowIfCancellationRequested();
-            if (!built.Succeeded)
+            if (run.BuildsBeforeRestart)
             {
-                return built.Message;
+                work.Say($"Building {Path.GetFileNameWithoutExtension(service.Project)}…");
+                BuildOutcome built = await BuildForAsync([service.Project], work.Stopping, work,
+                    reading: () => FollowBuilt(Reattached(run, [service]).Select(a => (a.Service.Name, a.HotReload))));
+                work.Stopping.ThrowIfCancellationRequested();
+                if (!built.Succeeded)
+                {
+                    return built.Message;
+                }
             }
+            if (run is ContainerRun containers
+                && await ReplacesOthersAsync($"{service.Name} of {containers.Name}", containers.Plan with { Touched = [service.Name] }, containers.Engine, work) is { } kept)
+            {
+                return kept;
+            }
+            if (run.IsStopped || session.IsEnded)
+            {
+                throw new OperationCanceledException(work.Stopping);
+            }
+            if (run.StartLater(service, profiled) is { } refused)
+            {
+                return refused;
+            }
+            work.Say($"Starting {service.Name}…");
+            string? failed = await RestartServicesAsync(run, [service], work, why);
+            if (failed is not null || !profiled)
+            {
+                return failed;
+            }
+            // Held for the profiler alone, one that cannot be recorded is made again unheld rather than waiting for good.
+            if (await AttachAsync(run, service, Task.CompletedTask, [], work.Stopping, RunStart.Profile) is not { } unrecorded)
+            {
+                return null;
+            }
+            string? unheld = await run.RestartAsync([service], CancellationToken.None, "to run without the profiler, which could not attach");
+            return $"{unrecorded}; {service.Name} {(unheld is null ? "restarted to run without the profiler" : $"could not be restarted to run without it: {unheld}")}";
         }
-        if (run is ContainerRun containers
-            && await ReplacesOthersAsync($"{service.Name} of {containers.Name}", containers.Plan with { Touched = [service.Name] }, containers.Engine, work) is { } kept)
+        finally
         {
-            return kept;
+            // Followed since its build, what its session did not take ends with its start.
+            LetGoBuilt([service.Name]);
         }
-        if (run.IsStopped || session.IsEnded)
-        {
-            throw new OperationCanceledException(work.Stopping);
-        }
-        if (run.StartLater(service, profiled) is { } refused)
-        {
-            return refused;
-        }
-        work.Say($"Starting {service.Name}…");
-        string? failed = await RestartServicesAsync(run, [service], work, why);
-        if (failed is not null || !profiled)
-        {
-            return failed;
-        }
-        // Held for the profiler alone, one that cannot be recorded is made again unheld rather than waiting for good.
-        if (await AttachAsync(run, service, Task.CompletedTask, [], work.Stopping, RunStart.Profile) is not { } unrecorded)
-        {
-            return null;
-        }
-        string? unheld = await run.RestartAsync([service], CancellationToken.None, "to run without the profiler, which could not attach");
-        return $"{unrecorded}; {service.Name} {(unheld is null ? "restarted to run without the profiler" : $"could not be restarted to run without it: {unheld}")}";
     }
 
     /// <summary>Debug of one .NET service of the container run under way (<see cref="DebugServiceAsync(ServiceRun, string, IRunService)"/>).</summary>
@@ -477,19 +512,29 @@ public sealed partial class BuildRunController
         using (work)
         {
             using IDisposable held = BackgroundWork.Scope();
-            if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
+            // Their build reads the files as saved now, here or as their images are built: an edit made after is their sessions'.
+            List<(string Service, bool HotReload)> again = [.. Reattached(run, services).Select(a => (a.Service.Name, a.HotReload))];
+            try
             {
-                parts.Say(unsaved);
-                return false;
+                FollowBuilt(again);
+                if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
+                {
+                    parts.Say(unsaved);
+                    return false;
+                }
+                List<string> projects = [.. services.Select(s => s.Project).Distinct(StringComparer.Ordinal)];
+                if (run.BuildsBeforeRestart && !(await BuildForAsync(projects, work.Stopping, work, reading: () => FollowBuilt(again))).Succeeded)
+                {
+                    return false;
+                }
+                string? failed = await RestartServicesAsync(run, services, work, build: true);
+                parts.Say(failed ?? $"{run.Name}: restarted {string.Join(", ", names)} to apply changes");
+                return failed is null;
             }
-            List<string> projects = [.. services.Select(s => s.Project).Distinct(StringComparer.Ordinal)];
-            if (run.BuildsBeforeRestart && !(await BuildForAsync(projects, work.Stopping, work)).Succeeded)
+            finally
             {
-                return false;
+                LetGoBuilt(again.Select(a => a.Service));
             }
-            string? failed = await RestartServicesAsync(run, services, work, build: true);
-            parts.Say(failed ?? $"{run.Name}: restarted {string.Join(", ", names)} to apply changes");
-            return failed is null;
         }
     }
 }

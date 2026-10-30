@@ -20,7 +20,8 @@ public sealed partial class BuildRunController
     private (Task Until, TaskCompletionSource Holding)? upHeld;
 
     /// <summary>Holds the next container run's <c>up</c> until <paramref name="until"/> ends, its override written and its
-    /// ports chosen (<see cref="ContainerPlan.Ports"/>), for a test of what goes on meanwhile. Done once it is held.</summary>
+    /// ports chosen (<see cref="ContainerPlan.Ports"/>), or the next restart of a run's services (Rerun's, Hot Reload's), its
+    /// build done and their sessions ended, for a test of what goes on meanwhile. Done once it is held.</summary>
     public Task HoldNextUp(Task until)
     {
         TaskCompletionSource holding = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -84,27 +85,31 @@ public sealed partial class BuildRunController
         }
     }
 
-    /// <summary>The edits followed since a container start's build saved the files, for each service it holds for Hot Reload
-    /// or the debugger, by its name: that service's attach takes them, and what none took is let go with the start.</summary>
+    /// <summary>The edits followed since the build a service's program is started or restarted on saved the files (or, for a
+    /// restart on the build it ran, since that build), for each service a session of the debugger or Hot Reload attaches to,
+    /// by its name: that service's attach takes them, and what none took is let go with the start or restart.</summary>
     private readonly Dictionary<string, BuiltEdits> builtEdits = new(StringComparer.Ordinal);
 
-    /// <summary>Begins anew, as a container start's build saves the files, the edits followed for each service it holds.</summary>
-    private void FollowBuilt(IEnumerable<(DotnetService Service, RunStart How)> holding)
+    /// <summary>Begins anew, as a build saves the files, the edits followed for each service given, with Hot Reload or not.</summary>
+    private void FollowBuilt(IEnumerable<(string Service, bool HotReload)> sessions)
     {
-        LetGoBuilt();
-        foreach ((DotnetService service, RunStart how) in holding.Where(h => h.How != RunStart.Profile))
+        foreach ((string service, bool hotReload) in sessions)
         {
-            builtEdits[service.Service] = session.Debug.Building(how == RunStart.HotReload || session.Debug.HotReloadOn());
+            LetGoBuilt([service]);
+            builtEdits[service] = session.Debug.Building(hotReload);
         }
     }
 
-    private void LetGoBuilt()
+    /// <summary>Lets go of the edits followed for the services given (every one, given none) that no session took.</summary>
+    private void LetGoBuilt(IEnumerable<string>? services = null)
     {
-        foreach (BuiltEdits edits in builtEdits.Values)
+        foreach (string service in services?.ToList() ?? [.. builtEdits.Keys])
         {
-            edits.Dispose();
+            if (builtEdits.Remove(service, out BuiltEdits? edits))
+            {
+                edits.Dispose();
+            }
         }
-        builtEdits.Clear();
     }
 
     /// <summary>What every container start starts, so one ends another under way: the folder's one container run.</summary>
@@ -217,7 +222,8 @@ public sealed partial class BuildRunController
         if (plan.Builds.Count > 0)
         {
             work.Say($"Building {string.Join(", ", plan.Builds.Select(Path.GetFileNameWithoutExtension))}…");
-            BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping, work, reading: () => FollowBuilt(holding));
+            BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping, work,
+                reading: () => FollowBuilt(holding.Where(h => h.How != RunStart.Profile).Select(h => (h.Service.Service, h.How == RunStart.HotReload || session.Debug.HotReloadOn()))));
             if (!built.Succeeded)
             {
                 return Checkpoint(work, chosen.Name) is { } stopped ? Said(stopped) : built.Message;
@@ -491,7 +497,8 @@ public sealed partial class BuildRunController
 
     /// <summary>Rerun of a container run in fast mode (<see cref="RestartedInPlace"/>): its .NET services built again on the
     /// host, and only those whose build changed restarted (their containers kept, reading the new build through the same
-    /// mount; no image is built), a service held for Hot Reload attached to again. Null once done, else why not.</summary>
+    /// mount; no image is built), a service held for Hot Reload attached to again, its session taking the edits made since
+    /// the build saved the files. Null once done, else why not.</summary>
     private async Task<string?> RerunContainersAsync(ContainerRun run)
     {
         if (parts.Work.Begin(AppActions.RunProgram, $"Building {run.Plan.Name} again…") is not { } work)
@@ -501,22 +508,31 @@ public sealed partial class BuildRunController
         using (work)
         {
             using IDisposable held = BackgroundWork.Scope();
-            if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
+            List<(IRunService Service, bool HotReload)> again = Reattached(run, run.Services);
+            try
             {
-                return Said(unsaved);
+                if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
+                {
+                    return Said(unsaved);
+                }
+                BuildOutcome built = await BuildForAsync(run.Plan.Builds, work.Stopping, work, reading: () => FollowBuilt(again.Select(a => (a.Service.Name, a.HotReload))));
+                if (!built.Succeeded)
+                {
+                    return Said(built.Message);
+                }
+                IReadOnlyList<DotnetService> changed = run.Changed();
+                work.Say(changed.Count == 0 ? "No service's build changed" : $"Restarting {string.Join(", ", changed.Select(c => c.Service))}…");
+                string? failed = await RestartServicesAsync(run, changed, work);
+                // Passenger pins the ports it can; with an older Compose the engine may have chosen another at the restart.
+                string moved = failed is null && changed.Count > 0 && run.Address is { } before && await run.BrowserUrlAsync(CancellationToken.None) is { } now && now != before
+                    ? $"; it now answers at {run.Address = now}" : string.Empty;
+                return Said(failed ?? Reran(run.Plan.Name, [.. changed.Select(c => c.Service)], moved));
             }
-            BuildOutcome built = await BuildForAsync(run.Plan.Builds, work.Stopping, work);
-            if (!built.Succeeded)
+            finally
             {
-                return Said(built.Message);
+                // A service whose build did not change runs on in its session, which follows the edits already.
+                LetGoBuilt(again.Select(a => a.Service.Name));
             }
-            IReadOnlyList<DotnetService> changed = run.Changed();
-            work.Say(changed.Count == 0 ? "No service's build changed" : $"Restarting {string.Join(", ", changed.Select(c => c.Service))}…");
-            string? failed = await RestartServicesAsync(run, changed, work);
-            // Passenger pins the ports it can; with an older Compose the engine may have chosen another at the restart.
-            string moved = failed is null && changed.Count > 0 && run.Address is { } before && await run.BrowserUrlAsync(CancellationToken.None) is { } now && now != before
-                ? $"; it now answers at {run.Address = now}" : string.Empty;
-            return Said(failed ?? Reran(run.Plan.Name, [.. changed.Select(c => c.Service)], moved));
         }
     }
 

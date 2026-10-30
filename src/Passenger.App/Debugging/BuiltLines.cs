@@ -24,6 +24,10 @@ public sealed class BuiltLines
     /// its lines then as its compiler counts them.</summary>
     private Dictionary<string, (Lines Lines, ServerLines? Compiled)>? marked;
 
+    /// <summary>Each file Hot Reload has given the program since the build: the build's lines carried on through its edits,
+    /// and as its compiler counted them, for a program restarted on the build (<see cref="FromBuild"/>).</summary>
+    private readonly Dictionary<string, (Lines Lines, ServerLines? Compiled)> ofBuild = new(StringComparer.Ordinal);
+
     public BuiltLines(Func<string, TextSnapshot?> texts) => this.texts = texts;
 
     /// <summary>Carries a file's lines through an edit to it.</summary>
@@ -43,6 +47,10 @@ public sealed class BuiltLines
             files[path] = lines;
         }
         lines.Follow(change);
+        if (ofBuild.TryGetValue(path, out (Lines Lines, ServerLines? Compiled) build))
+        {
+            build.Lines.Follow(change);
+        }
         if (marked is not null)
         {
             if (!marked.TryGetValue(path, out (Lines Lines, ServerLines? Compiled) since))
@@ -68,6 +76,10 @@ public sealed class BuiltLines
     /// them: Hot Reload has given the program its code as the update was made of it.</summary>
     public void Reset(string path)
     {
+        if (!ofBuild.ContainsKey(path) && files.TryGetValue(path, out Lines? sinceBuild))
+        {
+            ofBuild[path] = (sinceBuild, compiled.GetValueOrDefault(path));
+        }
         files.Remove(path);
         compiled.Remove(path);
         if (marked is not null && marked.Remove(path, out (Lines Lines, ServerLines? Compiled) since))
@@ -75,6 +87,30 @@ public sealed class BuiltLines
             files[path] = since.Lines;
             compiled[path] = since.Compiled;
         }
+    }
+
+    /// <summary>The build's lines as they stand in the files now, for a program restarted on the build without the edits Hot
+    /// Reload gave the last: a map of its own, which follows the edits it is given from now.</summary>
+    public BuiltLines FromBuild()
+    {
+        BuiltLines carried = new(texts);
+        foreach ((string path, Lines lines) in files.Where(f => !ofBuild.ContainsKey(f.Key)))
+        {
+            carried.files[path] = lines.Copy();
+            if (compiled.TryGetValue(path, out ServerLines? counted))
+            {
+                carried.compiled[path] = counted;
+            }
+        }
+        foreach ((string path, (Lines lines, ServerLines? counted)) in ofBuild)
+        {
+            carried.files[path] = lines.Copy();
+            if (counted is not null)
+            {
+                carried.compiled[path] = counted;
+            }
+        }
+        return carried;
     }
 
     /// <summary>Where a built line (from zero, the compiler's) of a file is now, as the editor counts lines.</summary>
@@ -126,13 +162,28 @@ public sealed class BuiltLines
     /// <summary>A file's built lines and its lines now, each mapped to the other as runs (<see cref="LineRuns"/>): an edit
     /// carries one by one only the lines it reaches and moves the runs past it whole, so a key costs what it changed, not a
     /// look at every line of the file and, as it adds or takes a line away, an array of them.</summary>
-    private sealed class Lines(int count)
+    private sealed class Lines
     {
         /// <summary>Each built line's line now.</summary>
-        private readonly LineRuns current = new(count);
+        private readonly LineRuns current;
 
         /// <summary>Each line's built line.</summary>
-        private readonly LineRuns built = new(count);
+        private readonly LineRuns built;
+
+        public Lines(int count)
+        {
+            current = new LineRuns(count);
+            built = new LineRuns(count);
+        }
+
+        private Lines(LineRuns current, LineRuns built)
+        {
+            this.current = current;
+            this.built = built;
+        }
+
+        /// <summary>A map of its own, as this one is now.</summary>
+        public Lines Copy() => new(current.Copy(), built.Copy());
 
         public int ToCurrent(int line) => current.At(line);
 
@@ -161,6 +212,10 @@ public sealed class BuiltLines
         private List<Stretch> spare = [];
 
         public LineRuns(int count) => runs = [new Stretch(0, Math.Max(count, 1), 0, Flat: false)];
+
+        private LineRuns(List<Stretch> runs) => this.runs = runs;
+
+        public LineRuns Copy() => new([.. runs]);
 
         private int Count => runs[^1].End;
 

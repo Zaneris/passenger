@@ -306,6 +306,10 @@ public abstract class ServiceRun
     /// program reads the build here), rather than by their restart.</summary>
     public abstract bool BuildsBeforeRestart { get; }
 
+    /// <summary>Whether a restart with no build of its own runs a service on the build its program runs now, none made
+    /// since, so its next session takes the ended one's edits as still to apply.</summary>
+    public virtual bool RestartsOnItsBuild(IRunService service) => false;
+
     /// <summary>Whether a failure of a service's action is one its kind says (an engine's refusal, a file it could not
     /// write), said as the action's failure rather than reported as Passenger's.</summary>
     public abstract bool Refused(Exception failure);
