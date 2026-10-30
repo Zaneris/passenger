@@ -97,7 +97,7 @@ public static class XamlDiagnostics
             {
                 BindingElement(file, element, found);
             }
-            if (file.NameAttribute(element) is { Value.Length: > 0 } name && !InTemplate(element))
+            if (XamlFile.NameAttribute(element) is { Value.Length: > 0 } name && !InTemplate(element))
             {
                 if (named.TryGetValue(name.Value, out XmlAttribute? first))
                 {

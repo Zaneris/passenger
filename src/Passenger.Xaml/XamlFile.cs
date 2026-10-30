@@ -107,7 +107,9 @@ public sealed class XamlFile
     /// <summary>The URI a prefix means at an element (the empty prefix, the default namespace).</summary>
     public string? UriOf(XmlElement? scope, string prefix) => DeclaredUri(scope, prefix);
 
-    private static string? DeclaredUri(XmlElement? scope, string prefix)
+    /// <summary>The URI a prefix is declared for at an element, read from the markup alone: what <see cref="UriOf"/> says
+    /// where no file is at hand.</summary>
+    public static string? DeclaredUri(XmlElement? scope, string prefix)
     {
         string name = prefix.Length == 0 ? "xmlns" : "xmlns:" + prefix;
         for (XmlElement? at = scope; at is not null; at = at.Parent)
@@ -868,10 +870,10 @@ public sealed class XamlFile
         }
     }
 
-    /// <summary>The attribute that names an element (<c>x:Name</c>, else <c>Name</c>).</summary>
-    public XmlAttribute? NameAttribute(XmlElement element) =>
-        element.Attributes.FirstOrDefault(a => a.LocalName == "Name" && a.Prefix.Length > 0 && KindOf(UriOf(element, a.Prefix)) == XamlNamespaceKind.Language)
-        ?? (element.IsPropertyElement ? null : element.Attribute("Name"));
+    /// <summary>The attribute that names an element (<c>x:Name</c>, its prefix whatever the file declares XAML's language
+    /// with, else <c>Name</c>).</summary>
+    public static XmlAttribute? NameAttribute(XmlElement element) =>
+        Directive(element, "Name") ?? (element.IsPropertyElement ? null : element.Attribute("Name"));
 
     /// <summary>The directive attribute of XAML's language with a name on an element (<c>x:Key</c>), by the namespace its
     /// prefix is declared for, whatever the prefix.</summary>

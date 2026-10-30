@@ -49,6 +49,11 @@
     <Compile Include="../../src/Passenger.Languages/CSharp/SafeDeletion.cs" Link="Languages/SafeDeletion.cs" />
   </ItemGroup>
 
+  <!-- The bindings an .axaml file writes, read from its markup alone, compiled in since their project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/LiveTree/XamlBindings.cs" Link="App/XamlBindings.cs" />
+  </ItemGroup>
+
   <!-- What tells a breakpoint change worth sending to the debugger, read from its fields alone, compiled in since its
        project is the app's. -->
   <ItemGroup>

@@ -167,7 +167,7 @@ public static class XamlNavigation
             }
             return null;
         }
-        if (attribute.Name == "Name" && !element.IsPropertyElement && file.NameAttribute(element) == attribute)
+        if (attribute.Name == "Name" && !element.IsPropertyElement && XamlFile.NameAttribute(element) == attribute)
         {
             return Named(file, attribute);
         }
@@ -180,7 +180,7 @@ public static class XamlNavigation
         {
             return new XamlSymbol(whole, set.Name, [MemberTarget(set)]);
         }
-        if (IsNameReference(attribute) && file.ElementNamed(element, value) is { } target && file.NameAttribute(target) is { } targetName)
+        if (IsNameReference(attribute) && file.ElementNamed(element, value) is { } target && XamlFile.NameAttribute(target) is { } targetName)
         {
             return new XamlSymbol(whole, value, [new XamlTarget(XamlTargetKind.Element, value) { Path = file.Path, Range = targetName.ValueRange }]) { Named = targetName };
         }
@@ -411,7 +411,7 @@ public static class XamlNavigation
                 {
                     continue;
                 }
-                if (attribute == file.NameAttribute(element) || IsNameReference(attribute))
+                if (attribute == XamlFile.NameAttribute(element) || IsNameReference(attribute))
                 {
                     if (attribute.Value == name)
                     {

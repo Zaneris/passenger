@@ -1192,6 +1192,22 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A button named by <c>x:Name</c> in single quotes, with spaces round its equals sign, is where Go to
+    /// Declaration from its generated field in the code-behind lands.</summary>
+    [AvaloniaFact]
+    public void Go_to_declaration_from_a_generated_field_lands_on_its_element_named_in_single_quotes()
+    {
+        app.Rewrite("MainWindow.axaml", Gallery.Window.Replace("<Button Name=\"Go\"", "<Button x:Name = 'Go'", StringComparison.Ordinal));
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "        G");
+        Ui.Run(window, AppActions.GoToDeclaration);
+        Ui.Settle();
+        string landed = window.EditorArea.Active?.Name == "MainWindow.axaml" ? CaretLine(window.EditorArea.CodeEditor) : $"{window.EditorArea.Active?.Name}: {CaretLine(window.EditorArea.CodeEditor)}";
+        Assert.True(landed.Contains("<Button x:Name = '|Go'", StringComparison.Ordinal),
+            $"Go to Declaration from the field of a button named in single quotes landed at {landed}, not on the button's name");
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void An_elements_name_renames_with_its_code_behinds_uses_and_go_to_declaration_from_the_code_lands_on_it()

@@ -595,7 +595,7 @@ public static class XamlCompletion
     {
         XmlElement? scope = from.Ancestors().FirstOrDefault(a => !a.IsPropertyElement && a.LocalName.EndsWith("Template", StringComparison.Ordinal));
         IEnumerable<string> names = scope is null ? file.Names.Select(n => n.Name)
-            : scope.DescendantsAndSelf().Select(e => file.NameAttribute(e)?.Value).OfType<string>().Where(n => n.Length > 0);
+            : scope.DescendantsAndSelf().Select(e => XamlFile.NameAttribute(e)?.Value).OfType<string>().Where(n => n.Length > 0);
         return new XamlCompletionList(start, [.. names.Distinct(StringComparer.Ordinal).Select(n => new XamlItem(n, XamlItemKind.ElementName, n))]);
     }
 

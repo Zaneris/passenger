@@ -1,5 +1,6 @@
 using Passenger.Text;
 using Passenger.Xaml;
+using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Syntax;
 
 namespace Passenger.App.LiveTree;
@@ -33,7 +34,7 @@ public static class XamlBindings
             int column = element.NameStart - text.GetLineStart(line);
             foreach (XmlAttribute attribute in element.Attributes)
             {
-                if (!attribute.HasValue || attribute.Name == "xmlns" || attribute.Prefix is "x" or "d" or "mc" or "xmlns"
+                if (!attribute.HasValue || attribute.Name == "xmlns" || attribute.Prefix == "xmlns" || IsLanguageOrDesign(element, attribute)
                     || MarkupExtension.Parse(source, attribute.ValueStart, attribute.ValueEnd) is not { Prefix.Length: 0 } extension
                     || !Kinds.Contains(extension.LocalName))
                 {
@@ -45,4 +46,10 @@ public static class XamlBindings
         }
         return found;
     }
+
+    /// <summary>Whether an attribute is one of XAML's language, the designer's or markup compatibility's, by the namespace
+    /// its prefix is declared for, whatever the prefix: none sets a property of the running app.</summary>
+    private static bool IsLanguageOrDesign(XmlElement element, XmlAttribute attribute) =>
+        attribute.Prefix.Length > 0
+        && XamlFile.DeclaredUri(element, attribute.Prefix) is XamlDialect.XamlUri or XamlDialect.DesignerUri or XamlDialect.CompatibilityUri;
 }

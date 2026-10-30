@@ -834,14 +834,18 @@ internal sealed partial class XamlAssist : LanguageAssist
                 xaml = generated.Success && context.Xaml?.Invoke() is { } service ? await service.ClassFileAsync(generated.Groups["class"].Value, document.Path) : null;
             }
             string name = AssistContext.NameAt(document.Text.Snapshot, offset);
-            if (xaml is not null && Regex.Match(context.ReadOpenOrDisk(xaml), $@"\b(?:x:)?Name\s*=\s*""(?<name>{Regex.Escape(name)})""") is { Success: true } found)
+            if (xaml is not null && NameIn(context.ReadOpenOrDisk(xaml), name) is { } found)
             {
-                int start = found.Groups["name"].Index;
-                return new XamlTarget(XamlTargetKind.Element, name) { Path = xaml, Range = new TextRange(start, name.Length) };
+                return new XamlTarget(XamlTargetKind.Element, name) { Path = xaml, Range = found.ValueRange };
             }
         }
         return null;
     }
+
+    /// <summary>The attribute naming the first element a XAML text names <paramref name="name"/>, however it is quoted or
+    /// spaced, by <c>x:Name</c> under whatever prefix XAML's language has, or by <c>Name</c>; null for none.</summary>
+    private static XmlAttribute? NameIn(string text, string name) =>
+        XmlTree.Parse(text).Elements.Select(XamlFile.NameAttribute).FirstOrDefault(a => a is { IsValueClosed: true } && a.Value == name);
 
     /// <summary>The XAML file a line of the C# WPF's MarkupCompile wrote (<c>obj/…/MainWindow.g.cs</c>, or the design-time
     /// <c>.g.i.cs</c>) was made from: the file its nearest <c>#line</c> above names; null for a file that is not one.</summary>

@@ -21,7 +21,7 @@ public class XamlFileTests
             + "bindings' data context, renames and its named elements' fields go unfound");
         Assert.Equal("Shop.MainWindow", file.ClassType?.FullName);
         Assert.Equal("Shop.MainWindow", XamlFile.ClassAttribute(XmlTree.Parse(text))?.Value);
-        Assert.Equal("Shell", file.NameAttribute(file.Tree.Root!)?.Value);
+        Assert.Equal("Shell", XamlFile.NameAttribute(file.Tree.Root!)?.Value);
     }
 
     [Fact]
