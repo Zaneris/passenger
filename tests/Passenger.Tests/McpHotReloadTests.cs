@@ -17,9 +17,9 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>An agent's debugging with no window, its tools' answers each checked once: an exception breakpoint on a type,
-    /// listed and stopping where that type is thrown; Run to Cursor and Set Next Statement; and Hot Reload of an edit made
-    /// while paused, then of one the runtime cannot take, named at its line and the program restarted for it only when
-    /// asked.</summary>
+    /// listed and stopping where that type is thrown; Run to Cursor and Set Next Statement, moves in a row each answered
+    /// with its own line; and Hot Reload of an edit made while paused, then of one the runtime cannot take, named at its
+    /// line and the program restarted for it only when asked.</summary>
     [Fact]
     public async Task An_agent_stops_at_an_exception_type_runs_to_a_line_moves_back_and_applies_hot_reload_changes_told_each_rude_edit_at_its_line()
     {
@@ -44,9 +44,13 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
         JsonElement ranTo = await Call(client, McpTools.DebugContinue, new() { ["path"] = "Program.cs", ["line"] = 4 });
         Assert.StartsWith("Program.cs:4:", ranTo.GetProperty("location").GetString(), StringComparison.Ordinal);
         Assert.Equal("11", Local(ranTo, "total"));
-        JsonElement moved = await Call(client, McpTools.DebugSetNextStatement, new() { ["path"] = "Program.cs", ["line"] = 3 });
-        Assert.StartsWith("Program.cs:3:", moved.GetProperty("location").GetString(), StringComparison.Ordinal);
-        Assert.Equal("11", Local(moved, "total"));
+        // Moves in a row, each answered with its own stop, never the one before it.
+        foreach (int to in new[] { 3, 4, 3, 4, 3 })
+        {
+            JsonElement moved = await Call(client, McpTools.DebugSetNextStatement, new() { ["path"] = "Program.cs", ["line"] = to });
+            Assert.True(moved.GetProperty("location").GetString()!.StartsWith($"Program.cs:{to}:", StringComparison.Ordinal) && Local(moved, "total") == "11",
+                $"Set Next Statement to line {to} answered another stop than its own: {moved}");
+        }
 
         // The argument exception passes; the stop is the first turn's, at the line that throws the type named.
         JsonElement thrown = await Call(client, McpTools.DebugContinue);

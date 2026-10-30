@@ -1707,11 +1707,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     public Task<DebugSnapshot> DebugSetNextStatement(string path, int line, string? session = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         DebugSession paused = await Paused(session, choose: true);
+        // The move's own stop, whichever comes first, it or the answer: an earlier move's stop has the same reason.
+        int before = paused.Stops;
         if (await Session.Debug.SetNextStatementAsync(paused, Resolve(path), line - 1) is { } problem)
         {
             throw new InvalidOperationException(problem);
         }
-        await When(() => paused.StopReason == StopReasons.Goto, TimeSpan.FromSeconds(10), cancel, StateOf(paused));
+        await When(() => paused.Stops > before || paused.State != DebugState.Paused, TimeSpan.FromSeconds(10), cancel, StateOf(paused));
+        await StopReadAsync(paused, cancel);
         return await DebugSnapshotAsync(paused);
     });
 
