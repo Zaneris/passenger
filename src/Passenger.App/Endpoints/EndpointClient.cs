@@ -161,27 +161,35 @@ public static class EndpointClient
         return (new EndpointCall(method.Trim().ToUpperInvariant(), uri.AbsoluteUri, resolvedHeaders, resolvedBody) { BodyFile = bodyFile, Reads = reads }, null);
     }
 
-    /// <summary>Sends the call, its body's file read first. A redirect is followed (when the options say so) with the
-    /// request's headers only to the same origin (scheme, host and port): to another, it goes without them, and not at all
-    /// when it would carry the body there; each such turn is one of the answer's <see cref="EndpointResponse.Notes"/>.</summary>
+    /// <summary>Sends the call, its body's file read first, within the timeout and the stop. A redirect is followed (when
+    /// the options say so) with the request's headers only to the same origin (scheme, host and port): to another, it goes
+    /// without them, and not at all when it would carry the body there; each such turn is one of the answer's
+    /// <see cref="EndpointResponse.Notes"/>.</summary>
     public static async Task<EndpointResponse> SendAsync(EndpointCall call, SendOptions options, CancellationToken cancel)
     {
         Stopwatch clock = Stopwatch.StartNew();
+        // The timeout holds the whole exchange, the body's file and the answer's reading included, which HttpClient's own does not.
+        using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        limit.CancelAfter(options.Timeout);
         string body = call.Body;
         if (call.BodyFile is { } file)
         {
+            // Not held, on a thread of its own: opening a FIFO nothing writes, or a file of a share that never answers, waits for good.
+            Task<(string? Text, string? Error)> reading = BackgroundWork.UnheldThread(() => ReadText(file));
             try
             {
-                body = ReadText(file);
+                (string? text, string? error) = await reading.WaitAsync(limit.Token).ConfigureAwait(false);
+                if (text is null)
+                {
+                    return new EndpointResponse { Error = $"The body's file {file} could not be read: {error}", Elapsed = clock.Elapsed };
+                }
+                body = text;
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
             {
-                return new EndpointResponse { Error = $"The body's file {file} could not be read: {error.Message}", Elapsed = clock.Elapsed };
+                return new EndpointResponse { Error = $"The body's file {file} was not read within {options.Timeout.TotalSeconds:0.#} s", Elapsed = clock.Elapsed };
             }
         }
-        // The timeout holds the whole exchange, the body's reading included, which HttpClient's own does not.
-        using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(cancel);
-        limit.CancelAfter(options.Timeout);
         try
         {
             using SocketsHttpHandler handler = new()
@@ -308,23 +316,30 @@ public static class EndpointClient
             ? next
             : null;
 
-    /// <summary>A body's file as text, refused past <see cref="MostSent"/> characters.</summary>
-    private static string ReadText(string file)
+    /// <summary>A body's file as text, or why it could not be read: past <see cref="MostSent"/> characters too.</summary>
+    private static (string? Text, string? Error) ReadText(string file)
     {
-        using StreamReader reader = new(file, Encoding.UTF8, detectEncodingFromByteOrderMarks: true,
-            new FileStreamOptions { Access = FileAccess.Read, Share = FileShare.ReadWrite | FileShare.Delete });
-        StringBuilder text = new();
-        char[] chunk = new char[64 * 1024];
-        int count;
-        while ((count = reader.Read(chunk, 0, chunk.Length)) > 0)
+        try
         {
-            text.Append(chunk, 0, count);
-            if (text.Length > MostSent)
+            using StreamReader reader = new(file, Encoding.UTF8, detectEncodingFromByteOrderMarks: true,
+                new FileStreamOptions { Access = FileAccess.Read, Share = FileShare.ReadWrite | FileShare.Delete });
+            StringBuilder text = new();
+            char[] chunk = new char[64 * 1024];
+            int count;
+            while ((count = reader.Read(chunk, 0, chunk.Length)) > 0)
             {
-                throw new IOException($"it is over {MostSent / 1024 / 1024} MB");
+                text.Append(chunk, 0, count);
+                if (text.Length > MostSent)
+                {
+                    return (null, $"it is over {MostSent / 1024 / 1024} MB");
+                }
             }
+            return (text.ToString(), null);
         }
-        return text.ToString();
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return (null, error.Message);
+        }
     }
 
     private static async Task<(byte[] Bytes, bool Cut)> ReadAtMostAsync(HttpContent content, CancellationToken cancel)
