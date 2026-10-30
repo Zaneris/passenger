@@ -78,6 +78,79 @@ public partial class ManagedDebugger
         return below;
     }
 
+    /// <summary>Where a value's variable is declared as an interface its type implements: how many of the type and its base
+    /// types lie below the one implementing it, and the names of the instance properties the interface and those it derives
+    /// from declare, which the variable's expression reaches by name with no cast (a struct's, held boxed, only so). Null
+    /// for any other declared type, and where the interface's definition is not read.</summary>
+    private InterfaceReach? ThroughInterface(ICorDebugType type, DeclaredType? declared) => declared?.Name is not { } name ? null : Declared(() =>
+    {
+        int below = 0;
+        for (ICorDebugType? at = type; at is { Type: CorElementType.CLASS or CorElementType.VALUETYPE }; at = at.Base, below++)
+        {
+            if (FindModule(at.Class.Module) is not { } module)
+            {
+                continue;
+            }
+            MetadataReader reader = module.MetadataReader.PeMetadataReader;
+            foreach (InterfaceImplementationHandle implemented in reader.GetTypeDefinition((TypeDefinitionHandle)MetadataTokens.EntityHandle(at.Class.Token)).GetInterfaceImplementations())
+            {
+                EntityHandle named = reader.GetInterfaceImplementation(implemented).Interface;
+                if (TypeNameOf(reader, named) == name)
+                {
+                    HashSet<string> names = new(StringComparer.Ordinal);
+                    return AddPropertyNames(module, named, names) ? new InterfaceReach(below, names) : null;
+                }
+            }
+        }
+        return null;
+    });
+
+    /// <summary>The names of an interface's instance properties and of those it derives from, added to
+    /// <paramref name="names"/>; false where a definition among them is not loaded.</summary>
+    private bool AddPropertyNames(ModuleInfo module, EntityHandle named, HashSet<string> names)
+    {
+        if (InterfaceDefinition(module, named) is not { } definition)
+        {
+            return false;
+        }
+        MetadataReader reader = definition.Module.MetadataReader.PeMetadataReader;
+        TypeDefinition type = reader.GetTypeDefinition(definition.Type);
+        foreach (PropertyDefinitionHandle handle in type.GetProperties())
+        {
+            PropertyDefinition property = reader.GetPropertyDefinition(handle);
+            PropertyAccessors accessors = property.GetAccessors();
+            MethodDefinitionHandle accessor = accessors.Getter.IsNil ? accessors.Setter : accessors.Getter;
+            if (!accessor.IsNil && (reader.GetMethodDefinition(accessor).Attributes & System.Reflection.MethodAttributes.Static) == 0)
+            {
+                names.Add(reader.GetString(property.Name));
+            }
+        }
+        return type.GetInterfaceImplementations().All(based => AddPropertyNames(definition.Module, reader.GetInterfaceImplementation(based).Interface, names));
+    }
+
+    /// <summary>The definition an interface's handle in a module names: its own, a reference's in the module that defines it,
+    /// or a generic one's instantiated.</summary>
+    private (ModuleInfo Module, TypeDefinitionHandle Type)? InterfaceDefinition(ModuleInfo module, EntityHandle named) => named.Kind switch
+    {
+        HandleKind.TypeDefinition => (module, (TypeDefinitionHandle)named),
+        HandleKind.TypeReference => ResolveTypeReference(module, (TypeReferenceHandle)named),
+        HandleKind.TypeSpecification when GenericTypeOf(module.MetadataReader.PeMetadataReader, (TypeSpecificationHandle)named) is { } generic => InterfaceDefinition(module, generic),
+        _ => null,
+    };
+
+    /// <summary>A type's name, a generic one's whatever its type arguments, as <see cref="DeclaredType"/> writes it.</summary>
+    private static string? TypeNameOf(MetadataReader reader, EntityHandle named) => named.Kind switch
+    {
+        HandleKind.TypeDefinition => MetadataTypeNames.Of(reader, (TypeDefinitionHandle)named, '.'),
+        HandleKind.TypeReference => MetadataTypeNames.Of(reader, (TypeReferenceHandle)named, '.'),
+        HandleKind.TypeSpecification when GenericTypeOf(reader, (TypeSpecificationHandle)named) is { } generic => TypeNameOf(reader, generic),
+        _ => null,
+    };
+
+    /// <summary>A declared interface's reach (<see cref="ThroughInterface"/>): the names it reaches, each taken by the first
+    /// property of that name from the type implementing it up, that many levels above the value's own.</summary>
+    private sealed record InterfaceReach(int Below, HashSet<string> Names);
+
     /// <summary>A class's or struct's definition's name as <see cref="DeclaredType"/> writes it; null where its module's
     /// metadata is not read.</summary>
     private string? DefinitionName(ICorDebugType type) => FindModule(type.Class.Module) is { } module

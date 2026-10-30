@@ -406,16 +406,22 @@ public partial class ManagedDebugger
 
     /// <summary>A type's members and then its base types'; true where a Static members row is needed. Each member an
     /// expression of the value's variable, declared as <paramref name="declared"/> (where unknown, as the value's own type),
-    /// reaches only through a cast says the type declaring it: one of a type below the declared one, or one that a type
-    /// between the declared one and its own hides by its name.</summary>
+    /// reaches only through a cast says the type declaring it: one of a type below the declared one but a property an
+    /// interface declared reaches by its name, or one that a type between the declared one and its own hides by its name.</summary>
     private Task<bool> AddMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, bool includeNonPublicMembers = true,
-        DeclaredType? declared = null) =>
-        AddMembers(corDebugValue, corDebugType, threadId, stackDepth, result, includeNonPublicMembers, Below(corDebugType, declared), new HashSet<string>(StringComparer.Ordinal));
+        DeclaredType? declared = null)
+    {
+        int below = Below(corDebugType, declared);
+        return AddMembers(corDebugValue, corDebugType, threadId, stackDepth, result, includeNonPublicMembers, below, new HashSet<string>(StringComparer.Ordinal),
+            below > 0 ? ThroughInterface(corDebugType, declared) : null);
+    }
 
     /// <summary>A type's members and then its base types', each saying its type where it lies <paramref name="below"/> the
-    /// declared type (more than none) or a type between the declared one and its own took its name (<paramref name="hidden"/>).</summary>
+    /// declared type (more than none) or a type between the declared one and its own took its name (<paramref name="hidden"/>),
+    /// but for the first property, at or above the type implementing it, of each name a declared interface reaches
+    /// (<paramref name="reach"/>).</summary>
     private async Task<bool> AddMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, bool includeNonPublicMembers,
-        int below, HashSet<string> hidden)
+        int below, HashSet<string> hidden, InterfaceReach? reach)
     {
         int first = result.Count;
         bool hasStaticMembers = false;
@@ -435,13 +441,18 @@ public partial class ManagedDebugger
         }
 
         await AddFields(nonStaticFieldDefs, metadataImport, corDebugType, corDebugValue, result, threadId, stackDepth);
+        int properties = result.Count;
         // The reference itself, not unwrapped: the getters are called on it.
         await AddProperties(nonStaticProperties, metadataImport, corDebugType, threadId, stackDepth, corDebugValue, result);
         if (below > 0 || hidden.Count > 0)
         {
-            foreach (VariableInfo cast in result.Skip(first).Where(member => below > 0 || hidden.Contains(member.Name)))
+            for (int at = first; at < result.Count; at++)
             {
-                cast.DeclaringType = GetCorDebugTypeFriendlyName(corDebugType);
+                bool reached = at >= properties && reach is { Below: <= 0 } && reach.Names.Remove(result[at].Name);
+                if (!reached && (below > 0 || hidden.Contains(result[at].Name)))
+                {
+                    result[at].DeclaringType = GetCorDebugTypeFriendlyName(corDebugType);
+                }
             }
         }
 
@@ -463,7 +474,7 @@ public partial class ManagedDebugger
         {
             taken.UnionWith(result.Skip(first).Select(member => member.Name));
         }
-        return hasStaticMembers | await AddMembers(corDebugValue, baseType, threadId, stackDepth, result, true, below - 1, taken);
+        return hasStaticMembers | await AddMembers(corDebugValue, baseType, threadId, stackDepth, result, true, below - 1, taken, reach is null ? null : reach with { Below = reach.Below - 1 });
     }
 
     private async Task AddStaticMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result)

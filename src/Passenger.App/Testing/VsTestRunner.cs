@@ -155,7 +155,7 @@ public sealed class VsTestRunner : ITestRunner
                 catch (TimeoutException)
                 {
                     IsUsable = false;
-                    _ = discovering.ContinueWith(ended => _ = ended.Exception, TaskScheduler.Default);
+                    IdeErrors.Observe(LetGoAsync(discovering));
                 }
                 catch (Exception error) when (error is IOException or InvalidOperationException or TestPlatformException)
                 {
@@ -242,7 +242,7 @@ public sealed class VsTestRunner : ITestRunner
             if (!await EndsWithin(run, AbortLimit))
             {
                 IdeLog.Write(IdeLog.Tests, $"A run aborted ran on {Waits.Of(AbortLimit).TotalSeconds:0} s: vstest.console is ended, its test hosts with it");
-                _ = run.ContinueWith(ended => _ = ended.Exception, TaskScheduler.Default);
+                IdeErrors.Observe(LetGoAsync(run));
                 await BackgroundWork.Unheld(() => End(session));
                 try
                 {
@@ -258,6 +258,19 @@ public sealed class VsTestRunner : ITestRunner
         // Whatever the run's own end says, it was stopped: what it tells after this is no longer its.
         RunSummary told = handler.Close(Stopwatch.GetElapsedTime(began));
         return told with { Canceled = true, Aborted = false, Error = null };
+    }
+
+    /// <summary>A discovery or run let go once stopped, ending as it ends: a failure of its session (vstest.console ended or
+    /// gone, which its log said) is how such work ends, any other the IDE's.</summary>
+    private static async Task LetGoAsync(Task work)
+    {
+        try
+        {
+            await work;
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException or TestPlatformException)
+        {
+        }
     }
 
     /// <summary>Whether a run ends within its limit (scaled as the IDE's waits are), however it ends.</summary>

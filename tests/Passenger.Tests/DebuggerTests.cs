@@ -1333,6 +1333,32 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
+    /// <summary>Under an interface local holding a struct, the property the interface declares takes a value set in its row,
+    /// which reaches it through the interface, with no cast: the struct the local holds boxed is the one changed.</summary>
+    [AvaloniaFact]
+    public void A_value_set_on_an_interface_property_of_a_struct_held_through_the_interface_changes_the_held_struct()
+    {
+        Write("Program.cs", "IShape item = new Square();\nConsole.WriteLine($\"side {item.Side}\");\n\n"
+            + "interface IShape\n{\n    int Side { get; set; }\n}\n\nstruct Square : IShape\n{\n    public int Side { get; set; }\n}\n");
+        MainWindow window = Open();
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(1, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        WaitDebugging(window, () => Row(window, "item") is not null, "the stop before the line that writes the side");
+
+        VariableNode side = Member(window, "Side", 0);
+        Assert.True(side.Expression == "item.Side", $"Side's row reaches it as {side.Expression}, where an IShape variable reaches it as item.Side");
+        SetInRow(window, side, "7");
+        Assert.True(window.Status?.StartsWith("Could not set", StringComparison.Ordinal) != true, $"Set Value on {side.Expression} was refused: {window.Status}");
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("side ", StringComparison.Ordinal),
+            "the program to write the side");
+        Assert.True(window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("side 7", StringComparison.Ordinal),
+            $"The program wrote {window.BottomPanel.Debug.Console.Document.Snapshot}, where Side set to 7 through the interface writes side 7");
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+    }
+
     /// <summary>The <paramref name="index"/>th row named <paramref name="name"/> under item, its rows read afresh.</summary>
     private static VariableNode Member(MainWindow window, string name, int index)
     {
