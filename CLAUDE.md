@@ -158,8 +158,9 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   `workspaces/<name>-<hash>/`, held by each window with the folder open (`StateStore.Hold`/`LetGo`); its writes hold a
   lock file every process honours (`StateFile.Hold`); a failed write is tried again, and a key a later build renamed
   moves in `IStateDocument.Renamed`; a value of the wrong kind is passed over alone (`StateFile.Read`). A new setting:
-  an `AppSettings` property, its row and range declared in `Declared` and `Add`ed in its place in `SettingsDialog`, a
-  line in `MainWindow.Follow` or `SettingsStore.InForce`.
+  an `AppSettings` property, its row and range declared in `Declared` (a value it refuses as `Refused`, which Settings
+  and `settings_set` both ask) and `Add`ed in its place in `SettingsDialog`, a line in `MainWindow.Follow` or
+  `SettingsStore.InForce`.
 - **Every action is an `IdeAction`** in the window's `ActionRegistry` (ids and keymaps in `AppActions.cs`): keys, menus,
   Find Action, context menus and MCP's `ide_action` all run it, `WhyNot` greys it with why, titles come from the
   registry (`TitleWhere`), a title that asks more ends in "…", and what's missing is said in `Refusals`' words. Anything
