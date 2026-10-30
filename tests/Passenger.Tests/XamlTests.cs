@@ -2101,6 +2101,142 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>With XAML Preview on, previewers run only for the preview shown and the one hidden last: three views shown in
+    /// turn leave two previewers, the first's ended; the one hidden last, shown again, draws with the previewer it kept; a
+    /// build that changes nothing starts none again, and one after an edit to the view shown starts its previewer alone
+    /// again, ending the hidden one's, which starts again as its view is shown.</summary>
+    [AvaloniaFact]
+    public void Previewers_run_for_the_preview_shown_and_the_one_hidden_last_and_a_build_starts_only_the_shown_one_again()
+    {
+        app.Write("One.axaml", Panel("One", "#3D7BF5"));
+        app.Write("One.axaml.cs", PanelCode("One"));
+        app.Write("Two.axaml", Panel("Two", "#2E9E5B"));
+        app.Write("Two.axaml.cs", PanelCode("Two"));
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"), languageServer: false);
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        OpenDocument main = window.EditorArea.Active!;
+        List<int> previewers = [];
+        void OnStarted(object? sender, ChildStart start)
+        {
+            if (start.Command.Contains("Avalonia.Designer.HostApp", StringComparison.Ordinal))
+            {
+                lock (previewers)
+                {
+                    previewers.Add(start.ProcessId);
+                }
+            }
+        }
+        int[] Started()
+        {
+            lock (previewers)
+            {
+                return [.. previewers];
+            }
+        }
+        ChildProcesses.Started += OnStarted;
+        try
+        {
+            Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
+            Drawn(main, "the window");
+            OpenDocument one = Shown("One.axaml");
+            OpenDocument two = Shown("Two.axaml");
+            Assert.True(Started().Length == 3, $"Three views shown in turn started {Plural.Of(Started().Length, "previewer")}");
+            Ui.WaitFor(() => Ended(Started()[0]), "the window's previewer to end once two views were shown after it");
+            Assert.True(!Preview(main).Running && Preview(one).Running && Preview(two).Running,
+                $"The previewers running are not the shown view's and the one hidden last's (window {Preview(main).Running}, One {Preview(one).Running}, Two {Preview(two).Running})");
+
+            Assert.Null(window.OpenFile(app.PathOf("One.axaml")));
+            Ui.Settle();
+            Assert.True(Started().Length == 3 && Preview(one).Running && Preview(one).Status == "Live",
+                $"One, hidden last, was shown again with {Plural.Of(Started().Length - 3, "new previewer")}, its pane saying '{Preview(one).Status}'");
+
+            Ui.Run(window, AppActions.Build);
+            Ui.Settle();
+            Assert.True(Started().Length == 3 && Preview(one).Running && Preview(two).Running,
+                $"A build that changed nothing started {Plural.Of(Started().Length - 3, "previewer")} again (One running {Preview(one).Running}, Two {Preview(two).Running})");
+
+            // An edit the build compiles into the project's assembly, which the shown view's previewer then draws from.
+            Replace(window.EditorArea.CodeEditor, "#3D7BF5", "#E2A33F");
+            int before = Started().Length;
+            Ui.Run(window, AppActions.Build);
+            Ui.Settle();
+            Assert.True(Started().Length == before + 1, $"A build started {Plural.Of(Started().Length - before, "previewer")} again, where only the shown view's should start again");
+            Assert.True(Preview(one).Running && Preview(one).Status == "Live", $"One's new previewer is not live: the pane says '{Preview(one).Status}'");
+            Assert.True(!Preview(two).Running, "The build left the hidden view's previewer running on the build before it");
+            Ui.WaitFor(() => Ended(Started()[1]), "One's previewer of the build before to end with the build");
+            Ui.WaitFor(() => Ended(Started()[2]), "Two's previewer to end with the build, its view hidden");
+
+            before = Started().Length;
+            Assert.Equal(two, Shown("Two.axaml"));
+            Assert.True(Started().Length == before + 1, $"Two, shown again after its previewer ended, started {Plural.Of(Started().Length - before, "previewer")}");
+            Assert.True(Preview(one).Running && !Preview(main).Running, "Two shown again did not leave One's previewer running alone beside its own");
+        }
+        finally
+        {
+            ChildProcesses.Started -= OnStarted;
+        }
+        window.Close();
+
+        Passenger.App.Xaml.XamlPreview Preview(OpenDocument document) =>
+            window.PreviewOf(document) ?? throw new InvalidOperationException($"{Path.GetFileName(document.Path)} has no preview kept");
+
+        // A view shown in the editor, its preview drawn.
+        OpenDocument Shown(string name)
+        {
+            Assert.Null(window.OpenFile(app.PathOf(name)));
+            Ui.Settle();
+            OpenDocument document = window.EditorArea.Active!;
+            Drawn(document, name);
+            return document;
+        }
+
+        void Drawn(OpenDocument document, string what)
+        {
+            Ui.Settle();
+            Passenger.App.Xaml.XamlPreview preview = Preview(document);
+            Ui.WaitFor(() => preview.Frame is not null && preview.Status == "Live", () => $"{what}'s preview drawn (the pane says: {preview.Status})", TimeSpan.FromSeconds(60));
+        }
+
+        // A previewer Passenger started that has since ended.
+        static bool Ended(int id)
+        {
+            try
+            {
+                using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
+                return process.HasExited;
+            }
+            catch (ArgumentException)
+            {
+                return true;
+            }
+        }
+    }
+
+    /// <summary>A view of the gallery's, filled with a colour.</summary>
+    private static string Panel(string name, string colour) => $$"""
+        <UserControl xmlns="https://github.com/avaloniaui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                     x:Class="Gallery.{{name}}" Width="200" Height="100">
+            <Border Background="{{colour}}">
+                <TextBlock Text="{{name}}" />
+            </Border>
+        </UserControl>
+
+        """;
+
+    private static string PanelCode(string name) => $$"""
+        using Avalonia.Controls;
+
+        namespace Gallery;
+
+        public partial class {{name}} : UserControl
+        {
+            public {{name}}() => InitializeComponent();
+        }
+
+        """;
+
     internal static Marker MarkerOn(CodeEditor editor, OpenDocument document, string stretch)
     {
         string text = editor.Document.Snapshot.ToString();

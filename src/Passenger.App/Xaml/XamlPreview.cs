@@ -11,7 +11,8 @@ namespace Passenger.App.Xaml;
 /// own (<see cref="AvaloniaPreviewHost"/>) or, on Windows, Passenger's own WPF previewer (<see cref="WpfPreviewHost"/>),
 /// each in a process of its own, sent the file's text as it stands. What the pane shows is here, whichever draws it: the
 /// last frame, what the preview is doing, the error that kept the XAML from loading, and the file's elements with their
-/// boxes in the frame (WPF's), kept on their XAML as it is typed. A UI-thread object.</summary>
+/// boxes in the frame (WPF's), kept on their XAML as it is typed. Its previewer rests while the preview is not shown,
+/// the last frame kept, and starts again as it is shown. A UI-thread object.</summary>
 public sealed class XamlPreview : IDisposable
 {
     /// <summary>How long an update waits for the previewer's answer before what it held is let go.</summary>
@@ -30,6 +31,9 @@ public sealed class XamlPreview : IDisposable
 
     /// <summary>A previewer that ended before its start handed it over, and what the pane says of its end.</summary>
     private (IPreviewHost Host, string Words)? endedEarly;
+
+    /// <summary>Whether the previewer rests, ended while the preview is not shown, to start as it is shown again.</summary>
+    private bool resting;
     private double scaling = 1;
 
     /// <summary>The elements on the ranges of their XAML and of their tags, which the text carries, and the elements as last
@@ -129,7 +133,7 @@ public sealed class XamlPreview : IDisposable
     public void Update()
     {
         UiThread.Check();
-        if (disposed)
+        if (disposed || resting)
         {
             return;
         }
@@ -199,16 +203,75 @@ public sealed class XamlPreview : IDisposable
     /// <summary>Whether a previewer runs for the file, rather than the pane saying why none does.</summary>
     public bool Running => host is not null;
 
-    /// <summary>The previewer started again on the project's newest build, the last frame shown until the new one comes.</summary>
+    /// <summary>The previewer started again on the project's newest build, the last frame shown until the new one comes;
+    /// one resting starts as it is shown.</summary>
     public Task RestartAsync()
     {
         UiThread.Check();
-        if (disposed)
+        if (disposed || resting)
         {
             return Task.CompletedTask;
         }
         Stop();
         return StartAsync();
+    }
+
+    /// <summary>The preview is no longer shown: its previewer ends, a start under way letting its own go, and the last frame
+    /// stays for when it is shown again.</summary>
+    public void Rest()
+    {
+        UiThread.Check();
+        if (disposed || resting)
+        {
+            return;
+        }
+        resting = true;
+        lapsed = false;
+        starts++;
+        Stop();
+        Say("The previewer rests while the preview is hidden");
+    }
+
+    /// <summary>The preview is shown again: a previewer that rested starts on the project's newest build.</summary>
+    public Task WakeAsync()
+    {
+        UiThread.Check();
+        if (disposed || !resting)
+        {
+            return Task.CompletedTask;
+        }
+        resting = false;
+        Say("Starting the previewer…");
+        return StartAsync();
+    }
+
+    /// <summary>A build succeeded: a previewer whose build it changed (or with a newer one beside it) starts again on the
+    /// newest while the preview is <paramref name="shown"/>, and rests while it is not; one whose build stands goes on, and
+    /// a preview with no previewer is started where shown.</summary>
+    public async Task BuiltAsync(bool shown)
+    {
+        UiThread.Check();
+        if (disposed || resting)
+        {
+            return;
+        }
+        if (host is { } running && await document.Loading.Builder is { } builder)
+        {
+            ProjectInputs inputs = builder.Current.Inputs;
+            PreviewedBuild drawn = running.Build;
+            if (await BackgroundWork.Run(() => drawn.Stands(inputs)) || host != running)
+            {
+                return;
+            }
+        }
+        if (shown)
+        {
+            await RestartAsync();
+        }
+        else
+        {
+            Rest();
+        }
     }
 
     /// <summary>Says what the preview is doing, or why it shows nothing.</summary>
@@ -362,9 +425,39 @@ public sealed class XamlPreview : IDisposable
 /// window's scale does; it puts what it draws on its <see cref="XamlPreview"/>.</summary>
 internal interface IPreviewHost : IDisposable
 {
+    /// <summary>The project's build it draws from, as the build left it.</summary>
+    PreviewedBuild Build { get; }
+
     void Update();
 
     void Rescale(double scaling);
+}
+
+/// <summary>A build a previewer draws from: its assembly, found as <see cref="XamlPreview.Output"/> finds it
+/// (<paramref name="Configured"/>), and the newest write among the files beside it, which a build of the project or of one
+/// it references changes.</summary>
+internal sealed record PreviewedBuild(string Assembly, DateTime Written, bool Configured)
+{
+    /// <summary>The build at an assembly as it stands; read off the window's thread.</summary>
+    public static PreviewedBuild Of(string assembly, bool configured) => new(assembly, Newest(Path.GetDirectoryName(assembly)!), configured);
+
+    /// <summary>Whether this is still the project's newest build, unwritten since; read off the window's thread.</summary>
+    public bool Stands(ProjectInputs inputs) =>
+        Written != DateTime.MinValue && XamlPreview.Output(inputs, Configured) is { } newest && PathNames.Same(newest, Assembly)
+            && Newest(Path.GetDirectoryName(newest)!) == Written;
+
+    /// <summary>The newest write among a folder's files; the least time where it cannot be read, which no build stands as.</summary>
+    private static DateTime Newest(string folder)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(folder).Select(File.GetLastWriteTimeUtc).DefaultIfEmpty(DateTime.MinValue).Max();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return DateTime.MinValue;
+        }
+    }
 }
 
 /// <summary>An element of the file as the frame draws it: its start tag and its whole markup in the file's text, and its

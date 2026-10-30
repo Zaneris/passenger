@@ -37,12 +37,15 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     /// <summary>The texts sent and not yet answered, in order, as the host answers them: what an answer's line is read in.</summary>
     private readonly Queue<TextSnapshot> unanswered = new();
 
-    private AvaloniaPreviewHost(XamlPreview preview, string output)
+    private AvaloniaPreviewHost(XamlPreview preview, PreviewedBuild build)
     {
         this.preview = preview;
         log = new XamlPreview.PreviewerLog(preview, "Avalonia");
-        this.output = output;
+        Build = build;
+        output = build.Assembly;
     }
+
+    public PreviewedBuild Build { get; }
 
     /// <summary>Starts the host on the project's last build; null, having said why, when there is none to start.</summary>
     public static async Task<AvaloniaPreviewHost?> StartAsync(XamlPreview preview, ProjectInputs inputs)
@@ -59,7 +62,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             preview.Say(why);
             return null;
         }
-        AvaloniaPreviewHost started = new(preview, built);
+        AvaloniaPreviewHost started = new(preview, await BackgroundWork.Run(() => PreviewedBuild.Of(built, configured: true)));
         try
         {
             await started.RunAsync(designer);

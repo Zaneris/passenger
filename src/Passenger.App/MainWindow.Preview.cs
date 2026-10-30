@@ -11,21 +11,29 @@ namespace Passenger.App;
 /// <summary>The XAML previewer beside the editor: View, XAML Preview shows each editor group's XAML file of an Avalonia
 /// or WPF project with its design view to its right, drawn from the project's last build by its framework's previewer
 /// and following the text as typing pauses. Where the previewer places the file's elements (WPF's), a click on one
-/// selects its start tag in the editor and the element at the caret is outlined. A file's preview runs while the file
-/// is open and the preview on; it ends as either goes. On or off is kept in the store's previews.json.</summary>
+/// selects its start tag in the editor and the element at the caret is outlined. A file's preview is kept while the file
+/// is open and the preview on, and ends as either goes; its previewer runs while the preview is shown, or was the last
+/// hidden. On or off is kept in the store's previews.json.</summary>
 public partial class MainWindow
 {
     /// <summary>How long typing pauses before the previewer is sent the text.</summary>
     private static readonly TimeSpan PreviewSettle = TimeSpan.FromMilliseconds(400);
 
+    /// <summary>How many previews not shown keep their previewers, the last shown first, so a look at the code-behind and
+    /// back finds the preview live; each other one's previewer ends, to start again as it is shown.</summary>
+    private const int KeptHidden = 1;
+
     private readonly Dictionary<OpenDocument, ShownPreview> previews = [];
     private bool previewing;
 
-    /// <summary>The preview of a file while it is shown.</summary>
-    public XamlPreview? PreviewOf(OpenDocument document) => previews.TryGetValue(document, out ShownPreview shown) ? shown.Preview : null;
+    /// <summary>Counts the times the previews shown were followed, which says the preview shown last.</summary>
+    private long previewsFollowed;
 
-    /// <summary>The preview pane of a file while it is shown.</summary>
-    public XamlPreviewPane? PreviewPaneOf(OpenDocument document) => previews.TryGetValue(document, out ShownPreview shown) ? shown.Pane : null;
+    /// <summary>The preview of a file while it is kept: shown, or hidden since.</summary>
+    public XamlPreview? PreviewOf(OpenDocument document) => previews.TryGetValue(document, out ShownPreview? shown) ? shown.Preview : null;
+
+    /// <summary>The preview pane of a file while it is kept.</summary>
+    public XamlPreviewPane? PreviewPaneOf(OpenDocument document) => previews.TryGetValue(document, out ShownPreview? shown) ? shown.Pane : null;
 
     private void AddPreview()
     {
@@ -120,11 +128,30 @@ public partial class MainWindow
                 group.Side = null;
             }
         }
+        FollowPreviewers();
     }
+
+    /// <summary>The previewers run for the previews shown and the last <see cref="KeptHidden"/> hidden; every other one rests.</summary>
+    private void FollowPreviewers()
+    {
+        long now = ++previewsFollowed;
+        foreach (ShownPreview shown in previews.Values.Where(p => Shows(p.Pane)))
+        {
+            shown.Seen = now;
+            IdeErrors.Observe(shown.Preview.WakeAsync());
+        }
+        foreach (ShownPreview hidden in previews.Values.Where(p => p.Seen != now).OrderByDescending(p => p.Seen).Skip(KeptHidden))
+        {
+            hidden.Preview.Rest();
+        }
+    }
+
+    /// <summary>Whether an editor group shows a preview's pane beside its file.</summary>
+    private bool Shows(XamlPreviewPane pane) => Editors.Groups.Any(g => g.Side == pane);
 
     private XamlPreviewPane PaneFor(OpenDocument shown, XamlDocument document)
     {
-        if (previews.TryGetValue(shown, out ShownPreview kept))
+        if (previews.TryGetValue(shown, out ShownPreview? kept))
         {
             return kept.Pane;
         }
@@ -148,7 +175,7 @@ public partial class MainWindow
     private void OutlineAtCaret(CodeEditor editor)
     {
         if (previews.Count > 0 && Editors.Groups.FirstOrDefault(g => g.Editor == editor) is { Side: XamlPreviewPane pane, Active: { } shown }
-            && previews.TryGetValue(shown, out ShownPreview kept) && kept.Pane == pane)
+            && previews.TryGetValue(shown, out ShownPreview? kept) && kept.Pane == pane)
         {
             pane.ShowOutline(kept.Preview.ElementAround(editor.Selections.Primary.Caret));
         }
@@ -174,22 +201,23 @@ public partial class MainWindow
         group.Editor.Focus();
     }
 
-    /// <summary>A build that succeeded is what each preview draws from then on.</summary>
+    /// <summary>A build that succeeded is what each preview draws from then on: a shown preview whose build it changed
+    /// starts its previewer again, and a hidden one's ends, to start as it is shown.</summary>
     private void PreviewsBuilt(BuildOutcome outcome)
     {
         if (outcome.Status != BuildStatus.Succeeded)
         {
             return;
         }
-        foreach (XamlPreview preview in previews.Values.Select(p => p.Preview))
+        foreach (ShownPreview shown in previews.Values)
         {
-            IdeErrors.Observe(preview.RestartAsync());
+            IdeErrors.Observe(shown.Preview.BuiltAsync(Shows(shown.Pane)));
         }
     }
 
     private void EndPreview(OpenDocument document)
     {
-        if (!previews.Remove(document, out ShownPreview shown))
+        if (!previews.Remove(document, out ShownPreview? shown))
         {
             return;
         }
@@ -202,7 +230,11 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>A file's preview while it is shown: its pane, the pause in typing that sends the previewer the text, and
+    /// <summary>A file's preview while it is kept: its pane, the pause in typing that sends the previewer the text, and
     /// the handler of the text's changes that restarts it.</summary>
-    private readonly record struct ShownPreview(XamlPreview Preview, XamlPreviewPane Pane, Debounce Typing, EventHandler<DocumentChangedEventArgs> Changed);
+    private sealed record ShownPreview(XamlPreview Preview, XamlPreviewPane Pane, Debounce Typing, EventHandler<DocumentChangedEventArgs> Changed)
+    {
+        /// <summary>When it was last shown, in <see cref="previewsFollowed"/>'s count.</summary>
+        public long Seen { get; set; }
+    }
 }

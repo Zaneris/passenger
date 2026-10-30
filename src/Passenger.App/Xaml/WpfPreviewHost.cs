@@ -34,14 +34,17 @@ internal sealed class WpfPreviewHost : IPreviewHost
     private int sequence;
     private bool disposed;
 
-    private WpfPreviewHost(XamlPreview preview, XamlProjectBuilder builder, string assembly, string shadow)
+    private WpfPreviewHost(XamlPreview preview, XamlProjectBuilder builder, PreviewedBuild build, string assembly, string shadow)
     {
         this.preview = preview;
         log = new XamlPreview.PreviewerLog(preview, "WPF");
         this.builder = builder;
+        Build = build;
         this.assembly = assembly;
         this.shadow = shadow;
     }
+
+    public PreviewedBuild Build { get; }
 
     /// <summary>Where the app carries the previewer.</summary>
     public static string Previewer => Path.Combine(AppContext.BaseDirectory, "wpfpreview", "Passenger.WpfPreview.dll");
@@ -66,9 +69,15 @@ internal sealed class WpfPreviewHost : IPreviewHost
         }
         preview.Say($"Copying {Path.GetFileName(built)}'s build for the previewer…");
         string shadow = Path.Combine(Copies, $"{Environment.ProcessId}-{Guid.NewGuid():N}");
+        PreviewedBuild copied;
         try
         {
-            await BackgroundWork.Run(() => Copy(Path.GetDirectoryName(built)!, shadow));
+            copied = await BackgroundWork.Run(() =>
+            {
+                PreviewedBuild build = PreviewedBuild.Of(built, configured: false);
+                Copy(Path.GetDirectoryName(built)!, shadow);
+                return build;
+            });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -76,7 +85,7 @@ internal sealed class WpfPreviewHost : IPreviewHost
             preview.Say($"The previewer could not copy the build: {error.Message}");
             return null;
         }
-        WpfPreviewHost started = new(preview, builder, Path.Combine(shadow, Path.GetFileName(built)), shadow);
+        WpfPreviewHost started = new(preview, builder, copied, Path.Combine(shadow, Path.GetFileName(built)), shadow);
         try
         {
             await started.RunAsync(inputs);
