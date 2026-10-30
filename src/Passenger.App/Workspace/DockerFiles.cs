@@ -473,14 +473,15 @@ public static class DockerFiles
         }
     });
 
-    /// <summary>A solution's compose.yaml: a service for each project, built from its Dockerfile (<see cref="BuildFor"/>:
-    /// <c>Existing</c> the one it had, null for Passenger's own) given the nuget.configs it mounts (<see cref="NuGetSecrets"/>),
-    /// published on its HTTP ports, given its connection strings to the backing services its packages point to (<see
-    /// cref="BackingService.Needs"/>, the databases they name kept), which it waits for until their healthchecks pass; and
-    /// each backing service with its healthcheck and data volume, made with the first database or virtual host named.</summary>
+    /// <summary>A solution's compose.yaml: a service for each project (named apart, <see cref="ServiceNames"/>), built from
+    /// its Dockerfile (<see cref="BuildFor"/>: <c>Existing</c> the one it had, null for Passenger's own) given the
+    /// nuget.configs it mounts (<see cref="NuGetSecrets"/>), published on its HTTP ports, given its connection strings to the
+    /// backing services its packages point to (<see cref="BackingService.Needs"/>, the databases kept), which it waits for
+    /// until their healthchecks pass; each backing service with its healthcheck and data volume, its first database made.</summary>
     public static string Compose(string context, IReadOnlyList<(DockerProject Project, string? Existing, BackingNeeds Needs)> projects)
     {
         List<BackingService> backing = [.. BackingService.Known.Where(k => projects.Any(p => p.Needs.Services.Contains(k)))];
+        IReadOnlyList<string> names = ServiceNames([.. projects.Select(p => p.Project)], backing);
         List<(DockerProject Project, string? Existing, IReadOnlyList<BackingService> Uses, IReadOnlyList<BackingConnection> Reached)> made =
             [.. projects.Select(p => (p.Project, p.Existing, p.Needs.Services, p.Needs.Connections))];
         Dictionary<BackingService, List<string>> databases = backing.ToDictionary(b => b, b => made.SelectMany(m => m.Reached)
@@ -492,10 +493,10 @@ public static class DockerFiles
             text.Append("# ").Append(service.Note).Append('\n');
         }
         text.Append("services:\n");
-        foreach ((DockerProject project, string? existing, IReadOnlyList<BackingService> uses, IReadOnlyList<BackingConnection> reached) in made)
+        foreach (((DockerProject project, string? existing, IReadOnlyList<BackingService> uses, IReadOnlyList<BackingConnection> reached), string named) in made.Zip(names))
         {
             (string from, string dockerfile, IReadOnlyList<int> ports) = BuildFor(project, existing, context);
-            text.Append("  ").Append(project.Service).Append(":\n");
+            text.Append("  ").Append(named).Append(":\n");
             text.Append("    build:\n      context: ").Append(from).Append("\n      dockerfile: ").Append(dockerfile).Append('\n');
             IReadOnlyList<(string Id, string File)> mounted = existing is null ? NuGetSecrets(context, project) : Mounted(existing, NuGetSecrets(context, project));
             if (mounted.Count > 0)
@@ -507,7 +508,7 @@ public static class DockerFiles
                     secrets[id] = Relative(context, config);
                 }
             }
-            text.Append("    image: ").Append(project.Service).Append('\n');
+            text.Append("    image: ").Append(named).Append('\n');
             if (ports.Count > 0)
             {
                 text.Append("    ports:\n");
@@ -566,6 +567,25 @@ public static class DockerFiles
             text.Append('\n').Append(Secrets(secrets));
         }
         return text.ToString();
+    }
+
+    /// <summary>The projects' services' names in a compose file, in their order: each its project's (<see
+    /// cref="DockerProject.Service"/>), or where a backing service (which connection strings and depends_on name) or a
+    /// project before it has that name already, the name with the first number from 2 after a dash that none has.</summary>
+    public static IReadOnlyList<string> ServiceNames(IReadOnlyList<DockerProject> projects, IEnumerable<BackingService> backing)
+    {
+        HashSet<string> taken = new(backing.Select(b => b.Service), StringComparer.Ordinal);
+        List<string> names = [];
+        foreach (DockerProject project in projects)
+        {
+            string name = project.Service;
+            for (int n = 2; !taken.Add(name); n++)
+            {
+                name = $"{project.Service}-{n}";
+            }
+            names.Add(name);
+        }
+        return names;
     }
 
     /// <summary>A compose file's top-level secrets: each by its id, read from its file.</summary>

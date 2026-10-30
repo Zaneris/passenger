@@ -776,6 +776,35 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         Assert.EndsWith($"\n\n{Declared}", DockerFiles.WithService("services:\n  db:\n    image: postgres:17\n", "web", compose).Text, StringComparison.Ordinal);
     }
 
+    /// <summary>Projects whose names make one service's (Foo.Bar and Foo-Bar), and one named as the backing service the
+    /// others use (Postgres), are each a service of a name of its own in compose.yaml, its image named so too: a later one
+    /// numbered, the backing service keeping the name its connection strings and depends_on give.</summary>
+    [Fact]
+    public void Add_docker_composes_services_each_have_a_name_of_their_own_where_projects_names_meet()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("docker-names-"));
+        try
+        {
+            Passenger.Workspace.BackingService postgres = Passenger.Workspace.BackingService.Known.Single(k => k.Service == "postgres");
+            (DockerProject, string?, Passenger.Workspace.BackingNeeds)[] projects = [.. ((string[])["Foo.Bar", "Foo-Bar", "Postgres"]).Select(name =>
+            {
+                string project = Path.Combine(folder, name, $"{name}.csproj");
+                return (new DockerProject(project, name, name, "net10.0", true, [5000], [project]), (string?)null,
+                    new Passenger.Workspace.BackingNeeds(name == "Foo.Bar" ? [postgres] : [], []));
+            })];
+            string compose = DockerFiles.Compose(folder, projects);
+            string[] services = [.. Passenger.App.Containers.ComposeText.Of(compose).Entries.Where(e => e.Path.Count == 2 && e.Path[0] == "services").Select(e => e.Path[1])];
+            Assert.True(services.SequenceEqual(["foo-bar", "foo-bar-2", "postgres-2", "postgres"]), $"compose.yaml's services are [{string.Join(", ", services)}]:\n{compose}");
+            Assert.Equal(["foo-bar", "foo-bar-2", "postgres-2", "postgres:17"],
+                Passenger.App.Containers.ComposeText.Of(compose).Entries.Where(e => e.Path.Count == 3 && e.Path[2] == "image").Select(e => e.Scalar));
+            Assert.Contains("    depends_on:\n      postgres:\n", compose, StringComparison.Ordinal);
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
     /// <summary>Where a Linux engine runs and holds the images it builds on (never pulled by a test: the SDK's is about
     /// 800 MB, which a fresh runner would fetch each run), the Dockerfile Add Docker Support writes for a project at its
     /// context's root builds.</summary>
