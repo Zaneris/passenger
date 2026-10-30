@@ -789,12 +789,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             RefuseLentCopies(method, callArguments, resolver);
         }
 
-        int declaringTypeArity = resolver.GetRuntimeTypeGenericArity(method.DeclaringType);
-        ICorDebugType[] declaringTypeArguments = !method.IsStatic && declaringTypeArity > 0 && callArguments[0].ExactType is { } receiverType
-            ? receiverType.TypeParameters.Take(declaringTypeArity).ToArray()
-            : method.DeclaringType.TypeArguments.IsDefaultOrEmpty
-                ? []
-                : method.DeclaringType.TypeArguments.Select(resolver.GetCorDebugType).ToArray();
+        ICorDebugType[] declaringTypeArguments = DeclaringTypeArguments(method, method.IsStatic ? null : callArguments[0], resolver);
         ICorDebugType[] methodTypeArguments = method.MethodTypeArguments.IsDefaultOrEmpty
             ? []
             : method.MethodTypeArguments.Select(resolver.GetCorDebugType).ToArray();
@@ -832,6 +827,29 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                 ? CilValue.Null()
                 : method.Signature.ReturnType.EndsWith('&') ? CilValue.FromLocation(new CorDebugLocation(callResult)) : CilValue.FromCorValue(callResult));
         }
+    }
+
+    /// <summary>The type arguments of the generic type declaring a called method: the receiver's own type's or base type's
+    /// where that is the type, as the program's runtime made it, else (an interface the receiver implements, a static
+    /// method's type) the type as the call names it, which is what the program's own call names.</summary>
+    private ICorDebugType[] DeclaringTypeArguments(ResolvedRuntimeMethod method, ICorDebugValue? receiver, EvaluationMetadataResolver resolver)
+    {
+        if (resolver.GetRuntimeTypeGenericArity(method.DeclaringType) == 0)
+        {
+            return [];
+        }
+        if (receiver?.ExactType is { } receiverType)
+        {
+            mdTypeDef declaring = (mdTypeDef)MetadataTokens.GetToken(method.DeclaringType.Handle);
+            for (ICorDebugType? at = receiverType; at is { Type: CorElementType.CLASS or CorElementType.VALUETYPE }; at = at.Base)
+            {
+                if (at.Class.Token == declaring && debugger.FindModule(at.Class.Module) == method.DeclaringType.Module)
+                {
+                    return at.TypeParameters;
+                }
+            }
+        }
+        return method.DeclaringType.TypeArguments.IsDefaultOrEmpty ? [] : [.. method.DeclaringType.TypeArguments.Select(resolver.GetCorDebugType)];
     }
 
     /// <summary>A call the expression compiler makes to the debugger itself: a variable the expression declares, its

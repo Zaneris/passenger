@@ -115,6 +115,11 @@ if (args is ["culture"])
 	Cultured.Run();
 	return;
 }
+if (args is ["implemented"])
+{
+	Implemented.Run();
+	return;
+}
 if (args is ["named main"])
 {
 	// Main's thread named as an app may name its UI thread: the debugger still knows it for Main's.
@@ -381,6 +386,29 @@ internal sealed class Counted : PassengerCasesProxies.ICounted
 
 [DebuggerTypeProxy("Nowhere.MissingProxy, Nowhere")]
 internal sealed class Unproxied { public int Raw = 4; }
+
+// Values whose calls go through the generic interfaces and bases their types implement: a dictionary through
+// IDictionary and IReadOnlyDictionary, a string through IComparable, and a class through a base of other type arguments.
+internal static class Implemented
+{
+	public static void Run()
+	{
+		Dictionary<string, int> ages = new() { ["Ada"] = 36, ["Bob"] = 40 };
+		IReadOnlyDictionary<string, int> readOnly = ages;
+		string text = "hello";
+		Tagged<string, int> tagged = new() { Tag = "one", Value = 1 };
+		Console.WriteLine("implemented");
+		Console.WriteLine($"implemented {ages.Count}, {readOnly.Count}, {text}, {tagged.Describe()}");
+	}
+}
+
+internal class Valued<T>
+{
+	public T? Value;
+	public string Describe() => $"valued {typeof(T).Name}";
+}
+
+internal sealed class Tagged<TTag, TValue> : Valued<TValue> { public TTag? Tag; }
 
 // What an evaluation reads and leaves as it was: a record struct and a tuple a with copies, a char joined to a string,
 // a box a pattern takes apart, read again each round, native integers wider than an int, and floats cast to integers
