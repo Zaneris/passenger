@@ -270,6 +270,46 @@ public sealed class MemorySnapshotsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Two objects of a type that share a 10 MB payload nothing else holds retain it together: the type's row counts
+    /// it, and the type's objects opened say so too, though neither object alone retains it.</summary>
+    [AvaloniaFact]
+    public void Two_objects_of_a_type_sharing_a_payload_retain_it_together()
+    {
+        MainWindow window = Profiled("Sharer", """
+            using System.Runtime.CompilerServices;
+            Shared.Fill();
+            Console.WriteLine("ready");
+            Console.ReadLine();
+            static class Shared
+            {
+                public static readonly List<Sharer> Sharers = [];
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                public static void Fill()
+                {
+                    byte[] payload = new byte[10_000_000];
+                    Sharers.Add(new Sharer(payload));
+                    Sharers.Add(new Sharer(payload));
+                }
+            }
+            sealed class Sharer(byte[] payload) { public byte[] Payload { get; } = payload; }
+            """);
+        MemoryView memory = window.ProfilerView.MemoryPage;
+        Snapshot(window, 1);
+        HeapType sharers = Assert.Single(memory.TypeRows, t => t.Name == "Sharer");
+        Assert.Equal(2, sharers.Count);
+        Assert.True(sharers.RetainedBytes >= sharers.Bytes + 10_000_000, $"The two sharers retain {sharers.RetainedBytes:N0} bytes, not their 10 MB payload");
+
+        Focus(memory.TypeList, sharers);
+        Ui.Press(window, "enter");
+        Ui.WaitFor(() => memory.Set is not null, "the sharers");
+        Assert.Equal(sharers.RetainedBytes, memory.Set!.RetainedBytes);
+        Assert.All(memory.ObjectRows, o => Assert.True(o.RetainedBytes < 10_000_000, $"A sharer alone retains {o.RetainedBytes:N0} bytes, the payload the other holds too"));
+        Assert.Contains($"retained {Passenger.App.Profiling.MemoryView.Size(sharers.RetainedBytes)}", memory.Summary, StringComparison.Ordinal);
+        window.Profiling!.Kill();
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_heap_of_a_million_objects_is_read_compared_and_opened()
     {

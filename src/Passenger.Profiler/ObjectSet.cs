@@ -55,10 +55,17 @@ public sealed class ObjectSet
         Array.Sort(members, (a, b) => graph.Retained[b].CompareTo(graph.Retained[a]) is var c and not 0 ? c : a.CompareTo(b));
         this.members = members;
         outermost = Outermost(graph, members);
+        int outer = 0;
         for (int i = 0; i < members.Length; i++)
         {
             Bytes += graph.Size[members[i]];
             RetainedBytes += outermost[i] ? graph.Retained[members[i]] : 0;
+            outer += outermost[i] ? 1 : 0;
+        }
+        // Several outermost objects may together keep alive what none does alone.
+        if (outer > 1)
+        {
+            RetainedBytes = graph.RetainedTogether(members);
         }
         Objects = new Listing(graph, members);
     }
@@ -72,7 +79,8 @@ public sealed class ObjectSet
 
     public long Bytes { get; }
 
-    /// <summary>What the set keeps alive together: its objects and every object only they hold.</summary>
+    /// <summary>What the set keeps alive together: its objects and every object only they hold, one several of them hold
+    /// included.</summary>
     public long RetainedBytes { get; }
 
     /// <summary>The objects, the most retained first.</summary>
@@ -129,7 +137,9 @@ public sealed class ObjectSet
             at = at.Child(-2L - root, string.Empty, graph.Roots[root]);
             at.Count(retained);
         }
-        return top.Finish(graph);
+        // The set's own step retains what the set does together; each path what its objects do alone.
+        RetentionNode whole = top.Finish(graph);
+        return new RetentionNode(whole.Text, null, whole.Objects, RetainedBytes, whole.Children);
     }
 
     /// <summary>The set's key retention paths: the distinct paths from a root that keep its objects, the most retained
