@@ -318,10 +318,11 @@ public sealed class CellGrid : Control
         return Math.Clamp(column, 0, Math.Max(0, widths.Length - 1));
     }
 
-    /// <summary>A header's right edge near a point on the header, the column it sizes; -1 for none.</summary>
+    /// <summary>A header's right edge near a point on the header, the column it sizes; -1 for none, as a table of no
+    /// columns has.</summary>
     private int EdgeAt(Point at)
     {
-        if (table is null || at.Y >= RowHeight || at.X < gutter)
+        if (table is null || widths.Length == 0 || at.Y >= RowHeight || at.X < gutter)
         {
             return -1;
         }

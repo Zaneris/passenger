@@ -194,6 +194,30 @@ public sealed class TablesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>An empty CSV shows a header of no columns: the pointer moved, pressed and double-clicked on it finds no
+    /// column's edge to size.</summary>
+    [AvaloniaFact]
+    public void The_pointer_over_an_empty_CSVs_header_finds_no_column_edge_and_raises_no_error()
+    {
+        string path = Path.Combine(folder, "empty.csv");
+        File.WriteAllText(path, string.Empty);
+        MainWindow window = Open(path);
+        CellGrid grid = Grid(window);
+        Assert.True(grid.Table is { ColumnCount: 0, RowCount: 0 }, $"An empty CSV should show a table of no cells, not {grid.Table?.RowCount} rows of {grid.Table?.ColumnCount} columns");
+
+        foreach (double x in new[] { 30.0, 45.0, 60.0, 200.0 })
+        {
+            window.MouseMove(grid.TranslatePoint(new Point(x, ListRow.Height / 2), window)!.Value, RawInputModifiers.None);
+        }
+        Ui.Settle();
+        Assert.True(grid.Cursor is null, "The pointer over an empty table's header should find no column's edge to size, but shows the sizing cursor");
+        Ui.Click(grid, new Point(60, ListRow.Height / 2));
+        Ui.DoubleClick(grid, new Point(60, ListRow.Height / 2));
+        Ui.Drag(window, grid.TranslatePoint(new Point(60, ListRow.Height / 2), window)!.Value, grid.TranslatePoint(new Point(160, ListRow.Height / 2), window)!.Value);
+        Assert.True(grid.Table is { ColumnCount: 0 }, "Pressing an empty table's header should change nothing");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Find_searches_the_tables_cells_and_enter_walks_them_not_the_text_under_it()
     {
