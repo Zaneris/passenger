@@ -236,9 +236,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   UI; what belongs to the UI thread stays in the App's folder of the same name. A revision's text is `Git.BytesAtAsync`
   (through the file's filters) read in the open file's encoding (`FileVersion`, which keeps its stored encoding and
   BOM), a binary conflict probed by its first bytes (`BlobProbe`), a revision's file read as it comes so a binary one is
-  only counted (`Git.StoredAtAsync`, `StoredRead`), never `git show` decoded as UTF-8; paths reach git on its input
-  (`Git.OnFilesAsync`), never its command line; git's questions (a login, a passphrase) reach the window only through
-  `GitAskPass` (`VcsController.AskerOf`).
+  only counted (`Git.StoredAtAsync`, `StoredRead`), never `git show` decoded as UTF-8; every git call but a clone runs
+  through `Git.RunAsync<T>` (over `ChildProcesses.RunAsync<T>`, a failed read ending the child); paths reach git on its
+  input (`Git.OnFilesAsync`), never its command line; git's questions (a login, a passphrase) reach the window only
+  through `GitAskPass` (`VcsController.AskerOf`).
 - `Passenger.Dap`, `Passenger.Debugger` (+`.Interop`), `Passenger.DebugAdapter`: Passenger's own debugger behind its own
   DAP, in a process of its own under `debugger/`. `Passenger.ContainerTools` (`passenger-tools`) runs inside a Linux
   container, self-contained, carried only in the release's archives.
