@@ -94,6 +94,18 @@ internal static class CilNumerics
     /// <summary>ceq, cgt, cgt.un, clt or clt.un.</summary>
     public static bool Compare(ILOpCode op, CilValue left, CilValue right)
     {
+        if (IsPointer(left) || IsPointer(right))
+        {
+            // A pointer is its address, null's 0, beside another pointer or a native integer.
+            ulong a = AddressOf(left);
+            ulong b = AddressOf(right);
+            return op switch
+            {
+                ILOpCode.Ceq => a == b,
+                ILOpCode.Cgt or ILOpCode.Cgt_un => a > b,
+                _ => a < b,
+            };
+        }
         if (op is ILOpCode.Ceq)
         {
             if (left.IsNull || right.IsNull)
@@ -145,6 +157,12 @@ internal static class CilNumerics
             _ => unchecked((ulong)left.AsInt64()) < unchecked((ulong)right.AsInt64()),
         };
     }
+
+    private static bool IsPointer(CilValue value) => value.CorValue is ICorDebugReferenceValue { Type: CorElementType.PTR };
+
+    private static ulong AddressOf(CilValue value) => value.CorValue is ICorDebugReferenceValue { Type: CorElementType.PTR } pointer
+        ? pointer.Value.Value
+        : value.AsUInt64();
 
     /// <summary>Whether a conditional branch that compares two operands (beq to blt.un, short forms included) is taken. On
     /// floats bge and ble are the complements of the unordered compares, and bge.un and ble.un of the ordered ones

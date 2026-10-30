@@ -321,6 +321,12 @@ internal sealed class CorDebugLocation(ICorDebugValue value) : IDebuggeeLocation
             WriteReference(slot, source);
             return;
         }
+        if (storage is ICorDebugReferenceValue { Type: CorElementType.PTR } pointerSlot)
+        {
+            // A pointer variable takes another address, never a value written where it points.
+            WritePointer(pointerSlot, source);
+            return;
+        }
         ICorDebugValue destination = storage.UnwrapDebugValue();
 
         // Value-typed storage, told by the destination.
@@ -408,6 +414,27 @@ internal sealed class CorDebugLocation(ICorDebugValue value) : IDebuggeeLocation
             return;
         }
         throw new NotSupportedException("Cannot store a non-reference CIL value in a reference debuggee location");
+    }
+
+    /// <summary>A pointer slot given the address another pointer holds, or an integer's (null's 0).</summary>
+    private static void WritePointer(ICorDebugReferenceValue destination, CilValue source)
+    {
+        if (source.IsNull)
+        {
+            destination.Value = default;
+        }
+        else if (source.CorValue is ICorDebugReferenceValue { Type: CorElementType.PTR } sourcePointer)
+        {
+            destination.Value = sourcePointer.Value;
+        }
+        else if (source.Value is not null and not (float or double) && source.TryGetInt64(out _))
+        {
+            destination.Value = new CORDB_ADDRESS(source.AsUInt64());
+        }
+        else
+        {
+            throw new NotSupportedException("Only an address can be stored in a pointer");
+        }
     }
 
     private ICorDebugValue GetStorageValue() => value is ICorDebugReferenceValue { Type: CorElementType.BYREF } byRef

@@ -5,7 +5,7 @@ namespace Passenger.Tests.Debugging;
 
 /// <summary>Set Value through the protocol, at Setting.Run's stop in PassengerCases: what it writes is what was asked,
 /// into what the expression names, its target run once, and the program goes on with it. A string holding a NUL is
-/// written and read whole.</summary>
+/// written and read whole, and a pointer takes another address.</summary>
 [Collection(DebugSession.Collection)]
 public class SetValueTests(ITestOutputHelper testOutputHelper)
 {
@@ -77,6 +77,27 @@ public class SetValueTests(ITestOutputHelper testOutputHelper)
         Assert.True(ended.Value == "\"A\\0\"", $"\"A\\0\" shows as {ended.Value}, its last character dropped");
         Assert.Equal("\"A\\0\"", await Evaluate(host, frame, "ended"));
         Assert.Equal("2", await Evaluate(host, frame, "ended.Length"));
+    }
+
+    /// <summary>A pointer set to another pointer, then to null, takes their addresses, the ints it pointed at left as they were.</summary>
+    [Fact]
+    public async Task Set_Value_on_a_pointer_changes_its_address_and_leaves_what_it_pointed_at()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        (_, int frame) = await StoppedAtSettingAsync(host);
+
+        await Set(host, frame, "p", "q");
+        Assert.True(await Evaluate(host, frame, "p == q") == "true", $"p = q left p at {await Evaluate(host, frame, "p")}, q being {await Evaluate(host, frame, "q")}");
+        Assert.True(await Evaluate(host, frame, "first") == "1", $"p = q wrote {await Evaluate(host, frame, "first")} into the int p pointed at");
+        Assert.Equal(("2", "2"), (await Evaluate(host, frame, "*p"), await Evaluate(host, frame, "second")));
+        await Set(host, frame, "p", "null");
+        Assert.True(await Evaluate(host, frame, "p == null") == "true", $"p = null left p at {await Evaluate(host, frame, "p")}");
+        Assert.True((await Evaluate(host, frame, "first"), await Evaluate(host, frame, "second")) == ("1", "2"),
+            $"p = null changed the ints to {await Evaluate(host, frame, "first")} and {await Evaluate(host, frame, "second")}");
+
+        await host.ContinueAsync();
+        (string output, _) = await host.WaitForEnd();
+        Assert.Contains("set pointers 1 2 True True", output, StringComparison.Ordinal);
     }
 
     /// <summary>The program launched to Setting.Run's stop, and its top frame.</summary>

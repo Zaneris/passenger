@@ -288,10 +288,10 @@ internal static class Interpreter
 }
 
 // What Set Value writes, each into what it names: an object holding a box another local shares, an int's and a float's
-// element whose index moves past it, and strings holding a NUL, inside and last.
+// element whose index moves past it, strings holding a NUL, inside and last, and pointers to two ints.
 internal static class Setting
 {
-	public static void Run()
+	public static unsafe void Run()
 	{
 		object boxed = 42;
 		object shared = boxed;
@@ -301,11 +301,15 @@ internal static class Setting
 		int j = 0;
 		string text = "x";
 		string ended = "A\0";
+		int first = 1, second = 2;
+		int* p = &first;
+		int* q = &second;
 		Console.WriteLine("setting");
 		Console.WriteLine($"boxed {boxed ?? "null"}, shared {shared}, same {ReferenceEquals(boxed, shared)}");
 		Console.WriteLine($"values {string.Join(" ", values)}, i {i}, ratios {ratios[0] * 10}, j {j}");
 		Console.WriteLine($"text {text.Length}");
 		Console.WriteLine($"ended {ended.Length}");
+		Console.WriteLine($"set pointers {first} {second} {p == null} {q == &second}");
 	}
 }
 
