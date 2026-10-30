@@ -269,12 +269,13 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **C#.** `CSharpService`, `ServerDiagnostics` (one pull at a time after a pause), `CodeAssist` (the window's wiring)
   over its parts; each language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a
   server's edit to a file not open written in the 2 s before it was asked waits for the server to read it (`Patience`,
-  the window's and an agent's alike, said as the action's work); one written as the server worked is refused.
-  `ServerWatches` watches for the server what it registers (`WatchedFiles`), beside the folder's watcher. A place the
-  server names in a source generator's document reaches the file it was written in through `RoslynSession.WrittenAsync`
-  (Razor's), else a read-only copy under the state's cache (`GeneratedCode`; an agent's tools on one answer from its
-  text, `PassengerTools.NotGenerated`), never opened in the server, which would freeze its text into the compilation. A
-  C# symbol's uses in XAML come from one finder, `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to Declaration's
+  the window's and an agent's alike, said as the action's work), and any other file of the solution written or deleted a
+  moment before (`DocumentsWritten`); one written as the server worked is refused. `ServerWatches` watches for the
+  server what it registers (`WatchedFiles`), beside the folder's watcher. A place the server names in a source
+  generator's document reaches the file it was written in through `RoslynSession.WrittenAsync` (Razor's), else a
+  read-only copy under the state's cache (`GeneratedCode`; an agent's tools on one answer from its text,
+  `PassengerTools.NotGenerated`), never opened in the server, which would freeze its text into the compilation. A C#
+  symbol's uses in XAML come from one finder, `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to Declaration's
   resolver) and `CodeSymbol`. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through
   `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind; every per-kind switch names each kind), `JsonSchemas`
