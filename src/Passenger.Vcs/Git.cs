@@ -1531,7 +1531,17 @@ public sealed class Git
         }
     }
 
-    public string Relative(string path) => System.IO.Path.GetRelativePath(Root, path).Replace('\\', '/');
+    /// <summary>A path from the tree's top as git names it.</summary>
+    public string Relative(string path) => RelativeIn(Root, path);
+
+    /// <summary>A path from <paramref name="root"/> as git names it: its separators made '/' where the system's is a
+    /// backslash, and elsewhere as the disk names it, a backslash being a letter of a file's name there (a\b.txt is not
+    /// a/b.txt).</summary>
+    internal static string RelativeIn(string root, string path)
+    {
+        string relative = System.IO.Path.GetRelativePath(root, path);
+        return System.IO.Path.DirectorySeparatorChar == '/' ? relative : relative.Replace(System.IO.Path.DirectorySeparatorChar, '/');
+    }
 
     /// <summary>The .gitignore line that matches the file or folder at <paramref name="path"/> and nothing else: its path
     /// from the tree's top anchored there by a leading '/' (so a '#' or '!' it starts with is no comment or negation), a
@@ -1539,8 +1549,7 @@ public sealed class Git
     /// backslash, a space it ends with). Null for a name holding a line break, which no line of the file can.</summary>
     public string? IgnoreLine(string path, bool folder)
     {
-        string relative = System.IO.Path.GetRelativePath(Root, path);
-        relative = (System.IO.Path.DirectorySeparatorChar == '/' ? relative : relative.Replace(System.IO.Path.DirectorySeparatorChar, '/')).TrimEnd('/');
+        string relative = Relative(path).TrimEnd('/');
         if (relative.AsSpan().IndexOfAny('\n', '\r') >= 0)
         {
             return null;
