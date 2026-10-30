@@ -122,6 +122,35 @@ public sealed class NewSolutionTests : IDisposable
         window.Close();
     }
 
+    /// <summary>New Solution stopped after dotnet new made its project takes away what Create wrote, the solution file and
+    /// the project, and leaves a file another program wrote into its folder meanwhile, with the folder.</summary>
+    [AvaloniaFact]
+    public void New_Solution_stopped_takes_away_what_it_made_and_leaves_a_file_another_program_wrote_into_its_folder_meanwhile()
+    {
+        using IDisposable theme = TestsTheme();
+        MainWindow window = Started();
+        Ui.Click(window.Welcome.NewSolutionButton);
+        NewProjectDialog dialog = Templates(window);
+        dialog.Folder = place;
+        Type(dialog, "Shop");
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = dialog.HoldNextMade(release.Task);
+        Ui.Click(dialog.CreateButton, settle: false);
+        Ui.PumpUntil(() => held.IsCompleted || dialog.Problem is not null, "dotnet new to make Shop", TimeSpan.FromMinutes(5));
+        Assert.True(dialog.Problem is null, $"Shop was not made: {dialog.Problem}");
+        string shop = Path.Combine(place, "Shop");
+        string[] made = [.. Directory.EnumerateFileSystemEntries(shop).Select(Path.GetFileName).Order(StringComparer.Ordinal)!];
+        Assert.True(made.Contains("Shop") && made.Any(m => m!.StartsWith("Shop.sln", StringComparison.Ordinal)), $"Create made no project and solution in Shop: {string.Join(", ", made)}");
+        Write("Shop/notes.txt", "another program's\n");
+
+        dialog.Cancel();
+        Ui.Settle();
+        Assert.False(dialog.IsVisible, "Cancel left the dialog open");
+        Assert.Equal(["notes.txt"], Directory.EnumerateFileSystemEntries(shop).Select(Path.GetFileName));
+        Assert.Equal("another program's\n", File.ReadAllText(Path.Combine(shop, "notes.txt")));
+        window.Close();
+    }
+
     /// <summary>New Solution from a window with a solution open builds the new solution in the window it opens in, once its
     /// session there has begun, whatever Settings' Open project in says: asked, nothing builds while the question waits, and
     /// This Window builds it there once the old solution is left; Current Window builds it there too; New Window builds it in

@@ -119,6 +119,9 @@ public sealed class NewProjectDialog : IdeWindow
     private CancellationTokenSource? creating;
     private CancellationTokenSource? installing;
 
+    /// <summary>A test's hold of the next Create once dotnet new has made its project: what ends it, and what is told it is held.</summary>
+    private (Task Release, TaskCompletionSource Reached)? madeHold;
+
     /// <summary>The names the dialog gave last: one that differs is the person's, which a template chosen later keeps.</summary>
     private string solutionGiven = string.Empty;
     private string projectGiven = string.Empty;
@@ -456,7 +459,7 @@ public sealed class NewProjectDialog : IdeWindow
             return;
         }
         Plan plan = Planned();
-        bool existed = Directory.Exists(plan.Root);
+        Writes writes = new(plan.Root);
         ProjectSetup setUp = Setup;
         using CancellationTokenSource cancel = new();
         creating = cancel;
@@ -464,33 +467,43 @@ public sealed class NewProjectDialog : IdeWindow
         Busy(true);
         try
         {
-            Directory.CreateDirectory(plan.Root);
+            if (!Directory.Exists(plan.Root))
+            {
+                Directory.CreateDirectory(plan.Root);
+                writes.Made(plan.Root);
+            }
             if (plan.Solution is not null && !template.IsSolution)
             {
                 progress.Text = $"Creating the solution {SolutionName}…";
-                if (!await MakeSolutionAsync(plan, existed, cancel.Token))
+                if (!await MakeSolutionAsync(plan, writes, cancel.Token))
                 {
                     return;
                 }
             }
             progress.Text = $"Creating {NameGiven} from {template.Name} (dotnet new {template.ShortName})…";
-            ChildResult made = await RunAsync(Arguments(plan.ProjectFolder), plan.Root, cancel.Token);
+            ChildResult made = await writes.During(() => RunAsync(Arguments(plan.ProjectFolder), plan.Root, cancel.Token));
             if (!made.Succeeded)
             {
-                await FailedAsync($"{NameGiven} could not be created: {made.Said}", plan, existed);
+                await FailedAsync($"{NameGiven} could not be created: {made.Said}", writes);
                 return;
+            }
+            if (madeHold is { } hold)
+            {
+                madeHold = null;
+                hold.Reached.TrySetResult();
+                await hold.Release.WaitAsync(cancel.Token);
             }
             List<string> projects = ProjectsIn(plan.ProjectFolder);
             if (projects.Count == 0)
             {
-                await FailedAsync($"dotnet new {template.ShortName} made no project in {plan.ProjectFolder}", plan, existed);
+                await FailedAsync($"dotnet new {template.ShortName} made no project in {plan.ProjectFolder}", writes);
                 return;
             }
-            IReadOnlyList<string> takenOut = await BackgroundWork.Run(() => DeveloperTools.TakeOut(plan.ProjectFolder), cancel.Token);
+            IReadOnlyList<string> takenOut = await writes.During(() => BackgroundWork.Run(() => DeveloperTools.TakeOut(plan.ProjectFolder), cancel.Token), plan.ProjectFolder);
             // The restore and the solution read the files once they hold what was taken out.
             if (await Editors.EditorArea.LandedAsync(takenOut, said => progress.Text = said) is [(string unwritten, Exception notLanded), ..])
             {
-                await FailedAsync($"{NameGiven} could not be created: {CSharp.WorkspaceEdits.Unwritten(unwritten, notLanded)}", plan, existed);
+                await FailedAsync($"{NameGiven} could not be created: {CSharp.WorkspaceEdits.Unwritten(unwritten, notLanded)}", writes);
                 return;
             }
             List<(string Project, CentralPackages Central)> central = [];
@@ -512,7 +525,7 @@ public sealed class NewProjectDialog : IdeWindow
                 foreach (string project in projects)
                 {
                     progress.Text = $"Restoring {Path.GetFileNameWithoutExtension(project)}…";
-                    if (await ProjectTemplates.RestoreAsync(project, plan.Root, cancel.Token) is { } said)
+                    if (await writes.During(() => ProjectTemplates.RestoreAsync(project, plan.Root, cancel.Token), Path.Combine(Path.GetDirectoryName(project)!, "obj")) is { } said)
                     {
                         unrestored ??= $"{Path.GetFileNameWithoutExtension(project)} did not restore: {said}";
                     }
@@ -526,7 +539,7 @@ public sealed class NewProjectDialog : IdeWindow
                 if (madeSolution is null)
                 {
                     progress.Text = $"Creating the solution {SolutionName}…";
-                    if (!await MakeSolutionAsync(plan, existed, cancel.Token))
+                    if (!await MakeSolutionAsync(plan, writes, cancel.Token))
                     {
                         return;
                     }
@@ -544,11 +557,11 @@ public sealed class NewProjectDialog : IdeWindow
         catch (OperationCanceledException)
         {
             // Stopped: dotnet new is ended, and what it made goes.
-            await RemoveAsync(plan, existed);
+            await writes.RemoveAsync();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or TimeoutException)
         {
-            await FailedAsync($"{NameGiven} could not be created: {error.Message}", plan, existed);
+            await FailedAsync($"{NameGiven} could not be created: {error.Message}", writes);
         }
         finally
         {
@@ -558,14 +571,23 @@ public sealed class NewProjectDialog : IdeWindow
     }
 
     /// <summary>dotnet new sln for the plan's solution; false, what Create made removed and why said, when it failed.</summary>
-    private async Task<bool> MakeSolutionAsync(Plan plan, bool existed, CancellationToken cancel)
+    private async Task<bool> MakeSolutionAsync(Plan plan, Writes writes, CancellationToken cancel)
     {
-        ChildResult solution = await RunAsync(["sln", "--name", SolutionName, "--output", plan.Root, .. FormatArguments()], plan.Root, cancel);
+        ChildResult solution = await writes.During(() => RunAsync(["sln", "--name", SolutionName, "--output", plan.Root, .. FormatArguments()], plan.Root, cancel));
         if (!solution.Succeeded)
         {
-            await FailedAsync($"The solution could not be created: {solution.Said}", plan, existed);
+            await FailedAsync($"The solution could not be created: {solution.Said}", writes);
         }
         return solution.Succeeded;
+    }
+
+    /// <summary>Holds the next Create once dotnet new has made its project, before anything else it does, until
+    /// <paramref name="release"/> ends or Create is stopped: a test's. Done once it is held.</summary>
+    public Task HoldNextMade(Task release)
+    {
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        madeHold = (release, reached);
+        return reached.Task;
     }
 
     /// <summary>Install, as its button does: dotnet new install of the chosen template's package, its output shown as it
@@ -779,44 +801,103 @@ public sealed class NewProjectDialog : IdeWindow
             .ThenBy(p => p, StringComparer.Ordinal)
             .Select(PathNames.Canonical)];
 
-    private async Task FailedAsync(string why, Plan plan, bool existed)
+    private async Task FailedAsync(string why, Writes writes)
     {
-        await RemoveAsync(plan, existed);
+        await writes.RemoveAsync();
         Fail(why);
     }
 
-    /// <summary>What a Create that failed or was stopped made: the folder it made, or what it put in one that was there and
-    /// empty.</summary>
-    private static Task RemoveAsync(Plan plan, bool existed) => BackgroundWork.Run(() =>
+    /// <summary>What a Create wrote under its folder, which one that failed or was stopped takes away alone: the folder it
+    /// made, and what came while a step of its own ran (dotnet new, a restore), anything there before or come between its
+    /// steps (another program's) left, with the folders holding it. A step stopped counts as running until the removal, so
+    /// what it was writing as it was ended goes too. UI thread only; the disk read off it.</summary>
+    private sealed class Writes(string root)
     {
-        try
+        private readonly HashSet<string> made = new(PathNames.Comparer);
+
+        /// <summary>What was there as the step running began, and where its writes go; null between steps.</summary>
+        private (HashSet<string> Before, string? Within)? running;
+
+        public void Made(string path) => made.Add(path);
+
+        /// <summary>Runs a step, what came under the folder meanwhile (under <paramref name="within"/> alone, when given)
+        /// taken as its writes.</summary>
+        public async Task<T> During<T>(Func<Task<T>> step, string? within = null)
         {
-            if (!Directory.Exists(plan.Root))
+            HashSet<string> before = await BackgroundWork.Run(() => Entries(root));
+            running = (before, within);
+            T done = await step();
+            HashSet<string> after = await BackgroundWork.Run(() => Entries(root));
+            made.UnionWith(after.Where(e => Its(e, before, within)));
+            running = null;
+            return done;
+        }
+
+        /// <summary>Takes away what was written, deepest first, a folder only once nothing is left in it.</summary>
+        public Task RemoveAsync()
+        {
+            List<string> ours = [.. made];
+            (HashSet<string> Before, string? Within)? open = running;
+            return BackgroundWork.Run(() =>
             {
-                return;
-            }
-            if (!existed)
-            {
-                Directory.Delete(plan.Root, recursive: true);
-                return;
-            }
-            foreach (string entry in Directory.EnumerateFileSystemEntries(plan.Root))
-            {
-                if (Directory.Exists(entry))
+                if (open is { } step)
                 {
-                    Directory.Delete(entry, recursive: true);
+                    ours.AddRange(Entries(root).Where(e => Its(e, step.Before, step.Within)));
                 }
-                else
+                foreach (string entry in ours.Distinct(PathNames.Comparer).OrderByDescending(e => e.Length))
                 {
-                    File.Delete(entry);
+                    try
+                    {
+                        if (Directory.Exists(entry) && new DirectoryInfo(entry).LinkTarget is null)
+                        {
+                            if (!Directory.EnumerateFileSystemEntries(entry).Any())
+                            {
+                                Directory.Delete(entry);
+                            }
+                        }
+                        else
+                        {
+                            File.Delete(entry);
+                        }
+                    }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                    {
+                        IdeErrors.Write($"A new project that could not be made left {entry}: {error.Message}");
+                    }
+                }
+            });
+        }
+
+        private static bool Its(string entry, HashSet<string> before, string? within) =>
+            !before.Contains(entry) && (within is null || PathNames.Within(entry, within));
+
+        /// <summary>Every file and folder under a folder by its path, links not entered; none when it is not there.</summary>
+        private static HashSet<string> Entries(string folder)
+        {
+            HashSet<string> entries = new(PathNames.Comparer);
+            try
+            {
+                Walk(folder);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                // Gone or shut: what is under it is no Create's to take away.
+            }
+            return entries;
+
+            void Walk(string at)
+            {
+                foreach (FileSystemInfo entry in new DirectoryInfo(at).EnumerateFileSystemInfos("*", new EnumerationOptions { AttributesToSkip = 0 }))
+                {
+                    entries.Add(entry.FullName);
+                    if (entry is DirectoryInfo && entry.LinkTarget is null)
+                    {
+                        Walk(entry.FullName);
+                    }
                 }
             }
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            IdeErrors.Write($"A new project that could not be made left {plan.Root}: {error.Message}");
-        }
-    });
+    }
 
     /// <summary>Reads the folder's templates and shows what the read brings, keeping the family and Type chosen: first, when
     /// the dialog has nothing yet, what dotnet new listed last, then the read itself (a memory of it once read ahead).</summary>
