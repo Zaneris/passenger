@@ -129,9 +129,11 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
 - **Writes go one way.** A workspace file: `FileText.Save` (atomic, through symlinks, permissions, Windows attributes,
   ACL and streams, macOS metadata, and Linux's extended attributes, ACL, owner and group where it may kept
   (`UnixFileMetadata`, `AtomicFile.Write`'s too), a file another hard link names written in place, a read-only file
-  refused, Local History given the old bytes). Any other whole file: `AtomicFile.Write`. Never `File.WriteAll*`. A state
-  file only the person may read goes through `OwnFiles` (`Folder`, `Write`, `Create`). Passenger saves an open project,
-  solution, solution filter, nuget.config or Directory.Packages.props before writing it and loads what it wrote after
+  refused, Local History given the old bytes). A file the IDE makes: `FileText.SaveNew` (its .editorconfig's end_of_line
+  and charset), one written again `FileText.SaveOver`, a workspace file the window changes itself
+  `MainWindow.ChangeFileAsync`. Any other whole file: `AtomicFile.Write`. Never `File.WriteAll*`. A state file only the
+  person may read goes through `OwnFiles` (`Folder`, `Write`, `Create`). Passenger saves an open project, solution,
+  solution filter, nuget.config or Directory.Packages.props before writing it and loads what it wrote after
   (`SaveBeforeWriting`, `FollowWritten`). A change of several files, or one that moves a file, is one command of global
   undo (`EditorArea.Commands.Record`), and the window follows only what a change of files made, moved or deleted
   (`Following`, `CameOrWent`, through `ProjectSession.CameOrWent`, which lets go of a failed evaluation where its file
