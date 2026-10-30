@@ -199,6 +199,37 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>A project keeping its files under an AppDesignerFolder of its own (My Project) has its publish profiles
+    /// where the SDK imports them from, under it: the dialog lists the one kept there and saves a new one beside it, never in
+    /// Properties.</summary>
+    [AvaloniaFact]
+    public void A_project_with_its_own_AppDesignerFolder_has_its_profiles_listed_and_saved_there()
+    {
+        Write("src/Hello/Hello.csproj", ConsoleProject.Replace("  </PropertyGroup>", "    <AppDesignerFolder>My Project</AppDesignerFolder>\n  </PropertyGroup>", StringComparison.Ordinal));
+        Write("src/Hello/My Project/PublishProfiles/Kept.pubxml", "<Project>\n  <PropertyGroup>\n    <Configuration>Release</Configuration>\n"
+            + "    <PublishProtocol>FileSystem</PublishProtocol>\n    <PublishDir>bin\\kept\\</PublishDir>\n  </PropertyGroup>\n</Project>\n");
+        string kept = Path.Combine(folder, "src", "Hello", "My Project", "PublishProfiles");
+        MainWindow window = Open();
+        try
+        {
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            PublishDialog dialog = Show(window, "Hello");
+            Assert.True(dialog.Profiles.Select(p => p.Name).SequenceEqual(["Kept"]),
+                $"The dialog lists {string.Join(", ", dialog.Profiles.Select(p => p.Name))}, not the profile kept under the project's AppDesignerFolder, which the SDK imports");
+            dialog.ChooseProfile(null);
+            Ui.Settle();
+            dialog.ProfileName = "Beside";
+            Assert.Null(Done(dialog.SaveAsync(), "the new profile to be saved"));
+            Assert.True(File.Exists(Path.Combine(kept, "Beside.pubxml")) && !Directory.Exists(Path.Combine(folder, "src", "Hello", "Properties")),
+                "The new profile was not saved beside the kept one under My Project, where the SDK imports profiles from, so dotnet publish would never find it");
+            dialog.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A profile another program changes while the question to save over it is open is never written over: the
     /// answer finds the change, keeps it and says so, and the save asked again changes the file as it is now, the change
     /// kept.</summary>

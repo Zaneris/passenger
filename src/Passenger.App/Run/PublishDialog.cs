@@ -321,7 +321,7 @@ public sealed class PublishDialog : IdeWindow
         }
         string name = ProfileName;
         PublishProfileFile? there = Chosen ?? profiles.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
-        string file = there?.Path ?? System.IO.Path.Combine(PublishProfiles.Folder(project.Path, null), $"{name}.pubxml");
+        string file = there?.Path ?? System.IO.Path.Combine(PublishProfiles.Folder(project), $"{name}.pubxml");
         PublishOptions options = Options();
         PublishChoice choice = new(project.Path, there?.Name ?? name, file, options, loaded, Chosen is null ? new Dictionary<string, string>() : raw, multi,
             Chosen is null || options != loaded, Chosen is null && there is not null);
@@ -382,7 +382,7 @@ public sealed class PublishDialog : IdeWindow
         filling = true;
         try
         {
-            profiles = PublishProfiles.Find(PublishProfiles.Folder(project.Path, null));
+            profiles = PublishProfiles.Find(PublishProfiles.Folder(project));
             List<ComboBoxItem> items = [];
             foreach (PublishProfileFile each in profiles)
             {

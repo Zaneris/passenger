@@ -202,11 +202,15 @@ public static class CarriedProperties
     /// <summary>The namespace the project's code begins from, which a type added to it takes.</summary>
     public const string RootNamespace = "RootNamespace";
 
+    /// <summary>The folder the SDK imports the project's publish profiles from, under its AppDesignerFolder unless it names
+    /// another.</summary>
+    public const string PublishProfileRootFolder = "_PublishProfileRootFolder";
+
     public static readonly IReadOnlyList<string> Names =
     [
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
-        NuGetPackageRoot, TargetPath, NuGetLockFilePath, RootNamespace,
+        NuGetPackageRoot, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder,
     ];
 }
 

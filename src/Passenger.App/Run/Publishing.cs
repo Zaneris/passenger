@@ -83,7 +83,7 @@ public static class PublishProfiles
     [
         "Configuration", "LastUsedBuildConfiguration", "TargetFramework", "TargetFrameworks", "RuntimeIdentifier", "RuntimeIdentifiers",
         "SelfContained", "PublishSingleFile", "PublishReadyToRun", "PublishTrimmed", "PublishAot", "PublishDir", "PublishUrl",
-        "WebPublishMethod", "_PublishProfileRootFolder", "NETCoreSdkRuntimeIdentifier",
+        "WebPublishMethod", CarriedProperties.PublishProfileRootFolder, "NETCoreSdkRuntimeIdentifier",
     ];
 
     /// <summary>What a profile's file names a folder publish by: Visual Studio's WebPublishMethod or PublishProtocol, or none.</summary>
@@ -148,9 +148,15 @@ public static class PublishProfiles
     /// <summary>The folder the SDK imports a project's profiles from: Properties/PublishProfiles, or under its own
     /// AppDesignerFolder, as evaluated.</summary>
     public static string Folder(string project, IReadOnlyDictionary<string, string>? evaluated) =>
-        evaluated?.GetValueOrDefault("_PublishProfileRootFolder") is { Length: > 0 } root
-            ? System.IO.Path.GetFullPath(Slashed(root), System.IO.Path.GetDirectoryName(project)!)
-            : System.IO.Path.Combine(System.IO.Path.GetDirectoryName(project)!, "Properties", "PublishProfiles");
+        FolderAt(project, evaluated?.GetValueOrDefault(CarriedProperties.PublishProfileRootFolder));
+
+    /// <summary>The folder the SDK imports a project's profiles from, as its own evaluation found it (<see
+    /// cref="Folder(string, IReadOnlyDictionary{string, string}?)"/>); Properties/PublishProfiles until it is evaluated.</summary>
+    public static string Folder(ProjectModel project) => FolderAt(project.Path, project.Property(CarriedProperties.PublishProfileRootFolder));
+
+    private static string FolderAt(string project, string? root) => root is { Length: > 0 }
+        ? System.IO.Path.GetFullPath(Slashed(root), System.IO.Path.GetDirectoryName(project)!)
+        : System.IO.Path.Combine(System.IO.Path.GetDirectoryName(project)!, "Properties", "PublishProfiles");
 
     /// <summary>The profiles in that folder, by name: each a .pubxml, with the method of one that publishes elsewhere.</summary>
     public static IReadOnlyList<PublishProfileFile> Find(string folder)
