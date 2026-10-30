@@ -5,7 +5,7 @@ namespace Passenger.Tests.Debugging;
 
 /// <summary>Set Value through the protocol, at Setting.Run's stop in PassengerCases: what it writes is what was asked,
 /// into what the expression names, its target run once, and the program goes on with it. A string holding a NUL is
-/// written whole.</summary>
+/// written and read whole.</summary>
 [Collection(DebugSession.Collection)]
 public class SetValueTests(ITestOutputHelper testOutputHelper)
 {
@@ -64,6 +64,19 @@ public class SetValueTests(ITestOutputHelper testOutputHelper)
         await host.ContinueAsync();
         (string output, _) = await host.WaitForEnd();
         Assert.Contains("text 3", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>A string whose last character is a NUL shows it, escaped, beside its length.</summary>
+    [Fact]
+    public async Task A_string_ending_in_a_NUL_shows_it()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        (StoppedEvent stop, int frame) = await StoppedAtSettingAsync(host);
+
+        DapVariable ended = Assert.Single(await host.LocalsAsync(stop), v => v.Name == "ended");
+        Assert.True(ended.Value == "\"A\\0\"", $"\"A\\0\" shows as {ended.Value}, its last character dropped");
+        Assert.Equal("\"A\\0\"", await Evaluate(host, frame, "ended"));
+        Assert.Equal("2", await Evaluate(host, frame, "ended.Length"));
     }
 
     /// <summary>The program launched to Setting.Run's stop, and its top frame.</summary>

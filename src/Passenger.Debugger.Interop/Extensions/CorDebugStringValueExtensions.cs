@@ -10,7 +10,8 @@ public static class CorDebugStringValueExtensions
 {
     extension(ICorDebugStringValue instance)
     {
-        /// <inheritdoc cref="M:Passenger.Debugger.Interop.ICorDebugStringValue.TryGetString(System.UInt32,System.UInt32@,System.Char[])" />
+        /// <summary>The string's characters, every one its length counts: a buffer of that length holds no terminator, so a
+        /// last NUL is the string's own.</summary>
         public string String
         {
             get
@@ -30,10 +31,6 @@ public static class CorDebugStringValueExtensions
                         throw new InvalidOperationException("Native buffer size exceeded the reported capacity.");
                     }
                     num2 = (int)pcchString;
-                }
-                if (num2 > 0 && array[num2 - 1] == '\0')
-                {
-                    num2--;
                 }
                 return new string(array, 0, num2);
             }
