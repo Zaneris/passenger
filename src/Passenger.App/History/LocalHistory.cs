@@ -273,6 +273,13 @@ public sealed class LocalHistory
         });
     }
 
+    /// <summary>What a delete takes, with the files named read again from disk as saved since it was taken.</summary>
+    public HistoryDeletion Retaken(HistoryDeletion taken, IReadOnlyCollection<string> saved) => taken with
+    {
+        Files = [.. taken.Files.Where(f => !saved.Contains(f.Path, PathNames.Comparer)),
+            .. saved.Where(Keeps).Select(file => (file, ReadKept(file))).Where(f => f.Item2 is not null).Select(f => (f.file, f.Item2!))],
+    };
+
     /// <summary>A delete made here went through: what it took is kept, deleted.</summary>
     public void Deleted(HistoryDeletion deletion)
     {

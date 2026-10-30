@@ -485,8 +485,9 @@ public partial class MainWindow
     private static readonly TimeSpan BuildsGoing = TimeSpan.FromSeconds(60);
 
     /// <summary>Deletes a file or folder to the Trash, once asked (unless it was already); its open files are saved first,
-    /// so the Trash and Local History have what the editor showed, and close once it is gone, or keep their tabs when it
-    /// could not go. The design-time builds of the projects in it are held off, those running waited out.</summary>
+    /// and again just before it goes with what was typed while it waited, so the Trash and Local History have what the
+    /// editor showed, and close once it is gone, or keep their tabs when it could not go. The design-time builds of the
+    /// projects in it are held off, those running waited out.</summary>
     public async Task<bool> DeleteAsync(string path, bool asked = false)
     {
         string what = Path.GetFileName(path);
@@ -495,13 +496,9 @@ public partial class MainWindow
         {
             return false;
         }
-        foreach (OpenDocument document in Editors.Documents.Where(d => d.IsModified && PathNames.Within(d.Path, path)).ToList())
+        if (SavedFirst() is null)
         {
-            if (!Editors.Save(document))
-            {
-                status.Text = $"{what} could not be deleted: {document.Name} could not be saved first";
-                return false;
-            }
+            return false;
         }
         History.LocalHistory? keeping = session.LocalHistory;
         History.HistoryDeletion? taken = keeping is null ? null : await keeping.CaptureAsync(path);
@@ -519,6 +516,15 @@ public partial class MainWindow
             {
                 // Moved anyway: what the build writes after makes only build output there again.
             }
+        }
+        // Nothing is awaited from here to the move, so what was typed while it waited goes with it.
+        if (SavedFirst() is not { } typed)
+        {
+            return false;
+        }
+        if (taken is not null && typed.Count > 0)
+        {
+            taken = keeping!.Retaken(taken, typed);
         }
         try
         {
@@ -540,6 +546,22 @@ public partial class MainWindow
         CameOrWent([path]);
         status.Text = $"Moved {what} to the Trash";
         return true;
+
+        // The open files under the path with edits not saved, each saved; null, said, when one could not be.
+        List<string>? SavedFirst()
+        {
+            List<string> saved = [];
+            foreach (OpenDocument document in Editors.Documents.Where(d => d.IsModified && PathNames.Within(d.Path, path)).ToList())
+            {
+                if (!Editors.Save(document))
+                {
+                    status.Text = $"{what} could not be deleted: {document.Name} could not be saved first";
+                    return null;
+                }
+                saved.Add(document.Path);
+            }
+            return saved;
+        }
     }
 
     /// <summary>Runs a change of files the IDE makes itself, then follows only what it came to: what it made, moved or

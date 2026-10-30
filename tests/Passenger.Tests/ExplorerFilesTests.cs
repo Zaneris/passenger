@@ -111,6 +111,53 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A project's folder deleted while its design-time build runs waits for the build to end; what is typed into
+    /// the project's open file meanwhile goes to the Trash with it, the file saved again just before it goes.</summary>
+    [AvaloniaFact]
+    public void Typing_in_a_file_while_its_folders_delete_waits_for_a_design_time_build_goes_to_the_Trash_with_it()
+    {
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        string release = Path.Combine(folder, "release");
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
+        File.WriteAllText(Path.Combine(library, "Directory.Build.targets"), $$"""
+            <Project>
+              <Target Name="Hold" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' == 'true' And !Exists('{{release}}')">
+                <Exec Condition="'$(OS)' == 'Windows_NT'" Timeout="120000" Command="powershell -NoProfile -Command &quot;Set-Content -Path held -Value held; while (-not (Test-Path '{{release}}')) { Start-Sleep -Milliseconds 100 }&quot;" />
+                <Exec Condition="'$(OS)' != 'Windows_NT'" Timeout="120000" Command="echo held &gt; held; while [ ! -f '{{release}}' ]; do sleep 0.1; done" />
+              </Target>
+            </Project>
+            """);
+        Restore.Run(Path.Combine(library, "Lib.csproj"));
+        MainWindow window = new() { Width = 1200, Height = 800 };
+        window.Show();
+        window.OpenFolder(folder);
+        try
+        {
+            // Pumped, not settled: the language server's load waits for the design-time build.
+            Ui.PumpUntil(() => File.Exists(Path.Combine(library, "held")), "Lib's design-time build to be held", TimeSpan.FromMinutes(2));
+            string code = PathNames.Canonical(Path.Combine(library, "Code.cs"));
+            window.OpenFile(code);
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Task<bool> deleting = window.DeleteAsync(PathNames.Canonical(library));
+            Ui.PumpUntil(() => deleting.IsCompleted || window.Status?.StartsWith("Waiting for the design-time build of Lib", StringComparison.Ordinal) == true,
+                "the delete to wait for Lib's design-time build");
+            Assert.False(deleting.IsCompleted, $"The delete of Lib did not wait for its design-time build: {window.Status}");
+            window.EditorArea.CodeEditor.Focus();
+            window.KeyTextInput("// typed while it waited ");
+            Assert.True(window.EditorArea.Active is { IsModified: true }, "Code.cs took no typing while its folder's delete waited");
+            File.WriteAllText(release, "go");
+            Assert.True(Ui.AwaitPumped(deleting, "the delete of Lib", TimeSpan.FromMinutes(2)), $"Lib was not deleted: {window.Status}");
+            Assert.Equal("// typed while it waited class Code\n{\n}\n", File.ReadAllText(Path.Combine(trash, "Lib", "Code.cs")));
+            Assert.Empty(window.EditorArea.Documents);
+        }
+        finally
+        {
+            File.WriteAllText(release, "go");
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Delete_on_a_project_in_its_own_folder_moves_that_folder_to_the_Trash_only_once_asked_again_and_one_beside_its_solution_leaves_the_folder()
     {
