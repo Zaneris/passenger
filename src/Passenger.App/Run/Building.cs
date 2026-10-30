@@ -196,7 +196,7 @@ public static partial class BuildOutput
     private static Problem Read(Match match, Dictionary<string, string>? canonical)
     {
         ProblemSeverity severity = match.Groups["severity"].Value == "error" ? ProblemSeverity.Error : ProblemSeverity.Warning;
-        string? path = match.Groups["file"].Value.Trim() is { Length: > 0 } file && !file.StartsWith("MSBUILD", StringComparison.Ordinal) ? file : null;
+        string? path = match.Groups["file"].Value.Trim() is { Length: > 0 } file && NamesFile(file, match) ? file : null;
         // MSBuild names a file as the project or solution it came through spelled it, which may not be the disk's case.
         if (path is not null && System.IO.Path.IsPathFullyQualified(path))
         {
@@ -240,6 +240,11 @@ public static partial class BuildOutput
         !line.ContainsAny(Severities) ? null
         : Matched(line.ToString()) is not { } match ? null
         : match.Groups["severity"].Value == "error" ? ProblemSeverity.Error : ProblemSeverity.Warning;
+
+    /// <summary>Whether a line's origin is a file: one with a place in it, a folder or an extension. A tool's origin
+    /// ("CSC", "EXEC", "MSBUILD") is none, its problem the project's.</summary>
+    private static bool NamesFile(string origin, Match match) =>
+        match.Groups["line"].Success || origin.AsSpan().ContainsAny('/', '\\') || System.IO.Path.HasExtension(origin);
 
     /// <summary>A XAML compiler's message with the place it repeats at its end (Avalonia's "Line 8, position 6.", WPF's
     /// MarkupCompile's "Line 8 Position 6.") said at another, as the editor counts the file's lines; as it was when it
