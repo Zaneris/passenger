@@ -62,6 +62,10 @@ public static class Refusals
     /// <summary>What a start or an action under way was working in has ended: its folder was left or closed.</summary>
     public const string SolutionClosed = "The solution was closed";
 
+    /// <summary>Why a program cannot be profiled, or its heap read (<paramref name="doing"/> it), now: the debugger holds it
+    /// paused, and its runtime answers the profiler only as it runs.</summary>
+    public static string PausedInDebugger(string program, string doing) => $"{program} is paused in the debugger: continue it to {doing}";
+
     /// <summary>Why a service of a run of services is not started.</summary>
     public const string DontStart = "its run configuration says Don't start";
 

@@ -1,5 +1,6 @@
 using Microsoft.Diagnostics.NETCore.Client;
 using Passenger.App.Containers;
+using Passenger.App.Debugging;
 using Passenger.App.Docking;
 using Passenger.App.Editors;
 using Passenger.App.LiveTree;
@@ -50,6 +51,14 @@ public sealed class ProfilerCommands
     /// <summary>What Attach Profiler says when its choice among the containers' programs was closed with none chosen.</summary>
     private const string NoneChosen = "Attach Profiler chose no program: Run or Debug a configuration first, or start a .NET program in a container";
 
+    private const string NoneProfiling = "A memory snapshot needs a program being profiled";
+
+    /// <summary>What Attach Profiler, Get Memory Snapshot and Get Snapshot do, as a refusal for the debugger's pause names
+    /// them (<see cref="Refusals.PausedInDebugger"/>).</summary>
+    private const string ToProfile = "profile";
+    private const string ToTakeHeap = "take a memory snapshot";
+    private const string ToGetSnapshot = "get its snapshot";
+
     private readonly ProfilerParts parts;
     private readonly ToolWindow window;
     private ProfilerView? view;
@@ -85,8 +94,12 @@ public sealed class ProfilerCommands
         // Nothing of the folder's running, it offers the programs of the engine's running containers to choose from.
         parts.Actions.Add(new IdeAction(AppActions.AttachProfiler, "Attach Profiler to Running Program", "Run", context => IdeErrors.Observe(AttachReportingAsync()))
         {
-            WhyNot = _ => Busy(Session),
+            WhyNot = _ => Busy(Session) ?? (Attachable(out string? _) is { } target ? Paused(target) : null),
             Menus = [new MenuPlace("Run", 3, 0)],
+        });
+        parts.Actions.Add(new IdeAction(AppActions.MemorySnapshot, "Get Memory Snapshot", "Run", context => IdeErrors.Observe(MemorySnapshotAsync()))
+        {
+            WhyNot = _ => Session.Profiling is null ? NoneProfiling : Held(ToTakeHeap),
         });
     }
 
@@ -484,12 +497,13 @@ public sealed class ProfilerCommands
         UiThread.Check();
         if (inContainer is not null)
         {
-            return AttachTargetAsync(InContainer(inContainer, ContainerPaths.None, resume: true));
+            AttachTarget there = InContainer(inContainer, ContainerPaths.None, resume: true);
+            return Paused(there) is { } held ? Task.FromResult<string?>(held) : AttachTargetAsync(there);
         }
         AttachTarget? target = Attachable(out string? problem);
-        if (problem is not null)
+        if ((problem ?? (target is null ? null : Paused(target))) is { } refused)
         {
-            return Task.FromResult<string?>(problem);
+            return Task.FromResult<string?>(refused);
         }
         // A service of a run of services, recorded through its run, which Stop reads first.
         if (target?.Run is { } run)
@@ -601,53 +615,107 @@ public sealed class ProfilerCommands
         }
     }
 
+    /// <summary>The attach itself, its work said in the status bar from the first moment to the run's hand-over, Stop ending
+    /// it; a program the debugger pauses as it waits is said to hold it.</summary>
     private async Task<string?> AttachTargetAsync(ProjectSession profiled, AttachTarget target, string snapshotFolder)
     {
         parts.Dock.Show(ToolWindowIds.Profiler);
-        if (target.Watched is { } app)
+        if (parts.Actions.Work.Begin(AppActions.AttachProfiler, $"Attaching the profiler to {target.Name}…") is not { } work)
         {
-            int? started = await BackgroundWork.Run(() => DotnetProcesses.Under(target.ProcessId).FirstOrDefault(p => p.Program.Equals(app, StringComparison.OrdinalIgnoreCase))?.Id);
-            if (started is not int process)
+            return ActionWork.Busy(parts.Actions.Work.Of(AppActions.AttachProfiler)!);
+        }
+        using (work)
+        {
+            if (target.Watched is { } app)
             {
-                string why = $"{target.Name} runs under dotnet watch, which has yet to start {app}: Attach Profiler once it runs";
+                int? started = await BackgroundWork.Run(() => DotnetProcesses.Under(target.ProcessId).FirstOrDefault(p => p.Program.Equals(app, StringComparison.OrdinalIgnoreCase))?.Id);
+                if (started is not int process)
+                {
+                    string why = $"{target.Name} runs under dotnet watch, which has yet to start {app}: Attach Profiler once it runs";
+                    if (profiled == Session && !profiled.IsEnded)
+                    {
+                        View.Stopped(why);
+                    }
+                    return why;
+                }
+                target = target with { ProcessId = process };
+            }
+            if (profiled.IsEnded || profiled != Session)
+            {
+                return Refusals.SolutionClosed;
+            }
+            if (Paused(target) is { } paused)
+            {
+                View.Stopped(paused);
+                return paused;
+            }
+            ProfilingSession running;
+            Action unfollow = SayPauses(work, target.ProcessId, target.Elsewhere?.Container, target.Name, ToProfile);
+            try
+            {
+                using (BackgroundWork.Scope())
+                {
+                    running = target.Elsewhere is not null
+                        ? await AttachElsewhereAsync(target, snapshotFolder, work)
+                        : await ProfilingSession.AttachAsync(target.ProcessId, target.File, snapshotFolder, work.Stopping);
+                }
+            }
+            catch (Exception failed) when (failed is ProfilingException || failed is OperationCanceledException && work.IsStopped)
+            {
+                string why = failed is ProfilingException ? failed.Message : $"Profiling {target.Name} was stopped as it started";
                 if (profiled == Session && !profiled.IsEnded)
                 {
                     View.Stopped(why);
                 }
                 return why;
             }
-            target = target with { ProcessId = process };
-        }
-        if (profiled.IsEnded || profiled != Session)
-        {
-            return Refusals.SolutionClosed;
-        }
-        ProfilingSession running;
-        try
-        {
-            using (BackgroundWork.Scope())
+            finally
             {
-                running = target.Elsewhere is not null
-                    ? await AttachElsewhereAsync(target, snapshotFolder)
-                    : await ProfilingSession.AttachAsync(target.ProcessId, target.File, snapshotFolder);
+                unfollow();
+            }
+            if (profiled.IsEnded || profiled != Session || profiled.Profiling is not null)
+            {
+                await running.DisposeAsync();
+                return profiled.IsEnded || profiled != Session ? Refusals.SolutionClosed : "A run is already being profiled";
+            }
+            // Profile's own program, profiled again, is still Kill's to end.
+            Follow(profiled, running, target.Name, killable: target.Elsewhere is null && profiled.Profiled?.Run.ProcessId == target.ProcessId);
+            return null;
+        }
+    }
+
+    /// <summary>Why a program cannot be profiled now: the debugger holds it paused.</summary>
+    private string? Paused(AttachTarget target) => Paused(target.ProcessId, target.Elsewhere?.Container, target.Name, ToProfile);
+
+    /// <summary>Why a program (of this machine, or of a container by its id there) cannot be profiled or have its heap read
+    /// now, <paramref name="doing"/> it: the debugger holds it paused.</summary>
+    private string? Paused(int processId, string? container, string name, string doing) =>
+        Session.Debug.Debugging(processId, container) is { State: DebugState.Paused } ? Refusals.PausedInDebugger(name, doing) : null;
+
+    /// <summary>Has a wait for a program's runtime say, while the debugger pauses that program, that it waits for it to go on,
+    /// and its own stage again once it does, until the returned action ends it.</summary>
+    private Action SayPauses(Working work, int processId, string? container, string name, string doing)
+    {
+        if (Session.Debug.Debugging(processId, container) is not { } debugged)
+        {
+            return () => { };
+        }
+        string? waiting = null;
+        void Said(object? sender, EventArgs e)
+        {
+            if (debugged.State == DebugState.Paused)
+            {
+                waiting ??= work.Stage;
+                work.Say(Refusals.PausedInDebugger(name, doing));
+            }
+            else if (waiting is { } stage)
+            {
+                waiting = null;
+                work.Say(stage);
             }
         }
-        catch (ProfilingException failed)
-        {
-            if (profiled == Session && !profiled.IsEnded)
-            {
-                View.Stopped(failed.Message);
-            }
-            return failed.Message;
-        }
-        if (profiled.IsEnded || profiled != Session || profiled.Profiling is not null)
-        {
-            await running.DisposeAsync();
-            return profiled.IsEnded || profiled != Session ? Refusals.SolutionClosed : "A run is already being profiled";
-        }
-        // Profile's own program, profiled again, is still Kill's to end.
-        Follow(profiled, running, target.Name, killable: target.Elsewhere is null && profiled.Profiled?.Run.ProcessId == target.ProcessId);
-        return null;
+        debugged.StateChanged += Said;
+        return () => debugged.StateChanged -= Said;
     }
 
     /// <summary>A program in a container to profile there: by its name in its container, its file's name its program's, its
@@ -655,32 +723,25 @@ public sealed class ProfilerCommands
     private static AttachTarget InContainer(DotnetProcess program, ContainerPaths paths, bool resume) =>
         new(program.Id, $"{program.Program} in {program.Container}", FileName(program.Program)) { Elsewhere = program, Paths = paths, Resume = resume };
 
-    /// <summary>Attach Profiler in a container: Passenger's tools put in it as the window's (the work said in the status bar,
-    /// Stop ending it), then the program recorded there.</summary>
-    private async Task<ProfilingSession> AttachElsewhereAsync(AttachTarget target, string snapshotFolder)
+    /// <summary>Attach Profiler in a container, under the attach's work: Passenger's tools put in it as the window's (each
+    /// stage said, Stop ending it), then the program recorded there.</summary>
+    private async Task<ProfilingSession> AttachElsewhereAsync(AttachTarget target, string snapshotFolder, Working work)
     {
-        if (parts.Actions.Work.Begin(AppActions.AttachProfiler, $"Attaching the profiler to {target.Name}…") is not { } work)
+        try
         {
-            throw new ProfilingException(ActionWork.Busy(parts.Actions.Work.Of(AppActions.AttachProfiler)!));
+            (DotnetProcess found, ProfilePlace place) = await parts.InContainer(target.Elsewhere!, target.Paths ?? ContainerPaths.None,
+                UiThread.Marshal<string>(work.Say), work.Stopping);
+            work.Say($"Recording {target.Name}…");
+            return await ProfilingSession.AttachAsync(found.Id, target.File, snapshotFolder, place, target.Resume, work.Stopping);
         }
-        using (work)
+        catch (OperationCanceledException) when (work.IsStopped)
         {
-            try
-            {
-                (DotnetProcess found, ProfilePlace place) = await parts.InContainer(target.Elsewhere!, target.Paths ?? ContainerPaths.None,
-                    UiThread.Marshal<string>(work.Say), work.Stopping);
-                work.Say($"Recording {target.Name}…");
-                return await ProfilingSession.AttachAsync(found.Id, target.File, snapshotFolder, place, target.Resume, work.Stopping);
-            }
-            catch (OperationCanceledException) when (work.IsStopped)
-            {
-                throw new ProfilingException($"Profiling {target.Name} was stopped as it started");
-            }
-            catch (Exception failed) when (failed is ContainerToolsException or ContainerCommandException or FileNotFoundException or TimeoutException
-                or System.Text.Json.JsonException or OperationCanceledException)
-            {
-                throw new ProfilingException($"Could not profile {target.Name}: {failed.Message}", failed);
-            }
+            throw new ProfilingException($"Profiling {target.Name} was stopped as it started");
+        }
+        catch (Exception failed) when (failed is ContainerToolsException or ContainerCommandException or FileNotFoundException or TimeoutException
+            or System.Text.Json.JsonException or OperationCanceledException)
+        {
+            throw new ProfilingException($"Could not profile {target.Name}: {failed.Message}", failed);
         }
     }
 
@@ -787,15 +848,43 @@ public sealed class ProfilerCommands
     }
 
     /// <summary>Ends the run (Get Snapshot) and shows what it found: the last run's snapshot, or why it has none. Asked
-    /// again while the snapshot is read (Get Snapshot as the program ends, say), it answers with that same reading.</summary>
+    /// again while the snapshot is read (Get Snapshot as the program ends, say), it answers with that same reading. While
+    /// the debugger holds the program paused, the run's end could not be read, so it is refused and the run goes on.</summary>
     public Task<SnapshotRead> SnapshotAsync()
     {
+        if (Held(ToGetSnapshot) is { } paused)
+        {
+            parts.Say(paused);
+            return Task.FromResult(new SnapshotRead(null, paused));
+        }
         if (Session.Profiling is { } run)
         {
             Session.Profiling = null;
             snapshotting = ReadSnapshotAsync(Session, run);
         }
         return snapshotting ?? Task.FromResult(new SnapshotRead(null, "Nothing has been profiled"));
+    }
+
+    /// <summary>Why the run's program cannot be acted on now, <paramref name="doing"/> it: the debugger holds it paused.</summary>
+    private string? Held(string doing) =>
+        Session.Profiling is { HasExited: false } run ? Paused(run.ProcessId, run.Place?.Where, profilingName, doing) : null;
+
+    /// <summary>An agent's end of a run whose program the debugger holds paused, which cannot be read until it goes on: the
+    /// run let go unread, the program going on as it was, so that another may begin; and why. Null when it is not held.</summary>
+    public string? LetGoHeld()
+    {
+        if (Session.Profiling is not { } run || Held(ToProfile) is not { } paused)
+        {
+            return null;
+        }
+        Session.Profiling = null;
+        string why = $"{paused} (its run so far was let go unread)";
+        View.Stopped(why);
+        parts.Say(why);
+        // A program Profile started goes on, Kill's to end, and is put away once it has ended.
+        BackgroundWork.Track(Session.Profiled?.Run == run ? run.LetGoAsync().AsTask() : run.DisposeAsync().AsTask());
+        ShowKill();
+        return why;
     }
 
     private async Task<SnapshotRead> ReadSnapshotAsync(ProjectSession profiled, ProfilingSession run)
@@ -897,23 +986,36 @@ public sealed class ProfilerCommands
 
     /// <summary>Get Memory Snapshot, or why there is none. Where only the program's runtime can write it, putting
     /// createdump's lines into the program's output, the person is asked first, once for the run; an agent's
-    /// (<paramref name="ask"/> false), which asked for it with no one to ask, is taken, its note saying so.</summary>
+    /// (<paramref name="ask"/> false), which asked for it with no one to ask, is taken, its note saying so. One the debugger
+    /// holds paused is refused, and its work, said from the first moment, Stop ends.</summary>
     public async Task<(MemorySnapshot? Heap, string? Note)> MemorySnapshotAsync(bool ask, CancellationToken cancel = default)
     {
         if (Session.Profiling is not { } run)
         {
-            parts.Say("A memory snapshot needs a program being profiled");
+            parts.Say(NoneProfiling);
             return (null, "no program is being profiled");
         }
-        parts.Say($"Taking a memory snapshot of {profilingName}…");
+        if (Held(ToTakeHeap) is { } paused)
+        {
+            parts.Say(paused);
+            return (null, paused);
+        }
+        if (parts.Actions.Work.Begin(AppActions.MemorySnapshot, $"Taking a memory snapshot of {profilingName}…") is not { } work)
+        {
+            string busy = ActionWork.Busy(parts.Actions.Work.Of(AppActions.MemorySnapshot)!);
+            parts.Say(busy);
+            return (null, busy);
+        }
         using IDisposable held = BackgroundWork.Scope();
+        using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(cancel, work.Stopping);
+        Action unfollow = SayPauses(work, run.ProcessId, run.Place?.Where, profilingName, ToTakeHeap);
         try
         {
             MemorySnapshot heap;
             string? note = null;
             try
             {
-                heap = await run.TakeMemorySnapshotAsync(intoOutput: run == intoOutputAgreed, cancel);
+                heap = await run.TakeMemorySnapshotAsync(intoOutput: run == intoOutputAgreed, stopping.Token);
             }
             catch (DumpIntoOutputException only)
             {
@@ -924,7 +1026,7 @@ public sealed class ProfilerCommands
                 }
                 intoOutputAgreed = run;
                 note = $"{only.Message}: it was taken so, and the program's output carries createdump's lines";
-                heap = await run.TakeMemorySnapshotAsync(intoOutput: true, cancel);
+                heap = await run.TakeMemorySnapshotAsync(intoOutput: true, stopping.Token);
             }
             View.ShowMemory(heap);
             parts.Say($"{heap.Name} of {profilingName}: {heap.Objects:N0} objects, {heap.Bytes / 1048576.0:N1} MB");
@@ -936,6 +1038,11 @@ public sealed class ProfilerCommands
             string why = error is OperationCanceledException ? "it was stopped" : error.Message;
             parts.Say($"No memory snapshot: {why}");
             return (null, why);
+        }
+        finally
+        {
+            unfollow();
+            work.Dispose();
         }
     }
 

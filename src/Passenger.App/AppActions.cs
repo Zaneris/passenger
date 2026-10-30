@@ -85,6 +85,9 @@ public static class AppActions
     // Attach the profiler to the program Run or Debug started: no key of Rider's.
     public const string AttachProfiler = "app.profiler.attach";
 
+    // Get Memory Snapshot of the program being profiled: no key of Rider's.
+    public const string MemorySnapshot = "app.profiler.memorySnapshot";
+
     // The Live Visual Tree of an app being debugged: no key of Rider's or Visual Studio's.
     public const string ShowLiveTree = "app.showLiveTree";
     public const string SelectElement = "app.liveTree.selectElement";

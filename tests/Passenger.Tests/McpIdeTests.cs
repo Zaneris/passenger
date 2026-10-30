@@ -273,4 +273,41 @@ public sealed class McpIdeProfilingTests : McpRig, IClassFixture<RestoredFolders
         Assert.False(program.HasExited, "The program an agent attached the profiler to ended with its snapshot");
         await Call(client, McpTools.Stop);
     }
+
+    /// <summary>An agent's profile of a program the debugger holds answers at once rather than waiting on it: refused while
+    /// the program is stopped at a breakpoint; and, the program stopping at another as the profile's time runs out, its run
+    /// let go unread, saying so; neither leaves a later profile refused as one already under way.</summary>
+    [Fact]
+    public async Task An_agents_profile_of_a_program_the_debugger_holds_answers_at_once_and_leaves_the_next_free()
+    {
+        await TakeFolderAsync();
+        Write("Program.cs", "using System.Diagnostics;\n"
+            + "Console.WriteLine(\"begun\");\n"
+            + "Stopwatch clock = Stopwatch.StartNew();\n"
+            + "long turns = 0;\n"
+            + "while (clock.Elapsed < TimeSpan.FromSeconds(3)) { turns = Spin.Turn(turns); }\n"
+            + "Console.WriteLine($\"spun {turns}\");\n"
+            + "while (true) { turns = Spin.Turn(turns); }\n"
+            + "static class Spin\n{\n    public static long Turn(long turns) => turns + 1;\n}\n");
+        const string Held = "is paused in the debugger: continue it to profile";
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 2 });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 6 });
+        await Call(client, McpTools.DebugStart, new() { ["waitSeconds"] = 120 });
+
+        CallToolResult refused = await Result(client, McpTools.Profile, new() { ["attach"] = true, ["seconds"] = 1 });
+        Assert.True(refused.IsError == true && Text(refused).Contains(Held, StringComparison.Ordinal),
+            $"An agent's profile of the program stopped at its breakpoint answered: {Text(refused)}");
+
+        // On to the second breakpoint, three seconds on, which it reaches as the profile's six seconds run.
+        await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 0 });
+        CallToolResult letGo = await Result(client, McpTools.Profile, new() { ["attach"] = true, ["seconds"] = 6 });
+        Assert.True(letGo.IsError == true && Text(letGo).Contains($"{Held} (its run so far was let go unread)", StringComparison.Ordinal),
+            $"An agent's profile of the program that stopped at a breakpoint as it ran answered: {Text(letGo)}");
+
+        await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 0 });
+        JsonElement profiled = await Call(client, McpTools.Profile, new() { ["attach"] = true, ["seconds"] = 1 });
+        Assert.True(profiled.GetProperty("samples").GetInt32() > 0, $"Attach Profiler sampled nothing once the program went on: {profiled.GetRawText()}");
+        await Call(client, McpTools.Stop);
+    }
 }

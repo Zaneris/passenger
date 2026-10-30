@@ -565,6 +565,80 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         }
     }
 
+    /// <summary>A program the debugger holds, at a breakpoint or by Pause, is never left waiting on the profiler: Attach
+    /// Profiler, greyed saying why, refuses it at once with nothing left under way, and attaches once it goes on; Get Memory
+    /// Snapshot of it so attached and then paused refuses likewise, and Get Snapshot too, its run going on, read once the
+    /// program goes on.</summary>
+    [AvaloniaFact]
+    public void Attach_Profiler_and_Get_Memory_Snapshot_refuse_a_program_the_debugger_holds_at_once_and_take_it_once_it_goes_on()
+    {
+        MainWindow window = OpenWaits("Held", TestFolders.Create("pids-"));
+        string program = PathNames.Canonical(waits.PathOf("Program.cs"));
+        window.Debugger.Breakpoints.Toggle(program, Array.FindIndex(File.ReadAllLines(program), l => l.Contains("Console.WriteLine($\"read {line}\");", StringComparison.Ordinal)));
+        const string Attaching = "Waits is paused in the debugger: continue it to profile";
+        const string Snapshotting = "Waits is paused in the debugger: continue it to take a memory snapshot";
+        try
+        {
+            Ui.Launched(window, window.DebugAsync(), "the program to start under the debugger", TimeSpan.FromMinutes(3));
+            Ui.TypeToDebugged(window, "to the breakpoint");
+            Ui.WaitFor(() => window.Debugger.Session?.State == Passenger.App.Debugging.DebugState.Paused, "the program to stop at its breakpoint", TimeSpan.FromMinutes(1));
+
+            Assert.Equal(Attaching, window.Actions.WhyNot(AppActions.AttachProfiler, window.Actions.Context()));
+            Task<string?> refused = window.AttachProfilerAsync();
+            Assert.True(refused.IsCompleted, "Attach Profiler waited on the program the debugger holds");
+            Assert.Equal(Attaching, Ui.Await(refused, "Attach Profiler's refusal"));
+            Assert.Null(window.Actions.Work.Of(AppActions.AttachProfiler));
+            Assert.Null(window.Profiling);
+
+            Resume(window);
+            Assert.Null(window.Actions.WhyNot(AppActions.AttachProfiler, window.Actions.Context()));
+            Ui.Launched(window, window.AttachProfilerAsync(), "the profiler to attach to the program gone on");
+            Assert.True(window.Profiling is { Attached: true }, "Attach Profiler did not attach once the program went on");
+
+            Assert.True(window.Perform(AppActions.Pause), "Pause did not run");
+            Ui.WaitFor(() => window.Debugger.Session?.State == Passenger.App.Debugging.DebugState.Paused, "the program to pause", TimeSpan.FromMinutes(1));
+            Assert.Equal(Snapshotting, window.Actions.WhyNot(AppActions.MemorySnapshot, window.Actions.Context()));
+            window.ShowToolWindow(ToolWindowIds.Profiler);
+            Ui.Settle();
+            Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
+            Avalonia.Controls.Button take = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.Button>()
+                .Single(b => b.Content as string == "Get Memory Snapshot");
+            Ui.Click(take);
+            Assert.Equal(Snapshotting, window.Status);
+            Assert.Null(window.Actions.Work.Of(AppActions.MemorySnapshot));
+            Task<MemorySnapshot?> heap = window.MemorySnapshotAsync();
+            Assert.True(heap.IsCompleted, "Get Memory Snapshot waited on the program the debugger holds");
+            Assert.Null(Ui.Await(heap, "Get Memory Snapshot's refusal"));
+            Assert.Null(view.Memory);
+            Task<Passenger.App.Profiling.SnapshotRead> unread = window.SnapshotAsync();
+            Assert.True(unread.IsCompleted, "Get Snapshot waited on the program the debugger holds");
+            Assert.Equal("Waits is paused in the debugger: continue it to get its snapshot", Ui.Await(unread, "Get Snapshot's refusal").Message);
+            Assert.True(window.Profiling is { HasExited: false }, "Get Snapshot of the program the debugger holds ended its run unread");
+
+            Resume(window);
+            Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the attached run's snapshot once the program went on", TimeSpan.FromMinutes(2));
+            Assert.True(read.Snapshot is not null, read.Message);
+            Assert.True(window.Debugger.IsDebugging, "The program debugged ended with the profiler's snapshot");
+            Assert.Null(window.Actions.WhyNot(AppActions.AttachProfiler, window.Actions.Context()));
+        }
+        finally
+        {
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the program debugged to end");
+            window.Close();
+        }
+    }
+
+    /// <summary>Resumes the program debugged, and waits for it to leave its stop.</summary>
+    private static void Resume(MainWindow window)
+    {
+        Passenger.App.Debugging.DebugSession session = window.Debugger.Session!;
+        bool resumed = false;
+        session.StateChanged += (_, _) => resumed |= session.State != Passenger.App.Debugging.DebugState.Paused;
+        Assert.True(window.Perform(AppActions.Resume), "Resume did not run");
+        Ui.WaitFor(() => resumed, "the program to go on");
+    }
+
     /// <summary>A memory snapshot of a program being profiled counts its heap by type and it runs on; then Close Solution
     /// ends the run whole: the program killed, the profiler's port gone with its listener, and the profiler window no longer
     /// following the run, its time no longer counting and its Kill and Get Snapshot gone.</summary>

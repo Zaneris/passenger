@@ -37,6 +37,10 @@ public partial class MainWindow
     /// <summary>Get Snapshot: the run ended and its snapshot read, or why there is none.</summary>
     public Task<SnapshotRead> SnapshotAsync() => profiler!.SnapshotAsync();
 
+    /// <summary>An agent's end of a run whose program the debugger holds paused: let go unread, and why; null when the
+    /// program is not held.</summary>
+    public string? LetGoHeldProfile() => profiler!.LetGoHeld();
+
     /// <summary>Get Memory Snapshot of the program being profiled; one given up by <paramref name="cancel"/> (an agent's) is
     /// said so, and the tools taking it in a container are ended.</summary>
     public Task<MemorySnapshot?> MemorySnapshotAsync(CancellationToken cancel = default) => profiler!.MemorySnapshotAsync(cancel);

@@ -278,7 +278,7 @@ public sealed partial class PassengerTools
         {
             Choose(configuration);
         }
-        AgentCall.Follow(window.Actions.Work, AppActions.Profile, AppActions.Build, AppActions.AttachProfiler, AppActions.RunProgram);
+        AgentCall.Follow(window.Actions.Work, AppActions.Profile, AppActions.Build, AppActions.AttachProfiler, AppActions.RunProgram, AppActions.MemorySnapshot);
         using (LaunchBuild built = new(Builds))
         {
             Task<string?> started = resource is not null ? ProfileResource()
@@ -319,6 +319,11 @@ public sealed partial class PassengerTools
         }
         AgentCall.Say("Reading the profile");
         CheckProfileTarget();
+        // A program paused in the debugger ends its recording only as it goes on, which the agent waiting here cannot ask for.
+        if (window.LetGoHeldProfile() is { } held)
+        {
+            throw new InvalidOperationException(held);
+        }
         SnapshotRead read = await window.SnapshotAsync();
         CheckProfileTarget(snapshotCompleted: true);
         Passenger.Profiler.Snapshot snapshot = read.Snapshot ?? throw new InvalidOperationException(read.Message);

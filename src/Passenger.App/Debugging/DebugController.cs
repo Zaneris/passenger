@@ -209,6 +209,13 @@ public sealed class DebugController : IDisposable
     /// <summary>The tab a session is in, while it has one.</summary>
     public DebugTab? TabOf(DebugSession session) => view.Sessions.FirstOrDefault(t => t.Session == session);
 
+    /// <summary>The live session debugging a program by its process id: one of this machine's, or with
+    /// <paramref name="container"/> that container's by its id there; null when none debugs it. Its state says whether it
+    /// holds the program paused.</summary>
+    public DebugSession? Debugging(int processId, string? container = null) =>
+        view.Sessions.Where(t => t.IsLive).Select(t => t.Session).FirstOrDefault(s => s is { ProcessStarted: { IsCompletedSuccessfully: true } started }
+            && started.Result == processId && (container is null ? s.IsLocal : s.Elsewhere && s.Place?.Where == container));
+
     /// <summary>The session debugging an inspected app, while its tab is there; null for an app Run or Profile started.</summary>
     public DebugSession? SessionOf(LiveApp app) => view.Sessions.FirstOrDefault(t => t.App == app)?.Session;
 

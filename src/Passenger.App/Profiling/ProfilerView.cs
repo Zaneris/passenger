@@ -221,6 +221,7 @@ public sealed class ProfilerView : DockPanel
         Button open = ToolButtons.Of(IconKeys.FolderOpen, "Open Snapshot", () => OpenSnapshotRequested?.Invoke(this, EventArgs.Empty));
         heap = new Button { Name = "ProfilerGetMemorySnapshot", Content = "Get Memory Snapshot", IsVisible = false };
         heap.Click += (_, _) => MemoryRequested?.Invoke(this, EventArgs.Empty);
+        ActionButtons.Mark(heap, AppActions.MemorySnapshot);
         StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center, Children = { heap, stop, kill, open } };
         DockPanel bar = new();
         DockPanel.SetDock(left, Dock.Left);
