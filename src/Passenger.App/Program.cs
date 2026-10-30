@@ -20,6 +20,11 @@ internal static class Program
     public static int Main(string[] args)
     {
         StartedAt = Stopwatch.GetTimestamp();
+        // Run by git to ask for a login: the window answers, and nothing of the IDE starts.
+        if (Passenger.Vcs.GitAskPass.Answer(args) is int asked)
+        {
+            return asked;
+        }
         // First, as Velopack asks; an update never installs as a second Passenger starts, which would end the first.
         if (Installation.Installed)
         {

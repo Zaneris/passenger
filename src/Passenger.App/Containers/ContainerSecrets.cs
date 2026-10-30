@@ -240,6 +240,16 @@ public static partial class ContainerSecrets
         return Arguments(words, sensitive, Masking());
     }
 
+    /// <summary>A value the person typed as a secret (a password git asked for) known as one from now on, masked wherever a
+    /// mask made after finds it (<see cref="Masking"/>), as a sensitive argument is.</summary>
+    public static void Mark(string secret)
+    {
+        if (secret.Length > 0)
+        {
+            Marked.TryAdd(secret, 0);
+        }
+    }
+
     /// <summary>The arguments their senders marked sensitive (<see cref="Arguments(IReadOnlyList{string}, IReadOnlyList{bool})"/>),
     /// secrets whatever words are around them wherever they are shown again: a program's command line, its log, its echo.</summary>
     private static readonly ConcurrentDictionary<string, byte> Marked = new(StringComparer.Ordinal);

@@ -142,6 +142,7 @@ public partial class MainWindow
         gitView?.Bind(vcs);
         vcs.SaveFirst = Editors.SaveAllLandedAsync;
         vcs.ChooseRemote = ChooseRemoteAsync;
+        vcs.AskGit = AskGitAsync;
         vcs.Message += (_, message) =>
         {
             if (session == next)
@@ -295,6 +296,79 @@ public partial class MainWindow
         popup.DetachedFromVisualTree += (_, _) => answer.TrySetResult(chosen);
         popups.Show(popup, _ => { });
         return answer.Task;
+    }
+
+    /// <summary>The question git asked last while it reached a remote, while the window asks it; null once answered.</summary>
+    public GitQuestionDialog? GitQuestion { get; private set; }
+
+    /// <summary>What git asks while it reaches a remote (a login, a key's passphrase), put to the person: at once for their
+    /// own action, Stop taking the question away; for an agent's call only where someone is at the window, as the agent's
+    /// own questions are put, never an agent's input reaching it. An agent's own IDE, or a window nobody is at, gives no
+    /// answer and says why.</summary>
+    private async Task<GitAnswer> AskGitAsync(GitQuestion question, Mcp.AgentCall? call, CancellationToken stop)
+    {
+        UiThread.Check();
+        if (call is not null && (AgentsOwn || AgentsUnattended))
+        {
+            IdeErrors.Write($"Git: {call.Agent}'s {call.Tool} needed {question.Asks}, with nobody at the window to give it");
+            return GitAnswer.No($"git asked for {question.Asks}, and nobody is at {(AgentsOwn ? "this IDE" : "the window")} to give it: "
+                + "a credential helper (git config credential.helper), or an ssh agent holding the key, lets git reach the remote without asking");
+        }
+        GitQuestionDialog dialog = new(question, call?.Agent);
+        GitQuestion = dialog;
+        IdeErrors.Write($"Git: asks the person for {question.Asks}{(call is null ? string.Empty : $" for {call.Agent}'s {call.Tool}")}");
+        try
+        {
+            GitAnswer? answer;
+            string? unanswered = null;
+            if (call is null)
+            {
+                using CancellationTokenRegistration closing = stop.Register(() => UiThread.Post(() =>
+                {
+                    if (dialog.IsVisible)
+                    {
+                        dialog.Close();
+                    }
+                }));
+                await dialog.ShowDialog(Frontmost);
+                answer = dialog.Answer;
+            }
+            else
+            {
+                call.Waits($"Waiting for the person at {Mcp.AgentConnection.Where(this)} to give {question.Asks} (at most {Mcp.AgentConnection.Limit(this)})");
+                Mcp.Admission said = await AskForAgentAsync(dialog, () => dialog.Answered switch
+                {
+                    true => Mcp.Admission.Allowed,
+                    false => Mcp.Admission.NotAllowed,
+                    null => null,
+                }, $"{call.Agent} waits for you: {dialog.Title}", stop);
+                call.Waited(said.ToString());
+                // A No to a yes-or-no question is git's answer too.
+                answer = said is Mcp.Admission.Allowed or Mcp.Admission.NotAllowed ? dialog.Answer : null;
+                unanswered = said switch
+                {
+                    Mcp.Admission.Allowed => null,
+                    Mcp.Admission.NotAllowed => $"the person at {Mcp.AgentConnection.Where(this)} did not give {question.Asks}",
+                    Mcp.Admission.FolderChanged => $"{question.Asks} was not given: the window left the folder before the person answered",
+                    _ => $"nobody at {Mcp.AgentConnection.Where(this)} gave {question.Asks} within {Mcp.AgentConnection.Limit(this)}",
+                };
+            }
+            if (answer is { Text: not null })
+            {
+                IdeErrors.Write($"Git: {question.Asks} given");
+                return answer;
+            }
+            string why = unanswered ?? (stop.IsCancellationRequested ? $"{question.Asks} was not given: the operation was stopped" : $"{question.Asks} was cancelled");
+            IdeErrors.Write($"Git: {why}");
+            return GitAnswer.No(why);
+        }
+        finally
+        {
+            if (GitQuestion == dialog)
+            {
+                GitQuestion = null;
+            }
+        }
     }
 
     /// <summary>Unstash Changes: the stashes to pop, apply or drop (once the person agrees).</summary>

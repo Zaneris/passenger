@@ -1,3 +1,5 @@
+using Passenger.App.Containers;
+using Passenger.App.Mcp;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -702,7 +704,7 @@ public sealed class VcsController : IDisposable
             return Report(false, UnderWay(AppActions.Push));
         }
         using Working? held = work;
-        if (await RemoteAsync(work, stopping => repository.PushAsync(remote, stopping)) is not { } pushed)
+        if (await RemoteAsync(work, (stopping, asker) => repository.PushAsync(remote, stopping, asker)) is not { } pushed)
         {
             return Report(false, "Push stopped");
         }
@@ -845,16 +847,46 @@ public sealed class VcsController : IDisposable
         return Work is null || work is not null;
     }
 
-    /// <summary>What git said of a remote, or null once Stop ended it with all it started (a remote that stopped answering).</summary>
-    private static async Task<GitResult?> RemoteAsync(Working? work, Func<CancellationToken, Task<GitResult>> run)
+    /// <summary>What git said of a remote, its words masked as every secret is (a password the person typed among them),
+    /// or null once Stop ended it with all it started (a remote that stopped answering). What git asks on the way (a login,
+    /// a key's passphrase) goes to the window, for the person or the agent's call this flow serves (<see cref="AskGit"/>).</summary>
+    private async Task<GitResult?> RemoteAsync(Working? work, Func<CancellationToken, GitAsker?, Task<GitResult>> run)
     {
         CancellationToken stopping = work?.Stopping ?? CancellationToken.None;
+        GitAsker? asker = null;
+        if (AskGit is { } ask)
+        {
+            // Taken now, in the call's own flow: git's questions come on the socket's.
+            AgentCall? call = AgentCall.Current;
+            asker = AskerOf((question, cancel) => UiThread.InvokeAsync(() => ask(question, call, cancel)));
+        }
         try
         {
-            return await run(stopping);
+            GitResult said = await run(stopping, asker);
+            return said with { Output = ContainerSecrets.InSaid(said.Output), Error = ContainerSecrets.InSaid(said.Error) };
         }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested)
         {
+            return null;
+        }
+    }
+
+    /// <summary>Asks the person what git asks while it reaches a remote (a login, a key's passphrase), given the agent's
+    /// call the operation serves, if any: the window's, unset with none to ask in, when git asks nobody.</summary>
+    public Func<GitQuestion, AgentCall?, CancellationToken, Task<GitAnswer>>? AskGit { get; set; }
+
+    /// <summary>Who answers git through <paramref name="ask"/>: this build's own executable, run by git as its helper, asking
+    /// over a socket in the state's socket folder; null where that folder cannot be had, when git asks nobody.</summary>
+    public static GitAsker? AskerOf(Func<GitQuestion, CancellationToken, Task<GitAnswer>> ask)
+    {
+        try
+        {
+            return new GitAsker(Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger"),
+                SocketFolders.Own(State.StateStore.DefaultRoot), ask);
+        }
+        catch (Exception unowned) when (unowned is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Git: asks nobody for a login, as the socket folder cannot be had: {unowned.Message}");
             return null;
         }
     }
@@ -992,7 +1024,7 @@ public sealed class VcsController : IDisposable
             default:
                 string remote = (remotes ?? []).Where(r => branch.Name.StartsWith(r + "/", StringComparison.Ordinal)).MaxBy(r => r.Length)
                     ?? branch.Name[..Math.Max(0, branch.Name.IndexOf('/', StringComparison.Ordinal))];
-                return RemoteSwitchAsync(AppActions.Push, $"Deleting {branch.Name}…", "Delete", (repository, stopping) => repository.DeleteRemoteBranchAsync(remote, branch.Name[(remote.Length + 1)..], stopping),
+                return RemoteSwitchAsync(AppActions.Push, $"Deleting {branch.Name}…", "Delete", (repository, stopping, asker) => repository.DeleteRemoteBranchAsync(remote, branch.Name[(remote.Length + 1)..], stopping, asker),
                     $"Deleted remote branch {branch.Name}", "Git push");
         }
     }
@@ -1009,7 +1041,7 @@ public sealed class VcsController : IDisposable
         {
             return Task.FromResult(Report(false, $"Tracked branch is not configured for {branch.Name}"));
         }
-        return RemoteSwitchAsync(AppActions.UpdateProject, $"Updating {branch.Name}…", "Update", (repository, stopping) => repository.FetchIntoAsync(remote, tracked, branch.Name, stopping),
+        return RemoteSwitchAsync(AppActions.UpdateProject, $"Updating {branch.Name}…", "Update", (repository, stopping, asker) => repository.FetchIntoAsync(remote, tracked, branch.Name, stopping, asker),
             $"Updated {branch.Name}", "Git update");
     }
 
@@ -1036,7 +1068,7 @@ public sealed class VcsController : IDisposable
             return Report(false, UnderWay(AppActions.Push));
         }
         using Working? held = work;
-        GitResult? pushed = await RemoteAsync(work, stopping => repository.PushBranchAsync(branch, remote, stopping));
+        GitResult? pushed = await RemoteAsync(work, (stopping, asker) => repository.PushBranchAsync(branch, remote, stopping, asker));
         await RefreshAsync();
         return pushed is null ? Report(false, "Push stopped")
             : Report(pushed.Succeeded, pushed.Succeeded ? $"Pushed {branch.Name}" : $"Push failed: {pushed.Message}");
@@ -1178,14 +1210,14 @@ public sealed class VcsController : IDisposable
     /// <summary>A change to the tree that goes to a remote (a branch brought forward from its upstream, one deleted there),
     /// run as <see cref="SwitchAsync"/> runs one but held as <paramref name="id"/>'s work, which Stop ends with git and all it
     /// started, saying "<paramref name="what"/> stopped".</summary>
-    private async Task<VcsOutcome> RemoteSwitchAsync(string id, string stage, string what, Func<Git, CancellationToken, Task<GitResult>> change, string done, string activity)
+    private async Task<VcsOutcome> RemoteSwitchAsync(string id, string stage, string what, Func<Git, CancellationToken, GitAsker?, Task<GitResult>> change, string done, string activity)
     {
         if (!Begin(id, stage, out Working? work, stoppable: true))
         {
             return Report(false, UnderWay(id));
         }
         using Working? held = work;
-        return await SwitchAsync(async repository => await RemoteAsync(work, stopping => change(repository, stopping))
+        return await SwitchAsync(async repository => await RemoteAsync(work, (stopping, asker) => change(repository, stopping, asker))
             ?? new GitResult(1, string.Empty, $"{what} stopped"), done, activity);
     }
 

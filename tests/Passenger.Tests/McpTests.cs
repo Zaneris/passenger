@@ -758,6 +758,30 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         File.SetAttributes(notes, FileAttributes.Normal);
     }
 
+    /// <summary>An agent's push in its own IDE to a remote that asks for a login is refused at once, saying so and that
+    /// nobody is there to give it, rather than waiting on a question nobody sees: the commit is made, the remote takes nothing.</summary>
+    [Fact]
+    public async Task An_agents_push_to_a_remote_that_asks_for_a_login_says_so_where_nobody_is_at_the_IDE()
+    {
+        string repository = TestFolders.Create("mcp-login-");
+        DeleteAtEnd(repository);
+        string served = TestFolders.Create("mcp-served-");
+        DeleteAtEnd(served);
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\n");
+        await TestGit.InitAsync(repository);
+        await using StandInGitRemote remote = new(served);
+        await TestGit.RunAsync(served, "init", "-q", "--bare", "repo.git");
+        await TestGit.RunAsync(repository, "remote", "add", "origin", remote.Url);
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\ntwo\n");
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        CallToolResult pushed = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Two", ["push"] = true });
+        Assert.True(pushed.IsError == true && Text(pushed).Contains($"git asked for the login to {remote.Place}, and nobody is at this IDE to give it", StringComparison.Ordinal),
+            $"vcs_commit's push to a remote asking for a login answered: {Text(pushed)}");
+        Assert.Equal("Two", (await TestGit.RunAsync(repository, "log", "-1", "--format=%s")).Trim());
+        Assert.Equal(0, remote.SignedIn);
+    }
+
     /// <summary>vcs_status with the path of a file git mv renamed, one line of it changed since, answers that one line, as
     /// the file was where the last commit has it.</summary>
     [Fact]

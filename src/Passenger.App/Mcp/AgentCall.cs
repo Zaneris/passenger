@@ -53,9 +53,10 @@ public sealed class AgentCall : IAsyncDisposable
     private ActionWork? followed;
     private EventHandler<WorkChange>? following;
 
-    private AgentCall(McpSession? agent, ProgressToken? token, string tool, string title, string where, bool traced)
+    private AgentCall(McpSession? agent, ProgressToken? token, string tool, string title, string agentName, string where, bool traced)
     {
         this.agent = agent;
+        Agent = agentName;
         Token = token;
         Tool = tool;
         this.title = title;
@@ -83,6 +84,9 @@ public sealed class AgentCall : IAsyncDisposable
     /// <summary>The tool called.</summary>
     public string Tool { get; }
 
+    /// <summary>The agent calling, as its client names itself.</summary>
+    public string Agent { get; }
+
     /// <summary>What the call does now, as the agent is told it: what it waits on, else what the window serving it said,
     /// else the stage of the work it follows, else what the tool said, else the tool's title.</summary>
     public string Doing => waitingOn ?? heard ?? stage ?? said ?? title;
@@ -91,7 +95,7 @@ public sealed class AgentCall : IAsyncDisposable
     /// <paramref name="token"/> is given, logged as <paramref name="where"/>'s when <paramref name="traced"/>.</summary>
     public static AgentCall Begin(McpSession? agent, ProgressToken? token, string tool, string title, string agentName, string where, bool traced)
     {
-        AgentCall call = new(agent, token, tool, title, where, traced);
+        AgentCall call = new(agent, token, tool, title, agentName, where, traced);
         Serving.Value = call;
         call.Log($"began, from {agentName}{(token is null ? string.Empty : ", told progress")}");
         return call;

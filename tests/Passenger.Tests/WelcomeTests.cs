@@ -289,6 +289,39 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         window.Close();
     }
 
+    /// <summary>Clone Repository from a remote that asks for a login asks the person over the dialog, and clones once they
+    /// sign in.</summary>
+    [AvaloniaFact]
+    public void Clone_Repository_asks_for_the_login_a_remote_asks_for_and_clones_once_signed_in()
+    {
+        using IDisposable theme = TestsTheme();
+        string source = TestFolders.Create("source-");
+        File.WriteAllText(Path.Combine(source, "Readme.md"), "# Shared\n");
+        TestGit.Init(source);
+        string served = TestFolders.Create("served-");
+        using StandInGitRemote remote = new(served);
+        TestGit.Run(served, "clone", "--bare", "-q", source, remote.Repository);
+        string clones = TestFolders.Create("clones-");
+        MainWindow window = Started(LaunchOptions.Empty);
+        CloneDialog dialog = window.ShowCloneRepository();
+        Ui.Settle();
+        dialog.Folder = clones;
+        Type(dialog, remote.Url);
+        Ui.Press(dialog, "ENTER");
+
+        Ui.PumpUntil(() => dialog.Question is { IsVisible: true }, $"the clone's question for the login {remote.Url} asks for");
+        GitQuestionDialog asked = DialogButtonsTests.Check(dialog.Question!);
+        Assert.Equal($"Sign in to {remote.Place}", asked.Title);
+        asked.KeyTextInput(StandInGitRemote.User);
+        Ui.Press(asked, "TAB");
+        asked.KeyTextInput(StandInGitRemote.Password);
+        Ui.Press(asked, "ENTER");
+        Ui.Settle();
+        Assert.True(dialog.Problem is null, $"The clone failed once signed in: {dialog.Problem}");
+        Assert.True(File.Exists(Path.Combine(clones, "repo", "Readme.md")), "The clone made once signed in does not hold the repository's file");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Tab_from_the_clone_URL_goes_to_the_directory_to_clone_into_and_then_to_Browse()
     {

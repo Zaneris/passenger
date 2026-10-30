@@ -140,7 +140,8 @@ public sealed partial class CloneDialog : IdeWindow
         Busy(true, $"Cloning into {destination}…");
         try
         {
-            GitResult result = await Git.CloneAsync(Url.Trim(), destination, UiThread.Marshal<string>(ShowProgress), cancel.Token);
+            GitResult result = await Git.CloneAsync(Url.Trim(), destination, UiThread.Marshal<string>(ShowProgress), cancel.Token,
+                VcsController.AskerOf((question, stop) => UiThread.InvokeAsync(() => AskAsync(question, stop))));
             if (result.Succeeded)
             {
                 Cloned = PathNames.Canonical(destination);
@@ -165,6 +166,32 @@ public sealed partial class CloneDialog : IdeWindow
             cloning = null;
             Busy(false, null);
         }
+    }
+
+    /// <summary>The question git asked last while it cloned, while the dialog asks it; null once answered.</summary>
+    public GitQuestionDialog? Question { get; private set; }
+
+    /// <summary>What git asks while it clones (a login), put to the person over the dialog; Cancel takes it away.</summary>
+    private async Task<GitAnswer> AskAsync(GitQuestion question, CancellationToken stop)
+    {
+        GitQuestionDialog dialog = new(question, agent: null);
+        Question = dialog;
+        using CancellationTokenRegistration closing = stop.Register(() => UiThread.Post(() =>
+        {
+            if (dialog.IsVisible)
+            {
+                dialog.Close();
+            }
+        }));
+        try
+        {
+            await dialog.ShowDialog(this);
+        }
+        finally
+        {
+            Question = null;
+        }
+        return dialog.Answer is { Text: not null } answer ? answer : GitAnswer.No($"{question.Asks} was cancelled");
     }
 
     /// <summary>Cancel: stops a clone under way and removes what it made, and closes the dialog.</summary>
@@ -205,7 +232,11 @@ public sealed partial class CloneDialog : IdeWindow
     /// <summary>What git said of why it failed: its fatal and error lines on, without their prefixes.</summary>
     private static string Said(GitResult result)
     {
-        string[] lines = result.Error.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (result.Unanswered is { } why)
+        {
+            return why;
+        }
+        string[] lines = Containers.ContainerSecrets.InSaid(result.Error).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         int first = Array.FindIndex(lines, l => l.StartsWith("fatal:", StringComparison.Ordinal) || l.StartsWith("error:", StringComparison.Ordinal));
         if (first < 0)
         {

@@ -158,13 +158,15 @@ public sealed record StashInfo(int Index, string Commit, string Message, DateTim
 /// it), in its words, or it is not installed (<paramref name="Missing"/>), which leaves a repository there unread.</summary>
 public sealed record GitLookup(Git? Tree, string? Refused, bool Missing = false);
 
-/// <summary>What `git` says, and whether it said it without failing.</summary>
-public sealed record GitResult(int Code, string Output, string Error)
+/// <summary>What `git` says, and whether it said it without failing; and why a question it asked of the person (a login,
+/// a key's passphrase) went unanswered, where one did.</summary>
+public sealed record GitResult(int Code, string Output, string Error, string? Unanswered = null)
 {
     public bool Succeeded => Code == 0;
 
-    /// <summary>What to tell the person when it failed: git's own words.</summary>
-    public string Message => (Error.Trim().Length > 0 ? Error : Output).Trim();
+    /// <summary>What to tell the person when it failed: why its question went unanswered where one did, which is why git
+    /// failed, else git's own words.</summary>
+    public string Message => !Succeeded && Unanswered is { } why ? why : (Error.Trim().Length > 0 ? Error : Output).Trim();
 }
 
 /// <summary>A Git working tree, through the `git` executable: its status, branches, a file as the last commit has it,
@@ -240,12 +242,13 @@ public sealed class Git
     public static Task<GitResult> InitAsync(string folder) => RunAsync(folder, ["init"]);
 
     /// <summary>Clones a repository into a folder: each line git says of its progress
-    /// goes to <paramref name="progress"/> as it is said, on another thread. Canceled, git is ended with all it started
+    /// goes to <paramref name="progress"/> as it is said, on another thread, and what it asks of the person (a login) to
+    /// <paramref name="asker"/>. Canceled, git is ended with all it started
     /// and the task is canceled; what it had made of the folder is the caller's to remove.</summary>
-    public static async Task<GitResult> CloneAsync(string url, string destination, Action<string> progress, CancellationToken cancel)
+    public static async Task<GitResult> CloneAsync(string url, string destination, Action<string> progress, CancellationToken cancel, GitAsker? asker = null)
     {
         // The clone opens next: a screenshot waits for it.
-        using IDisposable held = BackgroundWork.Scope();
+        using GitHold held = new();
         string parent = System.IO.Path.GetDirectoryName(destination)!;
         Directory.CreateDirectory(parent);
         // After "--" a URL that begins with a dash is a URL, never an option such as --upload-pack.
@@ -253,6 +256,7 @@ public sealed class Git
         {
             return NotInstalled;
         }
+        await using Prompting? prompting = Asking(start, asker, held, cancel);
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         Process process;
@@ -274,7 +278,7 @@ public sealed class Git
             }
             string errors = await said;
             cancel.ThrowIfCancellationRequested();
-            return new GitResult(process.ExitCode, await output, errors);
+            return new GitResult(process.ExitCode, await output, errors, prompting?.Refused);
         }
     }
 
@@ -1261,8 +1265,10 @@ public sealed class Git
     }
 
     /// <summary>Update Project's first half: the remote the branch's upstream is on fetched (origin where it has none),
-    /// which changes no file of the tree. Canceled, git is ended with all it started and the task is canceled.</summary>
-    public Task<GitResult> FetchUpstreamAsync(CancellationToken cancel = default) => RunAsync(Root, ["fetch"], cancel: cancel);
+    /// which changes no file of the tree. Canceled, git is ended with all it started and the task is canceled; what git
+    /// asks of the person on the way (a login, a key's passphrase), here and wherever a remote is reached, goes to
+    /// <paramref name="asker"/>, and with none git asks nobody.</summary>
+    public Task<GitResult> FetchUpstreamAsync(CancellationToken cancel = default, GitAsker? asker = null) => RunAsync(Root, ["fetch"], cancel: cancel, asker: asker);
 
     /// <summary>How the person's git config has Update Project bring the upstream's commits in, for this branch.</summary>
     public async Task<UpdatePlan> UpdatePlanAsync(string branch)
@@ -1296,7 +1302,7 @@ public sealed class Git
         (await RunAsync(Root, ["status", "--porcelain", "--untracked-files=no"])).Output.Trim().Length > 0;
 
     /// <summary>Every remote fetched, its branches gone from it pruned; canceled, as <see cref="FetchUpstreamAsync"/>.</summary>
-    public Task<GitResult> FetchAsync(CancellationToken cancel = default) => RunAsync(Root, ["fetch", "--all", "--prune"], cancel: cancel);
+    public Task<GitResult> FetchAsync(CancellationToken cancel = default, GitAsker? asker = null) => RunAsync(Root, ["fetch", "--all", "--prune"], cancel: cancel, asker: asker);
 
     /// <summary>The last commit's message, or null before the first commit.</summary>
     public async Task<string?> LastMessageAsync()
@@ -1364,14 +1370,14 @@ public sealed class Git
 
     /// <summary>Pushes the branch to the one it tracks; or, given <paramref name="remote"/>, to that remote under its own
     /// name, which it tracks from then on. Canceled, as <see cref="FetchUpstreamAsync"/>.</summary>
-    public async Task<GitResult> PushAsync(string? remote = null, CancellationToken cancel = default)
+    public async Task<GitResult> PushAsync(string? remote = null, CancellationToken cancel = default, GitAsker? asker = null)
     {
         if (remote is null)
         {
-            return await RunAsync(Root, ["push"], cancel: cancel);
+            return await RunAsync(Root, ["push"], cancel: cancel, asker: asker);
         }
         return await BranchAsync() is { } branch
-            ? await RunAsync(Root, ["push", "-u", "--end-of-options", remote, $"refs/heads/{branch}:refs/heads/{branch}"], cancel: cancel)
+            ? await RunAsync(Root, ["push", "-u", "--end-of-options", remote, $"refs/heads/{branch}:refs/heads/{branch}"], cancel: cancel, asker: asker)
             : new GitResult(1, string.Empty, "A detached head has no branch to push");
     }
 
@@ -1399,8 +1405,8 @@ public sealed class Git
 
     /// <summary>A remote's branch deleted on the remote, and its remote-tracking branch with it. Canceled, as
     /// <see cref="FetchUpstreamAsync"/>.</summary>
-    public Task<GitResult> DeleteRemoteBranchAsync(string remote, string branch, CancellationToken cancel = default) =>
-        RunAsync(Root, ["push", "--end-of-options", remote, $":refs/heads/{branch}"], cancel: cancel);
+    public Task<GitResult> DeleteRemoteBranchAsync(string remote, string branch, CancellationToken cancel = default, GitAsker? asker = null) =>
+        RunAsync(Root, ["push", "--end-of-options", remote, $":refs/heads/{branch}"], cancel: cancel, asker: asker);
 
     public Task<GitResult> DeleteTagAsync(string name) => RunAsync(Root, ["tag", "-d", "--end-of-options", name]);
 
@@ -1409,15 +1415,15 @@ public sealed class Git
 
     /// <summary>A local branch that is not checked out brought up to date with the remote's branch it tracks: forward only,
     /// refused where the two went apart. Canceled, as <see cref="FetchUpstreamAsync"/>.</summary>
-    public Task<GitResult> FetchIntoAsync(string remote, string remoteBranch, string local, CancellationToken cancel = default) =>
-        RunAsync(Root, ["fetch", "--end-of-options", remote, $"{remoteBranch}:refs/heads/{local}"], cancel: cancel);
+    public Task<GitResult> FetchIntoAsync(string remote, string remoteBranch, string local, CancellationToken cancel = default, GitAsker? asker = null) =>
+        RunAsync(Root, ["fetch", "--end-of-options", remote, $"{remoteBranch}:refs/heads/{local}"], cancel: cancel, asker: asker);
 
     /// <summary>A local branch pushed to the branch it tracks; or, when it tracks none, to <paramref name="remote"/> under its
     /// own name, then tracked. Canceled, as <see cref="FetchUpstreamAsync"/>.</summary>
-    public Task<GitResult> PushBranchAsync(BranchInfo branch, string? remote = null, CancellationToken cancel = default) => branch.UpstreamRemote is { } tracked && branch.UpstreamBranch is { } target
-        ? RunAsync(Root, ["push", "--end-of-options", tracked, $"refs/heads/{branch.Name}:{target}"], cancel: cancel)
+    public Task<GitResult> PushBranchAsync(BranchInfo branch, string? remote = null, CancellationToken cancel = default, GitAsker? asker = null) => branch.UpstreamRemote is { } tracked && branch.UpstreamBranch is { } target
+        ? RunAsync(Root, ["push", "--end-of-options", tracked, $"refs/heads/{branch.Name}:{target}"], cancel: cancel, asker: asker)
         : RunAsync(Root, ["push", "-u", "--end-of-options", remote ?? throw new ArgumentNullException(nameof(remote), $"{branch.Name} tracks no branch: the remote to push it to is named"),
-            $"refs/heads/{branch.Name}:refs/heads/{branch.Name}"], cancel: cancel);
+            $"refs/heads/{branch.Name}:refs/heads/{branch.Name}"], cancel: cancel, asker: asker);
 
     /// <summary>The files that differ between a revision and the working tree (Show Diff with Working Tree), renames
     /// found, each by its path now.</summary>
@@ -1695,13 +1701,13 @@ public sealed class Git
     /// <summary>A name as git takes it from its input: composed where it composes names.</summary>
     private static string GitForm(string relative, bool composed) => composed ? relative.Normalize(NormalizationForm.FormC) : relative;
 
-    /// <summary>Runs git to its end, its output read whole; canceled, it is ended with all it started (a fetch's
-    /// upload-pack, a push's ssh) and the task is canceled.</summary>
+    /// <summary>Runs git to its end, its output read whole, what it asks of the person going to <paramref name="asker"/>;
+    /// canceled, it is ended with all it started (a fetch's upload-pack, a push's ssh) and the task is canceled.</summary>
     private static async Task<GitResult> RunAsync(string folder, IReadOnlyList<string> arguments, string? input = null, IReadOnlyDictionary<string, string>? environment = null,
-        IReadOnlyCollection<int>? answers = null, CancellationToken cancel = default)
+        IReadOnlyCollection<int>? answers = null, CancellationToken cancel = default, GitAsker? asker = null)
     {
         // What git answers is what the window shows next (the branch, the bars, the log, a blame): a screenshot waits for it.
-        using IDisposable held = BackgroundWork.Scope();
+        using GitHold held = new();
         if (await StartAsync(folder, arguments) is not { } start)
         {
             return NotInstalled;
@@ -1710,15 +1716,31 @@ public sealed class Git
         {
             start.Environment[name] = value;
         }
+        await using Prompting? prompting = Asking(start, asker, held, cancel);
         try
         {
             ChildResult result = await ChildProcesses.RunAsync(start, input, cancel: cancel, answers: answers);
-            return new GitResult(result.ExitCode, result.Output, result.Error);
+            return new GitResult(result.ExitCode, result.Output, result.Error, prompting?.Refused);
         }
         catch (System.ComponentModel.Win32Exception unstarted)
         {
             return StartFailure(unstarted);
         }
+    }
+
+    /// <summary>Git started to ask <paramref name="asker"/> what it asks of the person through a socket of its own, the
+    /// operation's work let go while they answer; none where there is no asker, or no socket to be had.</summary>
+    private static Prompting? Asking(ProcessStartInfo start, GitAsker? asker, GitHold held, CancellationToken cancel)
+    {
+        if (asker is null || Prompting.Open(asker, held.Apart, cancel) is not { } prompting)
+        {
+            return null;
+        }
+        foreach ((string name, string value) in prompting.Variables)
+        {
+            start.Environment[name] = value;
+        }
+        return prompting;
     }
 
     /// <summary>What git writes, read into a buffer of the pool's as it comes, and how it exited: 127 and nothing when git

@@ -1114,6 +1114,47 @@ public sealed class VcsTests : IDisposable
         return clone;
     }
 
+    /// <summary>Push to a remote that asks for a login asks the person in the window (git's askpass helper answering over
+    /// the window's own socket): cancelled, the push fails saying so and the remote takes nothing; signed in, the push goes,
+    /// and the password is in no log.</summary>
+    [AvaloniaFact]
+    public void Push_to_a_remote_that_asks_for_a_login_asks_the_person_and_goes_once_they_sign_in()
+    {
+        string served = TestFolders.Create("git-served-");
+        using StandInGitRemote remote = new(served);
+        TestGit.Run(served, "init", "-q", "--bare", "repo.git");
+        Git("remote", "add", "origin", remote.Url);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.Settle();
+
+        Assert.True(window.Perform(AppActions.Push), window.Status);
+        Ui.ClickButton(LoginAsked(window, remote), "Cancel");
+        Ui.Landed(() => window.Actions.Work.Of(AppActions.Push) is null, "the push's end once its login was cancelled");
+        Assert.Equal($"Push failed: the login to {remote.Place} was cancelled", window.Status);
+        Assert.Equal(0, remote.SignedIn);
+
+        Assert.True(window.Perform(AppActions.Push), window.Status);
+        GitQuestionDialog asked = LoginAsked(window, remote);
+        asked.KeyTextInput(StandInGitRemote.User);
+        Ui.Press(asked, "TAB");
+        asked.KeyTextInput(StandInGitRemote.Password);
+        Ui.Press(asked, "ENTER");
+        Ui.Landed(() => window.Status == "Pushed main", "the push once signed in");
+        Assert.Equal(Git("rev-parse", "HEAD").Trim(), TestGit.Run(remote.Repository, "rev-parse", "main").Trim());
+        Assert.True(remote.SignedIn > 0, "The remote heard no request with the login typed");
+        Assert.False(Ui.IdeLog().Contains(StandInGitRemote.Password, StringComparison.Ordinal), "The password typed for git is in the IDE's log");
+        window.Close();
+    }
+
+    /// <summary>The window's question for the login a remote asks for, once it shows, held to the dialogs' rule.</summary>
+    private static GitQuestionDialog LoginAsked(MainWindow window, StandInGitRemote remote)
+    {
+        Ui.PumpUntil(() => window.GitQuestion is { IsVisible: true }, $"the window to ask for the login {remote.Url} asks for");
+        GitQuestionDialog asked = DialogButtonsTests.Check(window.GitQuestion!);
+        Assert.Equal($"Sign in to {remote.Place}", asked.Title);
+        return asked;
+    }
+
     /// <summary>Push of a branch that tracks none goes to the repository's only remote whatever its name, the branch tracking
     /// it there from then on; with several remotes the window asks which, and pushes to the one chosen.</summary>
     [AvaloniaFact]

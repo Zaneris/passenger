@@ -589,6 +589,52 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's push to a remote that asks for a login, on a window the person is at, puts the question to them,
+    /// saying the answer goes to git and never to the agent, the agent's call waiting; once they sign in, the push goes and
+    /// the agent is told so.</summary>
+    [AvaloniaFact]
+    public void An_agents_push_to_a_remote_that_asks_for_a_login_asks_the_person_at_the_window()
+    {
+        string repository = TestFolders.Create("mcp-login-");
+        DeleteAtEnd(repository);
+        string served = TestFolders.Create("mcp-served-");
+        DeleteAtEnd(served);
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\n");
+        TestGit.Init(repository);
+        using StandInGitRemote remote = new(served);
+        TestGit.Run(served, "init", "-q", "--bare", "repo.git");
+        TestGit.Run(repository, "remote", "add", "origin", remote.Url);
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "one\ntwo\n");
+        MainWindow window = AgentsWindow(repository, languageServer: false);
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Task<JsonElement> committing = Waiting.Apart(() => Call(client, McpTools.VcsCommit, new() { ["message"] = "Two", ["push"] = true }));
+            Press(Question(window, "the question for the agent's vcs_commit"), "Allow");
+            WaitFor(() => window.GitQuestion is { IsVisible: true }, "the window to ask the person for the login the push needs");
+            Passenger.App.Vcs.GitQuestionDialog asked = window.GitQuestion!;
+            Assert.Equal($"Sign in to {remote.Place}", asked.Title);
+            Assert.Contains(Texts(asked), t => t.Contains("the answer goes to git, never to the agent", StringComparison.Ordinal));
+            Assert.False(committing.IsCompleted, "The agent's call ended before the person gave the login");
+            Ui.Click(Field(asked, "GitUser"));
+            asked.KeyTextInput(StandInGitRemote.User);
+            Ui.Click(Field(asked, "GitSecret"));
+            asked.KeyTextInput(StandInGitRemote.Password);
+            Press(asked, "Sign In");
+            string answered = Await(committing, "the agent's commit and push").GetString()!;
+            Assert.EndsWith(" Two; Pushed main", answered, StringComparison.Ordinal);
+            Assert.Equal(TestGit.Run(repository, "rev-parse", "HEAD").Trim(), TestGit.Run(remote.Repository, "rev-parse", "main").Trim());
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+
+        static Avalonia.Controls.TextBox Field(Avalonia.Controls.Window dialog, string name) =>
+            Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(dialog).OfType<Avalonia.Controls.TextBox>().Single(t => t.Name == name);
+    }
+
     /// <summary>The folder of the window an agent started in a folder reaches with <c>--mcp-attach</c>.</summary>
     private string? AttachedFolder(string workingDirectory) => Await(Waiting.Apart(async () =>
     {
