@@ -474,7 +474,7 @@ internal sealed class ConnectedTool(McpServerTool tool, MainWindow? window, Agen
     {
         using CancellationTokenSource call = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, connection.Gone);
         Tool shown = ProtocolTool;
-        await using AgentCall told = AgentCall.Begin(request.Server, request.Params?.ProgressToken, shown.Name, shown.Title ?? shown.Name,
+        await using AgentCall told = AgentCall.Begin(request.Server, connection, request.Params?.ProgressToken, shown.Name, shown.Title ?? shown.Name,
             AgentConnection.NameOf(request.Server.ClientInfo), connection.Attached ? "window" : "mcp", IdeLog.Traces);
         try
         {

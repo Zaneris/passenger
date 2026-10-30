@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -181,32 +182,91 @@ public sealed class TerminalPanel : DockPanel
     /// <summary>The name of the tab agents' commands run in.</summary>
     public const string AgentShellName = "Agent Shell";
 
+    /// <summary>How long the agents' shell is given to prompt as it starts.</summary>
+    private static readonly TimeSpan AgentPromptLimit = TimeSpan.FromSeconds(20);
+
+    /// <summary>The agents' tab, and its start: done once its shell has prompted, with why not where it could not.</summary>
+    private (TerminalTab Tab, Task<(TerminalSession Shell, string? Problem)> Ready)? agents;
+
     /// <summary>The shell agents' commands run in (terminal_run), in a tab of its own, never a person's: null until the first
     /// is started (<see cref="AgentShellAsync"/>), and again once its shell has ended.</summary>
-    public TerminalSession? AgentShell => tabs.FirstOrDefault(t => t.Name == AgentShellName && t.Run is null)?.Session;
+    public TerminalSession? AgentShell => agents is { } own && tabs.Contains(own.Tab) ? own.Tab.Session : null;
 
-    /// <summary>Starts the shell agents' commands run in, in the open folder, in a tab of its own, shown with the keys only
-    /// where <paramref name="show"/> says (an agent's own IDE), else shown only while no tab is, the keys left where they are.</summary>
-    public async Task<TerminalSession> AgentShellAsync(bool show)
+    /// <summary>The shell agents' commands run in, at its first prompt, in the window's one tab of it: the one running or
+    /// starting, else one started in the open folder, in place of one that could not start; shown with the keys only where
+    /// <paramref name="show"/> says (an agent's own IDE), else shown only while no tab is, the keys left where they are. Its
+    /// problem is why it could not start, or ended before it prompted, else null.</summary>
+    public Task<(TerminalSession Shell, string? Problem)> AgentShellAsync(bool show)
     {
+        UiThread.Check();
+        int at = tabs.Count;
+        if (agents is { } own && tabs.IndexOf(own.Tab) is int index and >= 0)
+        {
+            if (!own.Ready.IsCompleted || own.Tab.Session.IsRunning)
+            {
+                return own.Ready;
+            }
+            // One that could not start keeps its tab, saying why, until the next start takes its place.
+            at = index;
+            tabs.RemoveAt(at);
+            IdeErrors.Observe(own.Tab.Session.DisposeAsync().AsTask());
+        }
         TerminalSession session = new(view.Session?.Screen.Columns ?? 120, view.Session?.Screen.Rows ?? 30);
         TerminalTab tab = new(session, AgentShellName);
-        tabs.Add(tab);
+        tabs.Insert(at, tab);
         if (show || ActiveTab is null)
         {
             Show(tab, focus: show);
         }
-        session.Exited += (_, _) => Close(tab);
-        try
+        int code = 0;
+        session.Exited += (_, exited) =>
         {
-            await session.StartAsync(folder(), Shell?.App, Shell?.Arguments);
-        }
-        catch (Exception failed) when (failed is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+            code = exited;
+            Close(tab);
+        };
+        Task<(TerminalSession, string?)> ready = StartAsync();
+        agents = (tab, ready);
+        return ready;
+
+        async Task<(TerminalSession, string?)> StartAsync()
         {
-            session.Screen.Feed($"Passenger could not start a shell: {failed.Message}\r\n");
+            (string App, string[] Arguments)? given = Shell;
+            string program = (given ?? TerminalSession.DefaultShell()).App;
+            try
+            {
+                await session.StartAsync(folder(), given?.App, given?.Arguments);
+            }
+            catch (Exception failed) when (failed is IOException or InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception)
+            {
+                session.Screen.Feed($"Passenger could not start a shell: {failed.Message}\r\n");
+                return (session, $"Passenger could not start the Agent Shell's shell, '{program}': {failed.Message}");
+            }
+            // Its first prompt before anything is typed: output alone is not it, since ConPTY clears the screen before the shell starts.
+            long began = Stopwatch.GetTimestamp();
+            long changed = began;
+            int version = -1;
+            while (Stopwatch.GetElapsedTime(began) < AgentPromptLimit
+                && (Prompt(session.Screen).Length == 0 || Stopwatch.GetElapsedTime(changed) < TimeSpan.FromMilliseconds(300)))
+            {
+                if (!session.IsRunning)
+                {
+                    string said = string.Join(' ', session.Screen.Lines.Select(l => l.Text().Trim()).Where(l => l.Length > 0)).Trim();
+                    return (session, $"The Agent Shell's shell, '{program}', ended as it started, with exit code {code}{(said.Length > 0 ? $": {said}" : string.Empty)}");
+                }
+                if (session.Screen.Version != version)
+                {
+                    version = session.Screen.Version;
+                    changed = Stopwatch.GetTimestamp();
+                }
+                await Task.Delay(50);
+            }
+            return (session, null);
         }
-        return session;
     }
+
+    /// <summary>The text before the cursor on its line, which at a shell waiting for a command is its prompt.</summary>
+    public static string Prompt(TerminalScreen screen) =>
+        screen.IsAlternate ? string.Empty : screen.Lines[screen.CursorRow].Text(0, screen.CursorColumn);
 
     /// <summary>Ends every shell, and every program with all it started, as the IDE closes.</summary>
     public Task CloseAllAsync()

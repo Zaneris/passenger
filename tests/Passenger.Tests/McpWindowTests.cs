@@ -710,6 +710,100 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             window.Close();
         }
     }
+
+    /// <summary>While a person's terminal configuration runs a program reading its input, an attached agent's terminal
+    /// commands run in the Agent Shell, the program's screen untouched and its tab still shown; a command asked for while
+    /// the Agent Shell starts waits for that start, which leaves one Agent Shell tab; a shell that could not start is said
+    /// to the agent and leaves at most one tab, which the next start takes the place of; and once the agent runs the
+    /// configuration itself, its program takes the agent's line.</summary>
+    [AvaloniaFact]
+    public void A_persons_program_in_the_terminal_never_takes_an_agents_command_and_the_window_keeps_one_agent_shell()
+    {
+        MainWindow window = AgentsWindow(Folder, languageServer: false);
+        global::Passenger.App.ToolWindows.TerminalPanel terminal = window.TerminalPanel;
+        (string App, string[] Arguments) plain = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
+        // The Agent Shell's shell prompts only once the test puts agent-go in the folder (a minute at most).
+        terminal.Shell = OperatingSystem.IsWindows()
+            ? ("powershell.exe", ["-NoProfile", "-Command", "$n = 0; while (-not (Test-Path agent-go) -and $n -lt 600) { Start-Sleep -Milliseconds 100; $n++ }; cmd.exe"])
+            : ("/bin/sh", ["-c", "n=0; while [ ! -f agent-go ] && [ $n -lt 600 ]; do sleep 0.1; n=$((n+1)); done; exec /bin/sh"]);
+        window.SetConfigurations([new RunConfiguration
+        {
+            Name = "Reading",
+            Project = Path.Combine(window.Folder!, "Sum.csproj"),
+            Program = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/cat",
+            WorkingDirectory = window.Folder!,
+            BuildBeforeLaunch = false,
+            Console = ConsoleKind.Terminal,
+        }], "Reading");
+        Ui.Launched(window, window.RunAsync(), "the person's program to start", TimeSpan.FromMinutes(1));
+        TerminalRun persons = Assert.IsType<TerminalRun>(window.RunInTerminal);
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Task<JsonElement> first = Waiting.Apart(() => Call(client, McpTools.TerminalRun, new() { ["command"] = "echo agent-one", ["waitSeconds"] = 5 }));
+            Press(Question(window, "the question for the agent's terminal command"), "Allow");
+            WaitFor(() => terminal.AgentShell is not null || first.IsCompleted, "the Agent Shell to start for the agent's first command");
+            Assert.True(terminal.AgentShell is not null, $"The agent's command ran in no Agent Shell, the person's program's screen:\n{TerminalTests.Screen(persons.Session)}");
+            Heard heard = new();
+            Task<CallToolResult> second = Waiting.Apart(() => Result(client, McpTools.TerminalRun, new() { ["command"] = "echo agent-two", ["waitSeconds"] = 5 }, heard: heard));
+            WaitFor(() => heard.Told.Any(t => t.Message?.Contains("Agent Shell", StringComparison.Ordinal) == true), "the agent's second command to wait for the Agent Shell's start");
+            File.WriteAllText(Path.Combine(window.Folder!, "agent-go"), string.Empty);
+            Assert.Contains("agent-one", Await(first, "the agent's first terminal command").GetString()!, StringComparison.Ordinal);
+            CallToolResult two = Await(second, "the agent's second terminal command");
+            Assert.True(two.IsError != true && Text(two).Contains("agent-two", StringComparison.Ordinal), $"The agent's second terminal command answered: {Text(two)}");
+            Ui.Settle();
+            Assert.True(AgentShells(terminal) == 1, $"Two commands as the Agent Shell started left its tabs: {Tabs(terminal)}");
+            Assert.True(TerminalTests.Screen(terminal.AgentShell!).Contains("agent-two", StringComparison.Ordinal), $"The agent's commands did not run in the Agent Shell: {Tabs(terminal)}");
+            Assert.True(persons.IsRunning && !TerminalTests.Screen(persons.Session).Contains("agent-", StringComparison.Ordinal),
+                $"The agent's commands reached the person's program, which reads its input:\n{TerminalTests.Screen(persons.Session)}");
+            Assert.Equal("Reading", terminal.ActiveTab?.Name);
+
+            Task<JsonElement> exiting = Waiting.Apart(() => Call(client, McpTools.TerminalRun, new() { ["command"] = "exit", ["waitSeconds"] = 1 }));
+            WaitFor(() => terminal.AgentShell is null, "the Agent Shell to end at the agent's exit");
+            Await(exiting, "the agent's exit");
+            // One that is no program ends as it starts on macOS and Linux, and fails to start on Windows; one named by nothing fails to start.
+            foreach ((string App, string[] Arguments) failing in ((string, string[])[])[(Path.Combine(window.Folder!, "no-such-shell"), []), (string.Empty, [])])
+            {
+                terminal.Shell = failing;
+                for (int call = 0; call < 2; call++)
+                {
+                    CallToolResult failed = Await(Waiting.Apart(() => Result(client, McpTools.TerminalRun, new() { ["command"] = "echo agent-three", ["waitSeconds"] = 1 })),
+                        $"the agent's command with '{failing.App}' for a shell");
+                    Assert.True(failed.IsError == true && Text(failed).Contains($"'{failing.App}'", StringComparison.Ordinal), $"A command whose Agent Shell could not start answered: {Text(failed)}");
+                    Ui.Settle();
+                    Assert.True(AgentShells(terminal) <= 1, $"Agent Shells that could not start left their tabs: {Tabs(terminal)}");
+                }
+            }
+            Assert.True(AgentShells(terminal) == 1 && terminal.AgentShell is { IsRunning: false } && TerminalTests.Screen(terminal.AgentShell).Contains("could not start", StringComparison.Ordinal),
+                $"The Agent Shell that could not start left no tab saying why: {Tabs(terminal)}");
+            terminal.Shell = plain;
+            string again = Await(Waiting.Apart(() => Call(client, McpTools.TerminalRun, new() { ["command"] = "echo agent-again", ["waitSeconds"] = 5 })), "the agent's command once a shell starts").GetString()!;
+            Assert.Contains("agent-again", again, StringComparison.Ordinal);
+            Ui.Settle();
+            Assert.True(AgentShells(terminal) == 1 && terminal.AgentShell is { IsRunning: true }, $"The Agent Shell started after one that could not left its tabs: {Tabs(terminal)}");
+            Assert.True(persons.IsRunning && !TerminalTests.Screen(persons.Session).Contains("agent-", StringComparison.Ordinal),
+                $"The agent's commands reached the person's program, which reads its input:\n{TerminalTests.Screen(persons.Session)}");
+
+            // The agent's own run of the configuration, in place of the person's, takes the agent's line.
+            Asked(window, client, McpTools.Run, "run a configuration", new() { ["waitSeconds"] = 1 });
+            TerminalRun owns = Assert.IsType<TerminalRun>(window.RunInTerminal);
+            Assert.True(owns != persons && owns.IsRunning, "The agent's run of the configuration did not start its own program");
+            Assert.Contains("agent-own", Await(Waiting.Apart(() => Call(client, McpTools.TerminalRun, new() { ["command"] = "echo agent-own", ["waitSeconds"] = 2 })), "the agent's command to its own program").GetString()!,
+                StringComparison.Ordinal);
+            Assert.True(TerminalTests.Screen(owns.Session).Contains("agent-own", StringComparison.Ordinal) && !TerminalTests.Screen(terminal.AgentShell!).Contains("agent-own", StringComparison.Ordinal),
+                $"The agent's command did not reach the program its own run started:\n{TerminalTests.Screen(owns.Session)}");
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+
+        static int AgentShells(global::Passenger.App.ToolWindows.TerminalPanel terminal) =>
+            terminal.Tabs.Count(t => t.Name == global::Passenger.App.ToolWindows.TerminalPanel.AgentShellName);
+
+        static string Tabs(global::Passenger.App.ToolWindows.TerminalPanel terminal) => string.Join(", ", terminal.Tabs.Select(t => t.Name));
+    }
 }
 
 /// <summary>McpWindowTests' agents on the person's window where one debugs through the window (a program in the terminal,

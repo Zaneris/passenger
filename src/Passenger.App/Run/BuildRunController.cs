@@ -1055,6 +1055,7 @@ public sealed partial class BuildRunController
         {
             return Said(failed.Message);
         }
+        run.StartedBy = Mcp.AgentCall.Current?.Connection;
         session.InTerminal = run;
         RunningChanged?.Invoke(this, EventArgs.Empty);
         parts.Say(running);

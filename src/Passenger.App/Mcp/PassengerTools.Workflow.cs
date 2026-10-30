@@ -504,14 +504,17 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.TerminalRun, Title = "Run in the terminal", Destructive = true), Description(
         "Types a command into a shell of the agents' own in the IDE's Terminal window (its Agent Shell tab, started if need be) " +
         "and presses Enter, then waits until the shell prompts again or the output has been quiet for 2 s, and returns what " +
-        "it printed. While Run's program runs in a tab (a terminal configuration's), the line goes to it.")]
+        "it printed. While a terminal configuration's program this agent ran (run) runs in its tab, the line goes to it.")]
     public Task<string> TerminalRun(string command, int waitSeconds = 15, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
-        TerminalSession shell = Session.RunProgram is global::Passenger.App.Run.TerminalRun { IsRunning: true } program ? program.Session : await Terminal(cancel);
+        // A program a person runs, or another agent, never takes this agent's line.
+        TerminalSession shell = Session.RunProgram is global::Passenger.App.Run.TerminalRun { IsRunning: true, StartedBy: { } starter } program && starter == connection
+            ? program.Session
+            : await Terminal(cancel);
         TerminalScreen screen = shell.Screen;
         // By its number, which stays the line's own as the scrollback's oldest drop past its limit.
         long before = screen.ScreenTop + screen.CursorRow;
-        string prompt = Prompt(screen);
+        string prompt = ToolWindows.TerminalPanel.Prompt(screen);
         int version = screen.Version;
         shell.Write(command + "\r");
         AgentCall.Say($"Waiting up to {Math.Clamp(waitSeconds, 1, 600)} s for the terminal's command to finish");
@@ -529,7 +532,7 @@ public sealed partial class PassengerTools
                 continue;
             }
             // Its prompt back below it ends a command; one that leaves another prompt (a cd) or none (a server) ends once quiet.
-            bool prompted = prompt.Length > 0 && screen.ScreenTop + screen.CursorRow > before && Prompt(screen) == prompt;
+            bool prompted = prompt.Length > 0 && screen.ScreenTop + screen.CursorRow > before && ToolWindows.TerminalPanel.Prompt(screen) == prompt;
             if (answered && DateTime.UtcNow - last > (prompted ? TimeSpan.FromMilliseconds(200) : TimeSpan.FromSeconds(2)))
             {
                 break;
@@ -544,37 +547,31 @@ public sealed partial class PassengerTools
         return string.Join('\n', lines).TrimEnd();
     });
 
-    /// <summary>The shell of the agents' own (<see cref="ToolWindows.TerminalPanel.AgentShell"/>), started at its first
-    /// prompt where it was not running: shown with the keys in an agent's own IDE, behind the person's tab beside them.</summary>
+    /// <summary>The shell of the agents' own (<see cref="ToolWindows.TerminalPanel.AgentShell"/>) at its first prompt, one
+    /// starting for another call taken up: one started shown with the keys in an agent's own IDE, behind the person's tab
+    /// beside them. Throws saying why where it could not start.</summary>
     private async Task<TerminalSession> Terminal(CancellationToken cancel)
     {
-        if (window.TerminalPanel.AgentShell is { IsRunning: true } running)
+        ToolWindows.TerminalPanel terminal = window.TerminalPanel;
+        TerminalSession? had = terminal.AgentShell;
+        Task<(TerminalSession Shell, string? Problem)> ready = terminal.AgentShellAsync(show: !Beside);
+        if (terminal.AgentShell != had)
         {
-            return running;
+            // Its tab made first, so a window opened for it starts no shell of its own.
+            window.ShowToolWindow(ToolWindowIds.Terminal);
         }
-        // The tab first, so a window opened for it starts no shell of its own.
-        Task<TerminalSession> starting = window.TerminalPanel.AgentShellAsync(show: !Beside);
-        window.ShowToolWindow(ToolWindowIds.Terminal);
-        TerminalSession shell = await starting;
-        // Its first prompt before anything is typed: output alone is not it, since ConPTY clears the screen before the shell starts.
-        DateTime limit = DateTime.UtcNow.AddSeconds(20);
-        DateTime changed = DateTime.UtcNow;
-        int version = -1;
-        while (DateTime.UtcNow < limit && (Prompt(shell.Screen).Length == 0 || DateTime.UtcNow - changed < TimeSpan.FromMilliseconds(300)))
+        bool waits = !ready.IsCompleted;
+        if (waits)
         {
-            if (shell.Screen.Version != version)
-            {
-                version = shell.Screen.Version;
-                changed = DateTime.UtcNow;
-            }
-            await Task.Delay(50, cancel);
+            AgentCall.Current?.Waits("Waiting for the Agent Shell's shell to start and prompt");
         }
-        return shell;
+        (TerminalSession shell, string? problem) = await ready.WaitAsync(cancel);
+        if (waits)
+        {
+            AgentCall.Current?.Waited(problem ?? "prompted");
+        }
+        return problem is null ? shell : throw new InvalidOperationException(problem);
     }
-
-    /// <summary>The text before the cursor on its line, which at a shell waiting for a command is its prompt.</summary>
-    private static string Prompt(TerminalScreen screen) =>
-        screen.IsAlternate ? string.Empty : screen.Lines[screen.CursorRow].Text(0, screen.CursorColumn);
 
     private ProjectModel Project(string project)
     {

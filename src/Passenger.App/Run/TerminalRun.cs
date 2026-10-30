@@ -30,6 +30,9 @@ public sealed class TerminalRun : IRunningProgram
 
     public TerminalSession Session { get; }
 
+    /// <summary>The agent whose call started it (its run, or an action it ran), by its connection; null for a person's run.</summary>
+    public Mcp.AgentConnection? StartedBy { get; set; }
+
     /// <summary>The program's process, once it has started; 0 before, and for one that never did.</summary>
     public int ProcessId { get; private set; }
 

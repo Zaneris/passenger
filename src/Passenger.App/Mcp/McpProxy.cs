@@ -478,7 +478,7 @@ public sealed partial class McpProxy
     private async Task<CallToolResult> CallAsync(RequestContext<CallToolRequestParams> request, CancellationToken cancel)
     {
         string tool = request.Params?.Name ?? "a tool";
-        await using AgentCall call = AgentCall.Begin(request.Server, request.Params?.ProgressToken, tool, $"Joining the Passenger window on {here}",
+        await using AgentCall call = AgentCall.Begin(request.Server, null, request.Params?.ProgressToken, tool, $"Joining the Passenger window on {here}",
             AgentConnection.NameOf(request.Server.ClientInfo), "attach", Traced());
         try
         {
