@@ -98,6 +98,51 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
         }
     }
 
+    /// <summary>An edit typed while the debugger starts the program, its runtime held at its start, is one Apply Hot Reload
+    /// Changes applies once the program runs: the program then greets as the edited code does.</summary>
+    [AvaloniaFact]
+    public void An_edit_made_while_the_debugger_starts_the_program_is_applied_once_it_runs()
+    {
+        using Debugging.Helpers.StartHold hold = new();
+        MainWindow window = Open();
+        int program = 0;
+        try
+        {
+            window.SetConfigurations([new Passenger.App.Run.RunConfiguration
+            {
+                Name = "Greetings held",
+                Project = Path.Combine(PathNames.Canonical(project.Folder), "Greetings.csproj"),
+                Environment = new Dictionary<string, string>(hold.Environment),
+            }], "Greetings held");
+            Task<int> held = hold.Held(TimeSpan.FromMinutes(3));
+            // Not settled: the start holds the window's background work for as long as the debugger waits for the program.
+            Assert.True(window.Perform(AppActions.Debug), $"Debug did not start: {Ui.Said(window)}");
+            program = Ui.AwaitPumped(held, "the build, then the program's runtime to come to the hold", TimeSpan.FromMinutes(3));
+            DebugSession starting = window.Debugger.Session ?? throw new InvalidOperationException($"No session while the program was held: {window.Status}");
+            Assert.Equal(DebugState.Starting, starting.State);
+            window.OpenFile(GreeterPath);
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            editor.Select(new TextRange(editor.Document.Snapshot.ToString().IndexOf("Hello", StringComparison.Ordinal), "Hello".Length));
+            window.KeyTextInput("Howdy");
+            Assert.Contains("Howdy {i}", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+
+            Task letGo = hold.LetGo();
+            Ui.PumpUntil(() => letGo.IsCompleted && starting.State != DebugState.Starting, "the program to run", TimeSpan.FromSeconds(60));
+            Ui.WaitFor(() => Output(window).Contains("Hello 2", StringComparison.Ordinal), $"the program to greet as it was built ({Output(window)})");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            HotReloadOutcome applied = Applied(window);
+            Assert.True(applied.Result == HotReloadResult.Applied, $"The edit made while the program started was not applied: {applied.Said}");
+            Assert.Contains(GreeterPath, applied.Files);
+            Ui.WaitFor(() => Output(window).Contains("Howdy", StringComparison.Ordinal), $"the program to greet as the edited code does ({Output(window)})");
+        }
+        finally
+        {
+            End(window);
+            Processes.Kill(program);
+        }
+    }
+
     /// <summary>With Hot Reload on save, a saved edit reaches the debugged program with no Apply; a breakpoint on the line the
     /// edit added then stops it there, its new local in Variables and the evaluator compiling against the method as the update
     /// made it.</summary>

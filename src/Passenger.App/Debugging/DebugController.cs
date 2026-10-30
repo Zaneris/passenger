@@ -667,10 +667,14 @@ public sealed class DebugController : IDisposable
         tab.Plan = plan;
         BuiltLines built = new(path => CSharp.ServerPlaces.TextOf(editors, path));
         tab.Lines = built;
+        // Made with the built lines: an edit made while the debugger starts the program is one Apply Changes takes.
+        HotReload? reload = hotReloadOn ? new HotReload(built, Server, editors) : null;
+        tab.HotReload = reload;
         await FollowClosedLambdasAsync();
         await ChooseAsync(tab);
         if (disposed || ending || tab.OpeningStopped || !view.Sessions.Contains(tab))
         {
+            reload?.End();
             tab.HasEnded = true;
             tab.OnStateChanged();
             return $"Debugging {name} ended before launch completed";
@@ -731,11 +735,13 @@ public sealed class DebugController : IDisposable
             if (disposed || ending || tab.OpeningStopped || !view.Sessions.Contains(tab))
             {
                 await session.CloseAsync();
+                reload?.End();
                 tab.HasEnded = true;
                 tab.OnStateChanged();
                 return $"Debugging {name} ended before launch completed";
             }
-            tab.HotReload = hotReloadOn ? new HotReload(session, built, Server, editors) : null;
+            reload?.Opened(session);
+            tab.HotReload = reload;
             if (launched && !inTerminal)
             {
                 shown.Input = new ConsoleInput(text => Send(session.InputAsync(text)), () => Send(session.CloseInputAsync()));
@@ -747,6 +753,7 @@ public sealed class DebugController : IDisposable
         catch (Exception error) when (error is DapException or IOException or InvalidOperationException or TimeoutException)
         {
             bool stopped = starting is not null && stoppedStarting.Remove(starting);
+            reload?.End();
             string failed = stopped
                 ? launched ? $"Debugging {name} was stopped as it started" : $"Debugging {name} was stopped as the debugger attached, and it runs on"
                 : $"Could not debug {name}: {(error is DapException dap ? dap.Reason : error.Message)}";
@@ -870,7 +877,7 @@ public sealed class DebugController : IDisposable
             {
                 throw new OperationCanceledException("The workspace ended during Hot Reload attach");
             }
-            RunningReload reload = new(name, session, new HotReload(session, built, Server, editors), says);
+            RunningReload reload = new(name, session, new HotReload(built, Server, editors, session), says);
             running.Add(reload);
             session.StateChanged += (_, _) =>
             {

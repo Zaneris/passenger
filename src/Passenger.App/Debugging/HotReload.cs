@@ -80,7 +80,7 @@ internal interface IHotReloadTarget
 /// Roslyn's rules are given are the ones the program's runtime reports. A UI-thread object.</summary>
 public sealed class HotReload
 {
-    private readonly DebugSession debug;
+    private DebugSession? debug;
     private readonly BuiltLines lines;
     private readonly Func<RoslynSession?> server;
     private readonly EditorArea editors;
@@ -102,16 +102,20 @@ public sealed class HotReload
     private int read;
     private int settled;
 
-    /// <summary>Hot Reload for a session just launched, whose built lines are <paramref name="lines"/>. Roslyn's session
+    /// <summary>Hot Reload for a session whose built lines are <paramref name="lines"/>, made as its launch begins so an edit
+    /// made while the program starts is one it takes; its program given once open (<see cref="Opened"/>). Roslyn's session
     /// begins at the first edit (most sessions have none, and its start reads every document), given each edited file's
     /// text from before its edits, the build's.</summary>
-    public HotReload(DebugSession debug, BuiltLines lines, Func<RoslynSession?> server, EditorArea editors)
+    public HotReload(BuiltLines lines, Func<RoslynSession?> server, EditorArea editors, DebugSession? debug = null)
     {
         this.debug = debug;
         this.lines = lines;
         this.server = server;
         this.editors = editors;
     }
+
+    /// <summary>The program's session is open: Apply Changes takes the edits to it from now.</summary>
+    public void Opened(DebugSession session) => debug = session;
 
     /// <summary>Whether the files have been edited since the launch or since the edits the last update was made of.</summary>
     public bool Changed => edits != settled;
@@ -137,7 +141,7 @@ public sealed class HotReload
 
     /// <summary>Why Apply Changes cannot run now, or null when it can.</summary>
     public string? WhyNot => stopped is not null ? stopped
-        : debug.State is not (DebugState.Running or DebugState.Paused) ? "The program is not running"
+        : debug?.State is not (DebugState.Running or DebugState.Paused) ? "The program is not running"
         : null;
 
     /// <summary>The files' texts from before their edits that Roslyn has not been given yet, marked given.</summary>
@@ -185,9 +189,10 @@ public sealed class HotReload
     {
         UiThread.Check();
         Stopwatch took = Stopwatch.StartNew();
-        if (WhyNot is { } why)
+        string? why = WhyNot;
+        if (why is not null || debug is not { } program)
         {
-            return new HotReloadOutcome(HotReloadResult.Failed, why);
+            return new HotReloadOutcome(HotReloadResult.Failed, why ?? "The program is not running");
         }
         starting ??= StartAsync();
         if (await starting is not null)
@@ -207,7 +212,7 @@ public sealed class HotReload
         HotReloadStateResponse state;
         try
         {
-            state = await debug.HotReloadStateAsync(hold: debug.State == DebugState.Running);
+            state = await program.HotReloadStateAsync(hold: program.State == DebugState.Running);
         }
         catch (DapException failed)
         {
@@ -215,23 +220,23 @@ public sealed class HotReload
         }
         try
         {
-            return await ApplyAsync(state, session, roslyn, took);
+            return await ApplyAsync(program, state, session, roslyn, took);
         }
         finally
         {
             if (state.Held)
             {
-                await ReleaseAsync();
+                await ReleaseAsync(program);
             }
         }
     }
 
     /// <summary>Lets the program held for an update go on; a debugger gone meanwhile has let it go already.</summary>
-    private async Task ReleaseAsync()
+    private static async Task ReleaseAsync(DebugSession program)
     {
         try
         {
-            await debug.ReleaseHotReloadAsync();
+            await program.ReleaseHotReloadAsync();
         }
         catch (DapException failed)
         {
@@ -239,13 +244,13 @@ public sealed class HotReload
         }
     }
 
-    private async Task<HotReloadOutcome> ApplyAsync(HotReloadStateResponse state, int session, RoslynSession roslyn, Stopwatch took)
+    private async Task<HotReloadOutcome> ApplyAsync(DebugSession program, HotReloadStateResponse state, int session, RoslynSession roslyn, Stopwatch took)
     {
         if (state.Capabilities is not { } capabilities)
         {
             return new HotReloadOutcome(HotReloadResult.Failed, state.CapabilitiesUnknown ?? "The program's runtime did not say which edits it can take");
         }
-        bool paused = debug.State == DebugState.Paused;
+        bool paused = program.State == DebugState.Paused;
         HotReloadEmitted emitted;
         try
         {
@@ -292,7 +297,7 @@ public sealed class HotReload
         ApplyChangesResponse applied;
         try
         {
-            applied = await debug.ApplyChangesAsync([.. emitted.Updates.Select(u => new DapModuleUpdate(u.Module, u.Name, u.Metadata, u.IL, u.Pdb,
+            applied = await program.ApplyChangesAsync([.. emitted.Updates.Select(u => new DapModuleUpdate(u.Module, u.Name, u.Metadata, u.IL, u.Pdb,
                 u.UpdatedMethods, u.UpdatedTypes,
                 [.. u.Lines.Select(l => new DapLineUpdates(l.Document, [.. l.Updates.Select(x => new DapLineUpdate(x.OldLine, x.NewLine))]))],
                 [.. u.ActiveStatements.Select(a => new DapStatementUpdate(a.Token, a.Version, a.ILOffset, a.StartLine, a.StartColumn, a.EndLine, a.EndColumn))],
