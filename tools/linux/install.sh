@@ -73,6 +73,19 @@ refresh() {
     fi
 }
 
+# On the way out of the swap below: the installed folder put back until the new one is in place, only then removed.
+settle() {
+    if [ -z "$swapped" ] && [ -e "$old" ]; then
+        if [ -e "$dest" ] || ! mv "$old" "$dest"; then
+            echo "install.sh: the Passenger installed before is left in $old" >&2
+        fi
+    fi
+    rm -rf "$new" || true
+    if [ -n "$swapped" ]; then
+        rm -rf "$old" || true
+    fi
+}
+
 if [ -n "$uninstall" ]; then
     if [ -e "$dest" ] && ! is_passenger "$dest"; then
         fail "$dest is not a Passenger install, so it is left as it is"
@@ -121,7 +134,8 @@ if [ "$here" != "$dest" ]; then
     mkdir -p "$(dirname "$dest")"
     new=$dest.new-$$
     old=$dest.old-$$
-    trap 'rm -rf "$new" "$old"' EXIT
+    swapped=
+    trap settle EXIT
     trap 'exit 1' HUP INT TERM
     rm -rf "$new"
     cp -R "$here" "$new"
@@ -132,6 +146,7 @@ if [ "$here" != "$dest" ]; then
         mv "$dest" "$old"
     fi
     mv "$new" "$dest"
+    swapped=1
     rm -rf "$old"
 fi
 

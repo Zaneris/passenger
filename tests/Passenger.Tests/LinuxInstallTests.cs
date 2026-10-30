@@ -99,6 +99,48 @@ public sealed class LinuxInstallTests
         Assert.True(File.Exists(Path.Combine(installed, "app", "Passenger")), "An install over a link to its own deleted folder did not put the app back");
     }
 
+    /// <summary>An update whose move of the new release into place fails, once the installed one is set aside, leaves the
+    /// installed release where it was, every file as it was and nothing beside it; the same update run again then lands.
+    /// The failure is a <c>mv</c> on the PATH refusing the new folder: a parent made read-only would refuse the first move
+    /// as well, before anything was set aside.</summary>
+    [Fact]
+    public async Task An_update_whose_last_move_fails_leaves_the_installed_passenger_as_it_was()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip(NoShell);
+            return;
+        }
+        string root = PathNames.Canonical(TestFolders.Create("install-"));
+        string home = Directory.CreateDirectory(Path.Combine(root, "home")).FullName;
+        string opt = Path.Combine(home, ".local", "opt");
+        string installed = Path.Combine(opt, "passenger");
+        ChildResult install = await Install(Unpacked(Path.Combine(root, "first"), "1"), home);
+        Assert.True(install.Succeeded, $"The first release's install failed: {install.Said}");
+        string before = Held(installed);
+        string programs = Directory.CreateDirectory(Path.Combine(root, "programs")).FullName;
+        File.WriteAllText(Path.Combine(programs, "mv"),
+            "#!/bin/sh\ncase $1 in\n    *.new-*) echo \"mv: cannot move '$1' to '$2': Permission denied\" >&2; exit 1 ;;\nesac\nexec /bin/mv \"$@\"\n");
+        File.SetUnixFileMode(Path.Combine(programs, "mv"), Runnable);
+        string update = Unpacked(Path.Combine(root, "second"), "2");
+
+        install = await Install(update, home, programs);
+
+        Assert.True(Held(installed) == before,
+            $"An update whose last move failed left ~/.local/opt/passenger {Held(installed)} where it was {before}: the person's Passenger is gone");
+        Assert.False(install.Succeeded, $"An update whose last move failed said it was installed: {install.Output}");
+        Assert.True(Directory.EnumerateFileSystemEntries(opt).Select(Path.GetFileName).SequenceEqual(["passenger"]),
+            $"An update whose last move failed left {string.Join(", ", Directory.EnumerateFileSystemEntries(opt).Select(Path.GetFileName))} in ~/.local/opt");
+
+        install = await Install(update, home);
+
+        Assert.True(install.Succeeded, $"The update run again after its last move failed refused: {install.Said}");
+        Assert.True(File.ReadAllText(Path.Combine(installed, "app", "release.txt")) == "2",
+            $"The update run again after its last move failed left ~/.local/opt/passenger {Held(installed)}, not the second release");
+        Assert.True(Directory.EnumerateFileSystemEntries(opt).Select(Path.GetFileName).SequenceEqual(["passenger"]),
+            $"The update left {string.Join(", ", Directory.EnumerateFileSystemEntries(opt).Select(Path.GetFileName))} in ~/.local/opt");
+    }
+
     /// <summary>Runs an unpacked folder's install.sh for one person, <paramref name="home"/> theirs, with a folder of
     /// programs before the PATH's own where one is given.</summary>
     private static async Task<ChildResult> Install(string script, string home, string? programs = null)
@@ -137,7 +179,8 @@ public sealed class LinuxInstallTests
         return Path.Combine(passenger, "install.sh");
     }
 
-    /// <summary>What a path holds, said whole: a link's target, a file's mode and text, a folder's entries each so.</summary>
+    /// <summary>What a path holds, said whole: a link's target, a file's mode and bytes (a short one's text, a longer one's
+    /// hash), a folder's entries each so.</summary>
     [UnsupportedOSPlatform("windows")]
     private static string Held(string path)
     {
@@ -151,6 +194,13 @@ public sealed class LinuxInstallTests
             return "a folder of " + string.Join(", ", Directory.EnumerateFileSystemEntries(path).Order(StringComparer.Ordinal)
                 .Select(entry => $"{Path.GetFileName(entry)} ({Held(entry)})"));
         }
-        return file.Exists ? $"a file of mode {File.GetUnixFileMode(path)} reading \"{File.ReadAllText(path)}\"" : "nothing";
+        if (!file.Exists)
+        {
+            return "nothing";
+        }
+        byte[] bytes = File.ReadAllBytes(path);
+        return $"a file of mode {File.GetUnixFileMode(path)} " + (bytes.Length <= 100
+            ? $"reading \"{System.Text.Encoding.UTF8.GetString(bytes)}\""
+            : $"of {bytes.Length} bytes hashing to {Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes))[..16]}");
     }
 }
