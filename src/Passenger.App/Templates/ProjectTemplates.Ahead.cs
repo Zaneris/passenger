@@ -24,8 +24,12 @@ public static partial class ProjectTemplates
     /// <summary>The folders the templates were last asked for, newest first: read again when what they come from changes.</summary>
     private static readonly List<string> Asked = [];
 
-    /// <summary>The watches on what the templates come from, kept for the process's life.</summary>
+    /// <summary>The watches on the .NET install's folders the templates come from, kept for the process's life.</summary>
     private static readonly List<FileSystemWatcher> Watches = [];
+
+    /// <summary>The watch on packages.json in the home or hive dotnet new reads, with that folder: watched again where
+    /// the hive changes.</summary>
+    private static (string Root, FileSystemWatcher Watch)? packagesWatch;
 
     private static volatile string? lastSdk;
     private static int preloaded;
@@ -109,24 +113,21 @@ public static partial class ProjectTemplates
         }
     }
 
-    /// <summary>Watches, once there is something read: dotnet new's packages.json in its home (or the hive), which an
-    /// install or uninstall rewrites, and the .NET install's sdk, templates and template-packs folders, which an SDK or a
-    /// workload changes. dotnet new list itself writes none of them.</summary>
+    /// <summary>Watches, once there is something read: dotnet new's packages.json in its home or the hive (<see
+    /// cref="WatchPackages"/>), which an install or uninstall rewrites, and the .NET install's sdk, templates and
+    /// template-packs folders, which an SDK or a workload changes. dotnet new list itself writes none of them.</summary>
     private static void Watch()
     {
+        WatchPackages();
         if (Interlocked.Exchange(ref watching, 1) == 1)
         {
             return;
         }
-        List<(string Folder, string Filter)> places = [];
-        if (TemplateRoot(Hive) is { } root)
-        {
-            places.Add((root, "packages.json"));
-        }
+        List<string> folders = [];
         try
         {
             string dotnet = Dotnet.Root();
-            places.AddRange(((string[])["sdk", "templates", "template-packs"]).Select(f => (Path.Combine(dotnet, f), "*")));
+            folders.AddRange(((string[])["sdk", "templates", "template-packs"]).Select(f => Path.Combine(dotnet, f)));
         }
         catch (FileNotFoundException)
         {
@@ -134,26 +135,53 @@ public static partial class ProjectTemplates
         }
         lock (Watches)
         {
-            foreach ((string folder, string filter) in places.Where(p => Directory.Exists(p.Folder)))
+            foreach (string folder in folders.Where(Directory.Exists))
             {
-                try
+                if (Watching(folder, "*") is { } watch)
                 {
-                    FileSystemWatcher watch = new(folder, filter)
-                    {
-                        NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
-                    };
-                    watch.Changed += Seen;
-                    watch.Created += Seen;
-                    watch.Deleted += Seen;
-                    watch.Renamed += Seen;
-                    watch.EnableRaisingEvents = true;
                     Watches.Add(watch);
                 }
-                catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException or PlatformNotSupportedException)
-                {
-                    IdeErrors.Write($"New Solution's templates are not watched in {folder}: {error.Message}");
-                }
             }
+        }
+    }
+
+    /// <summary>Watches packages.json in the home or hive dotnet new reads now (<see cref="Hive"/>), letting go of the
+    /// watch on one it read before, so an install there is heard whichever was read first.</summary>
+    private static void WatchPackages()
+    {
+        string? root = TemplateRoot(Hive);
+        lock (Watches)
+        {
+            if (packagesWatch is { } watched && root is not null && PathNames.Same(watched.Root, root))
+            {
+                return;
+            }
+            packagesWatch?.Watch.Dispose();
+            packagesWatch = root is not null && Directory.Exists(root) && Watching(root, "packages.json") is { } watch ? (root, watch) : null;
+        }
+    }
+
+    /// <summary>A watch on the files of a folder that match a filter, raising <see cref="Seen"/>; null, said in the log,
+    /// where the system refuses one.</summary>
+    private static FileSystemWatcher? Watching(string folder, string filter)
+    {
+        try
+        {
+            FileSystemWatcher watch = new(folder, filter)
+            {
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
+            };
+            watch.Changed += Seen;
+            watch.Created += Seen;
+            watch.Deleted += Seen;
+            watch.Renamed += Seen;
+            watch.EnableRaisingEvents = true;
+            return watch;
+        }
+        catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            IdeErrors.Write($"New Solution's templates are not watched in {folder}: {error.Message}");
+            return null;
         }
     }
 

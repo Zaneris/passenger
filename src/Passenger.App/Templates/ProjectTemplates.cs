@@ -108,9 +108,22 @@ public static partial class ProjectTemplates
         "name", "type", "language", "Framework", "TargetFrameworkOverride", "skipRestore", "langVersion", "HostIdentifier",
     };
 
+    private static volatile string? customHive;
+
     /// <summary>Where dotnet new keeps the IDE's templates when not in its own home (its <c>--debug:custom-hive</c>); null
-    /// for dotnet new's own.</summary>
-    public static string? Hive { get; set; }
+    /// for dotnet new's own. Changed once the templates are watched, the watch follows it.</summary>
+    public static string? Hive
+    {
+        get => customHive;
+        set
+        {
+            customHive = value;
+            if (Volatile.Read(ref watching) == 1)
+            {
+                WatchPackages();
+            }
+        }
+    }
 
     /// <summary>The .NET command line's arguments for <c>dotnet new</c> with these, in the IDE's hive.</summary>
     public static IReadOnlyList<string> New(IEnumerable<string> arguments) =>
