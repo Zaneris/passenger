@@ -76,7 +76,7 @@ public static partial class ComposeFixes
     }
 
     /// <summary>Set a variable in a service's environment, as the file writes it there: a <c>NAME: "value"</c> after the
-    /// mapping's last entry, a <c>- NAME=value</c> after the list's, or an environment made under the service after its last
+    /// mapping's last entry, a <c>- "NAME=value"</c> after the list's, or an environment made under the service after its last
     /// key; an empty flow collection (<c>{}</c>, <c>[]</c>) made the block it goes in. A value of null is the person's to
     /// fill in, the caret left where it goes. None where the text sets it already, has no such service, or writes its
     /// environment in a form Passenger cannot be sure of (a flow collection with entries); worked out again as it is chosen.</summary>
@@ -92,11 +92,11 @@ public static partial class ComposeFixes
         string unit = new(' ', Indent(read, text));
         string br = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         string title = $"Set {variable} in {service}'s environment";
-        string quoted = $"\"{(value ?? string.Empty).Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
-        string mapped = $"{variable}: {quoted}";
+        string mapped = $"{variable}: {DoubleQuoted(value ?? string.Empty)}";
         // An empty value's caret between its quotes, where the person types it.
         int mappedCaret = value is null ? mapped.Length - 1 : mapped.Length;
-        string listed = $"- {variable}={value}";
+        string listed = $"- {DoubleQuoted($"{variable}={value}")}";
+        int listedCaret = value is null ? listed.Length - 1 : listed.Length;
         EditorFix? fix = null;
         if (read.At([.. path, "environment"]) is { } environment)
         {
@@ -122,7 +122,7 @@ public static partial class ComposeFixes
                 fix = block is null || open < 0 ? null
                     : new EditorFix(title, detail, TextRange.FromBounds(environment.KeyEnd + 1, open + flow.Length), block)
                     {
-                        Caret = flow == "{}" ? block.Length - mapped.Length + mappedCaret : block.Length,
+                        Caret = flow == "{}" ? block.Length - mapped.Length + mappedCaret : block.Length - listed.Length + listedCaret,
                     };
             }
             else if (entries.Count == 0)
@@ -137,7 +137,10 @@ public static partial class ComposeFixes
                 int at = Lines(read, text, environment).End;
                 string before = at == text.Length && !text.EndsWith('\n') ? br : string.Empty;
                 string entry = $"{before}{indent}{(list ? listed : mapped)}";
-                fix = new EditorFix(title, detail, new TextRange(at, 0), entry + br) { Caret = list ? entry.Length : entry.Length - mapped.Length + mappedCaret };
+                fix = new EditorFix(title, detail, new TextRange(at, 0), entry + br)
+                {
+                    Caret = list ? entry.Length - listed.Length + listedCaret : entry.Length - mapped.Length + mappedCaret,
+                };
             }
         }
         else
@@ -150,6 +153,27 @@ public static partial class ComposeFixes
             fix = new EditorFix(title, detail, new TextRange(at, 0), entry + br) { Caret = entry.Length - mapped.Length + mappedCaret };
         }
         return fix is null ? [] : [fix with { Again = now => SetVariable(now, service, variable, value, detail).FirstOrDefault() }];
+    }
+
+    /// <summary>A text as a double-quoted YAML scalar, which reads it whole whatever it holds (a <c> #</c>, a <c>: </c>, a
+    /// leading <c>*</c>): its backslashes, quotes and control characters escaped.</summary>
+    private static string DoubleQuoted(string text)
+    {
+        System.Text.StringBuilder quoted = new("\"");
+        foreach (char c in text)
+        {
+            quoted.Append(c switch
+            {
+                '\\' => "\\\\",
+                '"' => "\\\"",
+                '\n' => "\\n",
+                '\r' => "\\r",
+                '\t' => "\\t",
+                _ when char.IsControl(c) => $"\\x{(int)c:x2}",
+                _ => c.ToString(),
+            });
+        }
+        return quoted.Append('"').ToString();
     }
 
     /// <summary>What a key's line holds after it, its comment aside: a flow collection or scalar written there; null for none.</summary>

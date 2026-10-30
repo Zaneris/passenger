@@ -483,6 +483,24 @@ public sealed class EngineChecksTests
         }
     }
 
+    /// <summary>A variable set in a service's environment written as a list is one double-quoted item, so YAML reads its
+    /// value whole: a <c> #</c> in it no comment, a <c>: </c> no mapping, its quotes and backslashes kept; one left for the
+    /// person to fill in has the caret before its closing quote.</summary>
+    [Fact]
+    public void A_variable_set_in_a_list_form_environment_is_quoted_so_its_value_is_read_whole()
+    {
+        const string Text = "services:\n  api:\n    image: api\n    environment:\n      - MODE=dev\n";
+        const string Value = "Host=db;Database=Shop #2;Options=a: b;Note=\"x\\y\"";
+        Passenger.App.CSharp.EditorFix fix = Assert.Single(ComposeFixes.SetVariable(TextSnapshot.From(Text), "api", "ConnectionStrings__shop", Value, "the shop"));
+        string set = Text[..fix.Range.Start] + fix.Text + Text[fix.Range.End..];
+        ComposeEntry item = Assert.Single(ComposeText.Of(set).Entries, e => e.Path is ["services", "api", "environment", "1"]);
+        Assert.True(item.Scalar == $"ConnectionStrings__shop={Value}", $"The value set reads as {item.Scalar ?? "no scalar"}:\n{set}");
+
+        Passenger.App.CSharp.EditorFix asked = Assert.Single(ComposeFixes.SetVariable(TextSnapshot.From(Text), "api", "ConnectionStrings__shop", null, "the shop"));
+        Assert.Equal("      - \"ConnectionStrings__shop=\"\n", asked.Text);
+        Assert.Equal(asked.Text.LastIndexOf('"'), asked.Caret);
+    }
+
     /// <summary>An agent's code_actions on a service's name list the fixes of the connection strings its environment does
     /// not set first: the one its settings give at localhost, the ones never given (in Production, which the service sets,
     /// appsettings.Development.json is not read), not the one its env_file sets; apply_code_action makes one on the text as
@@ -511,7 +529,7 @@ public sealed class EngineChecksTests
             string applied = Ui.Await(agent.ApplyCodeAction("compose.yaml", 2, 3, "Set ConnectionStrings__shop in api's environment"), "the agent's fix made");
             Assert.Equal("Applied 'Set ConnectionStrings__shop in api's environment' to compose.yaml", applied);
             Assert.Equal(compose.Replace("      - ASPNETCORE_ENVIRONMENT=Production\n", "      - ASPNETCORE_ENVIRONMENT=Production\n"
-                + "      - ConnectionStrings__shop=Host=db;Port=5432;Database=shop;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}\n", StringComparison.Ordinal),
+                + "      - \"ConnectionStrings__shop=Host=db;Port=5432;Database=shop;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}\"\n", StringComparison.Ordinal),
                 File.ReadAllText(PathOf(folder, "compose.yaml")));
         }
         finally
