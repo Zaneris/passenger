@@ -59,23 +59,23 @@ public static class TestAssemblies
         Dictionary<string, string> globals = ProjectModels.Properties(workspace, project);
         try
         {
-            PropertiesAnswer outer = await host.PropertiesAsync(project.Path, globals, ["TargetFramework", "TargetFrameworks", "TargetPath", RunSettingsProperty], cancel);
+            PropertiesAnswer outer = await host.PropertiesAsync(project.Path, globals, [MSBuildNames.TargetFramework, MSBuildNames.TargetFrameworks, CarriedProperties.TargetPath, MSBuildNames.RunSettingsFilePath], cancel);
             if (outer.Problem is { } problem)
             {
                 return ([], $"{project.Name} could not be evaluated: {problem}");
             }
-            string? single = outer.Values.GetValueOrDefault("TargetFramework");
-            string[] frameworks = [.. (outer.Values.GetValueOrDefault("TargetFrameworks") ?? string.Empty)
+            string? single = outer.Values.GetValueOrDefault(MSBuildNames.TargetFramework);
+            string[] frameworks = [.. (outer.Values.GetValueOrDefault(MSBuildNames.TargetFrameworks) ?? string.Empty)
                 .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase)];
             // A TargetFramework of its own, or none to choose among, is a project MSBuild builds once (no cross-targeting).
             if (single is { Length: > 0 } || frameworks.Length == 0)
             {
-                return single is { Length: > 0 } && outer.Values.GetValueOrDefault("TargetPath") is { Length: > 0 } path
+                return single is { Length: > 0 } && outer.Values.GetValueOrDefault(CarriedProperties.TargetPath) is { Length: > 0 } path
                     ? ([new TestAssembly(project, single, PathNames.Canonical(path)) { RunSettings = SettingsOf(project, outer) }], null)
                     : ([], null);
             }
             PropertiesAnswer[] inner = await Task.WhenAll(frameworks.Select(framework =>
-                host.PropertiesAsync(project.Path, new Dictionary<string, string>(globals, StringComparer.OrdinalIgnoreCase) { ["TargetFramework"] = framework }, ["TargetPath", RunSettingsProperty], cancel)));
+                host.PropertiesAsync(project.Path, new Dictionary<string, string>(globals, StringComparer.OrdinalIgnoreCase) { [MSBuildNames.TargetFramework] = framework }, [CarriedProperties.TargetPath, MSBuildNames.RunSettingsFilePath], cancel)));
             List<TestAssembly> assemblies = [];
             List<string> problems = [];
             for (int i = 0; i < frameworks.Length; i++)
@@ -84,7 +84,7 @@ public static class TestAssemblies
                 {
                     problems.Add($"{project.Name} ({frameworks[i]}) could not be evaluated: {failed}");
                 }
-                else if (inner[i].Values.GetValueOrDefault("TargetPath") is { Length: > 0 } path)
+                else if (inner[i].Values.GetValueOrDefault(CarriedProperties.TargetPath) is { Length: > 0 } path)
                 {
                     assemblies.Add(new TestAssembly(project, frameworks[i], PathNames.Canonical(path)) { RunSettings = SettingsOf(project, inner[i]) });
                 }
@@ -97,12 +97,9 @@ public static class TestAssemblies
         }
     }
 
-    /// <summary>The MSBuild property naming a test project's run settings file.</summary>
-    private const string RunSettingsProperty = "RunSettingsFilePath";
-
     /// <summary>The run settings file an evaluation names, a relative one from its project's folder; null for none.</summary>
     private static string? SettingsOf(ProjectModel project, PropertiesAnswer answer) =>
-        answer.Values.GetValueOrDefault(RunSettingsProperty) is { Length: > 0 } named
+        answer.Values.GetValueOrDefault(MSBuildNames.RunSettingsFilePath) is { Length: > 0 } named
             ? PathNames.Canonical(System.IO.Path.GetFullPath(named.Trim(), project.Folder))
             : null;
 }

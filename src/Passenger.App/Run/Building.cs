@@ -90,10 +90,8 @@ public enum BuildCause
 /// out of a build's output.</summary>
 public static partial class BuildOutput
 {
-    /// <summary>The arguments a build, rebuild or clean runs with: no terminal logger animation, no repeated summary,
-    /// lines not wrapped, so every problem is one line read once. A framework given builds a project for that one alone.
-    /// Windows targeting builds a WPF or Windows Forms project off Windows
-    /// (<see cref="WindowsTargeting(string, IReadOnlyList{ProjectModel})"/>).</summary>
+    /// <summary>The arguments a build, rebuild or clean runs with, ending in <see cref="Tail"/>. A framework given builds a
+    /// project for that one alone.</summary>
     public static IReadOnlyList<string> Arguments(string target, BuildKind kind = BuildKind.Build, string? framework = null, bool windowsTargeting = false,
         string? output = null)
     {
@@ -111,13 +109,17 @@ public static partial class BuildOutput
         {
             arguments.AddRange(["--output", output]);
         }
-        if (windowsTargeting)
-        {
-            arguments.Add("-p:EnableWindowsTargeting=true");
-        }
-        arguments.AddRange(["-nologo", "-tl:off", "-clp:NoSummary;ForceNoAlign"]);
+        arguments.AddRange(Tail(windowsTargeting));
         return arguments;
     }
+
+    /// <summary>What ends a build's and a publish's command line: Windows targeting, which builds a WPF or Windows Forms
+    /// project off Windows (<see cref="WindowsTargeting(string, IReadOnlyList{ProjectModel})"/>), then no terminal logger
+    /// animation, no repeated summary and lines not wrapped, so every problem is one line read once.</summary>
+    public static IReadOnlyList<string> Tail(bool windowsTargeting) =>
+        windowsTargeting ? [$"-p:{MSBuildNames.EnableWindowsTargeting}=true", .. LoggerSwitches] : LoggerSwitches;
+
+    private static readonly string[] LoggerSwitches = ["-nologo", "-tl:off", "-clp:NoSummary;ForceNoAlign"];
 
     /// <summary>Whether a build of a target (the solution, the folder, or one project) needs EnableWindowsTargeting: a
     /// project it builds (the one named and those it references, or every one) is one the project host evaluated with it.

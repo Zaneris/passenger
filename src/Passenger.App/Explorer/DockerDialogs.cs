@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
 
 namespace Passenger.App.Explorer;
 
@@ -38,7 +39,7 @@ public sealed class DockerSupportDialog : IdeWindow
         {
             GroupName = "kind",
             IsChecked = hasDockerfile,
-            Content = Words("The .NET SDK's container support: dotnet publish /t:PublishContainer builds the image, with no Dockerfile"),
+            Content = Words($"The .NET SDK's container support: dotnet publish /t:{MSBuildNames.PublishContainer} builds the image, with no Dockerfile"),
         };
         foreach (RadioButton choice in new[] { dockerfile, sdk })
         {

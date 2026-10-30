@@ -726,18 +726,18 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         cancellation.ThrowIfCancellationRequested();
         ChildResult evaluated = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(
-            ["build", configuration.Project, "--output", output, "--no-restore", "--nologo", "-getProperty:TargetPath"], folder), cancel: cancellation);
+            ["build", configuration.Project, "--output", output, "--no-restore", "--nologo", $"-getProperty:{Passenger.Host.CarriedProperties.TargetPath}"], folder), cancel: cancellation);
         string target = evaluated.Output.Trim();
         if (!evaluated.Succeeded || !Path.IsPathFullyQualified(target) || !await BackgroundWork.Run(() => File.Exists(target), cancellation))
         {
-            throw new LaunchException("MSBuild could not resolve the built single-file AppHost TargetPath");
+            throw new LaunchException($"MSBuild could not resolve the built single-file AppHost {Passenger.Host.CarriedProperties.TargetPath}");
         }
         string Expand(string value)
         {
-            string expanded = Environment.ExpandEnvironmentVariables(value.Replace("$(ProjectDir)", folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+            string expanded = Environment.ExpandEnvironmentVariables(value.Replace($"$({MSBuildNames.ProjectDir})", folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
             if (expanded.Contains("$(", StringComparison.Ordinal))
             {
-                throw new LaunchException("Single-file AppHosts support the ProjectDir macro, not MSBuild output properties");
+                throw new LaunchException($"Single-file AppHosts support the {MSBuildNames.ProjectDir} macro, not MSBuild output properties");
             }
             return expanded;
         }

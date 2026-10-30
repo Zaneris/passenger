@@ -117,7 +117,7 @@ public sealed partial record LaunchPlan
         {
             throw new LaunchException($"{configuration.Name} cannot run here: {windows}");
         }
-        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase) { "TargetPath", "ProjectDir", RunWorkingDirectory, RunArguments, RunCommand };
+        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase) { CarriedProperties.TargetPath, MSBuildNames.ProjectDir, MSBuildNames.RunWorkingDirectory, MSBuildNames.RunArguments, MSBuildNames.RunCommand };
         foreach (string text in (string[])[configuration.Program, configuration.Arguments, configuration.WorkingDirectory, .. configuration.Environment.Values])
         {
             foreach (Match macro in Macro().Matches(text))
@@ -129,7 +129,7 @@ public sealed partial record LaunchPlan
         string Expand(string text) => System.Environment.ExpandEnvironmentVariables(
             Macro().Replace(text, macro => properties.GetValueOrDefault(macro.Groups[1].Value, string.Empty)));
 
-        string target = PathNames.Canonical(properties.GetValueOrDefault("TargetPath") is { Length: > 0 } path
+        string target = PathNames.Canonical(properties.GetValueOrDefault(CarriedProperties.TargetPath) is { Length: > 0 } path
             ? path
             : throw new LaunchException($"MSBuild could not say what {project.Name} builds"));
         List<string> arguments = [.. CommandLine.Split(Expand(configuration.Arguments))];
@@ -164,7 +164,7 @@ public sealed partial record LaunchPlan
                 program = built = target;
             }
         }
-        string? folder = configuration.WorkingDirectory is { Length: > 0 } own ? Expand(own) : properties.GetValueOrDefault(RunWorkingDirectory);
+        string? folder = configuration.WorkingDirectory is { Length: > 0 } own ? Expand(own) : properties.GetValueOrDefault(MSBuildNames.RunWorkingDirectory);
         string working = folder is not null
             ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(project.Folder, folder)))
             : System.IO.Path.GetDirectoryName(target)!;
@@ -210,21 +210,13 @@ public sealed partial record LaunchPlan
             ? System.IO.Path.Combine(stateFolder, "sandbox")
             : null;
 
-    /// <summary>The SDK's properties for where dotnet run runs a project (StartWorkingDirectory's when it sets only that), with
-    /// what arguments (StartArguments' too), and the program it starts.</summary>
-    private const string RunWorkingDirectory = "RunWorkingDirectory";
-
-    private const string RunArguments = "RunArguments";
-
-    private const string RunCommand = "RunCommand";
-
     /// <summary>The program's arguments dotnet run gives it from the project's evaluation: its RunArguments, after the SDK's
     /// own <c>exec "assembly"</c> when the project runs under dotnet; none when its RunCommand starts another program
     /// (<see cref="OtherProgram"/>), whose arguments they are.</summary>
     private static IReadOnlyList<string> ProjectArguments(IReadOnlyDictionary<string, string> properties, string target)
     {
-        IReadOnlyList<string> given = CommandLine.Split(properties.GetValueOrDefault(RunArguments));
-        string command = properties.GetValueOrDefault(RunCommand) ?? string.Empty;
+        IReadOnlyList<string> given = CommandLine.Split(properties.GetValueOrDefault(MSBuildNames.RunArguments));
+        string command = properties.GetValueOrDefault(MSBuildNames.RunCommand) ?? string.Empty;
         if (IsDotnet(command))
         {
             return given is ["exec", { } assembly, ..] && PathNames.Same(PathNames.Canonical(assembly), target) ? [.. given.Skip(2)] : [];
@@ -237,8 +229,8 @@ public sealed partial record LaunchPlan
     /// server, which serves the app to the browser); null when it runs the project's assembly or its apphost.</summary>
     private static (string Command, IReadOnlyList<string> Arguments)? OtherProgram(IReadOnlyDictionary<string, string> properties, string target)
     {
-        string command = properties.GetValueOrDefault(RunCommand) ?? string.Empty;
-        IReadOnlyList<string> given = CommandLine.Split(properties.GetValueOrDefault(RunArguments));
+        string command = properties.GetValueOrDefault(MSBuildNames.RunCommand) ?? string.Empty;
+        IReadOnlyList<string> given = CommandLine.Split(properties.GetValueOrDefault(MSBuildNames.RunArguments));
         if (IsDotnet(command))
         {
             IReadOnlyList<string> run = given is ["exec", ..] ? [.. given.Skip(1)] : given;
@@ -287,7 +279,7 @@ public sealed partial record LaunchPlan
         Dictionary<string, string> globals = ProjectModels.Properties(workspace, project);
         if (framework is not null)
         {
-            globals["TargetFramework"] = framework;
+            globals[MSBuildNames.TargetFramework] = framework;
         }
         if (target is not null)
         {

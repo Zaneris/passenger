@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.App.Run;
 
 /// <summary>What a folder publish does, as the Publish dialog shows it and a profile keeps it: the configuration, the target
@@ -21,13 +23,13 @@ public static partial class PublishProfiles
     /// as dotnet publish takes), framework, runtime, deployment and the SDK's options; the folder is what the file names.</summary>
     public static PublishOptions Options(IReadOnlyDictionary<string, string> evaluated, IReadOnlyDictionary<string, string> raw, string? framework)
     {
-        string configuration = raw.ContainsKey("Configuration") ? evaluated.GetValueOrDefault("Configuration") ?? "Release"
-            : evaluated.GetValueOrDefault("LastUsedBuildConfiguration") ?? "Release";
-        string? runtime = evaluated.GetValueOrDefault("RuntimeIdentifier");
-        bool selfContained = True(evaluated, "SelfContained") && runtime is not null;
-        string? folder = raw.GetValueOrDefault("PublishDir");
-        return new PublishOptions(configuration, framework, runtime, selfContained, True(evaluated, "PublishSingleFile") && runtime is not null,
-            True(evaluated, "PublishReadyToRun") && runtime is not null, True(evaluated, "PublishTrimmed") && selfContained, folder);
+        string configuration = raw.ContainsKey(MSBuildNames.Configuration) ? evaluated.GetValueOrDefault(MSBuildNames.Configuration) ?? "Release"
+            : evaluated.GetValueOrDefault(MSBuildNames.LastUsedBuildConfiguration) ?? "Release";
+        string? runtime = evaluated.GetValueOrDefault(MSBuildNames.RuntimeIdentifier);
+        bool selfContained = True(evaluated, MSBuildNames.SelfContained) && runtime is not null;
+        string? folder = raw.GetValueOrDefault(MSBuildNames.PublishDir);
+        return new PublishOptions(configuration, framework, runtime, selfContained, True(evaluated, MSBuildNames.PublishSingleFile) && runtime is not null,
+            True(evaluated, MSBuildNames.PublishReadyToRun) && runtime is not null, True(evaluated, MSBuildNames.PublishTrimmed) && selfContained, folder);
     }
 
     private static bool True(IReadOnlyDictionary<string, string> values, string name) =>
@@ -41,41 +43,41 @@ public static partial class PublishProfiles
     public static IReadOnlyList<(string Name, string? Value)> Properties(PublishOptions options, PublishOptions? before, IReadOnlyDictionary<string, string> raw,
         bool multiTargeted, bool fresh)
     {
-        List<(string, string?)> set = [("Configuration", options.Configuration)];
-        if (raw.ContainsKey("LastUsedBuildConfiguration"))
+        List<(string, string?)> set = [(MSBuildNames.Configuration, options.Configuration)];
+        if (raw.ContainsKey(MSBuildNames.LastUsedBuildConfiguration))
         {
-            set.Add(("LastUsedBuildConfiguration", options.Configuration));
+            set.Add((MSBuildNames.LastUsedBuildConfiguration, options.Configuration));
         }
         if (multiTargeted)
         {
-            Changed("TargetFramework", options.Framework, before?.Framework);
+            Changed(MSBuildNames.TargetFramework, options.Framework, before?.Framework);
         }
         bool runtime = options.Runtime is not null;
-        Changed("RuntimeIdentifier", options.Runtime, before?.Runtime);
+        Changed(MSBuildNames.RuntimeIdentifier, options.Runtime, before?.Runtime);
         string selfContained = Word(options.SelfContained && runtime);
         if (runtime)
         {
-            set.Add(("SelfContained", selfContained));
+            set.Add((MSBuildNames.SelfContained, selfContained));
         }
         else
         {
-            Changed("SelfContained", selfContained, Word(before?.SelfContained == true));
+            Changed(MSBuildNames.SelfContained, selfContained, Word(before?.SelfContained == true));
         }
-        if (raw.ContainsKey("PublishSelfContained"))
+        if (raw.ContainsKey(MSBuildNames.PublishSelfContained))
         {
-            set.Add(("PublishSelfContained", selfContained));
+            set.Add((MSBuildNames.PublishSelfContained, selfContained));
         }
-        Changed("PublishSingleFile", Word(options.SingleFile && runtime), Word(before?.SingleFile == true));
-        Changed("PublishReadyToRun", Word(options.ReadyToRun && runtime), Word(before?.ReadyToRun == true));
-        Changed("PublishTrimmed", Word(options.Trimmed && options.SelfContained && runtime), Word(before?.Trimmed == true));
+        Changed(MSBuildNames.PublishSingleFile, Word(options.SingleFile && runtime), Word(before?.SingleFile == true));
+        Changed(MSBuildNames.PublishReadyToRun, Word(options.ReadyToRun && runtime), Word(before?.ReadyToRun == true));
+        Changed(MSBuildNames.PublishTrimmed, Word(options.Trimmed && options.SelfContained && runtime), Word(before?.Trimmed == true));
         if (options.Folder is { Length: > 0 } folder)
         {
-            Changed("PublishDir", folder, before?.Folder);
+            Changed(MSBuildNames.PublishDir, folder, before?.Folder);
         }
         if (fresh)
         {
-            set.Add(("PublishProtocol", "FileSystem"));
-            set.Add(("_TargetId", "Folder"));
+            set.Add((MSBuildNames.PublishProtocol, "FileSystem"));
+            set.Add((MSBuildNames.PublishTargetId, "Folder"));
         }
         return set;
 

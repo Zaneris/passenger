@@ -811,7 +811,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             Dictionary<string, string> globals = global::Passenger.App.Workspace.ProjectModels.Properties(null, each);
             if (framework is not null)
             {
-                globals["TargetFramework"] = framework;
+                globals[MSBuildNames.TargetFramework] = framework;
             }
             try
             {

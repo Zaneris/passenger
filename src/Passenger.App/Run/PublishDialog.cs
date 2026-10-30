@@ -437,8 +437,8 @@ public sealed class PublishDialog : IdeWindow
         {
             return;
         }
-        string? framework = multi ? said.GetValueOrDefault("TargetFramework") is { Length: > 0 } named ? named : project.TargetFrameworks[0] : null;
-        string? configuration = profile is null || !said.ContainsKey("Configuration") ? said.GetValueOrDefault("LastUsedBuildConfiguration") ?? "Release" : null;
+        string? framework = multi ? said.GetValueOrDefault(MSBuildNames.TargetFramework) is { Length: > 0 } named ? named : project.TargetFrameworks[0] : null;
+        string? configuration = profile is null || !said.ContainsKey(MSBuildNames.Configuration) ? said.GetValueOrDefault(MSBuildNames.LastUsedBuildConfiguration) ?? "Release" : null;
         PropertiesAnswer answer;
         try
         {
@@ -474,7 +474,7 @@ public sealed class PublishDialog : IdeWindow
             Choose(configurationBox, options.Configuration);
             frameworkBox.SelectedItem = options.Framework;
             List<string> runtimes = [Portable];
-            foreach (string runtime in (answer.Values.GetValueOrDefault("RuntimeIdentifiers") ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            foreach (string runtime in (answer.Values.GetValueOrDefault(MSBuildNames.RuntimeIdentifiers) ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Concat(PublishProfiles.CommonRuntimes).Append(options.Runtime ?? Portable))
             {
                 if (!runtimes.Contains(runtime, StringComparer.OrdinalIgnoreCase))

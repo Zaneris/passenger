@@ -171,6 +171,7 @@ public sealed record EvaluatedProperty(string Value, bool Own);
 /// <summary>The properties an evaluation carries beyond what the Solution view shows (<see cref="EvaluatedProject.Properties"/>):
 /// Docker's and the .NET SDK container's, by which a project's container run configurations are found and made, and the
 /// user secrets a container of it is given.</summary>
+[IdentifierHome]
 public static class CarriedProperties
 {
     public const string EnableSdkContainerSupport = "EnableSdkContainerSupport";

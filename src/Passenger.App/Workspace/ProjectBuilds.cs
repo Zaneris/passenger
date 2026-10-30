@@ -371,11 +371,11 @@ public sealed class ProjectBuilds
     public static Dictionary<string, string> Properties(IReadOnlyDictionary<string, string> solution) => new(solution, StringComparer.OrdinalIgnoreCase)
     {
         // What Roslyn's server gives its own build host, so Razor's generated C# is in the builds as it would be there.
-        ["RazorDesignTimeTargets"] = Path.Combine(RoslynServerFolder.Carried, "Targets", "Microsoft.NET.Sdk.Razor.DesignTime.targets"),
+        [MSBuildNames.RazorDesignTimeTargets] = Path.Combine(RoslynServerFolder.Carried, "Targets", "Microsoft.NET.Sdk.Razor.DesignTime.targets"),
     };
 
     /// <summary>The solution the projects are built under now, by the path its global properties give.</summary>
-    private string? Under() => solution().GetValueOrDefault("SolutionPath");
+    private string? Under() => solution().GetValueOrDefault(MSBuildNames.SolutionPath);
 
     private async Task RoundAsync(int mine, string following, List<string> round, Dictionary<string, string> properties, CancellationToken cancel)
     {
@@ -527,7 +527,7 @@ public sealed record ProjectBuildCache : IStateDocument<ProjectBuildCache>
         }
         foreach (string path in projects.Where(p => p.Value?["diagnostics"] is JsonArray said
             && said.Any(d => d?["message"] is JsonValue message && message.GetValueKind() == System.Text.Json.JsonValueKind.String
-                && message.GetValue<string>().Contains("EnableWindowsTargeting", StringComparison.Ordinal)))
+                && message.GetValue<string>().Contains(MSBuildNames.EnableWindowsTargeting, StringComparison.Ordinal)))
             .Select(p => p.Key).ToList())
         {
             projects.Remove(path);

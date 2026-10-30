@@ -608,7 +608,7 @@ public sealed class DebugSession : IAsyncDisposable
             }
         }
         // A test runner under a debugger hands these on, and they change the debuggee's stacks (ReadyToRun code).
-        foreach (string variable in (string[])["COMPLUS_FORCEENC", "COMPLUS_ReadyToRun", "COMPLUS_ZapDisable", "DOTNET_GCConserveMemory", "DOTNET_GCHeapCount", "DOTNET_GCNoAffinitize", RuntimeVariables.ModifiableAssemblies, "DOTNET_MULTILEVEL_LOOKUP", "DOTNET_TieredPGO", "DOTNET_gcServer", "_NO_DEBUG_HEAP"])
+        foreach (string variable in (string[])["COMPLUS_FORCEENC", "COMPLUS_ReadyToRun", "COMPLUS_ZapDisable", "DOTNET_GCConserveMemory", "DOTNET_GCHeapCount", "DOTNET_GCNoAffinitize", RuntimeVariables.ModifiableAssemblies, "DOTNET_MULTILEVEL_LOOKUP", "DOTNET_TieredPGO", RuntimeVariables.GcServer, "_NO_DEBUG_HEAP"])
         {
             start.Environment.Remove(variable);
         }

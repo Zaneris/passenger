@@ -163,17 +163,17 @@ public static class ContainerConfigurations
         }
         string folder = Path.GetDirectoryName(dcproj)!;
         string? Property(string name) => root.Descendants().FirstOrDefault(e => e.Name.LocalName == name && e.Parent?.Name.LocalName == "PropertyGroup")?.Value.Trim();
-        string basis = Property("DockerComposeBaseFilePath") is { Length: > 0 } named ? named : "docker-compose";
+        string basis = Property(MSBuildNames.DockerComposeBaseFilePath) is { Length: > 0 } named ? named : "docker-compose";
         string file = new[] { ".yml", ".yaml" }.Select(e => Path.Combine(folder, basis + e)).FirstOrDefault(File.Exists) ?? Path.Combine(folder, basis + ".yml");
         List<string> files = [PathNames.Canonical(file), .. ((string?[])[Override(file)]).OfType<string>().Select(PathNames.Canonical)];
-        foreach (string more in (Property("AdditionalComposeFilePaths") ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (string more in (Property(MSBuildNames.AdditionalComposeFilePaths) ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             files.Add(PathNames.Canonical(Path.Combine(folder, more.Replace('\\', '/'))));
         }
         string name = Path.GetFileNameWithoutExtension(dcproj);
-        string service = Property("DockerServiceName") ?? string.Empty;
-        string url = Property("DockerServiceUrl") ?? string.Empty;
-        bool browser = string.Equals(Property("DockerLaunchAction"), "LaunchBrowser", StringComparison.OrdinalIgnoreCase);
+        string service = Property(MSBuildNames.DockerServiceName) ?? string.Empty;
+        string url = Property(MSBuildNames.DockerServiceUrl) ?? string.Empty;
+        bool browser = string.Equals(Property(MSBuildNames.DockerLaunchAction), "LaunchBrowser", StringComparison.OrdinalIgnoreCase);
         RunConfiguration own = new()
         {
             Name = name,

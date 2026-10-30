@@ -411,9 +411,9 @@ public sealed class LanguageServer : IAsyncDisposable
             start.Environment[MSBuildNames.EnableWindowsTargeting] = "true";
         }
         // The server collector kept 3 to 5 times the live heap and never gave it back; the workstation one holds near it (#559).
-        if (!start.Environment.ContainsKey("DOTNET_gcServer"))
+        if (!start.Environment.ContainsKey(RuntimeVariables.GcServer))
         {
-            start.Environment["DOTNET_gcServer"] = "0";
+            start.Environment[RuntimeVariables.GcServer] = "0";
         }
         LanguageServer server2 = await StartCoreAsync(start, folder, logFolder, ClientCapabilities.Value, null, options, null, null, cancel).ConfigureAwait(false);
         if (copy is not null)

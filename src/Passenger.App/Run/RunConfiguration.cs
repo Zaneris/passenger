@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Passenger.App.Aspire;
 using Passenger.App.State;
+using Passenger.Core;
 using Passenger.Workspace;
 
 namespace Passenger.App.Run;
@@ -85,7 +86,7 @@ public sealed record RunConfiguration
 
     /// <summary>The working folder of one made from a launch profile that names none, and of a file-based program's: where
     /// dotnet run runs it, the project's RunWorkingDirectory, which when empty leaves the project's own folder.</summary>
-    public const string DotnetRunFolder = "$(RunWorkingDirectory)";
+    public const string DotnetRunFolder = $"$({MSBuildNames.RunWorkingDirectory})";
 
     public bool BuildBeforeLaunch { get; init; } = true;
 

@@ -27,7 +27,7 @@ internal sealed record EfTold(string Context, string Others, string Built, IRead
             Dictionary<string, string> properties = new(StringComparer.OrdinalIgnoreCase);
             if (each == setting.Startup && setting.Framework is { } framework)
             {
-                properties["TargetFramework"] = framework;
+                properties[MSBuildNames.TargetFramework] = framework;
             }
             try
             {

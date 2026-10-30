@@ -281,11 +281,11 @@ public sealed class ProjectModels
         Dictionary<string, string> properties = new(StringComparer.OrdinalIgnoreCase);
         if (workspace.Solution is { } solution)
         {
-            properties["SolutionDir"] = Path.GetDirectoryName(solution.Path)! + Path.DirectorySeparatorChar;
-            properties["SolutionPath"] = solution.Path;
-            properties["SolutionName"] = solution.Name;
-            properties["SolutionFileName"] = Path.GetFileName(solution.Path);
-            properties["SolutionExt"] = Path.GetExtension(solution.Path);
+            properties[MSBuildNames.SolutionDir] = Path.GetDirectoryName(solution.Path)! + Path.DirectorySeparatorChar;
+            properties[MSBuildNames.SolutionPath] = solution.Path;
+            properties[MSBuildNames.SolutionName] = solution.Name;
+            properties[MSBuildNames.SolutionFileName] = Path.GetFileName(solution.Path);
+            properties[MSBuildNames.SolutionExt] = Path.GetExtension(solution.Path);
         }
         return properties;
     }
@@ -297,7 +297,7 @@ public sealed class ProjectModels
         Dictionary<string, string> properties = workspace is null ? new(StringComparer.OrdinalIgnoreCase) : Properties(workspace);
         if (project.WindowsTargeting)
         {
-            properties["EnableWindowsTargeting"] = "true";
+            properties[MSBuildNames.EnableWindowsTargeting] = "true";
         }
         return properties;
     }

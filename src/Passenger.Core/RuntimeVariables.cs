@@ -23,6 +23,9 @@ public static class RuntimeVariables
     /// as each module loads.</summary>
     public const string ModifiableAssemblies = "DOTNET_MODIFIABLE_ASSEMBLIES";
 
+    /// <summary>"0" has the runtime collect garbage with the workstation collector, "1" with the server one.</summary>
+    public const string GcServer = "DOTNET_gcServer";
+
     /// <summary>"1" lets the host roll a program forward onto a prerelease runtime when no release one will do.</summary>
     public const string RollForwardToPrerelease = "DOTNET_ROLL_FORWARD_TO_PRERELEASE";
 

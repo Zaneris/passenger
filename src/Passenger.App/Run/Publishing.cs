@@ -29,18 +29,9 @@ public sealed record PublishRequest(string Project, string? Profile, string? Con
     /// <summary>How the publish is named in the status bar and the Build window: "Hello (FolderProfile)".</summary>
     public string Shown => Profile is null ? Name : $"{Name} ({Profile})";
 
-    /// <summary>The dotnet publish command line: the same as a person types to publish with the profile, plus the Build
-    /// window's logger options (one line a problem, read once) and Windows targeting where the project host gave it.</summary>
-    public IReadOnlyList<string> Arguments(bool windowsTargeting)
-    {
-        List<string> arguments = ["publish", Project, .. Command()];
-        if (windowsTargeting)
-        {
-            arguments.Add("-p:EnableWindowsTargeting=true");
-        }
-        arguments.AddRange(["-nologo", "-tl:off", "-clp:NoSummary;ForceNoAlign"]);
-        return arguments;
-    }
+    /// <summary>The dotnet publish command line: the same as a person types to publish with the profile, ending as a build's
+    /// does (<see cref="BuildOutput.Tail"/>), Windows targeting given where the project host gave it.</summary>
+    public IReadOnlyList<string> Arguments(bool windowsTargeting) => ["publish", Project, .. Command(), .. BuildOutput.Tail(windowsTargeting)];
 
     /// <summary>What follows dotnet publish and the project: its configuration, framework and profile.</summary>
     public IReadOnlyList<string> Command()
@@ -52,7 +43,7 @@ public sealed record PublishRequest(string Project, string? Profile, string? Con
         }
         if (Profile is not null)
         {
-            arguments.Add($"-p:PublishProfile={Profile}");
+            arguments.Add($"-p:{MSBuildNames.PublishProfile}={Profile}");
         }
         return arguments;
     }
@@ -67,13 +58,14 @@ public static partial class PublishProfiles
     /// <summary>What a profile's or a project's evaluation is asked for.</summary>
     private static readonly string[] Names =
     [
-        "Configuration", "LastUsedBuildConfiguration", "TargetFramework", "TargetFrameworks", "RuntimeIdentifier", "RuntimeIdentifiers",
-        "SelfContained", "PublishSingleFile", "PublishReadyToRun", "PublishTrimmed", "PublishAot", "PublishDir", "PublishUrl",
-        "WebPublishMethod", CarriedProperties.PublishProfileRootFolder, "NETCoreSdkRuntimeIdentifier",
+        MSBuildNames.Configuration, MSBuildNames.LastUsedBuildConfiguration, MSBuildNames.TargetFramework, MSBuildNames.TargetFrameworks,
+        MSBuildNames.RuntimeIdentifier, MSBuildNames.RuntimeIdentifiers, MSBuildNames.SelfContained, MSBuildNames.PublishSingleFile,
+        MSBuildNames.PublishReadyToRun, MSBuildNames.PublishTrimmed, MSBuildNames.PublishAot, MSBuildNames.PublishDir, MSBuildNames.PublishUrl,
+        MSBuildNames.WebPublishMethod, CarriedProperties.PublishProfileRootFolder, MSBuildNames.NETCoreSdkRuntimeIdentifier,
     ];
 
     /// <summary>What a profile's file names a folder publish by: Visual Studio's WebPublishMethod or PublishProtocol, or none.</summary>
-    private static readonly string[] Methods = ["WebPublishMethod", "PublishProtocol", "PublishProvider"];
+    private static readonly string[] Methods = [MSBuildNames.WebPublishMethod, MSBuildNames.PublishProtocol, MSBuildNames.PublishProvider];
 
     /// <summary>The runtimes offered beside the project's own: this machine's, then the systems .NET runs on.</summary>
     public static IReadOnlyList<string> CommonRuntimes { get; } =
@@ -175,22 +167,22 @@ public static partial class PublishProfiles
         string? runtime = null)
     {
         Dictionary<string, string> globals = ProjectModels.Properties(workspace, project);
-        globals["_IsPublishing"] = "true";
+        globals[MSBuildNames.IsPublishing] = "true";
         if (profile is not null)
         {
-            globals["PublishProfile"] = profile;
+            globals[MSBuildNames.PublishProfile] = profile;
         }
         if (configuration is not null)
         {
-            globals["Configuration"] = configuration;
+            globals[MSBuildNames.Configuration] = configuration;
         }
         if (framework is not null)
         {
-            globals["TargetFramework"] = framework;
+            globals[MSBuildNames.TargetFramework] = framework;
         }
         if (runtime is not null)
         {
-            globals["RuntimeIdentifier"] = runtime;
+            globals[MSBuildNames.RuntimeIdentifier] = runtime;
         }
         return globals;
     }
@@ -223,7 +215,7 @@ public static partial class PublishProfiles
             if (multi && framework is null && request.Profile is { } named && File.Exists(Path(project.Path, null, named)))
             {
                 // The outer build of a multi-targeted project never imports the profile: its framework is read from the file.
-                framework = PubXml.Read(File.ReadAllText(Path(project.Path, null, named))).GetValueOrDefault("TargetFramework");
+                framework = PubXml.Read(File.ReadAllText(Path(project.Path, null, named))).GetValueOrDefault(MSBuildNames.TargetFramework);
             }
             framework = multi ? framework is { Length: > 0 } ? framework : project.TargetFrameworks[0] : null;
             PropertiesAnswer read = await EvaluateAsync(open, project.Path, Globals(workspace, project, request.Profile, request.Configuration, framework), cancel);
@@ -240,11 +232,11 @@ public static partial class PublishProfiles
                     return (null, $"{request.Name} has no publish profile {profile}: {file} is not there");
                 }
                 IReadOnlyDictionary<string, string> raw = PubXml.Read(await File.ReadAllTextAsync(file, cancel));
-                configuration ??= raw.ContainsKey("Configuration") ? read.Values.GetValueOrDefault("Configuration")
-                    : raw.GetValueOrDefault("LastUsedBuildConfiguration") is { Length: > 0 } last ? last : null;
+                configuration ??= raw.ContainsKey(MSBuildNames.Configuration) ? read.Values.GetValueOrDefault(MSBuildNames.Configuration)
+                    : raw.GetValueOrDefault(MSBuildNames.LastUsedBuildConfiguration) is { Length: > 0 } last ? last : null;
             }
             configuration ??= "Release";
-            if (!string.Equals(read.Values.GetValueOrDefault("Configuration"), configuration, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(read.Values.GetValueOrDefault(MSBuildNames.Configuration), configuration, StringComparison.OrdinalIgnoreCase))
             {
                 read = await EvaluateAsync(open, project.Path, Globals(workspace, project, request.Profile, configuration, framework), cancel);
             }
@@ -263,13 +255,13 @@ public static partial class PublishProfiles
     /// <summary>The folder a publish puts the app in, from its evaluation: PublishDir, from the project's folder; never a web
     /// profile's PublishUrl, which dotnet publish does not copy to.</summary>
     public static string? FolderOf(string project, IReadOnlyDictionary<string, string> evaluated) =>
-        evaluated.GetValueOrDefault("PublishDir") is { } named ? Full(project, named) : null;
+        evaluated.GetValueOrDefault(MSBuildNames.PublishDir) is { } named ? Full(project, named) : null;
 
     /// <summary>Where Visual Studio copies a web profile's app on to after the publish (its FileSystem PublishUrl), which
     /// dotnet publish leaves where it published it; null for any other profile.</summary>
     public static string? VisualStudioCopy(string project, IReadOnlyDictionary<string, string> evaluated) =>
-        string.Equals(evaluated.GetValueOrDefault("WebPublishMethod"), "FileSystem", StringComparison.OrdinalIgnoreCase)
-            && evaluated.GetValueOrDefault("PublishUrl") is { Length: > 0 } url ? Full(project, url) : null;
+        string.Equals(evaluated.GetValueOrDefault(MSBuildNames.WebPublishMethod), "FileSystem", StringComparison.OrdinalIgnoreCase)
+            && evaluated.GetValueOrDefault(MSBuildNames.PublishUrl) is { Length: > 0 } url ? Full(project, url) : null;
 
     /// <summary>A folder as a profile names it, made a full path from the project's folder, as MSBuild's tasks take it.</summary>
     public static string Full(string project, string named) =>

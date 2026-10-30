@@ -35,7 +35,7 @@ public static class UserSecrets
     /// evaluation, or one it has yet to take); null for none.</summary>
     public static string? Of(string project, string? evaluated, Func<string, string?> text) =>
         evaluated is { Length: > 0 } ? evaluated
-        : text(project) is { } written && ProjectEdits.PropertyIn(written, "UserSecretsId") is { Length: > 0 } set ? set : null;
+        : text(project) is { } written && ProjectEdits.PropertyIn(written, Passenger.Host.CarriedProperties.UserSecretsId) is { Length: > 0 } set ? set : null;
 
     /// <summary>A project's user secrets for a command to keep a value in: its id (<see cref="Of"/>), else a new GUID, as
     /// <c>dotnet user-secrets init</c> gives one, with the change that sets it in the project file; or why it can have none.</summary>
@@ -51,12 +51,12 @@ public static class UserSecrets
             {
                 return (null, $"{name} has no UserSecretsId, and {Path.GetFileName(project)} does not read to be given one");
             }
-            if (ProjectEdits.WithProperty(now, project, "UserSecretsId", made) is { Text: null, Problem: var problem })
+            if (ProjectEdits.WithProperty(now, project, Passenger.Host.CarriedProperties.UserSecretsId, made) is { Text: null, Problem: var problem })
             {
                 return (null, $"{name} has no UserSecretsId, and could not be given one: {problem}");
             }
             id = made;
-            given = new XamlFileChange(project, then => ProjectEdits.WithProperty(then, project, "UserSecretsId", made) is { Text: { } changed } && changed != then
+            given = new XamlFileChange(project, then => ProjectEdits.WithProperty(then, project, Passenger.Host.CarriedProperties.UserSecretsId, made) is { Text: { } changed } && changed != then
                 ? [Passenger.Text.TextEdit.Between(then, changed)] : []);
         }
         return FileOf(id) is { } file ? (new UserSecretsFile(id, PathNames.Canonical(file), given), null)

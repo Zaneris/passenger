@@ -15,9 +15,10 @@ internal sealed class EfLaunch
     /// <summary>What dotnet ef reads of each project, by MSBuild's names.</summary>
     public static readonly IReadOnlyList<string> Properties =
     [
-        "AssemblyName", "Language", "OutputPath", "ProjectAssetsFile", "ProjectDir", "RootNamespace", "RuntimeFrameworkVersion", "TargetFileName",
-        "TargetFrameworkMoniker", "Nullable", "TargetFramework", "RuntimeIdentifier", "ProjectDepsFileName", "ProjectRuntimeConfigFileName", "DesignAssembly",
-        "PlatformTarget", "TargetPlatformIdentifier",
+        MSBuildNames.AssemblyName, MSBuildNames.Language, MSBuildNames.OutputPath, Host.CarriedProperties.ProjectAssetsFile, MSBuildNames.ProjectDir,
+        Host.CarriedProperties.RootNamespace, MSBuildNames.RuntimeFrameworkVersion, MSBuildNames.TargetFileName, MSBuildNames.TargetFrameworkMoniker,
+        MSBuildNames.Nullable, MSBuildNames.TargetFramework, MSBuildNames.RuntimeIdentifier, MSBuildNames.ProjectDepsFileName,
+        MSBuildNames.ProjectRuntimeConfigFileName, MSBuildNames.DesignAssembly, MSBuildNames.PlatformTarget, MSBuildNames.TargetPlatformIdentifier,
     ];
 
     private readonly string efDll;
@@ -45,21 +46,21 @@ internal sealed class EfLaunch
     {
         bool eleven = tool.Major >= 11;
         if (tool.EfDll(Path.GetDirectoryName(startupPath)!) is not { } efDll
-            || !Value(startup, "TargetFrameworkMoniker").StartsWith(".NETCoreApp,Version=v", StringComparison.Ordinal)
-            || !System.Version.TryParse(Value(startup, "TargetFrameworkMoniker")[".NETCoreApp,Version=v".Length..], out Version? version)
+            || !Value(startup, MSBuildNames.TargetFrameworkMoniker).StartsWith(".NETCoreApp,Version=v", StringComparison.Ordinal)
+            || !System.Version.TryParse(Value(startup, MSBuildNames.TargetFrameworkMoniker)[".NETCoreApp,Version=v".Length..], out Version? version)
             || version.Major < (eleven ? 10 : 2)
-            || (eleven && (defaults?.Beyond == true || Value(startup, "TargetPlatformIdentifier").Length > 0 || Value(startup, "DesignAssembly").Length > 0
-                || (Value(startup, "PlatformTarget") is { Length: > 0 } platform && !platform.Equals("AnyCPU", StringComparison.OrdinalIgnoreCase)))))
+            || (eleven && (defaults?.Beyond == true || Value(startup, MSBuildNames.TargetPlatformIdentifier).Length > 0 || Value(startup, MSBuildNames.DesignAssembly).Length > 0
+                || (Value(startup, MSBuildNames.PlatformTarget) is { Length: > 0 } platform && !platform.Equals("AnyCPU", StringComparison.OrdinalIgnoreCase)))))
         {
             return null;
         }
-        string startupFolder = Path.TrimEndingDirectorySeparator(Separated(Value(startup, "ProjectDir")));
-        string target = Path.GetFullPath(Path.Combine(startupFolder, Separated(Value(startup, "OutputPath"))));
-        string assets = Separated(Value(startup, "ProjectAssetsFile"));
+        string startupFolder = Path.TrimEndingDirectorySeparator(Separated(Value(startup, MSBuildNames.ProjectDir)));
+        string target = Path.GetFullPath(Path.Combine(startupFolder, Separated(Value(startup, MSBuildNames.OutputPath))));
+        string assets = Separated(Value(startup, Host.CarriedProperties.ProjectAssetsFile));
         // dotnet-ef 11 names them by the SDK's properties, 10 by the assembly.
-        string deps = Path.Combine(target, eleven && Value(startup, "ProjectDepsFileName") is { Length: > 0 } depsFile ? depsFile : Value(startup, "AssemblyName") + ".deps.json");
-        string runtimeConfig = Path.Combine(target, eleven && Value(startup, "ProjectRuntimeConfigFileName") is { Length: > 0 } configFile
-            ? configFile : Value(startup, "AssemblyName") + ".runtimeconfig.json");
+        string deps = Path.Combine(target, eleven && Value(startup, MSBuildNames.ProjectDepsFileName) is { Length: > 0 } depsFile ? depsFile : Value(startup, MSBuildNames.AssemblyName) + ".deps.json");
+        string runtimeConfig = Path.Combine(target, eleven && Value(startup, MSBuildNames.ProjectRuntimeConfigFileName) is { Length: > 0 } configFile
+            ? configFile : Value(startup, MSBuildNames.AssemblyName) + ".runtimeconfig.json");
         if (startupFolder.Length == 0 || !File.Exists(deps) || Read(assets) is not { } restored)
         {
             return null;
@@ -77,18 +78,18 @@ internal sealed class EfLaunch
             {
                 host.AddRange(["--runtimeconfig", runtimeConfig]);
             }
-            else if (Value(startup, "RuntimeFrameworkVersion") is { Length: > 0 } fx)
+            else if (Value(startup, MSBuildNames.RuntimeFrameworkVersion) is { Length: > 0 } fx)
             {
                 host.AddRange(["--fx-version", fx]);
             }
             List<string> projects =
             [
-                "--assembly", Path.Combine(target, Value(project, "TargetFileName")), "--project", projectPath,
-                "--startup-assembly", Path.Combine(target, Value(startup, "TargetFileName")), "--startup-project", startupPath,
-                "--project-dir", Separated(Value(project, "ProjectDir")), "--root-namespace", Value(project, "RootNamespace"), "--language", Value(project, "Language"),
-                "--framework", Value(startup, "TargetFramework"), "--design-assembly", design,
+                "--assembly", Path.Combine(target, Value(project, MSBuildNames.TargetFileName)), "--project", projectPath,
+                "--startup-assembly", Path.Combine(target, Value(startup, MSBuildNames.TargetFileName)), "--startup-project", startupPath,
+                "--project-dir", Separated(Value(project, MSBuildNames.ProjectDir)), "--root-namespace", Value(project, Host.CarriedProperties.RootNamespace), "--language", Value(project, MSBuildNames.Language),
+                "--framework", Value(startup, MSBuildNames.TargetFramework), "--design-assembly", design,
             ];
-            if (Value(project, "Nullable") is { } nullable && (nullable.Equals("enable", StringComparison.OrdinalIgnoreCase) || nullable.Equals("annotations", StringComparison.OrdinalIgnoreCase)))
+            if (Value(project, MSBuildNames.Nullable) is { } nullable && (nullable.Equals("enable", StringComparison.OrdinalIgnoreCase) || nullable.Equals("annotations", StringComparison.OrdinalIgnoreCase)))
             {
                 projects.Add("--nullable");
             }
@@ -158,8 +159,8 @@ internal sealed class EfLaunch
         {
             return null;
         }
-        string framework = Value(startup, "TargetFramework");
-        string runtime = Value(startup, "RuntimeIdentifier");
+        string framework = Value(startup, MSBuildNames.TargetFramework);
+        string runtime = Value(startup, MSBuildNames.RuntimeIdentifier);
         JsonProperty[] all = [.. targets.EnumerateObject()];
         JsonProperty? chosen = all.Cast<JsonProperty?>().FirstOrDefault(t => runtime.Length > 0 && t!.Value.Name.Equals($"{framework}/{runtime}", StringComparison.OrdinalIgnoreCase))
             ?? all.Cast<JsonProperty?>().FirstOrDefault(t => t!.Value.Name.Equals(framework, StringComparison.OrdinalIgnoreCase))

@@ -45,11 +45,11 @@ public static class UpToDate
         Dictionary<string, string> properties = new(StringComparer.OrdinalIgnoreCase);
         if (steps[asked[0]].Framework is { } framework)
         {
-            properties["TargetFramework"] = framework;
+            properties[MSBuildNames.TargetFramework] = framework;
         }
         if (windowsTargeting)
         {
-            properties["EnableWindowsTargeting"] = "true";
+            properties[MSBuildNames.EnableWindowsTargeting] = "true";
         }
         IReadOnlyList<BuildInputs> inputs;
         string sdk;

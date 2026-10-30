@@ -93,11 +93,11 @@ public partial class MainWindow
     private async Task<string?> AddContainerPropertiesAsync(DockerProject project, CommandHistory.Recording? into)
     {
         string? Write() =>
-            (project.Web ? null : ProjectEdits.SetProperty(project.Path, "EnableSdkContainerSupport", "true"))
-            ?? ProjectEdits.SetProperty(project.Path, "ContainerRepository", project.Service);
+            (project.Web ? null : ProjectEdits.SetProperty(project.Path, Passenger.Host.CarriedProperties.EnableSdkContainerSupport, "true"))
+            ?? ProjectEdits.SetProperty(project.Path, Passenger.Host.CarriedProperties.ContainerRepository, project.Service);
         string? problem = await ChangeFileAsync("Add Docker Support", [project.Path], Write, into);
         return problem is null
-            ? DockerSaid(null, $"{project.Name} builds its image with the SDK: dotnet publish /t:PublishContainer makes {project.Service}")
+            ? DockerSaid(null, $"{project.Name} builds its image with the SDK: dotnet publish /t:{MSBuildNames.PublishContainer} makes {project.Service}")
             : DockerSaid($"{project.Name} could not be changed: {problem}");
     }
 

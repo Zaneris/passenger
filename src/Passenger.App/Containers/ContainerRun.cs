@@ -9,6 +9,7 @@ using Passenger.App.Telemetry;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Host;
 using Passenger.Text;
 using Passenger.Workspace;
 
@@ -159,10 +160,13 @@ public static class ContainerPlans
             single = projects.FirstOrDefault(p => PathNames.Same(p.Path, configuration.Project))
                 ?? throw new LaunchException($"{configuration.Name} cannot run: its project {Path.GetFileName(configuration.Project)} is not loaded in the open folder");
             properties = await LaunchPlan.EvaluateAsync(single, LaunchPlan.FrameworkOf(configuration.Framework, single),
-                ["TargetPath", "TargetDir", "AssemblyName", "DockerfileContext", "DockerfileFile", "DockerfileFastModeStage", "ContainerDevelopmentMode",
-                    "DockerfileBuildArguments", "DockerfileRunArguments", "DockerfileTag", "ContainerBaseImage", "ContainerPort", "RuntimeIdentifier", "SelfContained"],
-                workspace, cancel, configuration.Kind == RunKind.SdkContainer ? "ComputeContainerBaseImage" : null);
-            if (configuration.Kind == RunKind.Dockerfile && string.Equals(properties.GetValueOrDefault("ContainerDevelopmentMode"), "Regular", StringComparison.OrdinalIgnoreCase))
+                [
+                    CarriedProperties.TargetPath, MSBuildNames.TargetDir, MSBuildNames.AssemblyName, CarriedProperties.DockerfileContext, CarriedProperties.DockerfileFile,
+                    CarriedProperties.DockerfileFastModeStage, CarriedProperties.ContainerDevelopmentMode, MSBuildNames.DockerfileBuildArguments, MSBuildNames.DockerfileRunArguments,
+                    MSBuildNames.DockerfileTag, CarriedProperties.ContainerBaseImage, MSBuildNames.ContainerPort, MSBuildNames.RuntimeIdentifier, MSBuildNames.SelfContained,
+                ],
+                workspace, cancel, configuration.Kind == RunKind.SdkContainer ? MSBuildNames.ComputeContainerBaseImage : null);
+            if (configuration.Kind == RunKind.Dockerfile && string.Equals(properties.GetValueOrDefault(CarriedProperties.ContainerDevelopmentMode), "Regular", StringComparison.OrdinalIgnoreCase))
             {
                 mode = ContainerMode.Images;
             }
@@ -171,8 +175,8 @@ public static class ContainerPlans
             {
                 string repository = $"passenger-{Slug(configuration.Name)}-{ContainerLabels.FolderValue(workspace.Folder)[..8]}";
                 properties = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase) { ["PassengerImage"] = $"{repository}:{SdkImageTag}" };
-                publish = ["publish", single.Path, "-t:PublishContainer", "-c", "Debug", $"-p:ContainerRepository={repository}", $"-p:ContainerImageTag={SdkImageTag}",
-                    "-nologo"];
+                publish = ["publish", single.Path, $"-t:{MSBuildNames.PublishContainer}", "-c", "Debug", $"-p:{CarriedProperties.ContainerRepository}={repository}",
+                    $"-p:{MSBuildNames.ContainerImageTag}={SdkImageTag}", "-nologo"];
             }
             string service = DockerFiles.ServiceName(single.Name.Split(' ')[0]);
             fixedProjects[service] = single.Path;
@@ -204,23 +208,27 @@ public static class ContainerPlans
             }
             IReadOnlyDictionary<string, string> its = single is not null && PathNames.Same(project.Path, single.Path) ? properties
                 : await LaunchPlan.EvaluateAsync(project, LaunchPlan.FrameworkOf(string.Empty, project),
-                    ["TargetPath", "TargetDir", "AssemblyName", "DockerfileFastModeStage", "RuntimeIdentifier", "SelfContained"], workspace, cancel);
-            string output = its.GetValueOrDefault("TargetDir") is { Length: > 0 } dir ? Path.TrimEndingDirectorySeparator(dir)
-                : Path.GetDirectoryName(its.GetValueOrDefault("TargetPath") ?? string.Empty) ?? project.Folder;
-            string assembly = its.GetValueOrDefault("AssemblyName") is { Length: > 0 } named ? named : Path.GetFileNameWithoutExtension(project.Path);
+                    [
+                        CarriedProperties.TargetPath, MSBuildNames.TargetDir, MSBuildNames.AssemblyName, CarriedProperties.DockerfileFastModeStage,
+                        MSBuildNames.RuntimeIdentifier, MSBuildNames.SelfContained,
+                    ],
+                    workspace, cancel);
+            string output = its.GetValueOrDefault(MSBuildNames.TargetDir) is { Length: > 0 } dir ? Path.TrimEndingDirectorySeparator(dir)
+                : Path.GetDirectoryName(its.GetValueOrDefault(CarriedProperties.TargetPath) ?? string.Empty) ?? project.Folder;
+            string assembly = its.GetValueOrDefault(MSBuildNames.AssemblyName) is { Length: > 0 } named ? named : Path.GetFileNameWithoutExtension(project.Path);
             ServiceStart action = configuration.ServiceActions.GetValueOrDefault(service.Name, ServiceStart.Run);
             DockerfileStages? stages = service.DockerfilePath is { } dockerfile && File.Exists(dockerfile) ? DockerfileStages.Read(File.ReadAllText(dockerfile)) : null;
             string? stage = null;
             string? unfit = null;
             if (mode == ContainerMode.Fast)
             {
-                if (its.GetValueOrDefault("RuntimeIdentifier") is { Length: > 0 } || string.Equals(its.GetValueOrDefault("SelfContained"), "true", StringComparison.OrdinalIgnoreCase))
+                if (its.GetValueOrDefault(MSBuildNames.RuntimeIdentifier) is { Length: > 0 } || string.Equals(its.GetValueOrDefault(MSBuildNames.SelfContained), "true", StringComparison.OrdinalIgnoreCase))
                 {
                     unfit = $"{configuration.Name} cannot run {service.Name} in fast mode: {project.Name} is built for one runtime"
-                        + $"{(its.GetValueOrDefault("RuntimeIdentifier") is { Length: > 0 } r ? $" ({r})" : string.Empty)}, and fast mode runs a framework-dependent build with dotnet; "
+                        + $"{(its.GetValueOrDefault(MSBuildNames.RuntimeIdentifier) is { Length: > 0 } r ? $" ({r})" : string.Empty)}, and fast mode runs a framework-dependent build with dotnet; "
                         + "choose Build images, as deployed in Run > Edit Configurations";
                 }
-                else if (stages is not null && (stage = stages.FastStage(its.GetValueOrDefault("DockerfileFastModeStage"))?.Name) is null)
+                else if (stages is not null && (stage = stages.FastStage(its.GetValueOrDefault(CarriedProperties.DockerfileFastModeStage))?.Name) is null)
                 {
                     unfit = $"{configuration.Name} cannot run {service.Name} in fast mode: its Dockerfile has no runtime stage to run Passenger's build in "
                         + "(a stage named base, or one its final stage is FROM); choose Build images, as deployed in Run > Edit Configurations";
@@ -433,15 +441,15 @@ public static class ContainerPlans
         if (configuration.Kind == RunKind.Dockerfile)
         {
             string dockerfile = configuration.Dockerfile.Length > 0 ? configuration.Dockerfile
-                : properties.GetValueOrDefault("DockerfileFile") is { Length: > 0 } file ? Path.GetFullPath(Path.Combine(project.Folder, file))
+                : properties.GetValueOrDefault(CarriedProperties.DockerfileFile) is { Length: > 0 } file ? Path.GetFullPath(Path.Combine(project.Folder, file))
                 : ContainerConfigurations.Dockerfile(project)
                     ?? throw new LaunchException($"{configuration.Name} cannot run: {project.Name} has no Dockerfile");
             string context = configuration.Context.Length > 0 ? configuration.Context
-                : properties.GetValueOrDefault("DockerfileContext") is { Length: > 0 } given ? Path.GetFullPath(Path.Combine(project.Folder, given))
+                : properties.GetValueOrDefault(CarriedProperties.DockerfileContext) is { Length: > 0 } given ? Path.GetFullPath(Path.Combine(project.Folder, given))
                 : workspace.Solution is { } solution ? Path.GetDirectoryName(solution.Path)! : workspace.Folder;
             JsonObject build = new() { ["context"] = context, ["dockerfile"] = dockerfile };
             JsonObject args = [];
-            foreach (string word in CommandLine.Split($"{properties.GetValueOrDefault("DockerfileBuildArguments")} {configuration.BuildArguments}"))
+            foreach (string word in CommandLine.Split($"{properties.GetValueOrDefault(MSBuildNames.DockerfileBuildArguments)} {configuration.BuildArguments}"))
             {
                 string pair = word.StartsWith("--build-arg", StringComparison.Ordinal) ? word[11..].TrimStart('=') : word;
                 if (pair.Split('=', 2) is [{ Length: > 0 } key, var value])
@@ -465,21 +473,21 @@ public static class ContainerPlans
                 build["secrets"] = mounted;
             }
             service["build"] = build;
-            if (properties.GetValueOrDefault("DockerfileTag") is { Length: > 0 } tag && mode == ContainerMode.Images)
+            if (properties.GetValueOrDefault(MSBuildNames.DockerfileTag) is { Length: > 0 } tag && mode == ContainerMode.Images)
             {
                 service["image"] = tag;
             }
             DockerfileStages stages = DockerfileStages.Read(written);
-            DockerfileStage? running = mode == ContainerMode.Fast ? stages.FastStage(properties.GetValueOrDefault("DockerfileFastModeStage")) : stages.Final;
+            DockerfileStage? running = mode == ContainerMode.Fast ? stages.FastStage(properties.GetValueOrDefault(CarriedProperties.DockerfileFastModeStage)) : stages.Final;
             exposed.AddRange(running is null ? [] : stages.Lineage(running).SelectMany(s => s.Exposed));
         }
         else
         {
             string image = properties.GetValueOrDefault("PassengerImage") is { Length: > 0 } published ? published
-                : properties.GetValueOrDefault("ContainerBaseImage") is { Length: > 0 } basis ? basis
+                : properties.GetValueOrDefault(CarriedProperties.ContainerBaseImage) is { Length: > 0 } basis ? basis
                 : $"mcr.microsoft.com/dotnet/{(ContainerConfigurations.IsWeb(project, workspace.Projects) ? "aspnet" : "runtime")}:{FrameworkTag(project, framework)}";
             service["image"] = image;
-            exposed.AddRange((properties.GetValueOrDefault("ContainerPort") ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries)
+            exposed.AddRange((properties.GetValueOrDefault(MSBuildNames.ContainerPort) ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries)
                 .Select(p => int.TryParse(p.Split(':')[0], NumberStyles.None, CultureInfo.InvariantCulture, out int n) ? n : 0).Where(n => n > 0));
             if (exposed.Count == 0 && ContainerConfigurations.IsWeb(project, workspace.Projects))
             {
@@ -491,7 +499,7 @@ public static class ContainerPlans
         {
             environment[key] = value;
         }
-        DockerRunWords run = DockerRunWords.Read([.. CommandLine.Split($"{properties.GetValueOrDefault("DockerfileRunArguments")} {configuration.RunArguments}")],
+        DockerRunWords run = DockerRunWords.Read([.. CommandLine.Split($"{properties.GetValueOrDefault(MSBuildNames.DockerfileRunArguments)} {configuration.RunArguments}")],
             exposed, project.Folder);
         run.SetOn(service, environment);
         if (environment.Count > 0)
