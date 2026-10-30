@@ -213,9 +213,9 @@ public partial class MainWindow
                 status.Text = refused;
                 menu.Items.Add(new MenuItem { Header = session.Vcs.GitMissing ? "Git is not installed" : "Git refuses this folder's repository", IsEnabled = false });
             }
-            else if (Folder is { } open)
+            else if (Folder is not null)
             {
-                menu.Items.Add(Item("Create Git Repository…", () => IdeErrors.Observe(session.Vcs.InitAsync(open))));
+                menu.Items.Add(Action(AppActions.CreateRepository));
             }
             else
             {
@@ -668,6 +668,12 @@ public partial class MainWindow
         actions.Add(new IdeAction(AppActions.DiffJumpToSource, "Jump to Source", "Git", context => JumpToSource(DiffWithKeys(context)!))
         {
             WhyNot = context => DiffWithKeys(context) is { } diff ? WhyNotJump(diff) : NoDiff,
+        });
+        // Offered too where the Commit and Git windows say the folder is in no repository.
+        actions.Add(new IdeAction(AppActions.CreateRepository, VcsController.CreateRepository, "Git", _ => IdeErrors.Observe(session.Vcs.InitAsync()))
+        {
+            WhyNot = context => NeedsFolder(context) ?? session.Vcs.WhyNotCreate,
+            Menus = [new MenuPlace("Git", 4, 1)],
         });
         // The Commit and Git windows' Refresh: the working tree's changes, and the log shown, read again.
         actions.Add(new IdeAction(AppActions.CommitRefresh, "Refresh Changes", "Git", _ => IdeErrors.Observe(session.Vcs.RefreshAsync())) { WhyNot = NeedsRepository });

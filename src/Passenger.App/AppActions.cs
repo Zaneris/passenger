@@ -442,6 +442,9 @@ public static class AppActions
     public const string Unstash = "app.vcs.unstash";
     public const string CloneRepository = "app.vcs.clone";
 
+    // Rider's Git.Init, Create Git Repository: no keys in its Visual Studio keymaps or their parents.
+    public const string CreateRepository = "app.vcs.createRepository";
+
     // Rider's Git.ResolveConflicts, Git.Rebase.Continue, Git.Rebase.Abort, Git.Merge.Abort, Git.CherryPick.Abort and
     // Git.Revert.Abort: no keys in its Visual Studio keymaps or their parents.
     public const string ResolveConflicts = "app.vcs.resolveConflicts";

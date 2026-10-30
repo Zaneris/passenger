@@ -366,12 +366,20 @@ public sealed class BranchesPanel : DockPanel
 
     public bool IsFavorite(BranchInfo branch) => Favorites.Holds(branch);
 
-    /// <summary>Builds the tree from the branches read and lists the rows the groups and the search leave.</summary>
+    /// <summary>Builds the tree from the branches read and lists the rows the groups and the search leave; a folder in no
+    /// repository has no HEAD or groups to list.</summary>
     private void Show()
     {
         string? chosen = Selected?.Key;
         string text = SearchText.Trim();
         bool Keep(BranchInfo b) => text.Length == 0 || b.Name.Contains(text, StringComparison.OrdinalIgnoreCase);
+        if (vcs.Repository is null)
+        {
+            roots = [];
+            rows.Show([]);
+            UpdateTools();
+            return;
+        }
         List<BranchNode> made = [new BranchNode(BranchNodeKind.Head, "HEAD (Current Branch)", "head", 0)];
         BranchNode local = Group(BranchNodeKind.Group, "Local", "local", 0, true);
         Fill(local, [.. Branches.Where(b => b.Kind == RefKind.Local && Keep(b)).Select(b => (b, b.Name))], 1);

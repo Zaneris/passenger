@@ -21,6 +21,9 @@ public static class Refusals
     /// <summary>The folder open is in no Git working tree.</summary>
     public const string NoRepository = "The folder is not in a Git repository";
 
+    /// <summary>The folder open is in a Git working tree already, which Create Git Repository would make.</summary>
+    public const string InRepository = "The folder is in a Git repository already";
+
     /// <summary>The folder has no C# language server: it has neither a solution nor a project, or its window starts none.</summary>
     public const string NoCSharp = "No C# language server runs for this folder";
 

@@ -71,7 +71,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private readonly CheckBox amend;
     private readonly Button commit;
     private readonly Button commitAndPush;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
     private readonly StackPanel underWay;
     private readonly TextBlock underWayText;
     private readonly Button continueRebase;
@@ -142,7 +142,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 e.Handled = true;
             }
         };
-        placeholder = new TextBlock { Classes = { "emptyText" } };
+        placeholder = new EmptyState();
+        placeholder.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
 
         // What git is in the middle of, said over Amend until it ends, its conflicts resolved or a rebase stopped at an edit.
         underWayText = new TextBlock { TextWrapping = TextWrapping.Wrap };
@@ -412,6 +413,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
             }
         }
         placeholder.Text = vcs.Repository is null ? vcs.NoRepository : "No changes";
+        bool creates = vcs.Repository is null && vcs.WhyNotCreate is null;
+        placeholder.Offer(creates ? AppActions.CreateRepository : null, VcsController.CreateRepository);
         placeholder.IsVisible = rows.Count == 0;
         underWay.IsVisible = vcs.Merge.UnderWay is not null;
         underWayText.Text = vcs.Merge.UnderWay;

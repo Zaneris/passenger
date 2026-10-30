@@ -1,5 +1,6 @@
 using Passenger.App.Containers;
 using Passenger.App.Mcp;
+using Passenger.App.Templates;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -281,17 +282,71 @@ public sealed class VcsController : IDisposable
         }
     }
 
-    /// <summary>Makes the folder a working tree (Create Git Repository).</summary>
-    public async Task<bool> InitAsync(string folder)
+    /// <summary>Create Git Repository's title, its action's and the empty states' that offer it where the folder is in none.</summary>
+    public const string CreateRepository = "Create Git Repository";
+
+    /// <summary>Why Create Git Repository cannot run, or null where it can: no folder is open, the folder is in a working
+    /// tree already, or git refuses the one it is in or is not installed.</summary>
+    public string? WhyNotCreate => lookIn is null ? Refusals.NoFolder : git is not null ? Refusals.InRepository : Refused;
+
+    /// <summary>Create Git Repository: the open folder made a working tree and read as it is when a folder opens, given
+    /// first the .NET .gitignore <c>dotnet new gitignore</c> writes where it has none, so build output is never offered for
+    /// its first commit. A .gitignore that could not be written is said with the repository made; one written for a
+    /// repository git then could not make is taken away again.</summary>
+    public async Task<VcsOutcome> InitAsync()
     {
+        UiThread.Check();
+        if (WhyNotCreate is { } why)
+        {
+            return Report(false, why);
+        }
+        string folder = lookIn!;
+        string ignore = Path.Join(folder, ".gitignore");
+        bool ignoring = Path.Exists(ignore);
+        if (!Begin(AppActions.CreateRepository, ignoring ? Creating : "Writing .gitignore…", out Working? work))
+        {
+            return Report(false, UnderWay(AppActions.CreateRepository));
+        }
+        using Working? held = work;
+        using IDisposable busy = BackgroundWork.Scope();
+        bool wrote = false;
+        string? unwritten = null;
+        if (!ignoring)
+        {
+            ChildResult made = await ChildProcesses.RunAsync(ProjectTemplates.NewCommand(["gitignore", "--no-update-check"], folder), limit: TimeSpan.FromMinutes(2));
+            wrote = made.Succeeded;
+            unwritten = made.Succeeded ? null : made.Said;
+        }
+        work?.Say(Creating);
         GitResult init = await Git.InitAsync(folder);
         if (!init.Succeeded)
         {
-            Message?.Invoke(this, init.Message);
-            return false;
+            if (wrote)
+            {
+                Unwrite(ignore);
+            }
+            return Report(false, $"No Git repository was created: {init.Message}");
         }
         await OpenAsync(folder);
-        return git is not null;
+        string created = $"Created a Git repository in {Path.GetFileName(folder)}";
+        return git is null ? Report(false, NoRepository)
+            : Report(true, unwritten is null ? created : $"{created}, with no .gitignore: {unwritten}");
+    }
+
+    /// <summary>Create Git Repository's stage as git makes the repository.</summary>
+    private const string Creating = "Creating the Git repository…";
+
+    /// <summary>Takes away the .gitignore Create Git Repository wrote for a repository git could not make.</summary>
+    private static void Unwrite(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception kept) when (kept is IOException or UnauthorizedAccessException)
+        {
+            IdeErrors.Write($"Git: the .gitignore written for a repository not made is kept: {kept.Message}");
+        }
     }
 
     /// <summary>Reads the branch, the changed files and the history again, and when HEAD has moved every open file's
@@ -372,7 +427,8 @@ public sealed class VcsController : IDisposable
             Conflicts = [];
             Merge = MergeState.Idle;
             unstashed = null;
-            if (!textsRead)
+            bool taken = !textsRead;
+            if (taken)
             {
                 ReadTexts(null, null);
             }
@@ -380,7 +436,8 @@ public sealed class VcsController : IDisposable
             if (history)
             {
                 Refreshed?.Invoke(this, EventArgs.Empty);
-                if (knownHistory is not null)
+                // The log shows a folder just found in no working tree, as it shows a working tree's first read.
+                if (knownHistory is not null || taken)
                 {
                     knownHistory = null;
                     HistoryChanged?.Invoke(this, EventArgs.Empty);

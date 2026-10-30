@@ -1043,6 +1043,34 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"The status bar, once the Version control menu greyed Git with no git on the PATH, does not say why: {bar}");
     }
 
+    /// <summary>An agent's ide_action runs Create Git Repository in a folder of no repository, answered once it is made: the
+    /// folder's files and the .NET .gitignore written beside them are its changes, its build output left out; asked again,
+    /// it is refused saying the folder is in one.</summary>
+    [Fact]
+    public async Task An_agents_create_git_repository_writes_the_dotnet_gitignore_and_is_refused_once_the_folder_is_in_one()
+    {
+        string folder = TestFolders.Create("mcp-create-repository-");
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\n");
+        TestFolders.Write(folder, $"bin/Debug/{TestProjects.Framework}/Notes.dll", string.Empty);
+        TestFolders.Write(folder, $"obj/Debug/{TestProjects.Framework}/Notes.dll", string.Empty);
+        // The run gives the window's dotnet new a hive of its own on Windows, which an agent's own IDE has not.
+        Dictionary<string, string?>? home = OperatingSystem.IsWindows() ? new() { ["DOTNET_CLI_HOME"] = Directory.CreateDirectory(Path.Combine(TestRun.Root, "mcp-dotnet-home")).FullName } : null;
+        await using McpClient client = await Start(["--mcp", folder], environment: home, languageServer: false);
+        CallToolResult none = await Result(client, McpTools.VcsStatus);
+        Assert.True(none.IsError == true && Text(none).Contains(Refusals.NoRepository, StringComparison.Ordinal), $"vcs_status in a folder of no repository answered: {Text(none)}");
+
+        string made = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.CreateRepository }));
+        Assert.Equal($"Created a Git repository in {Path.GetFileName(folder)}", made);
+        Assert.Contains("[Oo]bj/", File.ReadAllText(Path.Combine(folder, ".gitignore")), StringComparison.Ordinal);
+        Assert.Equal([".gitignore unversioned", "Notes.txt unversioned"], (await Call(client, McpTools.VcsStatus)).GetProperty("changes").EnumerateArray()
+            .Select(c => $"{c.GetProperty("path").GetString()} {c.GetProperty("kind").GetString()}").Order(StringComparer.Ordinal));
+
+        CallToolResult again = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.CreateRepository });
+        Assert.True(again.IsError == true && Text(again).Contains(Refusals.InRepository, StringComparison.Ordinal),
+            $"Create Git Repository in a folder made a repository answered: {Text(again)}");
+    }
+
     /// <summary>vcs_stash lists each stash with its commit, and an agent's drop by that commit takes that stash wherever it
     /// now is, though another program stashed after the list was read; asked again, it is refused as gone.</summary>
     [Fact]

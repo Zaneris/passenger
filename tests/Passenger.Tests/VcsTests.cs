@@ -1647,6 +1647,43 @@ public sealed class VcsTests : IDisposable
         static string Listed(GitLogView log) => string.Join('\n', log.Rows.Select(r => $"{r.Commit.Subject} ({string.Join(", ", r.Commit.Refs)})"));
     }
 
+    /// <summary>In a new solution's folder of no repository, the Git window lists no branch, and Create Git Repository from
+    /// the Commit window's empty state writes the .NET .gitignore and makes the repository: the Commit window lists the
+    /// solution's files and the .gitignore, nothing of bin or obj, as git does, and the action is offered no more.</summary>
+    [AvaloniaFact]
+    public void Create_git_repository_from_the_commit_windows_empty_state_leaves_build_output_out_of_the_changes()
+    {
+        string solution = PathNames.Canonical(TestFolders.Create("git-create-"));
+        TestFolders.Write(solution, "Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n</Solution>\n");
+        TestFolders.Write(solution, "Shop/Shop.csproj", TestProjects.Console());
+        TestFolders.Write(solution, "Shop/Program.cs", "System.Console.WriteLine(\"Shop\");\n");
+        TestFolders.Write(solution, $"Shop/bin/Debug/{TestProjects.Framework}/Shop.dll", string.Empty);
+        TestFolders.Write(solution, $"Shop/obj/Debug/{TestProjects.Framework}/Shop.dll", string.Empty);
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        window.Perform(AppActions.ShowGit);
+        window.Perform(AppActions.ShowCommit);
+        CommitView commit = window.CommitView;
+        Ui.Settle();
+        Assert.True(window.Vcs.Repository is null && window.GitBranches.Rows.Count == 0,
+            $"The Git window of a folder in no repository lists [{string.Join(", ", window.GitBranches.Rows.Select(r => r.Title))}]");
+        Assert.Contains(window.GitLog.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Content as string == VcsController.CreateRepository);
+
+        Ui.ClickButton(commit, VcsController.CreateRepository);
+        string[] Listed() => [.. commit.Rows.OfType<CommitRow>().Select(r => Path.GetRelativePath(solution, r.Change.Path).Replace('\\', '/')).Order(StringComparer.Ordinal)];
+        Ui.WaitFor(() => window.Vcs.Repository is not null && Listed().Contains(".gitignore"),
+            () => $"the repository made with its .gitignore, where the Commit window lists [{string.Join(", ", Listed())}] and the status bar says '{window.Status}'");
+        Assert.Equal([".gitignore", "Shop.slnx", "Shop/Program.cs", "Shop/Shop.csproj"], Listed());
+        Assert.Contains("[Bb]in/", File.ReadAllText(Path.Combine(solution, ".gitignore")), StringComparison.Ordinal);
+        string untracked = TestGit.Run(solution, "status", "--porcelain", "--untracked-files=all");
+        Assert.True(!untracked.Contains("/bin/", StringComparison.Ordinal) && !untracked.Contains("/obj/", StringComparison.Ordinal),
+            $"git offers build output for the first commit:\n{untracked}");
+        Assert.Equal($"Created a Git repository in {Path.GetFileName(solution)}", window.Status);
+        Ui.WaitFor(() => window.GitBranches.Rows.Count > 0, "the Git window to list the new repository's HEAD");
+        Assert.Equal(Refusals.InRepository, window.Actions.WhyNot(AppActions.CreateRepository, window.Actions.Context()));
+        Assert.DoesNotContain(commit.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Content as string == VcsController.CreateRepository);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Add_to_gitignore_keeps_the_files_byte_order_mark_its_windows_line_breaks_and_an_unsaved_edit_to_it()
     {

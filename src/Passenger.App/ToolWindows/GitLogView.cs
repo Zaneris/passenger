@@ -31,7 +31,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     private readonly ListBox fileList;
     private readonly TextBox details;
     private readonly TextBox filter;
-    private readonly TextBlock placeholder;
+    private readonly EmptyState placeholder;
     private readonly Border branchFilter;
     private readonly TextBlock branchFilterText;
     private readonly EventHandler onHistoryChanged;
@@ -135,7 +135,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             Padding = new Thickness(10, 8),
             FontSize = 12,
         };
-        placeholder = new TextBlock { Classes = { "emptyText" } };
+        placeholder = new EmptyState();
+        placeholder.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
 
         filter = new TextBox { Classes = { "search" }, PlaceholderText = "Text or hash", Width = 240, Margin = new Thickness(8, 0) };
         filter.TextChanged += (_, _) => Filter();
@@ -348,6 +349,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             : Scope is null ? "No commits yet"
             : Scope.IsLines ? $"No commit changed these lines of {name}"
             : $"Git has no history of {name}";
+        bool creates = repository is null && Scope is null && Range is null && vcs.WhyNotCreate is null;
+        placeholder.Offer(creates ? AppActions.CreateRepository : null, VcsController.CreateRepository);
         placeholder.IsVisible = rows.Count == 0;
         if (Scope is not null && list.SelectedIndex < 0 && rows.Count > 0)
         {
