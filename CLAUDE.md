@@ -206,9 +206,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   `CSharpParsing`, a folder's file's through `CompilationSymbols`, `EditorArea.ParseOptions`, the XAML core's through
   `ProjectEvaluation.Parsing`, the debug adapter's sent with its request, never its own; symbols and LangVersion from
   the project's evaluation), the rest by VS Code's TextMate grammars (Tint stops a line past its time budget in the
-  state it reached, so `TextMateHighlighter.Read` reads it again, then ends it in the state it began in). A new
-  language: one `Language` entry, its grammar file and a notices entry; compare entries, never names. A finder never
-  tells its answer inside a document's `Changed` (the open file moves its regions in a later handler).
+  state it reached, so `TextMateHighlighter.Read` reads it again, then ends it in the state it began in; a line over
+  20,000 characters is read once a pass with a tenth of the time, by the grammar's long-line tokenizer behind its own
+  lock, `EndOfLong`). A new language: one `Language` entry, its grammar file and a notices entry; compare entries, never
+  names. A finder never tells its answer inside a document's `Changed` (the open file moves its regions in a later
+  handler).
 - `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a binding's
   path is read once (`BindingPath`, `XamlFile.Walk`) for the check, Go to Declaration, uses and completion.
 - `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project; `JsonRpcPeer` for any other
