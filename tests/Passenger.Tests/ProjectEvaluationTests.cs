@@ -92,6 +92,23 @@ public sealed class ProjectEvaluationTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file linked from outside the project whose Link the project file changes on disk shows by its new name.</summary>
+    [AvaloniaFact]
+    public void A_linked_files_row_takes_the_name_its_changed_Link_gives_it()
+    {
+        string linked = Project.Replace("""<Compile Include="../Shared/**/*.cs" Exclude="../Shared/Obsolete/**" Link="Shared/%(RecursiveDir)%(Filename)%(Extension)" />""",
+            """<Compile Include="..\Shared\Helper.cs" Link="OldName.cs" />""");
+        Write("App/App.csproj", linked);
+        MainWindow window = Open();
+        Assert.Equal(["Dependencies", "OldName.cs", "Program.cs"], Children(window, "App"));
+        Write("App/App.csproj", linked.Replace("""Link="OldName.cs" """, """Link="NewName.cs" """, StringComparison.Ordinal));
+        Ui.WaitFor(() => Children(window, "App").Contains("NewName.cs"),
+            () => $"the linked file's row to take the name its new Link gives it; the project shows [{string.Join(", ", Children(window, "App"))}]");
+        Assert.Equal(["Dependencies", "NewName.cs", "Program.cs"], Children(window, "App"));
+        Assert.Equal(PathNames.Canonical(Path.Combine(folder, "Shared", "Helper.cs")), Row(window, NodeKind.File, "NewName.cs").Path);
+        window.Close();
+    }
+
     /// <summary>A host whose answer does not read, as one of another build's could write, is ended and the evaluation asked
     /// of it fails; the next change is evaluated by a host started anew.</summary>
     [Gate]

@@ -902,9 +902,10 @@ public sealed class ExplorerNode : Observable, ITreeRow
         return !same;
     }
 
-    /// <summary>What makes a row the same row when its parent is read again: a package's version is part of it, so one
-    /// updated shows its new version, and what the SDK reads a folder as, so a web root found shows as one.</summary>
-    private static string Identity(ExplorerNode node) => $"{node.Kind}/{node.Path ?? node.Name}/{node.Nested}/{(node.Path is null ? node.Detail : null)}/{node.SdkFolder}";
+    /// <summary>What makes a row the same row when its parent is read again: its name is part of it, so a linked file
+    /// whose Link changes shows its new name, a package's version, so one updated shows its new version, and what the
+    /// SDK reads a folder as, so a web root found shows as one.</summary>
+    private static string Identity(ExplorerNode node) => $"{node.Kind}/{node.Name}/{node.Path}/{node.Nested}/{(node.Path is null ? node.Detail : null)}/{node.SdkFolder}";
 
     public bool IsExpanded
     {
