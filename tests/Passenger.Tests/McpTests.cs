@@ -827,6 +827,42 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"{c.GetProperty("path").GetString()} {c.GetProperty("kind").GetString()}{(c.TryGetProperty("files", out JsonElement files) ? $" {files.GetInt32()}" : string.Empty)}");
     }
 
+    /// <summary>A line outside a file, or a count of no lines, is refused in words naming the file's lines: editor_text from
+    /// past the end or below the first, to before from, a code tool's place past the end, and output's lines of 0 or less,
+    /// where each answered another line, the nearest line's symbol or a raw exception.</summary>
+    [Fact]
+    public async Task An_agent_naming_a_line_outside_a_file_or_no_lines_is_refused_with_the_files_lines()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-lines-"));
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "App.csproj"), TestProjects.Console());
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), string.Join('\n', Enumerable.Range(1, 12).Select(i => $"System.Console.WriteLine({i});")));
+
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        foreach (int from in (int[])[500, 13, 0, -5])
+        {
+            CallToolResult past = await Result(client, McpTools.EditorText, new() { ["path"] = "Program.cs", ["from"] = from });
+            Assert.True(past.IsError == true && Text(past).Contains($"Line {from} is outside Program.cs, whose lines are 1 to 12", StringComparison.Ordinal),
+                $"editor_text from line {from} of a 12-line file answered: {Text(past)}");
+        }
+        CallToolResult backwards = await Result(client, McpTools.EditorText, new() { ["path"] = "Program.cs", ["from"] = 5, ["to"] = 3 });
+        Assert.True(backwards.IsError == true && Text(backwards).Contains("to 3 is before from 5", StringComparison.Ordinal), $"editor_text from 5 to 3 answered: {Text(backwards)}");
+        Assert.Equal("    11\tSystem.Console.WriteLine(11);\n    12\tSystem.Console.WriteLine(12);",
+            (await Call(client, McpTools.EditorText, new() { ["path"] = "Program.cs", ["from"] = 11, ["to"] = 99 })).GetString());
+
+        int projectLines = TestProjects.Console().Split('\n').Length;
+        CallToolResult symbol = await Result(client, McpTools.SymbolInfo, new() { ["path"] = "App.csproj", ["line"] = 999, ["column"] = 1 });
+        Assert.True(symbol.IsError == true && Text(symbol).Contains($"Line 999 is outside App.csproj, whose lines are 1 to {projectLines}", StringComparison.Ordinal),
+            $"symbol_info at line 999 of App.csproj answered: {Text(symbol)}");
+
+        foreach ((string of, int lines) in (IEnumerable<(string, int)>)[("run", 0), ("build", -3)])
+        {
+            CallToolResult none = await Result(client, McpTools.Output, new() { ["of"] = of, ["lines"] = lines });
+            Assert.True(none.IsError == true && Text(none).Contains($"lines is {lines}: a console's last lines are 1 or more", StringComparison.Ordinal),
+                $"output of {of} with lines {lines} answered: {Text(none)}");
+        }
+    }
+
     /// <summary>vcs_status with the path of a file whose only change is its line separators says which changed on how many
     /// lines, and of one whose only change is its mode (where git keeps modes) says the mode as git's diff does, where each
     /// answered no changes.</summary>

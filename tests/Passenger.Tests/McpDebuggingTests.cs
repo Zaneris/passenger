@@ -308,6 +308,31 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("count 3", (await Call(client, McpTools.Output, new() { ["of"] = "debug" })).GetString(), StringComparison.Ordinal);
     }
 
+    /// <summary>A line breakpoint an agent sets below a file's first line, past its last, or in a file not there is refused
+    /// naming the file's lines or the file, and none is kept, where each was kept, the first two stopping at the program's
+    /// first statement.</summary>
+    [Fact]
+    public async Task An_agents_breakpoint_outside_a_files_lines_or_in_no_file_is_refused_and_none_is_kept()
+    {
+        await TakeFolderAsync();
+        Write("Program.cs", "int total = 1;\ntotal += 2;\nConsole.WriteLine($\"total {total}\");");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        foreach (int line in (int[])[0, -5, 4, 999])
+        {
+            CallToolResult outside = await Result(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = line });
+            Assert.True(outside.IsError == true && Text(outside).Contains($"Line {line} is outside Program.cs, whose lines are 1 to 3", StringComparison.Ordinal),
+                $"breakpoint_set at line {line} of a 3-line file answered: {Text(outside)}");
+        }
+        CallToolResult missing = await Result(client, McpTools.BreakpointSet, new() { ["path"] = "NoSuchFile.cs", ["line"] = 1 });
+        Assert.True(missing.IsError == true && Text(missing).Contains("No file NoSuchFile.cs is here to set a breakpoint in", StringComparison.Ordinal),
+            $"breakpoint_set in a file not there answered: {Text(missing)}");
+        JsonElement kept = await Call(client, McpTools.DebugState, new() { ["of"] = "breakpoints" });
+        Assert.False(kept.EnumerateArray().Any(b => b.TryGetProperty("line", out JsonElement line) && line.ValueKind == JsonValueKind.Number),
+            $"Refused breakpoints were kept: {kept}");
+        JsonElement set = Assert.Single((await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 3 })).EnumerateArray());
+        Assert.Equal(3, set.GetProperty("line").GetInt32());
+    }
+
     /// <summary>A call that takes a while tells an agent that asked for progress what it is doing as it goes (the run's
     /// stages, then the wait for the program), at rising counts, so a client that gives up on a silent call (OpenCode's
     /// 60 s) waits on; and the agent's own Passenger writes nothing to the standard error an agent may never read.</summary>

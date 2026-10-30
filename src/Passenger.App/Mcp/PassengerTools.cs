@@ -146,9 +146,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "A file's text as the editor holds it, unsaved changes included, its lines numbered.")]
     public Task<string> EditorText(string path, int? from = null, int? to = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
-        TextSnapshot text = (await TextualAsync(path, cancel)).Text.Snapshot;
-        int first = Math.Clamp((from ?? 1) - 1, 0, text.LineCount - 1);
-        int last = Math.Clamp((to ?? text.LineCount) - 1, first, text.LineCount - 1);
+        OpenDocument document = await TextualAsync(path, cancel);
+        TextSnapshot text = document.Text.Snapshot;
+        int first = LineIn(text, document.Path, from ?? 1);
+        if (to is int end && end <= first)
+        {
+            throw new ArgumentException($"to {end} is before from {first + 1}");
+        }
+        int last = Math.Min((to ?? text.LineCount) - 1, text.LineCount - 1);
         return string.Join('\n', Enumerable.Range(first, last - first + 1).Select(i => $"{i + 1,6}\t{text.GetLineText(i)}"));
     });
 
@@ -1092,14 +1097,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     public Task<string> Output(string? of = null, int lines = 200, string? resource = null, bool requests = false, string? session = null,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
+        if (lines < 1)
+        {
+            throw new ArgumentException($"lines is {lines}: a console's last lines are 1 or more");
+        }
         switch (of ?? (session is null ? "run" : "debug"))
         {
             case "build":
-                return Tail(Session.Builder.Shown(), Math.Max(1, lines));
+                return Tail(Session.Builder.Shown(), lines);
             case "debug":
                 return DebugOutput(lines, session);
             case "terminal":
-                return window.TerminalPanel.Active is { } shell ? Tail(shell, Math.Max(1, lines)) : throw new InvalidOperationException("The terminal has no shell running");
+                return window.TerminalPanel.Active is { } shell ? Tail(shell, lines) : throw new InvalidOperationException("The terminal has no shell running");
             case not "run":
                 throw new ArgumentException($"No console '{of}'; there are run, debug, build and terminal", nameof(of));
         }
@@ -1342,6 +1351,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             return ExceptionBreakpoints();
         }
         (string full, int at) = LinePlace(path, line);
+        TextSnapshot text = (Editors.Find(full) is { HoldsText: true } open ? open.Text.Snapshot : await BackgroundWork.Run(() => Passenger.App.Editors.EditorArea.Read(full)))
+            ?? throw new ArgumentException(File.Exists(full) ? $"{Relative(full)} has no text to set a breakpoint in" : $"No file {Relative(full)} is here to set a breakpoint in");
+        LineIn(text, full, at + 1);
         LineBreakpoint set = column is int inside ? (await LambdaBreakpointAsync(full, at, inside, set: true))! : store.Set(full, at, attribute is { Length: > 0 } ? attribute : null);
         store.Update(set, enabled: true, suspend, condition, hitCondition, logMessage);
         await InTheProgram(cancel);
@@ -2359,12 +2371,19 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             : throw new InvalidOperationException($"{Relative(document.Path)} is {document.ShownAs}: it has no text to read or edit");
     }
 
-    private static int Offset(OpenDocument document, int line, int column)
+    /// <summary>The offset of a line and column an agent names (from one) in an open file, a column past the line's end
+    /// at its end; a line outside the file refused (<see cref="LineIn"/>).</summary>
+    private int Offset(OpenDocument document, int line, int column)
     {
         TextSnapshot text = document.Text.Snapshot;
-        int l = Math.Clamp(line - 1, 0, text.LineCount - 1);
+        int l = LineIn(text, document.Path, line);
         return Math.Min(text.GetLineStart(l) + Math.Max(0, column - 1), text.GetLine(l).End);
     }
+
+    /// <summary>A line an agent names (from one) as a line of a file's text (from zero); one below the first or past the
+    /// last refused, saying the file's lines.</summary>
+    private int LineIn(TextSnapshot text, string path, int line) => line >= 1 && line <= text.LineCount ? line - 1
+        : throw new ArgumentException($"Line {line} is outside {Relative(path)}, whose lines are 1 to {text.LineCount}");
 
     /// <summary>The places the language server names, in its lines, as an agent reads them (<see cref="Lines"/>).</summary>
     private async Task<IReadOnlyList<Place>> Places(IReadOnlyList<LspLocation> locations, CancellationToken cancel)
