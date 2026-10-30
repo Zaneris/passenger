@@ -95,6 +95,10 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <summary>What a page keeps above its options as they scroll (the Keymap page's toolbar).</summary>
     private readonly Decorator pageTop = new();
 
+    /// <summary>OK and Apply, which put the options in force: greyed while an option holds a value Settings refuses.</summary>
+    private readonly Button ok = new() { Content = "OK", IsDefault = true, Classes = { "primary" } };
+    private readonly Button applyButton = new() { Content = "Apply" };
+
     /// <param name="agents">The agents' setup the MCP Server page shows: this copy's, and the window's folder.</param>
     public SettingsDialog(AppSettings current, ActionRegistry actions, Action<AppSettings, AppSettings> apply, Mcp.AgentSetup? agents = null)
     {
@@ -118,9 +122,7 @@ public sealed partial class SettingsDialog : IdeWindow
         body = new StackPanel { Spacing = 12 };
         nothing = new TextBlock { Classes = { "muted" }, Text = "Nothing matches", IsVisible = false, Margin = new Thickness(21, 4) };
 
-        Button ok = new() { Content = "OK", IsDefault = true, Classes = { "primary" } };
         Button cancel = new() { Content = "Cancel", IsCancel = true };
-        Button applyButton = new() { Content = "Apply" };
         ok.Click += (_, _) => Ok();
         cancel.Click += (_, _) => Close(false);
         applyButton.Click += (_, _) => Apply();
@@ -178,22 +180,36 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <summary>The options the chosen page shows now, by their labels.</summary>
     public IReadOnlyList<string> Shown => [.. options.Where(o => o.Page == Page && o.Row.IsVisible).Select(o => o.Label)];
 
-    /// <summary>OK: the settings applied, and the dialog closed.</summary>
+    /// <summary>Why the options as they stand cannot be put in force, naming the setting whose value Settings refuses;
+    /// null when they can.</summary>
+    public string? Refused => Declared.All.Select(s => s.Refused(applied, Working)).FirstOrDefault(r => r is not null);
+
+    /// <summary>OK: the settings applied, and the dialog closed; nothing while a value is refused.</summary>
     public void Ok()
     {
-        Apply();
-        Close(true);
+        if (Refused is null)
+        {
+            Apply();
+            Close(true);
+        }
     }
 
-    /// <summary>Apply: what the options changed put in force, the dialog kept open.</summary>
+    /// <summary>Apply: what the options changed put in force, the dialog kept open; nothing while a value is refused.</summary>
     public void Apply()
     {
-        apply(applied, Working);
-        applied = Working;
+        if (Refused is null)
+        {
+            apply(applied, Working);
+            applied = Working;
+        }
     }
 
-    /// <summary>Changes one setting, as its option does.</summary>
-    public void Change(Func<AppSettings, AppSettings> change) => Working = change(Working);
+    /// <summary>Changes one setting, as its option does, OK and Apply greyed while a value it holds is refused.</summary>
+    public void Change(Func<AppSettings, AppSettings> change)
+    {
+        Working = change(Working);
+        ok.IsEnabled = applyButton.IsEnabled = Refused is null;
+    }
 
     private void Filter()
     {
@@ -345,10 +361,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.BuildKitChecks);
 
         Add(Declared.TerminalFontSize);
-        (string shell, _) = Passenger.Terminal.TerminalSession.DefaultShell();
-        TextBox path = new() { Classes = { "search" }, Text = Working.TerminalShell ?? string.Empty, PlaceholderText = shell, Width = 320 };
-        path.TextChanged += (_, _) => Change(s => s with { TerminalShell = string.IsNullOrWhiteSpace(path.Text) ? null : path.Text.Trim() });
-        Add(TerminalPage, "Shell path", path, "shell zsh bash powershell program");
+        Add(Declared.TerminalShell);
 
         AddAgents(agents);
 
@@ -408,6 +421,7 @@ public sealed partial class SettingsDialog : IdeWindow
         double firstLine = editor switch
         {
             TextBox { AcceptsReturn: true } => 5,
+            StackPanel { Orientation: Orientation.Vertical, Children: [TextBox, ..] } => 5,
             StackPanel { Orientation: Orientation.Vertical, Children: [RadioButton or Border { Classes: ["framed"] }, ..] } => 6,
             _ => -1,
         };

@@ -507,10 +507,51 @@ public sealed partial class PassengerTools
         "it printed. While a terminal configuration's program this agent ran (run) runs in its tab, the line goes to it.")]
     public Task<string> TerminalRun(string command, int waitSeconds = 15, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
-        // A program a person runs, or another agent, never takes this agent's line.
-        TerminalSession shell = Session.RunProgram is global::Passenger.App.Run.TerminalRun { IsRunning: true, StartedBy: { } starter } program && starter == connection
-            ? program.Session
-            : await Terminal(cancel);
+        (TerminalSession shell, SemaphoreSlim turn) = await TerminalTurnAsync(cancel);
+        try
+        {
+            return await TypedAsync(shell, command, waitSeconds, cancel);
+        }
+        finally
+        {
+            turn.Release();
+        }
+    });
+
+    /// <summary>Each terminal's turns: one agent's command typed and answered at a time, by whichever agent, so no
+    /// answer holds another's output.</summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TerminalSession, SemaphoreSlim> TerminalTurns = new();
+
+    /// <summary>The terminal this agent's command goes to, with its turn there, which the caller gives back: a terminal
+    /// configuration's program this agent ran, else the Agent Shell; one that ended while the call waited its turn gives
+    /// way to the one that is there now.</summary>
+    private async Task<(TerminalSession Shell, SemaphoreSlim Turn)> TerminalTurnAsync(CancellationToken cancel)
+    {
+        while (true)
+        {
+            // A program a person runs, or another agent, never takes this agent's line.
+            TerminalSession shell = Session.RunProgram is global::Passenger.App.Run.TerminalRun { IsRunning: true, StartedBy: { } starter } program && starter == connection
+                ? program.Session
+                : await Terminal(cancel);
+            SemaphoreSlim turn = TerminalTurns.GetValue(shell, _ => new SemaphoreSlim(1, 1));
+            if (!turn.Wait(0))
+            {
+                AgentCall.Current?.Waits("Waiting for an earlier command in the terminal to finish");
+                await turn.WaitAsync(cancel);
+                AgentCall.Current?.Waited(shell.IsRunning ? "its turn" : "the terminal ended");
+            }
+            if (shell.IsRunning)
+            {
+                return (shell, turn);
+            }
+            turn.Release();
+        }
+    }
+
+    /// <summary>Types a command into a terminal and presses Enter, then answers what it printed once the terminal prompts
+    /// again, has been quiet for 2 s, or <paramref name="waitSeconds"/> have passed.</summary>
+    private static async Task<string> TypedAsync(TerminalSession shell, string command, int waitSeconds, CancellationToken cancel)
+    {
         TerminalScreen screen = shell.Screen;
         // By its number, which stays the line's own as the scrollback's oldest drop past its limit.
         long before = screen.ScreenTop + screen.CursorRow;
@@ -545,7 +586,7 @@ public sealed partial class PassengerTools
             lines.Add(screen.LineAt(line).Text());
         }
         return string.Join('\n', lines).TrimEnd();
-    });
+    }
 
     /// <summary>The shell of the agents' own (<see cref="ToolWindows.TerminalPanel.AgentShell"/>) at its first prompt, one
     /// starting for another call taken up: one started shown with the keys in an agent's own IDE, behind the person's tab

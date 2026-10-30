@@ -170,13 +170,24 @@ public sealed class TerminalPanel : DockPanel
         session.Exited += (_, _) => Close(tab);
         try
         {
-            await session.StartAsync(at ?? folder(), Shell?.App, Shell?.Arguments);
+            await StartShellAsync(session, at ?? folder(), Shell);
         }
-        catch (Exception failed) when (failed is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (Exception failed) when (failed is IOException or InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception)
         {
             session.Screen.Feed($"Passenger could not start a shell: {failed.Message}\r\n");
         }
         return session;
+    }
+
+    /// <summary>Starts a shell in a session: the one Settings gives (<see cref="Shell"/>), else the system's; throws saying
+    /// why where Settings names no program.</summary>
+    private static async Task StartShellAsync(TerminalSession session, string at, (string App, string[] Arguments)? shell)
+    {
+        if (shell is { } given && string.IsNullOrWhiteSpace(given.App))
+        {
+            throw new InvalidOperationException($"the Shell path in {Settings.SettingsDialog.PlaceOfPage(Settings.SettingsDialog.TerminalPage)} names no program to start");
+        }
+        await session.StartAsync(at, shell?.App, shell?.Arguments);
     }
 
     /// <summary>The name of the tab agents' commands run in.</summary>
@@ -234,7 +245,7 @@ public sealed class TerminalPanel : DockPanel
             string program = (given ?? TerminalSession.DefaultShell()).App;
             try
             {
-                await session.StartAsync(folder(), given?.App, given?.Arguments);
+                await StartShellAsync(session, folder(), given);
             }
             catch (Exception failed) when (failed is IOException or InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception)
             {

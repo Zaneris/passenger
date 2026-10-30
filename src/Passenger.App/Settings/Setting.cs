@@ -1,5 +1,7 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Media;
 
 namespace Passenger.App.Settings;
 
@@ -27,6 +29,10 @@ public abstract class Setting
 
     /// <summary>The settings with this one brought into what it allows.</summary>
     public abstract AppSettings Clamp(AppSettings settings);
+
+    /// <summary>Why a change from <paramref name="was"/> to <paramref name="now"/> gives this setting a value Settings
+    /// refuses, naming the setting; null where it leaves the value be or the new one is allowed.</summary>
+    public virtual string? Refused(AppSettings was, AppSettings now) => null;
 }
 
 /// <summary>A setting on or off, edited by a check box.</summary>
@@ -109,4 +115,39 @@ public sealed class ChoiceSetting<T> : Setting where T : struct, Enum
     }
 
     public override AppSettings Clamp(AppSettings settings) => Enum.IsDefined(get(settings)) ? settings : set(settings, fallback);
+}
+
+/// <summary>A program to start and its arguments, written as one command line (<see cref="Run.CommandLine"/>), or null for
+/// the one Passenger finds, <paramref name="found"/>'s, which an empty box shows; a line naming no program (quotes round
+/// nothing) is refused, saying why under the box.</summary>
+public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSettings, string?, AppSettings> set, Func<string> found, SettingRow row) : Setting(row)
+{
+    /// <summary>Why a line naming no program is refused.</summary>
+    private const string NamesNone = "names no program to start: the program's path comes first, its arguments after it";
+
+    public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change)
+    {
+        TextBox line = new() { Classes = { "search" }, Text = get(now) ?? string.Empty, PlaceholderText = found(), Width = 320 };
+        TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 320, HorizontalAlignment = HorizontalAlignment.Left };
+        problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        Said();
+        line.TextChanged += (_, _) =>
+        {
+            change(s => set(s, string.IsNullOrWhiteSpace(line.Text) ? null : line.Text.Trim()));
+            Said();
+        };
+        return new StackPanel { Spacing = 4, Children = { line, problem } };
+
+        void Said()
+        {
+            problem.IsVisible = Run.CommandLine.NamesNoProgram(line.Text);
+            problem.Text = problem.IsVisible ? $"This {NamesNone}" : null;
+        }
+    }
+
+    public override AppSettings Clamp(AppSettings settings) => string.IsNullOrWhiteSpace(get(settings)) ? set(settings, null) : settings;
+
+    public override string? Refused(AppSettings was, AppSettings now) => get(now) is { } line && line != get(was) && Run.CommandLine.NamesNoProgram(line)
+        ? $"{Row!.Label} {line.Trim()} ({SettingsDialog.PlaceOfPage(Row.Page)}) {NamesNone}"
+        : null;
 }

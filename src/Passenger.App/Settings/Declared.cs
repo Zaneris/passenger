@@ -229,6 +229,9 @@ public static class Declared
     public static readonly NumberSetting TerminalFontSize = new(s => s.TerminalFontSize, (s, v) => s with { TerminalFontSize = v },
         AppSettings.MinFontSize, AppSettings.MaxFontSize, 1, new(D.TerminalPage, "Font size", "font size shell"));
 
+    public static readonly ProgramSetting TerminalShell = new(s => s.TerminalShell, (s, v) => s with { TerminalShell = v },
+        () => Passenger.Terminal.TerminalSession.DefaultShell().App, new(D.TerminalPage, "Shell path", "shell zsh bash powershell program"));
+
     public static readonly ToggleSetting McpServer = new(s => s.McpServer, (s, v) => s with { McpServer = v },
         new(D.McpPage, "Enable MCP Server", D.McpWords,
             "Agents started with passenger --mcp-attach can use this window without asking to: read and change files, build, run and "

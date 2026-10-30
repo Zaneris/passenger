@@ -349,7 +349,6 @@ public sealed record AppSettings : IStateDocument<AppSettings>
             VSCodeShortcuts = Readable(VSCodeShortcuts),
             LiveTemplates = (LiveTemplates ?? []).Where(t => t.Value is not null).ToDictionary(t => t.Key, t => t.Value.Clamped()),
             PostfixTemplates = PostfixTemplates ?? [],
-            TerminalShell = string.IsNullOrWhiteSpace(TerminalShell) ? null : TerminalShell,
             NodeInterpreter = string.IsNullOrWhiteSpace(NodeInterpreter) ? null : NodeInterpreter.Trim(),
             EslintPackage = string.IsNullOrWhiteSpace(EslintPackage) ? null : EslintPackage.Trim(),
             EslintFiles = string.IsNullOrWhiteSpace(EslintFiles) ? defaults.EslintFiles : EslintFiles.Trim(),

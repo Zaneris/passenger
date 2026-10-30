@@ -44,7 +44,7 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.SettingsSet, Title = "Change settings", Destructive = true), Description(
         "Changes settings as the Settings dialog's OK does: changes maps each name settings lists to a JSON value of its kind " +
         "({\"editorFontSize\": 15, \"theme\": \"Dark\"}): a number brought into its range, text (null for none), a choice by " +
-        "name, an object's members to change. Anything Settings lacks is refused, changing nothing. On a person's window the " +
+        "name, an object's members to change. Anything Settings lacks or refuses is refused, changing nothing. On a person's window the " +
         "change is theirs, kept; Enable MCP Server and agentFolders are theirs alone. Returns each as it was and is now.")]
     public Task<IReadOnlyList<SettingChange>> SetSettings(
         Dictionary<string, JsonElement> changes,
@@ -75,6 +75,10 @@ public sealed partial class PassengerTools
             named.Add(name);
         }
         AppSettings asked = SettingsOf(next);
+        if (Declared.All.Select(s => s.Refused(before, asked)).FirstOrDefault(r => r is not null) is { } refused)
+        {
+            throw new ArgumentException($"{refused}; Settings refuses it too, and nothing changed");
+        }
         window.ApplySettings(asked);
         JsonObject now = SettingsNode(window.Settings);
         JsonObject wanted = SettingsNode(asked);

@@ -297,6 +297,9 @@ public sealed partial record LaunchProfile(
 /// precede.</summary>
 public static class CommandLine
 {
+    /// <summary>Whether a line that says something names no program to start: its first word is empty ("" alone).</summary>
+    public static bool NamesNoProgram(string? line) => !string.IsNullOrWhiteSpace(line) && string.IsNullOrWhiteSpace(Split(line)[0]);
+
     public static IReadOnlyList<string> Split(string? line)
     {
         List<string> arguments = [];

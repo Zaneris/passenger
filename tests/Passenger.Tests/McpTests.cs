@@ -665,6 +665,33 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>Two terminal commands an agent sends at once take turns in the Agent Shell, each answer holding its own
+    /// command's output and none of the other's; and settings_set refuses a shell path that names no program, as Settings
+    /// does, nothing changed, the Agent Shell still taking commands.</summary>
+    [Fact]
+    public async Task An_agents_terminal_commands_sent_at_once_take_turns_each_answering_its_own_output()
+    {
+        string folder = TestFolders.Create("mcp-turns-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        // Each prints, waits a second and prints again, so a command typed beside it lands amid its output.
+        Task<JsonElement> alpha = Call(client, McpTools.TerminalRun, new() { ["command"] = "echo alpha-begins; sleep 1; echo alpha-ends" });
+        Task<JsonElement> beta = Call(client, McpTools.TerminalRun, new() { ["command"] = "echo beta-begins; sleep 1; echo beta-ends" });
+        string first = (await alpha).GetString()!;
+        string second = (await beta).GetString()!;
+        Assert.True(first.Contains("alpha-ends", StringComparison.Ordinal) && !first.Contains("beta", StringComparison.Ordinal),
+            $"The agent's first command, sent beside another, answered what was not its own:\n{first}");
+        Assert.True(second.Contains("beta-ends", StringComparison.Ordinal) && !second.Contains("alpha", StringComparison.Ordinal),
+            $"The agent's second command, sent beside another, answered what was not its own:\n{second}");
+
+        CallToolResult refused = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["terminalShell"] = "\"\"" } });
+        Assert.True(refused.IsError == true && Text(refused).Contains("Shell path \"\" (Settings | Terminal) names no program to start", StringComparison.Ordinal),
+            $"settings_set of a shell path naming no program answered: {Text(refused)}");
+        JsonElement shell = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "terminalShell");
+        Assert.True(shell.GetProperty("value").ValueKind == JsonValueKind.Null, $"The refused shell path was kept all the same: {shell.GetRawText()}");
+        Assert.Contains("gamma", (await Call(client, McpTools.TerminalRun, new() { ["command"] = "echo gamma" })).GetString()!, StringComparison.Ordinal);
+    }
+
     /// <summary>A rebase stopped on a conflict that the agent resolves is still said by vcs_status, and vcs_commit refuses to
     /// commit beside it, naming Continue Rebase and Abort Rebase: no commit of the agent's takes the place of the rebase's
     /// on its detached head, and the rebase is still in progress.</summary>

@@ -152,6 +152,85 @@ public sealed class SettingsTests : IDisposable
         }
     }
 
+    /// <summary>A shell path naming no program ("" alone) is refused where it is set: Settings says why under its box and
+    /// greys OK and Apply, putting nothing in force. Met in settings.json, a new terminal tab says why no shell started
+    /// (where its start threw, unsaid), Settings shows why under the box, and a shell named there starts.</summary>
+    [AvaloniaFact]
+    public void A_shell_path_naming_no_program_is_refused_in_settings_and_a_terminal_tab_met_with_it_says_why()
+    {
+        string plain = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh";
+        MainWindow window = Open();
+        try
+        {
+            SettingsDialog dialog = TerminalPage(window);
+            Ui.Click(ShellPath(dialog));
+            dialog.KeyTextInput("\"\"");
+            Ui.Settle();
+            Assert.True(ShellProblem(dialog) == "This names no program to start: the program's path comes first, its arguments after it",
+                $"Settings said nothing under a shell path naming no program: {ShellProblem(dialog)}");
+            Assert.False(Footer(dialog, "OK").IsEffectivelyEnabled || Footer(dialog, "Apply").IsEffectivelyEnabled,
+                "OK and Apply could put in force a shell path naming no program");
+            DialogButtonsTests.Check(dialog);
+            dialog.Ok();
+            Ui.Settle();
+            Assert.True(dialog.IsVisible && window.Settings.TerminalShell is null, $"OK took a shell path naming no program: {window.Settings.TerminalShell}");
+            dialog.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        File.WriteAllText(Path.Combine(settings, StateStore.SettingsFile),
+            new JsonObject { ["version"] = AppSettings.Upgrades.Count, ["terminalShell"] = "\"\"" }.ToJsonString());
+        MainWindow again = Open();
+        try
+        {
+            again.KeepSettings();
+            again.Perform(AppActions.NewTerminalSession);
+            Ui.WaitFor(() => again.TerminalPanel.Active is { } shell && TerminalTests.Screen(shell).Contains("could not start", StringComparison.Ordinal),
+                () => $"the new terminal tab to say why no shell started: {string.Join(", ", again.TerminalPanel.Tabs.Select(t => t.Name))}");
+            string said = TerminalTests.Screen(again.TerminalPanel.Active!);
+            Assert.True(said.Contains("Passenger could not start a shell: the Shell path in Settings | Terminal names no program to start", StringComparison.Ordinal),
+                $"The terminal tab met with a shell path naming no program said:\n{said}");
+
+            SettingsDialog dialog = TerminalPage(again);
+            TextBox path = ShellPath(dialog);
+            Assert.True(path.Text == "\"\"" && ShellProblem(dialog) is not null, $"Settings showed the kept shell path as {path.Text}, saying {ShellProblem(dialog)}");
+            Ui.Click(path);
+            path.SelectAll();
+            dialog.KeyTextInput(plain);
+            Ui.Settle();
+            Assert.True(ShellProblem(dialog) is null && Footer(dialog, "OK").IsEffectivelyEnabled, $"Settings refused the shell path {path.Text}: {ShellProblem(dialog)}");
+            dialog.Ok();
+            Ui.Settle();
+            Assert.Equal(plain, again.Settings.TerminalShell);
+            again.Perform(AppActions.NewTerminalSession);
+            Ui.WaitFor(() => again.TerminalPanel.Active is { IsRunning: true }, () => $"{plain} to start in a new terminal tab");
+        }
+        finally
+        {
+            again.Close();
+        }
+
+        static SettingsDialog TerminalPage(MainWindow window)
+        {
+            SettingsDialog dialog = window.ShowSettings();
+            Ui.Settle();
+            dialog.Page = SettingsDialog.TerminalPage;
+            Ui.Settle();
+            return dialog;
+        }
+
+        static TextBox ShellPath(SettingsDialog dialog) =>
+            ((Visual)dialog.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "Shell path").Parent!).GetVisualDescendants().OfType<TextBox>().First();
+
+        static string? ShellProblem(SettingsDialog dialog) =>
+            dialog.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(t => t.IsEffectivelyVisible && t.Text?.Contains("no program to start", StringComparison.Ordinal) == true)?.Text;
+
+        static Button Footer(SettingsDialog dialog, string words) => dialog.GetVisualDescendants().OfType<Button>().First(b => b.Content as string == words);
+    }
+
     /// <summary>Whether a window's keymap gives Debug Service the keys.</summary>
     private static bool Binds(MainWindow window, string keys) =>
         window.Actions.Keymap.ShortcutsFor(AppActions.ServiceDebug).Any(s => s.First.Notation() == Passenger.Editor.Shortcut.Parse(keys).First.Notation());
