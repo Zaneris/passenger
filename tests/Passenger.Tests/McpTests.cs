@@ -195,6 +195,48 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"tests_run's failure did not give its message, stack and the output's last lines after a note of the rest: {details[..Math.Min(details.Length, 2000)]}");
     }
 
+    /// <summary>A theory of 500 rows one of which fails is answered with that row's failure and a count of the rest, never
+    /// every passing row beside it, which buried the one failure in an answer of tens of kilobytes.</summary>
+    [Fact]
+    public async Task An_agents_run_of_a_theory_with_one_failing_row_among_500_names_that_row_and_counts_the_rest()
+    {
+        string tests = PathNames.Canonical(TestFolders.Create("mcp-rows-tests-"));
+        DeleteAtEnd(tests);
+        await TestFolders.PrepareAsync(async () =>
+        {
+            File.WriteAllText(Path.Combine(tests, "Rows.Tests.csproj"),
+                $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
+                "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
+                "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+            File.WriteAllText(Path.Combine(tests, "RowTests.cs"), """
+                using System.Collections.Generic;
+                using System.Linq;
+                using Xunit;
+
+                namespace Rows.Tests;
+
+                public class RowTests
+                {
+                    public static IEnumerable<object[]> Values => Enumerable.Range(0, 500).Select(value => new object[] { value });
+
+                    [Theory]
+                    [MemberData(nameof(Values))]
+                    public void Is_not_seven(int value) => Assert.NotEqual(7, value);
+                }
+
+                """);
+            await Restore.RunAsync(tests);
+        }, tests);
+        await using McpClient client = await Start(["--mcp", tests], languageServer: false);
+        string answer = Text(await Result(client, McpTools.TestsRun));
+        JsonElement run = JsonDocument.Parse(answer).RootElement;
+        Assert.StartsWith("Tests passed: 499, failed: 1 of 500", run.GetProperty("summary").GetString(), StringComparison.Ordinal);
+        string details = Assert.Single(run.GetProperty("failures").EnumerateArray()).GetProperty("details").GetString()!;
+        Assert.True(answer.Length < 5_000 && details.StartsWith("Is_not_seven(value: 7): Failed\n", StringComparison.Ordinal)
+            && details.Contains("Assert.NotEqual() Failure", StringComparison.Ordinal) && details.EndsWith("\n\n499 other rows passed", StringComparison.Ordinal),
+            $"tests_run answered a theory's one failing row among 500 in {answer.Length:N0} characters, its details: {details[..Math.Min(details.Length, 2000)]}");
+    }
+
     /// <summary>A VSTest test that reads its standard input reads its end at once, never the agent's requests, which are
     /// Passenger's standard input: its run passes, and the agent's next call is answered.</summary>
     [Fact]

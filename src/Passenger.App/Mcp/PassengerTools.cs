@@ -1250,7 +1250,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private static readonly TimeSpan TestsLookLimit = TimeSpan.FromSeconds(60);
 
     /// <summary>The last run's tally and its failures, of the tests it ran alone as it told them (a test renamed as it ran
-    /// still told), a method's results together, each message and stack whole and its output's last lines.</summary>
+    /// still told), a method's results together (its failed rows, the rest counted), each message and stack whole and its
+    /// output's last lines.</summary>
     private TestRunInfo TestInfo(Testing.TestController tests)
     {
         List<TestFailure> failures = [];
@@ -1262,7 +1263,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             bool several = shown?.Framework is not null || tests.RunOutcomes.Any(o => o.Test.Project == test.Project && o.Test.Method == test.Method && o.Test.Framework != test.Framework);
             string? place = shown?.Path is { } at ? $"{Relative(at)}:{shown.Line}" : test.Path is { } found ? $"{Relative(found)}:{test.Line}" : null;
             failures.Add(new TestFailure(shown is null ? $"{test.Method}{(several ? $" ({test.Framework})" : string.Empty)}" : TestName(shown), place,
-                Testing.TestNode.DetailsOf([.. method], FailureOutputLines)));
+                Testing.TestNode.FailuresOf([.. method], FailureOutputLines)));
         }
         return new TestRunInfo(tests.Summary, failures);
     }

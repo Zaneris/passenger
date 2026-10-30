@@ -154,13 +154,45 @@ public sealed class TestNode : Observable, ITreeRow
 
     /// <summary>Results as the details pane shows them, each output whole, or with <paramref name="outputTail"/> only its last
     /// lines, at most that many, and a note of what was left out.</summary>
-    public static string DetailsOf(IReadOnlyList<TestOutcome> results, int? outputTail = null) => string.Join("\n\n", results.Select(r =>
+    public static string DetailsOf(IReadOnlyList<TestOutcome> results, int? outputTail = null) =>
+        string.Join("\n\n", results.Select(r => DetailOf(r, results.Count > 1, outputTail)));
+
+    /// <summary>How many of a method's failed results an agent's answer writes out.</summary>
+    public const int MostFailuresWritten = 10;
+
+    /// <summary>A method's results as an agent's answer gives them: a lone result as <see cref="DetailsOf"/> writes it, else
+    /// its failed rows so written, at most <see cref="MostFailuresWritten"/>, and the rest counted by how they ended ("2,999
+    /// other rows passed").</summary>
+    public static string FailuresOf(IReadOnlyList<TestOutcome> results, int outputTail)
     {
-        string header = results.Count > 1 ? $"{ResultName(r)}: {r.State}" : r.State.ToString();
-        string? attachments = r.Attachments.Count > 0 ? $"Attachments:\n{string.Join('\n', r.Attachments.Select(a => $"  {a.Name}: {a.Path}"))}" : null;
-        string? output = r.Output?.TrimEnd() is { } written ? $"Output:\n{(outputTail is { } tail ? Tail(written, tail) : written)}" : null;
-        return string.Join('\n', new[] { header, r.Message, r.StackTrace, output, attachments }.Where(t => !string.IsNullOrWhiteSpace(t)));
-    }));
+        if (results.Count == 1)
+        {
+            return DetailsOf(results, outputTail);
+        }
+        List<TestOutcome> failed = [.. results.Where(r => r.State == TestState.Failed)];
+        int left = Math.Max(0, failed.Count - MostFailuresWritten);
+        int Ended(TestState state) => results.Count(r => r.State == state);
+        string[] counted = [.. new[]
+        {
+            left > 0 ? $"{left:N0} more {Plural.Noun(left, "row")} failed" : null,
+            Ended(TestState.Passed) is > 0 and int passed ? $"{passed:N0} other {Plural.Noun(passed, "row")} passed" : null,
+            Ended(TestState.Skipped) is > 0 and int skipped ? $"{skipped:N0} skipped" : null,
+            Ended(TestState.NotRun) is > 0 and int notRun ? $"{notRun:N0} not run" : null,
+            Ended(TestState.Running) is > 0 and int running ? $"{running:N0} still running" : null,
+        }.OfType<string>()];
+        IEnumerable<string> written = failed.Take(MostFailuresWritten).Select(r => DetailOf(r, named: true, outputTail));
+        string rest = string.Join(", ", counted) + (left > 0 ? ": the Unit Tests window shows each" : string.Empty);
+        return string.Join("\n\n", counted.Length == 0 ? written : written.Append(rest));
+    }
+
+    /// <summary>A result as the details pane shows it, after its row's name where <paramref name="named"/>.</summary>
+    private static string DetailOf(TestOutcome result, bool named, int? outputTail)
+    {
+        string header = named ? $"{ResultName(result)}: {result.State}" : result.State.ToString();
+        string? attachments = result.Attachments.Count > 0 ? $"Attachments:\n{string.Join('\n', result.Attachments.Select(a => $"  {a.Name}: {a.Path}"))}" : null;
+        string? output = result.Output?.TrimEnd() is { } written ? $"Output:\n{(outputTail is { } tail ? Tail(written, tail) : written)}" : null;
+        return string.Join('\n', new[] { header, result.Message, result.StackTrace, output, attachments }.Where(t => !string.IsNullOrWhiteSpace(t)));
+    }
 
     /// <summary>An output's last lines, at most a number of them and about 80 characters each (a longer last line's end),
     /// after a note of how much came before them.</summary>
