@@ -34,7 +34,7 @@ internal static class Shown
     {
         string? text = visual switch
         {
-            TextBox { PasswordChar: not '\0' } box => new string('•', box.Text?.Length ?? 0),
+            TextBox { PasswordChar: not '\0' } box => Words.Dots(box.Text),
             TextBox box => box.Text ?? string.Empty,
             TextBlock block => block.Text,
             Window window => window.Title,
@@ -73,14 +73,14 @@ internal static class Shown
                 .FirstOrDefault(p => p.Name == name[(dot + 1)..] && Words.TypeName(p.OwnerType) == name[..dot]);
         if (property is not null)
         {
-            return Details.Format(visual.GetValue(property));
+            return Format(visual, name, visual.GetValue(property));
         }
         if (dot < 0 && visual.GetType().GetProperty(name, BindingFlags.Public | BindingFlags.Instance) is { GetMethod: not null } clr
             && clr.GetIndexParameters().Length == 0)
         {
             try
             {
-                return Details.Format(clr.GetValue(visual));
+                return Format(visual, name, clr.GetValue(visual));
             }
             catch (TargetInvocationException error)
             {
@@ -89,6 +89,17 @@ internal static class Shown
         }
         return null;
     }
+
+    /// <summary>Whether a property of an element, by its name, holds a password's text: the Text, SelectedText or
+    /// PreeditText of one whose PasswordChar is set (a password box, and the presenter inside it).</summary>
+    public static bool Hides(AvaloniaObject element, string name) =>
+        name is "Text" or "SelectedText" or "PreeditText"
+            && AvaloniaPropertyRegistry.Instance.FindRegistered(element, "PasswordChar") is { } password && element.GetValue(password) is char c and not '\0';
+
+    /// <summary>A property's value as the inspector gives it (<see cref="Details.Format"/>), a password's text as its box
+    /// shows it (<see cref="Hides"/>).</summary>
+    public static string Format(AvaloniaObject element, string name, object? value) =>
+        Details.Format(value is string text && Hides(element, name) ? Words.Dots(text) : value);
 
     /// <summary>The element with the keyboard focus, in whichever window.</summary>
     public static IInputElement? Focused() => (AvaloniaLocator.Current.GetService<IKeyboardDevice>() as KeyboardDevice)?.FocusedElement;

@@ -14,7 +14,7 @@ using Debuggees = Passenger.Tests.Debugging.Helpers.Debuggees;
 namespace Passenger.Tests;
 
 /// <summary>The Avalonia app McpAvaloniaAppTests' agents run and drive: tests/Debuggees/AgentApp (a counter's button, a name box that
-/// greets on Enter, a binding and a misspelt one, a drop-down and a list to scroll), written once for the class with a project file on
+/// greets on Enter, a password box, a binding and a misspelt one, a drop-down and a list to scroll), written once for the class with a project file on
 /// the tests' own Avalonia and restored. Headless, so nothing of it shows on the screen. Its window's tag holds a lone '\r',
 /// which XamlIl counts as a line's end and the editor does not, so every place below it the app reports is a line on from
 /// the editor's, and an agent is told the editor's.</summary>
@@ -93,6 +93,13 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
         await Call(client, McpTools.AppKey, new() { ["keys"] = "Enter" });
         Assert.Contains("\"Hello, Ada\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Greeting" })), StringComparison.Ordinal);
         Assert.Contains("it shows \"Grace\"", Text(await Call(client, McpTools.AppType, new() { ["control"] = "#NameBox", ["text"] = "Grace", ["replace"] = true })), StringComparison.Ordinal);
+        // A password box's text, as the box shows it, wherever an agent reads it.
+        Assert.DoesNotContain("hunter2", Text(await Call(client, McpTools.AppType, new() { ["control"] = "#Pin", ["text"] = "hunter2" })), StringComparison.Ordinal);
+        JsonElement pin = await Call(client, McpTools.AppDetails, new() { ["control"] = "#Pin", ["properties"] = "Text" });
+        JsonElement typed = Assert.Single(pin.GetProperty("properties").EnumerateArray(), p => p.GetProperty("name").GetString() == "Text");
+        Assert.Equal("\"•••••••\"", typed.GetProperty("value").GetString());
+        Assert.DoesNotContain("hunter2", pin.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("hunter2", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Pin", ["properties"] = new[] { "Text", "SelectedText" } })), StringComparison.Ordinal);
 
         await Call(client, McpTools.AppClick, new() { ["control"] = "#Colour" });
         JsonElement popup = Assert.Single((await Call(client, McpTools.AppWindows)).GetProperty("windows").EnumerateArray(), w => w.TryGetProperty("owner", out _));
@@ -203,7 +210,9 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
         await Call(client, McpTools.Open, new() { ["path"] = "MainWindow.axaml" });
         JsonElement stop = await Call(client, McpTools.DebugState);
         string[] values = stop.TryGetProperty("bindingValues", out JsonElement shown) ? [.. shown.EnumerateArray().Select(v => v.GetString()!)] : [];
-        Assert.True(values.Contains("MainWindow.axaml:12: Text: \"Ada\"") && values.Any(v => v.StartsWith("MainWindow.axaml:11: Text: binding failed at Nmae: ", StringComparison.Ordinal)),
+        string caption = string.Join(':', AppXamlPlace("x:Name=\"Caption\"").Split(':')[..2]);
+        string who = string.Join(':', AppXamlPlace("x:Name=\"Who\"").Split(':')[..2]);
+        Assert.True(values.Contains($"{who}: Text: \"Ada\"") && values.Any(v => v.StartsWith($"{caption}: Text: binding failed at Nmae: ", StringComparison.Ordinal)),
             $"The binding values at the stop are not those the editor shows: {stop}");
 
         // By the breakpoint's own id for its element, since the paused app answers no query.

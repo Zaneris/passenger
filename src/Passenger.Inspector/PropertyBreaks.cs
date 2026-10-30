@@ -75,7 +75,7 @@ internal sealed class PropertyBreaks
                 return;
             }
             (string by, SourcePlace? at) = By(e);
-            string change = $"Previous Value: {Details.Format(e.OldValue)}, New Value: {Details.Format(e.NewValue)}{by}";
+            string change = $"Previous Value: {Shown.Format(Element, property.Name, e.OldValue)}, New Value: {Shown.Format(Element, property.Name, e.NewValue)}{by}";
             Breaks.Changed(breakpoint, Element, property, e.OldValue, e.NewValue, change, at is null ? null : JsonSerializer.Serialize(at, WireJson.Default.SourcePlace));
         }
 

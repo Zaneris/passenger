@@ -82,7 +82,7 @@ internal static class Shown
     {
         string? text = element switch
         {
-            PasswordBox box => new string('•', box.Password.Length),
+            PasswordBox box => Words.Dots(box.Password),
             TextBox box => box.Text ?? string.Empty,
             TextBlock block => block.Text,
             AccessText access => access.Text,
@@ -126,7 +126,8 @@ internal static class Shown
         {
             try
             {
-                return Details.Format(clr.GetValue(element));
+                // A password box's password as the box shows it.
+                return Details.Format(element is PasswordBox box && name == nameof(PasswordBox.Password) ? Words.Dots(box.Password) : clr.GetValue(element));
             }
             catch (TargetInvocationException error)
             {

@@ -11,5 +11,6 @@
         <TextBlock x:Name="Greeting" Classes="title" Text="Hello" />
         <Button x:Name="Save" Content="Save" />
         <Button x:Name="Delete" Content="Delete" Background="Orange" />
+        <TextBox x:Name="Pin" PasswordChar="•" />
     </StackPanel>
 </Window>

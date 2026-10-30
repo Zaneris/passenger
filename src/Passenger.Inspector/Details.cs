@@ -13,10 +13,10 @@ using Avalonia.VisualTree;
 
 namespace Passenger.Inspector;
 
-/// <summary>One visual looked at closely: its XAML, its layout, each Avalonia property with its value and where the
-/// value came from, read from Avalonia's own value store (GetDiagnostic for the value and its priority,
-/// GetValueStoreDiagnostic for the frames that gave it), and the styles that could apply
-/// (<see cref="Styling"/>).</summary>
+/// <summary>One visual looked at closely: its XAML, its layout, each Avalonia property with its value (a password's text
+/// as its box shows it, <see cref="Shown.Hides"/>) and where the value came from, read from Avalonia's own value store
+/// (GetDiagnostic for the value and its priority, GetValueStoreDiagnostic for the frames that gave it), and the styles
+/// that could apply (<see cref="Styling"/>).</summary>
 internal sealed class Details(Inspector inspector)
 {
     public ElementDetails Of(Visual visual)
@@ -147,16 +147,17 @@ internal sealed class Details(Inspector inspector)
         if (property.IsDirect)
         {
             object? direct = visual.GetValue(property);
+            string shown = Shown.Format(visual, name, direct);
             if (styling.Winner(property) is { } styled)
             {
-                return new PropertyValue(name, owner, attached, type, Format(direct), styled.Source, styled.Detail, styled.Place);
+                return new PropertyValue(name, owner, attached, type, shown, styled.Source, styled.Detail, styled.Place);
             }
             bool initial = property.GetMetadata(visual.GetType()) is IDirectPropertyMetadata { UnsetValue: var unset } && Equals(direct, unset);
-            return new PropertyValue(name, owner, attached, type, Format(direct), initial ? ValueSources.Default : ValueSources.Direct,
+            return new PropertyValue(name, owner, attached, type, shown, initial ? ValueSources.Default : ValueSources.Direct,
                 initial ? null : Bound(visual, property, BindingPriority.LocalValue), null);
         }
         AvaloniaPropertyValue diagnostic = visual.GetDiagnostic(property);
-        string value = Format(diagnostic.Value);
+        string value = Shown.Format(visual, name, diagnostic.Value);
         if (diagnostic.IsOverriddenCurrentValue)
         {
             return new PropertyValue(name, owner, attached, type, value, ValueSources.Current, "Set by the control itself (SetCurrentValue)", null);

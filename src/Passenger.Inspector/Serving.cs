@@ -339,6 +339,9 @@ internal static class Words
         return text.Length > Longest ? text[..(Longest - 3)] + "..." : text;
     }
 
+    /// <summary>A password's text as its box shows it, a dot for each character, wherever the inspector gives it.</summary>
+    public static string Dots(string? text) => new('•', text?.Length ?? 0);
+
     /// <summary>A box as the protocol carries it, to a hundredth of a unit.</summary>
     public static Box Boxed(double x, double y, double width, double height) => new(Math.Round(x, 2), Math.Round(y, 2), Math.Round(width, 2), Math.Round(height, 2));
 

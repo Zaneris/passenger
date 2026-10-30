@@ -6,7 +6,10 @@
     <StackPanel x:Name="Panel" Margin="12" Spacing="8">
         <TextBlock x:Name="Counter" Text="Not clicked yet" />
         <Button x:Name="Count" Content="Count" Click="OnCount" />
-        <TextBox x:Name="NameBox" PlaceholderText="Your name" KeyDown="OnNameKey" />
+        <Grid ColumnDefinitions="*,8,*">
+            <TextBox x:Name="NameBox" PlaceholderText="Your name" KeyDown="OnNameKey" />
+            <TextBox x:Name="Pin" Grid.Column="2" PasswordChar="•" PlaceholderText="Your PIN" />
+        </Grid>
         <TextBlock x:Name="Greeting" Text="Nobody greeted" />
         <TextBlock x:Name="Caption" Text="{Binding Nmae}" />
         <TextBlock x:Name="Who" Text="{Binding Name}" />

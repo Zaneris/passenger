@@ -162,6 +162,46 @@ public sealed class LiveTreeTests : IClassFixture<RestoredFolders>, IDisposable
         window.Close();
     }
 
+    /// <summary>What a person types into a password box in the app shows in its details as the box shows it, a dot for
+    /// each character, in its Text and in the Text of the presenter inside it, and nowhere in clear: the Live Visual Tree
+    /// gives its properties to whoever looks, an agent among them.</summary>
+    [AvaloniaFact]
+    public void A_password_boxs_typed_text_shows_in_its_details_as_the_box_shows_it()
+    {
+        const string Typed = "hunter2";
+        string dots = $"\"{new string('•', Typed.Length)}\"";
+        MainWindow window = Debugged();
+        LiveTreeView tree = window.LiveTree;
+        Box pin = Choose(window, "Pin").Layout.InWindow!;
+        Ui.TypeToDebugged(window, $"click {pin.X + 5},{pin.Y + 5}");
+        Ui.TypeToDebugged(window, $"type {Typed}");
+        // Chosen again, and again, until the details asked show what was typed.
+        Ui.WaitFor(() =>
+        {
+            if (tree.Details is { Name: "Pin" } shown && shown.Properties.Single(p => p.Name == "Text").Value is not ("\"\"" or "(null)"))
+            {
+                return true;
+            }
+            tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == (tree.Details?.Name == "Pin" ? "Delete" : "Pin"));
+            return false;
+        }, () => $"Pin's details to show the text typed into it, not {tree.Details?.Properties.SingleOrDefault(p => p.Name == "Text")?.Value}");
+        ElementDetails box = tree.Details!;
+        Assert.Equal(dots, box.Properties.Single(p => p.Name == "Text").Value);
+        Assert.True(!box.Properties.Any(p => p.Value.Contains(Typed, StringComparison.Ordinal)),
+            $"The password box's details show what was typed: {string.Join(", ", box.Properties.Where(p => p.Value.Contains(Typed, StringComparison.Ordinal)).Select(p => p.Name))}");
+
+        Element presenter = Find(Ui.Await(window.LiveApp!.TreeAsync(), "the app's tree").Roots, "PART_TextPresenter")
+            ?? throw new InvalidOperationException("The password box's template has no PART_TextPresenter");
+        ElementDetails inside = Ui.Await(window.LiveApp!.DetailsAsync(presenter.Id), "the presenter's details");
+        Assert.Equal(dots, inside.Properties.Single(p => p.Name == "Text").Value);
+        Assert.True(!inside.Properties.Any(p => p.Value.Contains(Typed, StringComparison.Ordinal)), "The password box's presenter's details show what was typed");
+        Stop(window);
+        window.Close();
+
+        static Element? Find(IEnumerable<Element> elements, string name) =>
+            elements.Select(e => e.Name == name ? e : Find(e.Children, name)).FirstOrDefault(e => e is not null);
+    }
+
     /// <summary>The folder opened in a window and its app launched by Debug, its tree shown.</summary>
     private MainWindow Debugged()
     {
