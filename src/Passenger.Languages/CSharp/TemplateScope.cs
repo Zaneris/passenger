@@ -46,6 +46,10 @@ public static class TemplateScopes
                     return Statementlike(token) ? (TemplateScope.Statement, typeName) : (TemplateScope.None, null);
                 case GlobalStatementSyntax:
                     return (TemplateScope.Statement | TemplateScope.Type, typeName);
+                case MemberDeclarationSyntax member when member is not BaseNamespaceDeclarationSyntax && InHeader(member, offset)
+                    && !StartsDeclaration(token, offset):
+                    // After a modifier, a type or a name, a template would write its own again.
+                    return (TemplateScope.None, null);
                 case IncompleteMemberSyntax or FieldDeclarationSyntax when node.Parent is BaseTypeDeclarationSyntax:
                     return (TemplateScope.Member, typeName);
                 case IncompleteMemberSyntax or FieldDeclarationSyntax when node.Parent is CompilationUnitSyntax unit:
@@ -63,6 +67,20 @@ public static class TemplateScopes
             }
         }
         return (TemplateScope.None, null);
+    }
+
+    /// <summary>Whether <paramref name="offset"/> is in a declaration's own words rather than a type's body.</summary>
+    private static bool InHeader(MemberDeclarationSyntax member, int offset) =>
+        member is not BaseTypeDeclarationSyntax type || type.OpenBraceToken.Span.IsEmpty || offset <= type.OpenBraceToken.SpanStart;
+
+    /// <summary>Whether a word ending at <paramref name="offset"/> (or none, after <paramref name="token"/>) starts its
+    /// declaration: nothing but attributes before it since the declaration began.</summary>
+    private static bool StartsDeclaration(SyntaxToken token, int offset)
+    {
+        bool word = token.Span.End == offset && (token.IsKind(SyntaxKind.IdentifierToken) || SyntaxFacts.IsKeywordKind(token.Kind()));
+        SyntaxToken previous = word ? token.GetPreviousToken() : token;
+        return previous.RawKind == 0 || previous.Kind() is SyntaxKind.OpenBraceToken or SyntaxKind.CloseBraceToken or SyntaxKind.SemicolonToken
+            || (previous.IsKind(SyntaxKind.CloseBracketToken) && previous.Parent is AttributeListSyntax);
     }
 
     /// <summary>Whether a word stands where a statement starts: nothing but the word since the statement began.</summary>

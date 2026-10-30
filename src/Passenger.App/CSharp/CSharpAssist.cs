@@ -1,5 +1,6 @@
 using Passenger.App.Web;
 using Passenger.App.Workspace;
+using Passenger.Languages.CSharp;
 using Passenger.Lsp;
 
 namespace Passenger.App.CSharp;
@@ -11,7 +12,8 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
     CodeNavigation navigation, CodeActions actions, XamlAssist xaml) : LanguageAssist
 {
     /// <summary>A member's dot, and in a Razor file a tag's '&lt;' (the elements and components) and '@' (Razor's directives
-    /// and the C#), list what may follow; so does a name's first letter. A call's bracket or comma shows its signature.</summary>
+    /// and the C#), list what may follow; so do a name's first letter and a space after a member's override. A call's
+    /// bracket or comma shows its signature.</summary>
     public override bool Typed(string text)
     {
         char last = text[^1];
@@ -23,6 +25,10 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         else if (AssistContext.IsIdentifierChar(last) && !char.IsDigit(last) && context.WordStart(caret) == caret - 1)
         {
             IdeErrors.Observe(completion.Start(null));
+        }
+        else if (last == ' ' && !context.InRazor && context.Syntax is { } syntax && CompletionTriggers.AfterOverride(syntax, caret))
+        {
+            IdeErrors.Observe(completion.Start(" "));
         }
         parameters.AfterTyped(last);
         return true;

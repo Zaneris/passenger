@@ -49,6 +49,13 @@
     <Compile Include="../../src/Passenger.Languages/CSharp/SafeDeletion.cs" Link="Languages/SafeDeletion.cs" />
   </ItemGroup>
 
+  <!-- Where a live template may go and where completion opens on a space, read from Roslyn's syntax alone, compiled in
+       since their project's editor brings Avalonia. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.Languages/CSharp/TemplateScope.cs" Link="Languages/TemplateScope.cs" />
+    <Compile Include="../../src/Passenger.Languages/CSharp/CompletionTriggers.cs" Link="Languages/CompletionTriggers.cs" />
+  </ItemGroup>
+
   <!-- The bindings an .axaml file writes, read from its markup alone, compiled in since their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/LiveTree/XamlBindings.cs" Link="App/XamlBindings.cs" />

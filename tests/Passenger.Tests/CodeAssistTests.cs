@@ -1312,6 +1312,32 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>A space typed after override in a class lists the members it may override, with no live template among
+    /// them, and Enter writes the one chosen as an override calling the base's.</summary>
+    [AvaloniaFact]
+    public void A_space_after_override_lists_the_members_to_override_and_no_template_and_Enter_writes_one()
+    {
+        MainWindow window = project.Open("Figures.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "public double Radius { get; set; }");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("override ");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Perimeter()"), () => $"the members to override after a space, where the list shows [{string.Join(", ", window.Assist.CompletionLabels)}]");
+        IReadOnlyList<string> labels = window.Assist.CompletionLabels;
+        Assert.True(labels.Contains("Describe(string prefix)") && labels.Contains("ToString()"), $"After override the list shows [{string.Join(", ", labels)}], not Figure's and object's members");
+        string[] templates = [.. labels.Where(l => l is "ctor" or "prop" or "propg" or "svm" or "sim")];
+        Assert.True(templates.Length == 0, $"After override the list offers the live templates [{string.Join(", ", templates)}], which write a member over the modifier");
+        window.KeyTextInput("Per");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "Perimeter()", "Perimeter offered first once Per is typed");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("base.Perimeter()", StringComparison.Ordinal), () => $"the override written; the file reads:\n{editor.Document.Snapshot}");
+        string text = editor.Document.Snapshot.ToString();
+        Assert.True(text.Contains("public override double Perimeter()", StringComparison.Ordinal) && !text.Contains("override public", StringComparison.Ordinal),
+            $"Enter after override wrote:\n{text}");
+        window.Close();
+    }
+
     /// <summary>Chooses ToString() from completion on a new line after some text, which overrides it there.</summary>
     private static void OverrideAfter(MainWindow window, CodeEditor editor, string after)
     {
@@ -2426,6 +2452,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Shapes.cs"), "interface IShape\n{\n    int Sides { get; }\n}\n\nclass Square : IShape\n{\n    public int Sides => 4;\n}\n");
             File.WriteAllText(PathOf("Area.cs"), "static class Area\n{\n    public static int Of(int width, int height) => width * height;\n    public static int Room() => Of(3, 4);\n}\n");
             File.WriteAllText(PathOf("Point.cs"), "class Point\n{\n    public int X { get; }\n    public int Y { get; }\n}\n");
+            File.WriteAllText(PathOf("Figures.cs"), "class Figure\n{\n    public virtual double Perimeter() => 0;\n    public virtual string Describe(string prefix) => prefix;\n}\n\n"
+                + "class Disc : Figure\n{\n    public double Radius { get; set; }\n}\n");
             File.WriteAllText(PathOf("Loop.cs"), "static class Loop\n{\n    public static int Sum()\n    {\n        int total = 0;\n        for (int i = 0; i < 10; i++)\n        {\n            total += i * 2;\n        }\n        return total;\n    }\n}\n");
             // Roslyn ends a line at each of these in the comment; the editor's lines end only at '\n'.
             File.WriteAllText(PathOf("Separators.cs"), "static class Separators\n{\n    /* Pasted:\u2028a line separator,\u2029a paragraph separator,\u0085a next line,\ra carriage return. */\n    public static int Value()\n    {\n        int total = 1;\n          return total;\n    }\n}\n");
