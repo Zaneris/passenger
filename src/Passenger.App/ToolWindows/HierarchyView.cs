@@ -50,6 +50,9 @@ public sealed class HierarchyRow(HierarchyNode node, int depth) : Observable, IT
         get => expanded;
         internal set => Set(ref expanded, value);
     }
+
+    /// <summary>Its opening while its next level is on its way, which another open waits for rather than opening it again.</summary>
+    internal Task? Opening { get; set; }
 }
 
 /// <summary>The Hierarchy window, for calls (Ctrl+Alt+H) and types (Ctrl+E, H): the symbol at the top, and under it
@@ -157,14 +160,34 @@ public sealed class HierarchyView : DockPanel
         await ExpandAsync(top);
     }
 
-    /// <summary>Opens a row, asking for its next level the first time.</summary>
+    /// <summary>Opens a row, asking for its next level the first time; asked again while that level is on its way, it
+    /// waits for that opening, so the level comes once.</summary>
     public async Task ExpandAsync(HierarchyRow row)
     {
+        if (row.Opening is { } opening)
+        {
+            await opening;
+            return;
+        }
         if (row.IsExpanded || directions is not { } ways)
         {
             return;
         }
-        HierarchyDirection way = IsFirst ? ways.First : ways.Second;
+        Task opened = OpenAsync(row, IsFirst ? ways.First : ways.Second);
+        row.Opening = opened;
+        try
+        {
+            await opened;
+        }
+        finally
+        {
+            row.Opening = null;
+        }
+    }
+
+    /// <summary>A row's next level, asked for once, shown open under it while the row is still in the tree.</summary>
+    private async Task OpenAsync(HierarchyRow row, HierarchyDirection way)
+    {
         try
         {
             row.Children ??= await way.Load(row.Node.Item);

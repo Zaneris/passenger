@@ -2248,6 +2248,41 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>A hierarchy row opened again while its level is on its way waits for that level: with the server's callers
+    /// of Twice held as the Hierarchy window opens its top row, a click on the row's chevron opens it too, and once the
+    /// callers come Main is listed once.</summary>
+    [AvaloniaFact]
+    public void A_hierarchy_row_opened_twice_before_its_level_comes_lists_each_row_of_it_once()
+    {
+        MainWindow window = project.Open("Helper.cs");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "static int Tw");
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.IncomingCalls, _ => true, answered.Task);
+        try
+        {
+            Ui.Run(window, AppActions.CallHierarchy, settle: false);
+            Ui.AwaitPumped(held, "the server's callers of Twice, held unanswered");
+            RowIcon? chevron = null;
+            Ui.PumpUntil(() => (chevron = TopChevron()) is not null, "the Hierarchy window's top row, its callers on their way");
+            Ui.Click(chevron!, settle: false);
+        }
+        finally
+        {
+            answered.SetResult();
+        }
+        Ui.WaitFor(() => window.Hierarchy.Rows is [{ IsExpanded: true }, ..], "the callers of Twice");
+        // Both opens' answers in, whichever came first.
+        Ui.Settle();
+        Assert.True(window.Hierarchy.Rows.Count(r => r.Depth == 1) == 1 && window.Hierarchy.Rows[1].Node.Item.Name.Contains("Main", StringComparison.Ordinal),
+            $"Opened twice before its callers came, Twice lists {string.Join(", ", window.Hierarchy.Rows.Skip(1).Select(r => r.Node.Item.Name))}, not Main once");
+        window.Close();
+
+        RowIcon? TopChevron() => window.Hierarchy.Rows is [{ IsExpanded: false } top]
+            ? window.Hierarchy.GetVisualDescendants().OfType<RowIcon>().FirstOrDefault(i => i.IsEffectivelyVisible && (i.Parent as Control)?.DataContext == top)
+            : null;
+    }
+
     /// <summary>The server's completion list is read where its answer arrives, never on the UI thread: a list of
     /// hundreds more items (a file with the usings a project's implicit ones bring, against one with none) costs the UI
     /// thread, from the key to the list open, less than a third of what reading those items takes, counted rather than
