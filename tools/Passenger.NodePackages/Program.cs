@@ -140,7 +140,7 @@ public static class Packages
         Directory.CreateDirectory(staging);
         // Unpacked in the lock file's order, so a package's folder is there before one nested in it is unpacked.
         using SemaphoreSlim downloads = new(6);
-        string[] tarballs = await Task.WhenAll(packages.Select(async package =>
+        byte[][] tarballs = await Task.WhenAll(packages.Select(async package =>
         {
             await downloads.WaitAsync();
             try
@@ -244,13 +244,14 @@ public static class Packages
         }
     }
 
-    /// <summary>The package's tarball in the cache, downloaded when it is not there or not the one the lock file names.</summary>
-    private static async Task<string> TarballAsync(Locked package, string cache, Func<Uri, Task<byte[]>> download)
+    /// <summary>The package's tarball as the lock file pins it: the cache's, or downloaded into the cache when it is not there
+    /// or not the one the lock file names.</summary>
+    private static async Task<byte[]> TarballAsync(Locked package, string cache, Func<Uri, Task<byte[]>> download)
     {
         string path = Path.Combine(cache, package.CacheName);
-        if (File.Exists(path) && Matches(await File.ReadAllBytesAsync(path), package.Sha512))
+        if (await CachedAsync(path) is { } cached && Matches(cached, package.Sha512))
         {
-            return path;
+            return cached;
         }
         byte[] downloaded = [];
         for (int attempt = 1; ; attempt++)
@@ -280,38 +281,55 @@ public static class Packages
             await File.WriteAllBytesAsync(partial, downloaded);
             File.Move(partial, path, overwrite: true);
         }
-        catch (Exception refused) when (refused is IOException or UnauthorizedAccessException && Cached(path, package.Sha512))
+        catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
         {
-            // Another install put the same tarball there first, which it may be unpacking still (Windows keeps it then).
+            // Another install put the same tarball there first, which it may be reading or replacing still (Windows refuses the move then).
+            if (await CachedAsync(path) is not { } other || !Matches(other, package.Sha512))
+            {
+                throw;
+            }
         }
         finally
         {
             File.Delete(partial);
         }
-        return path;
+        return downloaded;
     }
 
-    /// <summary>Whether the cache holds the tarball the hash names at the path, read whole as it stands.</summary>
-    private static bool Cached(string path, byte[] sha512)
+    /// <summary>A tarball in the cache, read whole as it stands, or null where the cache has none. Windows refuses a read while
+    /// another install's move replaces the file, so a refused read is tried again until the move is done.</summary>
+    private static async Task<byte[]?> CachedAsync(string path)
     {
-        try
+        DateTime until = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+        while (true)
         {
-            return Matches(File.ReadAllBytes(path), sha512);
-        }
-        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
-        {
-            return false;
+            try
+            {
+                return await File.ReadAllBytesAsync(path);
+            }
+            catch (Exception missing) when (missing is FileNotFoundException or DirectoryNotFoundException)
+            {
+                return null;
+            }
+            catch (Exception refused) when (refused is IOException or UnauthorizedAccessException && DateTime.UtcNow < until)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50));
+            }
+            catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
+            {
+                throw new PackageException($"{path}, a tarball in the cache, could not be read: {refused.Message}", refused);
+            }
         }
     }
 
     private static bool Matches(byte[] tarball, byte[] sha512) => CryptographicOperations.FixedTimeEquals(SHA512.HashData(tarball), sha512);
 
     /// <summary>A tarball's files under a package's folder, without the one folder npm packs them in (<c>package/</c>).</summary>
-    private static async Task UnpackAsync(string tarball, string folder, Locked package)
+    private static async Task UnpackAsync(byte[] tarball, string folder, Locked package)
     {
         string root = Path.GetFullPath(folder);
         Directory.CreateDirectory(root);
-        await using FileStream file = File.OpenRead(tarball);
+        await using MemoryStream file = new(tarball, writable: false);
         await using GZipStream unzipped = new(file, CompressionMode.Decompress);
         using TarReader reader = new(unzipped);
         while (await reader.GetNextEntryAsync() is { } entry)
