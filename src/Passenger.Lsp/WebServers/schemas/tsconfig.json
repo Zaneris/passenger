@@ -620,12 +620,20 @@
                 },
                 "jsx": {
                   "description": "Controls how JSX constructs are emitted in JavaScript files.\nThis only affects output of JS files that started in `.tsx` files.\n\n- `react-jsx`: Emit `.js` files with the JSX changed to `_jsx` calls optimized for production\n- `react-jsxdev`: Emit `.js` files with the JSX changed to `_jsx` calls for development only\n- `preserve`: Emit `.jsx` files with the JSX unchanged\n- `react-native`: Emit `.js` files with the JSX unchanged\n- `react`: Emit `.js` files with JSX changed to the equivalent `React.createElement` calls\n\n### For example\n\nThis sample code:\n\n```tsx\nexport const HelloWorld = () => <h1>Hello world</h1>;\n```\n\nReact: `\"react-jsx\"`<sup>[[1]](https://reactjs.org/blog/2020/09/22/introducing-the-new-jsx-transform.html)</sup>\n\n```tsx twoslash\ndeclare module JSX {\n  interface Element {}\n  interface IntrinsicElements {\n    [s: string]: any;\n  }\n}\n// @showEmit\n// @noErrors\n// @jsx: react-jsx\nexport const HelloWorld = () => <h1>Hello world</h1>;\n```\n\nReact dev transform: `\"react-jsxdev\"`<sup>[[1]](https://reactjs.org/blog/2020/09/22/introducing-the-new-jsx-transform.html)</sup>\n\n```tsx twoslash\ndeclare module JSX {\n  interface Element {}\n  interface IntrinsicElements {\n    [s: string]: any;\n  }\n}\n// @showEmit\n// @noErrors\n// @jsx: react-jsxdev\nexport const HelloWorld = () => <h1>Hello world</h1>;\n```\n\nPreserve: `\"preserve\"`\n\n```tsx twoslash\ndeclare module JSX {\n  interface Element {}\n  interface IntrinsicElements {\n    [s: string]: any;\n  }\n}\n// @showEmit\n// @noErrors\n// @jsx: preserve\nexport const HelloWorld = () => <h1>Hello world</h1>;\n```\n\nReact Native: `\"react-native\"`\n\n```tsx twoslash\ndeclare module JSX {\n  interface Element {}\n  interface IntrinsicElements {\n    [s: string]: any;\n  }\n}\n// @showEmit\n// @noErrors\n// @jsx: react-native\nexport const HelloWorld = () => <h1>Hello world</h1>;\n```\n\n\nLegacy React runtime: `\"react\"`\n\n```tsx twoslash\ndeclare module JSX {\n  interface Element {}\n  interface IntrinsicElements {\n    [s: string]: any;\n  }\n}\n// @showEmit\n// @noErrors\nexport const HelloWorld = () => <h1>Hello world</h1>;\n```\n\nThis option can be used on a per-file basis too using an `@jsxRuntime` comment.\n\nAlways use the classic runtime (`\"react\"`) for this file:\n\n```tsx\n/* @jsxRuntime classic */\nexport const HelloWorld = () => <h1>Hello world</h1>;\n```\n\nAlways use the automatic runtime (`\"react-jsx\"`) for this file:\n\n```tsx\n/* @jsxRuntime automatic */\nexport const HelloWorld = () => <h1>Hello world</h1>;\n```",
-                  "enum": [
-                    "preserve",
-                    "react",
-                    "react-jsx",
-                    "react-jsxdev",
-                    "react-native"
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "preserve",
+                        "react",
+                        "react-jsx",
+                        "react-jsxdev",
+                        "react-native"
+                      ]
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "(?i)^(preserve|react|react-jsx|react-jsxdev|react-native)$"
+                    }
                   ]
                 },
                 "reactNamespace": {
@@ -767,7 +775,7 @@
                     },
                     {
                       "type": "string",
-                      "pattern": "^(([Nn]ode)|([Nn]ode1[06])|([Nn]ode[Nn]ext)|([Cc]lassic)|([Bb]undler))$"
+                      "pattern": "(?i)^(classic|node|node10|node16|nodenext|bundler)$"
                     },
                     {
                       "type": "null"
@@ -803,7 +811,7 @@
                     },
                     {
                       "type": "string",
-                      "pattern": "^(CRLF|LF|crlf|lf)$"
+                      "pattern": "(?i)^(crlf|lf)$"
                     },
                     {
                       "type": "null"
@@ -1271,35 +1279,59 @@
                 },
                 "fallbackPolling": {
                   "description": "Specify the polling strategy to use when the system runs out of or doesn't support native file watchers. Requires TypeScript version 3.8 or later.",
-                  "enum": [
-                    "fixedPollingInterval",
-                    "priorityPollingInterval",
-                    "dynamicPriorityPolling",
-                    "fixedInterval",
-                    "priorityInterval",
-                    "dynamicPriority",
-                    "fixedChunkSize"
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "fixedPollingInterval",
+                        "priorityPollingInterval",
+                        "dynamicPriorityPolling",
+                        "fixedInterval",
+                        "priorityInterval",
+                        "dynamicPriority",
+                        "fixedChunkSize"
+                      ]
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "(?i)^(fixedPollingInterval|priorityPollingInterval|dynamicPriorityPolling|fixedInterval|priorityInterval|dynamicPriority|fixedChunkSize)$"
+                    }
                   ]
                 },
                 "watchDirectory": {
                   "description": "Specify the strategy for watching directories under systems that lack recursive file-watching functionality. Requires TypeScript version 3.8 or later.",
-                  "enum": [
-                    "useFsEvents",
-                    "fixedPollingInterval",
-                    "dynamicPriorityPolling",
-                    "fixedChunkSizePolling"
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "useFsEvents",
+                        "fixedPollingInterval",
+                        "dynamicPriorityPolling",
+                        "fixedChunkSizePolling"
+                      ]
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "(?i)^(useFsEvents|fixedPollingInterval|dynamicPriorityPolling|fixedChunkSizePolling)$"
+                    }
                   ],
                   "default": "useFsEvents"
                 },
                 "watchFile": {
                   "description": "Specify the strategy for watching individual files. Requires TypeScript version 3.8 or later.",
-                  "enum": [
-                    "fixedPollingInterval",
-                    "priorityPollingInterval",
-                    "dynamicPriorityPolling",
-                    "useFsEvents",
-                    "useFsEventsOnParentDirectory",
-                    "fixedChunkSizePolling"
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "fixedPollingInterval",
+                        "priorityPollingInterval",
+                        "dynamicPriorityPolling",
+                        "useFsEvents",
+                        "useFsEventsOnParentDirectory",
+                        "fixedChunkSizePolling"
+                      ]
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "(?i)^(fixedPollingInterval|priorityPollingInterval|dynamicPriorityPolling|useFsEvents|useFsEventsOnParentDirectory|fixedChunkSizePolling)$"
+                    }
                   ],
                   "default": "useFsEvents"
                 },
@@ -1846,7 +1878,15 @@
                 },
                 "moduleDetection": {
                   "description": "This setting controls how TypeScript determines whether a file is a\n[script or a module](https://typescriptlang.org/docs/handbook/modules/theory.html#scripts-and-modules-in-javascript).\n\nThere are three choices:\n\n- `\"auto\"` (default) - TypeScript will not only look for import and export statements, but it will also check whether the `\"type\"` field in a `package.json` is set to `\"module\"` when running with [`module`](https://typescriptlang.org/tsconfig/#module): `nodenext` or `node16`, and check whether the current file is a JSX file when running under [`jsx`](https://typescriptlang.org/tsconfig/#jsx):  `react-jsx`.\n\n- `\"legacy\"` - The same behavior as 4.6 and prior, usings import and export statements to determine whether a file is a module.\n\n- `\"force\"` - Ensures that every non-declaration file is treated as a module.",
-                  "enum": ["auto", "legacy", "force"]
+                  "anyOf": [
+                    {
+                      "enum": ["auto", "legacy", "force"]
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "(?i)^(auto|legacy|force)$"
+                    }
+                  ]
                 },
                 "strictNullChecks": {
                   "description": "When `strictNullChecks` is `false`, `null` and `undefined` are effectively ignored by the language.\nThis can lead to unexpected errors at runtime.\n\nWhen `strictNullChecks` is `true`, `null` and `undefined` have their own distinct types and you'll get a type error if you try to use them where a concrete value is expected.\n\nFor example with this TypeScript code, `users.find` has no guarantee that it will actually find a user, but you can\nwrite code as though it will:\n\n```ts twoslash\n// @strictNullChecks: false\n// @target: ES2015\ndeclare const loggedInUsername: string;\n\nconst users = [\n  { name: \"Oby\", age: 12 },\n  { name: \"Heera\", age: 32 },\n];\n\nconst loggedInUser = users.find((u) => u.name === loggedInUsername);\nconsole.log(loggedInUser.age);\n```\n\nSetting `strictNullChecks` to `true` will raise an error that you have not made a guarantee that the `loggedInUser` exists before trying to use it.\n\n```ts twoslash\n// @errors: 2339 2532 18048\n// @target: ES2020\n// @strictNullChecks\ndeclare const loggedInUsername: string;\n\nconst users = [\n  { name: \"Oby\", age: 12 },\n  { name: \"Heera\", age: 32 },\n];\n\nconst loggedInUser = users.find((u) => u.name === loggedInUsername);\nconsole.log(loggedInUser.age);\n```\n\nThe second example failed because the array's `find` function looks a bit like this simplification:\n\n```ts\n// When strictNullChecks: true\ntype Array = {\n  find(predicate: (value: any, index: number) => boolean): S | undefined;\n};\n\n// When strictNullChecks: false the undefined is removed from the type system,\n// allowing you to write code which assumes it always found a result\ntype Array = {\n  find(predicate: (value: any, index: number) => boolean): S;\n};\n```",
@@ -1893,7 +1933,15 @@
                 "importsNotUsedAsValues": {
                   "description": "Deprecated in favor of [`verbatimModuleSyntax`](https://typescriptlang.org/tsconfig/#verbatimModuleSyntax).\n\nThis flag controls how `import` works, there are 3 different options:\n\n- `remove`: The default behavior of dropping `import` statements which only reference types.\n\n- `preserve`: Preserves all `import` statements whose values or types are never used. This can cause imports/side-effects to be preserved.\n\n- `error`: This preserves all imports (the same as the preserve option), but will error when a value import is only used as a type. This might be useful if you want to ensure no values are being accidentally imported, but still make side-effect imports explicit.\n\nThis flag works because you can use `import type` to explicitly create an `import` statement which should never be emitted into JavaScript.",
                   "default": "remove",
-                  "enum": ["remove", "preserve", "error"]
+                  "anyOf": [
+                    {
+                      "enum": ["remove", "preserve", "error"]
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "(?i)^(remove|preserve|error)$"
+                    }
+                  ]
                 },
                 "alwaysStrict": {
                   "description": "Ensures that your files are parsed in the ECMAScript strict mode, and emit \"use strict\" for each source file.\n\n[ECMAScript strict](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Strict_mode) mode was introduced in ES5 and provides behavior tweaks to the runtime of the JavaScript engine to improve performance, and makes a set of errors throw instead of silently ignoring them.",

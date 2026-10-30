@@ -582,12 +582,20 @@
                 },
                 "jsx": {
                   "description": "Specify what JSX code is generated.",
-                  "enum": [
-                    "preserve",
-                    "react",
-                    "react-jsx",
-                    "react-jsxdev",
-                    "react-native"
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "preserve",
+                        "react",
+                        "react-jsx",
+                        "react-jsxdev",
+                        "react-native"
+                      ]
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "(?i)^(preserve|react|react-jsx|react-jsxdev|react-native)$"
+                    }
                   ],
                   "markdownDescription": "Specify what JSX code is generated.\n\nSee more: https://www.typescriptlang.org/tsconfig#jsx"
                 },
@@ -723,7 +731,7 @@
                     },
                     {
                       "type": "string",
-                      "pattern": "^(([Nn]ode)|([Nn]ode1[06])|([Nn]ode[Nn]ext)|([Cc]lassic)|([Bb]undler))$"
+                      "pattern": "(?i)^(classic|node|node10|node16|nodenext|bundler)$"
                     },
                     {
                       "type": "null"
@@ -756,7 +764,7 @@
                     },
                     {
                       "type": "string",
-                      "pattern": "^(CRLF|LF|crlf|lf)$"
+                      "pattern": "(?i)^(crlf|lf)$"
                     },
                     {
                       "type": "null"
@@ -1193,35 +1201,59 @@
                 },
                 "fallbackPolling": {
                   "description": "Specify the polling strategy to use when the system runs out of or doesn't support native file watchers. Requires TypeScript version 3.8 or later.",
-                  "enum": [
-                    "fixedPollingInterval",
-                    "priorityPollingInterval",
-                    "dynamicPriorityPolling",
-                    "fixedInterval",
-                    "priorityInterval",
-                    "dynamicPriority",
-                    "fixedChunkSize"
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "fixedPollingInterval",
+                        "priorityPollingInterval",
+                        "dynamicPriorityPolling",
+                        "fixedInterval",
+                        "priorityInterval",
+                        "dynamicPriority",
+                        "fixedChunkSize"
+                      ]
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "(?i)^(fixedPollingInterval|priorityPollingInterval|dynamicPriorityPolling|fixedInterval|priorityInterval|dynamicPriority|fixedChunkSize)$"
+                    }
                   ]
                 },
                 "watchDirectory": {
                   "description": "Specify the strategy for watching directories under systems that lack recursive file-watching functionality. Requires TypeScript version 3.8 or later.",
-                  "enum": [
-                    "useFsEvents",
-                    "fixedPollingInterval",
-                    "dynamicPriorityPolling",
-                    "fixedChunkSizePolling"
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "useFsEvents",
+                        "fixedPollingInterval",
+                        "dynamicPriorityPolling",
+                        "fixedChunkSizePolling"
+                      ]
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "(?i)^(useFsEvents|fixedPollingInterval|dynamicPriorityPolling|fixedChunkSizePolling)$"
+                    }
                   ],
                   "default": "useFsEvents"
                 },
                 "watchFile": {
                   "description": "Specify the strategy for watching individual files. Requires TypeScript version 3.8 or later.",
-                  "enum": [
-                    "fixedPollingInterval",
-                    "priorityPollingInterval",
-                    "dynamicPriorityPolling",
-                    "useFsEvents",
-                    "useFsEventsOnParentDirectory",
-                    "fixedChunkSizePolling"
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "fixedPollingInterval",
+                        "priorityPollingInterval",
+                        "dynamicPriorityPolling",
+                        "useFsEvents",
+                        "useFsEventsOnParentDirectory",
+                        "fixedChunkSizePolling"
+                      ]
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "(?i)^(fixedPollingInterval|priorityPollingInterval|dynamicPriorityPolling|useFsEvents|useFsEventsOnParentDirectory|fixedChunkSizePolling)$"
+                    }
                   ],
                   "default": "useFsEvents"
                 },
@@ -1787,7 +1819,15 @@
                 "importsNotUsedAsValues": {
                   "description": "Specify emit/checking behavior for imports that are only used for types.",
                   "default": "remove",
-                  "enum": ["remove", "preserve", "error"],
+                  "anyOf": [
+                    {
+                      "enum": ["remove", "preserve", "error"]
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "(?i)^(remove|preserve|error)$"
+                    }
+                  ],
                   "markdownDescription": "Specify emit/checking behavior for imports that are only used for types.\n\nSee more: https://www.typescriptlang.org/tsconfig#importsNotUsedAsValues"
                 },
                 "alwaysStrict": {

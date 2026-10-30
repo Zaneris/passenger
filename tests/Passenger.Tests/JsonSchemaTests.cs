@@ -95,6 +95,26 @@ public sealed class JsonSchemaTests
         Assert.True(marked.Count == 0, $"Conditions Node.js resolves are marked as wrong, where the file has {Said(marked)}");
     }
 
+    /// <summary>TypeScript reads a compiler option's named value in any case, so tsconfig.json marks none of them.</summary>
+    [AvaloniaFact]
+    public void Tsconfig_takes_compiler_option_values_in_any_case_as_typescript_reads_them()
+    {
+        List<(string Text, string Message)> marked = Marked("tsconfig.json", """
+            {
+              "compilerOptions": {
+                "moduleResolution": "BUNDLER",
+                "jsx": "REACT-JSX",
+                "module": "NODE16",
+                "newLine": "Lf",
+                "moduleDetection": "Force",
+                "strict": "yes"
+              }
+            }
+
+            """, "\"yes\"");
+        Assert.True(marked.Count == 0, $"Option values TypeScript reads are marked as wrong, where the file has {Said(marked)}");
+    }
+
     /// <summary>ESLint's configuration names a plugin's rule by the plugin's short name (import/, vue/, unicorn/), so the rules
     /// package.json's eslintConfig offers are named so, never by the plugin's package.</summary>
     [AvaloniaFact]
