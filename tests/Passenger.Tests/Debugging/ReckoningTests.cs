@@ -33,6 +33,17 @@ public class ReckoningTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("true", await Evaluate(host, frame, "typeof(int*).IsPointer"));
     }
 
+    [Fact]
+    public async Task A_formatted_hole_of_a_programs_value_takes_its_format()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        (_, int frame) = await StoppedAtReckoningAsync(host);
+
+        string month = await Evaluate(host, frame, "$\"{date:yyyy-MM}\"");
+        Assert.True(month == "\"2026-10\"", $"$\"{{date:yyyy-MM}}\" is {month}, its format dropped");
+        Assert.Equal("\"[  2026-10]\"", await Evaluate(host, frame, "$\"[{date,9:yyyy-MM}]\""));
+    }
+
     /// <summary>The program launched to Reckoning.Run's stop, and its top frame.</summary>
     private static async Task<(StoppedEvent Stop, int Frame)> StoppedAtReckoningAsync(DebugSession host)
     {

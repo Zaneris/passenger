@@ -1932,17 +1932,23 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         {
             receiver = (await BoxAsync(value, receiver.ExactType, context, handles)).CorValue!;
         }
-        ResolvedRuntimeMethod concat = resolver.ResolveRuntimeMethod("System", "String", "Concat", MetadataTypeNames.Of(PrimitiveTypeCode.Object));
         ICorDebugEval eval = context.Thread.CreateEval();
-        ICorDebugValue? result = handles.Track(await eval.CallParameterizedFunctionAsync(
-            debugger.ProcessRuntimeEventsUntilEvalEvent,
-            debugger.EvalStatus,
-            concat.Function,
-            0,
-            null,
-            1,
-            [receiver],
-            throwOnException: true));
+        ICorDebugValue? result;
+        if (format is null)
+        {
+            ResolvedRuntimeMethod concat = resolver.ResolveRuntimeMethod("System", "String", "Concat", MetadataTypeNames.Of(PrimitiveTypeCode.Object));
+            result = handles.Track(await eval.CallParameterizedFunctionAsync(
+                debugger.ProcessRuntimeEventsUntilEvalEvent, debugger.EvalStatus, concat.Function, 0, null, 1, [receiver], throwOnException: true));
+        }
+        else
+        {
+            // The program's string.Format gives the hole as its value's IFormattable.ToString(format, null) gives it.
+            ResolvedRuntimeMethod formatted = resolver.ResolveRuntimeMethod("System", "String", "Format", MetadataTypeNames.Of(PrimitiveTypeCode.String), MetadataTypeNames.Of(PrimitiveTypeCode.Object));
+            ICorDebugValue composite = handles.Track(await eval.NewStringAsync(
+                debugger.ProcessRuntimeEventsUntilEvalEvent, debugger.EvalStatus, $"{{0:{format}}}", throwOnException: true))!;
+            result = handles.Track(await context.Thread.CreateEval().CallParameterizedFunctionAsync(
+                debugger.ProcessRuntimeEventsUntilEvalEvent, debugger.EvalStatus, formatted.Function, 0, null, 2, [composite, receiver], throwOnException: true));
+        }
         return result?.UnwrapDebugValue() is ICorDebugStringValue stringValue ? stringValue.String : string.Empty;
     }
 }

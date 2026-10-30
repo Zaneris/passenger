@@ -316,8 +316,9 @@ internal static class Reckoning
 	{
 		Wide wide = Wide.Low | Wide.Big;
 		Wide big = Wide.Big;
+		DateTime date = new(2026, 10, 30, 13, 45, 0);
 		Console.WriteLine("reckoning");
-		Console.WriteLine($"reckoned {wide & big}");
+		Console.WriteLine($"reckoned {wide & big}, {date:yyyy-MM}");
 	}
 }
 
