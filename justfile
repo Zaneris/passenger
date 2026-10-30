@@ -30,12 +30,27 @@ comments *paths:
 test-times +runs:
     python3 -I tools/test-shards.py update {{runs}}
 
+# Each argument reaches the IDE whole, a path with a space or a $(…) as it was typed.
 # Run the IDE (Debug, JIT): just run [--theme dark|light|system]
+[unix]
+[positional-arguments]
+run *args:
+    dotnet run --project {{app}} -- "$@"
+
+# Run the IDE (Debug, JIT), its arguments read again by PowerShell: just run [--theme dark|light|system]
+[windows]
 run *args:
     dotnet run --project {{app}} -- {{args}}
 
 # --window-buttons draws in macOS's traffic lights, which the off-screen window lacks (Windows' and Linux's are the bar's).
 # Draw the main window off-screen to a PNG: just screenshot out.png [--size 1600x1000] [--scale 2] [--theme light] [--window-buttons]
+[unix]
+[positional-arguments]
+screenshot path *args:
+    dotnet run --project {{app}} -- --screenshot "$@"
+
+# Draw the main window off-screen to a PNG, its arguments read again by PowerShell: just screenshot out.png [...]
+[windows]
 screenshot path *args:
     dotnet run --project {{app}} -- --screenshot {{path}} {{args}}
 
@@ -115,7 +130,7 @@ unicode-widths:
 # Run from a clone of the last build, so rebuilding Passenger never changes the files under it (tools/mcp.sh).
 # Passenger as an MCP server over a folder, its tools on standard input and output: just mcp [FOLDER]
 mcp folder="":
-    @tools/mcp.sh {{folder}}
+    @tools/mcp.sh {{ quote(folder) }}
 
 # Its server is kept for the folder's next calls, so the language server loads once; it ends after 20 idle minutes or at
 # just mcp-call FOLDER --stop, and just mcp-call FOLDER lists the tools.
