@@ -235,49 +235,32 @@ public partial class MainWindow
         });
     }
 
-    /// <summary>Runs (or debugs) a test method, or every test of a type, as the tree has them from the code: the run
-    /// builds first and finds them as built.</summary>
+    /// <summary>Runs (or debugs) a test method, or every test of a type, as the tree has them once the run's build has
+    /// ended and its tests are found: a test only a runner finds (an attribute of the project's own) runs with them.</summary>
     private void RunTestsAt(string type, string? method, bool debug, bool untilFailure = false)
     {
         if (Folder is null)
         {
             return;
         }
-        (string Type, string? Method) context = (type, method);
         ProjectSession running = session;
         string workspace = Folder;
+        string none = $"No test of {method ?? type} was found; is the project a test project?";
         RunTests(async () =>
         {
-            if (Matching() is not { Count: > 0 })
-            {
-                // A test the code's reading does not know (an attribute of the project's own) is found by a runner.
-                if (await running.Tests.DiscoverAsync(workspace) is { } problem)
-                {
-                    return problem;
-                }
-            }
-            if (session != running || running.IsEnded)
-            {
-                return "The test run's solution was closed";
-            }
-            if (Matching() is not { Count: > 0 } found)
-            {
-                return $"No test of {context.Method ?? context.Type} was found; is the project a test project?";
-            }
             if (!untilFailure)
             {
-                return await running.Tests.RunAsync(workspace, found, debug);
+                return await running.Tests.RunMatchingAsync(workspace, Matches, none, debug);
             }
-            string? stopped = await running.Tests.RunUntilFailureAsync(workspace, found);
-            if (session == running && !running.IsEnded && running.Tests.FirstFailed(found) is { } failed)
+            string? stopped = await running.Tests.RunUntilFailureAsync(workspace, Matches, none);
+            if (session == running && !running.IsEnded && running.Tests.FirstFailed(running.Tests.RunMethods) is { } failed)
             {
                 Bottom.Tests.Choose(failed);
             }
             return stopped;
         });
 
-        List<Testing.TestNode> Matching() =>
-            [.. running.Tests.Tree.Methods.Where(m => m.FullName is { } name && Testing.TestsAtCaret.Matches(name, context.Type, context.Method))];
+        bool Matches(Testing.TestNode test) => test.FullName is { } name && Testing.TestsAtCaret.Matches(name, type, method);
     }
 
     /// <summary>A test host a runner would start, started under the debugger as a plan of its own (the runner built it, and

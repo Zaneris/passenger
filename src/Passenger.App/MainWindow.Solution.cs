@@ -247,20 +247,11 @@ public partial class MainWindow
     }
 
     /// <summary>Run Unit Tests on projects or solution folders in the Solution view: the tests of the test projects
-    /// among them, found first when they have not been.</summary>
+    /// among them, as found once the run's build has ended.</summary>
     private void RunProjectTests(IReadOnlyList<string> projects, string what, bool debug)
     {
         HashSet<string> chosen = new(projects, StringComparer.Ordinal);
-        RunTests(async () =>
-        {
-            if (Found().Count == 0 && await session.Tests.DiscoverAsync(Folder!) is { } problem)
-            {
-                return problem;
-            }
-            return Found() is { Count: > 0 } found ? await session.Tests.RunAsync(Folder!, found, debug) : $"No tests were found in {what}";
-        });
-
-        List<Testing.TestNode> Found() => [.. session.Tests.Tree.Methods.Where(m => m.ProjectPath is { } project && chosen.Contains(project))];
+        RunTests(() => session.Tests.RunMatchingAsync(Folder!, m => m.ProjectPath is { } project && chosen.Contains(project), $"No tests were found in {what}", debug));
     }
 
     private static SolutionFolder? FindFolder(IEnumerable<SolutionEntry> entries, string path)

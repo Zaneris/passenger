@@ -190,9 +190,21 @@ public sealed class TestFinder
     /// <summary>The test project a file belongs to: of the projects holding it, the nearest, when that one holds tests.</summary>
     private ProjectModel? Owner(string path) => ProjectModel.Owning(every, path) is { } owner && Projects.Contains(owner) ? owner : null;
 
+    /// <summary>Lists the test projects' C# files again and reads those changed on disk since they were read, then tells
+    /// what changed: what a run's build took in, ahead of the folder watcher's word of it.</summary>
+    public Task CatchUpAsync()
+    {
+        UiThread.Check();
+        return Projects.Count == 0 ? Task.CompletedTask : Listing(Projects, timed: false);
+    }
+
+    /// <summary>Lists projects' C# files and reads those changed since they were read (<see cref="Listing"/>).</summary>
+    private void Read(IReadOnlyList<ProjectModel> projects, bool timed) => IdeErrors.Observe(Listing(projects, timed));
+
     /// <summary>Lists projects' C# files and reads those changed since they were read, on a worker, then tells what
-    /// changed; a later listing of a project asked for meanwhile wins over this one.</summary>
-    private void Read(IReadOnlyList<ProjectModel> projects, bool timed)
+    /// changed; a later listing of a project asked for meanwhile wins over this one. It never faults: a failure is
+    /// reported.</summary>
+    private Task Listing(IReadOnlyList<ProjectModel> projects, bool timed)
     {
         Dictionary<string, int> mine = new(StringComparer.Ordinal);
         foreach (ProjectModel project in projects)
@@ -202,7 +214,7 @@ public sealed class TestFinder
         IReadOnlyList<ProjectModel> others = every;
         long began = Stopwatch.GetTimestamp();
         listings++;
-        IdeErrors.Observe(ReadAsync());
+        return ReadAsync();
 
         async Task ReadAsync()
         {

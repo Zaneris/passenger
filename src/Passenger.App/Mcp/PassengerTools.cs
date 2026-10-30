@@ -1207,22 +1207,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         string folder = Session.Folder ?? throw new InvalidOperationException(Refusals.NoFolder);
         Testing.TestController tests = Session.Tests;
-        List<Testing.TestNode> Matching() =>
-            [.. tests.Tree.Methods.Where(m => m.FullName is { } name && name.Contains(filter!, StringComparison.Ordinal))];
-        // A test the code's reading does not know (an attribute of the project's own) is found by a runner.
-        if (filter is not null && Matching().Count == 0 && await tests.DiscoverAsync(folder).WaitAsync(cancel) is { } discovery)
-        {
-            throw new InvalidOperationException(discovery);
-        }
-        List<Testing.TestNode>? chosen = filter is null ? null : Matching();
-        if (chosen is { Count: 0 })
-        {
-            throw new InvalidOperationException($"No test's name contains '{filter}'");
-        }
-        AgentCall.Say(chosen is null ? "Building and running every test" : $"Building and running {Plural.Of(chosen.Count, "test")}");
+        AgentCall.Say(filter is null ? "Building and running every test" : $"Building and running the tests whose names contain '{filter}'");
         AgentCall.Follow(window.Actions.Work, AppActions.Build);
         using LaunchBuild built = new(Builds);
-        Task<string?> run = tests.RunAsync(folder, chosen, debug);
+        // Matched once built: a test written a moment ago, or one only a runner finds, is among them.
+        Task<string?> run = filter is null ? tests.RunAsync(folder, null, debug)
+            : tests.RunMatchingAsync(folder, m => m.FullName is { } name && name.Contains(filter, StringComparison.Ordinal), $"No test's name contains '{filter}'", debug);
         if (debug)
         {
             // A debugged test's stop comes back to the agent; looked at every 50 ms: no pause of the test host is told.

@@ -121,6 +121,34 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("Sums.Tests.SumTests.Two_and_two_make_five", failed.GetProperty("test").GetString());
     }
 
+    /// <summary>A failing test an agent writes into a test file the IDE has read, run at once by its class's name, runs with
+    /// the class's others and is told among the failures: what a run runs is chosen once its build has ended.</summary>
+    [Fact]
+    public async Task An_agents_test_written_and_run_at_once_by_its_classs_name_runs_and_its_failure_is_told()
+    {
+        string tests = PathNames.Canonical(TestFolders.Create("mcp-written-tests-"));
+        DeleteAtEnd(tests);
+        const string Two = "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    public void Two_and_two_make_four() => Assert.Equal(4, 2 + 2);\n\n" +
+            "    [Fact]\n    public void Three_and_three_make_six() => Assert.Equal(6, 3 + 3);\n";
+        await TestFolders.PrepareAsync(async () =>
+        {
+            File.WriteAllText(Path.Combine(tests, "Sums.Tests.csproj"),
+                $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
+                "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
+                "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+            File.WriteAllText(Path.Combine(tests, "SumTests.cs"), Two + "}\n");
+            await Restore.RunAsync(tests);
+        }, tests);
+        await using McpClient client = await Start(["--mcp", tests], languageServer: false);
+        Assert.Equal(2, (await Call(client, McpTools.TestsList, new() { ["filter"] = "SumTests" })).GetArrayLength());
+
+        File.WriteAllText(Path.Combine(tests, "SumTests.cs"), Two + "\n    [Fact]\n    public void Written_just_now() => Assert.Equal(5, 2 + 2);\n}\n");
+        JsonElement run = await Call(client, McpTools.TestsRun, new() { ["filter"] = "Sums.Tests.SumTests" });
+        Assert.True(run.GetProperty("summary").GetString()!.StartsWith("Tests passed: 2, failed: 1 of 3", StringComparison.Ordinal),
+            $"A run by its class's name of a test written just before it left the test out: {run}");
+        Assert.Equal("Sums.Tests.SumTests.Written_just_now", Assert.Single(run.GetProperty("failures").EnumerateArray()).GetProperty("test").GetString());
+    }
+
     /// <summary>A VSTest test that reads its standard input reads its end at once, never the agent's requests, which are
     /// Passenger's standard input: its run passes, and the agent's next call is answered.</summary>
     [Fact]

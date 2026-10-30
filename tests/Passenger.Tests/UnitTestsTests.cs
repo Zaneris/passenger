@@ -307,6 +307,26 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>Run Unit Tests at the caret on a class runs its every test as its build has them, one marked by an attribute
+    /// of the project's own (a subclass of xUnit's Fact) with the rest, the tests found after the build.</summary>
+    [AvaloniaFact]
+    public void A_class_run_at_the_caret_runs_its_test_marked_by_an_attribute_of_the_projects_own()
+    {
+        string file = Write("CustomTests.cs",
+            "using Xunit;\n\nnamespace Sums.Tests;\n\npublic sealed class MyFactAttribute : FactAttribute\n{\n}\n\npublic class CustomTests\n{\n" +
+            "    [MyFact]\n    public void Via_its_own_attribute() => Assert.Equal(5, 2 + 2);\n\n    [Fact]\n    public void Plain() { }\n}\n");
+        MainWindow window = Open();
+        window.OpenFile(file);
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "public class Cust");
+        Ui.Run(window, AppActions.RunTests);
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Plain")?.State == TestState.Passed, () => $"the class's run: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(180));
+        Assert.True(Method(window, "Via_its_own_attribute")?.State == TestState.Failed,
+            $"The class's run left out its test marked by the project's own attribute: it said '{window.BottomPanel.Tests.Status}'");
+        Assert.StartsWith("Tests passed: 1, failed: 1 of 2", window.BottomPanel.Tests.Status, StringComparison.Ordinal);
+        window.Close();
+    }
+
     /// <summary>A run broken off by its test host's crash, a test calling Environment.Exit(3), says why in its tally, which
     /// an agent's tests_run answers with, in the Unit Tests window and on the status bar: the crash as VSTest tells it, and
     /// the test running then.</summary>

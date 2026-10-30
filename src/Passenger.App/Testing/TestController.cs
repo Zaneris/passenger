@@ -190,16 +190,23 @@ public sealed class TestController : IAsyncDisposable
 
     /// <summary>Run Until Failure: these rows' tests run again and again, built once, until one fails or Stop is
     /// pressed, each run counted as it goes; the failing run's results stay to read.</summary>
-    public async Task<string?> RunUntilFailureAsync(string workspace, IEnumerable<TestNode> rows)
+    public Task<string?> RunUntilFailureAsync(string workspace, IEnumerable<TestNode> rows) => UntilFailureAsync(workspace, new Choice([.. rows], null, null));
+
+    /// <summary>Run Until Failure of the methods a match takes once the first run's build has ended
+    /// (<see cref="RunMatchingAsync"/>), those same methods run again after.</summary>
+    public Task<string?> RunUntilFailureAsync(string workspace, Func<TestNode, bool> match, string none) => UntilFailureAsync(workspace, new Choice(null, match, none));
+
+    private async Task<string?> UntilFailureAsync(string workspace, Choice choice)
     {
-        List<TestNode> chosen = [.. rows];
         stopRequested = false;
         for (int run = 1; ; run++)
         {
-            if (await RunAsync(workspace, chosen, debug: false, build: run == 1, prefix: $"Run {run}: ") is { } problem)
+            if (await RunChoiceAsync(workspace, choice, debug: false, build: run == 1, prefix: $"Run {run}: ") is { } problem)
             {
                 return problem;
             }
+            List<TestNode> chosen = [.. lastRun];
+            choice = new Choice(chosen, null, null);
             Runs = run;
             if (FirstFailed(chosen) is { } failed)
             {
@@ -225,7 +232,16 @@ public sealed class TestController : IAsyncDisposable
 
     /// <summary>Runs tests: these rows' (all when none), after a build and a look for the tests built since, so a test
     /// the code declares runs once it has been built.</summary>
-    public async Task<string?> RunAsync(string workspace, IEnumerable<TestNode>? rows = null, bool debug = false, bool build = true, string prefix = "")
+    public Task<string?> RunAsync(string workspace, IEnumerable<TestNode>? rows = null, bool debug = false, bool build = true, string prefix = "") =>
+        RunChoiceAsync(workspace, new Choice(rows?.ToList(), null, null), debug, build, prefix);
+
+    /// <summary>Runs the tree's methods a match takes as they stand once the build and the look for the tests it built have
+    /// ended, the test projects' changed files read first: a test written since the tree was last made, or one only a
+    /// runner finds, runs with them. <paramref name="none"/> is said when it takes none.</summary>
+    public Task<string?> RunMatchingAsync(string workspace, Func<TestNode, bool> match, string none, bool debug = false) =>
+        RunChoiceAsync(workspace, new Choice(null, match, none), debug, build: true, prefix: string.Empty);
+
+    private async Task<string?> RunChoiceAsync(string workspace, Choice choice, bool debug, bool build, string prefix)
     {
         UiThread.Check();
         if (IsBusy)
@@ -235,7 +251,6 @@ public sealed class TestController : IAsyncDisposable
         IsBusy = true;
         BackgroundWork.Begin();
         holdingWork = true;
-        List<TestNode>? chosen = rows?.ToList();
         using CancellationTokenSource stop = Begin();
         working = Work?.Begin(AppActions.RunTests, build ? "Building the test projects…" : "Finding the tests…");
         using CancellationTokenRegistration stopped = working?.Stopping.Register(stop.Cancel) ?? default;
@@ -246,10 +261,11 @@ public sealed class TestController : IAsyncDisposable
                 return problem;
             }
             stop.Token.ThrowIfCancellationRequested();
+            List<TestNode>? chosen = choice.Match is { } match ? [.. Tree.Methods.Where(match)] : choice.Rows;
             List<TestItem> tests = Chosen(chosen ?? Tree.Methods);
             if (tests.Count == 0)
             {
-                return chosen is null ? "There are no tests to run" : "None of these tests was found in the test projects as built";
+                return choice.None ?? (chosen is null ? "There are no tests to run" : "None of these tests was found in the test projects as built");
             }
             List<TestNode> methods = [.. tests.Select(Tree.Node).OfType<TestNode>().Select(n => n.Kind == TestNodeKind.Row ? n.Parent! : n).Distinct()];
             HashSet<string> containerized = [.. projects().Where(p => p.Packages.Any(n => n.Name.StartsWith("Testcontainers", StringComparison.OrdinalIgnoreCase)))
@@ -560,6 +576,9 @@ public sealed class TestController : IAsyncDisposable
             }
         }
         cancel.ThrowIfCancellationRequested();
+        // The build may have taken in files the folder's watcher has yet to tell of: their tests are read as built.
+        await Finder.CatchUpAsync();
+        cancel.ThrowIfCancellationRequested();
         Dictionary<string, IReadOnlyList<TestSource>> next = new(StringComparer.Ordinal);
         foreach (IGrouping<string, TestAssembly> project in built.GroupBy(a => a.Project.Path))
         {
@@ -620,6 +639,10 @@ public sealed class TestController : IAsyncDisposable
         string ending = summary.Canceled ? ", stopped" : summary.Aborted ? $", broken off{(summary.Error is { } why ? $": {why}" : "")}" : string.Empty;
         return $"Tests passed: {passed}, failed: {failed}{(skipped > 0 ? $", skipped: {skipped}" : "")} of {results.Count} in {summary.Elapsed.TotalSeconds:0.0} s{ending}";
     }
+
+    /// <summary>What a run runs: rows chosen (every test for none), or the tree's methods a match takes once the tests built
+    /// are found, and what is said when that is none.</summary>
+    private sealed record Choice(List<TestNode>? Rows, Func<TestNode, bool>? Match, string? None);
 
     /// <summary>The debugger for a run: the runner's test host started under it, or attached to, on the UI thread, from
     /// when the run is the debugger session's rather than work a screenshot waits for.</summary>
