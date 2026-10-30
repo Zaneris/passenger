@@ -863,6 +863,50 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Update Project whose remote stops answering is ended by Stop, git and all it started with it, and a commit
+    /// asked for then runs: the remote holds no change to the tree for good.</summary>
+    [AvaloniaFact]
+    public void Stop_ends_an_update_whose_remote_stalls_and_a_commit_runs_after_it()
+    {
+        string clone = TestFolders.Create("git-clone-");
+        Git("clone", "-q", "-c", "core.autocrlf=false", folder, clone);
+        TestGit.Run(clone, "config", "user.email", "tests@passenger.invalid");
+        TestGit.Run(clone, "config", "user.name", "Passenger Tests");
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("int count", "long count", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Long");
+        // The remote's side of the fetch says it is there, then stalls until go, a minute at most.
+        string fetching = Path.Combine(clone, ".git", "fetching");
+        string go = Path.Combine(clone, ".git", "go");
+        TestGit.Run(clone, "config", "remote.origin.uploadpack",
+            $"touch '{Unix(fetching)}'; i=0; while [ ! -f '{Unix(go)}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i + 1)); done; git-upload-pack");
+        string before = TestGit.Run(clone, "rev-parse", "origin/main").Trim();
+
+        MainWindow window = Ui.OpenFolder(clone, languageServer: false);
+        Ui.Settle();
+        try
+        {
+            Assert.True(window.Perform(AppActions.UpdateProject), window.Status);
+            Ui.PumpUntil(() => File.Exists(fetching), "the update's fetch to reach the remote");
+            Assert.True(window.Actions.Work.Of(AppActions.UpdateProject)?.Stoppable == true, "Update Project's work is not one Stop ends");
+            Assert.True(window.Perform(AppActions.Stop), "Stop was not offered while Update Project waited on the remote");
+            Ui.WaitFor(() => window.Actions.Work.Of(AppActions.UpdateProject) is null && !window.Vcs.IsBusy, "the update to end once stopped");
+            Assert.Equal("Update stopped", window.Status);
+            Assert.Equal(before, TestGit.Run(clone, "rev-parse", "origin/main").Trim());
+
+            File.WriteAllText(Path.Combine(clone, "Shop.cs"), Original.Replace("count++", "count += 1", StringComparison.Ordinal));
+            Task read = window.Vcs.RefreshAsync();
+            Ui.Landed(() => read.IsCompleted && window.Vcs.Changes.Count == 1, "Shop.cs listed as changed");
+            CommitResult made = Ui.Landed(window.Vcs.CommitAsync([.. window.Vcs.Changes], "After the stop", amend: false, push: false), "the commit after the stop");
+            Assert.True(made.Commit.Succeeded, made.Commit.Message);
+            Assert.Equal("After the stop", TestGit.Run(clone, "log", "-1", "--format=%s").Trim());
+        }
+        finally
+        {
+            File.WriteAllText(go, string.Empty);
+        }
+        window.Close();
+    }
+
     /// <summary>Update Project of a branch with commits of its own and the upstream's, where git's config says neither merge
     /// nor rebase, merges them, saying so, and an uncommitted edit to a file the upstream changed is set aside and put back.</summary>
     [AvaloniaFact]

@@ -1251,8 +1251,8 @@ public sealed class Git
     }
 
     /// <summary>Update Project's first half: the remote the branch's upstream is on fetched (origin where it has none),
-    /// which changes no file of the tree.</summary>
-    public Task<GitResult> FetchUpstreamAsync() => RunAsync(Root, ["fetch"]);
+    /// which changes no file of the tree. Canceled, git is ended with all it started and the task is canceled.</summary>
+    public Task<GitResult> FetchUpstreamAsync(CancellationToken cancel = default) => RunAsync(Root, ["fetch"], cancel: cancel);
 
     /// <summary>How the person's git config has Update Project bring the upstream's commits in, for this branch.</summary>
     public async Task<UpdatePlan> UpdatePlanAsync(string branch)
@@ -1285,7 +1285,8 @@ public sealed class Git
     public async Task<bool> HasTrackedChangesAsync() =>
         (await RunAsync(Root, ["status", "--porcelain", "--untracked-files=no"])).Output.Trim().Length > 0;
 
-    public Task<GitResult> FetchAsync() => RunAsync(Root, ["fetch", "--all", "--prune"]);
+    /// <summary>Every remote fetched, its branches gone from it pruned; canceled, as <see cref="FetchUpstreamAsync"/>.</summary>
+    public Task<GitResult> FetchAsync(CancellationToken cancel = default) => RunAsync(Root, ["fetch", "--all", "--prune"], cancel: cancel);
 
     /// <summary>The last commit's message, or null before the first commit.</summary>
     public async Task<string?> LastMessageAsync()
@@ -1352,15 +1353,15 @@ public sealed class Git
     }
 
     /// <summary>Pushes the branch to the one it tracks; or, given <paramref name="remote"/>, to that remote under its own
-    /// name, which it tracks from then on.</summary>
-    public async Task<GitResult> PushAsync(string? remote = null)
+    /// name, which it tracks from then on. Canceled, as <see cref="FetchUpstreamAsync"/>.</summary>
+    public async Task<GitResult> PushAsync(string? remote = null, CancellationToken cancel = default)
     {
         if (remote is null)
         {
-            return await RunAsync(Root, ["push"]);
+            return await RunAsync(Root, ["push"], cancel: cancel);
         }
         return await BranchAsync() is { } branch
-            ? await RunAsync(Root, ["push", "-u", "--end-of-options", remote, $"refs/heads/{branch}:refs/heads/{branch}"])
+            ? await RunAsync(Root, ["push", "-u", "--end-of-options", remote, $"refs/heads/{branch}:refs/heads/{branch}"], cancel: cancel)
             : new GitResult(1, string.Empty, "A detached head has no branch to push");
     }
 
@@ -1386,8 +1387,10 @@ public sealed class Git
     /// <summary>A local branch deleted; one not merged into HEAD (or its upstream) only when <paramref name="force"/>.</summary>
     public Task<GitResult> DeleteBranchAsync(string name, bool force) => RunAsync(Root, ["branch", force ? "-D" : "-d", "--end-of-options", name]);
 
-    /// <summary>A remote's branch deleted on the remote, and its remote-tracking branch with it.</summary>
-    public Task<GitResult> DeleteRemoteBranchAsync(string remote, string branch) => RunAsync(Root, ["push", "--end-of-options", remote, $":refs/heads/{branch}"]);
+    /// <summary>A remote's branch deleted on the remote, and its remote-tracking branch with it. Canceled, as
+    /// <see cref="FetchUpstreamAsync"/>.</summary>
+    public Task<GitResult> DeleteRemoteBranchAsync(string remote, string branch, CancellationToken cancel = default) =>
+        RunAsync(Root, ["push", "--end-of-options", remote, $":refs/heads/{branch}"], cancel: cancel);
 
     public Task<GitResult> DeleteTagAsync(string name) => RunAsync(Root, ["tag", "-d", "--end-of-options", name]);
 
@@ -1395,16 +1398,16 @@ public sealed class Git
     public async Task<bool> IsMergedAsync(string branch) => (await RunAsync(Root, ["merge-base", "--is-ancestor", branch, "HEAD"], answers: [1])).Succeeded;
 
     /// <summary>A local branch that is not checked out brought up to date with the remote's branch it tracks: forward only,
-    /// refused where the two went apart.</summary>
-    public Task<GitResult> FetchIntoAsync(string remote, string remoteBranch, string local) =>
-        RunAsync(Root, ["fetch", "--end-of-options", remote, $"{remoteBranch}:refs/heads/{local}"]);
+    /// refused where the two went apart. Canceled, as <see cref="FetchUpstreamAsync"/>.</summary>
+    public Task<GitResult> FetchIntoAsync(string remote, string remoteBranch, string local, CancellationToken cancel = default) =>
+        RunAsync(Root, ["fetch", "--end-of-options", remote, $"{remoteBranch}:refs/heads/{local}"], cancel: cancel);
 
     /// <summary>A local branch pushed to the branch it tracks; or, when it tracks none, to <paramref name="remote"/> under its
-    /// own name, then tracked.</summary>
-    public Task<GitResult> PushBranchAsync(BranchInfo branch, string? remote = null) => branch.UpstreamRemote is { } tracked && branch.UpstreamBranch is { } target
-        ? RunAsync(Root, ["push", "--end-of-options", tracked, $"refs/heads/{branch.Name}:{target}"])
+    /// own name, then tracked. Canceled, as <see cref="FetchUpstreamAsync"/>.</summary>
+    public Task<GitResult> PushBranchAsync(BranchInfo branch, string? remote = null, CancellationToken cancel = default) => branch.UpstreamRemote is { } tracked && branch.UpstreamBranch is { } target
+        ? RunAsync(Root, ["push", "--end-of-options", tracked, $"refs/heads/{branch.Name}:{target}"], cancel: cancel)
         : RunAsync(Root, ["push", "-u", "--end-of-options", remote ?? throw new ArgumentNullException(nameof(remote), $"{branch.Name} tracks no branch: the remote to push it to is named"),
-            $"refs/heads/{branch.Name}:refs/heads/{branch.Name}"]);
+            $"refs/heads/{branch.Name}:refs/heads/{branch.Name}"], cancel: cancel);
 
     /// <summary>The files that differ between a revision and the working tree (Show Diff with Working Tree), renames
     /// found, each by its path now.</summary>
@@ -1682,8 +1685,10 @@ public sealed class Git
     /// <summary>A name as git takes it from its input: composed where it composes names.</summary>
     private static string GitForm(string relative, bool composed) => composed ? relative.Normalize(NormalizationForm.FormC) : relative;
 
+    /// <summary>Runs git to its end, its output read whole; canceled, it is ended with all it started (a fetch's
+    /// upload-pack, a push's ssh) and the task is canceled.</summary>
     private static async Task<GitResult> RunAsync(string folder, IReadOnlyList<string> arguments, string? input = null, IReadOnlyDictionary<string, string>? environment = null,
-        IReadOnlyCollection<int>? answers = null)
+        IReadOnlyCollection<int>? answers = null, CancellationToken cancel = default)
     {
         // What git answers is what the window shows next (the branch, the bars, the log, a blame): a screenshot waits for it.
         using IDisposable held = BackgroundWork.Scope();
@@ -1697,7 +1702,7 @@ public sealed class Git
         }
         try
         {
-            ChildResult result = await ChildProcesses.RunAsync(start, input, answers: answers);
+            ChildResult result = await ChildProcesses.RunAsync(start, input, cancel: cancel, answers: answers);
             return new GitResult(result.ExitCode, result.Output, result.Error);
         }
         catch (System.ComponentModel.Win32Exception unstarted)

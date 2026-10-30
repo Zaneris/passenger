@@ -592,7 +592,7 @@ public sealed class VcsController : IDisposable
             return new CommitResult(Report(false, UnderWay(Committing)), null, null);
         }
         using Working? held = work;
-        return await OneAtATimeAsync(async () =>
+        CommitResult result = await OneAtATimeAsync(async () =>
         {
             if (await SavedFirstAsync(work) is { } unsaved)
             {
@@ -617,8 +617,11 @@ public sealed class VcsController : IDisposable
             };
             VcsOutcome done = Report(true, $"{committed}: {FirstLine(message)}");
             await RefreshAsync();
-            return new CommitResult(done, made, push ? await PushAsync(ask) : null);
+            return new CommitResult(done, made, null);
         }, refused => new CommitResult(refused, null, null));
+        // Pushed once the commit has let go of the tree and ended its work, so a remote that does not answer holds neither.
+        held?.Dispose();
+        return push && result.Commit.Succeeded ? result with { Push = await PushAsync(ask) } : result;
 
         static IEnumerable<string> Paths(IEnumerable<FileChange> changes) => changes.SelectMany(c => c.From is { } from ? new[] { c.Path, from } : [c.Path]);
     }
@@ -645,12 +648,15 @@ public sealed class VcsController : IDisposable
                 return Report(false, refused);
             }
         }
-        if (!Begin(AppActions.Push, $"Pushing {Branch}…", out Working? work))
+        if (!Begin(AppActions.Push, $"Pushing {Branch}…", out Working? work, stoppable: true))
         {
             return Report(false, UnderWay(AppActions.Push));
         }
         using Working? held = work;
-        GitResult pushed = await repository.PushAsync(remote);
+        if (await RemoteAsync(work, stopping => repository.PushAsync(remote, stopping)) is not { } pushed)
+        {
+            return Report(false, "Push stopped");
+        }
         return Report(pushed.Succeeded, pushed.Succeeded ? $"Pushed {Branch}" : $"Push failed: {pushed.Message}");
     }
 
@@ -692,7 +698,7 @@ public sealed class VcsController : IDisposable
         {
             return Report(false, "Unmerged files detected. These conflicts must be resolved before update.");
         }
-        if (!Begin(AppActions.UpdateProject, $"Updating {Branch}…", out Working? work))
+        if (!Begin(AppActions.UpdateProject, $"Updating {Branch}…", out Working? work, stoppable: true))
         {
             return Report(false, UnderWay(AppActions.UpdateProject));
         }
@@ -707,7 +713,11 @@ public sealed class VcsController : IDisposable
             {
                 return Report(false, $"{branch} tracks no remote's branch to update from");
             }
-            GitResult fetched = await repository.FetchUpstreamAsync();
+            // Stop ends the fetch alone: the merge or rebase after it is the tree's own, never left halfway.
+            if (await RemoteAsync(work, repository.FetchUpstreamAsync) is not { } fetched)
+            {
+                return Report(false, "Update stopped");
+            }
             if (!fetched.Succeeded)
             {
                 return Report(false, $"Update failed: {fetched.Message}");
@@ -766,22 +776,38 @@ public sealed class VcsController : IDisposable
         {
             return Report(false, NoRepository);
         }
-        if (!Begin(AppActions.Fetch, "Fetching…", out Working? work))
+        if (!Begin(AppActions.Fetch, "Fetching…", out Working? work, stoppable: true))
         {
             return Report(false, UnderWay(AppActions.Fetch));
         }
         using Working? held = work;
-        GitResult fetched = await repository.FetchAsync();
+        GitResult? fetched = await RemoteAsync(work, repository.FetchAsync);
         await RefreshAsync();
-        return Report(fetched.Succeeded, fetched.Succeeded ? "Fetched" : $"Fetch failed: {fetched.Message}");
+        return fetched is null ? Report(false, "Fetch stopped")
+            : Report(fetched.Succeeded, fetched.Succeeded ? "Fetched" : $"Fetch failed: {fetched.Message}");
     }
 
     /// <summary>Begins an operation's work in the window, saying its first stage: false when one of its kind is under way
-    /// already. Git runs no operation Stop could end, so none is stoppable.</summary>
-    private bool Begin(string id, string stage, out Working? work)
+    /// already. Only what goes to a remote is <paramref name="stoppable"/>: Stop ends git there, which leaves the tree
+    /// as it was, where ending a change to the tree could leave it halfway.</summary>
+    private bool Begin(string id, string stage, out Working? work, bool stoppable = false)
     {
-        work = Work?.Begin(id, stage, stoppable: false);
+        work = Work?.Begin(id, stage, stoppable);
         return Work is null || work is not null;
+    }
+
+    /// <summary>What git said of a remote, or null once Stop ended it with all it started (a remote that stopped answering).</summary>
+    private static async Task<GitResult?> RemoteAsync(Working? work, Func<CancellationToken, Task<GitResult>> run)
+    {
+        CancellationToken stopping = work?.Stopping ?? CancellationToken.None;
+        try
+        {
+            return await run(stopping);
+        }
+        catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+        {
+            return null;
+        }
     }
 
     /// <summary>What an operation asked for again while it works says.</summary>
@@ -896,7 +922,8 @@ public sealed class VcsController : IDisposable
             default:
                 string remote = (remotes ?? []).Where(r => branch.Name.StartsWith(r + "/", StringComparison.Ordinal)).MaxBy(r => r.Length)
                     ?? branch.Name[..Math.Max(0, branch.Name.IndexOf('/', StringComparison.Ordinal))];
-                return SwitchAsync(repository => repository.DeleteRemoteBranchAsync(remote, branch.Name[(remote.Length + 1)..]), $"Deleted remote branch {branch.Name}", "Git push");
+                return RemoteSwitchAsync(AppActions.Push, $"Deleting {branch.Name}…", "Delete", (repository, stopping) => repository.DeleteRemoteBranchAsync(remote, branch.Name[(remote.Length + 1)..], stopping),
+                    $"Deleted remote branch {branch.Name}", "Git push");
         }
     }
 
@@ -912,7 +939,8 @@ public sealed class VcsController : IDisposable
         {
             return Task.FromResult(Report(false, $"Tracked branch is not configured for {branch.Name}"));
         }
-        return SwitchAsync(repository => repository.FetchIntoAsync(remote, tracked, branch.Name), $"Updated {branch.Name}", "Git update");
+        return RemoteSwitchAsync(AppActions.UpdateProject, $"Updating {branch.Name}…", "Update", (repository, stopping) => repository.FetchIntoAsync(remote, tracked, branch.Name, stopping),
+            $"Updated {branch.Name}", "Git update");
     }
 
     /// <summary>Push of a branch: pushed to the branch it tracks, or where it tracks none, to the only remote or the one
@@ -933,14 +961,15 @@ public sealed class VcsController : IDisposable
                 return Report(false, refused);
             }
         }
-        if (!Begin(AppActions.Push, $"Pushing {branch.Name}…", out Working? work))
+        if (!Begin(AppActions.Push, $"Pushing {branch.Name}…", out Working? work, stoppable: true))
         {
             return Report(false, UnderWay(AppActions.Push));
         }
         using Working? held = work;
-        GitResult pushed = await repository.PushBranchAsync(branch, remote);
+        GitResult? pushed = await RemoteAsync(work, stopping => repository.PushBranchAsync(branch, remote, stopping));
         await RefreshAsync();
-        return Report(pushed.Succeeded, pushed.Succeeded ? $"Pushed {branch.Name}" : $"Push failed: {pushed.Message}");
+        return pushed is null ? Report(false, "Push stopped")
+            : Report(pushed.Succeeded, pushed.Succeeded ? $"Pushed {branch.Name}" : $"Push failed: {pushed.Message}");
     }
 
     /// <summary>The files that differ between a branch or tag and the working tree.</summary>
@@ -1074,6 +1103,20 @@ public sealed class VcsController : IDisposable
             }
             return Report(switched.Succeeded, switched.Succeeded ? done : switched.Message);
         }, refused => refused);
+    }
+
+    /// <summary>A change to the tree that goes to a remote (a branch brought forward from its upstream, one deleted there),
+    /// run as <see cref="SwitchAsync"/> runs one but held as <paramref name="id"/>'s work, which Stop ends with git and all it
+    /// started, saying "<paramref name="what"/> stopped".</summary>
+    private async Task<VcsOutcome> RemoteSwitchAsync(string id, string stage, string what, Func<Git, CancellationToken, Task<GitResult>> change, string done, string activity)
+    {
+        if (!Begin(id, stage, out Working? work, stoppable: true))
+        {
+            return Report(false, UnderWay(id));
+        }
+        using Working? held = work;
+        return await SwitchAsync(async repository => await RemoteAsync(work, stopping => change(repository, stopping))
+            ?? new GitResult(1, string.Empty, $"{what} stopped"), done, activity);
     }
 
     /// <summary>Accept Yours or Accept Theirs: conflicted files take that side whole (or go, where it deleted them) and
