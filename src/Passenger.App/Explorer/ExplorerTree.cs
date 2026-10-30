@@ -619,7 +619,7 @@ public sealed class ExplorerTree
     private SdkFolder? SdkFolderAt(string path)
     {
         string name = Path.GetFileName(path);
-        if (!string.Equals(name, PropertiesFolder, PathNames.Comparison) && !string.Equals(name, WebRootFolder, PathNames.Comparison))
+        if (!name.Equals(PropertiesFolder, StringComparison.OrdinalIgnoreCase) && !name.Equals(WebRootFolder, StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
@@ -640,9 +640,14 @@ public sealed class ExplorerTree
     /// <summary>What the SDK makes of a folder of a project, by where it is in it ('/' between folders): Properties at the
     /// top of a project (a file-based program has its own launch profiles), the wwwroot at a web project's top.</summary>
     private static SdkFolder? SdkFolderOf(ProjectModel project, string relative) =>
-        string.Equals(relative, PropertiesFolder, PathNames.Comparison) && !project.IsProgram ? SdkFolder.Properties
-        : string.Equals(relative, WebRootFolder, PathNames.Comparison) && project.IsWeb ? SdkFolder.WebRoot
+        Names(project, relative, PropertiesFolder) && !project.IsProgram ? SdkFolder.Properties
+        : Names(project, relative, WebRootFolder) && project.IsWeb ? SdkFolder.WebRoot
         : null;
+
+    /// <summary>Whether a place in a project names one of the SDK's folders at its top, in the letter case the project's
+    /// folder tells.</summary>
+    private static bool Names(ProjectModel project, string relative, string folder) =>
+        relative.Equals(folder, StringComparison.OrdinalIgnoreCase) && PathNames.Same(Path.Join(project.Folder, relative), Path.Join(project.Folder, folder));
 
     /// <summary>Where a row goes among its folder's: the SDK's folders first, in their order, then the rest as they came.</summary>
     private static int Listed(ExplorerNode node) => node.SdkFolder is { } read ? (int)read : int.MaxValue;

@@ -17,7 +17,8 @@
   <Import Project="../Publicize.targets" />
 
   <ItemGroup>
-    <!-- The evaluator's arithmetic and conversions, whose unit tests hold them to the runtime's. -->
+    <!-- The evaluator's arithmetic and conversions, whose unit tests hold them to the runtime's, and how a breakpoint's
+         file names a PDB's document. -->
     <InternalsVisibleTo Include="Passenger.UnitTests" />
   </ItemGroup>
 

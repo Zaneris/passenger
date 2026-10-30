@@ -89,7 +89,7 @@ internal sealed partial class CodeActions
         using (caret)
         {
             await ShowAsync(toFile
-                ? MoveTypeDialog.ToFile(type, file => Shown(context.PatientlyAsync(AppActions.Move, patience => MoveTypeToFileAsync(document, caret.Offset, type, file, patience))))
+                ? MoveTypeDialog.ToFile(type, Path.GetDirectoryName(document.Path)!, file => Shown(context.PatientlyAsync(AppActions.Move, patience => MoveTypeToFileAsync(document, caret.Offset, type, file, patience))))
                 : MoveTypeDialog.ToNamespace(type, space => Shown(context.PatientlyAsync(AppActions.Move, patience => MoveTypeToNamespaceAsync(document, caret.Offset, type, space, patience)))));
         }
     }

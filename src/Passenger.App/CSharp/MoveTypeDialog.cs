@@ -11,9 +11,12 @@ public sealed class MoveTypeDialog : RefactoringDialog
 {
     private readonly bool toFile;
     private readonly TypeSource type;
+
+    /// <summary>The folder of the type's file, which the new file goes beside; empty for Move to Namespace.</summary>
+    private readonly string folder;
     private readonly Func<string, Task<string?>> make;
 
-    private MoveTypeDialog(TypeSource type, bool toFile, Func<string, Task<string?>> make)
+    private MoveTypeDialog(TypeSource type, bool toFile, string folder, Func<string, Task<string?>> make)
         : base(toFile ? "Move to Another File" : "Move to Namespace", toFile ? "Specify a name of a file" : "Specify namespace",
             toFile
                 ? $"Specify the name of a new file beside {type.FileName} to move {type.Kind} '{type.Name}' to"
@@ -22,6 +25,7 @@ public sealed class MoveTypeDialog : RefactoringDialog
     {
         this.type = type;
         this.toFile = toFile;
+        this.folder = folder;
         this.make = make;
         TargetBox = Field(toFile ? type.TargetFileName : type.Namespace);
         TargetBox.TextChanged += (_, _) => Changed();
@@ -30,9 +34,9 @@ public sealed class MoveTypeDialog : RefactoringDialog
         FocusOnOpen(TargetBox);
     }
 
-    public static MoveTypeDialog ToFile(TypeSource type, Func<string, Task<string?>> make) => new(type, toFile: true, make);
+    public static MoveTypeDialog ToFile(TypeSource type, string folder, Func<string, Task<string?>> make) => new(type, toFile: true, folder, make);
 
-    public static MoveTypeDialog ToNamespace(TypeSource type, Func<string, Task<string?>> make) => new(type, toFile: false, make);
+    public static MoveTypeDialog ToNamespace(TypeSource type, Func<string, Task<string?>> make) => new(type, toFile: false, string.Empty, make);
 
     public TextBox TargetBox { get; }
 
@@ -43,7 +47,7 @@ public sealed class MoveTypeDialog : RefactoringDialog
         {
             return target.Length == 0 ? "file name is empty"
                 : !target.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ? "The new file name extension is not valid for source code files"
-                : string.Equals(target, type.FileName, PathNames.Comparison) ? $"'{type.Name}' is in {type.FileName} already"
+                : PathNames.NamesIn(folder).Equals(target, type.FileName) ? $"'{type.Name}' is in {type.FileName} already"
                 : null;
         }
         if (target.Length == 0)

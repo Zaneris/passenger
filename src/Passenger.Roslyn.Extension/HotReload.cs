@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.Contracts.EditAndContinue;
 using Microsoft.CodeAnalysis.EditAndContinue;
 using Microsoft.CodeAnalysis.Extensions;
 using Microsoft.CodeAnalysis.Text;
+using Passenger.Core;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -397,7 +398,7 @@ internal static class HotReload
     /// text's bytes (UTF-8, with or without its byte order mark) hash to that checksum.</summary>
     private sealed class Originals : IPdbMatchingSourceTextProvider
     {
-        private readonly ConcurrentDictionary<string, string> texts = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, string> texts = new(PathNames.Comparer);
 
         public void Take(IEnumerable<HotReloadOriginal> originals)
         {

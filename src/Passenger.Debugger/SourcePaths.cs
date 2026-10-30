@@ -9,40 +9,57 @@ namespace Passenger.Debugger;
 /// matches by the folders and file name it shares from the end, at least the file and its folder. A document that is on
 /// this disk as another file never matches while the breakpoint's file is on this disk too, so a same-named file in
 /// another folder or project does not take a breakpoint; a breakpoint's file that is not here (the IDE's, this adapter
-/// in a container) matches a document that is (one built in the image) by what they share from the end. A Windows path
-/// (C:\…, \\server\…) compares ignoring case wherever the adapter runs, as Windows names files.</summary>
+/// in a container) matches a document that is (one built in the image) by what they share from the end. Paths compare as
+/// their folders tell letter case (<see cref="PathNames.Comparer"/>), a Windows path (C:\…, \\server\…) read on another
+/// system ignoring it, as Windows names files.</summary>
 public static class SourcePaths
 {
     public const int Same = int.MaxValue;
 
     private static readonly ConcurrentDictionary<string, string?> Canonicals = new();
 
-    /// <summary>Paths compare as the file system does: ignoring case on Windows and macOS.</summary>
-    public static StringComparison Comparison => PathNames.Comparison;
+    public static int Match(string requested, string document) => Match(requested, document, PathNames.Comparer, Path.Exists);
 
-    public static int Match(string requested, string document)
+    /// <summary>The match, two paths compared by <paramref name="paths"/>, and whether one is on this disk asked of
+    /// <paramref name="exists"/>.</summary>
+    internal static int Match(string requested, string document, StringComparer paths, Func<string, bool> exists)
     {
-        StringComparison comparison = IsWindows(requested) || IsWindows(document) ? StringComparison.OrdinalIgnoreCase : Comparison;
+        if (!OperatingSystem.IsWindows() && (IsWindows(requested) || IsWindows(document)))
+        {
+            paths = StringComparer.OrdinalIgnoreCase;
+        }
         string want = Normalize(requested);
         string have = Normalize(document);
-        if (string.Equals(want, have, comparison))
+        if (paths.Equals(want, have))
         {
             return Same;
         }
         if (Canonical(have) is { } real && Canonical(want) is { } wanted)
         {
-            return string.Equals(wanted, real, comparison) ? Same : 0;
+            return paths.Equals(wanted, real) ? Same : 0;
         }
-        string[] asked = want.Split('/', StringSplitOptions.RemoveEmptyEntries);
         string[] had = have.Split('/', StringSplitOptions.RemoveEmptyEntries);
         int shared = 0;
-        while (shared < asked.Length && shared < had.Length
-            && string.Equals(asked[^(shared + 1)], had[^(shared + 1)], comparison))
+        int end = want.Length;
+        while (shared < had.Length && (end = want.AsSpan(0, end).TrimEnd('/').Length) > 0)
         {
+            int start = want.LastIndexOf('/', end - 1) + 1;
+            if (!Alike(want[..start], want[start..end], had[^(shared + 1)], paths, exists))
+            {
+                break;
+            }
             shared++;
+            end = start;
         }
         return shared >= 2 ? shared : 0;
     }
+
+    /// <summary>Whether a name of the breakpoint's path, in <paramref name="folder"/>, names the document's: the same, or
+    /// alike but for case where the folder ignores case or holds no file of the document's spelling (a PDB built where case
+    /// was ignored).</summary>
+    private static bool Alike(string folder, string name, string other, StringComparer paths, Func<string, bool> exists) =>
+        string.Equals(name, other, StringComparison.Ordinal)
+        || string.Equals(name, other, StringComparison.OrdinalIgnoreCase) && (paths.Equals(folder + name, folder + other) || !exists(folder + other));
 
     /// <summary>A path a Windows machine gave, a drive's (C:\ or C:/) or a share's (\\server\share), on any system.</summary>
     private static bool IsWindows(string path) =>

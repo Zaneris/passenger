@@ -11,6 +11,8 @@
          layout, XmlText). -->
     <InternalsVisibleTo Include="Passenger" />
     <InternalsVisibleTo Include="Passenger.Packages" />
+    <!-- How a program's includes match its files, unit tested in folders that tell letter case apart and that ignore it. -->
+    <InternalsVisibleTo Include="Passenger.UnitTests" />
   </ItemGroup>
 
   <ItemGroup>

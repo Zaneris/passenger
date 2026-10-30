@@ -72,38 +72,6 @@ public class ModuleInfo : IDisposable
         Stale = false;
     }
 
-    /// <summary>
-    /// Check if this module contains the given source file
-    /// </summary>
-    public bool ContainsSourceFile(string sourceFilePath)
-    {
-        if (MetadataReader.HasSymbols is false)
-        {
-            return false;
-        }
-
-        string normalizedPath = sourceFilePath.Replace('\\', '/');
-        string fileName = Path.GetFileName(normalizedPath);
-
-        foreach (string docPath in MetadataReader.GetSourceFiles())
-        {
-            string normalizedDocPath = docPath.Replace('\\', '/');
-
-            if (string.Equals(normalizedPath, normalizedDocPath, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            string docFileName = Path.GetFileName(normalizedDocPath);
-            if (string.Equals(fileName, docFileName, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     public void Dispose()
     {
         MetadataReader.Dispose();

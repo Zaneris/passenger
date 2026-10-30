@@ -151,7 +151,7 @@ internal static class Evaluation
         [file, .. evaluations
             .SelectMany(p => p.Imports.Select(i => i.ImportedProject.FullPath))
             .Distinct(PathNames.Comparer)
-            .Where(i => !outside.Any(root => i.StartsWith(root, PathNames.Comparison)))
+            .Where(i => !outside.Any(root => PathNames.IsUnder(i, root)))
             .Select(Stamps.File)
             .Concat(also)
             .DistinctBy(s => s.Path, PathNames.Comparer)];
@@ -167,9 +167,9 @@ internal static class Evaluation
     /// the repository's top (a README packed with every project) would have the whole repository walked.</summary>
     internal static IReadOnlyList<Stamp> Folders(string path, IReadOnlyList<Stamp> walked, IEnumerable<string> files)
     {
-        string own = Path.GetDirectoryName(path)! + Path.DirectorySeparatorChar;
+        string own = Path.GetDirectoryName(path)!;
         return [.. walked, .. files
-            .Where(f => !f.StartsWith(own, PathNames.Comparison))
+            .Where(f => !PathNames.IsUnder(f, own))
             .Select(f => Path.GetDirectoryName(f)!)
             .Distinct(PathNames.Comparer)
             .Where(d => !walked.Any(f => PathNames.Same(f.Path, d)) && Directory.Exists(d))
@@ -206,7 +206,7 @@ internal static class Evaluation
             if (project.GetProperty(name) is { EvaluatedValue.Length: > 0 } property)
             {
                 string? file = property.Xml?.ContainingProject?.FullPath;
-                bool own = file is { Length: > 0 } && !excluded.Any(root => file.StartsWith(root, PathNames.Comparison));
+                bool own = file is { Length: > 0 } && !excluded.Any(root => PathNames.IsUnder(file, root));
                 carried[name] = new EvaluatedProperty(property.EvaluatedValue, own);
             }
         }
@@ -288,7 +288,7 @@ internal static class Evaluation
         {
             if (folder.Length > 0 && Path.IsPathFullyQualified(folder))
             {
-                roots.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)) + Path.DirectorySeparatorChar);
+                roots.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)));
             }
         }
     }

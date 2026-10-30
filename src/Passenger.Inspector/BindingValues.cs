@@ -94,8 +94,9 @@ internal static class BindingReader
                 (places.TryGetValue((place.Line, place.Column), out List<AvaloniaObject>? there) ? there : places[(place.Line, place.Column)] = []).Add(made);
             }
         }
-        // The build's path may name the file through another link than the IDE's (/var, /private/var): the one ending most alike.
-        Dictionary<(int, int), List<AvaloniaObject>> inFile = byFile.Count == 0 ? [] : byFile.MaxBy(p => SharedTail(p.Key, read.File)).Value;
+        // The build's path may name the file through another link than the IDE's (/var, /private/var): the one ending most alike, then most alike in case.
+        Dictionary<(int, int), List<AvaloniaObject>> inFile = byFile.Count == 0 ? []
+            : byFile.MaxBy(p => (SharedTail(p.Key, read.File, StringComparison.OrdinalIgnoreCase), SharedTail(p.Key, read.File, StringComparison.Ordinal))).Value;
         List<ElementValues> elements = [];
         foreach (XamlSpot spot in read.Elements)
         {
@@ -166,14 +167,14 @@ internal static class BindingReader
         return all;
     }
 
-    /// <summary>How many of two paths' last parts are the same, the file's name first.</summary>
-    private static int SharedTail(string a, string b)
+    /// <summary>How many of two paths' last parts are the same, compared so, the file's name first.</summary>
+    private static int SharedTail(string a, string b, StringComparison comparison)
     {
         string[] first = a.Split('/', '\\');
         string[] second = b.Split('/', '\\');
         int shared = 0;
         while (shared < first.Length && shared < second.Length
-            && string.Equals(first[^(shared + 1)], second[^(shared + 1)], StringComparison.OrdinalIgnoreCase))
+            && string.Equals(first[^(shared + 1)], second[^(shared + 1)], comparison))
         {
             shared++;
         }

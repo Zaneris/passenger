@@ -154,7 +154,7 @@ internal static class Inspection
     private static ProjectInsight Read(Project project, string? framework, Stamp file, IReadOnlyList<Stamp> walked, List<InsightDiagnostic> diagnostics, double seconds)
     {
         List<string> roots = [.. Evaluation.OutsideRoots(project)];
-        bool Installed(string path) => roots.Any(root => path.StartsWith(root, PathNames.Comparison));
+        bool Installed(string path) => roots.Any(root => PathNames.IsUnder(path, root));
         FileTable files = new();
         List<InsightProperty> properties = [];
         foreach (ProjectProperty property in project.Properties)

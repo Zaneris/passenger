@@ -23,6 +23,10 @@ public sealed class PathComparer : StringComparer
     public bool Same(ReadOnlySpan<char> path, ReadOnlySpan<char> other) =>
         path.SequenceEqual(other) || path.Equals(other, StringComparison.OrdinalIgnoreCase) && CaseIgnoredAlong(path, other);
 
+    /// <summary>Whether a path lies inside a folder, at any depth, as <see cref="PathNames.IsUnder(string, string)"/> takes
+    /// it, the names down to the folder compared as their folders tell case.</summary>
+    public bool IsUnder(ReadOnlySpan<char> path, ReadOnlySpan<char> folder) => PathNames.IsUnder(path, folder, this);
+
     /// <summary>Whether a folder ignores case in its entries' names, as it said when first asked; a relative path, which
     /// names no one folder, ignores it.</summary>
     public bool IgnoresCaseIn(ReadOnlySpan<char> folder)

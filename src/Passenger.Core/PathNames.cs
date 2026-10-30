@@ -43,8 +43,11 @@ public static partial class PathNames
 
     /// <summary>How the names in a folder, or paths below it given from it, compare: telling case apart where the folder
     /// does, as it said when first asked.</summary>
-    public static StringComparer NamesIn(string folder) =>
-        Volumes is { } volumes && volumes.IgnoresCaseIn(folder) ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+    public static StringComparer NamesIn(string folder) => CaseIgnoredIn(folder) ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+    /// <summary>Whether a folder ignores case in its entries' names, as it said when first asked; one not there answers as
+    /// the nearest folder above it that is.</summary>
+    public static bool CaseIgnoredIn(string folder) => Volumes is { } volumes && volumes.IgnoresCaseIn(folder);
 
     /// <summary>The path as the file system names it. Of a path that is not there (yet, or any more), the part that is
     /// there is resolved and the names below it are kept as given.</summary>
@@ -74,10 +77,15 @@ public static partial class PathNames
     public static bool IsUnder(string path, string folder) => IsUnder(path.AsSpan(), folder);
 
     /// <inheritdoc cref="IsUnder(string, string)"/>
-    public static bool IsUnder(ReadOnlySpan<char> path, string folder)
+    public static bool IsUnder(ReadOnlySpan<char> path, string folder) => IsUnder(path, folder, Volumes);
+
+    /// <summary>Whether a path lies inside a folder, its folders asked of <paramref name="volumes"/> whether they tell case
+    /// apart, and with none telling it apart everywhere.</summary>
+    internal static bool IsUnder(ReadOnlySpan<char> path, ReadOnlySpan<char> folder, PathComparer? volumes)
     {
-        ReadOnlySpan<char> top = folder.AsSpan().TrimEnd(Separators);
-        return path.Length > top.Length + 1 && Separators.Contains(path[top.Length]) && Alike(path[..top.Length], top);
+        ReadOnlySpan<char> top = folder.TrimEnd(Separators);
+        return path.Length > top.Length + 1 && Separators.Contains(path[top.Length])
+            && (volumes is null ? path[..top.Length].SequenceEqual(top) : volumes.Same(path[..top.Length], top));
     }
 
     /// <summary>Whether two spellings name one place, as <see cref="Comparer"/> compares them.</summary>

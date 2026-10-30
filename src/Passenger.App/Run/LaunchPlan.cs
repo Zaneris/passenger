@@ -198,7 +198,7 @@ public sealed partial record LaunchPlan
         }
         // The apphost the SDK makes beside the assembly, which runs it.
         return System.IO.Path.GetDirectoryName(command) is { Length: > 0 } folder && PathNames.Same(PathNames.Canonical(folder), System.IO.Path.GetDirectoryName(target)!)
-            && string.Equals(System.IO.Path.GetFileNameWithoutExtension(command), System.IO.Path.GetFileNameWithoutExtension(target), PathNames.Comparison)
+            && PathNames.NamesIn(folder).Equals(System.IO.Path.GetFileNameWithoutExtension(command), System.IO.Path.GetFileNameWithoutExtension(target))
             ? given : [];
     }
 

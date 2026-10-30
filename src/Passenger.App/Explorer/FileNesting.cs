@@ -107,11 +107,11 @@ public static partial class FileNesting
     private static partial Regex EnvironmentSettings();
 
     /// <summary>The files of one folder shown under another of them, each to the file it goes under, by path: what the
-    /// project says it depends on first, then the name rules when <paramref name="byName"/>. Nesting is one level: a
-    /// file whose parent is nested itself goes under that one's parent.</summary>
+    /// project says it depends on first, then the name rules when <paramref name="byName"/>, names compared as their folder
+    /// tells letter case. Nesting is one level: a file whose parent is nested itself goes under that one's parent.</summary>
     public static IReadOnlyDictionary<string, string> Parents(IReadOnlyCollection<string> files, ProjectModel? project, bool byName)
     {
-        Dictionary<string, string> named = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> named = new(files.Count == 0 ? StringComparer.Ordinal : PathNames.NamesIn(Path.GetDirectoryName(files.First())!));
         foreach (string file in files)
         {
             named.TryAdd(Path.GetFileName(file), file);

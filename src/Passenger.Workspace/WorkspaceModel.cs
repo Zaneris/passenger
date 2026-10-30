@@ -171,7 +171,7 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
         }
         // A file a program includes, from any folder or by a wildcard, is that program's code, whatever its own head says.
         List<(string Program, List<string> Patterns)> including = [.. found.Where(ProgramFiles.IsProgram).Select(p => (p, Included(p).ToList()))];
-        found.RemoveAll(q => ProgramFiles.IsProgram(q) && including.Any(i => !PathNames.Same(i.Program, q) && i.Patterns.Any(pattern => Globbed(pattern, q))));
+        found.RemoveAll(q => ProgramFiles.IsProgram(q) && including.Any(i => !PathNames.Same(i.Program, q) && i.Patterns.Any(pattern => Globbed(pattern, q, PathNames.CaseIgnoredIn))));
         // A program another references (#:ref lib.cs) is one, its project the SDK's, whatever its head says.
         for (int i = 0; i < found.Count; i++)
         {
@@ -214,16 +214,21 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     }
 
     /// <summary>Whether a file matches an include as MSBuild's globs match: <c>*</c> and <c>?</c> within a name, <c>**</c>
-    /// across folders, letter case as the file system tells it.</summary>
-    private static bool Globbed(string pattern, string path) =>
-        Matches(pattern.Split(Separators), 0, path.Split(Separators), 0, PathNames.Comparison == StringComparison.OrdinalIgnoreCase);
+    /// across folders, a name differing only in letter case where its folder ignores case (<paramref name="caseIgnoredIn"/>).</summary>
+    internal static bool Globbed(string pattern, string path, Func<string, bool> caseIgnoredIn) =>
+        Matches(pattern.Split(Separators), 0, path, path.Split(Separators), 0, caseIgnoredIn);
 
     private static readonly char[] Separators = ['/', '\\'];
 
-    private static bool Matches(string[] parts, int part, string[] names, int name, bool ignoreCase) =>
+    private static bool Matches(string[] parts, int part, string path, string[] names, int name, Func<string, bool> caseIgnoredIn) =>
         part == parts.Length ? name == names.Length
-        : parts[part] == "**" ? Matches(parts, part + 1, names, name, ignoreCase) || (name < names.Length && Matches(parts, part, names, name + 1, ignoreCase))
-        : name < names.Length && NameMatches(parts[part], names[name], ignoreCase) && Matches(parts, part + 1, names, name + 1, ignoreCase);
+        : parts[part] == "**" ? Matches(parts, part + 1, path, names, name, caseIgnoredIn) || (name < names.Length && Matches(parts, part, path, names, name + 1, caseIgnoredIn))
+        : name < names.Length && MatchesAt(parts[part], path, names, name, caseIgnoredIn) && Matches(parts, part + 1, path, names, name + 1, caseIgnoredIn);
+
+    /// <summary>Whether a path's name at an index matches one part of a glob, in the letter case its folder tells.</summary>
+    private static bool MatchesAt(string part, string path, string[] names, int name, Func<string, bool> caseIgnoredIn) =>
+        NameMatches(part, names[name], ignoreCase: false)
+        || NameMatches(part, names[name], ignoreCase: true) && caseIgnoredIn(path[..names.Take(name).Sum(n => n.Length + 1)]);
 
     /// <summary>Whether a name matches one part of a glob; the empty part before a rooted path's first separator, which the
     /// system's matcher matches with nothing, matches the empty name.</summary>

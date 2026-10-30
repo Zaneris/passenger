@@ -324,7 +324,7 @@ internal static class BuildReads
         }
     }
 
-    private static bool Installed(string path, HashSet<string> installed) => installed.Any(root => path.StartsWith(root, PathNames.Comparison));
+    private static bool Installed(string path, HashSet<string> installed) => installed.Any(root => PathNames.IsUnder(path, root));
 
     /// <summary>The Git repository over a folder, once: its HEAD and the branch it names, loose and packed, since the SDK
     /// stamps the assembly's informational version with the commit (a worktree's .git file leads to its own HEAD).</summary>

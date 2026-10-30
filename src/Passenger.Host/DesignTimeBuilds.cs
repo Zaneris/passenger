@@ -336,7 +336,7 @@ internal static class DesignTimeBuilds
         string link = item.GetMetadataValue("Link");
         string logical = link.Length > 0 ? link
             : !Path.IsPathRooted(spec) ? spec
-            : full.StartsWith(directory, StringComparison.OrdinalIgnoreCase) ? full[directory.Length..]
+            : PathNames.IsUnder(full, directory) ? PathNames.Below(full, directory).ToString()
             : Path.GetFileName(full);
         string? folder = link.Length > 0 ? Path.GetDirectoryName(link) : Path.GetDirectoryName(Path.GetRelativePath(directory, spec));
         string[] folders = folder is { Length: > 0 } ? folder.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries) : [];

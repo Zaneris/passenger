@@ -268,10 +268,9 @@ public sealed record FileWatch(string? Folder, string Pattern, WatchKinds Kinds)
         }
         string relative = "/" + named.Replace('\\', '/').TrimStart('/');
         string glob = "/" + Pattern.TrimStart('/');
-        // Where the file system takes names in any letter case, so does the glob.
-        return PathNames.Comparison == StringComparison.OrdinalIgnoreCase
-            ? EditorConfig.Matches(glob.ToLowerInvariant(), relative.ToLowerInvariant())
-            : EditorConfig.Matches(glob, relative);
+        // Where the path's folder takes names in any letter case, so does the glob.
+        return EditorConfig.Matches(glob, relative)
+            || EditorConfig.Matches(glob.ToLowerInvariant(), relative.ToLowerInvariant()) && PathNames.CaseIgnoredIn(Path.GetDirectoryName(path) ?? path);
     }
 
     /// <summary>Whether a folder may hold a path the watcher matches, or lies on the way down to its folder: one under its

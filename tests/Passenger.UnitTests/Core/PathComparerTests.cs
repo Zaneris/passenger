@@ -62,6 +62,17 @@ public class PathComparerTests
             "Sorting took two files for one, or one for two");
     }
 
+    [Fact]
+    public void A_path_is_under_a_folder_spelled_in_another_case_only_where_the_folders_holding_the_names_that_differ_ignore_case()
+    {
+        Assert.False(comparer.IsUnder(At("cs", "packages", "a.props"), At("cs", "Packages")),
+            "An import from packages was taken as under the package folder Packages beside it on a case-sensitive volume, so its changes would go unheard");
+        Assert.True(comparer.IsUnder(At("cs", "Packages", "a.props"), At("cs", "Packages") + Path.DirectorySeparatorChar), "An import in the package folder itself was taken as outside it");
+        Assert.True(comparer.IsUnder(At("plain", "packages", "a.props"), At("plain", "Packages")), "Where case is ignored, an import was taken as outside its package folder spelled otherwise");
+        Assert.True(comparer.IsUnder(At("CS", "Packages", "a.props"), At("cs", "Packages")), "The volume's own name, in a folder that ignores case, was told apart by case");
+        Assert.False(comparer.IsUnder(At("cs", "Packages2", "a.props"), At("cs", "Packages")), "A folder beside the package folder whose name begins the same was taken as under it");
+    }
+
     private static string At(params string[] names) => Path.Join([Root, .. names]);
 
     /// <summary>Whether a folder is another or inside it, the names down to it compared ignoring case as the folders holding
