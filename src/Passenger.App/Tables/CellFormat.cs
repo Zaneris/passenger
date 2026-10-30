@@ -17,6 +17,13 @@ internal sealed class CellFormat
 
     public static readonly CellFormat General = new(Kinds.General, null, false);
 
+    /// <summary>The system's short date, Excel's built-in 14, and with the time of day, its 22.</summary>
+    public static readonly CellFormat ShortDate = new(Kinds.Date, "d", false);
+    public static readonly CellFormat ShortDateTime = new(Kinds.Date, "g", false);
+
+    /// <summary>The 1904 date system's day 0 as a serial of the 1900 system.</summary>
+    public const double Day1904 = 1462;
+
     private readonly Kinds kind;
     private readonly string? net;
 
@@ -30,6 +37,9 @@ internal sealed class CellFormat
         this.elapsed = elapsed;
     }
 
+    /// <summary>Whether a number in this format shows as a date or a time.</summary>
+    public bool ShowsDate => kind == Kinds.Date;
+
     /// <summary>A number as Excel shows it in this format.</summary>
     public string Show(double value, bool from1904)
     {
@@ -41,7 +51,7 @@ internal sealed class CellFormat
                 case Kinds.Number:
                     return value.ToString(net, culture);
                 case Kinds.Date when value >= 0:
-                    double serial = from1904 ? value + 1462 : value;
+                    double serial = from1904 ? value + Day1904 : value;
                     DateTime date = DateTime.FromOADate(serial);
                     if (elapsed)
                     {
@@ -70,7 +80,7 @@ internal sealed class CellFormat
         9 => Parse("0%"),
         10 => Parse("0.00%"),
         11 => Parse("0.00E+00"),
-        14 => new CellFormat(Kinds.Date, "d", false),
+        14 => ShortDate,
         15 => Parse("d-mmm-yy"),
         16 => Parse("d-mmm"),
         17 => Parse("mmm-yy"),
@@ -78,7 +88,7 @@ internal sealed class CellFormat
         19 => Parse("h:mm:ss AM/PM"),
         20 => Parse("h:mm"),
         21 => Parse("h:mm:ss"),
-        22 => new CellFormat(Kinds.Date, "g", false),
+        22 => ShortDateTime,
         37 => Parse("#,##0 ;(#,##0)"),
         38 => Parse("#,##0 ;[Red](#,##0)"),
         39 => Parse("#,##0.00;(#,##0.00)"),

@@ -18,14 +18,16 @@ public sealed class Workbook
     /// <summary>Excel's last row: a row numbered past it (in a damaged or hostile file) would make millions of rows of nothing.</summary>
     private const int LastRow = 1_048_576;
 
-    private readonly string path;
+    private readonly string name;
+    private readonly Func<Stream> open;
     private readonly string[] strings;
     private readonly CellFormat[] formats;
     private readonly bool from1904;
 
-    private Workbook(string path, IReadOnlyList<(string Name, string Part)> sheets, string[] strings, CellFormat[] formats, bool from1904)
+    private Workbook(string name, Func<Stream> open, IReadOnlyList<(string Name, string Part)> sheets, string[] strings, CellFormat[] formats, bool from1904)
     {
-        this.path = path;
+        this.name = name;
+        this.open = open;
         Sheets = sheets;
         this.strings = strings;
         this.formats = formats;
@@ -39,10 +41,16 @@ public sealed class Workbook
     public static bool IsWorkbook(string path) =>
         Path.GetExtension(path).ToLowerInvariant() is ".xlsx" or ".xlsm";
 
-    /// <summary>Reads a workbook's sheets, strings and styles; its sheets' cells are <see cref="ReadSheet"/>'s.</summary>
-    public static Workbook Open(string path)
+    /// <summary>Reads a workbook's sheets, strings and styles; its sheets' cells are <see cref="ReadSheet"/>'s. The file is
+    /// read sharing writes and deletes, so Excel saving it meanwhile is never refused.</summary>
+    public static Workbook Open(string path) =>
+        Read(Path.GetFileName(path), () => new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16));
+
+    /// <summary>Reads a workbook from the stream <paramref name="open"/> gives, asked for a new one at each sheet read;
+    /// <paramref name="name"/> names it where it is damaged.</summary>
+    public static Workbook Read(string name, Func<Stream> open)
     {
-        using ZipArchive zip = OpenZip(path);
+        using ZipArchive zip = Zip(open);
         Dictionary<string, ZipArchiveEntry> parts = Parts(zip);
         Dictionary<string, string> targets = [];
         if (parts.TryGetValue("xl/_rels/workbook.xml.rels", out ZipArchiveEntry? rels))
@@ -59,7 +67,7 @@ public sealed class Workbook
         }
         List<(string, string)> sheets = [];
         bool from1904 = false;
-        ZipArchiveEntry book = parts.GetValueOrDefault("xl/workbook.xml") ?? throw new InvalidDataException($"{Path.GetFileName(path)} has no workbook part.");
+        ZipArchiveEntry book = parts.GetValueOrDefault("xl/workbook.xml") ?? throw new InvalidDataException($"{name} has no workbook part.");
         using (XmlReader reader = Reader(book))
         {
             while (reader.Read())
@@ -81,16 +89,16 @@ public sealed class Workbook
         }
         string[] strings = parts.TryGetValue("xl/sharedStrings.xml", out ZipArchiveEntry? shared) ? SharedStrings(shared) : [];
         CellFormat[] formats = parts.TryGetValue("xl/styles.xml", out ZipArchiveEntry? styles) ? Styles(styles) : [];
-        return new Workbook(path, sheets, strings, formats, from1904);
+        return new Workbook(name, open, sheets, strings, formats, from1904);
     }
 
     /// <summary>One sheet's cells, from A1 to the last cell it has.</summary>
     public SheetTable ReadSheet(int index)
     {
-        using ZipArchive zip = OpenZip(path);
+        using ZipArchive zip = Zip(open);
         if (!Parts(zip).TryGetValue(Sheets[index].Part, out ZipArchiveEntry? entry))
         {
-            throw new InvalidDataException($"{Path.GetFileName(path)} has no part {Sheets[index].Part}.");
+            throw new InvalidDataException($"{name} has no part {Sheets[index].Part}.");
         }
         List<SheetCell> cells = [];
         List<int> rows = [];
@@ -130,7 +138,8 @@ public sealed class Workbook
                     continue;
                 }
                 string? type = reader.GetAttribute("t");
-                int style = int.TryParse(reader.GetAttribute("s"), NumberStyles.None, CultureInfo.InvariantCulture, out int s) ? s : 0;
+                // Held at the styles' count, so a damaged file's vast style never overflows a cell's kind.
+                int style = int.TryParse(reader.GetAttribute("s"), NumberStyles.None, CultureInfo.InvariantCulture, out int s) ? Math.Min(s, formats.Length) : 0;
                 SheetCell cell = Cell(reader, type, style);
                 int start = rows[row];
                 while (cells.Count - start < column)
@@ -188,14 +197,21 @@ public sealed class Workbook
             "str" or "e" => SheetCell.Of(value),
             "b" => SheetCell.Of(value is null ? null : value == "1" ? "TRUE" : "FALSE"),
             "d" => DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime date)
-                ? SheetCell.Number(date.ToOADate(), style) : SheetCell.Of(value),
+                ? SheetCell.Date(date.ToOADate() - (from1904 ? CellFormat.Day1904 : 0), style) : SheetCell.Of(value),
             _ => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) ? SheetCell.Number(number, style) : SheetCell.Of(value),
         };
     }
 
-    /// <summary>A number as its style formats it.</summary>
-    internal string Format(double value, int style) =>
-        style < formats.Length ? formats[style].Show(value, from1904) : CellFormat.General.Show(value, from1904);
+    /// <summary>A number cell's value as its style formats it; a date written as one shows as a date whatever its style.</summary>
+    internal string Format(SheetCell cell)
+    {
+        CellFormat format = cell.Style < formats.Length ? formats[cell.Style] : CellFormat.General;
+        if (cell.IsDate && !format.ShowsDate)
+        {
+            format = cell.Value % 1 == 0 ? CellFormat.ShortDate : CellFormat.ShortDateTime;
+        }
+        return format.Show(cell.Value, from1904);
+    }
 
     /// <summary>The column of a cell reference ("BC12" is 54), or -1 for none.</summary>
     private static int ColumnOf(string reference)
@@ -287,9 +303,7 @@ public sealed class Workbook
         return [.. formats];
     }
 
-    /// <summary>The zip read sharing writes and deletes, so Excel saving it meanwhile is never refused.</summary>
-    private static ZipArchive OpenZip(string path) =>
-        new(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16), ZipArchiveMode.Read, leaveOpen: false);
+    private static ZipArchive Zip(Func<Stream> open) => new(open(), ZipArchiveMode.Read, leaveOpen: false);
 
     private static Dictionary<string, ZipArchiveEntry> Parts(ZipArchive zip)
     {
@@ -305,19 +319,26 @@ public sealed class Workbook
         XmlReader.Create(entry.Open(), new XmlReaderSettings { IgnoreComments = true, IgnoreWhitespace = true, DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, CloseInput = true });
 }
 
-/// <summary>A sheet's cell: nothing (the default), its text, or a number with the cell style that formats it.</summary>
+/// <summary>A sheet's cell: nothing (the default), its text, or a number with the cell style that formats it, which may
+/// be a date written as one (its serial in the workbook's date system).</summary>
 public readonly record struct SheetCell(string? Text, double Value, int Kind)
 {
-    /// <summary>A text cell's <see cref="Kind"/>; a number's is its style plus one, and an empty cell's 0.</summary>
+    /// <summary>A text cell's <see cref="Kind"/>; a number's is its style plus one, a date's its style plus two negated,
+    /// and an empty cell's 0.</summary>
     private const int TextKind = -1;
 
-    public bool IsNumber => Kind > 0;
+    public bool IsNumber => Kind is > 0 or < TextKind;
 
-    public int Style => Kind - 1;
+    /// <summary>Whether the cell's number was written as a date, so shown as one whatever its style.</summary>
+    public bool IsDate => Kind < TextKind;
+
+    public int Style => IsDate ? -Kind - 2 : Kind - 1;
 
     public static SheetCell Of(string? text) => text is null ? default : new SheetCell(text, 0, TextKind);
 
     public static SheetCell Number(double value, int style) => new(null, value, style + 1);
+
+    public static SheetCell Date(double serial, int style) => new(null, serial, -style - 2);
 }
 
 /// <summary>A sheet's cells as rows, each row's cells in one array; a number formatted only when it is drawn.</summary>
@@ -335,7 +356,7 @@ public sealed class SheetTable(Workbook book, SheetCell[] cells, int[] rows, int
             return string.Empty;
         }
         SheetCell cell = cells[at];
-        return cell.IsNumber ? book.Format(cell.Value, cell.Style) : cell.Text ?? string.Empty;
+        return cell.IsNumber ? book.Format(cell) : cell.Text ?? string.Empty;
     }
 
     public override bool IsNumber(int row, int column)

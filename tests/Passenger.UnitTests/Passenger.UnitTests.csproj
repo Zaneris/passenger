@@ -40,9 +40,12 @@
     <Compile Include="../../src/Passenger.App/Debugging/Signatures.cs" Link="App/Signatures.cs" />
   </ItemGroup>
 
-  <!-- How a CSV's records are read, from its text alone, compiled in since its project is the app's. -->
+  <!-- How a CSV's records and a workbook's cells are read, from their text and zip alone, compiled in since their
+       project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Tables/Table.cs" Link="App/Table.cs" />
+    <Compile Include="../../src/Passenger.App/Tables/Workbook.cs" Link="App/Workbook.cs" />
+    <Compile Include="../../src/Passenger.App/Tables/CellFormat.cs" Link="App/CellFormat.cs" />
   </ItemGroup>
 
   <ItemGroup>
