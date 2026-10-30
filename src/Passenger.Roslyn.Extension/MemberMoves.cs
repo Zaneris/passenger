@@ -84,7 +84,7 @@ internal static class MemberMoves
             if (makeAbstract)
             {
                 needsAbstract = true;
-                editors.AddMember(targetEditor, into, Abstract(targetEditor.Generator, declared));
+                editors.AddMember(targetEditor, into, Abstract(targetEditor.Generator, declared, overrides: false));
                 sourceEditor.ReplaceNode(declared, (current, generator) => generator.WithModifiers(current, generator.GetModifiers(current).WithIsAbstract(false).WithIsVirtual(false).WithIsOverride(true)));
                 continue;
             }
@@ -182,7 +182,7 @@ internal static class MemberMoves
             if (keepAbstract)
             {
                 needsAbstract = true;
-                sourceEditor.ReplaceNode(declared, (current, generator) => Abstract(generator, current).WithTriviaFrom(current));
+                sourceEditor.ReplaceNode(declared, (current, generator) => Abstract(generator, current, member.IsOverride).WithTriviaFrom(current));
             }
             else
             {
@@ -276,7 +276,8 @@ internal static class MemberMoves
     /// <summary>Why a member cannot be pushed down into the targets; null when it can. Code that would still reach it where
     /// it is gone (the base's own, a class not chosen, anything through the base's type or a base. call), an override in a
     /// class not chosen, or an interface the base or a class not chosen implements with it would not build; kept abstract
-    /// in the base, a base. call or a class left without it would not.</summary>
+    /// in the base, a base. call or a class left without it would not. What an override overrides stays, reached by all
+    /// but a base. call; where that is abstract, the base, unless abstract, or a class left without it would not build.</summary>
     private static async Task<string?> PushProblemAsync(Solution solution, ISymbol member, INamedTypeSymbol type, IReadOnlyList<INamedTypeSymbol> targets,
         IReadOnlyList<SyntaxNode> pushed, bool keepAbstract, CancellationToken cancel)
     {
@@ -298,7 +299,7 @@ internal static class MemberMoves
         foreach (ISymbol over in await SymbolFinder.FindOverridesAsync(member, solution, cancellationToken: cancel).ConfigureAwait(false))
         {
             overriding.Add(over.ContainingType);
-            if (!keepAbstract && !Gets(over.ContainingType))
+            if (!keepAbstract && !member.IsOverride && !Gets(over.ContainingType))
             {
                 return $"'{over.ContainingType.Name}' overrides {text}, which it would no longer have{Hint([over.ContainingType])}";
             }
@@ -317,13 +318,19 @@ internal static class MemberMoves
                 }
             }
         }
-        if (keepAbstract && !member.IsAbstract)
+        ISymbol? above = !keepAbstract && Overridden(member) is { IsAbstract: true } overridden ? overridden : null;
+        if (above is not null && !type.IsAbstract)
         {
+            return $"'{type.Name}' would not implement {text}, abstract in '{above.ContainingType.Name}': keep it abstract in '{type.Name}'";
+        }
+        if ((keepAbstract && !member.IsAbstract) || above is not null)
+        {
+            string abstractIn = above is not null ? $"abstract in '{above.ContainingType.Name}'" : $"kept abstract in '{type.Name}'";
             foreach (INamedTypeSymbol derived in below)
             {
                 if (!derived.IsAbstract && !Gets(derived) && !Bases(derived).Prepend(derived).TakeWhile(b => !Same(b, type)).Any(b => overriding.Any(o => Same(o, b))))
                 {
-                    return $"'{derived.Name}' would not implement {text}, kept abstract in '{type.Name}'{Hint([derived])}";
+                    return $"'{derived.Name}' would not implement {text}, {abstractIn}{Hint([derived])}";
                 }
             }
         }
@@ -347,8 +354,9 @@ internal static class MemberMoves
                 (Reach reach, ITypeSymbol? through) = location.IsImplicit ? (Reach.Typed, null) : ReachOf(model, node, member.ContainingType, member is IPropertySymbol { IsIndexer: true }, cancel);
                 bool breaks = reach switch
                 {
-                    Reach.Own => !moves && !keepAbstract && !Gets(through),
                     Reach.Base => moves || !Gets(through),
+                    _ when member.IsOverride => false,
+                    Reach.Own => !moves && !keepAbstract && !Gets(through),
                     _ => !keepAbstract && !Gets(through),
                 };
                 if (breaks)
@@ -617,8 +625,8 @@ internal static class MemberMoves
         (TypeDeclarationSyntax)await type.DeclaringSyntaxReferences[0].GetSyntaxAsync(cancel).ConfigureAwait(false);
 
     /// <summary>A member made abstract: its signature kept, its body gone, the line it ended kept, for the formatter to
-    /// space.</summary>
-    private static SyntaxNode Abstract(SyntaxGenerator generator, SyntaxNode declaration)
+    /// space; still an override where it overrides one above.</summary>
+    private static SyntaxNode Abstract(SyntaxGenerator generator, SyntaxNode declaration, bool overrides)
     {
         SyntaxToken semicolon = SyntaxFactory.Token(SyntaxKind.SemicolonToken).WithTrailingTrivia(declaration.GetLastToken().TrailingTrivia);
         SyntaxNode bare = declaration switch
@@ -636,7 +644,7 @@ internal static class MemberMoves
         {
             bare = initialized.WithInitializer(null).WithSemicolonToken(default);
         }
-        return generator.WithModifiers(bare, generator.GetModifiers(bare).WithIsAbstract(true).WithIsVirtual(false).WithIsOverride(false))
+        return generator.WithModifiers(bare, generator.GetModifiers(bare).WithIsAbstract(true).WithIsVirtual(false).WithIsSealed(false).WithIsOverride(overrides))
             .WithAdditionalAnnotations(Formatter.Annotation);
     }
 

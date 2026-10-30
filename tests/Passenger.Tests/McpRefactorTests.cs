@@ -470,6 +470,52 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "a member implementing an interface was pushed down kept abstract");
     }
 
+    /// <summary>Push Members Down of an override of an abstract member is refused from a concrete class, or where a class not
+    /// chosen would be left without it, naming the base and member, nothing changed; from an abstract class it goes, uses
+    /// and overrides below still reaching the base's member, and kept abstract it stays an override, the project building.</summary>
+    [Fact]
+    public async Task An_agent_pushing_down_an_override_of_an_abstract_member_finds_it_refused_where_a_concrete_class_would_lack_it()
+    {
+        await TakeFolderAsync();
+        const string Shape = "namespace Shop;\n\npublic abstract class Shape\n{\n    public abstract double Area();\n}\n";
+        const string Polygon = "namespace Shop;\n\npublic class Polygon : Shape\n{\n    public override double Area() => 0;\n}\n\npublic class Square : Polygon\n{\n}\n";
+        const string Curve = "namespace Shop;\n\npublic abstract class Curve : Shape\n{\n    public override double Area() => 1;\n\n    public double Twice(Curve other) => Area() + other.Area();\n}\n\n"
+            + "public class Circle : Curve\n{\n}\n\npublic class Ellipse : Curve\n{\n}\n\npublic class Oval : Curve\n{\n    public override double Area() => 2;\n}\n";
+        Shop(("Shape.cs", Shape), ("Polygon.cs", Polygon), ("Curve.cs", Curve));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        foreach ((string file, string text, string at, string target, string said) in new[]
+        {
+            ("Polygon.cs", Polygon, "class Pol", "Square", "'Polygon' would not implement Area(): double, abstract in 'Shape': keep it abstract in 'Polygon'"),
+            ("Curve.cs", Curve, "class Cur", "Circle", "'Ellipse' would not implement Area(): double, abstract in 'Shape': push it down to 'Ellipse' too"),
+        })
+        {
+            CallToolResult refused = await Result(client, McpTools.Refactor, Place("push_members_down", file, text, at, new { targets = new[] { target }, members = new[] { "Area" } }));
+            Assert.True(refused.IsError == true && Text(refused).Contains(said, StringComparison.Ordinal), $"Pushing Area down from {file} answered: {Text(refused)}");
+            Assert.Equal(Shape, File.ReadAllText(PathOf("Shape.cs")));
+            Assert.Equal(Polygon, File.ReadAllText(PathOf("Polygon.cs")));
+            Assert.Equal(Curve, File.ReadAllText(PathOf("Curve.cs")));
+        }
+
+        JsonElement fromAbstract = await Call(client, McpTools.Refactor, Place("push_members_down", "Curve.cs", Curve, "class Cur",
+            new { targets = new[] { "Circle", "Ellipse" }, members = new[] { "Area" } }));
+        Assert.Equal(["Curve.cs changed"], Files(fromAbstract));
+        string curve = File.ReadAllText(PathOf("Curve.cs"));
+        Assert.True(curve.Contains("public abstract class Curve : Shape\n{\n    public double Twice(Curve other) => Area() + other.Area();\n}\n", StringComparison.Ordinal)
+            && curve.Contains("public class Ellipse : Curve\n{\n    public override double Area() => 1;\n}\n", StringComparison.Ordinal)
+            && curve.Contains("public class Oval : Curve\n{\n    public override double Area() => 2;\n}\n", StringComparison.Ordinal),
+            $"Pushing Area down from the abstract Curve left Curve.cs so:\n{curve}");
+
+        JsonElement keptAbstract = await Call(client, McpTools.Refactor, Place("push_members_down", "Polygon.cs", Polygon, "class Pol",
+            new { targets = new[] { "Square" }, members = new[] { "Area" }, @abstract = new[] { "Area" } }));
+        Assert.Equal(["Polygon.cs changed"], Files(keptAbstract));
+        string polygon = File.ReadAllText(PathOf("Polygon.cs"));
+        Assert.True(polygon.Contains("public abstract class Polygon : Shape\n{\n    public abstract override double Area();\n}\n", StringComparison.Ordinal)
+            && polygon.Contains("public class Square : Polygon\n{\n    public override double Area() => 0;\n}\n", StringComparison.Ordinal),
+            $"Pushing Area down from Polygon kept abstract left Polygon.cs so:\n{polygon}");
+        await Compiles(client, "overrides of an abstract member were pushed down");
+    }
+
     /// <summary>Extract Interface from a class whose type parameter a member uses is constrained by another the members do
     /// not name: the interface declares both, so the constraint it copies names a type parameter of its own.</summary>
     [Fact]
