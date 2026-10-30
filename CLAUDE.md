@@ -201,8 +201,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   exit code said with its signal), `WindowsCommandLine` (the one maker of a Windows command line), `Product` (the one
   place the version is read), `PassengerLog` (below the App, never `IdeLog`; a line quoting a program's words through
   `WriteMasked`), `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's lines read and messages written as pooled
-  bytes), `SharedNames` (a name read from bytes, made once), `PrimitiveTypes` (the one table of primitives; the
-  debugger's element types through `MetadataTypeNames.ElementTypeOf`, a generic name closed through
+  bytes), `SharedNames` (a name read from bytes, made once), `ContentLengthHeader` (every LSP and DAP message's header),
+  `RazorFiles` and `MSBuildNames` (compiled into the extension and the host), `PrimitiveTypes` (the one table of
+  primitives; the debugger's element types through `MetadataTypeNames.ElementTypeOf`, a generic name closed through
   `CSharpTypeNames.Closed`).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
   function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `Outline` (a tree's rows in reading order, kept where
@@ -228,12 +229,12 @@ Projects in `src/`; `find_symbol` finds the rest:
 - `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a binding's
   path is read once (`BindingPath`, `XamlFile.Walk`) for the check, Go to Declaration, uses and completion.
 - `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project; `JsonRpcPeer` for any other
-  JSON-RPC peer, the Testing Platform's test hosts; both cancel through `ToldCancellation`), Roslyn's server downloaded
-  per platform (`RoslynServer.targets`), `LspDocument` (answers that grow with the solution decoded off the UI thread;
-  never a change between a "\r\n"'s halves), and the web servers under `web/`, pinned in `WebServers/package.json` and
-  its lock (to move a pin: edit it, `npm install --package-lock-only --ignore-scripts`, update the notices' "Inside
-  web/" table). `typescript` stays on 6.x: 7's package is native and carries no `tsserver`, which
-  typescript-language-server runs.
+  JSON-RPC peer, the Testing Platform's test hosts; both cancel through `ToldCancellation`), `LanguageIds` (C#'s and
+  Razor's), Roslyn's server downloaded per platform (`RoslynServer.targets`), `LspDocument` (answers that grow with the
+  solution decoded off the UI thread; never a change between a "\r\n"'s halves), and the web servers under `web/`,
+  pinned in `WebServers/package.json` and its lock (to move a pin: edit it, `npm install --package-lock-only
+  --ignore-scripts`, update the notices' "Inside web/" table). `typescript` stays on 6.x: 7's package is native and
+  carries no `tsserver`, which typescript-language-server runs.
 - `Passenger.Roslyn.Extension`: Passenger's handlers inside Roslyn's server, compiled against its publicized assemblies
   (`src/Publicize.targets`). A handler reads the solution, never changes it.
 - `Passenger.Host`: MSBuild in a process of its own per SDK and global.json (`ProjectHosts`), over JSON lines, its
