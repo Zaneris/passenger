@@ -316,6 +316,25 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
+    /// <summary>A YAML key that reads as a typed scalar (on, true, null) is a key in a flow mapping as in a block mapping:
+    /// the four keys of <c>{ on: 1, true: 2, null: 3, x: 4 }</c> are coloured alike, as keys.</summary>
+    [AvaloniaFact]
+    public void A_yaml_flow_mappings_keys_on_true_and_null_are_coloured_as_keys_as_x_is()
+    {
+        MainWindow window = Window();
+        try
+        {
+            CodeEditor editor = Open(window, "flow.yml", "{ on: 1, true: 2, null: 3, x: 4 }\nblock:\n  on: 5\n");
+            TokenKind?[] kinds = [.. ((string[])["on", "true", "null", "x"]).Select(key => KindOf(editor, key))];
+            Assert.True(kinds.All(kind => kind == TokenKind.YamlKey),
+                $"The flow mapping's keys on, true, null and x are coloured {string.Join(", ", kinds)}: a key that reads as a value is not coloured as the key it is");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A shared tokenizer's scratch buffers must not become a document's saved state or colours. Leave
     /// a comment open in one file, then edit both files before comparing their colours with fresh passes.</summary>
     [AvaloniaFact]

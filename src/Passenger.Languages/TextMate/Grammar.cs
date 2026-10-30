@@ -102,22 +102,26 @@ internal sealed class Grammar
     private static Stream Resource(string file) =>
         typeof(Grammar).Assembly.GetManifestResourceStream($"Grammars/{file}") ?? throw new InvalidOperationException($"No grammar {file} in {typeof(Grammar).Assembly.GetName().Name}");
 
-    /// <summary>Preserves Passenger's YAML key policy, including keys such as on, true and null.</summary>
+    /// <summary>Preserves Passenger's YAML key policy, including keys such as on, true and null, in a block mapping and a
+    /// flow mapping (<c>{ on: 1 }</c>) alike.</summary>
     private static void KeysAreKeys(JsonNode grammar)
     {
-        if (grammar["repository"]?["block-pair"]?["patterns"] is not JsonArray rules)
+        foreach ((string pair, string typed) in (ReadOnlySpan<(string, string)>)[("block-pair", "#flow-scalar-plain-out-implicit-type"), ("flow-pair", "#flow-scalar-plain-in-implicit-type")])
         {
-            return;
-        }
-        foreach (JsonObject rule in rules.OfType<JsonObject>())
-        {
-            if (rule["patterns"] is JsonArray keyRules)
+            if (grammar["repository"]?[pair]?["patterns"] is not JsonArray rules)
             {
-                for (int i = keyRules.Count - 1; i >= 0; i--)
+                continue;
+            }
+            foreach (JsonObject rule in rules.OfType<JsonObject>())
+            {
+                if (rule["patterns"] is JsonArray keyRules)
                 {
-                    if (keyRules[i] is JsonObject include && include["include"]?.GetValue<string>() == "#flow-scalar-plain-out-implicit-type")
+                    for (int i = keyRules.Count - 1; i >= 0; i--)
                     {
-                        keyRules.RemoveAt(i);
+                        if (keyRules[i] is JsonObject include && include["include"]?.GetValue<string>() == typed)
+                        {
+                            keyRules.RemoveAt(i);
+                        }
                     }
                 }
             }

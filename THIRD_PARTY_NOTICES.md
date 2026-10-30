@@ -724,7 +724,8 @@ Copyright (c) 2016 - present Huachao Mao) at commit 0773d56b, unchanged.
 
 Reading them, Passenger leaves out what VS Code's reader passes over (a capture that is not a rule) and lets a rule
 that begins with no end never end, as VS Code does, and takes YAML's typed
-scalars (booleans, numbers, null) out of a block mapping's keys, so a key such as a workflow's `on` is read as a key.
+scalars (booleans, numbers, null) out of a block or flow mapping's keys, so a key such as a workflow's `on` is read as a
+key.
 
 ```
 MIT License
