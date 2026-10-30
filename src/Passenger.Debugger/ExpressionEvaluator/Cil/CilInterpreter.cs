@@ -111,7 +111,8 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         return result;
     }
 
-    private static (ICorDebugType[] TypeArguments, ICorDebugType[] MethodArguments) SplitFrameTypeParameters(ManagedDebugger debugger, ICorDebugILFrame? frame)
+    /// <summary>The types a frame runs its class's type parameters as, its outer classes' first, and its method's own.</summary>
+    internal static (ICorDebugType[] TypeArguments, ICorDebugType[] MethodArguments) SplitFrameTypeParameters(ManagedDebugger debugger, ICorDebugILFrame? frame)
     {
         if (frame is null)
         {
@@ -372,6 +373,12 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                     case ILOpCode.Unbox_any:
                     {
                         ResolvedCilType target = resolver.ResolveTypeToken(instruction.Token);
+                        if (IsReferenceType(target))
+                        {
+                            // A type parameter the frame runs as a class, which unbox.any casts to as castclass does.
+                            stack.Push(await CastAsync(instruction, stack.Pop(), run));
+                            break;
+                        }
                         ICorDebugBoxValue boxed = Unbox(stack.Pop(), target, resolver);
                         stack.Push(await UnboxedAsAsync(boxed.Object, target, run));
                         break;

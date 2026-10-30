@@ -5,7 +5,8 @@ namespace Passenger.Tests.Debugging;
 
 /// <summary>Set Value through the protocol, at Setting.Run's stop in PassengerCases: what it writes is what was asked,
 /// into what the expression names, its target run once, and the program goes on with it. A string holding a NUL is
-/// written and read whole, and a pointer takes another address.</summary>
+/// written and read whole, and a pointer takes another address. In Typed.Make, a variable typed by a type parameter takes
+/// a value fitting the type its frame runs it as.</summary>
 [Collection(DebugSession.Collection)]
 public class SetValueTests(ITestOutputHelper testOutputHelper)
 {
@@ -98,6 +99,37 @@ public class SetValueTests(ITestOutputHelper testOutputHelper)
         await host.ContinueAsync();
         (string output, _) = await host.WaitForEnd();
         Assert.Contains("set pointers 1 2 True True", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>In a generic method's frame, a local and a parameter typed by the class's T (int) and by the method's own U
+    /// (string) take values of those types, which the program goes on with, and a value of another type is refused naming
+    /// the type the frame runs the parameter as.</summary>
+    [Fact]
+    public async Task Set_Value_on_a_variable_typed_by_a_type_parameter_takes_a_value_fitting_the_type_its_frame_runs()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["generic"])
+            .WaitForInitializedEvent();
+        int made = Debuggees.Line("PassengerCases", "return $\"{copy} {t} {other} {u}\";");
+        await host.BreakpointsAsync([made], Debuggees.Source("PassengerCases", "Program.cs")).ConfigurationDoneAsync();
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.True(stop.ReadStopInfo().line == made, $"The program was to stop in Typed.Make at line {made}, but stopped at the {stop.Reason} at line {stop.Line}");
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+
+        Assert.Equal("9", await Set(host, frame, "copy", "9"));
+        Assert.Equal("7", await Set(host, frame, "t", "7"));
+        Assert.Equal("\"five\"", await Set(host, frame, "other", "\"five\""));
+        Assert.True(await Evaluate(host, frame, "copy") == "9", $"copy = 9 left copy {await Evaluate(host, frame, "copy")}");
+        DapException refused = await Assert.ThrowsAsync<DapException>(() => Set(host, frame, "copy", "\"nine\""));
+        Assert.True(refused.Message.Contains("'int'", StringComparison.Ordinal), $"A string set into copy, an int T, was refused saying \"{refused.Message}\", naming no int");
+        DapException refusedU = await Assert.ThrowsAsync<DapException>(() => Set(host, frame, "u", "3"));
+        Assert.True(refusedU.Message.Contains("'string'", StringComparison.Ordinal), $"An int set into u, a string U, was refused saying \"{refusedU.Message}\", naming no string");
+
+        await host.ContinueAsync();
+        (string output, _) = await host.WaitForEnd();
+        Assert.Contains("generic 9 7 five four", output, StringComparison.Ordinal);
     }
 
     /// <summary>The program launched to Setting.Run's stop, and its top frame.</summary>

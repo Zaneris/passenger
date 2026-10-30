@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Debugger.ExpressionEvaluator.Compiler;
 using Passenger.Debugger.Interop;
 
@@ -59,6 +60,43 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
         _compiler.TryCompile(expression, context, out _) is { } compiled
             ? compiled.MetadataReader.GetMethodDefinition(compiled.EntryMethod).DecodeSignature(SignatureKeyProvider.Dotted, null).ReturnType
             : null;
+
+    /// <summary>Where an expression's value is typed by a type parameter of its frame's class or method (T): the parameter's
+    /// name and, as C# names it, the type the frame runs it as (object where that is shared or has no such name); null for
+    /// any other type.</summary>
+    internal (string Name, string RunAs)? TypeParameterOf(string expression, CompiledExpressionEvaluationContext context)
+    {
+        if (context.RootValue is not null || _compiler.TryCompile(expression, context, out _) is not { } compiled)
+        {
+            return null;
+        }
+        MetadataReader reader = compiled.MetadataReader;
+        MethodDefinition method = reader.GetMethodDefinition(compiled.EntryMethod);
+        string type = method.DecodeSignature(SignatureKeyProvider.Dotted, null).ReturnType;
+        bool ofMethod = type.StartsWith("!!", StringComparison.Ordinal);
+        if (!type.StartsWith('!') || !int.TryParse(type.AsSpan(ofMethod ? 2 : 1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int index))
+        {
+            return null;
+        }
+        GenericParameterHandleCollection parameters = ofMethod ? method.GetGenericParameters() : reader.GetTypeDefinition(method.GetDeclaringType()).GetGenericParameters();
+        (ICorDebugType[] ofClass, ICorDebugType[] ofFrameMethod) = CilInterpreter.SplitFrameTypeParameters(debugger, debugger.GetIlFrameForThreadIdAndStackDepth(context.ThreadId, context.StackDepth));
+        ICorDebugType[] arguments = ofMethod ? ofFrameMethod : ofClass;
+        if (index >= parameters.Count || index >= arguments.Length)
+        {
+            return null;
+        }
+        string runAs;
+        try
+        {
+            runAs = ManagedDebugger.GetCorDebugTypeFriendlyName(arguments[index]);
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            runAs = "object";
+        }
+        return (reader.GetString(reader.GetGenericParameter(parameters[index]).Name),
+            runAs == "System.__Canon" || SyntaxFactory.ParseTypeName(runAs).ContainsDiagnostics ? "object" : runAs);
+    }
 
     /// <summary>Whether an expression fails to compile with the error <paramref name="id"/> (CS8331, a readonly variable
     /// assigned) among its errors, none of it run.</summary>

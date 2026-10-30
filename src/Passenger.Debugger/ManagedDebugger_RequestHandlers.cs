@@ -1006,21 +1006,29 @@ public partial class ManagedDebugger
     /// <summary>Set Value: what an expression names takes a value, by their assignment's one evaluation, whose own value is
     /// the answer, so the target (an index that moves on, a call) runs once. A real number with no suffix, as a float's or
     /// a decimal's value is shown, takes the one its target's type needs, read from the target's compile alone. A variable
-    /// C# keeps readonly (an in parameter, a ref readonly local) is written through the location it refers to.</summary>
+    /// typed by a type parameter takes a value that fits the type its frame runs that as; one C# keeps readonly (an in
+    /// parameter, a ref readonly local) is written through the location it refers to.</summary>
     public async Task<VariableInfo> Assign(string target, string value, int? frameId)
     {
         ArgumentNullException.ThrowIfNull(_expressionEvaluator);
+        CompiledExpressionEvaluationContext context = ContextOf(frameId);
+        (string Name, string RunAs)? typeParameter = _expressionEvaluator.TypeParameterOf(target, context);
         if (RealLiteral().IsMatch(value))
         {
-            value += _expressionEvaluator.TypeOf(target, ContextOf(frameId)) switch
+            value += (typeParameter?.RunAs ?? _expressionEvaluator.TypeOf(target, context)) switch
             {
-                "System.Single" or "System.Nullable`1<System.Single>" => "f",
-                "System.Decimal" or "System.Nullable`1<System.Decimal>" => "m",
+                "System.Single" or "System.Nullable`1<System.Single>" or "float" or "float?" => "f",
+                "System.Decimal" or "System.Nullable`1<System.Decimal>" or "decimal" or "decimal?" => "m",
                 _ => string.Empty,
             };
         }
+        if (typeParameter is (string name, string runAs))
+        {
+            // An array's element takes the value as a variable of that type would, converting it or refusing it by C#'s rules.
+            value = $"({name})(object)new {runAs}[] {{ {value} }}[0]";
+        }
         string assignment = $"{target} = {value}";
-        if (_expressionEvaluator.FailsWith(assignment, ContextOf(frameId), ReadOnlyVariableAssigned))
+        if (_expressionEvaluator.FailsWith(assignment, context, ReadOnlyVariableAssigned))
         {
             assignment = $"System.Runtime.CompilerServices.Unsafe.AsRef(in {target}) = {value}";
         }

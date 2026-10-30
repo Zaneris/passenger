@@ -105,6 +105,11 @@ if (args is ["refs"])
 	Refs.Run();
 	return;
 }
+if (args is ["generic"])
+{
+	Console.WriteLine($"generic {Typed<int>.Make(4, "four")}");
+	return;
+}
 if (args is ["named main"])
 {
 	// Main's thread named as an app may name its UI thread: the debugger still knows it for Main's.
@@ -843,6 +848,17 @@ internal static class Refs
 	private static void Climb(ref int value)
 	{
 		value += 40;
+	}
+}
+
+// Variables typed by type parameters, the class's (int here) and the method's own (string).
+internal static class Typed<T>
+{
+	public static string Make<U>(T t, U u)
+	{
+		T copy = t;
+		U other = u;
+		return $"{copy} {t} {other} {u}";
 	}
 }
 
