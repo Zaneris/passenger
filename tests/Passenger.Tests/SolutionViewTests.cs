@@ -256,6 +256,7 @@ public sealed class SolutionViewTests : IDisposable
 
         Ui.ChooseFromRowMenu(window, Row(window, NodeKind.Project, "Shop.App"), "Add", "Reference…");
         AddReferenceDialog dialog = DialogButtonsTests.Check(Assert.Single(window.OwnedWindows.OfType<AddReferenceDialog>()));
+        UiRulesTests.HoldsToRowHeight("Add Reference", dialog);
         ReferenceChoice offered = Assert.Single(dialog.Choices);
         Assert.Equal(("Shop.Core", core, false), (offered.Name, offered.Path, offered.IsChosen));
         Ui.Press(dialog, "SPACE");

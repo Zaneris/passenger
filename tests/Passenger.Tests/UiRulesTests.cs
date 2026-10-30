@@ -255,6 +255,17 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             "Popups' titles differ in size or weight: " + string.Join(", ", titles.Select(t => $"'{t.Text}' {t.FontSize} {t.FontWeight}")));
     }
 
+    /// <summary>A list's rows as every list's are, <see cref="ListRow.Height"/> tall: a dialog's check rows
+    /// (<see cref="CheckRows"/>) are held to it here.</summary>
+    internal static void HoldsToRowHeight(string what, Visual within)
+    {
+        foreach (ListBoxItem row in within.GetVisualDescendants().OfType<ListBoxItem>().Where(r => r.IsEffectivelyVisible))
+        {
+            Assert.True(Math.Abs(row.Bounds.Height - ListRow.Height) < 0.5,
+                $"A row of {what} is {row.Bounds.Height:0.#} px tall, where every list's row is {ListRow.Height}");
+        }
+    }
+
     /// <summary>A popup's frame as every popup's is: a width of the popups' scale (<see cref="PopupFrame"/>) and its rows
     /// <see cref="ListRow.Height"/> tall; a popup that lives elsewhere (the debugger's hover card) is held to it here too.</summary>
     internal static void HoldsToPopupRules(string what, Border frame)

@@ -153,13 +153,16 @@ public sealed class NuGetSourcesView : Grid
     {
         FeedSource? effective = sources.Feeds.FirstOrDefault(f => f.Name.Equals(feed.Name, StringComparison.OrdinalIgnoreCase) && f.DefinedIn is { } from && Core.PathNames.Same(from, file.Path));
         bool enabled = effective?.Enabled ?? !feed.DisabledHere;
-        CheckBox toggle = new() { IsChecked = enabled, IsEnabled = !file.ReadOnly, VerticalAlignment = VerticalAlignment.Center, MinWidth = 0, Margin = new Thickness(0, 0, 4, 0) };
+        CheckBox toggle = CheckRows.Box();
+        toggle.IsChecked = enabled;
+        toggle.IsEnabled = !file.ReadOnly;
+        toggle.Margin = new Thickness(0, 0, 4, 0);
         ToolTip.SetTip(toggle, "Enabled");
         toggle.IsCheckedChanged += (_, _) => IdeErrors.Observe(SetEnabledAsync(file, feed.Name, toggle.IsChecked == true));
         TextBlock name = new() { Text = feed.Name, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock url = new() { Classes = { "muted" }, Text = feed.Value, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(10, 0) };
         ToolTip.SetTip(url, feed.Value);
-        Grid row = new() { ColumnDefinitions = new ColumnDefinitions("Auto,150,*,Auto,Auto,Auto"), Height = 28, Tag = feed.Name };
+        Grid row = new() { ColumnDefinitions = new ColumnDefinitions("Auto,150,*,Auto,Auto,Auto"), Height = ListRow.Height, Tag = feed.Name };
         Add(row, toggle, 0);
         Add(row, name, 1);
         Add(row, url, 2);

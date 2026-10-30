@@ -10,7 +10,7 @@ namespace Passenger.App.Explorer;
 
 /// <summary>A project the Add Reference dialog offers: checked while the project references it, and not offered when it
 /// references the project itself, directly or through others (a reference back would be a cycle MSBuild refuses).</summary>
-public sealed class ReferenceChoice(string path, string name, string where, bool chosen, bool circular) : Observable
+public sealed class ReferenceChoice(string path, string name, string where, bool chosen, bool circular) : Observable, ICheckChoice
 {
     private bool isChosen = chosen;
 
@@ -48,7 +48,7 @@ public sealed class AddReferenceDialog : IdeWindow
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
         list = new ListBox { Classes = { "tree" }, ItemsSource = choices };
-        ReusedRows.Use(list, Row);
+        ReusedRows.Use(list, CheckRows.Of);
         list.SelectedItem = choices.FirstOrDefault(c => c.CanChoose);
         list.AddHandler(KeyDownEvent, OnListKeyDown, RoutingStrategies.Tunnel);
         Border rows = new() { Classes = { "framed" }, Child = list };
@@ -103,33 +103,5 @@ public sealed class AddReferenceDialog : IdeWindow
             Accept();
             e.Handled = true;
         }
-    }
-
-    /// <summary>A row for whichever project the list hands its container: its box, which follows the project while shown
-    /// and checks the one it shows, its name and where it is, greyed when it cannot be chosen.</summary>
-    private static Control Row()
-    {
-        CheckBox check = new() { VerticalAlignment = VerticalAlignment.Center, Focusable = false };
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock detail = new() { Classes = { "muted" }, FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = 28, Margin = new Thickness(6, 0), Children = { check, name, detail } };
-        bool setting = false;
-        check.IsCheckedChanged += (_, _) =>
-        {
-            if (!setting && row.DataContext is ReferenceChoice choice)
-            {
-                choice.IsChosen = check.IsChecked == true;
-            }
-        };
-        return row.Showing<ReferenceChoice>(choice =>
-        {
-            setting = true;
-            check.IsChecked = choice.IsChosen;
-            check.IsEnabled = choice.CanChoose;
-            setting = false;
-            name.Text = choice.Name;
-            detail.Text = choice.Detail;
-            row.Opacity = choice.CanChoose ? 1 : 0.55;
-        });
     }
 }

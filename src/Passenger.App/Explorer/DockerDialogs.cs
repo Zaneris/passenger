@@ -68,13 +68,15 @@ public sealed class DockerSupportDialog : IdeWindow
 }
 
 /// <summary>A project or a backing service Add > Docker Compose offers, checked while it is to be in compose.yaml.</summary>
-public sealed class ComposeChoice(string name, string detail, bool chosen, object value) : Observable
+public sealed class ComposeChoice(string name, string detail, bool chosen, object value) : Observable, ICheckChoice
 {
     private bool isChosen = chosen;
 
     public string Name { get; } = name;
 
     public string Detail { get; } = detail;
+
+    public bool CanChoose => true;
 
     public object Value { get; } = value;
 
@@ -129,35 +131,9 @@ public sealed class DockerComposeDialog : IdeWindow
     private static Border List(IReadOnlyList<ComposeChoice> choices, int row)
     {
         ListBox list = new() { Classes = { "tree" }, ItemsSource = choices };
-        ReusedRows.Use(list, Row);
+        ReusedRows.Use(list, CheckRows.Of);
         Border framed = new() { Classes = { "framed" }, Child = list, MaxHeight = row == 3 ? 140 : double.PositiveInfinity };
         Grid.SetRow(framed, row);
         return framed;
-    }
-
-    /// <summary>A row for whichever service or file the list hands its container: its box, which follows the choice while
-    /// shown and checks the one it shows, its name and what it is.</summary>
-    private static Control Row()
-    {
-        CheckBox check = new() { VerticalAlignment = VerticalAlignment.Center, Focusable = false };
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock detail = new() { Classes = { "muted" }, FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = 28, Margin = new Thickness(6, 0), Children = { check, name, detail } };
-        bool setting = false;
-        check.IsCheckedChanged += (_, _) =>
-        {
-            if (!setting && row.DataContext is ComposeChoice choice)
-            {
-                choice.IsChosen = check.IsChecked == true;
-            }
-        };
-        return row.Showing<ComposeChoice>(choice =>
-        {
-            setting = true;
-            check.IsChecked = choice.IsChosen;
-            setting = false;
-            name.Text = choice.Name;
-            detail.Text = choice.Detail;
-        });
     }
 }

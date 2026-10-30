@@ -686,6 +686,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             AwaitEvaluated(window);
             Ui.ChooseFromRowMenu(window, Row(window, NodeKind.Solution, "Shop"), "Add", "Docker Compose…");
             DockerComposeDialog dialog = DialogButtonsTests.Check(Assert.Single(window.OwnedWindows.OfType<DockerComposeDialog>()));
+            UiRulesTests.HoldsToRowHeight("Add Docker Compose", dialog);
             Assert.Equal([("Api", "no Dockerfile: Docker Support adds one"), ("Worker", "no Dockerfile: Docker Support adds one")],
                 dialog.Projects.Select(p => (p.Name, p.Detail)));
             ComposeChoice postgres = Assert.Single(dialog.Services);

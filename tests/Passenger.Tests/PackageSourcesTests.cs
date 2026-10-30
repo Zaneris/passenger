@@ -38,6 +38,8 @@ public sealed class PackageSourcesTests : NuGetFeedsFolder
         Assert.True(FeedRows(nuget).SequenceEqual(["local", "private"]), $"The folder's file shows the feeds [{string.Join(", ", FeedRows(nuget))}]");
         Assert.True(Toggle(nuget, "local").IsChecked == true && Toggle(nuget, "private").IsChecked == true, "A feed the file enables is shown disabled");
         Assert.True(Locks(nuget, "private") == 1 && Locks(nuget, "local") == 0, "Only the private feed holds credentials in the file, but its row does not say so");
+        Assert.True(Math.Abs(FeedRow(nuget, "local").Bounds.Height - ListRow.Height) < 0.5,
+            $"A feed's row is {FeedRow(nuget, "local").Bounds.Height:0.#} px tall, where every row a person checks is {ListRow.Height}");
 
         // The person's own nuget.config is never one of a test's: the run's NuGet home stands in for theirs.
         if (!OperatingSystem.IsWindows())
