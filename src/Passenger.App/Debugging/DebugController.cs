@@ -321,6 +321,47 @@ public sealed class DebugController : IDisposable
         return Followed(lines, kept.Reload?.Carried(lines));
     }
 
+    /// <summary>The programs Hot Reload changed that their sessions let go to run on (Detach, or another session taking their
+    /// place), by where they run (a container, else this machine) and their process, with the session that changed them.</summary>
+    private readonly Dictionary<(string? Where, int Process), string> letGoChanged = [];
+
+    /// <summary>A session has ended: a program Hot Reload changed that it let go running is remembered, one that ended forgotten.</summary>
+    private void Ended(DebugSession session, HotReload? reload, string name)
+    {
+        if (session.ProcessStarted is not { IsCompletedSuccessfully: true } started)
+        {
+            return;
+        }
+        (string? Where, int Process) program = (session.Place?.Where, started.Result);
+        if (session.Detached && reload is { Updated: true })
+        {
+            letGoChanged[program] = name;
+        }
+        else if (!session.Detached)
+        {
+            letGoChanged.Remove(program);
+        }
+    }
+
+    /// <summary>The name of the session that had Hot Reload change a program it then let go running (where
+    /// <paramref name="place"/> says, else on this machine), or null: its runtime, which lets no debugger go once the code
+    /// has changed, takes none again.</summary>
+    public string? ChangedBy(int processId, AdapterPlace? place) => letGoChanged.GetValueOrDefault((place?.Where, processId));
+
+    /// <summary>The programs of a name (a run's service) have been started again: none runs changes Hot Reload made before.</summary>
+    public void Restarted(string name)
+    {
+        foreach ((string? Where, int Process) program in letGoChanged.Where(p => p.Value == name).Select(p => p.Key).ToList())
+        {
+            letGoChanged.Remove(program);
+        }
+    }
+
+    /// <summary>Why a program Hot Reload changed under a session that let it go is not attached to (<see cref="ChangedBy"/>).</summary>
+    public static string TakesNoDebugger(string name) =>
+        $"{name} was not attached to: Hot Reload changed its code while an earlier session debugged it, after which its runtime "
+        + "takes no debugger again; restart it to debug it";
+
     private BuiltEdits Followed(BuiltLines lines, HotReload? reload)
     {
         BuiltEdits edits = new(lines, reload, done => building.Remove(done));
@@ -598,6 +639,11 @@ public sealed class DebugController : IDisposable
     public Task<string?> AttachAsync(int processId, string name, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null, string? group = null,
         LiveApp? app = null, BuiltEdits? edits = null)
     {
+        if (ChangedBy(processId, place) is not null)
+        {
+            edits?.Dispose();
+            return Task.FromResult<string?>(TakesNoDebugger(name));
+        }
         bool hotReloadOn = hotReload && HotReloadOn();
         return OpenAsync((built, log, output, starting) => DebugSession.AttachAsync(processId, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn, elsewhere, place), name,
             launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits);
@@ -923,6 +969,11 @@ public sealed class DebugController : IDisposable
             edits?.Dispose();
             return $"Could not attach to {name} for Hot Reload: its folder was closed";
         }
+        if (ChangedBy(processId, place) is not null)
+        {
+            edits?.Dispose();
+            return TakesNoDebugger(name);
+        }
         // Followed since the build read the files where it began there, else from now: an edit made meanwhile is one Apply takes.
         using BuiltEdits own = edits ?? Building(hotReload: true);
         BuiltLines built = own.Lines;
@@ -953,6 +1004,7 @@ public sealed class DebugController : IDisposable
             {
                 if (session.State == DebugState.Ended && running.Remove(reload))
                 {
+                    Ended(session, reload.Reload, name);
                     reload.Reload.End();
                     StateChanged?.Invoke(this, EventArgs.Empty);
                 }
@@ -1789,6 +1841,7 @@ public sealed class DebugController : IDisposable
             tab.Console.Sink.End(ConsoleStream.System);
             StopFollowing(tab);
             tab.HasEnded = true;
+            Ended(session, tab.HotReload, tab.Name);
             tab.HotReload?.End();
             tab.Lines = null;
         }

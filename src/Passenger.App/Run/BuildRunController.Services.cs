@@ -189,6 +189,10 @@ public sealed partial class BuildRunController
             {
                 return failed;
             }
+            foreach (IRunService restarted in services)
+            {
+                session.Debug.Restarted(run.SessionName(restarted));
+            }
             List<string> notes = [];
             (IRunService Service, string? Refused)[] attached = held.Count == 0 ? [] : await AttachEachAsync(run, held, Task.CompletedTask, notes, work, work.Stopping);
             string? unattached = attached.Select(a => a.Refused).FirstOrDefault(r => r is not null);

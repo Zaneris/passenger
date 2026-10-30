@@ -141,6 +141,9 @@ public sealed class HotReload
     /// <summary>Whether the files have been edited since the launch or since the edits the last update was made of.</summary>
     public bool Changed => edits != settled;
 
+    /// <summary>Whether the program has taken an update from it.</summary>
+    public bool Updated { get; private set; }
+
     /// <summary>A restart for the edits Roslyn last read was declined: they are not applied, or asked about, again until the
     /// next edit.</summary>
     public void RestartDeclined() => settled = read;
@@ -341,6 +344,7 @@ public sealed class HotReload
         }
         await TellAsync(roslyn, HotReloadHandlers.Commit, session);
         settled = read;
+        Updated = true;
         int methods = emitted.Updates.Sum(u => u.UpdatedMethods.Count);
         List<string> files = [.. emitted.ChangedDocuments];
         string named = files.Count == 0 ? string.Empty : $": {string.Join(", ", files.Select(Path.GetFileName))}";
