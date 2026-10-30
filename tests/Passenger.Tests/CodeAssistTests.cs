@@ -1291,6 +1291,27 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>Reformat Code on a file whose own lines indent in sixes lays its ragged line out in sixes and says so; asked
+    /// again, with nothing left to change, it changes nothing and says the file was formatted already.</summary>
+    [AvaloniaFact]
+    public void Reformat_code_lays_a_file_indented_in_sixes_out_in_sixes_and_says_so_only_where_it_changed()
+    {
+        MainWindow window = project.Open("Detected/Sixes.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Assert.Equal("6 spaces, detected", IndentShown(window));
+        Ui.Run(window, AppActions.Reformat);
+        Ui.WaitFor(() => window.Status is "Reformatted" or "Already formatted", () => $"the reformat; the status says '{window.Status}'");
+        string formatted = Sixes.Replace("                  return", "            return", StringComparison.Ordinal);
+        Assert.True(window.Status == "Reformatted" && editor.Document.Snapshot.ToString() == formatted,
+            $"Reformat Code ({window.Status}) left the file of six spaces as:\n{editor.Document.Snapshot}");
+
+        Ui.Run(window, AppActions.Reformat);
+        Ui.WaitFor(() => window.Status != "Reformatted", () => $"the second reformat; the status says '{window.Status}'");
+        Assert.True(window.Status == "Already formatted" && editor.Document.Snapshot.ToString() == formatted,
+            $"Reformat Code on the file formatted ({window.Status}) left it as:\n{editor.Document.Snapshot}");
+        window.Close();
+    }
+
     /// <summary>Chooses ToString() from completion on a new line after some text, which overrides it there.</summary>
     private static void OverrideAfter(MainWindow window, CodeEditor editor, string after)
     {
@@ -2350,6 +2371,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         return (items, key);
     }
 
+    /// <summary>A method with a line indented a level too far, in six spaces as the file has them.</summary>
+    private const string Sixes = "static class Sixes\n{\n      public static int Value()\n      {\n            int total = 1;\n                  return total;\n      }\n}\n";
+
     /// <summary>Two methods each with a line as badly indented as the other's, in four spaces as the file has them.</summary>
     private const string Ragged = "static class Ragged\n{\n    public static int Untouched()\n    {\n        int one = 1;\n            return one;\n    }\n\n"
         + "    public static int Chosen()\n    {\n        int two = 2;\n            return two;\n    }\n}\n";
@@ -2384,6 +2408,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Tabs/Tabbed.cs"), "class Tabbed\n{\n\tpublic int X { get; }\n\n\tstatic void Make()\n\t{\n\t\tint made = 0;\n\t}\n}\n");
             Directory.CreateDirectory(PathOf("Detected"));
             File.WriteAllText(PathOf("Detected/TwoSpaces.cs"), "class TwoSpaces\n{\n  public int X { get; }\n\n  static void Make()\n  {\n    int made = 0;\n    if (made > 0)\n    {\n      made--;\n    }\n  }\n}\n");
+            File.WriteAllText(PathOf("Detected/Sixes.cs"), Sixes);
             File.WriteAllText(PathOf("Detected/TabsOwn.cs"), "class TabsOwn\n{\n\tpublic int X { get; }\n\n\tstatic void Make()\n\t{\n\t\tint made = 0;\n\t}\n}\n");
             File.WriteAllText(PathOf("Inferred.cs"), "using System;\nusing System.Collections.Generic;\n\nstatic class Inferred\n{\n    public static int Run()\n    {\n"
                 + "        var list = new List<int>();\n        var total = Area.Of(3, 4);\n        Func<int, int> square = n => n * n;\n"

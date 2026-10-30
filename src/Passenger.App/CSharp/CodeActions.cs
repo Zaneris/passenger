@@ -567,7 +567,8 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             WorkspaceEdits.ApplyTo(context.Editors, document, edits);
         }
-        string said = answer.Count == 0 ? "Already formatted" : "Reformatted";
+        // The server's edits that come to nothing in the file's line breaks and indentation are no reformat.
+        string said = edits.Count == 0 ? "Already formatted" : "Reformatted";
         return new Reformatted(true, edits.Count > 0, within is not null && whole ? $"{said} the whole file: its language server formats no selection" : said);
     }
 
