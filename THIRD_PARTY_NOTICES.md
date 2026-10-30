@@ -890,6 +890,7 @@ Passenger's changes, each where a schema refused what the tool it describes take
   and `autoShutdown` default to the booleans their strings named; the defaults their own schema refuses are left out
   (NLog's `targetDefaultWrapper`, rule and filter `{}`, launch settings' `commandName` `""` and `ancmHostingModel`
   `false`, Prettier's `rangeEnd` `null`).
+- `tsconfig.json`: ts-node's `scopeDir` has no default, the sentence that stood as one now its description.
 
 ## The Compose specification's schema
 

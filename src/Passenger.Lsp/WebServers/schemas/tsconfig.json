@@ -2564,7 +2564,7 @@
                       "type": "null"
                     }
                   ],
-                  "default": "First of: `tsconfig.json` \"rootDir\" if specified, directory containing `tsconfig.json`, or cwd if no `tsconfig.json` is loaded."
+                  "description": "Directory within which compiler is limited when `scope` is enabled.\n\nDefault: first of: `tsconfig.json` \"rootDir\" if specified, directory containing `tsconfig.json`, or cwd if no `tsconfig.json` is loaded."
                 },
                 "skipIgnore": {
                   "default": false,
