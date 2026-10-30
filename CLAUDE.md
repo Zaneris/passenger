@@ -202,9 +202,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   place the version is read), `PassengerLog` (below the App, never `IdeLog`; a line quoting a program's words through
   `WriteMasked`), `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's lines read and messages written as pooled
   bytes), `SharedNames` (a name read from bytes, made once), `ContentLengthHeader` (every LSP and DAP message's header),
-  `RazorFiles` and `MSBuildNames` (compiled into the extension and the host), `PrimitiveTypes` (the one table of
-  primitives; the debugger's element types through `MetadataTypeNames.ElementTypeOf`, a generic name closed through
-  `CSharpTypeNames.Closed`).
+  `RazorFiles` and `MSBuildNames` (compiled into the extension and the host; every MSBuild name Passenger writes but
+  those the evaluation's `CarriedProperties` holds, MSBuildNamesTests holding both; a build's and a publish's command
+  line end in `BuildOutput.Tail`), `PrimitiveTypes` (the one table of primitives; the debugger's element types through
+  `MetadataTypeNames.ElementTypeOf`, a generic name closed through `CSharpTypeNames.Closed`).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
   function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `Outline` (a tree's rows in reading order, kept where
   unchanged), `FileText`, and anchors (`AnchorAt`/`RangeAt`/`MarkAt`, `AnchoredList`; moved before `Changed`, each
