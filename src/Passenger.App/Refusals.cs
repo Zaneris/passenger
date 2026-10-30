@@ -60,6 +60,12 @@ public static class Refusals
     /// moves them.</summary>
     public const string PersonsKeys = "It moves the person's keys, which only the person does";
 
+    /// <summary>An agent's call whose question the window took away as it left the folder it was asked in (<paramref
+    /// name="left"/>), for another or none, before the person answered: an answer would have allowed it where it no longer is.</summary>
+    public static string FolderChanged(string? left) =>
+        $"The folder changed while the person was asked: the Passenger window left {left ?? "the folder it had open"} before they answered, so nothing "
+        + "was done. A later call is asked about the folder open now";
+
     /// <summary>Go to Declaration found nothing to go to where it was asked.</summary>
     public const string NoDeclaration = "Cannot find a declaration to go to";
 

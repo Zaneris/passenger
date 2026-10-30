@@ -63,9 +63,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 cancel.ThrowIfCancellationRequested();
                 if (said != Admission.Allowed)
                 {
-                    throw new InvalidOperationException(said == Admission.NotAllowed
-                        ? $"The person at this Passenger window did not let {connection.Agent} open {full} in place of {open}. Ask them, or work in {open}."
-                        : $"Nobody at {AgentConnection.Where(window)} answered within {AgentConnection.Limit(window)} whether {connection.Agent} may open {full} in place of {open}. A later call asks again.");
+                    throw new InvalidOperationException(said switch
+                    {
+                        Admission.NotAllowed => $"The person at this Passenger window did not let {connection.Agent} open {full} in place of {open}. Ask them, or work in {open}.",
+                        Admission.FolderChanged => Refusals.FolderChanged(open),
+                        _ => $"Nobody at {AgentConnection.Where(window)} answered within {AgentConnection.Limit(window)} whether {connection.Agent} may open {full} in place of {open}. A later call asks again.",
+                    });
                 }
             }
             await window.OpenFolder(full, connection).WaitAsync(cancel);

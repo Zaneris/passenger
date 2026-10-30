@@ -260,6 +260,9 @@ public enum Admission
 
     /// <summary>Nobody answered within the window's limit, or every call waiting for the answer went first.</summary>
     Unanswered,
+
+    /// <summary>The window left the folder it was asked in (it opened another, or closed it) before the person answered.</summary>
+    FolderChanged,
 }
 
 /// <summary>One agent's connection: its calls end when it does; on a person's window (attached) it is let in before its
@@ -315,7 +318,7 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
         if (asking is null)
         {
             CancellationTokenSource takenAway = CancellationTokenSource.CreateLinkedTokenSource(Gone);
-            asking = new(window.AskToLetInAsync(Agent, takenAway.Token), takenAway);
+            asking = new(window.AskToLetInAsync(Agent, takenAway.Token), takenAway, window.Folder);
         }
         Asked asked = asking;
         asked.Waiting++;
@@ -343,9 +346,12 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
             Admit(window);
             return null;
         }
-        return said == Admission.NotAllowed
-            ? $"The person at {Where(window)} did not let {Agent} work there. Ask them, or do without it; a later call asks them again."
-            : $"Nobody at {Where(window)} answered within {Limit(window)} whether {Agent} may work there. A later call asks again.";
+        return said switch
+        {
+            Admission.NotAllowed => $"The person at {Where(window)} did not let {Agent} work there. Ask them, or do without it; a later call asks them again.",
+            Admission.FolderChanged => Refusals.FolderChanged(asked.Folder),
+            _ => $"Nobody at {Where(window)} answered within {Limit(window)} whether {Agent} may work there. A later call asks again.",
+        };
     }
 
     /// <summary>The window as an answer names it.</summary>
@@ -390,7 +396,7 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
         {
             CancellationTokenSource takenAway = CancellationTokenSource.CreateLinkedTokenSource(Gone);
             asked = new(window.AllowAgentAsync(Agent, tool.Name, tool.Title ?? tool.Name,
-                [.. (arguments ?? new Dictionary<string, JsonElement>()).Select(a => (a.Key, Shown(a.Value)))], takenAway.Token), takenAway);
+                [.. (arguments ?? new Dictionary<string, JsonElement>()).Select(a => (a.Key, Shown(a.Value)))], takenAway.Token), takenAway, window.Folder);
             allowing[tool.Name] = asked;
         }
         asked.Waiting++;
@@ -416,9 +422,12 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
             allowed.Add(tool.Name);
             return null;
         }
-        return said == Admission.NotAllowed
-            ? $"The person at {Where(window)} did not allow {tool.Name}. Ask them, or do without it; a later call asks them again."
-            : $"Nobody at {Where(window)} answered within {Limit(window)} whether {Agent} may use {tool.Name}. A later call asks again.";
+        return said switch
+        {
+            Admission.NotAllowed => $"The person at {Where(window)} did not allow {tool.Name}. Ask them, or do without it; a later call asks them again.",
+            Admission.FolderChanged => Refusals.FolderChanged(asked.Folder),
+            _ => $"Nobody at {Where(window)} answered within {Limit(window)} whether {Agent} may use {tool.Name}. A later call asks again.",
+        };
     }
 
     private void Forget(string tool, Asked asked)
@@ -442,12 +451,15 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
     private static string Shown(JsonElement value) =>
         value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
 
-    /// <summary>A tool's question while it is asked: its answer, what takes it away unanswered, and how many calls wait on it.</summary>
-    private sealed class Asked(Task<Admission> answer, CancellationTokenSource takenAway)
+    /// <summary>A tool's question while it is asked: its answer, what takes it away unanswered, the folder it was asked in,
+    /// and how many calls wait on it.</summary>
+    private sealed class Asked(Task<Admission> answer, CancellationTokenSource takenAway, string? folder)
     {
         public Task<Admission> Answer { get; } = answer;
 
         public CancellationTokenSource TakenAway { get; } = takenAway;
+
+        public string? Folder { get; } = folder;
 
         public int Waiting { get; set; }
     }

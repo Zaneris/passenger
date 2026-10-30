@@ -23,6 +23,9 @@ public partial class MainWindow
     /// brings forward.</summary>
     private readonly List<Window> agentDialogs = [];
 
+    /// <summary>The questions taken away as the window left the folder they were asked in, which close answering so.</summary>
+    private readonly HashSet<Window> leftBehind = [];
+
     private Mcp.AgentSocket? agentSocket;
     private int agents;
 
@@ -146,12 +149,20 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The window leaves its folder for <paramref name="folder"/> (none when it closes it): the agents let in on the
-    /// folder it leaves are shut out, each asked again at its next call, unless the window lets agents in unasked where it
-    /// goes; the agent whose own open it is (<paramref name="opener"/>) stays. Those that stay are asked again before their
-    /// first use of each tool there.</summary>
-    private void AgentsGoTo(string? folder, Mcp.AgentConnection? opener) =>
+    /// <summary>The window leaves its folder for <paramref name="folder"/> (none when it closes it): every question an
+    /// agent's call waits on goes, the call refused saying so (<see cref="Admission.FolderChanged"/>), so an answer only
+    /// ever allows what it named where it named it; the agents let in on the folder it leaves are shut out, each asked again
+    /// at its next call, unless the window lets agents in unasked where it goes; the agent whose own open it is
+    /// (<paramref name="opener"/>) stays. Those that stay are asked again before their first use of each tool there.</summary>
+    private void AgentsGoTo(string? folder, Mcp.AgentConnection? opener)
+    {
+        foreach (Window asking in agentDialogs.Where(d => d.IsVisible).ToList())
+        {
+            leftBehind.Add(asking);
+            asking.Close();
+        }
         agentSocket?.Moving(AgentsUnattended || settings.McpServer || (folder is not null && LetsIn(settings, folder)), opener);
+    }
 
     /// <summary>Asks the person whether an agent may work in the window, its calls waiting: Allow, with Always for this
     /// folder kept with the folder, Don't allow, or no answer within <see cref="AgentAnswerLimit"/> or before
@@ -162,7 +173,7 @@ public partial class MainWindow
         string? folder = Folder;
         AgentAdmissionDialog dialog = new(agent, folder);
         IdeErrors.Write($"Agents: {agent} asks to work in the window on {folder ?? "no folder"}");
-        Admission said = await AskForAgentAsync(dialog, () => dialog.Answered, Admission.NotAllowed, $"{agent} waits for you: let it in?", takenAway) ?? Admission.Unanswered;
+        Admission said = await AskForAgentAsync(dialog, () => dialog.Answered, $"{agent} waits for you: let it in?", takenAway);
         if (said == Admission.Allowed && dialog.Always && folder is not null && !LetsIn(settings, folder))
         {
             // Settings' list, which every window over the folder follows and the person's settings keep.
@@ -172,6 +183,7 @@ public partial class MainWindow
         {
             Admission.Allowed => dialog.Always ? "let in always" : "let in",
             Admission.NotAllowed => "not let in",
+            Admission.FolderChanged => "not answered before the window left",
             _ => "not answered",
         })} on {folder ?? "no folder"}");
         return said;
@@ -187,7 +199,7 @@ public partial class MainWindow
         {
             EnterAgrees = false,
         };
-        return Answered(await AskForAgentAsync(dialog, () => dialog.Answered, false, $"{agent} waits for you: open {name} here?", cancel));
+        return await AskForAgentAsync(dialog, () => Answered(dialog.Answered), $"{agent} waits for you: open {name} here?", cancel);
     }
 
     /// <summary>Asks the person whether an agent may use a tool that changes something, showing what it asked with: no
@@ -203,28 +215,30 @@ public partial class MainWindow
             EnterAgrees = false,
         };
         IdeErrors.Write($"Agents: {agent} asks to use {tool} in the window on {Folder ?? "no folder"}");
-        Admission said = Answered(await AskForAgentAsync(dialog, () => dialog.Answered, false, $"{agent} waits for you: allow {tool}?", cancel));
+        string? folder = Folder;
+        Admission said = await AskForAgentAsync(dialog, () => Answered(dialog.Answered), $"{agent} waits for you: allow {tool}?", cancel);
         IdeErrors.Write($"Agents: {agent} {(said switch
         {
             Admission.Allowed => "allowed",
             Admission.NotAllowed => "not allowed",
+            Admission.FolderChanged => "not answered before the window left whether it may use",
             _ => $"not answered within {AgentConnection.Limit(this)} whether it may use",
-        })} {tool} on {Folder ?? "no folder"}");
+        })} {tool} on {folder ?? "no folder"}");
         return said;
     }
 
-    private static Admission Answered(bool? said) => said switch
+    private static Admission? Answered(bool? said) => said switch
     {
         true => Admission.Allowed,
         false => Admission.NotAllowed,
-        null => Admission.Unanswered,
+        null => null,
     };
 
     /// <summary>A question an agent's call waits on, put to the person: shown over the window with the keys left where they
     /// are, the system asked for their attention and the status bar saying who waits on what, until they answer
-    /// (<paramref name="answered"/>, read as it closes); closing the dialog answers <paramref name="no"/>, and
-    /// <paramref name="cancel"/> or <see cref="AgentAnswerLimit"/> takes it away unanswered (null).</summary>
-    private async Task<T?> AskForAgentAsync<T>(Window dialog, Func<T?> answered, T no, string waiting, CancellationToken cancel) where T : struct
+    /// (<paramref name="answered"/>, read as it closes); closing the dialog answers no, <paramref name="cancel"/> or
+    /// <see cref="AgentAnswerLimit"/> takes it away unanswered, and the window leaving its folder takes it away so.</summary>
+    private async Task<Admission> AskForAgentAsync(Window dialog, Func<Admission?> answered, string waiting, CancellationToken cancel)
     {
         UiThread.Check();
         bool takenAway = false;
@@ -254,7 +268,7 @@ public partial class MainWindow
         try
         {
             await closed.Task;
-            return takenAway ? null : answered() ?? no;
+            return leftBehind.Remove(dialog) ? Admission.FolderChanged : takenAway ? Admission.Unanswered : answered() ?? Admission.NotAllowed;
         }
         finally
         {

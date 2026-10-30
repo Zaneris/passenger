@@ -417,6 +417,43 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A question an agent's call waits on goes as the person opens another folder in the window, its call refused
+    /// saying the folder changed, so an Allow never makes the change in the folder opened since: with Enable MCP Server on,
+    /// the agent stays let in, its edit asked about in the first folder is made in neither, and its next edit is asked about
+    /// in the folder now open.</summary>
+    [AvaloniaFact]
+    public void A_folder_opened_while_an_agents_question_shows_takes_the_question_away_and_refuses_its_call()
+    {
+        string first = Plain("mcp-asked-");
+        string second = Plain("mcp-opened-");
+        MainWindow window = Ui.OpenFolder(first, languageServer: false);
+        window.ApplySettings(window.Settings with { McpServer = true });
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Task<CallToolResult> editing = Waiting.Apart(() => Result(client, McpTools.Edit, Note("asked")));
+            ConfirmDialog asked = Question(window, "the question for the agent's edit in the first folder");
+            window.OpenFolder(second);
+            Ui.Settle();
+            Assert.False(asked.IsVisible, "The question for the agent's edit in the folder left stayed open over the folder opened, where an Allow would make it");
+            CallToolResult refused = Await(editing, "the agent's edit asked about in the folder left");
+            Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.FolderChanged(PathNames.Canonical(first)), StringComparison.Ordinal),
+                $"The agent's edit asked about in the folder left was answered: {Text(refused)}");
+            Assert.Equal(("notes\n", "notes\n"), (File.ReadAllText(Path.Combine(first, "Notes.txt")), File.ReadAllText(Path.Combine(second, "Notes.txt"))));
+
+            Task<JsonElement> again = Waiting.Apart(() => Call(client, McpTools.Edit, Note("opened")));
+            Press(Question(window, "the question for the agent's edit in the folder opened"), "Allow");
+            Await(again, "the agent's edit in the folder opened");
+            Assert.Equal(("notes\n", "notes opened\n"), (File.ReadAllText(Path.Combine(first, "Notes.txt")), File.ReadAllText(Path.Combine(second, "Notes.txt"))));
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { McpServer = false });
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>An agent's questions come over the window without the keys and no key answers Allow: an Enter the person types
     /// in the editor goes into their file, and one pressed in the question itself leaves it waiting, the agent not let in and
     /// its edit not made, until a click of Allow answers each.</summary>
