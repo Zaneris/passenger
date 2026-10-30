@@ -538,5 +538,6 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
   focus ring `FocusRing`; a window's icon `AppIcon`; a list's rows `ReusedRows` (`Use`, `Showing`), their icons
   `RowIcon` (a tree row's chevron and icon `RowGlyphs`), drawn as `PathIcon` draws for a fraction of its cost, never
   `PathIcon` (UiRulesTests). A row hears its item only while shown (`Observable.FollowWhileShown`).
-- `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, and new windows fit the screen's
-  working area (`FitToScreen`).
+- `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, and every window is an `IdeWindow`,
+  which fits the working area of its owner's screen as it shows (`WindowFit`; one shown with no owner through
+  `FitToScreen`).
