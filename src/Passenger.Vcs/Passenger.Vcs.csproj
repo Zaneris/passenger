@@ -8,6 +8,7 @@
   <ItemGroup>
     <!-- The merge window reads a diff's places as the diff does (FileDiff.Place). -->
     <InternalsVisibleTo Include="Passenger" />
+    <InternalsVisibleTo Include="Passenger.UnitTests" />
   </ItemGroup>
 
   <ItemGroup>

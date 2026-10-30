@@ -407,6 +407,13 @@
           "Passenger.Core": "[0.2.2, )"
         }
       },
+      "passenger.vcs": {
+        "type": "Project",
+        "dependencies": {
+          "Passenger.Core": "[0.2.2, )",
+          "Passenger.Text": "[0.2.2, )"
+        }
+      },
       "passenger.workspace": {
         "type": "Project",
         "dependencies": {

@@ -193,15 +193,29 @@ public sealed class Git
         {
             return new GitLookup(null, top.Error, Missing: true);
         }
-        string[] lines = top.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (top.Succeeded && lines.Length == 2)
+        if (top.Succeeded && Places(top.Output) is ({ } root, { } gitDir))
         {
-            return new GitLookup(new Git(PathNames.Canonical(lines[0]), PathNames.Canonical(lines[1])), null);
+            return new GitLookup(new Git(PathNames.Canonical(root), PathNames.Canonical(gitDir)), null);
         }
         // Git names the setting that would let it in only when it refuses a repository it found, in any language it speaks.
         return new GitLookup(null, top.Code == NotThere && top.Error.Contains("safe.directory", StringComparison.Ordinal)
             ? $"Git refuses this folder's repository: {OneLine(top.Error)}"
             : null);
+    }
+
+    /// <summary>The working tree's top and git's folder as rev-parse writes them, a line each: read whole but for the line
+    /// break (and the carriage return before it on Windows), as a folder's name may begin or end with a space. Null where
+    /// git wrote other than two lines.</summary>
+    internal static (string Top, string GitDir)? Places(string output)
+    {
+        string[] lines = output.Split('\n');
+        if (lines is not [{ Length: > 0 } top, { Length: > 0 } gitDir, ""])
+        {
+            return null;
+        }
+        return (Unbroken(top), Unbroken(gitDir));
+
+        static string Unbroken(string line) => OperatingSystem.IsWindows() && line.EndsWith('\r') ? line[..^1] : line;
     }
 
     /// <summary>What git said on one line: each of its lines trimmed, "fatal: " left off, and a line it ends without a
