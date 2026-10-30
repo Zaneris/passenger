@@ -104,7 +104,7 @@ internal sealed class CilValue
 
     /// <summary>Whether the value is an int64 on the evaluation stack: a long or ulong, a 64-bit program's native integer,
     /// or an enum over one; any other integer is an int32 there.</summary>
-    private bool IsInt64 => Value is long or ulong
+    public bool IsInt64 => Value is long or ulong
         || (Value is null && CorValue?.UnwrapDebugValue() is ICorDebugGenericValue { Type: CorElementType.VALUETYPE } generic && generic.Size == 8);
 
     public bool TryGetInt64(out long value)

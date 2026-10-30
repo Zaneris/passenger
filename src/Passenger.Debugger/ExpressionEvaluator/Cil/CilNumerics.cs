@@ -25,7 +25,7 @@ internal static class CilNumerics
             };
             return left.Value is double || right.Value is double ? CilValue.FromPrimitive(result) : CilValue.FromPrimitive((float)result);
         }
-        return left.Value is long or ulong || right.Value is long or ulong
+        return left.IsInt64 || right.IsInt64
             ? CilValue.FromPrimitive(Int64(op, left.AsInt64(), right.AsInt64()))
             : CilValue.FromPrimitive(Int32(op, left.AsInt32(), right.AsInt32()));
     }
@@ -82,12 +82,12 @@ internal static class CilNumerics
     {
         float single => CilValue.FromPrimitive(-single),
         double number => CilValue.FromPrimitive(-number),
-        long or ulong => CilValue.FromPrimitive(-value.AsInt64()),
+        _ when value.IsInt64 => CilValue.FromPrimitive(-value.AsInt64()),
         _ => CilValue.FromPrimitive(-value.AsInt32()),
     };
 
     /// <summary>An int32 stays one: only a 64-bit operand gives a 64-bit result.</summary>
-    public static CilValue Not(CilValue value) => value.Value is long or ulong
+    public static CilValue Not(CilValue value) => value.IsInt64
         ? CilValue.FromPrimitive(~value.AsInt64())
         : CilValue.FromPrimitive(~value.AsInt32());
 

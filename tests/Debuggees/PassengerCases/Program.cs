@@ -85,6 +85,11 @@ if (args is ["setting"])
 	Setting.Run();
 	return;
 }
+if (args is ["reckoning"])
+{
+	Reckoning.Run();
+	return;
+}
 if (args is ["named main"])
 {
 	// Main's thread named as an app may name its UI thread: the debugger still knows it for Main's.
@@ -303,6 +308,21 @@ internal static class Setting
 		Console.WriteLine($"ended {ended.Length}");
 	}
 }
+
+// What the debugger must reckon as the program's runtime does, its values' rows and its evaluations alike.
+internal static class Reckoning
+{
+	public static void Run()
+	{
+		Wide wide = Wide.Low | Wide.Big;
+		Wide big = Wide.Big;
+		Console.WriteLine("reckoning");
+		Console.WriteLine($"reckoned {wide & big}");
+	}
+}
+
+[Flags] internal enum Wide : long { Low = 1, Big = 1L << 41 }
+
 
 // What an evaluation reads and leaves as it was: a record struct and a tuple a with copies, a char joined to a string,
 // a box a pattern takes apart, read again each round, native integers wider than an int, and floats cast to integers
