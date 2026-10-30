@@ -537,6 +537,45 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "an override was pulled up kept abstract");
     }
 
+    /// <summary>A refactoring made a moment after Git changed or deleted files outside the IDE acts on the files as they are on
+    /// disk: Push Members Down again right after a reset put its files back gives each class the member the reset took from
+    /// it, and a rename right after a file using the member was deleted renames it everywhere else, the project building.</summary>
+    [Fact]
+    public async Task An_agent_refactoring_right_after_git_changed_and_deleted_files_finds_it_acting_on_the_files_as_they_are()
+    {
+        await TakeFolderAsync();
+        const string Shape = "namespace Shop;\n\npublic abstract class Shape\n{\n    public abstract double Area();\n}\n";
+        const string Polygon = "namespace Shop;\n\npublic abstract class Polygon : Shape\n{\n    public override double Area() => 0;\n}\n";
+        const string Square = "namespace Shop;\n\npublic class Square : Polygon\n{\n}\n";
+        const string Hexagon = "namespace Shop;\n\npublic class Hexagon : Polygon\n{\n}\n";
+        const string Circle = "namespace Shop;\n\npublic class Circle : Polygon\n{\n    public override double Area() => 3;\n}\n";
+        Shop(("Shape.cs", Shape), ("Polygon.cs", Polygon), ("Square.cs", Square), ("Hexagon.cs", Hexagon), ("Circle.cs", Circle), (".gitignore", "bin/\nobj/\n"));
+        await TestGit.InitAsync(Folder);
+        await using McpClient client = await Start(["--mcp", Folder]);
+        Dictionary<string, object?> push = Place("push_members_down", "Polygon.cs", Polygon, "class Pol", new { targets = new[] { "Square", "Hexagon" }, members = new[] { "Area" } });
+        string[] pushed = ["Hexagon.cs changed", "Polygon.cs changed", "Square.cs changed"];
+        Assert.Equal(pushed, Files(await Call(client, McpTools.Refactor, push)));
+        // The server reads Square.cs as pushed, so the reset is what it has yet to hear.
+        string uses = string.Empty;
+        Assert.True(await Waiting.UntilAsync(async () => (uses = Text(await Call(client, McpTools.Usages, new() { ["symbol"] = "Shape.Area" }))).Contains("Square.cs", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(30), Cancel, TimeSpan.FromMilliseconds(100)), $"The language server never read the Area pushed down into Square.cs: {uses}");
+
+        await TestGit.RunAsync(Folder, "reset", "-q", "--hard");
+        JsonElement again = await Call(client, McpTools.Refactor, push);
+        string square = File.ReadAllText(PathOf("Square.cs"));
+        Assert.True(Files(again).SequenceEqual(pushed) && square == Square.Replace("{\n}", "{\n    public override double Area() => 0;\n}", StringComparison.Ordinal),
+            $"Pushing Area down right after git reset --hard put the files back answered {again}, leaving Square.cs so:\n{square}");
+
+        await TestGit.RunAsync(Folder, "rm", "-q", "Circle.cs");
+        (int line, int column) = LineColumn(Shape, "Area", Shape.IndexOf("Area", StringComparison.Ordinal));
+        CallToolResult renamed = await Result(client, McpTools.Rename, new() { ["path"] = "Shape.cs", ["line"] = line, ["column"] = column, ["newName"] = "Size" });
+        string hexagon = File.ReadAllText(PathOf("Hexagon.cs"));
+        Assert.True(renamed.IsError != true && !File.Exists(PathOf("Circle.cs")) && File.ReadAllText(PathOf("Shape.cs")).Contains("abstract double Size();", StringComparison.Ordinal)
+            && hexagon.Contains("override double Size() => 0;", StringComparison.Ordinal),
+            $"Renaming Area right after git rm Circle.cs answered: {Text(renamed)}, Circle.cs {(File.Exists(PathOf("Circle.cs")) ? "there again" : "gone")} and Hexagon.cs so:\n{hexagon}");
+        await Compiles(client, "refactorings right after git changed and deleted files");
+    }
+
     /// <summary>Extract Interface from a class whose type parameter a member uses is constrained by another the members do
     /// not name: the interface declares both, so the constraint it copies names a type parameter of its own.</summary>
     [Fact]

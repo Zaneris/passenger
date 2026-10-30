@@ -18,6 +18,7 @@ public static class Handlers
     public const string PullMembersUp = "Passenger.Roslyn.Extension.PullMembersUp";
     public const string PushMembersDown = "Passenger.Roslyn.Extension.PushMembersDown";
     public const string DocumentTexts = "Passenger.Roslyn.Extension.DocumentTexts";
+    public const string DocumentsWritten = "Passenger.Roslyn.Extension.DocumentsWritten";
     public const string AspireProjectDeclaration = "Passenger.Roslyn.Extension.AspireProjectDeclaration";
     public const string AspireCodeHelp = "Passenger.Roslyn.Extension.AspireCodeHelp";
     public const string AspireReferenceFix = "Passenger.Roslyn.Extension.AspireReferenceFix";
@@ -36,7 +37,7 @@ public static class Handlers
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
-        DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
+        DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
         ComponentClass, GeneratedTexts,
     ];
@@ -53,6 +54,18 @@ public sealed record TextsHeld([property: JsonPropertyName("texts")] IReadOnlyLi
 public sealed record TextHeld(
     [property: JsonPropertyName("path")] string Path,
     [property: JsonPropertyName("hash")] string? Hash);
+
+/// <summary>The solution's documents written on disk at or after a time, or gone from it since, asked for: what the server
+/// worked out a moment after may be from those files as they were, until it reads them again or loads their projects
+/// again without them.</summary>
+public sealed record WrittenAsked([property: JsonPropertyName("since")] DateTime Since);
+
+public sealed record WrittenFound([property: JsonPropertyName("documents")] IReadOnlyList<DocumentWritten> Documents);
+
+/// <summary>A document of the solution written on disk since the time asked, or gone from it (<paramref name="Gone"/>).</summary>
+public sealed record DocumentWritten(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("gone")] bool Gone);
 
 /// <summary>A text's fingerprint as both sides make it: SHA-256 of its characters with every line break as '\n', since a
 /// server's line and column are the same whichever break a line ends in (and Passenger holds a CR file's as '\n').</summary>

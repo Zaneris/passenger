@@ -6,6 +6,8 @@ using Passenger.Lsp;
 using Passenger.Text;
 using Held = System.Func<System.Collections.Generic.IReadOnlyList<string>,
     System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Passenger.Roslyn.Extension.TextHeld>>>;
+using Written = System.Func<System.DateTime,
+    System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Passenger.Roslyn.Extension.DocumentWritten>>>;
 
 namespace Passenger.App.CSharp;
 
@@ -33,17 +35,19 @@ public static class WorkspaceEdits
 
     /// <summary>Why an edit the language server worked out must not be applied to the files not open it changes, but those
     /// it <paramref name="made"/> empty for it: one written since the request was sent (<paramref name="since"/>), or a
-    /// moment before, which the server may not have read again, or one whose text the server holds is not the disk's, where
-    /// its lines and columns would land elsewhere; null when each is as the server read it. A command's
-    /// <paramref name="patience"/> works the edit out again once the server has read those written before the request.</summary>
+    /// moment before, which the server may not have read again, or one whose text the server holds is not the disk's; null
+    /// when each is as the server read it. A command's <paramref name="patience"/> works it out again once the server has read
+    /// those written before the request, and any other file not open of its solution written or deleted then.</summary>
     public static Task<string?> StaleAsync(EditorArea editors, LspDocument? server, JsonElement edit, DateTime? since, Patience? patience = null,
         IReadOnlyCollection<string>? made = null) =>
-        StaleAsync(editors, server is null ? null : paths => server.HeldTextsAsync(paths), edit, since, patience, made);
+        StaleAsync(editors, server is null ? null : paths => server.HeldTextsAsync(paths), edit, since, patience, made,
+            server is null ? null : after => server.WrittenSinceAsync(after));
 
     /// <summary>As <see cref="StaleAsync(EditorArea, LspDocument?, JsonElement, DateTime?, Patience?, IReadOnlyCollection{string}?)"/>,
-    /// the server's texts asked of its session (<paramref name="held"/>, null for a server with none to tell).</summary>
+    /// the server's texts asked of its session (<paramref name="held"/>, null for a server with none to tell), and the files of
+    /// its solution written or gone since a time (<paramref name="elsewhere"/>, null for one that cannot say).</summary>
     public static async Task<string?> StaleAsync(EditorArea editors, Held? held, JsonElement edit, DateTime? since, Patience? patience = null,
-        IReadOnlyCollection<string>? made = null)
+        IReadOnlyCollection<string>? made = null, Written? elsewhere = null)
     {
         // With the files written for the command to wait for, which the server must have read as they are, in the edit or not.
         List<string> closed = [.. Shapes.WorkspaceEdit(edit).Where(c => c.Operation is null).Select(c => DocumentUris.ToPath(c.Uri))
@@ -63,6 +67,13 @@ public static class WorkspaceEdits
             return patience!.Behind([.. written.Select(f => f.Path)], held, $"{name} changed on disk a moment before the language server was asked",
                 $"{name} changed on disk a moment before the language server was asked, which had not read it after {Patience.Limit.TotalSeconds:0} s, "
                 + "so the places it gave there may be where they were before: nothing was changed");
+        }
+        if (patience is not null && since is { } request && await WrittenElsewhereAsync(editors, elsewhere, request - Catching, patience, made) is { Count: > 0 } outside)
+        {
+            Roslyn.Extension.DocumentWritten first = outside[0];
+            string what = $"{Path.GetFileName(first.Path)} {(first.Gone ? "was deleted" : "changed on disk")} a moment before the language server was asked";
+            return patience.Behind([.. outside.Select(d => d.Path)], held, what, $"{what}, which {(first.Gone ? "still held it" : "had not read it")} after "
+                + $"{Patience.Limit.TotalSeconds:0} s, so what it worked out may be from the files as they were: nothing was changed");
         }
         if (closed.Count == 0 || held is null)
         {
@@ -91,6 +102,29 @@ public static class WorkspaceEdits
                 + $"{Patience.Limit.TotalSeconds:0} s, so the places it gave there would be the wrong ones: nothing was changed") ?? said;
         }
         return null;
+    }
+
+    /// <summary>The files not open of the server's solution, but those an edit <paramref name="made"/>, written on disk or
+    /// deleted at or after a time that the server may hold as they were: each written one the command has not seen it hold
+    /// as the disk has it, and each gone that it still holds. None from a server that cannot say.</summary>
+    private static async Task<List<Roslyn.Extension.DocumentWritten>> WrittenElsewhereAsync(EditorArea editors, Written? written, DateTime after, Patience patience,
+        IReadOnlyCollection<string>? made)
+    {
+        if (written is null)
+        {
+            return [];
+        }
+        IReadOnlyList<Roslyn.Extension.DocumentWritten> found;
+        try
+        {
+            found = await written(after);
+        }
+        catch (LanguageServerFailed)
+        {
+            // A server without Passenger's extension: the edit's own files are all there is to go by.
+            return [];
+        }
+        return [.. found.Where(d => editors.Find(d.Path) is null && made?.Contains(d.Path) != true && (d.Gone || !patience.Trusts(d.Path)))];
     }
 
     /// <summary>Why an edit is not made in a file not open written once its server was asked.</summary>
@@ -647,24 +681,31 @@ public sealed class Patience
         return said;
     }
 
-    /// <summary>Waits until the server holds each file behind as the disk has it, unwritten while it was read; where the
-    /// server cannot say (no Passenger extension, no document of that path), until the moment after its write has passed.</summary>
+    /// <summary>Waits until the server holds each file behind as the disk has it, unwritten while it was read, and none
+    /// gone from the disk; where the server cannot say (no Passenger extension, no document of that path), until the moment
+    /// after its write has passed.</summary>
     private async Task CatchUpAsync(CancellationToken cancel)
     {
         HashSet<string> untold = new(StringComparer.Ordinal);
+        HashSet<string> dropped = new(StringComparer.Ordinal);
         if (DateTime.UtcNow < until)
         {
-            waiting($"Waiting for the language server to read {Path.GetFileName(behind[0])} as it is on disk");
+            string first = behind[0];
+            waiting(File.Exists(first) ? $"Waiting for the language server to read {Path.GetFileName(first)} as it is on disk"
+                : $"Waiting for the language server to let go of {Path.GetFileName(first)}, deleted");
         }
         while (DateTime.UtcNow < until)
         {
-            List<string> asking = [.. behind.Where(p => !Trusts(p) && !untold.Contains(p) && File.Exists(p))];
+            List<string> asking = [.. behind.Where(p => !Trusts(p) && !untold.Contains(p) && !dropped.Contains(p))];
             if (held is not null && asking.Count > 0)
             {
                 try
                 {
                     IReadOnlyList<Roslyn.Extension.TextHeld> texts = await held(asking);
-                    untold.UnionWith(texts.Where(t => t.Hash is null).Select(t => t.Path));
+                    foreach (Roslyn.Extension.TextHeld none in texts.Where(t => t.Hash is null))
+                    {
+                        (File.Exists(none.Path) ? untold : dropped).Add(none.Path);
+                    }
                     // Each file read off the window's thread, as files of any size may be waited for.
                     foreach ((string path, FileStamp stamp, string hash) in await BackgroundWork.Run(() => HeldAsOnDisk(texts)))
                     {
@@ -677,7 +718,7 @@ public sealed class Patience
                 }
             }
             DateTime past = DateTime.UtcNow - WorkspaceEdits.Catching;
-            if (behind.All(p => !File.Exists(p) || Trusts(p) || ((held is null || untold.Contains(p)) && File.GetLastWriteTimeUtc(p) <= past)))
+            if (behind.All(p => File.Exists(p) ? Trusts(p) || ((held is null || untold.Contains(p)) && File.GetLastWriteTimeUtc(p) <= past) : held is null || dropped.Contains(p)))
             {
                 return;
             }
