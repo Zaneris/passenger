@@ -5,11 +5,11 @@ using Passenger.Core;
 namespace Passenger.App.Web;
 
 /// <summary>The JSON schemas the JSON and YAML servers check and complete files by. The well-known files of a .NET and
-/// Node.js project (package.json, tsconfig.json, jsconfig.json, appsettings.json, launchSettings.json, global.json)
-/// take SchemaStore's, and compose files the Compose specification's, carried under <c>web/schemas/</c> with those they
-/// refer to and never downloaded. A schema a file names itself (its <c>$schema</c>) is downloaded while Settings allow
-/// it, over HTTP or HTTPS, kept for the process; <c>PASSENGER_SCHEMAS</c> names another place to ask for them. Called
-/// on any thread.</summary>
+/// Node.js project (package.json, tsconfig.json, jsconfig.json, appsettings.json, launchSettings.json and a file-based
+/// program's .run.json, global.json) take SchemaStore's, and compose files the Compose specification's, carried under
+/// <c>web/schemas/</c> with those they refer to and never downloaded. A schema a file names itself (its <c>$schema</c>) is
+/// downloaded while Settings allow it, over HTTP or HTTPS, kept for the process; <c>PASSENGER_SCHEMAS</c> names another
+/// place to ask for them. Called on any thread.</summary>
 public sealed class JsonSchemas(Func<bool> download)
 {
     [IdentifierHome]
@@ -25,7 +25,7 @@ public sealed class JsonSchemas(Func<bool> download)
         (["tsconfig.json", "tsconfig.*.json"], "https://json.schemastore.org/tsconfig.json"),
         (["jsconfig.json", "jsconfig.*.json"], "https://json.schemastore.org/jsconfig.json"),
         (["appsettings.json", "appsettings.*.json"], "https://json.schemastore.org/appsettings.json"),
-        ([Run.LaunchProfile.SettingsFile], "https://json.schemastore.org/launchsettings.json"),
+        ([Run.LaunchProfile.SettingsFile, "*.run.json"], "https://json.schemastore.org/launchsettings.json"),
         (["global.json"], "https://json.schemastore.org/global.json"),
     ];
 
