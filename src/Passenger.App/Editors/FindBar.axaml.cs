@@ -117,13 +117,15 @@ public partial class FindBar : UserControl
     }
 
     /// <summary>Opens the bar (with the replace row if <paramref name="replace"/>), its query the
-    /// selection when that is on one line, or the word under the caret.</summary>
+    /// selection when that is on one line, or the word under the caret. Refused to an agent's action, as its search would
+    /// move the person's selection and its box take their keys (<see cref="AgentAsks.Popup"/>).</summary>
     public void Open(bool replace)
     {
         if (editor is null)
         {
             return;
         }
+        AgentAsks.Popup();
         IsVisible = true;
         ReplaceRow.IsVisible = replace;
         // A table's chosen cell seeds nothing: the query typed last is what is looked for again.

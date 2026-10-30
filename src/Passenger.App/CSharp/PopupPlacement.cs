@@ -58,8 +58,20 @@ internal sealed class PopupPlacement
         layer.Children.Add(popup);
     }
 
-    /// <summary>What runs as the open modal closes, however it closes: what lets go of what it showed or followed.</summary>
-    public void WhenClosed(Action closed) => modalClosed = closed;
+    /// <summary>Whether the modal last asked for was refused to an agent's action, answered as dismissed without showing.</summary>
+    private bool refused;
+
+    /// <summary>What runs as the open modal closes, however it closes: what lets go of what it showed or followed; at once
+    /// for one refused.</summary>
+    public void WhenClosed(Action closed)
+    {
+        if (refused)
+        {
+            closed();
+            return;
+        }
+        modalClosed = closed;
+    }
 
     /// <summary>A point of the editor's in the layer's coordinates, the layer spanning every split.</summary>
     public Point InLayer(Point at) => Editor.TranslatePoint(at, layer) ?? at;
@@ -121,6 +133,10 @@ internal sealed class PopupPlacement
 
     public void ShowModal(ChoicePopup popup, int offset, string what, Func<Choice?, Task> done)
     {
+        if (Refused(what, () => done(null)))
+        {
+            return;
+        }
         Open(popup, () => IdeErrors.Observe(Carried(what, () => done(null))));
         Place(popup, offset, above: false);
         popup.Done += (_, choice) => IdeErrors.Observe(Carried(what, () => done(choice)));
@@ -128,9 +144,25 @@ internal sealed class PopupPlacement
 
     public void ShowModal(RenameBox box, int offset, Func<string?, Task> done)
     {
+        if (Refused("Rename", () => done(null)))
+        {
+            return;
+        }
         Open(box, () => IdeErrors.Observe(Carried("Rename", () => done(null))));
         Place(box, offset, above: true);
         box.Done += (_, name) => IdeErrors.Observe(Carried("Rename", () => done(name)));
+    }
+
+    /// <summary>Whether a modal an agent's action asks for, which would take the person's keys, is refused
+    /// (<see cref="AgentAsks.Refused"/>): answered at once as dismissed, as Escape answers it, any modal open left open.</summary>
+    private bool Refused(string what, Func<Task> dismissed)
+    {
+        refused = AgentAsks.Refused();
+        if (refused)
+        {
+            IdeErrors.Observe(Carried(what, dismissed, closeModal: false));
+        }
+        return refused;
     }
 
     /// <summary>A modal on the layer in place of any open, its window's presses heard.</summary>

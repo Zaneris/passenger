@@ -602,6 +602,67 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's ide_action of what would open a list, a menu, an inline box or a dialog over the person's code (Show
+    /// Context Actions, Find, Rename, Show Context Menu, Surround With, Safe Delete of a local still used) is refused: nothing
+    /// opens over the person's file, which keeps the keys and its caret, and an Enter they type goes into it; the person's
+    /// own Show Context Actions there lists the fixes the agent's did not.</summary>
+    [AvaloniaFact]
+    public void An_agents_ide_action_opens_no_list_menu_box_or_dialog_over_the_persons_code_and_leaves_their_keys()
+    {
+        MainWindow window = AgentsWindow(Folder);
+        string program = Path.Combine(Folder, "Program.cs");
+        window.OpenFile(program);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to load the project ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "int tot");
+        editor.Focus();
+        string before = editor.Document.Snapshot.ToString();
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Asked(window, client, McpTools.IdeAction, "run an IDE action", new() { ["action"] = AppActions.ShowProblems });
+            Ui.Settle();
+            foreach (string action in (string[])[AppActions.QuickFix, AppActions.Find, AppActions.Rename, AppActions.ShowContextMenu, AppActions.SurroundWith, AppActions.SafeDelete])
+            {
+                int owned = window.OwnedWindows.Count;
+                CallToolResult answered = Await(Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = action })), $"the agent's {action}");
+                Ui.Settle();
+                string said = Text(answered);
+                Assert.True(answered.IsError == true ? said.Contains(Refusals.AsksThePerson, StringComparison.Ordinal) : said == $"Ran {action}",
+                    $"The agent's {action} in the person's window was answered: {said}");
+                string? opened = window.IsPopupOpen ? window.Popup?.GetType().Name
+                    : window.EditorArea.FindBar.IsVisible ? "the find bar"
+                    : window.OpenContextMenu is not null ? "a context menu"
+                    : window.Assist.Offered.Count > 0 ? $"the list of {window.Assist.OfferedTitle}"
+                    : window.Assist.Renaming is not null ? "the rename box"
+                    : window.Assist.IsCompletionOpen ? "the completion list"
+                    : window.OwnedWindows.Count != owned ? window.OwnedWindows.LastOrDefault()?.GetType().Name
+                    : null;
+                Assert.True(opened is null, $"The agent's {action} opened {opened} over the person's work");
+                Assert.True(ReferenceEquals(editor, window.FocusManager?.GetFocusedElement()),
+                    $"After the agent's {action}, the keys are with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, not the person's file");
+                Assert.True(editor.Document.Snapshot.ToString() == before && editor.Selections.Primary is { IsEmpty: true, Caret: 7 },
+                    $"The agent's {action} changed the person's file or moved their caret to {editor.Selections.Primary}:\n{editor.Document.Snapshot}");
+            }
+            int lines = editor.Document.Snapshot.LineCount;
+            Ui.Press(window, "enter");
+            Assert.True(editor.Document.Snapshot.LineCount == lines + 1 && editor.CaretPosition.Line == 1,
+                $"After the agent's actions, an Enter the person typed went to {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, not into their file:\n{editor.Document.Snapshot}");
+
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Ui.PlaceAfter(editor, "int tot");
+            Ui.Run(window, AppActions.QuickFix);
+            Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the person's own Show Context Actions to list the fixes the agent's did not");
+            Ui.Press(window, "escape");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { McpServer = false });
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>A file an agent opens or edits on the person's window comes in a tab behind theirs: with the keys in their file,
     /// the agent's open of a closed file, and its edit of that file once its tab is closed again, each leave the person's tab
     /// shown and an Enter they type going into it, the agent's file's tab there behind.</summary>

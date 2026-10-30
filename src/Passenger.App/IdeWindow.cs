@@ -16,8 +16,8 @@ public abstract class IdeWindow : Window
     private bool fitted;
 
     /// <param name="asks">Whether it asks the person, taking their keys (a dialog, a diff): one an agent's action would open
-    /// as it runs is refused, and one work it started asks later comes without the keys (<see cref="AgentAsks.Dialog"/>).
-    /// A tool window's own window asks nothing.</param>
+    /// as it runs is refused, and one work it started opens later comes without the keys (<see cref="AgentAsks.Dialog"/>),
+    /// a modal one refused as it shows. A tool window's own window asks nothing.</param>
     protected IdeWindow(bool asks = true)
     {
         if (asks && AgentAsks.Dialog())

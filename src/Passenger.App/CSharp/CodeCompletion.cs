@@ -344,6 +344,12 @@ internal sealed partial class CodeCompletion
             return;
         }
         bool opening = !completion.IsVisible;
+        // A list the person's Enter would commit from, which an agent's action never opens.
+        if (opening && AgentAsks.Refused())
+        {
+            Close();
+            return;
+        }
         completion.Show(rows);
         filtered = (narrowing.List, narrowing.Typed);
         completion.IsVisible = true;
