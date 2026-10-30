@@ -936,28 +936,28 @@ internal static class JsonSample
         }
         string indent = new(' ', (depth + 1) * 2);
         string closing = new(' ', depth * 2);
-        if (Dictionary(type) is { } values)
+        ITypeSymbol? values = Dictionary(type);
+        ITypeSymbol? element = values is null ? Element(type) : null;
+        // A type inside itself (a tree's children of its own type, a list of itself) stops, empty, where it comes again.
+        if (depth > 6 || !open.Add(type))
+        {
+            written.Append(values is not null ? "{}" : element is not null ? "[]" : "null");
+            return;
+        }
+        List<IPropertySymbol> properties = values is null && element is null ? [.. Properties(type)] : [];
+        if (values is not null)
         {
             written.Append("{\n").Append(indent).Append("\"key\": ");
             Write(written, values, depth + 1, open);
             written.Append('\n').Append(closing).Append('}');
-            return;
         }
-        if (Element(type) is { } element)
+        else if (element is not null)
         {
             written.Append("[\n").Append(indent);
             Write(written, element, depth + 1, open);
             written.Append('\n').Append(closing).Append(']');
-            return;
         }
-        // A type inside itself (a tree's children of its own type) stops where it comes again.
-        if (depth > 6 || !open.Add(type))
-        {
-            written.Append("null");
-            return;
-        }
-        List<IPropertySymbol> properties = [.. Properties(type)];
-        if (properties.Count == 0)
+        else if (properties.Count == 0)
         {
             written.Append("{}");
         }

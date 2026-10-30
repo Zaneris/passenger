@@ -416,6 +416,46 @@ public sealed class WebRoutesTests
         }
     }
 
+    /// <summary>An endpoint whose body is a list of its own type (<c>Node : List&lt;Node&gt;</c>) is listed with its example
+    /// body written, the list empty where it comes again, rather than the C# server reading it until its stack is gone.</summary>
+    [AvaloniaFact]
+    public void An_endpoint_taking_a_list_of_itself_is_listed_with_its_example_body()
+    {
+        string folder = TestFolders.Create("routes-nodes-");
+        TestFolders.Write(folder, "Tree.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
+        TestFolders.Write(folder, "Program.cs", """
+            WebApplication app = WebApplication.CreateBuilder(args).Build();
+            app.MapPost("/nodes", (Node node) => node.Count);
+            app.MapPost("/maps", (Map map) => map.Count);
+            app.Run();
+
+            public class Node : List<Node>
+            {
+            }
+
+            public class Map : Dictionary<string, Map>
+            {
+            }
+            """);
+        Restore.Run(folder);
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Endpoints);
+            Ui.WaitFor(() => Titles(window).Contains("POST /nodes"),
+                () => $"the route taking a list of itself, listed (listed: {string.Join(", ", Titles(window))}; the C# server {(window.CSharpService?.IsReady == true ? "ready" : "not ready")})",
+                TimeSpan.FromMinutes(3));
+            WebRoute nodes = Route(window, "POST /nodes");
+            Assert.Equal(("Node", "[\n  []\n]"), (nodes.BodyType, nodes.Body));
+            WebRoute maps = Route(window, "POST /maps");
+            Assert.Equal(("Map", "{\n  \"key\": {}\n}"), (maps.BodyType, maps.Body));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Whether a request to the language server is a read of the routes.</summary>
     private static bool ReadsRoutes(object parameters) => parameters is Passenger.Lsp.RoslynExtension.DispatchWorkspaceMessageParams { MessageName: Handlers.WebRoutes };
 
