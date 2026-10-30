@@ -625,8 +625,9 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>A thread's frames from <paramref name="startFrame"/>, as many as asked: its own, then the callers of its
-    /// async frames, which only their state machines know.</summary>
+    /// <summary>A thread's frames from <paramref name="startFrame"/>, as many as asked (all of them for no
+    /// <paramref name="levels"/> or 0, as the protocol means it): its own, then the callers of its async frames, which only
+    /// their state machines know.</summary>
     public List<StackFrameInfo> GetStackTrace(int threadIdInt, int startFrame = 0, int? levels = null)
     {
         List<StackFrameInfo> result = new List<StackFrameInfo>();
@@ -639,7 +640,7 @@ public partial class ManagedDebugger
 
         try
         {
-            long endFrame = levels is null ? long.MaxValue : (long)startFrame + levels.Value;
+            long endFrame = levels is > 0 ? (long)startFrame + levels.Value : long.MaxValue;
             int index = 0;
 
             // Physical frames are walked lazily, the IL frames kept so their async callers can follow them all.

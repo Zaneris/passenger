@@ -103,6 +103,23 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
 
     }
 
+    /// <summary>A stack asked for with levels 0 is every frame, as the protocol means it: a client following it gets the
+    /// stack down to Main, not an empty one.</summary>
+    [Fact]
+    public async Task A_stack_asked_for_with_levels_0_lists_every_frame()
+    {
+        int added = Debuggees.Line("SteppingConsoleApp", "return a + b;");
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "SteppingConsoleApp", added, []);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        int thread = stop.ThreadId!.Value;
+
+        List<string> all = [.. (await host.StackTraceAsync(thread, levels: null)).StackFrames.Select(frame => frame.Name)];
+        List<string> zero = [.. (await host.StackTraceAsync(thread, levels: 0)).StackFrames.Select(frame => frame.Name)];
+        Assert.True(all.Count >= 3 && all[^1].Contains("<Main>$", StringComparison.Ordinal), $"The stack at Add was not down to Main: {string.Join(" < ", all)}");
+        Assert.True(zero.SequenceEqual(all), $"A stack asked for with levels 0 listed [{string.Join(" < ", zero)}], where every frame is [{string.Join(" < ", all)}]");
+        Assert.Single((await host.StackTraceAsync(thread, levels: 1)).StackFrames);
+    }
+
     [Gate]
     [Fact]
     public async Task A_stop_in_an_awaited_method_lists_the_async_methods_awaiting_it_with_their_locals()
