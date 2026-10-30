@@ -407,16 +407,20 @@ public sealed class V3Feed(FeedClient client) : IPackageFeed
     }
 
     /// <summary>The advisories the feed's VulnerabilityInfo resource gives, by package; none from a feed without the
-    /// resource.</summary>
+    /// resource. Its index or a page it lists that is not there (404) is a failed read, never no advisories.</summary>
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<Advisory>>> VulnerabilitiesAsync(CancellationToken cancel)
     {
         if ((await ServicesAsync(cancel)).Vulnerabilities is not { } index)
         {
             return new Dictionary<string, IReadOnlyList<Advisory>>();
         }
-        IReadOnlyList<VulnerabilityData.IndexPage> pages = await client.GetJsonAsync<List<VulnerabilityData.IndexPage>>(index, VulnerabilityData.Json, cancel) ?? [];
+        IReadOnlyList<VulnerabilityData.IndexPage> pages = await client.GetJsonAsync<List<VulnerabilityData.IndexPage>>(index, VulnerabilityData.Json, cancel)
+            ?? throw Missing(index);
         IReadOnlyDictionary<string, IReadOnlyList<Advisory>>[] read = await Task.WhenAll(pages.Select(async page =>
-            VulnerabilityData.Page(await client.GetJsonAsync<Dictionary<string, List<VulnerabilityData.Entry>>>(new Uri(index, page.Id), VulnerabilityData.Json, cancel))));
+        {
+            Uri at = new(index, page.Id);
+            return VulnerabilityData.Page(await client.GetJsonAsync<Dictionary<string, List<VulnerabilityData.Entry>>>(at, VulnerabilityData.Json, cancel) ?? throw Missing(at));
+        }));
         Dictionary<string, IReadOnlyList<Advisory>> merged = new(StringComparer.OrdinalIgnoreCase);
         foreach ((string id, IReadOnlyList<Advisory> advisories) in read.SelectMany(p => p))
         {
@@ -424,6 +428,10 @@ public sealed class V3Feed(FeedClient client) : IPackageFeed
         }
         return merged;
     }
+
+    /// <summary>A vulnerability resource the feed lists that it does not serve.</summary>
+    private HttpRequestException Missing(Uri at) =>
+        new($"{Name} lists vulnerability data at {at} that is not there (404 Not Found)", null, HttpStatusCode.NotFound);
 
     private static string Authors(JsonElement? authors) => authors switch
     {

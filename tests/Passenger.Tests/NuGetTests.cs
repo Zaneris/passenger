@@ -209,6 +209,24 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A feed whose VulnerabilityInfo lists a page of advisories it answers 404 for has its audit read as failed,
+    /// never as no advisories: the window's status says the vulnerabilities are unknown, naming the feed, rather than count
+    /// the vulnerable 1.0.0 as safe.</summary>
+    [AvaloniaFact]
+    public void A_vulnerability_page_the_feed_lists_but_answers_404_for_is_said_as_an_audit_not_read()
+    {
+        feed.AdvisoriesGone = true;
+        Project("Lib", TestProjects.Framework, $"  <ItemGroup>\n    <PackageReference Include=\"{Id}\" Version=\"1.0.0\" />\n  </ItemGroup>\n");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        const string Said = "1 package installed; vulnerabilities unknown: stand-in did not answer";
+        Ui.Landed(() => nuget.Selected?.Id == Id, $"{Id} listed as installed");
+        Assert.True(nuget.Status == Said, $"With the feed's page of advisories not there, the status says \"{nuget.Status}\", not that the vulnerabilities are unknown");
+        Assert.True(feed.Requests.Any(r => r.Path.EndsWith("/vulnerabilities/base.json", StringComparison.Ordinal)), "The audit never asked for the page the feed lists");
+        Assert.False(nuget.Selected!.IsVulnerable, "A package was marked from advisories that were never read");
+        window.Close();
+    }
+
     /// <summary>A project of the folder's own for its frameworks, with the item groups given.</summary>
     private string Project(string name, string frameworks, string items)
     {

@@ -44,6 +44,9 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
     /// <summary>Where its service index says its search is: its own, unless another host's is given.</summary>
     public Uri? SearchAt { get; set; }
 
+    /// <summary>Whether the page of advisories its VulnerabilityInfo index lists answers 404, as a mirror out of step does.</summary>
+    public bool AdvisoriesGone { get; set; }
+
     public void Add(string id, string version) => Add(id, version, null);
 
     /// <summary>A package served with the files given in it, each by its path in the package and its text (<see cref="Package"/>).</summary>
@@ -142,7 +145,7 @@ public sealed class StandInFeed : IDisposable, IAsyncDisposable
         {
             return (200, Json, Encoding.UTF8.GetBytes($$"""[ { "@name": "base", "@id": "{{Root}}/vulnerabilities/base.json", "@updated": "2026-10-01T00:00:00Z" } ]"""));
         }
-        if (advising && parts is ["vulnerabilities", "base.json"])
+        if (advising && parts is ["vulnerabilities", "base.json"] && !AdvisoriesGone)
         {
             lock (advisories)
             {
