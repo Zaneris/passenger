@@ -241,8 +241,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   `CloseTab` is the one close); a preview holds no text (`HoldsText` false). The Markdown preview draws only the blocks
   near its sight (`MarkdownBlocks`), a page kept per tab, a scroll it sets going through `Jump`.
 - **Docking.** A kept layout records windows by `ToolWindowIds`, so a value never changes; add a window with one
-  `Dock.Add`. A view is built when first shown: what the IDE writes while it's hidden lives in a model, and code reaches
-  a view only through a property that builds it for a person's action.
+  `Dock.Add`; its floats close with their window (`DockHost.CloseFloats`). A view is built when first shown: what the
+  IDE writes while it's hidden lives in a model, and code reaches a view only through a property that builds it for a
+  person's action.
 - **C#.** `CSharpService`, `ServerDiagnostics` (one pull at a time after a pause), `CodeAssist` (the window's wiring)
   over its parts; each language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a
   server's edit to a file not open written in the 2 s before it was asked waits for the server to read it (`Patience`,
@@ -347,8 +348,9 @@ site-shots` retakes its images.
   (OpenCode gives up after 60 s of silence).
 - **Work every window shares** (a cache of tasks, a process-wide gate) runs on the thread pool, never on the asking
   thread: a headless window test's thread never runs again once its test is over, so what waits on it waits for good.
-- **A window the IDE opens of its own accord** (a notification, not a person's action) shows with `ShowActivated` false,
-  or it takes the keys from what the person types (headless, it clears them).
+- **A window the IDE opens of its own accord** (a notification, an agent's question, not a person's action) shows with
+  `ShowActivated` false, or it takes the keys from what the person types (headless, it clears them); an agent's question
+  is not waited on as a dialog and has no default button, so a stray Enter never answers it.
 - **Agents never open windows on the person's screen**: `--mcp FOLDER`, or `--mcp-attach` with
   `PASSENGER_START=headless` and a PASSENGER_SETTINGS of its own; never a bare `--mcp-attach`, never `just run`.
 - **Aspire's CLI and AppHosts** keep running AppHosts in `$HOME/.aspire/cli/bch` whatever ASPIRE_HOME says; on Windows
