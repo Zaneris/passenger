@@ -288,6 +288,56 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Ticking the Commit window's Unversioned Files of 20,000 new files counts its rows once, as for 200, and the
+    /// window's thread allocates in proportion to the rows, never once more for each row ticked.</summary>
+    [AvaloniaFact]
+    public void Ticking_a_commit_group_of_twenty_thousand_files_counts_its_rows_once_and_allocates_in_proportion_to_them()
+    {
+        (long fewCounted, long fewBytes) = Tick(200);
+        (long manyCounted, long manyBytes) = Tick(20_000);
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"Ticking 200 rows counted {fewCounted} and allocated {fewBytes / 1024:N0} KB on the window's thread; 20,000 rows counted {manyCounted} and allocated {manyBytes / 1024:N0} KB");
+        Assert.True(manyCounted <= 2 * 20_000,
+            $"Ticking a group of 20,000 files had its groups count {manyCounted:N0} rows (200 files: {fewCounted:N0}): each row ticked counted every row again");
+        long perRow = (manyBytes - fewBytes) / (20_000 - 200);
+        Assert.True(perRow <= 1024, $"Ticking a group allocated {perRow:N0} bytes on the window's thread for each row more ({fewBytes / 1024:N0} KB for 200, {manyBytes / 1024:N0} KB for 20,000)");
+
+        (long Counted, long Bytes) Tick(int files)
+        {
+            string tree = TestFolders.Create("git-many-");
+            try
+            {
+                File.WriteAllText(Path.Combine(tree, "Shop.cs"), Original);
+                TestGit.Init(tree);
+                for (int i = 0; i < files; i++)
+                {
+                    string under = Path.Combine(tree, "new", (i / 1000).ToString("D2", System.Globalization.CultureInfo.InvariantCulture));
+                    Directory.CreateDirectory(under);
+                    File.WriteAllText(Path.Combine(under, $"File{i:D5}.txt"), "new\n");
+                }
+                MainWindow window = Ui.OpenFolder(tree, languageServer: false);
+                window.Perform(AppActions.Commit);
+                CommitView commit = window.CommitView;
+                Ui.Landed(() => commit.Rows.OfType<CommitGroup>().Any(g => g.Name == "Unversioned Files" && g.Rows.Count == files), $"the {files} new files under Unversioned Files");
+                CommitGroup group = commit.Rows.OfType<CommitGroup>().Single(g => g.Name == "Unversioned Files");
+                Assert.False(group.IsChosen);
+                CheckBox box = Ui.Row(Find(commit, commit.Rows), group).GetVisualDescendants().OfType<CheckBox>().First(b => b.IsVisible);
+                long counted = commit.RowsCounted;
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                Ui.Click(box);
+                long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+                counted = commit.RowsCounted - counted;
+                Assert.True(group.IsChosen == true && commit.Chosen.Count == files, $"Ticking Unversioned Files chose {commit.Chosen.Count} of its {files} files");
+                window.Close();
+                return (counted, bytes);
+            }
+            finally
+            {
+                TestFolders.Delete(tree);
+            }
+        }
+    }
+
     [AvaloniaFact]
     public void Rollback_lines_puts_the_change_under_the_caret_back_as_the_last_commit_has_it()
     {

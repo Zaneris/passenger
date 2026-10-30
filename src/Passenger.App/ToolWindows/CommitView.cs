@@ -134,11 +134,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             {
                 // Space flips the chosen rows' boxes.
                 CommitRow[] selected = [.. list.SelectedItems?.OfType<CommitRow>().Where(r => r.CanChoose) ?? []];
-                bool to = !selected.All(r => r.IsChosen);
-                foreach (CommitRow row in selected)
-                {
-                    row.IsChosen = to;
-                }
+                Choose(selected, !selected.All(r => r.IsChosen));
                 e.Handled = true;
             }
         };
@@ -425,11 +421,10 @@ public sealed class CommitView : DockPanel, IOwnKeys
             CommitRow row = new(change, chosen.TryGetValue(change.Path, out bool was) ? was : byDefault);
             row.PropertyChanged += (_, _) =>
             {
-                foreach (CommitGroup group in rows.OfType<CommitGroup>())
+                if (!choosing)
                 {
-                    group.Update();
+                    Recount();
                 }
-                UpdateButtons();
             };
             return row;
         }
@@ -445,10 +440,46 @@ public sealed class CommitView : DockPanel, IOwnKeys
         }
     }
 
+    /// <summary>Whether rows' boxes are being set together, so no row's change counts the groups until all have.</summary>
+    private bool choosing;
+
+    /// <summary>How many rows the groups' counts have looked at, a measure of what a box costs: a group ticked whole is
+    /// counted once, however many rows it has.</summary>
+    public long RowsCounted { get; private set; }
+
+    /// <summary>Sets rows' boxes as one change: the groups are counted once, after them all.</summary>
+    private void Choose(IEnumerable<CommitRow> chosen, bool to)
+    {
+        choosing = true;
+        try
+        {
+            foreach (CommitRow row in chosen)
+            {
+                row.IsChosen = to;
+            }
+        }
+        finally
+        {
+            choosing = false;
+        }
+        Recount();
+    }
+
+    /// <summary>Each group's box and the buttons follow the rows' boxes.</summary>
+    private void Recount()
+    {
+        foreach (CommitGroup group in rows.OfType<CommitGroup>())
+        {
+            RowsCounted += group.Rows.Count;
+            group.Update();
+        }
+        UpdateButtons();
+    }
+
     private void UpdateButtons()
     {
         // Off while a commit (or a stash, a rollback) runs, so a second press cannot start another on git's index lock.
-        bool ready = !vcs.IsBusy && vcs.Repository is not null && Message.Trim().Length > 0 && (Amend || vcs.Merge.CommitsWhole || rows.OfType<CommitRow>().Any(r => r.IsChosen));
+        bool ready = !vcs.IsBusy && vcs.Repository is not null && Message.Trim().Length > 0 && (Amend || vcs.Merge.CommitsWhole || rows.OfType<CommitGroup>().Any(g => g.IsChosen != false));
         commit.IsEnabled = ready;
         commitAndPush.IsEnabled = ready;
     }
@@ -486,11 +517,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
             {
                 return;
             }
-            bool to = groupBox.IsChecked != false;
-            foreach (CommitRow file in group.Rows.Where(r => r.CanChoose))
-            {
-                file.IsChosen = to;
-            }
+            Choose(group.Rows.Where(r => r.CanChoose), groupBox.IsChecked != false);
         };
         fileBox.IsCheckedChanged += (_, _) =>
         {
