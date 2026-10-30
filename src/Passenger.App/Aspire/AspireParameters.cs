@@ -81,8 +81,9 @@ public static class AspireParameters
     }
 
     /// <summary>A configuration file's text with a parameter's value set (a new file's whole text when it has none), or why
-    /// it cannot be: in user secrets for a secret (as <c>dotnet user-secrets set</c> writes them, beside a Parameters object
-    /// when the file has one), else in appsettings.json's Parameters object.</summary>
+    /// it cannot be: where the file has its key already (with no value, null), there, flat or in its Parameters object,
+    /// so the configuration never reads the key twice; else in user secrets for a secret (as <c>dotnet user-secrets set</c>
+    /// writes them, beside a Parameters object when the file has one), else in appsettings.json's Parameters object.</summary>
     public static (string? Text, string? Problem) Setting(string path, string? was, string name, bool secret, string value)
     {
         if (string.IsNullOrWhiteSpace(was))
@@ -90,9 +91,47 @@ public static class AspireParameters
             JsonObject made = secret ? new JsonObject { [$"Parameters:{name}"] = value } : new JsonObject { ["Parameters"] = new JsonObject { [name] = value } };
             return (made.ToJsonString(new JsonSerializerOptions(JsonText.Written) { WriteIndented = true }) + "\n", null);
         }
-        bool nested = !secret || NestsParameters(was);
-        (string? changed, string? problem) = nested ? JsonText.SetInRoot(was, "Parameters", name, value) : JsonText.SetInRoot(was, $"Parameters:{name}", null, value);
+        (string? changed, string? problem) = KeyIn(was, name) switch
+        {
+            ({ } flat, null) => JsonText.SetInRoot(was, flat, null, value),
+            ({ } parameters, { } entry) => JsonText.SetInRoot(was, parameters, entry, value),
+            _ => !secret || NestsParameters(was) ? JsonText.SetInRoot(was, "Parameters", name, value) : JsonText.SetInRoot(was, $"Parameters:{name}", null, value),
+        };
         return changed is null ? (null, $"{Path.GetFileName(path)} was not changed: {problem}") : (changed, null);
+    }
+
+    /// <summary>Where a configuration file's root has a parameter's key, as written: a flat <c>Parameters:NAME</c> member
+    /// (its entry null), or the Parameters object's member and its NAME entry, letter case aside, the name also with its
+    /// dashes as underscores, the last of each that .NET's configuration reads; nulls where it has none.</summary>
+    private static (string? Member, string? Entry) KeyIn(string text, string name)
+    {
+        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase) { name, name.Replace('-', '_') };
+        try
+        {
+            using JsonDocument read = JsonDocument.Parse(text, Lenient);
+            if (read.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return (null, null);
+            }
+            (string? Member, string? Entry) found = (null, null);
+            foreach (JsonProperty member in read.RootElement.EnumerateObject())
+            {
+                if (member.Name.Split(':', 2) is [{ } section, { } key] && section.Equals("Parameters", StringComparison.OrdinalIgnoreCase) && names.Contains(key))
+                {
+                    found = (member.Name, null);
+                }
+                else if (member.Name.Equals("Parameters", StringComparison.OrdinalIgnoreCase) && member.Value.ValueKind == JsonValueKind.Object
+                    && member.Value.EnumerateObject().Select(entry => entry.Name).LastOrDefault(names.Contains) is { } entry)
+                {
+                    found = (member.Name, entry);
+                }
+            }
+            return found;
+        }
+        catch (JsonException)
+        {
+            return (null, null);
+        }
     }
 
     /// <summary>Whether a configuration file keeps its parameters in a Parameters object rather than as flat keys.</summary>

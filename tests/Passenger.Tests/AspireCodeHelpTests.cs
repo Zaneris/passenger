@@ -236,6 +236,38 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
         }
     }
 
+    /// <summary>A parameter whose key a configuration file has with no value (null), flat or in its Parameters object, in
+    /// another letter case or with underscores for its dashes, is set in that key's place, appsettings.json and user secrets
+    /// alike: .NET's JSON configuration reads the file, one key giving the value, where a second key would fail its read.</summary>
+    [Fact]
+    public void A_parameter_set_where_its_key_is_there_with_no_value_is_written_in_its_place_and_read_as_one_key()
+    {
+        (string Was, string Name, bool Secret, string Key, string Written)[] cases =
+        [
+            ("{\"Parameters:City\": null}", "City", false, "Parameters:City", "\"Parameters:City\": \"Oslo\""),
+            ("{\n  \"Parameters:city\": null,\n  \"Parameters\": {\n    \"Other\": \"x\"\n  }\n}\n", "City", true, "Parameters:city", "\"Parameters:city\": \"Oslo\""),
+            ("{\n  \"parameters\": {\n    \"home_city\": null\n  }\n}\n", "home-city", false, "parameters:home_city", "\"home_city\": \"Oslo\""),
+        ];
+        foreach ((string was, string name, bool secret, string key, string written) in cases)
+        {
+            (string? text, string? problem) = Passenger.App.Aspire.AspireParameters.Setting("appsettings.json", was, name, secret, "Oslo");
+            Assert.True(text is not null, problem);
+            Microsoft.Extensions.Configuration.IConfigurationRoot read;
+            try
+            {
+                read = Microsoft.Extensions.Configuration.JsonConfigurationExtensions.AddJsonStream(new Microsoft.Extensions.Configuration.ConfigurationBuilder(),
+                    new MemoryStream(System.Text.Encoding.UTF8.GetBytes(text))).Build();
+            }
+            catch (FormatException refused)
+            {
+                throw new Xunit.Sdk.XunitException($"Setting {name} in {was} wrote a file .NET's configuration refuses, so the AppHost would not start: {refused.Message}\n{text}");
+            }
+            Assert.Equal("Oslo", read[key]);
+            Assert.Single(Microsoft.Extensions.Configuration.ConfigurationExtensions.AsEnumerable(read), pair => pair.Value == "Oslo");
+            Assert.True(text.Contains(written, StringComparison.Ordinal), $"Setting {name} in {was} wrote it elsewhere than its key:\n{text}");
+        }
+    }
+
     /// <summary>A parameter's value typed into the AppHost's appsettings.json is its value before it is saved: the mark on the
     /// parameter goes once typing pauses, read from the text the editor has, as its fix reads it, and the file on disk stays
     /// as it was.</summary>
