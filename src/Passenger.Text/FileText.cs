@@ -154,6 +154,11 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     /// about to hold (<see cref="Landed(string)"/>).</summary>
     public static byte[] Read(string path) => LandingBytes(path) ?? FromDisk(path);
 
+    /// <summary>A file's bytes to read as they come rather than whole, as <see cref="Read"/> gives them.</summary>
+    public static Stream OpenRead(string path) => LandingBytes(path) is { } landing
+        ? new MemoryStream(landing, writable: false)
+        : new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, bufferSize: 0);
+
     /// <summary>The bytes the last save of a file still landing lands, or null when none is.</summary>
     private static byte[]? LandingBytes(string path)
     {

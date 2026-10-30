@@ -1248,6 +1248,89 @@ public sealed class Git
         await BytesAsync(Root, ["cat-file", "--filters", .. path is null ? Array.Empty<string>() : [$"--path={path}"], name])
             ?? await BytesAsync(Root, ["cat-file", "blob", name]);
 
+    /// <summary>A file's bytes at a revision as <see cref="BytesAtAsync(string, IReadOnlyList{string})"/> reads them, at the
+    /// first of <paramref name="paths"/> it has (a file renamed since, where it was), taken as git writes them so a binary
+    /// file's are only counted (<see cref="StoredBytes"/>); null where it has none of them.</summary>
+    public Task<StoredBytes?> StoredAtAsync(string revision, IReadOnlyList<string> paths) => BackgroundWork.Run(async () =>
+        await StoredAsync(revision, paths, StoredRead.ReadAsync) is (true, { } read) ? read : null);
+
+    /// <summary>How the file at <paramref name="disk"/> differs from a revision's where either is binary, both read as they
+    /// come and never held whole: the revision's at the first of <paramref name="paths"/> it has, as checking it out would
+    /// write it; null where neither is.</summary>
+    public Task<BinaryChange?> BinaryChangeAsync(string revision, IReadOnlyList<string> paths, string disk) => BackgroundWork.Run(async () =>
+        await StoredAsync(revision, paths, stored => DiskChangeAsync(stored, disk)) is (true, var change) ? change : await DiskChangeAsync(null, disk));
+
+    /// <summary>How the file at <paramref name="disk"/> differs from a revision's bytes read already (null where it has no
+    /// such file) where either is binary, the disk's read as they come; null where neither is.</summary>
+    public static Task<BinaryChange?> BinaryChangeAsync(byte[]? stored, string disk) =>
+        BackgroundWork.Run(() => DiskChangeAsync(stored is null ? null : new MemoryStream(stored, writable: false), disk));
+
+    private static async Task<BinaryChange?> DiskChangeAsync(Stream? stored, string disk)
+    {
+        await using Stream? now = File.Exists(disk) ? FileText.OpenRead(disk) : null;
+        return await StoredRead.CompareAsync(stored, now);
+    }
+
+    /// <summary>Hands <paramref name="read"/> a revision's file at the first of <paramref name="paths"/> it has, as git
+    /// writes it checked out there (or as git keeps it where its filter cannot run here), with its answer; false where the
+    /// revision has none of them. A blob is named by one git cat-file --batch-check, so a file it lacks fails no git.</summary>
+    private async Task<(bool Found, T Answer)> StoredAsync<T>(string revision, IReadOnlyList<string> paths, Func<Stream, Task<T>> read)
+    {
+        foreach (string path in paths.Distinct().Where(IsInside))
+        {
+            string name = Relative(path);
+            // The batch takes a name per line.
+            string[][] reads = name.AsSpan().IndexOfAny('\n', '\r') >= 0
+                ? [["cat-file", "--filters", $"{revision}:{name}"], ["cat-file", "blob", $"{revision}:{name}"]]
+                : await BlobAtAsync(revision, name) is { } blob ? [["cat-file", "--filters", $"--path={name}", blob], ["cat-file", "blob", blob]] : [];
+            foreach (string[] arguments in reads)
+            {
+                if (await StreamAsync(Root, arguments, read) is (true, var answer))
+                {
+                    return (true, answer);
+                }
+            }
+        }
+        return (false, default!);
+    }
+
+    /// <summary>The blob a revision has at a name from the tree's top, or null where it has no file there (a submodule's
+    /// commit is no file's).</summary>
+    private async Task<string?> BlobAtAsync(string revision, string name)
+    {
+        bool composed = !Ascii.IsValid(name) && await ComposesAsync();
+        (_, byte[] check) = await ExchangeAsync(Root, ["cat-file", "--batch-check"], Encoding.UTF8.GetBytes($"{revision}:{GitForm(name, composed)}\n"));
+        return Encoding.UTF8.GetString(check).TrimEnd('\n').Split(' ') is [{ } blob, "blob", _] && blob.All(char.IsAsciiHexDigit) ? blob : null;
+    }
+
+    /// <summary>Hands what a git command writes to <paramref name="read"/> as it comes, and passes over what it leaves;
+    /// true with its answer where git then exits 0.</summary>
+    private static async Task<(bool Succeeded, T Answer)> StreamAsync<T>(string folder, IReadOnlyList<string> arguments, Func<Stream, Task<T>> read)
+    {
+        using IDisposable held = BackgroundWork.Scope();
+        if (await StartAsync(folder, arguments) is not { } start)
+        {
+            return (false, default!);
+        }
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        try
+        {
+            using Process process = await ChildProcesses.StartAsync(start);
+            Task<string> error = process.StandardError.ReadToEndAsync();
+            Stream output = process.StandardOutput.BaseStream;
+            T answer = await read(output);
+            await output.CopyToAsync(Stream.Null);
+            await process.WaitForExitAsync();
+            await error;
+            return (process.ExitCode == 0, answer);
+        }
+        catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or IOException)
+        {
+            return (false, default!);
+        }
+    }
+
     /// <summary>Whether a path is in the working tree, where git has a last commit's text for it.</summary>
     public bool IsInside(string path) => PathNames.Within(path, Root);
 

@@ -439,7 +439,7 @@ public sealed class VcsController : IDisposable
     }
 
     /// <summary>HEAD names another commit (or the tree is another): every open file's text in it, read by one git, and
-    /// their change bars against it.</summary>
+    /// their change bars against it. A file open as its bytes (binary) has no bars, so its version is never read.</summary>
     private void ReadTexts(Git? repository, string? head)
     {
         textsRead = true;
@@ -447,7 +447,7 @@ public sealed class VcsController : IDisposable
         heads.Clear();
         if (repository is not null && head is not null)
         {
-            string[] paths = [.. documents.Keys.Select(d => d.Path).Distinct().Where(repository.IsInside)];
+            string[] paths = [.. documents.Keys.Where(d => d.HoldsText).Select(d => d.Path).Distinct().Where(repository.IsInside)];
             if (paths.Length > 0)
             {
                 HeadReads++;
@@ -463,10 +463,10 @@ public sealed class VcsController : IDisposable
             IdeErrors.Observe(MarkAsync(document));
         }
 
-        static async Task<byte[]?> BytesOfAsync(Task<IReadOnlyDictionary<string, byte[]?>> bytes, string path, string origin)
+        static async Task<StoredBytes?> BytesOfAsync(Task<IReadOnlyDictionary<string, byte[]?>> bytes, string path, string origin)
         {
             IReadOnlyDictionary<string, byte[]?> read = await bytes;
-            return read.GetValueOrDefault(path) ?? read.GetValueOrDefault(origin);
+            return (read.GetValueOrDefault(path) ?? read.GetValueOrDefault(origin)) is { } stored ? StoredBytes.Of(stored) : null;
         }
     }
 
@@ -1364,8 +1364,8 @@ public sealed class VcsController : IDisposable
 
     /// <summary>A file as the last commit has it, read as checking it out would write it and in the open file's encoding,
     /// or null when it has none (new, or outside the tree). A file opened since HEAD last moved is read on its own, in the
-    /// commit the others were read in; its text is the same string until HEAD moves or the open file's encoding
-    /// changes.</summary>
+    /// commit the others were read in, a binary file's bytes only counted; its text is the same string until HEAD moves or
+    /// the open file's encoding changes.</summary>
     public Task<FileVersion?> HeadAsync(string path)
     {
         UiThread.Check();
@@ -1377,8 +1377,7 @@ public sealed class VcsController : IDisposable
         {
             HeadReads++;
             string revision = textsOf ?? "HEAD";
-            string origin = Origin(path);
-            head = new HeadBytes(origin == path ? repository.BytesAtAsync(revision, path) : BytesOrOriginAsync(repository, revision, path, origin));
+            head = new HeadBytes(repository.StoredAtAsync(revision, [path, Origin(path)]));
             heads[path] = head;
         }
         System.Text.Encoding? encoding = EncodingOf(path);
@@ -1387,26 +1386,20 @@ public sealed class VcsController : IDisposable
             head.Read = read = (encoding, ReadAsync(head.Bytes, encoding, path));
         }
         return read.Version;
-
-        static async Task<byte[]?> BytesOrOriginAsync(Git repository, string revision, string path, string origin) =>
-            await repository.BytesAtAsync(revision, path) ?? await repository.BytesAtAsync(revision, origin);
     }
 
     /// <summary>How a file's bytes differ from the last commit's where either is binary, which have no lines to compare;
-    /// null where both are text, or the file is in neither.</summary>
+    /// null where both are text, or the file is in neither. The disk's are read as they come, and a binary file's in the
+    /// last commit, never kept, as git writes them again: a large asset costs a probe and a buffer rather than its size.</summary>
     public async Task<BinaryChange?> BinaryChangeAsync(string path)
     {
         UiThread.Check();
         Task<FileVersion?> version = HeadAsync(path);
-        Task<byte[]?> committed = heads.TryGetValue(path, out HeadBytes? read) ? read.Bytes : Task.FromResult<byte[]?>(null);
-        FileVersion? head = await version;
-        byte[]? now = await BackgroundWork.Run(() => File.Exists(path) ? FileText.Read(path) : null);
-        if (head is not { IsBinary: true } && (now is null || !FileText.LooksBinary(now)))
-        {
-            return null;
-        }
-        byte[]? before = head is null ? null : await committed;
-        return new BinaryChange(before?.Length, now?.Length, before is not null && now is not null && before.AsSpan().SequenceEqual(now));
+        (Git? repository, string revision) = (git, textsOf ?? "HEAD");
+        Task<StoredBytes?> committed = repository is not null && heads.TryGetValue(path, out HeadBytes? read) ? read.Bytes : Task.FromResult<StoredBytes?>(null);
+        await version;
+        StoredBytes? head = await committed;
+        return head is { IsBinary: true } ? await repository!.BinaryChangeAsync(revision, [path, Origin(path)], path) : await Git.BinaryChangeAsync(head?.Text, path);
     }
 
     /// <summary>How a file's encoding or byte order mark differs from the last commit's, in words
@@ -1436,7 +1429,7 @@ public sealed class VcsController : IDisposable
             return null;
         }
         System.Text.Encoding? encoding = EncodingOf(readAs);
-        return await ReadAsync(repository.BytesAtAsync(revision, path), encoding, readAs);
+        return await ReadAsync(repository.StoredAtAsync(revision, [path]), encoding, readAs);
     }
 
     /// <summary>The encoding the open file at a path is read in, or null when none holds its text.</summary>
@@ -1445,7 +1438,7 @@ public sealed class VcsController : IDisposable
     /// <summary>The open file that holds the text of a path, or null.</summary>
     private OpenDocument? Holding(string path) => documents.Keys.FirstOrDefault(d => d.HoldsText && PathNames.Same(d.Path, path));
 
-    private static async Task<FileVersion?> ReadAsync(Task<byte[]?> bytes, System.Text.Encoding? encoding, string path) =>
+    private static async Task<FileVersion?> ReadAsync(Task<StoredBytes?> bytes, System.Text.Encoding? encoding, string path) =>
         await bytes is { } read ? await BackgroundWork.Run(() => FileVersion.Read(read, encoding, path)) : null;
 
     /// <summary>A file or folder moved here (a rename, a code fix): until a commit has its files at their new paths,
@@ -1554,13 +1547,13 @@ public sealed class VcsController : IDisposable
         }
     }
 
-    /// <summary>An open file's text as it is now compared with the last commit's, or null when that has no such file.
-    /// The comparison its change bars came from, or are coming from, when they are of this text, so what acts on a bar
-    /// costs nothing more; else a new one, off the window's thread.</summary>
+    /// <summary>An open file's text as it is now compared with the last commit's, or null when that has no such file or the
+    /// file is open as its bytes. The comparison its change bars came from, or are coming from, when they are of this
+    /// text, so what acts on a bar costs nothing more; else a new one, off the window's thread.</summary>
     public async Task<FileDiff?> DiffAsync(OpenDocument document)
     {
         UiThread.Check();
-        if (await HeadTextAsync(document.Path) is not { } head)
+        if (!document.HoldsText || await HeadTextAsync(document.Path) is not { } head)
         {
             return null;
         }
@@ -1618,29 +1611,11 @@ public sealed class VcsController : IDisposable
     private sealed record Compared(string Head, TextSnapshot Text, Task<FileDiff> Diff);
 
     /// <summary>A file's bytes in the last commit, and those bytes read in the encoding last asked for.</summary>
-    private sealed class HeadBytes(Task<byte[]?> bytes)
+    private sealed class HeadBytes(Task<StoredBytes?> bytes)
     {
-        public Task<byte[]?> Bytes { get; } = bytes;
+        public Task<StoredBytes?> Bytes { get; } = bytes;
         public (System.Text.Encoding? In, Task<FileVersion?> Version)? Read { get; set; }
     }
-}
-
-/// <summary>A binary file's change since the last commit: its sizes there and now (null where it is not), and whether
-/// its bytes are the same.</summary>
-public sealed record BinaryChange(long? Before, long? After, bool Same)
-{
-    /// <summary>The change as git's diff says it, of a file by its name from the tree's top.</summary>
-    public string Unified(string name) => Same ? "No changes"
-        : $"Binary files {(Before is null ? "/dev/null" : $"a/{name}")} and {(After is null ? "/dev/null" : $"b/{name}")} differ";
-
-    /// <summary>The change in a person's words, of a file by its name.</summary>
-    public string Said(string name) => (Before, After) switch
-    {
-        _ when Same => $"{name} is binary, and as the last commit has it",
-        (null, { } after) => $"{name} is a new binary file of {Plural.Of(after, "byte")}",
-        ({ } before, null) => $"{name}, a binary file of {Plural.Of(before, "byte")} in the last commit, is deleted",
-        _ => $"Binary files differ: {name} is {Plural.Of(After ?? 0, "byte")} now and {Plural.Of(Before ?? 0, "byte")} in the last commit",
-    };
 }
 
 /// <summary>A conflicted file's versions as the merge window shows them: the one both sides came from, yours (left) and
