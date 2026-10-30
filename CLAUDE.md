@@ -391,7 +391,8 @@ site-shots` retakes its images.
 - **Avalonia 12's lists** re-attach, and so re-style, every recycled container and never reuse a `DataTemplate`'s
   content: a list's, combo box's or tab strip's rows go through `ReusedRows`, made once with their containers (UiRulesTests).
 - **Avalonia 12's ListBox re-points its keys' row by the chosen row's new index before its panel moves rows**, so a
-  focused row loses the keys when rows come above it: every tree goes through `TreeKeys.Attach`, which keeps them.
+  focused row loses the keys when rows come above it, and moves a Shift range's anchor only with its first chosen row:
+  every tree goes through `TreeKeys.Attach`, which keeps both.
 - **`FormattedText` lays its lines out again at every draw**: text drawn frame after frame is kept as a `TextLayout` or
   `TextLine` until what it says or its width changes.
 - **EventPipe from a program's start**: .NET 10's LoggingEventSource misreads the `FilterSpecs` it is made with, so a
