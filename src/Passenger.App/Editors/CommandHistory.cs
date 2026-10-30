@@ -231,7 +231,8 @@ public sealed class CommandHistory
     /// <summary>Takes a command back (or makes it again, given true), asked again first as <see cref="BlockedAsync"/> asks and
     /// at once after, so nothing comes between the look and the change: its moves (made within <paramref name="moving"/>)
     /// and the open files' steps on the window's thread, its files not open written off it in order, each stored as the look
-    /// found it. Why not, null once done; and whether it began, false when refused before it changed anything.</summary>
+    /// found it. Why not, null once done, one refused partway having taken back what it did, so the command stays to be
+    /// asked again; and whether it began, false when refused before it changed anything.</summary>
     public async Task<(string? Why, bool Began)> PutAsync(Command command, bool redo, Func<Func<string?>, string?> moving)
     {
         Dictionary<string, Look> looks;
@@ -355,14 +356,16 @@ public sealed class CommandHistory
 
     /// <summary>Takes a command back: its parts put first (<see cref="Part.First"/>), the files it moved go back and the open
     /// files take their undo steps, then the files not open are written as they were, off the window's thread, the files it
-    /// made go and its other parts are put. Null once done, else why not.</summary>
+    /// made go and its other parts are put. Null once done, else why not, what it had done by then taken back
+    /// (<see cref="TakenBackAsync"/>).</summary>
     private async Task<string?> UndoAsync(Command command, IReadOnlyDictionary<string, Look> looks, Func<Func<string?>, string?> moving)
     {
         if (PutFirst(command, redo: false) is { } unput)
         {
             return unput;
         }
-        List<(string Path, TextSnapshot Text, Look? Stored)> writes = [.. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => (t.Path, t.Before, (Look?)looks[command.Moved(t.Path)]))];
+        List<Func<Task<string?>>> done = [() => Task.FromResult(Unput(FirstParts(command, redo: false), redo: false))];
+        List<FilePut> writes = [.. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => Text(t.Path, t.Before, t.After, looks[command.Moved(t.Path)]))];
         string? unmoved = moving(() =>
         {
             foreach ((string from, string to) in command.Moves.Reverse())
@@ -371,53 +374,61 @@ public sealed class CommandHistory
                 {
                     return failed;
                 }
+                done.Add(() => Task.FromResult(moving(() => editors.MoveFile(from, to))));
             }
             Step(command, redo: false);
+            done.Add(() => Task.FromResult(Restep(command, redo: true)));
             return null;
         });
         if (unmoved is not null)
         {
-            return unmoved;
+            return await TakenBackAsync(unmoved, done);
         }
-        if (writes.Count > 0 && await InTurnAsync($"Undo {command.Name}", [.. writes.Select(w => w.Path)], wrote => Write(writes, wrote)) is { } unwritten)
+        string what = $"Undo {command.Name}";
+        if (await PutFilesAsync(what, writes, done) is { } unwritten)
         {
-            return unwritten;
+            return await TakenBackAsync(unwritten, done);
         }
         foreach (Creation made in command.Created)
         {
             if (Unmake(made) is { } failed)
             {
-                return failed;
+                return await TakenBackAsync(failed, done);
             }
+            done.Add(() => InTurnAsync(what, [made.Path], _ => Saved(made.Path, made.Text, null)));
         }
         foreach (Part part in command.Parts.Reverse().Where(p => !p.First))
         {
             if (part.Put(false) is { } refused)
             {
-                return refused;
+                return await TakenBackAsync(refused, done);
             }
+            done.Add(() => Task.FromResult(part.Put(true)));
         }
         return null;
     }
 
     /// <summary>Makes a command again: its parts put first (<see cref="Part.First"/>), the open files take their redo steps,
     /// the files it made and the files not open are written as it left them, off the window's thread, then the files it
-    /// moved move again and its other parts are put.</summary>
+    /// moved move again and its other parts are put. Null once done, else why not, what it had done by then taken back
+    /// (<see cref="TakenBackAsync"/>).</summary>
     private async Task<string?> RedoAsync(Command command, IReadOnlyDictionary<string, Look> looks, Func<Func<string?>, string?> moving)
     {
         if (PutFirst(command, redo: true) is { } unput)
         {
             return unput;
         }
-        List<(string Path, TextSnapshot Text, Look? Stored)> writes =
+        List<Func<Task<string?>>> done = [() => Task.FromResult(Unput(FirstParts(command, redo: true), redo: true))];
+        List<FilePut> writes =
         [
-            .. command.Created.Select(c => (c.Path, c.Text, (Look?)null)),
-            .. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => (t.Path, t.After, (Look?)looks[t.Path])),
+            .. command.Created.Select(c => Text(c.Path, c.Text, null, null)),
+            .. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => Text(t.Path, t.After, t.Before, looks[t.Path])),
         ];
         Step(command, redo: true);
-        if (writes.Count > 0 && await InTurnAsync($"Redo {command.Name}", [.. writes.Select(w => w.Path)], wrote => Write(writes, wrote)) is { } unwritten)
+        done.Add(() => Task.FromResult(Restep(command, redo: false)));
+        if (await PutFilesAsync($"Redo {command.Name}", writes, done) is { } unwritten)
         {
-            return unwritten;
+            return await TakenBackAsync(unwritten, done);
         }
         string? unmoved = moving(() =>
         {
@@ -427,37 +438,83 @@ public sealed class CommandHistory
                 {
                     return failed;
                 }
+                done.Add(() => Task.FromResult(moving(() => editors.MoveFile(to, from))));
             }
             return null;
         });
         if (unmoved is not null)
         {
-            return unmoved;
+            return await TakenBackAsync(unmoved, done);
         }
         foreach (Part part in command.Parts.Where(p => !p.First))
         {
             if (part.Put(true) is { } failed)
             {
-                return failed;
+                return await TakenBackAsync(failed, done);
+            }
+            done.Add(() => Task.FromResult(part.Put(false)));
+        }
+        return null;
+    }
+
+    /// <summary>Why a put was refused partway, once what it had already done is taken back, last first, so the files and the
+    /// command are as they were before it began and it can be asked again; with what could not be taken back, if any.</summary>
+    private static async Task<string> TakenBackAsync(string refused, List<Func<Task<string?>>> done)
+    {
+        List<string> left = [];
+        for (int at = done.Count - 1; at >= 0; at--)
+        {
+            if (await done[at]() is { } unput)
+            {
+                left.Add(unput);
+            }
+        }
+        return left.Count == 0 ? refused : $"{refused}; what it had done could not all be put back: {string.Join("; ", left)}";
+    }
+
+    /// <summary>The open files' steps taken again the other way (redo, given true), to take back a put refused after it took
+    /// them: each only while its next step that way is still the command's. Why one was not, null once each was.</summary>
+    private string? Restep(Command command, bool redo)
+    {
+        List<string> changed = [];
+        foreach (TextChange text in command.Texts.Where(t => IsOpen(t.Document)))
+        {
+            if ((redo ? text.Document!.Text.NextRedo : text.Document!.Text.NextUndo) != text.Step)
+            {
+                changed.Add(text.Document.Name);
+                continue;
+            }
+            editors.Step(text.Document, redo);
+        }
+        return changed.Count == 0 ? null : $"{string.Join(", ", changed)} {(changed.Count == 1 ? "has" : "have")} been changed since";
+    }
+
+    /// <summary>A command's parts that go first (<see cref="Part.First"/>), in the order taking it back (or making it again,
+    /// given true) puts them.</summary>
+    private static List<Part> FirstParts(Command command, bool redo) => [.. (redo ? command.Parts : command.Parts.Reverse()).Where(p => p.First)];
+
+    /// <summary>Puts a command's parts that go first, in the order taking it back (or making it again, given true) takes
+    /// them: the first refused puts back those before it, so nothing of the command has changed. Why it was refused, null
+    /// once each is put.</summary>
+    private static string? PutFirst(Command command, bool redo)
+    {
+        List<Part> first = FirstParts(command, redo);
+        for (int at = 0; at < first.Count; at++)
+        {
+            if (first[at].Put(redo) is { } failed)
+            {
+                return Unput(first.GetRange(0, at), redo) is { } left ? $"{failed}; {left}" : failed;
             }
         }
         return null;
     }
 
-    /// <summary>Puts a command's parts that go first (<see cref="Part.First"/>), in the order taking it back (or making it
-    /// again, given true) takes them: the first refused puts back those before it, so nothing of the command has changed.
-    /// Why it was refused, null once each is put.</summary>
-    private static string? PutFirst(Command command, bool redo)
+    /// <summary>Parts put (made again, given true) taken back, last first: why those that could not be were not, null once
+    /// each is.</summary>
+    private static string? Unput(List<Part> put, bool redo)
     {
-        List<Part> first = [.. (redo ? command.Parts : command.Parts.Reverse()).Where(p => p.First)];
-        for (int at = 0; at < first.Count; at++)
-        {
-            if (first[at].Put(redo) is { } failed)
-            {
-                return string.Join("; ", first.Take(at).Reverse().Select(p => p.Put(!redo)).OfType<string>().Prepend(failed));
-            }
-        }
-        return null;
+        List<string> refused = [.. Enumerable.Reverse(put).Select(p => p.Put(!redo)).OfType<string>()];
+        return refused.Count == 0 ? null : string.Join("; ", refused);
     }
 
     private void Keep(Command command)
@@ -566,24 +623,79 @@ public sealed class CommandHistory
         return info.Exists ? (info.Length, info.LastWriteTimeUtc) : null;
     }
 
-    /// <summary>Writes files not open, off the window's thread, in order, <paramref name="wrote"/> told of each: each stored
-    /// as a look found it, or as UTF-8 for one a command made. Null once each is written, else the first that could not be,
-    /// with why.</summary>
-    private static string? Write(IReadOnlyList<(string Path, TextSnapshot Text, Look? Stored)> files, Action<string> wrote)
+    /// <summary>A file not open that an Undo or Redo writes off the window's thread: how it is put, and how that is taken
+    /// back when a later part of the put is refused, each saying why the disk refused it, null once done.</summary>
+    private sealed record FilePut(string Path, Func<string?> Put, Func<string?> Back);
+
+    /// <summary>A file's text written as a look found it stored (UTF-8 for one a command made), taken back by writing
+    /// <paramref name="back"/> the same way, or by deleting the file when that is null.</summary>
+    private static FilePut Text(string path, TextSnapshot text, TextSnapshot? back, Look? stored) =>
+        new(path, () => Saved(path, text, stored), () => back is null ? OnDisk(path, "deleted", () => File.Delete(path)) : Saved(path, back, stored));
+
+    private static string? Saved(string path, TextSnapshot text, Look? stored) => OnDisk(path, "written", () =>
+        FileText.Save(path, text.ToString(), stored?.Encoding ?? new UTF8Encoding(false), stored?.HasBom ?? false, stored?.CrBreaks ?? false));
+
+    /// <summary>A change of a file on disk: why the disk refused it, null once made.</summary>
+    private static string? OnDisk(string path, string made, Action change)
     {
-        foreach ((string path, TextSnapshot text, Look? stored) in files)
+        try
         {
-            try
-            {
-                FileText.Save(path, text.ToString(), stored?.Encoding ?? new UTF8Encoding(false), stored?.HasBom ?? false, stored?.CrBreaks ?? false);
-                wrote(path);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                return $"{Path.GetFileName(path)} could not be written: {error.Message}";
-            }
+            change();
+            return null;
         }
-        return null;
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return $"{Path.GetFileName(path)} could not be {made}: {error.Message}";
+        }
+    }
+
+    /// <summary>Puts files not open in turn (<see cref="InTurnAsync"/>), in order: why the first the disk refused was, null
+    /// once each is; those put before it told to <paramref name="done"/>, to be taken back with the rest.</summary>
+    private async Task<string?> PutFilesAsync(string what, IReadOnlyList<FilePut> files, List<Func<Task<string?>>> done)
+    {
+        if (files.Count == 0)
+        {
+            return null;
+        }
+        (string? refused, int put) = await InTurnAsync(what, [.. files.Select(f => f.Path)], wrote => Write(files, wrote));
+        if (put > 0)
+        {
+            List<FilePut> taken = [.. files.Take(put)];
+            done.Add(() => InTurnAsync(what, [.. taken.Select(f => f.Path)], wrote => Unwrite(taken, wrote)));
+        }
+        return refused;
+    }
+
+    /// <summary>Puts files on the calling thread, in order, <paramref name="wrote"/> told of each: why the first refused was,
+    /// with how many were put before it.</summary>
+    private static (string? Refused, int Put) Write(IReadOnlyList<FilePut> files, Action<string> wrote)
+    {
+        for (int at = 0; at < files.Count; at++)
+        {
+            if (files[at].Put() is { } refused)
+            {
+                return (refused, at);
+            }
+            wrote(files[at].Path);
+        }
+        return (null, files.Count);
+    }
+
+    /// <summary>Takes back files put, last first, <paramref name="wrote"/> told of each: why those the disk refused were,
+    /// null once each is.</summary>
+    private static string? Unwrite(IReadOnlyList<FilePut> files, Action<string> wrote)
+    {
+        List<string> refused = [];
+        foreach (FilePut file in Enumerable.Reverse(files))
+        {
+            if (file.Back() is { } why)
+            {
+                refused.Add(why);
+                continue;
+            }
+            wrote(file.Path);
+        }
+        return refused.Count == 0 ? null : string.Join("; ", refused);
     }
 
     /// <summary>A file a command made, deleted, its tab closed if it was opened since.</summary>

@@ -641,6 +641,53 @@ public sealed class FindInFilesTests : IDisposable
         }
     }
 
+    /// <summary>Undo of a replace across an open file and a closed one the disk then refuses (made read-only) takes back what
+    /// it had done before the refusal: both files are as the replace left them, Undo still offered for the open file; once
+    /// the closed file is writable again, Undo takes the whole replace back.</summary>
+    [AvaloniaFact]
+    public void Undo_of_a_replace_refused_by_its_closed_file_leaves_both_files_as_the_replace_left_them_with_undo_offered()
+    {
+        string alpha = Path.Combine(folder, "Alpha.cs");
+        string beta = Path.Combine(folder, "Beta.cs");
+        string alphaBefore = File.ReadAllText(alpha);
+        string betaBefore = File.ReadAllText(beta);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(alpha);
+            Ui.Settle();
+            OpenDocument open = window.EditorArea.Active!;
+            SearchQuery query = new("count", WholeWords: true);
+            FilesFound found = Ui.Await(window.FindInFilesAsync(query, new SearchScope(SearchScopeKind.Directory, null, folder, true, null, null), CancellationToken.None), "the search");
+            Assert.Empty(Ui.Await(window.ReplaceInFilesAsync(query, "total", found), "the replace").Refused);
+            string name = FilesReplaced.Title(query, "total");
+            string alphaReplaced = open.Text.Snapshot.ToString();
+            string betaReplaced = File.ReadAllText(beta);
+            Assert.True(alphaReplaced != alphaBefore && betaReplaced != betaBefore, "The replace changed only one of Alpha.cs and Beta.cs");
+            File.SetAttributes(beta, FileAttributes.ReadOnly);
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => window.Status?.StartsWith("Cannot undo", StringComparison.Ordinal) == true, () => $"Undo to be refused; the status says '{window.Status}'");
+            Assert.Equal($"Cannot undo {name}: Beta.cs could not be written: Beta.cs is read-only", window.Status);
+            Assert.True(open.Text.Snapshot.ToString() == alphaReplaced,
+                $"The Undo Beta.cs refused left Alpha.cs's replace taken back, Alpha.cs reading:\n{open.Text.Snapshot}");
+            Assert.Equal(betaReplaced, File.ReadAllText(beta));
+            Assert.True(window.EditorArea.Commands.ToUndo(open)?.Name == name, "The Undo Beta.cs refused left the replace where Undo no longer offers it");
+
+            File.SetAttributes(beta, FileAttributes.Normal);
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => window.Status == $"Undone: {name}", () => $"Undo once Beta.cs is writable; the status says '{window.Status}'");
+            Assert.Equal(alphaBefore, open.Text.Snapshot.ToString());
+            Assert.Equal(betaBefore, File.ReadAllText(beta));
+        }
+        finally
+        {
+            File.SetAttributes(beta, FileAttributes.Normal);
+            window.Close();
+        }
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_regex_backtracking_without_end_in_a_file_is_said_to_stop_there_to_the_popup_and_an_agent_and_replace_all_leaves_that_file()
