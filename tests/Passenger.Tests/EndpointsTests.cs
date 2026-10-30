@@ -547,6 +547,8 @@ public sealed class EndpointsTests : IDisposable
         Assert.True(ring.IsVisible, "The status bar should turn its ring while a test waits for its answer");
         Ui.Click(other, settle: false);
         Ui.PumpUntil(() => window.Status?.StartsWith("Already under way: ", StringComparison.Ordinal) == true, "a second test to be refused while one is under way");
+        // Sending is said as the request sets out: stopped before it reaches the server, it would never arrive.
+        Ui.PumpUntil(() => api.Received.Any(r => r.Line == "GET /slow"), "the slow request to reach the server");
 
         Ui.Run(window, AppActions.Stop);
         Ui.WaitFor(() => window.Endpoints.Busy is null, "Stop to end the test");
