@@ -359,7 +359,9 @@ site-shots` retakes its images.
   a copy gone once the call returns: a callee that may keep the reference gets a home of the evaluation's
   (`PinnedArrayOfOneAsync`), or the evaluation refuses; a struct the evaluation stores is its own copy (`OwnAsync`),
   never the frame's.
-- **Hot Reload** drives the server's `EditAndContinueService` from the extension; a session takes edits only for the
+- **Hot Reload** drives the server's `EditAndContinueService` from the extension; CoreCLR lets no debugger go once Edit
+  and Continue changed a program, so a detached program Hot Reload changed takes no debugger again
+  (`DebugController.ChangedBy`), and a build's edits are kept for each program it starts later (`Kept`/`Copied`); a session takes edits only for the
   projects of modules its program has loaded (others frozen), and `StaleCallers` blocks an update that leaves loaded code
   calling a deleted body. The runtime offers a frame left in old code a remap at every statement, unstoppable: a running
   program is held through an update so Roslyn maps its frames, which move only at a statement's start (`RemapTarget`).
@@ -377,8 +379,9 @@ site-shots` retakes its images.
 - **A window the IDE opens of its own accord** (a notification, an agent's question, not a person's action) shows with
   `ShowActivated` false, or it takes the keys from what the person types (headless, it clears them); an agent's question
   is not waited on as a dialog and has no default button, so a stray Enter never answers it.
-- **Agents never open windows on the person's screen**: `--mcp FOLDER`, or `--mcp-attach` with
-  `PASSENGER_START=headless` and a PASSENGER_SETTINGS of its own; never a bare `--mcp-attach`, never `just run`.
+- **Agents never open windows on the person's screen**: `--mcp FOLDER`, or a headless screenshot run's `--agent`
+  step to try attached behaviour (a headless `--mcp-attach` window keeps no settings, so it asks a person who isn't
+  there); never a bare `--mcp-attach`, never `just run`.
 - **Aspire's CLI and AppHosts** keep running AppHosts in `$HOME/.aspire/cli/bch` whatever ASPIRE_HOME says; on Windows
   in the profile whatever the environment says (those tests skip there). An Aspire service's replicas share
   `OTEL_SERVICE_NAME` and its display name: a start's own resource is found by `service.instance.id`
