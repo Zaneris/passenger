@@ -247,6 +247,23 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
     /// <summary>Manage User Secrets on the project's row gives a project with none a UserSecretsId and opens its secrets.json,
     /// made in the run's own user secrets folder, never the person's; its keys complete there as appsettings.json's do, and
     /// asked again it opens the same file, the project left as it is.</summary>
+    /// <summary>A read through a field another part of its partial class declares, in a file that never names configuration's
+    /// API, is warned of as a read in the declaring file would be.</summary>
+    [AvaloniaFact]
+    public void A_read_through_a_field_another_partial_file_declares_is_warned_of()
+    {
+        MainWindow window = project.Open(project.PathOf("Shop/Reader.Reads.cs"));
+        try
+        {
+            Ui.WaitFor(() => Missing(window).SetEquals(["Reader:Motto"]),
+                $"the key read through the other part's field, and only it, to be warned of: {string.Join(", ", Missing(window))}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Manage_User_Secrets_gives_the_project_its_secrets_and_opens_them()
     {
@@ -395,6 +412,9 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
             TestFolders.Write(Folder, "Shop/Shop.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>", "<Nullable>enable</Nullable>"));
             TestFolders.Write(Folder, "Shop/Program.cs", Program);
             TestFolders.Write(Folder, "Shop/Options.cs", Options);
+            // A partial class whose configuration one file holds and the other reads, never naming it.
+            TestFolders.Write(Folder, "Shop/Reader.cs", "public sealed partial class Reader(IConfiguration given)\n{\n    private readonly IConfiguration _config = given;\n}\n");
+            TestFolders.Write(Folder, "Shop/Reader.Reads.cs", "public sealed partial class Reader\n{\n    public string? Motto() => _config[\"Reader:Motto\"];\n}\n");
             TestFolders.Write(Folder, "Shop/appsettings.json", Settings);
             // A launch profile's variable gives Shop:Theme.
             TestFolders.Write(Folder, "Shop/Properties/launchSettings.json", """

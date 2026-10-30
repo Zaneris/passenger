@@ -1,9 +1,12 @@
 using System.Text.Json;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Roslyn.Extension;
 using Passenger.Text;
+using static Microsoft.CodeAnalysis.CSharpExtensions;
 
 namespace Passenger.App.CSharp;
 
@@ -11,12 +14,43 @@ public sealed partial class CSharpDocument
 {
     private const string ConfigurationDiagnosticSource = "Passenger.Configuration";
 
-    /// <summary>The names of configuration's API a file must hold for its reads to be asked for: a cheap look at its text,
-    /// so a file that reads none asks Passenger's extension nothing. A read's receiver is configuration by one of these.</summary>
+    /// <summary>The names of configuration's API a file holds for its reads to be asked for: a cheap look at its text, so a
+    /// file that reads none asks Passenger's extension nothing. A read's receiver declared in the file is configuration by
+    /// one of these.</summary>
     private static readonly string[] ConfigurationWords = ["Configuration", "GetSection", "GetRequiredSection"];
 
-    /// <summary>Whether the file's text names configuration's API, so it may read a key nothing gives.</summary>
-    internal bool MayReadConfiguration => Holds(ConfigurationWords);
+    /// <summary>The calls a read of configuration is made with, by name, as the extension looks for them.</summary>
+    private static readonly HashSet<string> ConfigurationCalls = new(StringComparer.Ordinal)
+    {
+        "GetSection", "GetRequiredSection", "GetValue", "GetConnectionString", "Configure", "Bind", "BindConfiguration", "Get",
+    };
+
+    /// <summary>Whether the file may read a key nothing gives: its text names configuration's API, or a type it declares
+    /// takes members from another file (a partial type's other parts, a base type) and reads as the API is read.</summary>
+    internal bool MayReadConfiguration => Holds(ConfigurationWords) || ReadsThroughItsType();
+
+    /// <summary>Whether a type the file declares can reach configuration by a member declared elsewhere, which its text then
+    /// never names: one partial or deriving from another, holding a string indexer or a call of the API's names.</summary>
+    private bool ReadsThroughItsType()
+    {
+        if (document.Syntax?.Current is not { } parsed)
+        {
+            return false;
+        }
+        IEnumerable<TypeDeclarationSyntax> types = parsed.Root
+            .DescendantNodes(node => node is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax or TypeDeclarationSyntax)
+            .OfType<TypeDeclarationSyntax>();
+        return types.Any(type => (type.Modifiers.Any(SyntaxKind.PartialKeyword) || type.BaseList is not null) && type.Members.Any(ReadsAsConfiguration));
+
+        static bool ReadsAsConfiguration(MemberDeclarationSyntax member) => member is not BaseTypeDeclarationSyntax && member.DescendantNodes().Any(node => node switch
+        {
+            InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name: var name } } => ConfigurationCalls.Contains(name.Identifier.ValueText),
+            InvocationExpressionSyntax { Expression: SimpleNameSyntax name } => ConfigurationCalls.Contains(name.Identifier.ValueText),
+            ElementAccessExpressionSyntax access => access.ArgumentList.Arguments is [{ Expression: LiteralExpressionSyntax literal }]
+                && literal.IsKind(SyntaxKind.StringLiteralExpression),
+            _ => false,
+        });
+    }
 
     /// <summary>A settings file, user secrets or launch profile changed: pulled again when the file was warned of a key or may
     /// read one, or is an AppHost's, whose parameters' values are read there.</summary>
