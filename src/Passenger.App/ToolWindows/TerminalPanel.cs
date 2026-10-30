@@ -7,6 +7,7 @@ using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.App.Settings;
 using Passenger.Terminal;
 
 namespace Passenger.App.ToolWindows;
@@ -185,7 +186,7 @@ public sealed class TerminalPanel : DockPanel
     {
         if (shell is { } given && string.IsNullOrWhiteSpace(given.App))
         {
-            throw new InvalidOperationException($"the Shell path in {Settings.SettingsDialog.PlaceOfPage(Settings.SettingsDialog.TerminalPage)} names no program to start");
+            throw new InvalidOperationException($"the Shell path in {SettingsDialog.PlaceOfPage(SettingsDialog.TerminalPage)} names no program to start");
         }
         await session.StartAsync(at, shell?.App, shell?.Arguments);
     }

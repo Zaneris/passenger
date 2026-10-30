@@ -1744,6 +1744,11 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 foreach (Match place in placed.Matches(lines[i]))
                 {
                     named++;
+                    // A declared setting names the page its row is on, which the dialog lists as it makes the row.
+                    if (place.Groups[1].Value == "Row.Page" && path.EndsWith("Setting.cs", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
                     string? page = typeof(SettingsDialog).GetField(place.Groups[1].Value, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
                         is { IsLiteral: true } constant ? constant.GetRawConstantValue() as string : null;
                     if (page is null || !pages.Contains(page))
