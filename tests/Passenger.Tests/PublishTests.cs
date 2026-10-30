@@ -199,6 +199,46 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>A profile another program changes while the question to save over it is open is never written over: the
+    /// answer finds the change, keeps it and says so, and the save asked again changes the file as it is now, the change
+    /// kept.</summary>
+    [AvaloniaFact]
+    public void A_profile_changed_while_its_save_is_asked_keeps_the_change_and_says_so()
+    {
+        string profile = Path.Combine(folder, "src", "Hello", "Properties", "PublishProfiles", "Staging.pubxml");
+        Write("src/Hello/Properties/PublishProfiles/Staging.pubxml",
+            "<Project>\n  <PropertyGroup>\n    <Configuration>Release</Configuration>\n    <PublishDir>bin\\staging\\</PublishDir>\n  </PropertyGroup>\n</Project>\n");
+        string changed = "<Project>\n  <!-- Kept by the build server. -->\n  <PropertyGroup>\n    <Configuration>Release</Configuration>\n"
+            + "    <PublishDir>bin\\staging\\</PublishDir>\n  </PropertyGroup>\n</Project>\n";
+        MainWindow window = Open();
+        try
+        {
+            PublishDialog dialog = Show(window, "Hello");
+            Assert.Equal("Staging", dialog.Chosen?.Name);
+            window.Confirm = (_, _, _) =>
+            {
+                // Written by another program while the person reads the question.
+                File.WriteAllText(profile, changed);
+                return Task.FromResult(true);
+            };
+            dialog.Configuration = "Debug";
+            Assert.Equal("Staging.pubxml changed while the question was open, so it was left as it is now: save again to change it",
+                Done(dialog.SaveAsync(), "the save answered after the profile changed"));
+            Assert.Equal(changed, File.ReadAllText(profile));
+
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Assert.Null(Done(dialog.SaveAsync(), "the save asked again"));
+            string written = File.ReadAllText(profile);
+            Assert.True(written == changed.Replace("<Configuration>Release<", "<Configuration>Debug<", StringComparison.Ordinal),
+                $"The save asked again did not change the profile as it is now, its change kept:\n{written}");
+            dialog.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void An_aspnet_core_app_publishes_with_its_settings_and_its_visual_studio_profile_says_where_visual_studio_copies_it()
     {

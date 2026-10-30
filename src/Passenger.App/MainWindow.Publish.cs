@@ -176,6 +176,15 @@ public partial class MainWindow
         {
             return $"{shownName} was left as it was";
         }
+        // What was asked about is what is written over: a change made while the question was open is never lost.
+        if (had is not null && SaveBeforeWriting([file]) is { } unsavedSince)
+        {
+            return $"{shownName} could not be saved: {unsavedSince}";
+        }
+        if (had is not null && (File.Exists(file) ? FileText.Load(file)?.Text : null) != had.Text)
+        {
+            return $"{shownName} changed while the question was open, so it was left as it is now: save again to change it";
+        }
         using CommandHistory.Recording made = Editors.Commands.Record($"Save Publish Profile {choice.Profile}");
         try
         {
