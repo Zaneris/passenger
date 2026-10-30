@@ -24,7 +24,7 @@ public enum LanguageService
 /// <summary>A file name a language claims, matched without regard to case: a name, or one <c>*</c> standing for any run
 /// (<c>*.tsx</c>, <c>Dockerfile.*</c>, <c>tsconfig*.json</c>), after the folders the file must be in where it names
 /// them (<c>.vscode/*.json</c>), with the language id a server is told for it where that is not the language's own
-/// (<c>typescriptreact</c>).</summary>
+/// (<c>javascriptreact</c>).</summary>
 public sealed record FilePattern(string Glob, string? Id = null)
 {
     private readonly int slash = Glob.LastIndexOf('/');
@@ -72,10 +72,10 @@ public sealed class Language
     private static readonly List<Language> All = [];
 
     /// <summary>Scopes the grammars here embed for a language under another name than its own grammar's, each read by the
-    /// grammar its files are coloured by: JSON with comments and JSON Lines by JSON's (which reads comments), TSX by
-    /// TypeScript's (a .tsx file's), and HTML inside another document (Markdown's) by HTML's.</summary>
+    /// grammar its files are coloured by: JSON with comments and JSON Lines by JSON's (which reads comments), and HTML
+    /// inside another document (Markdown's) by HTML's.</summary>
     private static readonly (string Scope, string Carried)[] EmbeddedAs =
-        [("source.json.comments", "source.json"), ("source.json.lines", "source.json"), ("source.tsx", "source.ts"), ("text.html.derivative", "text.html.basic")];
+        [("source.json.comments", "source.json"), ("source.json.lines", "source.json"), ("text.html.derivative", "text.html.basic")];
 
     /// <summary>Each grammar's file by the scope it names, every language's, for the grammars that embed others, and by
     /// the scopes of <see cref="EmbeddedAs"/>.</summary>
@@ -181,8 +181,13 @@ public sealed class Language
     public static readonly Language JavaScript = new("javascript", "JavaScript", ["*.js", "*.mjs", "*.cjs", new("*.jsx", "javascriptreact")],
         line: "//", block: ("/*", "*/"), grammar: new("source.js", "JavaScript.tmLanguage.json"), service: LanguageService.TypeScript);
 
-    public static readonly Language TypeScript = new("typescript", "TypeScript", ["*.ts", "*.mts", "*.cts", new("*.tsx", "typescriptreact")],
+    public static readonly Language TypeScript = new("typescript", "TypeScript", ["*.ts", "*.mts", "*.cts"],
         line: "//", block: ("/*", "*/"), grammar: new("source.ts", "TypeScript.tmLanguage.json"), service: LanguageService.TypeScript);
+
+    /// <summary>TypeScript with JSX (a .tsx file), coloured by a grammar that reads its elements as markup, and named
+    /// TypeScript.</summary>
+    public static readonly Language TypeScriptReact = new("typescriptreact", "TypeScript", ["*.tsx"],
+        line: "//", block: ("/*", "*/"), grammar: new("source.tsx", "TypeScriptReact.tmLanguage.json"), service: LanguageService.TypeScript);
 
     public static readonly Language Shell = new("shellscript", "Shell", ["*.sh", "*.bash", "*.zsh"], line: "#",
         grammar: new("source.shell", "shell-unix-bash.tmLanguage.json"));

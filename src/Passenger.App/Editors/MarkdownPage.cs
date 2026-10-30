@@ -168,7 +168,7 @@ public sealed class MarkdownCode : Border
             "" => null,
             "c#" or "cs" or "csharp" => "code.cs",
             "javascript" or "js" or "jsx" => "code.js",
-            "typescript" or "ts" or "tsx" => "code.ts",
+            "typescript" or "ts" => "code.ts",
             "bash" or "sh" or "shell" or "zsh" => "code.sh",
             "docker" or "dockerfile" => "Dockerfile",
             "markdown" or "md" => "code.md",

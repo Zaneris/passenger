@@ -697,10 +697,11 @@ Microsoft Corporation), unchanged, from the project its header names:
   atom/language-sass's `LICENSE.md` says.
 - `less.tmLanguage.json` (VS Code 1.142.0, `extensions/less`): from radium-v/Better-Less
   (https://github.com/radium-v/Better-Less), MIT, Copyright (c) 2017 John Kreitlow.
-- `JavaScript.tmLanguage.json` (VS Code 1.142.0, `extensions/javascript`) and `TypeScript.tmLanguage.json` (VS Code
-  1.142.0, `extensions/typescript-basics`): from microsoft/TypeScript-TmLanguage
-  (https://github.com/microsoft/TypeScript-TmLanguage), MIT, Copyright (c) Microsoft Corporation; VS Code names
-  textmate/javascript.tmbundle, under the TextMate bundle licence below, among the JavaScript grammar's sources too.
+- `JavaScript.tmLanguage.json` (VS Code 1.142.0, `extensions/javascript`), and `TypeScript.tmLanguage.json` and
+  `TypeScriptReact.tmLanguage.json` (VS Code 1.142.0, `extensions/typescript-basics`): from
+  microsoft/TypeScript-TmLanguage (https://github.com/microsoft/TypeScript-TmLanguage), MIT, Copyright (c) Microsoft
+  Corporation; VS Code names textmate/javascript.tmbundle, under the TextMate bundle licence below, among the JavaScript
+  grammar's sources too.
 - `shell-unix-bash.tmLanguage.json` (VS Code 1.142.0, `extensions/shellscript`): from jeff-hykin/better-shell-syntax
   (https://github.com/jeff-hykin/better-shell-syntax), MIT, Copyright (c) 2019 Jeff Hykin.
 - `docker.tmLanguage.json` (VS Code 1.142.0, `extensions/docker`): from moby/moby's
@@ -726,8 +727,8 @@ Reading them, Passenger leaves out what VS Code's reader passes over (a capture 
 that begins with no end never end, as VS Code does, takes YAML's typed scalars (booleans, numbers, null) out of a block
 or flow mapping's keys, so a key such as a workflow's `on` is read as a key, ends a shell heredoc only at a line that is
 its delimiter alone, as bash does, and a C# raw string only at as many quotes as it opened with, as C# does. Where
-Markdown embeds JSON with comments or JSON Lines, TSX, or HTML inside its text, it reads them by the JSON, TypeScript and
-HTML grammars here.
+Markdown embeds JSON with comments or JSON Lines, or HTML inside its text, it reads them by the JSON and HTML grammars
+here.
 
 ```
 MIT License

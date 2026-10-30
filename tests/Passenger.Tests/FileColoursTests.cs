@@ -401,6 +401,40 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
+    /// <summary>A JSX element in a .tsx file, a .jsx file and a Markdown file's tsx block is markup: its tags and attribute
+    /// names in theirs colours, its text and the code in its braces as code; the TypeScript around it, a parameter's type
+    /// and a variable's among it, as before.</summary>
+    [AvaloniaFact]
+    public void A_tsx_files_jsx_element_is_coloured_as_markup_and_the_typescript_around_it_as_code()
+    {
+        MainWindow window = Window();
+        try
+        {
+            const string Element = "    return <div className=\"card\" hidden={!shown}>Welcome, {title}</div>;\n}\n";
+            (string Stretch, TokenKind Kind)[] markup = [("<div", TokenKind.Tag), ("className", TokenKind.AttributeName), ("\"card\"", TokenKind.String),
+                ("hidden", TokenKind.AttributeName), ("!shown", TokenKind.Text), ("Welcome,", TokenKind.Text), ("</div>", TokenKind.Tag)];
+            (string Stretch, TokenKind Kind)[] typed = [("// A card.", TokenKind.Comment), ("export", TokenKind.Keyword), ("Card", TokenKind.Method),
+                ("string", TokenKind.Keyword), ("const", TokenKind.Keyword), ("boolean", TokenKind.Keyword), ("return", TokenKind.Keyword)];
+            string Wrong(CodeEditor editor, IEnumerable<(string Stretch, TokenKind Kind)> expected) => string.Join("; ", expected
+                .Select(e => (e.Stretch, e.Kind, Found: KindOf(editor, e.Stretch))).Where(e => e.Found != e.Kind)
+                .Select(e => $"{e.Stretch} as {e.Found?.ToString() ?? "several kinds"}, not {e.Kind}"));
+
+            string tsx = "// A card.\nexport function Card({ title }: { title: string }) {\n    const shown: boolean = title.length > 0;\n" + Element;
+            string wrong = Wrong(Open(window, "Card.tsx", tsx), [.. markup, .. typed]);
+            Assert.True(wrong.Length == 0, $"A .tsx file's JSX element or the TypeScript around it is coloured wrongly: {wrong}");
+
+            wrong = Wrong(Open(window, "Card.jsx", "// A card.\nexport function Card({ title }) {\n    const shown = title.length > 0;\n" + Element), markup);
+            Assert.True(wrong.Length == 0, $"A .jsx file's JSX element is coloured wrongly: {wrong}");
+
+            wrong = Wrong(Open(window, "CARD.md", "# Components\n\n```tsx\n" + tsx + "```\n"), [.. markup, .. typed]);
+            Assert.True(wrong.Length == 0, $"A Markdown tsx block's JSX element or the TypeScript around it is coloured wrongly: {wrong}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A shared tokenizer's scratch buffers must not become a document's saved state or colours. Leave
     /// a comment open in one file, then edit both files before comparing their colours with fresh passes.</summary>
     [AvaloniaFact]

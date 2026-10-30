@@ -42,6 +42,10 @@ internal static class ScopeColours
         ("constant.other.character-class", TokenKind.String),
         ("constant.character.character-class.regexp", TokenKind.String),
 
+        // JSX: an element's text and the code in its braces are code, though the element's tag scope holds them.
+        ("meta.jsx.children", TokenKind.Text),
+        ("meta.embedded.expression", TokenKind.Text),
+
         // XML and HTML: the whole tag in the tag's colour (its brackets, its =), its attributes' names and values in theirs.
         ("meta.tag", TokenKind.Tag),
         ("entity.name.tag", TokenKind.Tag),
