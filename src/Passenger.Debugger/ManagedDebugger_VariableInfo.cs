@@ -729,6 +729,10 @@ public partial class ManagedDebugger
         }
     }
 
+    /// <summary>An array's rows under <paramref name="indexPrefix"/>, the indices of its outer dimensions opened so far: a
+    /// dimension over 100 long in ranges of 100 (<paramref name="startOffset"/> and <paramref name="count"/> one of them
+    /// opened), an outer dimension's indices each opening to the next, the last's elements. True when the rows open
+    /// through the array, which is then kept.</summary>
     private async Task<bool> AddArrayElements(ICorDebugArrayValue arrayValue, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, uint[]? indexPrefix = null, uint? startOffset = null, uint? count = null, ICorDebugValue? referenceValue = null)
     {
         int rank = arrayValue.Rank;
@@ -738,10 +742,31 @@ public partial class ManagedDebugger
         int currentDimension = indexPrefix.Length;
         uint currentDimensionStart = baseIndices[currentDimension];
         uint currentDimensionLength = dimensions[currentDimension];
+        bool outer = currentDimension < rank - 1;
 
-        if (currentDimension < rank - 1)
+        if (count is null && currentDimensionLength > 100)
         {
-            for (uint offset = 0u; offset < currentDimensionLength; offset++)
+            for (uint rangeStart = 0u; rangeStart < currentDimensionLength; rangeStart += 100)
+            {
+                uint rangeCount = Math.Min(100u, currentDimensionLength - rangeStart);
+                uint firstIndex = currentDimensionStart + rangeStart;
+                uint lastIndex = firstIndex + rangeCount - 1;
+                string name = $"[{string.Concat(indexPrefix.Select(index => $"{index}, "))}{firstIndex}..{lastIndex}{(outer ? ", ..." : "")}]";
+                result.Add(new VariableInfo
+                {
+                    Name = name,
+                    Value = "",
+                    Type = "",
+                    PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Class },
+                    VariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.ArrayRange, referenceValue ?? arrayValue, threadId, stackDepth, null, indexPrefix, rangeStart, rangeCount))
+                });
+            }
+            return true;
+        }
+        if (outer)
+        {
+            uint first = startOffset ?? 0;
+            for (uint offset = first; offset < first + (count ?? currentDimensionLength); offset++)
             {
                 uint[] indices = [.. indexPrefix, currentDimensionStart + offset];
                 string name = $"[{string.Join(", ", indices)}, ...]";
@@ -752,27 +777,6 @@ public partial class ManagedDebugger
                     Type = "",
                     PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Class },
                     VariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.ArrayRange, referenceValue ?? arrayValue, threadId, stackDepth, null, indices))
-                });
-            }
-            return true;
-        }
-        if (count is null && currentDimensionLength > 100)
-        {
-            for (uint rangeStart = 0u; rangeStart < currentDimensionLength; rangeStart += 100)
-            {
-                uint rangeCount = Math.Min(100u, currentDimensionLength - rangeStart);
-                uint firstIndex = currentDimensionStart + rangeStart;
-                uint lastIndex = firstIndex + rangeCount - 1;
-                string name = indexPrefix.Length is 0
-                    ? $"[{firstIndex}..{lastIndex}]"
-                    : $"[{string.Join(", ", indexPrefix)}, {firstIndex}..{lastIndex}]";
-                result.Add(new VariableInfo
-                {
-                    Name = name,
-                    Value = "",
-                    Type = "",
-                    PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Class },
-                    VariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.ArrayRange, referenceValue ?? arrayValue, threadId, stackDepth, null, indexPrefix, rangeStart, rangeCount))
                 });
             }
             return true;

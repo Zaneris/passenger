@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Passenger.Dap;
 using Passenger.Tests.Debugging.Helpers;
 
@@ -151,5 +152,30 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         // Evaluated, it is the same value, not a failure.
         EvaluateResponse evaluated = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "unprintable");
         Assert.Equal("{Unprintable}", evaluated.Result);
+    }
+
+    /// <summary>A multi-dimensional array's outer dimension over 100 long opens in ranges of 100, as a long array does, each
+    /// range to its rows and each row to its elements: a 200,000 by 1 array is 2,000 rows at its top, not 200,000.</summary>
+    [Fact]
+    public async Task A_multi_dimensional_arrays_long_outer_dimension_opens_in_ranges_of_100()
+    {
+        int line = Debuggees.Line("PassengerCases", "Console.WriteLine(\"displays\");");
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        EvaluateResponse tall = await host.EvaluateAsync((await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "new int[200000, 1]");
+        Assert.True(tall.VariablesReference > 0, $"new int[200000, 1] evaluated to \"{tall.Result}\" with nothing to open");
+
+        List<DapVariable> top = await host.VariablesAsync(tall.VariablesReference);
+        List<(int First, int Last)> ranges = [.. top.Select(row => Regex.Match(row.Name, @"^\[(\d+)\.\.(\d+), \.\.\.\]$"))
+            .Where(match => match.Success).Select(match => (int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value)))];
+        Assert.True(ranges.Count == top.Count && top.Count == 2000,
+            $"new int[200000, 1] opened to {top.Count} rows, {ranges.Count} of them ranges, where 2,000 ranges of 100 were to come: {string.Join(", ", top.Take(3).Select(row => row.Name))}…");
+        Assert.All(ranges, range => Assert.InRange(range.Last - range.First + 1, 1, 100));
+        Assert.Equal((0, 199999), (ranges[0].First, ranges[^1].Last));
+
+        List<DapVariable> rows = await host.VariablesAsync(top[1000].VariablesReference);
+        Assert.Equal([.. Enumerable.Range(100000, 100).Select(row => $"[{row}, ...]")], rows.Select(row => row.Name));
+        DapVariable element = Assert.Single(await host.VariablesAsync(rows[7].VariablesReference));
+        Assert.Equal(("[100007, 0]", "0"), (element.Name, element.Value));
     }
 }
