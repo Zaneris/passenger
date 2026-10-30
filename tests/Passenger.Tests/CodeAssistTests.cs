@@ -1527,9 +1527,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>Escape closes the code's lists of choices and its rename box wherever in the window the keys are: Show
-    /// Context Actions' list once Find Action, closed, has handed the editor the keys again, and Generate's once the
-    /// Explorer has them, which keeps them; Generate's list and the rename box close on a click away too, renaming
-    /// nothing.</summary>
+    /// Context Actions' list and the rename box once Find Action, closed, has given them back the keys they had, and
+    /// Generate's once the Explorer has them, which keeps them; Generate's list and the rename box close on a click away
+    /// too, renaming nothing.</summary>
     [AvaloniaFact]
     public void Escape_closes_the_lists_of_choices_and_the_rename_box_wherever_the_keys_are()
     {
@@ -1542,12 +1542,12 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Run(window, AppActions.FindAction);
         Assert.NotNull(window.Popup);
         Ui.Press(window, "ESCAPE");
-        Assert.True(window.Popup is null && editor.IsFocused && window.Assist.Offered.Count > 0,
-            $"Find Action closed did not leave the editor with the keys under Show Context Actions' list (Find Action {(window.Popup is null ? "closed" : "open")}, "
+        Assert.True(window.Popup is null && window.Assist.Offered.Count > 0 && OfferedRow(window, window.Assist.Offered[0]).IsFocused,
+            $"Find Action closed did not give Show Context Actions' list back the keys on its chosen row (Find Action {(window.Popup is null ? "closed" : "open")}, "
             + $"the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, the list offering {window.Assist.Offered.Count})");
         Ui.Press(window, "ESCAPE");
         Assert.True(window.Assist.Offered.Count == 0,
-            $"Escape with the keys back in the editor left Show Context Actions' list open: [{string.Join("; ", window.Assist.Offered)}]");
+            $"Escape with the keys back in Show Context Actions' list left it open: [{string.Join("; ", window.Assist.Offered)}]");
 
         window.OpenFile(project.PathOf("Point.cs"));
         Ui.Settle();
@@ -1580,10 +1580,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.WaitFor(() => window.Assist.Renaming == "Y", "the rename box again");
         Ui.Run(window, AppActions.FindAction);
         Ui.Press(window, "ESCAPE");
-        Assert.True(editor.IsFocused && window.Assist.Renaming == "Y",
-            $"Find Action closed did not leave the editor with the keys under the rename box (the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, the box holding {window.Assist.Renaming ?? "nothing"})");
+        Assert.True(window.FocusManager?.GetFocusedElement() is TextBox && window.Assist.Renaming == "Y",
+            $"Find Action closed did not give the rename box back the keys (the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, the box holding {window.Assist.Renaming ?? "nothing"})");
         Ui.Press(window, "ESCAPE");
-        Assert.True(window.Assist.Renaming is null, $"Escape with the keys back in the editor left the rename box open, holding {window.Assist.Renaming}");
+        Assert.True(window.Assist.Renaming is null, $"Escape with the keys back in the rename box left it open, holding {window.Assist.Renaming}");
         Ui.Settle();
         Assert.True(editor.Document.Snapshot.ToString() == point, $"The rename box closed by a click away or Escape renamed Y:\n{editor.Document.Snapshot}");
         window.Close();
