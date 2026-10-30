@@ -1380,9 +1380,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         if (exception is { Length: > 0 })
         {
-            if (store.FindException(exception) is { IsAny: false } breakpoint)
+            if (store.FindException(exception) is { IsAny: true } any)
             {
-                store.Remove(breakpoint);
+                store.Update(any, enabled: false, any.Suspend, any.Condition, any.HitCondition, any.LogMessage);
+            }
+            else if (store.FindException(exception) is { } type)
+            {
+                store.Remove(type);
             }
             await InTheProgram(cancel);
             return ExceptionBreakpoints();

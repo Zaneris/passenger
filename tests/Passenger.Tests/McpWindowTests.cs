@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Passenger.App.Debugging;
@@ -355,6 +356,38 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             IdeErrors.Flush();
             Assert.True(Ui.Shared(IdeErrors.LogPath).Contains("The fault's own words", StringComparison.Ordinal), "A fault an agent's call met is not in passenger.log");
             IdeErrors.Clear();
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
+
+    /// <summary>An agent's remove of "Any exception", the row every folder keeps, turns it off: its answer and the
+    /// Breakpoints window show it off, so the program no longer breaks on every exception.</summary>
+    [AvaloniaFact]
+    public void An_agents_remove_of_any_exception_turns_it_off_in_its_answer_and_the_breakpoints_window()
+    {
+        MainWindow window = AgentsWindow(Folder, languageServer: false);
+        ExceptionBreakpoint any = window.Debugger.Breakpoints.FindException(ExceptionBreakpoint.AnyException)!;
+        Assert.True(any.Enabled, "Any exception was off before the agent removed it");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Task<JsonElement> removing = Waiting.Apart(() => Call(client, McpTools.BreakpointSet, new() { ["exception"] = ExceptionBreakpoint.AnyException, ["remove"] = true }));
+            Press(Question(window, "the question for the agent's breakpoint"), "Allow");
+            JsonElement answer = Await(removing, "the agent's remove of Any exception");
+            JsonElement listed = answer.EnumerateArray().Single(b => b.TryGetProperty("exception", out JsonElement type) && type.GetString() == ExceptionBreakpoint.AnyException);
+            Assert.False(listed.GetProperty("enabled").GetBoolean(), $"The agent's remove answered Any exception still on: {listed}");
+            Assert.False(any.Enabled, "The agent's remove left Any exception on: the program still breaks on every exception");
+
+            Ui.Run(window, AppActions.ViewBreakpoints);
+            BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
+            Avalonia.Controls.CheckBox box = breakpoints.GetVisualDescendants().OfType<Avalonia.Controls.ListBoxItem>()
+                .Single(i => (i.Tag as Breakpoint)?.Location == ExceptionBreakpoint.AnyException)
+                .GetVisualDescendants().OfType<Avalonia.Controls.CheckBox>().First();
+            Assert.False(box.IsChecked == true, "The Breakpoints window shows Any exception on after the agent removed it");
         }
         finally
         {
