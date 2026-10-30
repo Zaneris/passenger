@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
@@ -8,7 +9,8 @@ using Passenger.App.Explorer;
 namespace Passenger.Tests;
 
 /// <summary>The keys go where the person is: a popup closing gives them back to what had them as it opened, a tool
-/// window's keys give it the keys, and Escape in one gives them back to the editor.</summary>
+/// window's keys give it the keys, Escape in one gives them back to the editor, and the menu key opens a row's menu at
+/// the row.</summary>
 public sealed class KeysPlaceTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("keys-place-");
@@ -109,6 +111,50 @@ public sealed class KeysPlaceTests : IDisposable
         Assert.True(window.EditorArea.CodeEditor.IsFocused, $"Escape in the Unit Tests' empty search with no test to go to left the keys on {Focused(window)}, not the editor");
         Assert.True(window.DockHost.IsShown(ToolWindowIds.Tests), "Escape in the Unit Tests window hid it");
         window.Close();
+    }
+
+    /// <summary>The menu key (Shift+F10) opens a row's menu under the chosen row, in the Explorer and in a tool window's
+    /// list, wherever the pointer is, so a person at the keys finds it where they are.</summary>
+    [AvaloniaFact]
+    public void The_menu_key_opens_a_rows_menu_under_the_chosen_row_wherever_the_pointer_is()
+    {
+        foreach (string name in (string[])["Alpha.txt", "Beta.txt", "Gamma.txt"])
+        {
+            TestFolders.Write(folder, name, $"{name}\nsecond line\n");
+        }
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile("Beta.txt");
+        Ui.Settle();
+        Ui.Run(window, AppActions.ToggleBookmark);
+        // Over the toolbar, far from every row.
+        window.MouseMove(new Point(window.Bounds.Width - 300, 20), Avalonia.Input.RawInputModifiers.None);
+
+        Ui.Run(window, AppActions.FocusExplorer);
+        Ui.Press(window, "DOWN");
+        Control explorerRow = window.FocusManager?.GetFocusedElement() as Control ?? throw new Xunit.Sdk.XunitException("No Explorer row has the keys");
+        Ui.Run(window, AppActions.ShowContextMenu);
+        ContextMenu explorerMenu = window.ExplorerView.OpenMenu ?? throw new Xunit.Sdk.XunitException("Shift+F10 on an Explorer row opened no menu");
+        Assert.True(Under(explorerMenu, explorerRow, out string explorerOff), $"Shift+F10 opened the Explorer row's menu {explorerOff}");
+        explorerMenu.Close();
+        Ui.Settle();
+
+        Ui.Run(window, AppActions.ShowBookmarks);
+        Control bookmarkRow = window.FocusManager?.GetFocusedElement() as Control ?? throw new Xunit.Sdk.XunitException("No Bookmarks row has the keys");
+        ListBox bookmarks = bookmarkRow.FindAncestorOfType<ListBox>() ?? throw new Xunit.Sdk.XunitException($"The Bookmarks window's keys went to {Describe(bookmarkRow)}, not a row");
+        Ui.Run(window, AppActions.ShowContextMenu);
+        ContextMenu bookmarkMenu = bookmarks.ContextMenu is { IsOpen: true } open ? open : throw new Xunit.Sdk.XunitException("Shift+F10 on a bookmark opened no menu");
+        Assert.True(Under(bookmarkMenu, bookmarkRow, out string bookmarkOff), $"Shift+F10 opened a bookmark's menu {bookmarkOff}");
+        bookmarkMenu.Close();
+        Ui.Settle();
+        window.Close();
+
+        static bool Under(ContextMenu menu, Control row, out string off)
+        {
+            PixelPoint menuAt = menu.PointToScreen(default);
+            PixelPoint rowAt = row.PointToScreen(new Point(0, row.Bounds.Height));
+            off = $"at {menuAt}, where the chosen row's bottom left is at {rowAt}";
+            return Math.Abs(menuAt.X - rowAt.X) <= 40 && Math.Abs(menuAt.Y - rowAt.Y) <= 40;
+        }
     }
 
     private static string Describe(object? focused) => focused switch

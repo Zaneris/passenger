@@ -1138,6 +1138,68 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Ui.Settle();
     }
 
+    /// <summary>Every control Tab reaches in Settings, on every page, shows it has the keys: the ring round it, or its edge
+    /// in the accent as a field's (a text box, a drop-down, a number box), so a person moving by the keys sees where
+    /// they are.</summary>
+    [AvaloniaFact]
+    public void Every_control_Tab_reaches_shows_the_ring_or_the_accent_edge_while_it_has_the_keys()
+    {
+        MainWindow window = Open(1200, 800);
+        SettingsDialog? settings = null;
+        try
+        {
+            Color[] marks = [Brush(window, TokenKeys.Accent), Brush(window, TokenKeys.Focus)];
+            settings = window.ShowSettings();
+            Ui.Settle();
+            HashSet<string> kinds = new(StringComparer.Ordinal);
+            List<string> unmarked = [];
+            foreach (string page in settings.Pages.ToList())
+            {
+                settings.Page = page;
+                Ui.Settle();
+                TextBox search = settings.GetVisualDescendants().OfType<TextBox>().First(t => t.IsEffectivelyVisible);
+                search.Focus();
+                Ui.Settle();
+                for (int i = 0; i < 80; i++)
+                {
+                    Ui.Press(settings, "TAB");
+                    if (settings.FocusManager?.GetFocusedElement() is not Control focused || focused == search)
+                    {
+                        break;
+                    }
+                    kinds.Add(focused.GetType().Name);
+                    if (!Ringed(focused) && !AccentEdged(focused, marks))
+                    {
+                        unmarked.Add($"{page}: {focused.GetType().Name} '{focused.GetSelfAndVisualDescendants().OfType<TextBlock>().FirstOrDefault(t => !string.IsNullOrEmpty(t.Text))?.Text}'");
+                    }
+                }
+            }
+            Assert.True(unmarked.Count == 0, $"These controls have the keys from Tab with nothing drawn to say so, neither the ring nor the accent edge:\n{string.Join("\n", unmarked.Distinct())}");
+            Assert.True(new[] { "ComboBox", "CheckBox", "Button", "TextBox" }.All(kinds.Contains), $"Tab reached only {string.Join(", ", kinds)} in Settings");
+        }
+        finally
+        {
+            settings?.Close();
+            Ui.Settle();
+            window.Close();
+        }
+
+        static bool Ringed(Control focused) => AdornerLayer.GetAdornerLayer(focused) is { } layer
+            && layer.Children.OfType<FocusRing>().Any(r => r.IsVisible && AdornerLayer.GetAdornedElement(r) == focused);
+
+        // A part of another control (a number box's text) shows its edge on that control.
+        static bool AccentEdged(Control focused, Color[] marks)
+        {
+            Control owner = focused.TemplatedParent as Control ?? focused;
+            return owner.GetSelfAndVisualDescendants().Any(v => v.IsEffectivelyVisible && v switch
+            {
+                Border { BorderBrush: ISolidColorBrush edge } border => marks.Contains(edge.Color) && border.BorderThickness != default,
+                ContentPresenter { BorderBrush: ISolidColorBrush edge } presenter => marks.Contains(edge.Color) && presenter.BorderThickness != default,
+                _ => false,
+            });
+        }
+    }
+
     [Gate]
     [AvaloniaFact]
     public void The_windows_areas_are_told_apart_by_shade_with_a_line_only_where_two_tool_windows_meet()

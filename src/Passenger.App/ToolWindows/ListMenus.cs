@@ -31,6 +31,30 @@ public static class ListMenus
         Make();
     }
 
+    /// <summary>Places a menu the menu key (Shift+F10) opens under what has the keys (a list's chosen row), where one a
+    /// right-click opens stands at the pointer. Gives what puts it back where it stood, run as it closes too.</summary>
+    public static Action PlaceForKeys(ContextMenu menu, Control at)
+    {
+        (PlacementMode Placement, Control? Target) was = (menu.Placement, menu.PlacementTarget);
+        bool back = false;
+        menu.Placement = PlacementMode.BottomEdgeAlignedLeft;
+        menu.PlacementTarget = at;
+        menu.Closed += Closed;
+        return Back;
+
+        void Closed(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Back();
+
+        void Back()
+        {
+            if (!back)
+            {
+                back = true;
+                menu.Closed -= Closed;
+                (menu.Placement, menu.PlacementTarget) = was;
+            }
+        }
+    }
+
     /// <summary>An item, with the keys shown that do the same where the list has the focus.</summary>
     public static MenuItem Item(string header, string? keys, Action run, bool enabled = true)
     {

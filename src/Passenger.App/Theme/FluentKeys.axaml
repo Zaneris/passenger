@@ -149,14 +149,15 @@
     <x:String x:Key="TextControlButtonForegroundPointerOver">Passenger.Accent</x:String>
     <x:String x:Key="TextControlButtonForegroundPressed">Passenger.AccentText</x:String>
 
-    <!-- A drop-down framed as a field and on its ground; its list the popup's ground and edge in the window's words, the
-         chosen row a list's, the one under the pointer washed. -->
+    <!-- A drop-down framed as a field and on its ground, its edge a field's accent while it has the keys; its list the
+         popup's ground and edge in the window's words, the chosen row a list's, the one under the pointer washed. -->
     <x:String x:Key="ComboBoxBackground">Passenger.Field</x:String>
     <x:String x:Key="ComboBoxBackgroundPointerOver">Passenger.Field</x:String>
     <x:String x:Key="ComboBoxBackgroundPressed">Passenger.Field</x:String>
     <x:String x:Key="ComboBoxBackgroundUnfocused">Passenger.Field</x:String>
     <x:String x:Key="ComboBoxBackgroundDisabled">Passenger.Panel</x:String>
     <x:String x:Key="ComboBoxBackgroundBorderBrushUnfocused">Passenger.FieldBorder</x:String>
+    <x:String x:Key="ComboBoxBackgroundBorderBrushFocused">Passenger.Accent</x:String>
     <x:String x:Key="ComboBoxBorderBrush">Passenger.FieldBorder</x:String>
     <x:String x:Key="ComboBoxBorderBrushPointerOver">Passenger.FieldBorder</x:String>
     <x:String x:Key="ComboBoxBorderBrushPressed">Passenger.FieldBorder</x:String>

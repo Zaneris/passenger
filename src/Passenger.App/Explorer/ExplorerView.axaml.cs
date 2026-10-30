@@ -61,6 +61,10 @@ public partial class ExplorerView : UserControl
                 OpenMenu?.Close();
                 OpenMenu = menu;
                 menu.Closed += (_, _) => OpenMenu = OpenMenu == menu ? null : OpenMenu;
+                if (!e.TryGetPosition(Rows, out Avalonia.Point _) && Rows.ContainerFromItem(node) is { } row)
+                {
+                    ToolWindows.ListMenus.PlaceForKeys(menu, row);
+                }
                 menu.Open(Rows);
                 e.Handled = true;
             }

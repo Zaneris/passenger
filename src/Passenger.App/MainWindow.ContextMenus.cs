@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Passenger.App.Debugging;
 using Passenger.Editor;
 using E = Passenger.Editor.EditorActions;
@@ -95,7 +96,7 @@ public partial class MainWindow
     }
 
     /// <summary>The menu key (Shift+F10): the menu of the place with the focus, in whichever of the IDE's windows it was
-    /// pressed, at its caret or chosen row.</summary>
+    /// pressed, at its caret or under its chosen row.</summary>
     private static void ShowFocusedContextMenu(object? focused)
     {
         switch (focused)
@@ -104,7 +105,15 @@ public partial class MainWindow
                 editor.RequestContextMenu();
                 break;
             case Control control:
+                // The menu a request from it opens (its own, or its list's), placed under it; one its owner makes is placed there.
+                Action? back = control.GetSelfAndVisualAncestors().OfType<Control>().FirstOrDefault(c => c.ContextMenu is not null)?.ContextMenu is { } menu
+                    ? ToolWindows.ListMenus.PlaceForKeys(menu, control)
+                    : null;
                 control.RaiseEvent(new Avalonia.Input.ContextRequestedEventArgs());
+                if (back is not null && control.GetSelfAndVisualAncestors().OfType<Control>().All(c => c.ContextMenu is not { IsOpen: true }))
+                {
+                    back();
+                }
                 break;
         }
     }
