@@ -940,6 +940,61 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         }
     }
 
+    /// <summary>A trace holding only the runtime's allocation ticks and collections, no samples and no frames (a recording of
+    /// a program's memory alone), lists them on the Allocations and GC pages as any run's.</summary>
+    [AvaloniaFact]
+    public void A_trace_of_allocations_and_collections_alone_lists_them()
+    {
+        string trace = Path.Combine(folder, "MemoryOnly.nettrace");
+        Ui.Await(Waiting.Apart(() => RecordMemory(trace)), "the allocations' and collections' trace");
+        MainWindow window = new() { Width = 1300, Height = 900 };
+        window.Show();
+        try
+        {
+            Snapshot snapshot = Ui.Await(window.OpenSnapshotAsync(trace), "the snapshot to open") ?? throw new InvalidOperationException($"The snapshot did not open: {window.Status}");
+            Assert.Equal(0, snapshot.Samples);
+            AllocatedType arrays = snapshot.Allocations.FirstOrDefault(a => a.Name == "System.Byte[]")
+                ?? throw new Xunit.Sdk.XunitException($"The byte arrays allocated are not listed, of [{string.Join(", ", snapshot.Allocations.Select(a => a.Name))}]");
+            Assert.True(arrays.Bytes >= 4_000_000, $"The byte arrays allocated are listed with {arrays.Bytes:N0} bytes, not the 8 MB allocated");
+            Assert.True(snapshot.Collections.Count(c => c.Generation == 2) >= 3, $"The three collections of generation 2 are not all listed: [{string.Join(", ", snapshot.Collections.Select(c => c.Generation))}]");
+            window.ProfilerView.ShowPage(Passenger.App.Profiling.ProfilerPage.Allocations);
+            Ui.Settle();
+            Assert.Contains(window.ProfilerView.Types, t => t.Name == "System.Byte[]");
+            Assert.StartsWith($"{snapshot.Collections.Count} collections", window.ProfilerView.CollectionsSummary, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>This process's allocations of 8 MB of byte arrays and three full collections, recorded by an EventPipe session
+    /// of its own into a .nettrace with the runtime's GC events alone: no sampler, so no samples.</summary>
+    private static async Task RecordMemory(string trace)
+    {
+        Microsoft.Diagnostics.NETCore.Client.DiagnosticsClient client = new(Environment.ProcessId);
+        using Microsoft.Diagnostics.NETCore.Client.EventPipeSession session = client.StartEventPipeSession(
+            [new Microsoft.Diagnostics.NETCore.Client.EventPipeProvider(Snapshot.RuntimeProvider, System.Diagnostics.Tracing.EventLevel.Verbose, 0x1)], requestRundown: false);
+        Task copying = Waiting.Apart(() =>
+        {
+            using FileStream file = File.Create(trace);
+            session.EventStream.CopyTo(file);
+        });
+        List<byte[]> kept = [];
+        for (int i = 0; i < 80; i++)
+        {
+            kept.Add(new byte[100_000]);
+        }
+        for (int i = 0; i < 3; i++)
+        {
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+        }
+        GC.KeepAlive(kept);
+        session.Stop();
+        Assert.True(await Waiting.Within(copying, TimeSpan.FromSeconds(30), scaled: false), "The EventPipe session's trace never ended");
+        await copying;
+    }
+
     /// <summary>Frames of these times on the UI thread, told by this process as the Live Visual Tree's inspector tells an
     /// app's, recorded by an EventPipe session of its own into a .nettrace.</summary>
     private static async Task RecordFrames(string trace, double[] times)

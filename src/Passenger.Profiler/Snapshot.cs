@@ -569,9 +569,10 @@ public sealed class Snapshot
             }
             (int Thread, SampleRun[] Runs)[] kept = [.. runs.Select(t => (t.Key, t.Value.ToArray()))];
             IReadOnlyList<UiFrame> drawn = uiFrames.Frames();
-            // A run attached for its frames alone may have few samples: its frames are the run too.
-            IEnumerable<double> starts = kept.Select(t => t.Runs.Min(r => r.FromMs)).Concat(drawn.Select(f => f.StartMs));
-            IEnumerable<double> ends = kept.Select(t => t.Runs.Max(r => r.ToMs)).Concat(drawn.Select(f => f.EndMs));
+            // The run spans every kind of event it holds, so one of few samples or none still holds its frames, allocations and GCs.
+            IEnumerable<double> marks = ticks.Select(t => t.AtMs).Concat(collections.Select(c => c.AtMs));
+            IEnumerable<double> starts = kept.Select(t => t.Runs.Min(r => r.FromMs)).Concat(drawn.Select(f => f.StartMs)).Concat(marks);
+            IEnumerable<double> ends = kept.Select(t => t.Runs.Max(r => r.ToMs)).Concat(drawn.Select(f => f.EndMs)).Concat(marks);
             double first = starts.DefaultIfEmpty(0).Min();
             double end = ends.DefaultIfEmpty(0).Max();
             return new Snapshot(kept, stacks, names.Named, names.Codes, threads, ticks, collections, drawn, first, end, nettrace, null);
