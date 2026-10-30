@@ -100,6 +100,31 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         Assert.Empty(resources.Errors);
     }
 
+    /// <summary>A trace an agent reads for a resource is the dashboard's whole, its spans those of the resource's service
+    /// whatever instance sent them: a trace of the service api, its instance instance1, read for the resource api by its id.</summary>
+    [Fact]
+    public async Task An_agents_trace_of_a_resource_holds_the_spans_its_service_sent_from_an_instance()
+    {
+        await project.ResetAsync();
+        await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
+        resources.PushResource(new Passenger.App.Aspire.Protocol.Resource { Name = "api", DisplayName = "api", Uid = "api", ResourceType = "Project", State = "Running" });
+        await using AspireDashboardHost dashboard = await AspireDashboardHost.StartAsync();
+        await project.ServeAsync(resources, dashboard.Endpoint);
+        await using McpClient client = await Start(["--mcp", project.Folder], languageServer: false);
+        string host = PathNames.Canonical(project.ProjectFile);
+        await Running(client, host, "api");
+
+        dashboard.Answer = _ => (200, "application/json", AspireDashboardHost.Wrapped(Spans));
+        JsonElement answer = await Call(client, McpTools.Telemetry, new() { ["kind"] = "traces", ["resource"] = $"{host}::api", ["traceId"] = TraceId });
+        JsonElement trace = Assert.Single(answer.GetProperty("traces").EnumerateArray());
+        Assert.Equal(TraceId, trace.GetProperty("traceId").GetString());
+        Assert.Equal(2, trace.GetProperty("spans").GetArrayLength());
+        string asked = Assert.Single(dashboard.Requests).PathAndQuery;
+        Assert.True(asked.StartsWith($"/api/telemetry/traces/{TraceId}?", StringComparison.Ordinal) && asked.EndsWith("&resource=api", StringComparison.Ordinal), asked);
+        Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
+        Assert.Empty(resources.Errors);
+    }
+
     [Fact]
     public async Task An_agents_telemetry_never_sends_the_key_to_a_dashboard_elsewhere_or_named_with_credentials()
     {
@@ -334,7 +359,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
 
     /// <summary>The stand-in AppHost run by the agent from its Aspire configuration, which run answers once the AppHost is
     /// up: its Passenger lists it with its resource from the stand-in resource service, running, as the answer comes.</summary>
-    private async Task Running(McpClient client, string host)
+    private async Task Running(McpClient client, string host, string resource = "api-owned-instance")
     {
         Assert.True(await Waiting.UntilAsync(async () => (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray()
             .Any(item => item.GetString() == StandInAppHost.Configuration), TimeSpan.FromMinutes(2), Cancel),
@@ -343,9 +368,19 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"run of the stand-in AppHost answered: {ran}");
         JsonElement workspace = await Call(client, McpTools.Workspace);
         Assert.True(workspace.GetProperty("aspireApps").EnumerateArray().Any(app => PathNames.Same(app.GetProperty("appHostPath").GetString()!, host)
-            && app.GetProperty("resources").EnumerateArray().Any(resource => resource.GetProperty("name").GetString() == "api-owned-instance")),
+            && app.GetProperty("resources").EnumerateArray().Any(listed => listed.GetProperty("name").GetString() == resource)),
             $"run of the stand-in AppHost answered before the AppHost was up with its resource: {workspace}{Said()}");
     }
+
+    private const string TraceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+
+    /// <summary>A trace of two spans of the API's service, sent from its instance instance1.</summary>
+    private const string Spans = """
+        {"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"api"}},{"key":"service.instance.id","value":{"stringValue":"instance1"}}]},
+        "scopeSpans":[{"scope":{"name":"Microsoft.AspNetCore"},"spans":[
+        {"traceId":"4bf92f3577b34da6a3ce929d0e0e4736","spanId":"00f067aa0ba902b7","name":"GET /","kind":2,"startTimeUnixNano":"1760000000000000000","endTimeUnixNano":"1760000000100000000"},
+        {"traceId":"4bf92f3577b34da6a3ce929d0e0e4736","spanId":"00f067aa0ba902b8","parentSpanId":"00f067aa0ba902b7","name":"SELECT","kind":3,"startTimeUnixNano":"1760000000010000000","endTimeUnixNano":"1760000000050000000"}]}]}]}
+        """;
 
     /// <summary>One structured log of the API, its body a boolean and its attributes an integer, an authorization header and
     /// an exception's credentials.</summary>

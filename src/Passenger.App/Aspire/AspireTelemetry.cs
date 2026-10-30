@@ -92,7 +92,7 @@ public static class AspireTelemetry
         IReadOnlyList<AspireTrace> result = [];
         await TracesAsync(baseUri, dashboardApiKey, traces => result = traces, cancel, follow: false,
             SnapshotQuery(resource, null, Math.Clamp(limit, 1, AspireClient.TraceLimit)), traceId).ConfigureAwait(false);
-        return resource is null ? result : Array.AsReadOnly(result.Where(trace => trace.Spans.Any(span => span.Source == resource)).ToArray());
+        return resource is null ? result : Array.AsReadOnly(result.Where(trace => trace.Spans.Any(span => Telemetry.TelemetrySource.Of(span.Service, span.Source, resource))).ToArray());
     }
 
     private static Task TracesAsync(Uri baseUri, string dashboardApiKey,
