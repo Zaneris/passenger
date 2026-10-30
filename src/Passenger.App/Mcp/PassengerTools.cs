@@ -961,6 +961,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "values, items, targets and imports.")]
     public Task<string> Outline(string path, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
+        // A generator's code copied has no server document: its own syntax says what it declares.
+        if (GeneratedCode.IsCopy(Resolve(path)) && (await DocumentAsync(path, cancel)).Syntax?.Current is { } parsed)
+        {
+            string declared = await BackgroundWork.Run(() => Declarations.Outline(parsed), cancel);
+            return declared.Length == 0 ? "Nothing is declared in this file" : declared;
+        }
         Served served = await Serve(path, cancel);
         switch (served)
         {
@@ -2309,6 +2315,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// so one just written is opened in its project; <paramref name="takenIn"/> when the caller has).</summary>
     private async Task<(OpenDocument Document, LspDocument Lsp)> Code(string path, CancellationToken cancel, bool takenIn = false)
     {
+        NotGenerated(path);
         takenIn = takenIn || await TakenInAsync(path, cancel);
         OpenDocument document = await DocumentAsync(path, cancel);
         if (Session.CSharp is null)
@@ -2328,6 +2335,17 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         return (document, Session.CSharp?.For(document)?.Lsp
             ?? throw new TimeoutException($"The language server has not loaded {Path.GetFileName(document.Path)} ({Session.CSharp?.State ?? "none"})"));
+    }
+
+    /// <summary>Refuses at once, in the window's words, a source generator's code copied to read (<see cref="GeneratedCode"/>),
+    /// which the C# language server never holds, so waiting for its document would wait out the limit.</summary>
+    private void NotGenerated(string path)
+    {
+        string full = Resolve(path);
+        if (GeneratedCode.IsCopy(full))
+        {
+            throw new InvalidOperationException(Refusals.Generated(Path.GetFileName(full), Session.CSharp?.Generated.OriginOf(full)));
+        }
     }
 
     /// <summary>A file opened as the editor would, with no tab, held for the call (<see cref="CallFiles"/>). An agent's own

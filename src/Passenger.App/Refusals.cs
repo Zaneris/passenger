@@ -105,8 +105,9 @@ public static class Refusals
     public static string ReadOnly(string name) => $"{name} is read-only";
 
     /// <summary>A source generator's code copied to read (<see cref="CSharp.GeneratedCode"/>), which the C# language server
-    /// answers nothing in.</summary>
-    public static string Generated(string name) => $"{name} is a source generator's code, copied to read: the C# language server answers in the code it is made from";
+    /// answers nothing in, with what made it and for which project where known (<see cref="CSharp.GeneratedCode.OriginOf"/>).</summary>
+    public static string Generated(string name, string? origin = null) =>
+        $"{name} is a source generator's code{(origin is null ? string.Empty : $", {origin},")} copied to read: the C# language server answers in the code it is made from";
 
     /// <summary>Why the file shown cannot be saved: none is shown, it is read-only, or it has nothing to save.</summary>
     public static string? NeedsUnsaved(ActionContext context) =>

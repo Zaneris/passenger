@@ -112,10 +112,11 @@
     <Compile Include="../../src/Passenger.App/Mcp/AgentAnswers.cs" Link="App/AgentAnswers.cs" />
   </ItemGroup>
 
-  <!-- Where a copy of a source generator's code goes and whose project it is, from their names alone, compiled in since
-       their project is the app's. -->
+  <!-- Where a copy of a source generator's code goes and whose project it is, from their names alone, and what a C# file
+       declares, from its syntax alone, compiled in since their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/CSharp/GeneratedCopies.cs" Link="App/GeneratedCopies.cs" />
+    <Compile Include="../../src/Passenger.App/CSharp/Declarations.cs" Link="App/Declarations.cs" />
   </ItemGroup>
 
   <!-- The JSON schemas the app carries under web/schemas, compiled in for the checks of what they offer and take. -->

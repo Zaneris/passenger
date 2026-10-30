@@ -73,6 +73,38 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             $"usages where no symbol is answered: {Text(nothing)}");
     }
 
+    /// <summary>The code tools on a source generator's code copied, where usages led the agent, answer at once: its outline
+    /// from its own text, and what needs the language server, which never holds a copy, refused in the window's words,
+    /// naming the generator and the project.</summary>
+    [Fact]
+    public async Task An_agent_asking_about_a_generators_code_where_usages_led_it_is_answered_from_its_text_or_refused_at_once()
+    {
+        await TakeFolderAsync();
+        Write("Words.cs", Words);
+        await using McpClient client = await Start(["--mcp", Folder]);
+        (string path, int line, int column, _) = Used(await Call(client, McpTools.Usages, new() { ["path"] = "Words.cs", ["line"] = 6, ["column"] = 34 }))[^1];
+        Assert.EndsWith($"{Path.DirectorySeparatorChar}RegexGenerator.g.cs", path, StringComparison.Ordinal);
+
+        const string Refused = $"RegexGenerator.g.cs is a source generator's code, made by RegexGenerator for Sum ({TestProjects.Framework}), copied to read: "
+            + "the C# language server answers in the code it is made from";
+        foreach ((string tool, Dictionary<string, object?> arguments) in new (string, Dictionary<string, object?>)[]
+        {
+            (McpTools.SymbolInfo, new() { ["path"] = path, ["line"] = line, ["column"] = column }),
+            (McpTools.Diagnostics, new() { ["path"] = path }),
+            (McpTools.Definition, new() { ["path"] = path, ["line"] = line, ["column"] = column }),
+        })
+        {
+            System.Diagnostics.Stopwatch asked = System.Diagnostics.Stopwatch.StartNew();
+            CallToolResult refused = await Result(client, tool, arguments);
+            Assert.True(refused.IsError == true && Text(refused).Contains(Refused, StringComparison.Ordinal),
+                $"{tool} on the generator's code copied answered after {asked.Elapsed.TotalSeconds:0.0} s: {Text(refused)}");
+        }
+
+        string outline = (await Call(client, McpTools.Outline, new() { ["path"] = path })).GetString()!;
+        Assert.True(outline.StartsWith("Words (class, line ", StringComparison.Ordinal) && outline.Contains($"\n  Word() (method, line {line})\n", StringComparison.Ordinal),
+            $"outline of the generator's code copied is not what its text declares, Word() on line {line}:\n{outline}");
+    }
+
     [Fact]
     public async Task An_agent_names_a_symbol_in_place_of_its_place_finds_names_exactly_and_tells_overloads_apart_by_their_documentation_ids()
     {

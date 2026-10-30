@@ -204,8 +204,21 @@ public sealed class GeneratedCode
         }
     }
 
+    /// <summary>What made a copy, as far as is known: its generator and project where this run made it ("made by
+    /// RegexGenerator for Shop"), else its project as its folder names it; null for a path that is no copy.</summary>
+    public string? OriginOf(string path)
+    {
+        UiThread.Check();
+        return sources.TryGetValue(path, out Source? source) ? $"made by {Maker(source)}"
+            : GeneratedCopies.ProjectNameOf(Folder, path) is { } project ? $"made for {project}"
+            : null;
+    }
+
     /// <summary>What a copy's banner says beside its origin: the generator and project it comes from while it is followed.</summary>
     private string NoticeOf(OpenDocument document) => sources.TryGetValue(document.Path, out Source? source)
-        ? $"Made by {source.Generator[(source.Generator.LastIndexOf('.') + 1)..]} for {source.Asked.ProjectName}"
+        ? $"Made by {Maker(source)}"
         : "Copied in an earlier run and followed no longer: shown as its generator made it then";
+
+    /// <summary>A copy's generator by its type's own name, and its project.</summary>
+    private static string Maker(Source source) => $"{source.Generator[(source.Generator.LastIndexOf('.') + 1)..]} for {source.Asked.ProjectName}";
 }
