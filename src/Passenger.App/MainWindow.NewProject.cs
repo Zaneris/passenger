@@ -159,42 +159,23 @@ public partial class MainWindow
     {
         string name = Path.GetFileNameWithoutExtension(made.Projects[0]);
         List<string> paths = [.. made.Central.Select(c => c.Project), .. made.Central.Select(c => c.Central.Props).Distinct(PathNames.Comparer)];
-        if (SaveBeforeWriting(paths) is { } unsaved)
+        if (await ChangeFileAsync(paths, () =>
         {
-            return $"{name} did not take central package management's form: {unsaved}";
-        }
-        foreach (string path in paths)
-        {
-            into?.Watch(path);
-        }
-        try
-        {
-            Following(paths, () =>
+            Dictionary<string, List<(string Id, string Version)>> pins = new(PathNames.Comparer);
+            foreach ((string project, CentralPackages central) in made.Central)
             {
-                Dictionary<string, List<(string Id, string Version)>> pins = new(PathNames.Comparer);
-                foreach ((string project, CentralPackages central) in made.Central)
-                {
-                    (string text, IReadOnlyList<(string Id, string Version)> pinned) = ProjectEdits.Centralized(Written(project).Text, central.Versions, central.Overrides);
-                    Write(project, text);
-                    (pins.TryGetValue(central.Props, out List<(string Id, string Version)>? held) ? held : pins[central.Props] = []).AddRange(pinned);
-                }
-                foreach ((string props, List<(string Id, string Version)> pinned) in pins.Where(p => p.Value.Count > 0))
-                {
-                    Write(props, CentralPackages.Pinned(Written(props).Text, pinned));
-                }
-            });
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                (string text, IReadOnlyList<(string Id, string Version)> pinned) = ProjectEdits.Centralized(Written(project).Text, central.Versions, central.Overrides);
+                Write(project, text);
+                (pins.TryGetValue(central.Props, out List<(string Id, string Version)>? held) ? held : pins[central.Props] = []).AddRange(pinned);
+            }
+            foreach ((string props, List<(string Id, string Version)> pinned) in pins.Where(p => p.Value.Count > 0))
+            {
+                Write(props, CentralPackages.Pinned(Written(props).Text, pinned));
+            }
+            return null;
+        }, into) is { } unwritten)
         {
-            return $"{name} did not take central package management's form: {error.Message}";
-        }
-        finally
-        {
-            FollowWritten(paths);
-        }
-        if (await (into is null ? UnlandedAsync(paths) : UnlandedAsync(into)) is { } unlanded)
-        {
-            return $"{name} did not take central package management's form: {unlanded.Message}";
+            return $"{name} did not take central package management's form: {unwritten}";
         }
         foreach (string project in made.Projects)
         {

@@ -40,7 +40,8 @@ public partial class MainWindow
     }
 
     /// <summary>Makes a project reference the solution's projects given and no others of them: those not referenced yet are
-    /// added, those no longer given taken out. Null once done and landed, else why not, which the status bar says too.</summary>
+    /// added, those no longer given taken out, as one command Undo takes back. Null once done and landed, else why not,
+    /// which the status bar says too.</summary>
     public async Task<string?> SetReferencesAsync(string project, IReadOnlyCollection<string> wanted)
     {
         string name = Path.GetFileNameWithoutExtension(project);
@@ -52,14 +53,9 @@ public partial class MainWindow
         {
             return null;
         }
-        if (SaveBeforeWriting([project]) is { } unsaved)
-        {
-            status.Text = $"{name} could not be changed: {unsaved}";
-            return unsaved;
-        }
         List<string> said = [];
-        Exception? refused = null;
-        try
+        // The project file's last write holds every change, so once it never lands none of them is made.
+        string? refused = await ChangeFileAsync($"Change {name}'s References", [project], () =>
         {
             foreach (string added in adding)
             {
@@ -69,28 +65,19 @@ public partial class MainWindow
             {
                 said.Add(ProjectEdits.RemoveReference(project, removed) ?? $"Removed the reference to {Path.GetFileNameWithoutExtension(removed)} from {name}");
             }
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            refused = error;
-        }
-        // The project file's last write holds every change, so once it never lands none of them is made.
-        if (refused is null && await UnlandedAsync([project]) is { } unlanded)
-        {
-            said.Clear();
-            refused = unlanded;
-        }
+            return null;
+        });
         if (refused is not null)
         {
-            said.Add($"{name} could not be changed: {refused.Message}");
+            said = [$"{name} could not be changed: {refused}"];
         }
-        FollowWritten([project]);
         ReloadSolution();
         status.Text = string.Join("; ", said);
-        return refused?.Message;
+        return refused;
     }
 
-    /// <summary>Remove on a project reference under Dependencies, once asked: the project file loses it.</summary>
+    /// <summary>Remove on a project reference under Dependencies, once asked: the project file loses it, as one command Undo
+    /// takes back.</summary>
     public async Task<bool> RemoveReferenceAsync(string project, string referenced)
     {
         string name = Path.GetFileNameWithoutExtension(project);
@@ -99,20 +86,7 @@ public partial class MainWindow
         {
             return false;
         }
-        string? problem = SaveBeforeWriting([project]);
-        try
-        {
-            problem ??= ProjectEdits.RemoveReference(project, referenced);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            problem = error.Message;
-        }
-        if (problem is null && await UnlandedAsync([project]) is { } unlanded)
-        {
-            problem = unlanded.Message;
-        }
-        FollowWritten([project]);
+        string? problem = await ChangeFileAsync($"Remove the Reference to {other} from {name}", [project], () => ProjectEdits.RemoveReference(project, referenced));
         if (problem is null)
         {
             ReloadSolution();

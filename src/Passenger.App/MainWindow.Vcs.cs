@@ -773,8 +773,8 @@ public partial class MainWindow
 
     /// <summary>Add to .gitignore: a line of the repository's top .gitignore matching that file alone (<see
     /// cref="Git.IgnoreLine"/>), which keeps its encoding, byte order mark and line breaks and is written as a save writes
-    /// (through a temporary file, to Local History); open with unsaved edits, it is saved first, and shows the line after;
-    /// said once the write has landed.</summary>
+    /// (through a temporary file, to Local History), one made as its .editorconfig asks; open with unsaved edits, it is saved
+    /// first, and shows the line after; one command Undo takes back, said once the write has landed.</summary>
     private async Task IgnoreAsync(string path)
     {
         if (session.Vcs.Repository is not { } repository)
@@ -788,37 +788,24 @@ public partial class MainWindow
             status.Text = $".gitignore was not changed: {name} holds a line break, which no line of it can";
             return;
         }
-        if (SaveBeforeWriting([ignore]) is { } unsaved)
-        {
-            status.Text = $".gitignore was not changed: {unsaved}";
-            return;
-        }
-        try
+        if (await ChangeFileAsync($"Add {name} to .gitignore", [ignore], () =>
         {
             if (!File.Exists(ignore))
             {
                 FileText.SaveNew(ignore, line + "\n");
+                return null;
             }
-            else if (FileText.Load(ignore) is { } file)
+            if (FileText.Load(ignore) is not { } file)
             {
-                FileText.SaveOver(ignore, file, file.Text + (file.Text.Length > 0 && !file.Text.EndsWith('\n') ? file.Break : string.Empty) + line + file.Break);
+                return ".gitignore is not a text file";
             }
-            else
-            {
-                throw new IOException(".gitignore is not a text file");
-            }
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            FileText.SaveOver(ignore, file, file.Text + (file.Text.Length > 0 && !file.Text.EndsWith('\n') ? file.Break : string.Empty) + line + file.Break);
+            return null;
+        }) is { } refused)
         {
-            status.Text = $".gitignore was not changed: {error.Message}";
+            status.Text = $".gitignore was not changed: {refused}";
             return;
         }
-        if (await UnlandedAsync([ignore]) is { } refused)
-        {
-            status.Text = $".gitignore was not changed: {refused.Message}";
-            return;
-        }
-        FollowWritten([ignore]);
         status.Text = $"Added {name} to .gitignore";
         IdeErrors.Observe(session.Vcs.RefreshAsync());
     }

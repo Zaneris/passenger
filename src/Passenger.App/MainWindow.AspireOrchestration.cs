@@ -86,31 +86,19 @@ public partial class MainWindow
                 throw new InvalidOperationException("A file was edited while orchestration was being prepared: save it and try again");
             }
             AspireOrchestration.CheckUnchanged(writes);
-            using (CommandHistory.Recording? own = into is null ? Editors.Commands.Record("Add Aspire Orchestration") : null)
+            bool Lists(string path) => PathNames.Same(path, solution.Path) || filter is not null && PathNames.Same(path, filter);
+            // The solution is read again only once it and its projects hold what was written.
+            if (await ChangeFileAsync("Add Aspire Orchestration", [.. writes.Select(w => w.Path)], () =>
             {
-                CommandHistory.Recording recording = into ?? own!;
-                foreach (AspireOrchestration.Write write in writes)
+                foreach (AspireOrchestration.Write write in writes.OrderBy(w => w.Before is null ? 0 : Lists(w.Path) ? 2 : 1))
                 {
-                    recording.Watch(write.Path);
+                    FileText.SaveOver(write.Path, write.Text, write.Text.Text);
                 }
-                try
-                {
-                    bool Lists(string path) => PathNames.Same(path, solution.Path) || filter is not null && PathNames.Same(path, filter);
-                    foreach (AspireOrchestration.Write write in writes.OrderBy(w => w.Before is null ? 0 : Lists(w.Path) ? 2 : 1))
-                    {
-                        Directory.CreateDirectory(Path.GetDirectoryName(write.Path)!);
-                        FileText.SaveOver(write.Path, write.Text, write.Text.Text);
-                    }
-                }
-                finally
-                {
-                    FollowWritten(writes.Select(w => w.Path));
-                }
-                // The solution is read again only once it and its projects hold what was written.
-                if (await UnlandedAsync(recording) is { } unlanded)
-                {
-                    throw unlanded;
-                }
+                return null;
+            }, into) is { } refused)
+            {
+                ReloadSolution();
+                return status.Text = $"Could not add Aspire orchestration: {refused}" + (into is null ? string.Empty : $"; Undo {into.Name} takes back any change written");
             }
             ReloadSolution();
             return status.Text = writes.Count == 0 ? "Aspire orchestration is already configured" : AspireAdded;

@@ -591,6 +591,57 @@ public partial class MainWindow
         return true;
     });
 
+    /// <summary>Workspace files the IDE writes itself (a project's, the solution's, a launch profile), as part of the command
+    /// given (none for a change no Undo takes back): those open with unsaved edits saved first, each watched for the command,
+    /// what the change makes, moves or deletes followed (<see cref="Following{T}"/>), the open ones taking the text written
+    /// inside the command, then its writes waited for. Null once landed, else why not: the change's own refusal, or the
+    /// disk's words for a write it refused.</summary>
+    private async Task<string?> ChangeFileAsync(IReadOnlyCollection<string> paths, Func<string?> write, CommandHistory.Recording? into)
+    {
+        if (SaveBeforeWriting(paths) is { } unsaved)
+        {
+            return unsaved;
+        }
+        foreach (string path in paths)
+        {
+            into?.Watch(path);
+        }
+        string? problem;
+        try
+        {
+            problem = Following(paths, () =>
+            {
+                try
+                {
+                    return write();
+                }
+                finally
+                {
+                    // Open, they take the text now, inside the command, so its Undo takes it back too.
+                    FollowWritten(paths);
+                }
+            });
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            problem = error.Message;
+        }
+        return problem ?? (await (into is null ? UnlandedAsync(paths) : UnlandedAsync(into)))?.Message;
+    }
+
+    /// <summary>As <see cref="ChangeFileAsync(IReadOnlyCollection{string}, Func{string?}, CommandHistory.Recording?)"/>, part
+    /// of the command given, else one command of its own Undo takes back whole, named <paramref name="title"/>, all it did
+    /// taken back first once it is refused partway (<see cref="CommandHistory.Recording.TakenBackAsync"/>).</summary>
+    private async Task<string?> ChangeFileAsync(string title, IReadOnlyCollection<string> paths, Func<string?> write, CommandHistory.Recording? into = null)
+    {
+        if (into is not null)
+        {
+            return await ChangeFileAsync(paths, write, into);
+        }
+        using CommandHistory.Recording made = Editors.Commands.Record(title);
+        return await ChangeFileAsync(paths, write, made) is { } problem ? await made.TakenBackAsync(problem) : null;
+    }
+
     /// <summary>As <see cref="Following{T}"/>, a change made within a command's recording, followed only once the recording
     /// has written the files not open it changes (<see cref="CommandHistory.Recording.WriteAsync"/>), so what reads them
     /// then reads them as the change left them. Throws <see cref="WorkspaceEditFailed"/> naming a file the disk refused, once

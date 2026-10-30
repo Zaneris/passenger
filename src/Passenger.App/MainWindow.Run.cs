@@ -88,34 +88,11 @@ public partial class MainWindow
             return (null, $"{LaunchProfile.SettingsName(project.Path)} has no place for {name}'s changes: they stay kept with the folder");
         }
         string path = LaunchProfile.SettingsPath(project);
-        if (SaveBeforeWriting([path]) is { } unsaved)
-        {
-            return (null, $"{Path.GetFileName(path)} could not be changed: {unsaved}");
-        }
         JsonObject? before = configurations.EditOf(name);
         using CommandHistory.Recording made = Editors.Commands.Record($"Write {name} to Its Launch Profile");
-        made.Watch(path);
-        string? problem;
-        try
+        if (await ChangeFileAsync([path], () => LaunchSettingsEdits.Write(path, profile.Name, changes), made) is { } problem)
         {
-            problem = LaunchSettingsEdits.Write(path, profile.Name, changes);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            problem = error.Message;
-        }
-        finally
-        {
-            // Open, it takes the text now, inside the command, so the command's undo takes it back too.
-            FollowWritten([path]);
-        }
-        if (problem is null && await UnlandedAsync(made) is { } unlanded)
-        {
-            problem = unlanded.Message;
-        }
-        if (problem is not null)
-        {
-            return (null, $"{Path.GetFileName(path)} could not be changed: {problem}");
+            return (null, $"{Path.GetFileName(path)} could not be changed: {await made.TakenBackAsync(problem)}");
         }
         RunConfiguration? now = configurations.Rebase(name, edited);
         JsonObject? after = configurations.EditOf(name);
@@ -241,10 +218,6 @@ public partial class MainWindow
         ProjectModel project = Projects.First(p => PathNames.Same(p.Path, mine.Project));
         string profile = LaunchSettingsEdits.ProfileName(project, mine);
         string path = LaunchProfile.SettingsPath(project);
-        if (SaveBeforeWriting([path]) is { } unsaved)
-        {
-            return (null, $"{Path.GetFileName(path)} could not be changed: {unsaved}");
-        }
         string properties = Path.GetDirectoryName(path)!;
         bool madeFolder = !Directory.Exists(properties);
         bool madeFile = !File.Exists(path);
@@ -252,28 +225,9 @@ public partial class MainWindow
         bool chosen = configurations.Chosen == mine;
         JsonObject? before = configurations.EditOf(RunConfiguration.NameOf(project, profile));
         using CommandHistory.Recording made = Editors.Commands.Record($"Save {mine.Name} as a Launch Profile");
-        made.Watch(path);
-        string? problem;
-        try
+        if (await ChangeFileAsync([path], () => LaunchSettingsEdits.Add(path, profile, LaunchSettingsEdits.ProfileOf(mine)), made) is { } problem)
         {
-            problem = LaunchSettingsEdits.Add(path, profile, LaunchSettingsEdits.ProfileOf(mine));
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            problem = error.Message;
-        }
-        finally
-        {
-            // Open, it takes the text now, inside the command, so the command's undo takes it back too.
-            FollowWritten([path]);
-        }
-        if (problem is null && await UnlandedAsync(made) is { } unlanded)
-        {
-            problem = unlanded.Message;
-        }
-        if (problem is not null)
-        {
-            return (null, $"{Path.GetFileName(path)} could not be changed: {problem}");
+            return (null, $"{Path.GetFileName(path)} could not be changed: {await made.TakenBackAsync(problem)}");
         }
         if (madeFolder)
         {

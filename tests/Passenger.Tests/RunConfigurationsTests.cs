@@ -653,6 +653,34 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// <summary>A file-based program's launch profiles, in its app.run.json, changed on disk reach its run configuration as
     /// a launchSettings.json's do, the Explorer left as it was.</summary>
     [Gate]
+    /// <summary>Save as Launch Profile in a project with no launchSettings.json follows the file and folder it makes as it
+    /// makes them, not when the folder's watcher hears of them: with the watcher stopped, Go to File finds the file.</summary>
+    [AvaloniaFact]
+    public void Save_as_launch_profile_making_launchSettings_json_follows_it_without_the_folders_watcher()
+    {
+        Restored();
+        string settingsFile = Path.Combine("Hello", "Properties", "launchSettings.json");
+        MainWindow window = Keeping();
+        try
+        {
+            Ui.WaitFor(() => window.FileIndex.Files.Contains(Path.Combine("Hello", "Program.cs")), "Go to File's index of the folder");
+            window.FolderWatcher!.Dispose();
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Add(dialog);
+            Type(dialog.NameBox, "Greeting");
+            Ui.Click(dialog.SaveAsProfileButton);
+            Assert.True(dialog.Problem.Length == 0, $"Save as Launch Profile was refused: {dialog.Problem}");
+            Assert.True(File.Exists(Path.Combine(folder, settingsFile)), "Save as Launch Profile made no launchSettings.json");
+            Ui.Click(dialog.OkButton);
+            Ui.WaitFor(() => window.FileIndex.Files.Contains(settingsFile),
+                () => $"Go to File to find the launchSettings.json Save as Launch Profile made, which only the folder's watcher would otherwise tell it of; it has {string.Join(", ", window.FileIndex.Files)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_file_based_programs_run_json_changed_on_disk_reaches_its_run_configuration()
     {

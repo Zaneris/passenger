@@ -185,37 +185,13 @@ public partial class MainWindow
         {
             return $"{shownName} changed while the question was open, so it was left as it is now: save again to change it";
         }
-        using CommandHistory.Recording made = Editors.Commands.Record($"Save Publish Profile {choice.Profile}");
-        try
+        if (await ChangeFileAsync($"Save Publish Profile {choice.Profile}", [file], () =>
         {
-            Following([file], () =>
-            {
-                try
-                {
-                    if (had is null)
-                    {
-                        WriteNew(made, file, text);
-                    }
-                    else
-                    {
-                        made.Watch(file);
-                        FileText.SaveOver(file, had, text);
-                    }
-                }
-                finally
-                {
-                    // Open, it takes the text now, inside the command, so the command's undo takes it back too.
-                    FollowWritten([file]);
-                }
-            });
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            _ = had is null ? FileText.SaveNew(file, text) : FileText.SaveOver(file, had, text);
+            return null;
+        }) is { } refused)
         {
-            return $"{shownName} could not be written: {error.Message}";
-        }
-        if (await UnlandedAsync(made) is { } unlanded)
-        {
-            return $"{shownName} could not be written: {unlanded.Message}";
+            return $"{shownName} could not be written: {refused}";
         }
         status.Text = $"Saved the publish profile {choice.Profile} of {Path.GetFileNameWithoutExtension(choice.Project)}";
         return null;

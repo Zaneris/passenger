@@ -67,28 +67,16 @@ public partial class MainWindow
             return DockerSaid($"{described.Name} has a Dockerfile already: {DockerShown(had)}");
         }
         string ignore = Path.Combine(context, ".dockerignore");
-        if (SaveBeforeWriting([ignore]) is { } unsaved)
-        {
-            return DockerSaid($"Docker Support could not be added to {described.Name}: {unsaved}");
-        }
         IgnoreWritten ignoring = IgnoreWritten.Nothing;
-        using CommandHistory.Recording? own = into is null ? Editors.Commands.Record("Add Docker Support") : null;
-        CommandHistory.Recording made = into ?? own!;
-        try
+        string? Write()
         {
-            Following([described.Dockerfile, ignore], () =>
-            {
-                WriteNew(made, described.Dockerfile, DockerFiles.Dockerfile(described, context));
-                ignoring = KeepNuGetConfigOut(made, ignore);
-            });
+            FileText.SaveNew(described.Dockerfile, DockerFiles.Dockerfile(described, context));
+            ignoring = KeepNuGetConfigOut(ignore);
+            return null;
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        if (await ChangeFileAsync("Add Docker Support", [described.Dockerfile, ignore], Write, into) is { } problem)
         {
-            return DockerSaid($"Docker Support could not be added to {described.Name}: {error.Message}");
-        }
-        if (await UnlandedAsync(made) is { } unlanded)
-        {
-            return DockerSaid($"Docker Support could not be added to {described.Name}: {unlanded.Message}");
+            return DockerSaid($"Docker Support could not be added to {described.Name}: {problem}");
         }
         OpenFile(described.Dockerfile);
         string at = Solution is { } solution ? $"{solution.Name}'s folder" : DockerShown(context);
@@ -104,38 +92,10 @@ public partial class MainWindow
     /// itself (a project that is not ASP.NET Core's), and the image's repository, its service name.</summary>
     private async Task<string?> AddContainerPropertiesAsync(DockerProject project, CommandHistory.Recording? into)
     {
-        if (SaveBeforeWriting([project.Path]) is { } unsaved)
-        {
-            return DockerSaid($"{project.Name} could not be changed: {unsaved}");
-        }
-        string? problem = null;
-        try
-        {
-            using CommandHistory.Recording? own = into is null ? Editors.Commands.Record("Add Docker Support") : null;
-            CommandHistory.Recording made = into ?? own!;
-            made.Watch(project.Path);
-            try
-            {
-                if (!project.Web)
-                {
-                    problem = ProjectEdits.SetProperty(project.Path, "EnableSdkContainerSupport", "true");
-                }
-                problem ??= ProjectEdits.SetProperty(project.Path, "ContainerRepository", project.Service);
-            }
-            finally
-            {
-                // Open, it takes the text now, inside the command, so the command's undo takes it back too.
-                FollowWritten([project.Path]);
-            }
-            if (problem is null && await UnlandedAsync(made) is { } unlanded)
-            {
-                problem = unlanded.Message;
-            }
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            problem = error.Message;
-        }
+        string? Write() =>
+            (project.Web ? null : ProjectEdits.SetProperty(project.Path, "EnableSdkContainerSupport", "true"))
+            ?? ProjectEdits.SetProperty(project.Path, "ContainerRepository", project.Service);
+        string? problem = await ChangeFileAsync("Add Docker Support", [project.Path], Write, into);
         return problem is null
             ? DockerSaid(null, $"{project.Name} builds its image with the SDK: dotnet publish /t:PublishContainer makes {project.Service}")
             : DockerSaid($"{project.Name} could not be changed: {problem}");
@@ -222,54 +182,26 @@ public partial class MainWindow
         }
         string compose = Path.Combine(context, "compose.yaml");
         string ignore = Path.Combine(context, ".dockerignore");
-        if (SaveBeforeWriting([solution.Path, ignore]) is { } unsaved)
-        {
-            return DockerSaid($"{solution.Name} could not be changed: {unsaved}");
-        }
         IgnoreWritten ignoring = IgnoreWritten.Nothing;
-        List<string> dockerfiles = [];
-        string? problem = null;
-        using CommandHistory.Recording? own = into is null ? Editors.Commands.Record("Add Docker Compose") : null;
-        CommandHistory.Recording made = into ?? own!;
-        try
+        List<DockerProject> unbuilt = [.. composed.Where(c => c.Existing is null).Select(c => c.Project)];
+        string? problem = await ChangeFileAsync("Add Docker Compose", [.. unbuilt.Select(p => p.Dockerfile), ignore, compose, solution.Path], () =>
         {
-            Following([.. composed.Select(c => c.Project.Dockerfile), ignore, compose, solution.Path], () =>
+            foreach (DockerProject project in unbuilt)
             {
-                foreach ((DockerProject project, _, _) in composed.Where(c => c.Existing is null))
-                {
-                    WriteNew(made, project.Dockerfile, DockerFiles.Dockerfile(project, context));
-                    dockerfiles.Add(project.Name);
-                }
-                ignoring = KeepNuGetConfigOut(made, ignore);
-                WriteNew(made, compose, DockerFiles.Compose(context, composed));
-                made.Watch(solution.Path);
-                try
-                {
-                    problem = SolutionItem(solution, PathNames.Canonical(compose));
-                }
-                finally
-                {
-                    // Open, it takes the text now, inside the command, so the command's undo takes it back too.
-                    FollowWritten([solution.Path]);
-                }
-            });
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            problem = error.Message;
-        }
-        if (problem is null && await UnlandedAsync(made) is { } unlanded)
-        {
-            problem = unlanded.Message;
-        }
+                FileText.SaveNew(project.Dockerfile, DockerFiles.Dockerfile(project, context));
+            }
+            ignoring = KeepNuGetConfigOut(ignore);
+            FileText.SaveNew(compose, DockerFiles.Compose(context, composed));
+            return SolutionItem(solution, PathNames.Canonical(compose));
+        }, into);
         ReloadSolution();
         if (problem is not null)
         {
             return DockerSaid($"compose.yaml could not be added to {solution.Name}: {problem}");
         }
         OpenFile(compose);
-        return DockerSaid(null, (dockerfiles.Count == 0 ? $"Added compose.yaml to {solution.Name}"
-            : $"Added compose.yaml to {solution.Name}, and a Dockerfile to {string.Join(", ", dockerfiles)}")
+        return DockerSaid(null, (unbuilt.Count == 0 ? $"Added compose.yaml to {solution.Name}"
+            : $"Added compose.yaml to {solution.Name}, and a Dockerfile to {string.Join(", ", unbuilt.Select(p => p.Name))}")
             + (ignoring == IgnoreWritten.NuGetConfigLeftOut ? $"; added to its .dockerignore {NuGetConfigLine}" : string.Empty));
     }
 
@@ -293,48 +225,24 @@ public partial class MainWindow
         }
         DockerProject described = DockerFiles.Describe(model, session.Workspace?.Projects ?? []);
         string ignore = Path.Combine(context, ".dockerignore");
-        if (SaveBeforeWriting([compose, ignore]) is { } unsaved)
-        {
-            return DockerSaid($"{Path.GetFileName(compose)} could not be changed: {unsaved}");
-        }
         IgnoreWritten ignoring = IgnoreWritten.Nothing;
-        string? problem = null;
-        try
+        string? problem = await ChangeFileAsync([.. described.ExistingDockerfile is null ? [described.Dockerfile] : (string[])[], ignore, compose], () =>
         {
             FileText file = FileText.Load(compose) ?? throw new IOException($"{Path.GetFileName(compose)} is not a text file");
             string block = DockerFiles.Compose(context, [(described, described.ExistingDockerfile, BackingService.Needs(model, []))]);
             (string? text, string? refused) = DockerFiles.WithService(file.Text, described.Service, block);
             if (text is null)
             {
-                return DockerSaid($"{described.Name} could not join {Path.GetFileName(compose)}: {refused}");
+                return refused;
             }
-            Following([described.Dockerfile, ignore, compose], () =>
+            if (described.ExistingDockerfile is null)
             {
-                if (described.ExistingDockerfile is null)
-                {
-                    WriteNew(made, described.Dockerfile, DockerFiles.Dockerfile(described, context));
-                }
-                ignoring = KeepNuGetConfigOut(made, ignore);
-                made.Watch(compose);
-                try
-                {
-                    FileText.SaveOver(compose, file, text);
-                }
-                finally
-                {
-                    // Open, it takes the text now, inside the command, so the command's undo takes it back too.
-                    FollowWritten([compose]);
-                }
-            });
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            problem = error.Message;
-        }
-        if (problem is null && await UnlandedAsync(made) is { } unlanded)
-        {
-            problem = unlanded.Message;
-        }
+                FileText.SaveNew(described.Dockerfile, DockerFiles.Dockerfile(described, context));
+            }
+            ignoring = KeepNuGetConfigOut(ignore);
+            FileText.SaveOver(compose, file, text);
+            return null;
+        }, made);
         return problem is null
             ? DockerSaid(null, $"{described.Name} joined {Path.GetFileName(compose)} as the service {described.Service}"
                 + (ignoring == IgnoreWritten.NuGetConfigLeftOut ? $"; added to the .dockerignore {NuGetConfigLine}" : string.Empty))
@@ -382,14 +290,6 @@ public partial class MainWindow
             ? $"{unread.Name} is still being read: Docker's files are written once its image, aspnet or runtime, is known"
             : null;
 
-    /// <summary>A new file written as its folder's .editorconfig asks (its line breaks and charset), watched first so the
-    /// command's Undo deletes it.</summary>
-    private static void WriteNew(CommandHistory.Recording made, string path, string text)
-    {
-        made.Watch(path);
-        FileText.SaveNew(path, text);
-    }
-
     /// <summary>What an Add did to the context's .dockerignore.</summary>
     private enum IgnoreWritten
     {
@@ -402,28 +302,19 @@ public partial class MainWindow
     private const string NuGetConfigLine = "the line keeping nuget.config, which may hold a feed's password, out of the image";
 
     /// <summary>The context's .dockerignore made where it has none, else given the line keeping nuget.config out of the
-    /// image where nothing in it does (<see cref="DockerFiles.IgnoringNuGetConfig"/>), its other characters as they were,
-    /// as part of the command (an open one taking the text inside it, so its Undo takes the line back too).</summary>
-    private IgnoreWritten KeepNuGetConfigOut(CommandHistory.Recording made, string ignore)
+    /// image where nothing in it does (<see cref="DockerFiles.IgnoringNuGetConfig"/>), its other characters as they were.</summary>
+    private static IgnoreWritten KeepNuGetConfigOut(string ignore)
     {
         if (!File.Exists(ignore))
         {
-            WriteNew(made, ignore, DockerFiles.Ignore);
+            FileText.SaveNew(ignore, DockerFiles.Ignore);
             return IgnoreWritten.Made;
         }
         if (FileText.Load(ignore) is not { IsBinary: false } file || DockerFiles.IgnoringNuGetConfig(file.Text) is not { } text)
         {
             return IgnoreWritten.Nothing;
         }
-        made.Watch(ignore);
-        try
-        {
-            FileText.SaveOver(ignore, file, text);
-        }
-        finally
-        {
-            FollowWritten([ignore]);
-        }
+        FileText.SaveOver(ignore, file, text);
         return IgnoreWritten.NuGetConfigLeftOut;
     }
 

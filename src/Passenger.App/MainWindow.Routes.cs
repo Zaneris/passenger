@@ -360,20 +360,20 @@ public partial class MainWindow
             FileText? had = File.Exists(path) ? FileText.Load(path) : null;
             string existing = had?.Text ?? string.Empty;
             string added = RouteRequests.Entry(route, existing.Replace("\r\n", "\n", StringComparison.Ordinal), address);
-            string text;
-            using (CommandHistory.Recording made = Editors.Commands.Record("Generate Request"))
+            string text = string.Empty;
+            if (await ChangeFileAsync("Generate Request", [path], () =>
             {
-                made.Watch(path);
                 text = (had is null ? FileText.SaveNew(path, added) : FileText.SaveOver(path, had, existing + added.Replace("\n", had.Break, StringComparison.Ordinal))).Written.Text;
-                if (await UnlandedAsync(made) is { } unlanded)
-                {
-                    throw unlanded;
-                }
+                return null;
+            }) is { } refused)
+            {
+                status.Text = $"No request could be written for {RouteRequests.Title(route)} in {Path.GetFileName(path)}: {refused}";
+                return null;
             }
             endpoints?.Reload(session.Folder);
             return Written(path, text, existing);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ReadOnlyFileException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             status.Text = $"No request could be written for {RouteRequests.Title(route)} in {Path.GetFileName(path)}: {error.Message}";
             return null;

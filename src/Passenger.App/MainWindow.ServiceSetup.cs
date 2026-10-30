@@ -100,10 +100,6 @@ public partial class MainWindow
     private async Task<string?> AddContainerProfileAsync(ProjectModel project, ProjectSetup setup, CommandHistory.Recording made)
     {
         string path = LaunchProfile.SettingsPath(project);
-        if (SaveBeforeWriting([path]) is { } unsaved)
-        {
-            return $"{Path.GetFileName(path)} could not be changed: {unsaved}";
-        }
         bool web = Containers.ContainerConfigurations.IsWeb(project, Projects);
         JsonObject profile = new() { ["commandName"] = setup == ProjectSetup.SdkContainer ? LaunchProfile.SdkContainerCommand : LaunchProfile.DockerCommand };
         if (web)
@@ -112,22 +108,9 @@ public partial class MainWindow
             profile["launchUrl"] = Containers.ContainerConfigurations.ServiceUrl;
         }
         profile["publishAllPorts"] = true;
-        made.Watch(path);
-        string? problem;
-        try
-        {
-            problem = Following([path], () => LaunchSettingsEdits.Add(path, ContainerProfile(setup), profile));
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            problem = error.Message;
-        }
-        finally
-        {
-            // Open, it takes the text now, inside the command, so the command's undo takes it back too.
-            FollowWritten([path]);
-        }
-        return problem ?? (await UnlandedAsync(made) is { } unlanded ? unlanded.Message : null);
+        return await ChangeFileAsync([path], () => LaunchSettingsEdits.Add(path, ContainerProfile(setup), profile), made) is { } problem
+            ? $"{Path.GetFileName(path)} could not be changed: {problem}"
+            : null;
     }
 
     /// <summary>The project enlisted in the solution's AppHost (one made where it has none) with its ServiceDefaults (one

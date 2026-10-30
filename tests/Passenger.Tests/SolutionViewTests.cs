@@ -329,6 +329,24 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Add Reference to a project file not open is one command Undo takes back, leaving the file as it was.</summary>
+    [AvaloniaFact]
+    public void Add_reference_is_one_command_undo_takes_back_leaving_the_project_file_as_it_was()
+    {
+        string app = Path.Combine(folder, "Shop.App", "Shop.App.csproj");
+        string core = Path.Combine(folder, "Shop.Core", "Shop.Core.csproj");
+        byte[] original = File.ReadAllBytes(app);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.WaitFor(() => window.Projects.Any(p => p.Path == PathNames.Canonical(app) && p.IsEvaluated), "MSBuild to evaluate Shop.App");
+        Heard(window, app, () => Assert.Null(Ui.Await(window.SetReferencesAsync(app, [core]), "the reference added")));
+        Assert.Contains("Shop.Core.csproj", File.ReadAllText(app), StringComparison.Ordinal);
+        Assert.Equal("Change Shop.App's References", window.EditorArea.Commands.ToUndo(null)?.Name);
+        Heard(window, app, () => MigrationsTests.UndoFromExplorer(window, app));
+        Assert.True(original.AsSpan().SequenceEqual(File.ReadAllBytes(app)),
+            $"Undo of Add Reference left the project file changed:\n{Encoding.UTF8.GetString(File.ReadAllBytes(app))}");
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Add_reference_beside_one_that_shares_its_line_with_its_groups_tags_writes_a_project_MSBuild_loads_and_remove_puts_it_back()

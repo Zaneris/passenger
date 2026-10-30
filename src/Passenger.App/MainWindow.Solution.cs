@@ -147,36 +147,29 @@ public partial class MainWindow
         // Reopened, the filter would leave out a project it does not list.
         string? filter = projects ? session.Workspace?.Filter?.Path : null;
         string[] writing = filter is null ? [solution.Path] : [solution.Path, filter];
-        if (SaveBeforeWriting(writing) is { } unsaved)
-        {
-            status.Text = $"{solution.Name} could not be changed: {unsaved}";
-            return null;
-        }
-        foreach (string path in writing)
-        {
-            recording?.Watch(path);
-        }
         List<string> added = [];
         List<string> refused = [];
-        foreach (string path in picked.Select(PathNames.Canonical))
+        if (await ChangeFileAsync(writing, () =>
         {
-            if (Change(() => add(solution.Path, path), solution.Name) is { } problem)
+            foreach (string path in picked.Select(PathNames.Canonical))
             {
-                refused.Add(problem);
-                continue;
+                if (Change(() => add(solution.Path, path), solution.Name) is { } problem)
+                {
+                    refused.Add(problem);
+                    continue;
+                }
+                added.Add(path);
+                if (filter is not null && Change(() => SolutionEdits.AddToFilter(filter, path), Path.GetFileName(filter)) is { } unfiltered)
+                {
+                    refused.Add(unfiltered);
+                }
             }
-            added.Add(path);
-            if (filter is not null && Change(() => SolutionEdits.AddToFilter(filter, path), Path.GetFileName(filter)) is { } unfiltered)
-            {
-                refused.Add(unfiltered);
-            }
-        }
-        if (added.Count > 0 && await UnlandedAsync(writing) is { } unlanded)
+            return null;
+        }, recording) is { } unwritten)
         {
             added.Clear();
-            refused = [$"{solution.Name} could not be changed: {unlanded.Message}"];
+            refused = [$"{solution.Name} could not be changed: {unwritten}"];
         }
-        FollowWritten(writing);
         if (added.Count > 0)
         {
             ReloadSolution();
@@ -210,23 +203,17 @@ public partial class MainWindow
         // Opened again, the filter would name a project the solution no longer has.
         string? filter = leaving is not null && session.Workspace?.Filter is { } open && leaving.Any(open.Projects.Contains) ? open.Path : null;
         string[] writing = filter is null ? [solution.Path] : [solution.Path, filter];
-        using CommandHistory.Recording? recording = command is null ? null : Editors.Commands.RecordWrites(command);
-        string? problem = SaveBeforeWriting(writing) is { } unsaved ? $"{solution.Name} could not be changed: {unsaved}" : null;
+        string? edited = null;
         string? unfiltered = null;
-        if (problem is null)
+        string? Write()
         {
-            foreach (string path in writing)
-            {
-                recording?.Watch(path);
-            }
-            problem = Change(() => edit(solution.Path), solution.Name);
-            unfiltered = problem is null && filter is not null ? Change(() => SolutionEdits.RemoveFromFilter(filter, leaving!), Path.GetFileName(filter)) : null;
+            edited = Change(() => edit(solution.Path), solution.Name);
+            unfiltered = edited is null && filter is not null ? Change(() => SolutionEdits.RemoveFromFilter(filter, leaving!), Path.GetFileName(filter)) : null;
+            return edited;
         }
-        if (problem is null && await UnlandedAsync(writing) is { } unlanded)
-        {
-            problem = $"{solution.Name} could not be changed: {unlanded.Message}";
-        }
-        FollowWritten(writing);
+        string? refused = await (command is null ? ChangeFileAsync(writing, Write, null) : ChangeFileAsync(command, writing, Write));
+        // The edit's own refusal says itself; the disk's is said as the solution's.
+        string? problem = refused is null || refused == edited ? refused : $"{solution.Name} could not be changed: {refused}";
         if (problem is null)
         {
             ReloadSolution();
