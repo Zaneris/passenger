@@ -216,6 +216,7 @@ internal sealed class HeapGraph
 
         public void Walk(CancellationToken cancel)
         {
+            (ulong Key, ulong Value)[] dependents = Dependents();
             foreach (ClrObject item in heap.EnumerateObjects())
             {
                 if (item.IsFree || item.Type is not { } type)
@@ -229,16 +230,22 @@ internal sealed class HeapGraph
                 edgeStarts.Add(edgeTargets.Count);
                 if (type.ContainsPointers)
                 {
-                    foreach (ClrReference reference in item.EnumerateReferencesWithFields(carefully: false, considerDependantHandles: true))
+                    foreach (ClrReference reference in item.EnumerateReferencesWithFields(carefully: false, considerDependantHandles: false))
                     {
                         edgeTargets.Add(reference.Object.Address);
-                        int offset = reference.IsDependentHandle ? DependentOffset : reference.Offset;
+                        int offset = reference.Offset;
                         edgeOffsets.Add(offset);
-                        if (!reference.IsArrayElement && !reference.IsDependentHandle && !types[index].Fields.ContainsKey(offset))
+                        if (!reference.IsArrayElement && !types[index].Fields.ContainsKey(offset))
                         {
                             types[index].Fields[offset] = FieldName(reference);
                         }
                     }
+                }
+                // What a ConditionalWeakTable keeps alive for a key, whatever the key's type holds.
+                for (int at = FirstDependent(dependents, item.Address); at < dependents.Length && dependents[at].Key == item.Address; at++)
+                {
+                    edgeTargets.Add(dependents[at].Value);
+                    edgeOffsets.Add(DependentOffset);
                 }
                 if ((addresses.Count & 0xFFFF) == 0)
                 {
@@ -263,6 +270,42 @@ internal sealed class HeapGraph
                 }
                 Array.Sort(sorted, order);
             }
+        }
+
+        /// <summary>The runtime's dependent handles (a ConditionalWeakTable's entries), each key and the object it keeps alive,
+        /// in the keys' order.</summary>
+        private (ulong Key, ulong Value)[] Dependents()
+        {
+            List<(ulong Key, ulong Value)> found = [];
+            foreach (ClrHandle handle in runtime.EnumerateHandles())
+            {
+                if (handle.HandleKind == ClrHandleKind.Dependent && handle.Object.Address != 0 && handle.Dependent.Address != 0)
+                {
+                    found.Add((handle.Object.Address, handle.Dependent.Address));
+                }
+            }
+            found.Sort();
+            return [.. found];
+        }
+
+        /// <summary>Where a key's dependent handles begin among them, or past their end when it has none.</summary>
+        private static int FirstDependent((ulong Key, ulong Value)[] dependents, ulong key)
+        {
+            int low = 0;
+            int high = dependents.Length;
+            while (low < high)
+            {
+                int middle = (low + high) >>> 1;
+                if (dependents[middle].Key < key)
+                {
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle;
+                }
+            }
+            return low;
         }
 
         private static string FieldName(ClrReference reference)

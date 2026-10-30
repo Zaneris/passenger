@@ -230,6 +230,46 @@ public sealed class MemorySnapshotsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>What a ConditionalWeakTable keeps alive for a key whose type holds no references (a string) is kept through
+    /// the key: a 10 MB array listed, its shortest path from the static that holds the key, and the key's strings retaining it.</summary>
+    [AvaloniaFact]
+    public void A_conditional_weak_tables_value_is_retained_through_its_key_though_the_key_holds_no_references()
+    {
+        MainWindow window = Profiled("Attacher", """
+            using System.Runtime.CompilerServices;
+            Attached.Fill();
+            Console.WriteLine("ready");
+            Console.ReadLine();
+            static class Attached
+            {
+                public static readonly string Key = new('k', 16);
+                private static readonly ConditionalWeakTable<string, byte[]> table = new();
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                public static void Fill() => table.Add(Key, new byte[10_000_000]);
+            }
+            """);
+        MemoryView memory = window.ProfilerView.MemoryPage;
+        Snapshot(window, 1);
+        HeapType arrays = Assert.Single(memory.TypeRows, t => t.Name == "System.Byte[]");
+        Assert.True(arrays.Bytes >= 10_000_000, $"The 10 MB array the table keeps for its key is not among the live objects: the byte arrays take {arrays.Bytes:N0} bytes");
+        HeapType strings = Assert.Single(memory.TypeRows, t => t.Name == "System.String");
+        Assert.True(strings.RetainedBytes >= 10_000_000, $"The strings retain {strings.RetainedBytes:N0} bytes, not the key's 10 MB array");
+
+        Focus(memory.TypeList, arrays);
+        Ui.Press(window, "enter");
+        Ui.WaitFor(() => memory.Set is not null, "the byte arrays");
+        HeapObject payload = memory.ObjectRows[0];
+        Assert.True(payload.Bytes >= 10_000_000, $"The largest byte array takes {payload.Bytes:N0} bytes");
+        Focus(memory.ObjectList, payload);
+        Ui.Press(window, "enter");
+        Ui.WaitFor(() => memory.Set?.Count == 1, "the array alone");
+        Assert.Equal(1, memory.SetTab);
+        Assert.Equal(["System.String.dependent handle", "Static reference: Attached.Key"], memory.PathRows.Skip(1).Select(r => r.Node.Text));
+        window.Profiling!.Kill();
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_heap_of_a_million_objects_is_read_compared_and_opened()
     {
