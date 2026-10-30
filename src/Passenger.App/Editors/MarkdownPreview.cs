@@ -94,12 +94,13 @@ public sealed class MarkdownPreview : ScrollViewer
             page = NewPage();
             pages[next] = page;
         }
+        // Before the page is handed over, since its pictures ask for theirs again as they attach.
+        LetPicturesGo();
         Content = page;
         if (page is not null && page.From is null)
         {
             Offset = default;
         }
-        LetPicturesGo();
         if (onScreen)
         {
             Hear(next);

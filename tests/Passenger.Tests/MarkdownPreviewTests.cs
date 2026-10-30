@@ -222,6 +222,34 @@ public sealed class MarkdownPreviewTests
         window.Close();
     }
 
+    /// <summary>The README's page, kept with its tab, draws its picture again each time the tab comes back: from another
+    /// Markdown file, whose page the preview showed meanwhile, and from a C# file, beside which it showed none.</summary>
+    [AvaloniaFact]
+    public void A_pages_picture_draws_again_each_time_its_tab_is_left_and_come_back_to()
+    {
+        (string folder, string readme) = Shop();
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        Assert.Null(window.OpenFile(readme));
+        Ui.Settle();
+        Pictured("as the README is first shown");
+        foreach (string other in new[] { Path.Combine("docs", "guide.md"), "Program.cs", Path.Combine("docs", "guide.md") })
+        {
+            Assert.Null(window.OpenFile(PathNames.Canonical(Path.Combine(folder, other))));
+            Ui.Settle();
+            Assert.Null(window.OpenFile(readme));
+            Ui.Settle();
+            Pictured($"as the README comes back from {other}");
+        }
+        window.Close();
+
+        void Pictured(string when)
+        {
+            MarkdownPicture picture = Assert.Single(Shown(window.EditorArea.ActiveGroup).GetLogicalDescendants().OfType<MarkdownPicture>());
+            Ui.WaitFor(() => picture.Shown is { PixelSize: { Width: 64, Height: 32 } },
+                $"the README's picture drawn {when} (its words stand in its place: the decode it asked for was let go)", TimeSpan.FromSeconds(10));
+        }
+    }
+
     [AvaloniaFact]
     public void The_toggle_hides_and_shows_the_preview_each_split_has_its_own_and_the_next_window_keeps_the_choice()
     {
