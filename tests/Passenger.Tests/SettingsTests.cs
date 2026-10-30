@@ -215,7 +215,7 @@ public sealed class SettingsTests : IDisposable
             Assert.Equal("Passenger", theme.SelectedItem);
             Assert.Equal(["System", "Dark", "Light"], Editor<ComboBox>(dialog, "Dark or light").Items.Cast<string>());
             Border stripe = window.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("stripeBar") && b.IsEffectivelyVisible);
-            Point bare = stripe.TranslatePoint(new Point(stripe.Bounds.Width / 2, stripe.Bounds.Height * 0.45), window)!.Value;
+            Point bare = Bare(window, stripe);
             Color passenger = Ui.Pixel(window, bare);
 
             theme.SelectedItem = "Harbour";
@@ -236,6 +236,23 @@ public sealed class SettingsTests : IDisposable
             window.ApplySettings(new AppSettings());
             window.Close();
         }
+    }
+
+    /// <summary>A point of a stripe where its own background alone is drawn: the middle of the first five points in a row
+    /// down its middle where a hit lands on the stripe itself, so no button, icon or rule on it is read for the frame.</summary>
+    private static Point Bare(MainWindow window, Border stripe)
+    {
+        const int Clear = 5;
+        int run = 0;
+        for (double y = 0; y < stripe.Bounds.Height; y++)
+        {
+            run = ReferenceEquals(window.InputHitTest(stripe.TranslatePoint(new Point(stripe.Bounds.Width / 2, y), window)!.Value), stripe) ? run + 1 : 0;
+            if (run == Clear)
+            {
+                return stripe.TranslatePoint(new Point(stripe.Bounds.Width / 2, y - (Clear / 2)), window)!.Value;
+            }
+        }
+        throw new InvalidOperationException($"No {Clear} points down the stripe's middle are clear of what stands on it, so the frame's colour has nowhere to be read");
     }
 
     /// <summary>Another Passenger's change to settings.json that the watcher never heard is followed all the same: read again
