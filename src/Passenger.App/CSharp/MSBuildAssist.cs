@@ -265,7 +265,8 @@ internal sealed class MSBuildAssist : LanguageAssist
     }
 
     /// <summary>The PackageVersion a package takes in Directory.Packages.props: beside the others, in their order, with
-    /// their indent; in an ItemGroup of its own before the end when there are none. Null when it has one.</summary>
+    /// their indent (on a line of its own where theirs are, else beside them on their line); in an ItemGroup of its own
+    /// before the end when there are none. Null when it has one.</summary>
     internal static TextEdit? CentralVersion(string text, PackageChoice package)
     {
         XmlTree tree = XmlTree.Parse(text);
@@ -275,24 +276,35 @@ internal sealed class MSBuildAssist : LanguageAssist
             return null;
         }
         string eol = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        string line = $"<PackageVersion Include=\"{package.Id}\" Version=\"{package.Version}\" />";
+        string line = $"<PackageVersion Include=\"{Passenger.Workspace.XmlText.Quoted(package.Id, '"')}\" Version=\"{Passenger.Workspace.XmlText.Quoted(package.Version, '"')}\" />";
         if (versions.Count > 0)
         {
             List<XmlElement> siblings = [.. versions.GroupBy(v => v.Parent).MaxBy(g => g.Count())!];
             XmlElement? after = siblings.LastOrDefault(s => string.Compare(s.Attribute("Include")?.Value.Trim(), package.Id, StringComparison.OrdinalIgnoreCase) < 0);
             XmlElement anchor = after ?? siblings[0];
-            int lineStart = text.LastIndexOf('\n', Math.Max(0, anchor.Start - 1)) + 1;
-            string indent = text[lineStart..anchor.Start];
+            if (Indent(text, anchor.Start) is not { } indent)
+            {
+                return after is not null ? new TextEdit(after.End, 0, line) : new TextEdit(anchor.Start, 0, line);
+            }
             return after is not null
                 ? new TextEdit(after.End, 0, eol + indent + line)
-                : new TextEdit(lineStart, 0, indent + line + eol);
+                : new TextEdit(anchor.Start - indent.Length, 0, indent + line + eol);
         }
         if (tree.Root is not { EndTagStart: { } end })
         {
             return null;
         }
-        int closing = text.LastIndexOf('\n', Math.Max(0, end - 1)) + 1;
-        return new TextEdit(closing, 0, $"  <ItemGroup>{eol}    {line}{eol}  </ItemGroup>{eol}");
+        return Indent(text, end) is not null
+            ? new TextEdit(text.LastIndexOf('\n', Math.Max(0, end - 1)) + 1, 0, $"  <ItemGroup>{eol}    {line}{eol}  </ItemGroup>{eol}")
+            : new TextEdit(end, 0, $"<ItemGroup>{line}</ItemGroup>");
+    }
+
+    /// <summary>The whitespace before an offset on its line where nothing else is before it there; null where something is.</summary>
+    private static string? Indent(string text, int offset)
+    {
+        int lineStart = text.LastIndexOf('\n', Math.Max(0, offset - 1)) + 1;
+        string before = text[lineStart..offset];
+        return before.All(c => c is ' ' or '\t') ? before : null;
     }
 
     /// <summary>Go to Declaration in an MSBuild file: straight to the one place a name leads, or the places to choose
