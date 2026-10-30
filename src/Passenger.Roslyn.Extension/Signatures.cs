@@ -332,8 +332,8 @@ internal static class Signatures
     /// <summary>Every declaration's parameters and return type as asked, every call's arguments in the new order with the
     /// new parameters' values, and every cref's parameter types, each file through one editor of its own. Each use left
     /// as it was that the new signature leaves wrong is named with why, at its place in <paramref name="before"/>: a call
-    /// whose arguments do not all bind, a method group the method no longer fits or whose delegate's calls would reach
-    /// other parameters, a call made without the method's name that no longer compiles.</summary>
+    /// whose arguments do not all bind or pass as their parameters take them, a method group the method no longer fits or
+    /// whose delegate's calls would reach other parameters, a call made without the method's name that no longer compiles.</summary>
     private static async Task<(Solution Solution, IReadOnlyList<UseLeft> Left)> RestructureAsync(Solution before, Solution solution, IReadOnlyList<MethodId> members,
         MethodId main, IReadOnlyList<Parameter> original, SignatureChange change, SyntaxAnnotation marker, CancellationToken cancel)
     {
@@ -403,9 +403,14 @@ internal static class Signatures
                     }
                     else if (Called(node) is { } call)
                     {
-                        if (Plan(model, call, method, change, cancel) is { } plan)
+                        (List<Passed>? plan, string? unpassed) = Plan(model, call, method, change, cancel);
+                        if (plan is not null)
                         {
                             calls.Add((place.Document, call, plan));
+                        }
+                        else if (unpassed is not null)
+                        {
+                            left.Add(await LeftAsync(before, place.Document, at, $"a call of {Named(method, change)} {unpassed}", cancel).ConfigureAwait(false));
                         }
                         else if (!sameCalls)
                         {
@@ -635,14 +640,15 @@ internal static class Signatures
     }
 
     /// <summary>What a call passes in the new signature: for each place, the argument it already passes for that
-    /// parameter (by its index in the call, several for a params array or collection spread out), or the value a new
-    /// parameter is given; every argument after a parameter left to its default is named. Null for a call whose arguments
-    /// do not all bind, which is left as it is, and named where the calls change.</summary>
-    private static List<Passed>? Plan(SemanticModel model, SyntaxNode call, IMethodSymbol method, SignatureChange change, CancellationToken cancel)
+    /// parameter (by its index in the call, several for a params array or collection spread out) with the keyword its
+    /// passing now takes, or the value a new parameter is given; every argument after a parameter left to its default is
+    /// named. No plan for a call whose arguments do not all bind, which is left as it is, and named where the calls change;
+    /// nor for one passing an argument the parameter can no longer take as it is passed now, said why.</summary>
+    private static (List<Passed>? Plan, string? Unpassed) Plan(SemanticModel model, SyntaxNode call, IMethodSymbol method, SignatureChange change, CancellationToken cancel)
     {
         if (ArgumentsOf(call) is not { } list || model.GetOperation(call, cancel) is not { } operation)
         {
-            return null;
+            return (null, null);
         }
         ImmutableArray<IArgumentOperation> arguments = operation switch
         {
@@ -678,7 +684,7 @@ internal static class Signatures
         }
         if (bound.Contains(-1))
         {
-            return null;
+            return (null, null);
         }
         List<Passed> plan = [];
         bool named = false;
@@ -697,9 +703,20 @@ internal static class Signatures
                     continue;
                 }
                 bool spread = passed.Length > 1 || method.Parameters[parameter.From].IsParams;
+                RefKind passing = RefKindNamed(parameter.Modifier);
+                string? keyword = null;
+                if (!spread && method.Parameters[parameter.From].RefKind != passing)
+                {
+                    ArgumentSyntax argument = list.Arguments[passed[0]];
+                    if (Keyword(model, argument, passing, cancel) is not { } given)
+                    {
+                        return (null, $"whose argument {argument.Expression} cannot be passed {Passing(passing)} to '{parameter.Name}'");
+                    }
+                    keyword = given;
+                }
                 foreach (int index in passed)
                 {
-                    plan.Add(new Passed(index, null, named && !spread ? parameter.Name : null));
+                    plan.Add(new Passed(index, null, named && !spread ? parameter.Name : null, keyword));
                 }
             }
             else if (parameter.CallValue.Trim().Length > 0)
@@ -711,12 +728,62 @@ internal static class Signatures
                 named = true;
             }
         }
-        return plan;
+        return (plan, null);
     }
 
     /// <summary>One argument of a call in the new signature: the one at an index of the call as it was, or a new value;
-    /// named when it must be.</summary>
-    private sealed record Passed(int Index, string? Value, string? Name);
+    /// named when it must be, and given the keyword its passing takes where that changed (empty for none).</summary>
+    private sealed record Passed(int Index, string? Value, string? Name, string? Keyword = null);
+
+    /// <summary>How a parameter of a modifier is passed.</summary>
+    private static RefKind RefKindNamed(string modifier) => RefKindOf(modifier) switch
+    {
+        "out " => RefKind.Out,
+        "ref readonly " => RefKind.RefReadOnlyParameter,
+        "ref " => RefKind.Ref,
+        "in " => RefKind.In,
+        _ => RefKind.None,
+    };
+
+    private static string Passing(RefKind kind) => kind switch
+    {
+        RefKind.None => "by value",
+        RefKind.Out => "as out",
+        RefKind.Ref => "by ref",
+        _ => "as in",
+    };
+
+    /// <summary>The keyword an argument takes for a parameter passed anew: none by value; out, ref or in before a variable,
+    /// a value passed as in taking none; null where the argument cannot be passed so (a value by ref or as out, an out
+    /// variable or discard to anything but out).</summary>
+    private static string? Keyword(SemanticModel model, ArgumentSyntax argument, RefKind passing, CancellationToken cancel)
+    {
+        if (argument.Expression is DeclarationExpressionSyntax || model.GetOperation(argument.Expression, cancel) is IDiscardOperation)
+        {
+            return passing == RefKind.Out ? "out" : null;
+        }
+        return passing switch
+        {
+            RefKind.None => string.Empty,
+            RefKind.Out => IsVariable(model, argument.Expression, written: true, cancel) ? "out" : null,
+            RefKind.Ref => IsVariable(model, argument.Expression, written: true, cancel) ? "ref" : null,
+            _ => IsVariable(model, argument.Expression, written: false, cancel) ? "in" : string.Empty,
+        };
+    }
+
+    /// <summary>Whether an expression is a variable an argument can pass by reference: a local, a parameter, a field, an
+    /// array's element, or what a call or property returns by reference; one to be written neither readonly nor a
+    /// constant.</summary>
+    private static bool IsVariable(SemanticModel model, ExpressionSyntax expression, bool written, CancellationToken cancel) => model.GetOperation(expression, cancel) switch
+    {
+        ILocalReferenceOperation local => !local.Local.IsConst && !(written && (local.Local.IsUsing || local.Local.IsForEach || local.Local.RefKind == RefKind.RefReadOnly)),
+        IParameterReferenceOperation parameter => !(written && parameter.Parameter.RefKind is RefKind.In or RefKind.RefReadOnlyParameter),
+        IFieldReferenceOperation field => !field.Field.IsConst && !(written && field.Field.IsReadOnly),
+        IArrayElementReferenceOperation => true,
+        IInvocationOperation invocation => invocation.TargetMethod.ReturnsByRef || (!written && invocation.TargetMethod.ReturnsByRefReadonly),
+        IPropertyReferenceOperation property => property.Property.ReturnsByRef || (!written && property.Property.ReturnsByRefReadonly),
+        _ => false,
+    };
 
     private static BaseArgumentListSyntax? ArgumentsOf(SyntaxNode call) => call switch
     {
@@ -736,6 +803,11 @@ internal static class Signatures
             ArgumentSyntax argument = passed.Value is { } value
                 ? SyntaxFactory.Argument(SyntaxFactory.ParseExpression(value))
                 : list.Arguments[passed.Index];
+            if (passed.Keyword is { } keyword)
+            {
+                argument = argument.WithRefKindKeyword(keyword.Length == 0 ? default : SyntaxFactory.Token(SyntaxFacts.GetKeywordKind(keyword)).WithTrailingTrivia(SyntaxFactory.Space))
+                    .WithExpression(argument.Expression.WithoutLeadingTrivia());
+            }
             if (passed.Name is { } name && argument.NameColon is null)
             {
                 argument = argument.WithNameColon(SyntaxFactory.NameColon(SyntaxFactory.IdentifierName(name)).WithTrailingTrivia(SyntaxFactory.Space))

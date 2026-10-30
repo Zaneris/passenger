@@ -321,6 +321,45 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "the interface was extracted");
     }
 
+    /// <summary>Change Signature of a parameter's ref kind gives each call's argument the keyword it now takes: ref to in,
+    /// in to none, none to ref before a variable, each leaving the project building; a value that cannot be passed by
+    /// ref is named among the uses left, its call as it was.</summary>
+    [Fact]
+    public async Task An_agent_changing_how_a_parameter_is_passed_has_every_callers_argument_passed_so()
+    {
+        await TakeFolderAsync();
+        const string Tally = "namespace Shop;\n\npublic static class Tally\n{\n    public static int Add(ref int total, int amount) => total + amount;\n}\n";
+        const string Counting = "namespace Shop;\n\npublic static class Counting\n{\n    public static int Count()\n    {\n        int total = 1;\n        int amount = 2;\n"
+            + "        return Tally.Add(ref total, amount) + Tally.Add(ref total, 3);\n    }\n}\n";
+        Shop(("Tally.cs", Tally), ("Counting.cs", Counting));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        string tally = Tally;
+        foreach ((string modifier, string calls) in new[] { ("in", "Tally.Add(in total, amount) + Tally.Add(in total, 3)"), ("", "Tally.Add(total, amount) + Tally.Add(total, 3)") })
+        {
+            JsonElement changed = await Call(client, McpTools.Refactor, Place("change_signature", "Tally.cs", tally, "int Ad", new
+            {
+                parameters = new object[] { new { from = "total", modifier }, new { from = "amount" } },
+            }));
+            Assert.Equal(["Counting.cs changed", "Tally.cs changed"], Files(changed));
+            Assert.Empty(changed.GetProperty("notApplied").EnumerateArray());
+            tally = File.ReadAllText(PathOf("Tally.cs"));
+            Assert.Contains($"Add({(modifier.Length > 0 ? modifier + " " : string.Empty)}int total, int amount)", tally, StringComparison.Ordinal);
+            Assert.Equal(Counting.Replace("Tally.Add(ref total, amount) + Tally.Add(ref total, 3)", calls, StringComparison.Ordinal), File.ReadAllText(PathOf("Counting.cs")));
+            await Compiles(client, $"total was made a parameter passed {(modifier.Length > 0 ? "as " + modifier : "by value")}");
+        }
+
+        JsonElement byRef = await Call(client, McpTools.Refactor, Place("change_signature", "Tally.cs", tally, "int Ad", new
+        {
+            parameters = new object[] { new { from = "total" }, new { from = "amount", modifier = "ref" } },
+        }));
+        string counting = Counting.Replace("Tally.Add(ref total, amount) + Tally.Add(ref total, 3)", "Tally.Add(total, amount) + Tally.Add(total, 3)", StringComparison.Ordinal);
+        Assert.Equal(counting.Replace("Add(total, amount)", "Add(total, ref amount)", StringComparison.Ordinal), File.ReadAllText(PathOf("Counting.cs")));
+        (int line, int column) = LineColumn(counting, "Add(total, 3)", counting.IndexOf("Add(total, 3)", StringComparison.Ordinal));
+        Assert.Equal([$"Counting.cs:{line}:{column}: a call of Tally.Add whose argument 3 cannot be passed by ref to 'amount', so it was left as it is"],
+            byRef.GetProperty("notApplied").EnumerateArray().Select(n => n.GetString()));
+    }
+
     [Fact]
     public async Task An_agent_that_writes_a_new_class_and_its_caller_and_at_once_renames_it_or_asks_its_usages_has_the_caller_counted()
     {
