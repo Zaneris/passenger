@@ -25,22 +25,6 @@ public sealed record ComposeAnswer(IReadOnlyList<ComposePlace> Places, Uri? Page
 /// registry's page. Compose's own model needs an engine; this reads only the file, as it is typed.</summary>
 public static partial class ComposeDeclarations
 {
-    /// <summary>Whether a file is one Docker Compose reads (<see cref="JsonSchemas.ComposeFiles"/>): compose.yaml,
-    /// docker-compose.override.yml and the like.</summary>
-    public static bool IsCompose(string path)
-    {
-        ReadOnlySpan<char> file = Path.GetFileName(path.AsSpan());
-        Span<char> name = file.Length <= 256 ? stackalloc char[file.Length] : new char[file.Length];
-        file.ToLowerInvariant(name);
-        ReadOnlySpan<char> extension = Path.GetExtension((ReadOnlySpan<char>)name);
-        if (!extension.SequenceEqual(".yaml") && !extension.SequenceEqual(".yml"))
-        {
-            return false;
-        }
-        ReadOnlySpan<char> stem = name[..^extension.Length];
-        return stem.SequenceEqual("compose") || stem.SequenceEqual("docker-compose") || stem.StartsWith("compose.") || stem.StartsWith("docker-compose.");
-    }
-
     /// <summary>Where Go to Declaration goes from an offset of a compose file whose outline the server gave for
     /// <paramref name="text"/>: <paramref name="texts"/> reads another file (the editor's text, else the disk's), and
     /// <paramref name="projects"/> are the solution's, a Dockerfile's project found among them.</summary>
@@ -100,7 +84,7 @@ public static partial class ComposeDeclarations
         string? named = key switch
         {
             "depends_on" or "links" or "volumes_from" when entry && value is not null => value.Split(':')[0] is var name && name != "container" ? name : null,
-            "network_mode" when chain[2].Detail is { } mode && mode.StartsWith("service:", StringComparison.Ordinal) => mode["service:".Length..],
+            "network_mode" when chain[2].Detail is { } mode && mode.StartsWith(ComposeFiles.ServicePrefix, StringComparison.Ordinal) => mode[ComposeFiles.ServicePrefix.Length..],
             "extends" when chain[2].Children is not { Count: > 0 } => chain[2].Detail,
             "extends" when !(chain.Count > 3 && chain[3].Name == "file") => chain[2].Children!.FirstOrDefault(p => p.Name == "service")?.Detail,
             "volumes" when (entry || source) && value is not null => VolumeSource(source, value),

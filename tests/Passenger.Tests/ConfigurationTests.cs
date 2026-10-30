@@ -300,6 +300,35 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
         }
     }
 
+    /// <summary>A key compose-dev.yml at the folder's top sets for the project is known as given once the file is written
+    /// to set it, as compose.yaml's is: the warning that nothing gives it goes, the edit itself having it looked at again.</summary>
+    [AvaloniaFact]
+    public void A_key_compose_dev_yml_comes_to_set_is_no_longer_warned_of()
+    {
+        string compose = project.Write("compose-dev.yml", "services:\n  shop:\n    build: ./Shop\n");
+        MainWindow window = project.Open(project.PathOf("Shop/Program.cs"));
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        long refreshed = DateTime.UtcNow.Ticks;
+        EventHandler heard = (_, _) => Interlocked.Exchange(ref refreshed, DateTime.UtcNow.Ticks);
+        server.DiagnosticsRefreshRequested += heard;
+        try
+        {
+            Ui.WaitFor(() => Missing(window).SetEquals(["Payments:ApiKey", "Shop:Banner"]),
+                () => $"the keys nothing gives, and only those, to be warned of: {string.Join(", ", Missing(window))}");
+            // The server's own refreshes as it finishes loading look at the reads again too: the edit comes once they stop.
+            TimeSpan quiet = TimeSpan.FromSeconds(5).Scaled();
+            Ui.WaitFor(() => DateTime.UtcNow.Ticks - Interlocked.Read(ref refreshed) > quiet.Ticks, "the language server's refreshes to stop");
+            TestFolders.Write(project.Folder, "compose-dev.yml", "services:\n  shop:\n    build: ./Shop\n    environment:\n      Shop__Banner: from-compose\n");
+            Ui.WaitFor(() => Missing(window).SetEquals(["Payments:ApiKey"]),
+                () => $"Shop:Banner's warning to go once {Path.GetFileName(compose)} sets it: {string.Join(", ", Missing(window))} warned of");
+        }
+        finally
+        {
+            server.DiagnosticsRefreshRequested -= heard;
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Manage_User_Secrets_gives_the_project_its_secrets_and_opens_them()
     {

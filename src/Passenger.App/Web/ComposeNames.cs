@@ -107,13 +107,12 @@ public static partial class ComposeNames
         int start = spot.Start;
         if (spot.Kind == ComposeSpotKind.Value && spot.Key == "network_mode")
         {
-            const string Prefix = "service:";
-            if (!typed.StartsWith(Prefix, StringComparison.Ordinal))
+            if (!typed.StartsWith(ComposeFiles.ServicePrefix, StringComparison.Ordinal))
             {
                 return null;
             }
-            typed = typed[Prefix.Length..];
-            start += Prefix.Length;
+            typed = typed[ComposeFiles.ServicePrefix.Length..];
+            start += ComposeFiles.ServicePrefix.Length;
         }
         if (!NameSoFar().IsMatch(typed))
         {

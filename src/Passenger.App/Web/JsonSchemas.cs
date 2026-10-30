@@ -47,13 +47,8 @@ public sealed class JsonSchemas(Func<bool> download)
     /// <summary>The Compose specification's schema, carried, as the YAML server reads it from disk.</summary>
     public static string ComposeUri => new Uri(Path.Combine(Folder, "compose-spec.json")).AbsoluteUri;
 
-    /// <summary>The names Docker Compose looks for (compose.yaml first) and the overrides and variants named after
-    /// them, matched anywhere in the folder.</summary>
-    public static readonly string[] ComposeFiles =
-    [
-        "compose.yaml", "compose.yml", "compose.*.yaml", "compose.*.yml",
-        "docker-compose.yaml", "docker-compose.yml", "docker-compose.*.yaml", "docker-compose.*.yml",
-    ];
+    /// <summary>The globs compose files take the Compose specification's schema by (<see cref="Containers.ComposeFiles.SchemaGlobs"/>).</summary>
+    public static readonly string[] ComposeFiles = [.. Containers.ComposeFiles.SchemaGlobs];
 
     /// <summary>The associations as the JSON server's <c>json/schemaAssociations</c> takes them.</summary>
     public static object Notification => Associations.Select(a => new { fileMatch = a.FileMatch, uri = a.Uri }).ToArray();

@@ -98,7 +98,7 @@ public static partial class ConfigurationFiles
         {
             given.AddRange(Flatten(text(secrets), secrets, GivenBy.UserSecrets));
         }
-        foreach (string compose in project.ComposeFolders.SelectMany(f => FilesIn(f, "*.y*ml")).Where(IsCompose))
+        foreach (string compose in project.ComposeFolders.SelectMany(f => FilesIn(f, "*.y*ml")).Where(Containers.ComposeFiles.IsCompose))
         {
             given.AddRange(Variables(text(compose), compose, GivenBy.Compose));
         }
@@ -115,10 +115,6 @@ public static partial class ConfigurationFiles
         }
         return given;
     }
-
-    /// <summary>A compose file Compose reads unasked or one named for it (compose.override.yaml, docker-compose.prod.yml).</summary>
-    private static bool IsCompose(string path) =>
-        Path.GetFileName(path) is { } name && (name.StartsWith("compose", StringComparison.OrdinalIgnoreCase) || name.StartsWith("docker-compose", StringComparison.OrdinalIgnoreCase));
 
     private static IReadOnlyList<string> FilesIn(string folder, string pattern)
     {

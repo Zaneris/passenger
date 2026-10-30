@@ -19,6 +19,9 @@ public static class FileIconSet
     /// <summary>A project's dependencies and its packages, NuGet's.</summary>
     public static readonly FileIconLook Packages = new("NuGet", Blue);
 
+    /// <summary>A compose file (<see cref="Containers.ComposeFiles.IsCompose"/>).</summary>
+    private static readonly FileIconLook Compose = new("Docker", Blue);
+
     private static readonly Dictionary<string, FileIconLook> Names = new(StringComparer.OrdinalIgnoreCase)
     {
         ["package.json"] = new("Npm", Red),
@@ -95,9 +98,6 @@ public static class FileIconSet
     [
         ("dockerfile", new("Docker", Blue)),
         ("containerfile", new("Docker", Blue)),
-        ("docker-compose", new("Docker", Blue)),
-        ("compose.yml", new("Docker", Blue)),
-        ("compose.yaml", new("Docker", Blue)),
         (".env", new("DotEnv", Yellow)),
         (".eslintrc", new("ESLint", Purple)),
         ("eslint.config.", new("ESLint", Purple)),
@@ -399,6 +399,10 @@ public static class FileIconSet
         if (Names.TryGetValue(name, out FileIconLook named))
         {
             return named;
+        }
+        if (Containers.ComposeFiles.IsCompose(name))
+        {
+            return Compose;
         }
         foreach ((string start, FileIconLook look) in Starts)
         {

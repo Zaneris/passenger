@@ -273,6 +273,24 @@ public sealed class JsonSchemaTests
         Assert.True(marked.Count == 1 && marked[0].Text == "sometimes", $"Values Compose replaces are marked as wrong, or a policy it has not is not, where the file has {Said(marked)}");
     }
 
+    /// <summary>A compose file named in another letter case or after a '-' (Compose.yaml, compose-dev.yml) is checked by the
+    /// Compose specification's schema, as compose.yaml is.</summary>
+    [AvaloniaTheory]
+    [InlineData("Compose.yaml")]
+    [InlineData("compose-dev.yml")]
+    public void A_compose_file_of_any_letter_case_or_named_with_a_dash_is_checked_by_the_compose_schema(string name)
+    {
+        DockerFilesTests.Shop.SkipWithoutNode(yaml: true);
+        List<(string Text, string Message)> marked = Marked(name, """
+            services:
+              web:
+                image: nginx
+                init: [true]
+
+            """, "[true]");
+        Assert.True(marked.Count == 0, $"{name} marks more than the value its schema refuses: {Said(marked)}");
+    }
+
     /// <summary>The file written alone in a folder of its own and opened with no C# server, read once its server has checked
     /// it against its schema: what it marks, as the text marked and the message, but the one value the test gives it of the
     /// wrong type, <paramref name="wrong"/>, whose mark says the check is in.</summary>

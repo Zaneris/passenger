@@ -282,5 +282,5 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
 
     /// <summary>Whether a file is a compose file the YAML server reads, whose declarations Passenger finds first.</summary>
     internal static bool IsComposeFile(WebDocument web, OpenDocument document) =>
-        web.Kind == WebServerKind.Yaml && ComposeDeclarations.IsCompose(document.Path);
+        web.Kind == WebServerKind.Yaml && Containers.ComposeFiles.IsCompose(document.Path);
 }

@@ -78,7 +78,7 @@ public sealed class EngineChecks : IDisposable
             return;
         }
         EngineCheck? check = Languages.Language.ForPath(document.Path) == Languages.Language.Dockerfile ? new DockerfileCheck(this, document, web)
-            : ComposeDeclarations.IsCompose(document.Path) ? new ComposeCheck(this, document, web) : null;
+            : ComposeFiles.IsCompose(document.Path) ? new ComposeCheck(this, document, web) : null;
         if (check is null)
         {
             return;
@@ -116,7 +116,7 @@ public sealed class EngineChecks : IDisposable
         foreach (ComposeCheck compose in checks.Values.OfType<ComposeCheck>())
         {
             if (code || paths.Any(p => Path.GetDirectoryName(p) is { } folder && PathNames.Same(folder, compose.Folder)
-                && (ComposeDeclarations.IsCompose(p) || Path.GetFileName(p) == ".env")))
+                && (ComposeFiles.IsCompose(p) || Path.GetFileName(p) == ".env")))
             {
                 compose.Later();
             }

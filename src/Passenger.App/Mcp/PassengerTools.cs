@@ -222,7 +222,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
             if (Session.Web is { } web && web.For(marked) is { Lsp: null })
             {
-                if (Languages.Language.ForPath(marked.Path) != Languages.Language.Dockerfile && !ComposeDeclarations.IsCompose(marked.Path))
+                if (Languages.Language.ForPath(marked.Path) != Languages.Language.Dockerfile && !global::Passenger.App.Containers.ComposeFiles.IsCompose(marked.Path))
                 {
                     // A web file whose server cannot start has no checks: none found would read as none there.
                     throw new InvalidOperationException(web.Unready("Its diagnostics", marked));
@@ -411,7 +411,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
         Served served = await Serve(at.Path, cancel);
         int offset = Offset(served.Document, at.Line, at.Column);
-        if (served is ServerServed { Web.Kind: WebServerKind.Yaml } yaml && ComposeDeclarations.IsCompose(yaml.Document.Path)
+        if (served is ServerServed { Web.Kind: WebServerKind.Yaml } yaml && global::Passenger.App.Containers.ComposeFiles.IsCompose(yaml.Document.Path)
             && await ComposeAssist.ComposeRenamingAsync(yaml.Lsp, yaml.Document, offset) is { } composed)
         {
             if (composed.Name == newName)

@@ -202,10 +202,9 @@ public static partial class ComposeFixes
             }
             if (under == "network_mode")
             {
-                const string Prefix = "service:";
-                if (holder.Scalar == Prefix + fault.Name)
+                if (holder.Scalar == ComposeFiles.ServicePrefix + fault.Name)
                 {
-                    found.Add(new ComposeReference(under, ScalarPart(text, holder, Prefix.Length, fault.Name.Length), holder, null));
+                    found.Add(new ComposeReference(under, ScalarPart(text, holder, ComposeFiles.ServicePrefix.Length, fault.Name.Length), holder, null));
                 }
                 continue;
             }

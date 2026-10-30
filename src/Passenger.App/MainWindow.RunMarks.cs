@@ -106,7 +106,7 @@ public partial class MainWindow
 
     /// <summary>Whether a file is a compose file, a Dockerfile or a launch profiles' file, where a run icon may stand.</summary>
     private static bool IsRunFile(string path) =>
-        Web.ComposeDeclarations.IsCompose(path) || Languages.Language.ForPath(path) == Languages.Language.Dockerfile || IsProfilesFile(path);
+        Containers.ComposeFiles.IsCompose(path) || Languages.Language.ForPath(path) == Languages.Language.Dockerfile || IsProfilesFile(path);
 
     /// <summary>Whether a file may hold launch profiles: a project's launchSettings.json, a file-based program's .run.json.</summary>
     private static bool IsProfilesFile(string path) =>
