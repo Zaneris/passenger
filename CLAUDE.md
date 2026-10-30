@@ -118,9 +118,9 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   for an answer).
 - **Paths are canonical** (`PathNames.Canonical`, symlinks resolved, as MSBuild and Roslyn report them); compare with
   `PathNames.Comparer`/`Same`/`IsUnder` (a folder asked whether it tells case apart only for names alike but for case),
-  names in one folder with `NamesIn(folder)`, never `Comparison` for a path, walk a project's folders with
-  `FoldersUnder` and the open folder's files with `FilesUnder` (`IsSystemFile` passed over). Show one to a person with
-  `PathNames.Shown`.
+  names in one folder with `NamesIn(folder)` (`CaseIgnoredIn`), never `Comparison` for a path, walk a project's folders
+  with `FoldersUnder` and the open folder's files with `FilesUnder` (`IsSystemFile` passed over). Show one to a person
+  with `PathNames.Shown`.
 - **Lines differ by reader.** Roslyn's server and compilers end a line at a lone '\r', U+0085, U+2028 and U+2029, an XML
   reader (XAML's compilers, BAML, XamlIl) at a lone '\r' only. Every place crossing to a server, compiler, PDB or running
   app goes through `ServerLines`/`ServerPlaces` (`Compiled`, `CountedByRoslyn`, `PositionOfCompiled`), never `new
