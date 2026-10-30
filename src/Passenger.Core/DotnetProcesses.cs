@@ -84,6 +84,27 @@ public static partial class DotnetProcesses
     /// null when it has gone or cannot be read.</summary>
     public static DotnetProcess? Describe(int id) => Read(id, null);
 
+    /// <summary>Whether a process with this id runs, any program's: one this user may not open (another user's, an elevated
+    /// one) runs too.</summary>
+    public static bool Runs(int id)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            // .NET's HasExited takes a process Windows will not open for one that has ended.
+            using SafeProcessHandle process = OpenProcess(ProcessQueryLimitedInformation | Synchronize, false, (uint)id);
+            return process.IsInvalid ? Marshal.GetLastPInvokeError() == AccessDenied : WaitForSingleObject(process, 0) == WaitTimeout;
+        }
+        try
+        {
+            using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
+            return !process.HasExited;
+        }
+        catch (Exception gone) when (gone is ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>The folder of the CoreCLR a process runs on (its libcoreclr or coreclr.dll, where the runtime's own tools lie
     /// beside it), read from the modules it has mapped; null when it has gone, is not readable, or maps none (a single-file
     /// app's runtime is inside its executable).</summary>
@@ -433,7 +454,10 @@ public static partial class DotnetProcesses
     // Windows: the process opened for limited queries, which a process of another user allows unless it is protected.
 
     private const uint ProcessQueryLimitedInformation = 0x1000;
+    private const uint Synchronize = 0x100000;
     private const uint TokenQuery = 0x0008;
+    private const int AccessDenied = 5;
+    private const uint WaitTimeout = 0x102;
     private const int ProcessBasicInformation = 0;
     private const int ProcessCommandLineInformation = 60;
 
@@ -548,6 +572,9 @@ public static partial class DotnetProcesses
 
     [LibraryImport("kernel32.dll", EntryPoint = "OpenProcess", SetLastError = true)]
     private static partial SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint id);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "WaitForSingleObject")]
+    private static partial uint WaitForSingleObject(SafeProcessHandle handle, uint milliseconds);
 
     [LibraryImport("dbghelp.dll", EntryPoint = "MiniDumpWriteDump", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

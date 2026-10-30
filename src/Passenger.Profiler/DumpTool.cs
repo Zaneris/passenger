@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Diagnostics.NETCore.Client;
 using Passenger.Core;
@@ -121,7 +120,7 @@ internal static class DumpTool
     /// <summary>Deletes the dumps in the temporary folder that no snapshot has under way: those of a Passenger that ended
     /// before deleting its own, or whose delete the system refused. A Passenger's still running stays, and one whose name
     /// says not whose, once an hour old: a snapshot reads its dump within minutes.</summary>
-    public static void Sweep() => Sweep(Path.GetTempPath(), Environment.ProcessId, Running, DateTime.UtcNow);
+    public static void Sweep() => Sweep(Path.GetTempPath(), Environment.ProcessId, DotnetProcesses.Runs, DateTime.UtcNow);
 
     internal static void Sweep(string folder, int self, Func<int, bool> running, DateTime now)
     {
@@ -151,19 +150,6 @@ internal static class DumpTool
             catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
             {
             }
-        }
-    }
-
-    private static bool Running(int process)
-    {
-        try
-        {
-            using Process found = Process.GetProcessById(process);
-            return !found.HasExited;
-        }
-        catch (Exception missing) when (missing is ArgumentException or InvalidOperationException)
-        {
-            return false;
         }
     }
 
