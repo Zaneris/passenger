@@ -404,11 +404,11 @@ public sealed class LanguageServer : IAsyncDisposable
         }
         ProcessStartInfo start = ChildProcesses.DotnetCommand(arguments);
         // A server's MSBuild nodes are its own: a restart ends them, which would cut short a build that took one up.
-        start.Environment["MSBUILDNODEHANDSHAKESALT"] += $"-server-{Interlocked.Increment(ref started)}";
+        start.Environment[MSBuildNames.NodeHandshakeSalt] += $"-server-{Interlocked.Increment(ref started)}";
         // The server's restore takes no properties, and off Windows a WPF project restores only with this (NETSDK1100).
-        if (!OperatingSystem.IsWindows() && !start.Environment.ContainsKey("EnableWindowsTargeting"))
+        if (!OperatingSystem.IsWindows() && !start.Environment.ContainsKey(MSBuildNames.EnableWindowsTargeting))
         {
-            start.Environment["EnableWindowsTargeting"] = "true";
+            start.Environment[MSBuildNames.EnableWindowsTargeting] = "true";
         }
         // The server collector kept 3 to 5 times the live heap and never gave it back; the workstation one holds near it (#559).
         if (!start.Environment.ContainsKey("DOTNET_gcServer"))
@@ -463,8 +463,8 @@ public sealed class LanguageServer : IAsyncDisposable
         // Its restores' MSBuild nodes outlive the restores, and would keep the folder they started in for their idle time.
         ChildProcesses.HoldFamily(process);
         // Every message passes the trace from initialize on, so one turned on while the server runs starts at the next.
-        TracedStream input = new(process.StandardInput.BaseStream, process.Id, "-->");
-        TracedStream output = new(process.StandardOutput.BaseStream, process.Id, "<--", across: input);
+        TracedStream input = new(process.StandardInput.BaseStream, process.Id, "-->", static () => Trace);
+        TracedStream output = new(process.StandardOutput.BaseStream, process.Id, "<--", static () => Trace, across: input);
         ServerLog log;
         try
         {
@@ -1063,7 +1063,7 @@ public sealed class LanguageServer : IAsyncDisposable
         private static bool ForRazor(Registration registration) =>
             registration.RegisterOptions is { ValueKind: JsonValueKind.Object } options && options.TryGetProperty("documentSelector", out JsonElement selector)
             && selector.ValueKind == JsonValueKind.Array && selector.EnumerateArray().Any(filter =>
-                filter.ValueKind == JsonValueKind.Object && filter.TryGetProperty("language", out JsonElement language) && language.GetString() == "aspnetcorerazor");
+                filter.ValueKind == JsonValueKind.Object && filter.TryGetProperty("language", out JsonElement language) && language.GetString() == LanguageIds.Razor);
 
         public IReadOnlyList<string?> DiagnosticSources
         {

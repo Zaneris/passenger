@@ -94,8 +94,8 @@ public static class ChildProcesses
         start.Environment["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0";
         start.Environment["MSBUILDUSESERVER"] = "0";
         // No other build takes up a node of the IDE's, to have it ended under it when the IDE ends.
-        start.Environment.TryGetValue("MSBUILDNODEHANDSHAKESALT", out string? salt);
-        start.Environment["MSBUILDNODEHANDSHAKESALT"] = $"{salt}passenger-{Environment.ProcessId}";
+        start.Environment.TryGetValue(MSBuildNames.NodeHandshakeSalt, out string? salt);
+        start.Environment[MSBuildNames.NodeHandshakeSalt] = $"{salt}passenger-{Environment.ProcessId}";
         // Set by dotnet test for what it runs: each node would hold the command's output open as its own.
         start.Environment.Remove("MSBUILDENSURESTDOUTFORTASKPROCESSES");
         return start;

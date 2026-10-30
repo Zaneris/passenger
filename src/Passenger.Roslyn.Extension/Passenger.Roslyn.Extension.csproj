@@ -14,9 +14,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Paths compared as the rest of Passenger compares them, compiled in since Passenger.Core's net11.0 is past the server's. -->
+    <!-- Paths compared, and Razor files named, as the rest of Passenger does, compiled in since Passenger.Core's net11.0 is
+         past the server's. -->
     <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
     <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
+    <Compile Include="../Passenger.Core/RazorFiles.cs" Link="RazorFiles.cs" />
   </ItemGroup>
 
   <Import Project="../Passenger.Lsp/RoslynServer.targets" />

@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Buffers.Text;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -16,8 +15,6 @@ namespace Passenger.Dap;
 /// on a reply of its own never blocks the read that would bring it.</summary>
 public sealed class DapConnection : IAsyncDisposable
 {
-    private static readonly byte[] HeaderEnd = "\r\n\r\n"u8.ToArray();
-
     /// <summary>The most a message's header is read to before its blank line: the protocol's is one Content-Length line,
     /// and an end that sends more without one is not speaking it.</summary>
     public const int MostHeader = 64 * 1024;
@@ -257,13 +254,11 @@ public sealed class DapConnection : IAsyncDisposable
             json.WriteEndObject();
             json.Flush();
             ReadOnlySpan<byte> written = writing.Written;
-            Span<byte> header = stackalloc byte[40];
-            "Content-Length: "u8.CopyTo(header);
-            Utf8Formatter.TryFormat(written.Length, header[16..], out int digits);
-            "\r\n\r\n"u8.CopyTo(header[(16 + digits)..]);
+            Span<byte> header = stackalloc byte[ContentLengthHeader.Longest];
+            header = header[..ContentLengthHeader.Write(written.Length, header)];
             // Under the gate, so the trace has the messages in the order they went.
             Trace?.Invoke(Name, $"--> {Encoding.UTF8.GetString(written)}");
-            output.Write(header[..(20 + digits)]);
+            output.Write(header);
             output.Write(written);
             output.Flush();
         }
@@ -277,7 +272,7 @@ public sealed class DapConnection : IAsyncDisposable
         {
             while (!stopping.IsCancellationRequested)
             {
-                int headerEnd = buffer.AsSpan(0, filled).IndexOf(HeaderEnd);
+                int headerEnd = buffer.AsSpan(0, filled).IndexOf(ContentLengthHeader.End);
                 if (headerEnd < 0)
                 {
                     if (filled >= MostHeader)
@@ -300,12 +295,12 @@ public sealed class DapConnection : IAsyncDisposable
                 {
                     throw new IOException($"A DAP message's header ran past {MostHeader} bytes without the blank line that ends it");
                 }
-                long length = ContentLength(buffer.AsSpan(0, headerEnd));
+                long length = ContentLengthHeader.Read(buffer.AsSpan(0, headerEnd)) ?? throw NoLength(buffer.AsSpan(0, headerEnd));
                 if (length > MostBody)
                 {
                     throw new IOException($"A DAP message of {length} bytes is over the {MostBody} bytes the connection reads of one");
                 }
-                int start = headerEnd + HeaderEnd.Length;
+                int start = headerEnd + ContentLengthHeader.End.Length;
                 int size = (int)length;
                 if (buffer.Length < start + size)
                 {
@@ -362,29 +357,11 @@ public sealed class DapConnection : IAsyncDisposable
         return grown;
     }
 
-    /// <summary>A header's Content-Length, read as a long, so a length too large for the buffer is refused by its size rather
-    /// than taken for no length; one larger still than a long is over every limit.</summary>
-    private static long ContentLength(ReadOnlySpan<byte> header)
+    /// <summary>What ends a conversation whose header gives no length, quoting the header's start.</summary>
+    private static IOException NoLength(ReadOnlySpan<byte> header)
     {
-        ReadOnlySpan<byte> lines = header;
-        while (lines.Length > 0)
-        {
-            int next = lines.IndexOf("\r\n"u8);
-            ReadOnlySpan<byte> line = next < 0 ? lines : lines[..next];
-            lines = next < 0 ? [] : lines[(next + 2)..];
-            int colon = line.IndexOf((byte)':');
-            if (colon > 0 && Ascii.EqualsIgnoreCase(line[..colon][Ascii.Trim(line[..colon])], "Content-Length"u8))
-            {
-                ReadOnlySpan<byte> value = line[(colon + 1)..];
-                value = value[Ascii.Trim(value)];
-                if (value.Length > 0 && !value.ContainsAnyExceptInRange((byte)'0', (byte)'9'))
-                {
-                    return Utf8Parser.TryParse(value, out long length, out int read) && read == value.Length ? length : long.MaxValue;
-                }
-            }
-        }
         string shown = Encoding.ASCII.GetString(header[..Math.Min(header.Length, 200)]);
-        throw new IOException($"A DAP message with no Content-Length: '{(header.Length > 200 ? shown + "…" : shown)}'");
+        return new IOException($"A DAP message with no Content-Length: '{(header.Length > 200 ? shown + "…" : shown)}'");
     }
 
     private void Receive(JsonElement message)

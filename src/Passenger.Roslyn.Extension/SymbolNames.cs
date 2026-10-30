@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.Extensions;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.LanguageServer;
 using Microsoft.CodeAnalysis.Text;
+using Passenger.Core;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -37,6 +38,13 @@ internal static class SymbolNames
 {
     private static readonly SymbolDisplayFormat Short = SymbolDisplayFormat.CSharpShortErrorMessageFormat;
 
+    /// <summary>How the hint name of a file Razor's generator makes ends.</summary>
+    private const string Generated = ".g.cs";
+
+    /// <summary>How the hint names of the files Razor's generator makes of a component and of a page end.</summary>
+    private static readonly (string Component, string Page) RazorGenerated =
+        (Identifier(RazorFiles.Component) + Generated, Identifier(RazorFiles.Page) + Generated);
+
     /// <summary>The class a Razor file makes, and its name's span in the C# Razor's generator makes of the file, a place the
     /// server takes the class at, as the Razor file has none (its code maps the class to no line); none for a file of no
     /// project's.</summary>
@@ -44,7 +52,7 @@ internal static class SymbolNames
     {
         foreach (DocumentId id in solution.GetDocumentIdsWithFilePath(path))
         {
-            if (solution.GetAdditionalDocument(id) is not { FilePath: { } file } razor || !IsRazor(file) || MadeOf(razor.Project, file) is not { } made)
+            if (solution.GetAdditionalDocument(id) is not { FilePath: { } file } razor || !RazorFiles.Is(file) || MadeOf(razor.Project, file) is not { } made)
             {
                 continue;
             }
@@ -169,7 +177,7 @@ internal static class SymbolNames
     private static async Task<IReadOnlyList<ISymbol>> RazorDeclarationsAsync(Solution solution, string name, CancellationToken cancel)
     {
         List<ISymbol> found = [];
-        foreach (Project project in solution.Projects.Where(p => p.AdditionalDocuments.Any(d => IsRazor(d.FilePath))))
+        foreach (Project project in solution.Projects.Where(p => p.AdditionalDocuments.Any(d => RazorFiles.Is(d.FilePath))))
         {
             HashSet<string> generated = [.. (await project.GetSourceGeneratedDocumentsAsync(cancel).ConfigureAwait(false))
                 .Where(d => IsRazorGenerated(d.HintName) && d.FilePath is not null).Select(d => d.FilePath!)];
@@ -184,25 +192,27 @@ internal static class SymbolNames
 
     /// <summary>The Razor file a file of Razor's generator was made from; null for any other generated file.</summary>
     private static string? RazorFileOf(SourceGeneratedDocument generated) => MadeOf(generated) is { } made
-        ? generated.Project.AdditionalDocuments.FirstOrDefault(d => IsRazor(d.FilePath) && MadeOf(generated.Project, d.FilePath!) == made)?.FilePath
+        ? generated.Project.AdditionalDocuments.FirstOrDefault(d => RazorFiles.Is(d.FilePath) && MadeOf(generated.Project, d.FilePath!) == made)?.FilePath
         : null;
 
-    /// <summary>What a file of Razor's generator was made from, as its hint name writes it (then ".g.cs"): the Razor file's
-    /// path in its project with every character but a letter or digit an underscore; null for any other generated file.</summary>
+    /// <summary>What a file of Razor's generator was made from, as its hint name writes it (then <see cref="Generated"/>): the
+    /// Razor file's path in its project with every character but a letter or digit an underscore; null for any other
+    /// generated file.</summary>
     private static string? MadeOf(SourceGeneratedDocument generated) =>
-        IsRazorGenerated(generated.HintName) ? Identifier(generated.HintName[..^".g.cs".Length]) : null;
+        IsRazorGenerated(generated.HintName) ? Identifier(generated.HintName[..^Generated.Length]) : null;
 
     /// <summary>A Razor file's path in its project as the hint name of the file Razor's generator makes of it writes it.</summary>
     private static string? MadeOf(Project project, string razor) =>
         Path.GetDirectoryName(project.FilePath) is { } folder ? Identifier(Path.GetRelativePath(folder, razor)) : null;
 
+    /// <summary>The hint name of the file Razor's generator makes of a Razor file of a project; null for a project with no
+    /// file of its own.</summary>
+    public static string? HintOf(Project project, string razor) => MadeOf(project, razor) is { } made ? made + Generated : null;
+
     private static string Identifier(string path) => string.Concat(path.Select(c => char.IsLetterOrDigit(c) ? c : '_'));
 
-    private static bool IsRazor(string? path) =>
-        path is not null && (path.EndsWith(".razor", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase));
-
-    private static bool IsRazorGenerated(string hint) =>
-        hint.EndsWith("_razor.g.cs", StringComparison.OrdinalIgnoreCase) || hint.EndsWith("_cshtml.g.cs", StringComparison.OrdinalIgnoreCase);
+    private static bool IsRazorGenerated(string hint) => hint.EndsWith(RazorGenerated.Component, StringComparison.OrdinalIgnoreCase)
+        || hint.EndsWith(RazorGenerated.Page, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A name's dotted parts, generic arguments kept inside their part, and its parameters' types when it gives
     /// them (none for <c>()</c>).</summary>

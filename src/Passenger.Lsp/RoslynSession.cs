@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Passenger.Core;
 using Passenger.Roslyn.Extension;
 using Passenger.Text;
 
@@ -398,13 +399,13 @@ public sealed class LspDocument : IDisposable
     private (long Asked, long Came) coloured;
     private (long Asked, long Came) diagnosed;
 
-    internal LspDocument(IDocumentHost session, string uri, TextDocument text, string? languageId = null)
+    internal LspDocument(IDocumentHost session, string uri, TextDocument text, [IdentifierOf(typeof(LanguageIds))] string? languageId = null)
     {
         this.session = session;
         Uri = uri;
         Text = text;
-        IsRazor = languageId is null && IsRazorPath(uri);
-        LanguageId = languageId ?? (IsRazor ? "aspnetcorerazor" : "csharp");
+        IsRazor = languageId is null && RazorFiles.Is(uri);
+        LanguageId = languageId ?? (IsRazor ? LanguageIds.Razor : LanguageIds.CSharp);
         Sent(text.Version, changed: true);
         session.Server.Notify(LspMethods.DidOpen,
             new DidOpenTextDocumentParams(new TextDocumentItem(uri, LanguageId, text.Version, text.Snapshot.ToString())));
@@ -447,8 +448,9 @@ public sealed class LspDocument : IDisposable
     public string Uri { get; }
     public TextDocument Text { get; }
 
-    /// <summary>The language the server was told the document is in: <c>csharp</c>, <c>aspnetcorerazor</c>, or a web
+    /// <summary>The language the server was told the document is in: C#'s or Razor's (<see cref="LanguageIds"/>), or a web
     /// language's (<c>typescript</c>, <c>javascriptreact</c>, <c>html</c>, <c>scss</c>, <c>jsonc</c>).</summary>
+    [IdentifierOf(typeof(LanguageIds))]
     public string LanguageId { get; }
 
     /// <summary>The server sent the document's diagnostics, as one that pushes them does; raised on any thread, the list
@@ -538,10 +540,6 @@ public sealed class LspDocument : IDisposable
     /// <summary>A Razor file (.razor, .cshtml), which the server hands to Razor, cohosted in it: its colours have Razor's
     /// legend (<see cref="LanguageServer.RazorLegend"/>) and its diagnostics are Razor's one source.</summary>
     public bool IsRazor { get; }
-
-    /// <summary>Whether a file (its path or its URI) is one Razor answers for in the server: a component or a page.</summary>
-    public static bool IsRazorPath(string path) =>
-        path.EndsWith(".razor", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase);
 
     public void Saved() => Server.Notify(LspMethods.DidSave, new DidSaveTextDocumentParams(new TextDocumentIdentifier(Uri)));
 

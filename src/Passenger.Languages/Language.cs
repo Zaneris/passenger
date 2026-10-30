@@ -1,6 +1,8 @@
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Languages.Markup;
 using Passenger.Languages.TextMate;
+using Passenger.Lsp;
 using Passenger.Text;
 
 namespace Passenger.Languages;
@@ -92,8 +94,8 @@ public sealed class Language
 
     private readonly IReadOnlyList<FilePattern> patterns;
 
-    private Language(string id, string name, IReadOnlyList<FilePattern> patterns, string? line = null, (string Start, string End)? block = null,
-        int indent = 4, GrammarFile? grammar = null, Func<TextDocument, IFoldFinder>? folds = null,
+    private Language([IdentifierOf(typeof(LanguageIds))] string id, string name, IReadOnlyList<FilePattern> patterns, string? line = null,
+        (string Start, string End)? block = null, int indent = 4, GrammarFile? grammar = null, Func<TextDocument, IFoldFinder>? folds = null,
         LanguageService service = LanguageService.None, MarkupKind markup = MarkupKind.None, bool reindentsPaste = true, bool parsed = false)
     {
         Id = id;
@@ -132,10 +134,10 @@ public sealed class Language
         grammar: new("source.ini", "ini.tmLanguage.json"));
 
     /// <summary>C#, coloured and folded by its own parse; its grammar is only what Razor and Markdown's fences embed.</summary>
-    public static readonly Language CSharp = new("csharp", "C#", ["*.cs", "*.csx"], line: "//", block: ("/*", "*/"),
+    public static readonly Language CSharp = new(LanguageIds.CSharp, "C#", ["*.cs", "*.csx"], line: "//", block: ("/*", "*/"),
         grammar: new("source.cs", "csharp.tmLanguage.json"), service: LanguageService.CSharp, parsed: true);
 
-    public static readonly Language Razor = new("aspnetcorerazor", "Razor", ["*.razor", "*.cshtml"], block: ("@*", "*@"),
+    public static readonly Language Razor = new(LanguageIds.Razor, "Razor", ["*" + RazorFiles.Component, "*" + RazorFiles.Page], block: ("@*", "*@"),
         grammar: new("text.aspnetcorerazor", "aspnetcorerazor.tmLanguage.json", Tags.Html), service: LanguageService.CSharp);
 
     /// <summary>XAML, MSBuild's files and the rest of XML are one markup to the editor, each named and answered as its own.</summary>
@@ -204,6 +206,7 @@ public sealed class Language
     public static readonly Language Script = new("script", "Script", ["*.py", "*.toml", "*.ps1", "*.rb", "justfile"], line: "#");
 
     /// <summary>VS Code's id for the language, which a language server is told unless a file's pattern names another.</summary>
+    [IdentifierOf(typeof(LanguageIds))]
     public string Id { get; }
 
     /// <summary>The language as the status bar and the tools name it.</summary>

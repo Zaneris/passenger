@@ -1,4 +1,5 @@
 using Microsoft.Build.Evaluation;
+using Passenger.Core;
 
 namespace Passenger.Host;
 
@@ -9,8 +10,6 @@ namespace Passenger.Host;
 /// Windows-only framework, nothing changes.</summary>
 internal static class WindowsTargeting
 {
-    public const string Property = "EnableWindowsTargeting";
-
     /// <summary>A project loaded with these global properties, loaded again with EnableWindowsTargeting when it needs it here.</summary>
     public static Project Load(Func<Dictionary<string, string>, Project> load, IReadOnlyDictionary<string, string> global, ProjectCollection collection)
     {
@@ -21,18 +20,19 @@ internal static class WindowsTargeting
             return project;
         }
         collection.UnloadProject(project);
-        properties[Property] = "true";
+        properties[MSBuildNames.EnableWindowsTargeting] = "true";
         return load(properties);
     }
 
     /// <summary>Whether the host gave this evaluation EnableWindowsTargeting.</summary>
     public static bool Given(Project project) =>
-        project.GlobalProperties.TryGetValue(Property, out string? value) && value.Equals("true", StringComparison.OrdinalIgnoreCase);
+        project.GlobalProperties.TryGetValue(MSBuildNames.EnableWindowsTargeting, out string? value)
+        && value.Equals("true", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Off Windows, one that references a Windows-only framework and leaves the property unset (in its files and
     /// the environment alike), so its restore and build would fail with NETSDK1100.</summary>
     private static bool Needed(Project project) =>
-        !OperatingSystem.IsWindows() && project.GetPropertyValue(Property).Length == 0 && WindowsOnly(project);
+        !OperatingSystem.IsWindows() && project.GetPropertyValue(MSBuildNames.EnableWindowsTargeting).Length == 0 && WindowsOnly(project);
 
     /// <summary>Whether a framework it references is one the SDK's KnownFrameworkReference marks IsWindowsOnly.</summary>
     private static bool WindowsOnly(Project project)

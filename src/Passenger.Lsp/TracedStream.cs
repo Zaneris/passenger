@@ -1,26 +1,30 @@
-using System.Buffers.Text;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Passenger.Core;
 
 namespace Passenger.Lsp;
 
-/// <summary>A language server's input or output, passed through unchanged, each message that crosses it handed whole to
-/// <see cref="LanguageServer.Trace"/> while one is set. The header-delimited frames are followed all along, so a trace
+/// <summary>A language server's input or output, passed through unchanged, each message that crosses it handed whole to the
+/// <paramref name="trace"/> it gives while it gives one. The header-delimited frames are followed all along, so a trace
 /// turned on mid-conversation starts at the next message; a frame that does not read as one ends the tracing of this
 /// stream, never the connection. The output notes, as each message's last byte is read, how many had then crossed the
 /// input (<paramref name="across"/>), the order the trace shows.</summary>
-internal sealed class TracedStream(Stream inner, int server, string direction, TracedStream? across = null) : Stream
+internal sealed class TracedStream(Stream inner, int server, string direction, Func<Action<int, string>?> trace, TracedStream? across = null) : Stream
 {
     /// <summary>The most of one message a trace keeps: a completion list or a file's colours can be megabytes.</summary>
     private const int Kept = 64 * 1024;
+
+    /// <summary>The most bytes the connection reads of one message: a longer one is traced by its size as its header
+    /// crosses, its body never read whole.</summary>
+    public const long MostRead = int.MaxValue;
 
     /// <summary>The header read so far, in one buffer of the most a header may be: past it the frames no longer read.</summary>
     private readonly byte[] header = new byte[4097];
     private int headerLength;
     private readonly MemoryStream body = new();
     private readonly Lock gate = new();
-    private int remaining = -1;
-    private int length;
+    private long remaining = -1;
+    private long length;
     private bool tracing;
     private bool lost;
     private long crossed;
@@ -147,7 +151,7 @@ internal sealed class TracedStream(Stream inner, int server, string direction, T
                     }
                     continue;
                 }
-                int part = Math.Min(remaining, bytes.Length);
+                int part = (int)Math.Min(remaining, bytes.Length);
                 if (tracing && body.Length < Kept)
                 {
                     body.Write(bytes[..Math.Min(part, Kept - (int)body.Length)]);
@@ -164,33 +168,22 @@ internal sealed class TracedStream(Stream inner, int server, string direction, T
 
     private void Begin()
     {
-        ReadOnlySpan<byte> lines = header.AsSpan(0, headerLength);
+        long? stated = ContentLengthHeader.Read(header.AsSpan(0, headerLength));
         headerLength = 0;
-        length = -1;
-        while (lines.Length > 0)
-        {
-            int next = lines.IndexOf("\r\n"u8);
-            ReadOnlySpan<byte> line = next < 0 ? lines : lines[..next];
-            lines = next < 0 ? [] : lines[(next + 2)..];
-            int colon = line.IndexOf((byte)':');
-            if (colon > 0 && Ascii.EqualsIgnoreCase(line[..colon][Ascii.Trim(line[..colon])], "Content-Length"u8))
-            {
-                ReadOnlySpan<byte> value = line[(colon + 1)..];
-                value = value[Ascii.Trim(value)];
-                if (value.Length > 0 && !value.ContainsAnyExceptInRange((byte)'0', (byte)'9') && Utf8Parser.TryParse(value, out int found, out int read) && read == value.Length)
-                {
-                    length = found;
-                }
-            }
-        }
-        if (length < 0)
+        if (stated is not { } size)
         {
             lost = true;
             return;
         }
-        remaining = length;
-        tracing = LanguageServer.Trace is not null;
+        length = size;
+        remaining = size;
+        Action<int, string>? tracer = trace();
+        tracing = tracer is not null && size <= MostRead;
         body.SetLength(0);
+        if (size > MostRead)
+        {
+            tracer?.Invoke(server, $"{direction} a message of {size:N0} bytes, over the {MostRead:N0} the connection reads of one");
+        }
         if (remaining == 0)
         {
             End();
@@ -205,10 +198,10 @@ internal sealed class TracedStream(Stream inner, int server, string direction, T
         {
             crossedAcross.Enqueue(across.Crossed);
         }
-        if (tracing && LanguageServer.Trace is { } trace)
+        if (tracing && trace() is { } tracer)
         {
             string message = Encoding.UTF8.GetString(body.GetBuffer(), 0, (int)body.Length);
-            trace(server, length > Kept ? $"{direction} {message}… ({length:N0} bytes in all)" : $"{direction} {message}");
+            tracer(server, length > Kept ? $"{direction} {message}… ({length:N0} bytes in all)" : $"{direction} {message}");
         }
         body.SetLength(0);
     }

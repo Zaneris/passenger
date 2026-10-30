@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Extensions;
 using Microsoft.CodeAnalysis.Text;
+using Passenger.Core;
 using static Passenger.Roslyn.Extension.SyntaxReads;
 
 namespace Passenger.Roslyn.Extension;
@@ -40,7 +41,7 @@ internal static class LocalizationSource
         List<LocalizedResource> resources = [];
         HashSet<(string Key, int Line, int Character)> seen = [];
         Dictionary<Resource, int?> described = [];
-        bool razor = path.EndsWith(".razor", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase);
+        bool razor = RazorFiles.Is(path);
         foreach ((Document document, Project project) in await DocumentsOfAsync(solution, path, razor, cancel).ConfigureAwait(false))
         {
             if (await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root)
@@ -104,13 +105,11 @@ internal static class LocalizationSource
         List<(Document, Project)> generated = [];
         foreach (Project project in solution.Projects)
         {
-            if (project.AdditionalDocuments.FirstOrDefault(d => SamePath(d.FilePath, path)) is not { } markup || project.FilePath is not { } file)
+            if (project.AdditionalDocuments.FirstOrDefault(d => SamePath(d.FilePath, path)) is not { } markup
+                || SymbolNames.HintOf(project, markup.FilePath!) is not { } hint)
             {
                 continue;
             }
-            // Razor's generator names its output for the file's path under the project, each character but a letter or digit an underscore.
-            string relative = Path.GetRelativePath(Path.GetDirectoryName(file)!, markup.FilePath!);
-            string hint = string.Concat(relative.Select(c => char.IsLetterOrDigit(c) ? c : '_')) + ".g.cs";
             IEnumerable<SourceGeneratedDocument> made = await project.GetSourceGeneratedDocumentsAsync(cancel).ConfigureAwait(false);
             SourceGeneratedDocument? mine = made.FirstOrDefault(d => d.HintName.EndsWith(hint, StringComparison.Ordinal));
             if (mine is null)
