@@ -49,7 +49,7 @@ public enum ProjectSetup
 /// framework, the language and the Type's options (a value set kept by a Type that has it), or a Type's package to
 /// install. A later read fills in, the choice kept. Create refuses a name taken or a folder not empty, saying why; else
 /// it runs dotnet new, takes Accelerate's tools out and closes with it (<see cref="Created"/>), or removes what it made.</summary>
-public sealed class NewProjectDialog : Window
+public sealed class NewProjectDialog : IdeWindow
 {
     private readonly ProjectTarget? target;
     private readonly string readFrom;

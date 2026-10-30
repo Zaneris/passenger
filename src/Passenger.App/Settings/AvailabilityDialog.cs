@@ -8,7 +8,7 @@ namespace Passenger.App.Settings;
 /// <summary>A template's Availability configuration: under its C# caption, a check box for each place it may be
 /// offered, by its long name; a place that has no meaning for what the template is used in (a shortcut typed at a
 /// line's start, Surround With in a type member) is greyed. OK hands the places back.</summary>
-public sealed class AvailabilityDialog : Window
+public sealed class AvailabilityDialog : IdeWindow
 {
     private readonly Dictionary<TemplateAvailability, CheckBox> boxes = [];
 

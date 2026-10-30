@@ -5,7 +5,7 @@ namespace Passenger.App;
 /// <summary>Asks before something that cannot be undone: what happens, what it happens to when there is a list of it
 /// (Rollback's files), the button that does it and the one that does not (Cancel, or a choice of its own, as File Cache
 /// Conflict's Keep Memory Changes), closing with whether the person agreed. Escape answers no.</summary>
-public sealed class ConfirmDialog : Window
+public sealed class ConfirmDialog : IdeWindow
 {
     private readonly Button confirm;
 

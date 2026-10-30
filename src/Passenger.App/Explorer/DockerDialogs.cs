@@ -15,7 +15,7 @@ public enum DockerSupportKind
 
 /// <summary>Add > Docker Support on a project: a Dockerfile (with a .dockerignore at the solution's folder, the build's
 /// context), or the SDK's container support; closes with the choice, or null when cancelled.</summary>
-public sealed class DockerSupportDialog : Window
+public sealed class DockerSupportDialog : IdeWindow
 {
     private readonly RadioButton dockerfile;
     private readonly RadioButton sdk;
@@ -87,7 +87,7 @@ public sealed class ComposeChoice(string name, string detail, bool chosen, objec
 /// one by Docker Support as it is written; and the databases, caches and brokers their packages point to, each checked.
 /// Closes with true for OK, null when cancelled; what is checked is read from <see cref="Projects"/> and
 /// <see cref="Services"/>.</summary>
-public sealed class DockerComposeDialog : Window
+public sealed class DockerComposeDialog : IdeWindow
 {
     public DockerComposeDialog(string solution, IReadOnlyList<ComposeChoice> projects, IReadOnlyList<ComposeChoice> services)
     {

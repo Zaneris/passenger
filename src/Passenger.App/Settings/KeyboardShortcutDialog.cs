@@ -11,7 +11,7 @@ namespace Passenger.App.Settings;
 /// field, Second stroke and its field, and below them, as the keys are pressed, the actions the shortcut is "Already
 /// assigned to". OK (or Enter once the first field holds a keystroke) closes it with the shortcut; Cancel or Escape
 /// with null.</summary>
-public sealed class KeyboardShortcutDialog : Window
+public sealed class KeyboardShortcutDialog : IdeWindow
 {
     private readonly Func<Shortcut, IReadOnlyList<(string Title, string Where)>> conflictsOf;
     private readonly StackPanel conflictsList = new() { Spacing = 2 };

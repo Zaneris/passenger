@@ -6,7 +6,7 @@ namespace Passenger.App.Run;
 /// this machine's ASP.NET Core development certificate is missing or not trusted: Create and Trust (the default), which has
 /// <c>dotnet dev-certs https --trust</c> make and trust one (the system may ask too), or Run over HTTP, this run serving
 /// HTTP where it would have served HTTPS. Escape and closing answer Run over HTTP.</summary>
-public sealed class CertificateQuestionDialog : Window
+public sealed class CertificateQuestionDialog : IdeWindow
 {
     public const string CreateAndTrust = "Create and Trust";
     public const string RunOverHttp = "Run over HTTP";

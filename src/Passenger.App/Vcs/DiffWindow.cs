@@ -4,7 +4,7 @@ using Avalonia.Input;
 namespace Passenger.App.Vcs;
 
 /// <summary>A diff in a window of its own over the IDE's; Escape closes it.</summary>
-public sealed class DiffWindow : Window
+public sealed class DiffWindow : IdeWindow
 {
     public DiffWindow(string title, DiffView view)
     {

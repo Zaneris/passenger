@@ -19,7 +19,7 @@ using Passenger.Text;
 
 namespace Passenger.App;
 
-public partial class MainWindow : Window
+public partial class MainWindow : IdeWindow
 {
     /// <summary>The window's least width and height (its MinWidth and MinHeight), which a screenshot's <c>--size</c> is
     /// held to: Avalonia would widen a smaller window to them without a word. Narrow enough to tile beside another on

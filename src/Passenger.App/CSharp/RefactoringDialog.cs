@@ -11,7 +11,7 @@ namespace Passenger.App.CSharp;
 /// do above its options, and Cancel and Next below, with why the options will not do beside them. Next makes the
 /// refactoring with the options as they stand and closes the dialog with true once it is made; refused, the dialog
 /// stays open saying why. Escape cancels.</summary>
-public abstract class RefactoringDialog : Window
+public abstract class RefactoringDialog : IdeWindow
 {
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
     private readonly Border body = new() { Padding = new Thickness(20, 14, 20, 16) };

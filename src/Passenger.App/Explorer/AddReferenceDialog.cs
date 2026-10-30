@@ -33,7 +33,7 @@ public sealed class ReferenceChoice(string path, string name, string where, bool
 /// <summary>Add Reference for a project: the solution's other projects, each with a check box, those it references
 /// already checked. Space checks or unchecks the row chosen, Enter is OK and Escape cancels; it closes with the
 /// projects checked, or null when cancelled.</summary>
-public sealed class AddReferenceDialog : Window
+public sealed class AddReferenceDialog : IdeWindow
 {
     private readonly ListBox list;
 

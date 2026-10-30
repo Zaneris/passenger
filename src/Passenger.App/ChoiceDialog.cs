@@ -4,7 +4,7 @@ namespace Passenger.App;
 
 /// <summary>Asks which of several ways to go on: what each does, a button for each and Cancel after them
 /// (DialogFooter.Listed), closing with the words of the button chosen, or null for Cancel. Escape cancels.</summary>
-public sealed class ChoiceDialog : Window
+public sealed class ChoiceDialog : IdeWindow
 {
     /// <param name="chosen">The choice Enter takes, or null for Cancel, since either answer may change the
     /// file.</param>

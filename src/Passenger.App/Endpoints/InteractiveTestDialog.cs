@@ -10,7 +10,7 @@ namespace Passenger.App.Endpoints;
 /// <summary>Interactive Test: a request of an .http file opened to change before it goes (method, URL, headers, body),
 /// the criteria its answer is held to, and how it is sent (timeout, redirects, untrusted certificates). Send sends it on
 /// a client of its own, as many times as asked, each answer shown beside it; the file itself is never changed.</summary>
-public sealed class InteractiveTestDialog : Window
+public sealed class InteractiveTestDialog : IdeWindow
 {
     private readonly EndpointRequest request;
     private readonly EndpointsView endpoints;

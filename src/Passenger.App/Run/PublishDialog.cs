@@ -20,7 +20,7 @@ public sealed record PublishChoice(string Project, string Profile, string File, 
 /// ReadyToRun, trimming), with the dotnet publish command that does the same. Save writes the profile (asking before it
 /// changes a file there); Publish saves it and closes with the publish to run. A profile that publishes elsewhere than
 /// to a folder (Web Deploy, FTP, Azure) is listed and cannot be chosen yet.</summary>
-public sealed class PublishDialog : Window
+public sealed class PublishDialog : IdeWindow
 {
     private const string Portable = "Portable";
     private const string FrameworkDependent = "Framework-dependent";

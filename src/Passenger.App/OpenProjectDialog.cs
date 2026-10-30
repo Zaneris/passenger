@@ -5,7 +5,7 @@ namespace Passenger.App;
 /// <summary>The Open Solution question, asked as a solution or folder is opened from a window that has one: "Where
 /// would you like to open the solution 'Name'?", This Window (the default), New Window and Cancel, in that order, and
 /// Don't ask again, which makes the answer Settings' Open project in. Escape cancels.</summary>
-public sealed class OpenProjectDialog : Window
+public sealed class OpenProjectDialog : IdeWindow
 {
     public const string ThisWindow = "This Window";
     public const string NewWindow = "New Window";

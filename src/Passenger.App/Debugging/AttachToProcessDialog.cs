@@ -29,7 +29,7 @@ public enum AttachPurpose
 /// Debugger closes it with the program chosen (null when cancelled). Refresh lists them again, for a program started
 /// since it opened. For the profiler it is titled and its button named Attach Profiler
 /// (<see cref="AttachPurpose"/>).</summary>
-public sealed class AttachToProcessDialog : Window
+public sealed class AttachToProcessDialog : IdeWindow
 {
     private const string Columns = "220,90,110,*";
 

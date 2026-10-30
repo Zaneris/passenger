@@ -6,7 +6,7 @@ namespace Passenger.App.Endpoints;
 /// each environment variable (one not set said so, as it goes empty) and file outside the folder it reads. Allow (the
 /// default) or Don't allow, and Always for this folder at the footer's left, which keeps an Allow in the folder's state
 /// (never a no). Escape and closing answer no.</summary>
-public sealed class EndpointQuestionDialog : Window
+public sealed class EndpointQuestionDialog : IdeWindow
 {
     public const string Allow = "Allow";
     public const string DontAllow = "Don't allow";

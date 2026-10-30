@@ -428,6 +428,58 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>Every window the IDE opens is an IdeWindow, fitted by one rule to the working area of its owner's screen as it
+    /// shows: a dialog larger than the screen, whether it is sized by hand or by its content, opens no larger than the area
+    /// and wholly on it, centred over its owner where it can be, its title bar and its buttons in reach.</summary>
+    [AvaloniaFact]
+    public void Every_window_the_IDE_opens_fits_its_owners_screen_and_a_dialog_larger_than_it_opens_wholly_on_it()
+    {
+        string[] unfitted = [.. typeof(MainWindow).Assembly.GetTypes()
+            .Where(t => typeof(Window).IsAssignableFrom(t) && !typeof(IdeWindow).IsAssignableFrom(t)).Select(t => t.Name)];
+        Assert.True(unfitted.Length == 0,
+            $"{string.Join(", ", unfitted)} {(unfitted.Length == 1 ? "is a window" : "are windows")} the shared fit never reaches (IdeWindow): on a small screen its title bar or its buttons open out of reach");
+
+        MainWindow window = Open(1200, 800);
+        Screen screen = window.Screens.ScreenFromWindow(window) ?? throw new Xunit.Sdk.XunitException("The window stands on no screen");
+        PixelRect area = screen.WorkingArea;
+        Size room = area.Size.ToSize(screen.Scaling);
+        LargeWindow large = new() { Width = room.Width * 2, Height = room.Height * 2, MinWidth = 320, MinHeight = 200 };
+        ConfirmDialog tall = new("A long question", string.Join("\n\n", Enumerable.Repeat("A paragraph that goes on long enough to wrap.", 120)), "Go On");
+        try
+        {
+            large.Show(window);
+            _ = tall.ShowDialog<bool>(window);
+            Ui.Settle();
+            foreach ((Window shown, string what) in (IEnumerable<(Window, string)>)[(large, "A window asking for twice the screen"), (tall, "A question taller than the screen")])
+            {
+                PixelRect at = new(shown.Position, PixelSize.FromSize(shown.FrameSize ?? shown.ClientSize, screen.Scaling));
+                Assert.True(area.Contains(at), $"{what} opened at {at}, past the screen's working area {area}");
+                Assert.True(shown.ClientSize.Width >= shown.MinWidth && shown.ClientSize.Height >= shown.MinHeight, $"{what} opened {shown.ClientSize}, under its least");
+            }
+            Button answer = tall.GetVisualDescendants().OfType<Button>().First(b => b.IsDefault);
+            Rect button = new(answer.TranslatePoint(default, tall)!.Value, answer.Bounds.Size);
+            Assert.True(button.Bottom <= tall.ClientSize.Height && button.Height > 0,
+                $"The question's {answer.Content} stands at {button}, below its window's {tall.ClientSize.Height:0.#} units: out of reach");
+            Assert.Same(answer, tall.InputHitTest(button.Center) is Visual hit ? hit.GetSelfAndVisualAncestors().OfType<Button>().FirstOrDefault() : null);
+        }
+        finally
+        {
+            tall.Close();
+            large.Close();
+            window.Close();
+        }
+    }
+
+    /// <summary>A window of the IDE's that asks for whatever size it is given.</summary>
+    private sealed class LargeWindow : IdeWindow
+    {
+        public LargeWindow()
+        {
+            WindowStartupLocation = WindowStartupLocation.CenterOwner;
+            Content = new Border();
+        }
+    }
+
     /// <summary>Every window Passenger opens (the main window, a dialog, editors in a window, a tool window in its own)
     /// wears the one icon, AppIcon's, made from the icon file, whose own pictures at the sizes Windows draws a window's icon
     /// (16, 24 and 32 pixels) it takes as they are; and the file reads as one picture large enough for Linux's.</summary>

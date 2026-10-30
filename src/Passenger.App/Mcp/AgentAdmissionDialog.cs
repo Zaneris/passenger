@@ -6,7 +6,7 @@ namespace Passenger.App.Mcp;
 /// wants to work in this window", Allow or Don't allow, and Always for this folder at the footer's left, which puts the
 /// folder among Settings' folders agents join unasked (never a no). It comes on its own, so no key answers Allow: Enter is
 /// no answer, and Escape and closing answer no.</summary>
-public sealed class AgentAdmissionDialog : Window
+public sealed class AgentAdmissionDialog : IdeWindow
 {
     public const string Allow = "Allow";
     public const string DontAllow = "Don't allow";

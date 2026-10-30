@@ -6,7 +6,7 @@ namespace Passenger.App.Containers;
 /// this Passenger did not make (the person's own <c>docker compose up</c>'s): Compose would make them again with Passenger's
 /// labels and settings, and Stop would remove them. Replace Them (the default) lets it, after which they are the run's;
 /// Cancel runs nothing and leaves them as they are, as Escape and closing do.</summary>
-public sealed class ReplaceContainersDialog : Window
+public sealed class ReplaceContainersDialog : IdeWindow
 {
     public const string Replace = "Replace Them";
 

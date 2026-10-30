@@ -3,7 +3,7 @@ using Avalonia.Controls;
 
 namespace Passenger.App.Aspire;
 
-public sealed class AspireServiceDialog : Window
+public sealed class AspireServiceDialog : IdeWindow
 {
     public AspireServiceDialog(IReadOnlyList<AspireSelection> services)
     {

@@ -6,7 +6,7 @@ using Passenger.Workspace;
 namespace Passenger.App.Aspire;
 
 /// <summary>Chooses the projects for one undoable orchestration change.</summary>
-public sealed class AspireOrchestrationDialog : Window
+public sealed class AspireOrchestrationDialog : IdeWindow
 {
     private readonly IReadOnlyList<(ProjectModel Project, CheckBox Check)> choices;
 

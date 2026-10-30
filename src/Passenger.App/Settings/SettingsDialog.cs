@@ -10,7 +10,7 @@ namespace Passenger.App.Settings;
 /// <summary>Settings: the pages down the left under a search box, the chosen page's options on the right, OK, Cancel
 /// and Apply below. A search keeps the pages with an option whose words match and shows only those options. The options
 /// edit a copy, which Apply and OK hand back.</summary>
-public sealed partial class SettingsDialog : Window
+public sealed partial class SettingsDialog : IdeWindow
 {
     public const string Appearance = "Appearance";
     public const string SystemPage = "System Settings";

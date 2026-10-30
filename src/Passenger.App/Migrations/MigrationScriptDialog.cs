@@ -12,7 +12,7 @@ public sealed record MigrationScript(string? From, string? To, bool Idempotent);
 
 /// <summary>Script Migrations…'s question over a context's migrations: From, To and Idempotent, closing with the script
 /// asked for, or null for Cancel.</summary>
-public sealed class MigrationScriptDialog : Window
+public sealed class MigrationScriptDialog : IdeWindow
 {
     /// <summary>The From list's first choice, the database with no migration applied.</summary>
     public const string Start = "The empty database";

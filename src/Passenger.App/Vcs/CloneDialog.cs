@@ -14,7 +14,7 @@ namespace Passenger.App.Vcs;
 /// <summary>Clone Repository: a repository's URL and the folder to clone it into, git's progress while it clones,
 /// and why it could not when it fails, the URL left to correct. Cancel while it clones stops git and removes what it had
 /// made; a clone that succeeds closes the dialog with the folder it made in <see cref="Cloned"/>.</summary>
-public sealed partial class CloneDialog : Window
+public sealed partial class CloneDialog : IdeWindow
 {
     private readonly TextBox url;
     private readonly TextBox parent;

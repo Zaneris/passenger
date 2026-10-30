@@ -21,7 +21,7 @@ public sealed record ConflictRow(GitConflict Conflict, string Folder, string You
 /// with what yours and theirs did to each (the branches named over the columns, yours the rebased branch in a rebase),
 /// and Accept Yours, Accept Theirs and Merge... for the chosen ones; a double-click merges. It follows the working tree,
 /// a file resolved leaving the list, and closes once none is left. Escape closes it.</summary>
-public sealed class ConflictsDialog : Window
+public sealed class ConflictsDialog : IdeWindow
 {
     private const double StatusWidth = 170;
 

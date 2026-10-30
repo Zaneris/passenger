@@ -14,7 +14,7 @@ namespace Passenger.App.ToolWindows;
 /// Zoom In and Zoom Out by steps (⌘= and ⌘-, Ctrl on Windows and Linux, or the modifier with the wheel), Actual Size
 /// (⌘/) and Fit Zoom to Window; the result's other frames on Left and Right, and Escape closes it. The IDE's keys work
 /// there too, these its own.</summary>
-public sealed class FrameViewer : Window, IOwnKeys
+public sealed class FrameViewer : IdeWindow, IOwnKeys
 {
     /// <summary>The zooms Zoom In and Zoom Out step through.</summary>
     private static readonly double[] Steps = [0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8, 12, 16];

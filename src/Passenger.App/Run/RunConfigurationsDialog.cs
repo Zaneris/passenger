@@ -14,7 +14,7 @@ namespace Passenger.App.Run;
 /// is marked, and kept with the folder over that source, or written to its launch profile; Reset puts it back as its source
 /// makes it. One of the folder's own is saved as a new launch profile of its project (the window's Save as Launch Profile),
 /// and is generated from it from then on. It edits copies, which Apply and OK hand back with the one chosen.</summary>
-public sealed class RunConfigurationsDialog : Window
+public sealed class RunConfigurationsDialog : IdeWindow
 {
     private IReadOnlyList<Entry> generated;
     private readonly List<Entry> mine;

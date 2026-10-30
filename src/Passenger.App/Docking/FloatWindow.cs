@@ -7,7 +7,7 @@ namespace Passenger.App.Docking;
 /// <summary>A window of its own for something taken out of the IDE's (a tool window floating or windowed, editor tabs):
 /// it opens where it last stood, fitted to a screen there is now, else over the IDE. The IDE closes it quietly when it
 /// puts what it shows back, and it goes quietly with the window it floats over; closed by the person, it says so.</summary>
-internal sealed class FloatWindow : Window
+internal sealed class FloatWindow : IdeWindow
 {
     private bool closingQuietly;
 
@@ -24,19 +24,21 @@ internal sealed class FloatWindow : Window
     public FloatWindow(Visual ide, PixelRect? kept, Size size)
     {
         this.Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Panel));
-        if (kept is { } was && OnScreen(was) is { } at)
+        if (kept is { } was && StoodOn(was) is { } screen)
         {
-            WindowStartupLocation = WindowStartupLocation.Manual;
-            Position = at.Position;
-            (Width, Height) = (at.Size.Width, at.Size.Height);
+            Position = was.Position;
+            (Width, Height) = (was.Width, was.Height);
+            FitWithin(screen.WorkingArea, screen.Scaling, keepPlace: true);
         }
         else
         {
             // Never placed, or placed on a screen no longer there (one unplugged): over the IDE.
+            (Width, Height) = kept is { } placed ? (placed.Width, placed.Height) : (size.Width, size.Height);
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            Screen? screen = (TopLevel.GetTopLevel(ide) is null ? null : Screens.ScreenFromVisual(ide)) ?? Screens.Primary;
-            Size fitted = Fitted(kept is { } placed ? new Size(placed.Width, placed.Height) : size, screen);
-            (Width, Height) = (fitted.Width, fitted.Height);
+            if (TopLevel.GetTopLevel(ide) is Window over)
+            {
+                FitOver(over);
+            }
         }
         Closing += (_, e) =>
         {
@@ -67,9 +69,9 @@ internal sealed class FloatWindow : Window
         Close();
     }
 
-    /// <summary>Where a kept window opens again: moved and shrunk into the working area of the screen it stood on most;
-    /// null when none of it stood on a screen there is now.</summary>
-    private (PixelPoint Position, Size Size)? OnScreen(PixelRect kept)
+    /// <summary>The screen a kept window stood on most, where it opens again; null when none of it stood on a screen
+    /// there is now.</summary>
+    private Screen? StoodOn(PixelRect kept)
     {
         Screen? on = null;
         long most = 0;
@@ -81,18 +83,6 @@ internal sealed class FloatWindow : Window
                 (on, most) = (screen, (long)shown.Width * shown.Height);
             }
         }
-        if (on is null)
-        {
-            return null;
-        }
-        Size size = Fitted(new Size(kept.Width, kept.Height), on);
-        PixelRect area = on.WorkingArea;
-        int x = Math.Clamp(kept.X, area.X, Math.Max(area.X, area.Right - (int)Math.Ceiling(size.Width * on.Scaling)));
-        int y = Math.Clamp(kept.Y, area.Y, Math.Max(area.Y, area.Bottom - (int)Math.Ceiling(size.Height * on.Scaling)));
-        return (new PixelPoint(x, y), size);
+        return on;
     }
-
-    /// <summary>A size in a window's own units, no larger than a screen's working area.</summary>
-    private static Size Fitted(Size size, Screen? screen) => screen is null ? size
-        : new Size(Math.Min(size.Width, screen.WorkingArea.Width / screen.Scaling), Math.Min(size.Height, screen.WorkingArea.Height / screen.Scaling));
 }

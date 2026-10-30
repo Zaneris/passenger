@@ -12,7 +12,7 @@ namespace Passenger.App.Packages;
 /// and allows insecure connections, and the file its credentials are saved in. The password is never shown: left empty,
 /// the file keeps the one it has. OK closes it with <see cref="Result"/> once the name is new to the file and a URL or
 /// folder is given.</summary>
-public sealed class FeedDialog : Window
+public sealed class FeedDialog : IdeWindow
 {
     private readonly ConfigFile file;
     private readonly ConfigFeed? feed;

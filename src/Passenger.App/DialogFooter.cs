@@ -68,7 +68,8 @@ public static class DialogFooter
         StackPanel page = new() { Margin = new Thickness(20), Spacing = 12 };
         page.Children.Add(new TextBlock { Text = title, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
         page.Children.AddRange(paragraphs);
-        dialog.Content = Page(page, Bar(answers, left));
+        // On a screen too short for its words, they scroll above the answers, which stay in reach.
+        dialog.Content = Page(new ScrollViewer { Content = page }, Bar(answers, left));
     }
 
     /// <summary>A question's paragraph of words, wrapping to its width.</summary>

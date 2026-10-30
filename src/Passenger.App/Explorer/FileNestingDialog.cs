@@ -8,7 +8,7 @@ namespace Passenger.App.Explorer;
 /// <summary>File Nesting, from the Solution view's options: its check box, "Show files with the same names as nested",
 /// over the nesting rules, each parent file suffix with the child file suffixes its files take under them (greyed while
 /// the box is clear). OK hands the box back.</summary>
-public sealed class FileNestingDialog : Window
+public sealed class FileNestingDialog : IdeWindow
 {
     public FileNestingDialog(bool nest)
     {

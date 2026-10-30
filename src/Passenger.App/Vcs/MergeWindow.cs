@@ -10,7 +10,7 @@ namespace Passenger.App.Vcs;
 /// whole file as that side has it), Cancel and Apply Changes (the result), either of which writes the file and marks it
 /// resolved. Applying with changes left asks first, as cancelling a merge begun does; Escape cancels. The merge's own keys
 /// go to it wherever in the window the keys are, ahead of the IDE's.</summary>
-public sealed class MergeWindow : Window, IOwnKeys
+public sealed class MergeWindow : IdeWindow, IOwnKeys
 {
     private readonly Func<string, Task<bool>> resolve;
     private readonly Func<string, string, string, string, Task<bool>> ask;

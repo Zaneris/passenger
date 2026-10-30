@@ -9,7 +9,7 @@ namespace Passenger.App.Settings;
 /// <summary>Edit variables: the template's variables down the left in the order Tab visits them, Up and Down to move
 /// one; for the one chosen, its macro (or "No macro selected"), the macro's argument when it takes one, whether it is
 /// Editable, and Change macro to choose another. Done hands them back.</summary>
-public sealed class TemplateVariablesDialog : Window
+public sealed class TemplateVariablesDialog : IdeWindow
 {
     private readonly List<TemplateVariable> variables;
     private readonly ListBox names = new() { Classes = { "tree" } };
@@ -158,7 +158,7 @@ public sealed class TemplateVariablesDialog : Window
 }
 
 /// <summary>Choose macro: "(No macro)" and every macro by what it does; OK, or a double click, chooses.</summary>
-public sealed class ChooseMacroDialog : Window
+public sealed class ChooseMacroDialog : IdeWindow
 {
     /// <summary>What "(No macro)" is called in the list.</summary>
     public const string NoMacro = "(No macro)";
