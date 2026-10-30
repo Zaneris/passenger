@@ -36,7 +36,7 @@ public partial class MainWindow
         if ((e.Source as Visual)?.FindAncestorOfType<TerminalView>(includeSelf: true) is { Session: { } shell } terminal)
         {
             terminal.Focus();
-            shell.Paste(string.Join(' ', paths.Select(ShellWord)) + " ");
+            shell.Paste(string.Join(' ', paths.Select(path => ShellWords.Quoted(path, shell.Shell))) + " ");
             return;
         }
         Editors.Front(window);
@@ -56,16 +56,5 @@ public partial class MainWindow
         {
             Open(workspace);
         }
-    }
-
-    /// <summary>A path as the shell takes it as one word: as it is when nothing in it means anything to a shell, else in
-    /// single quotes on macOS and Linux (each quote in it closed, escaped and opened again) or double quotes on Windows.</summary>
-    private static string ShellWord(string path)
-    {
-        if (path.All(c => char.IsLetterOrDigit(c) || "/\\._-+:@%,=~".Contains(c)))
-        {
-            return path;
-        }
-        return OperatingSystem.IsWindows() ? $"\"{path}\"" : $"'{path.Replace("'", "'\\''", StringComparison.Ordinal)}'";
     }
 }

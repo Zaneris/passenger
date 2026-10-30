@@ -85,12 +85,16 @@ public sealed class TerminalSession : IAsyncDisposable
     /// <summary>The shell's process id, once it runs.</summary>
     public int? ProcessId => pty?.Pid;
 
+    /// <summary>How the program run reads a quoted word, once it is started.</summary>
+    public ShellKind Shell { get; private set; }
+
     /// <summary>Starts the shell in a folder. <paramref name="shell"/> names one other than the user's own, or a program
     /// to run in the terminal in place of a shell; <paramref name="variables"/> are set over the IDE's environment, an
     /// empty value taking one away.</summary>
     public async Task StartAsync(string folder, string? shell = null, IReadOnlyList<string>? arguments = null, IReadOnlyDictionary<string, string>? variables = null)
     {
         (string app, string[] args) = shell is null ? DefaultShell() : (shell, [.. arguments ?? []]);
+        Shell = ShellWords.KindOf(app);
         Dictionary<string, string> environment = new(variables ?? new Dictionary<string, string>())
         {
             ["TERM"] = "xterm-256color",

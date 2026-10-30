@@ -228,6 +228,32 @@ public sealed class TerminalTests
         }
     }
 
+    /// <summary>A file whose name holds a command, dropped on the terminal's own shell (PowerShell on Windows, sh elsewhere),
+    /// is read by the shell as its name: its name is echoed as it is, and the command never runs.</summary>
+    [AvaloniaFact]
+    public void A_file_dropped_on_the_terminal_whose_name_holds_a_command_is_read_as_its_name_and_nothing_runs()
+    {
+        string folder = TestFolders.Create("terminal-");
+        try
+        {
+            string name = OperatingSystem.IsWindows() ? "$(New-Item ran) it's.txt" : "$(touch ran) it's.txt";
+            string dropped = Path.Combine(folder, name);
+            File.WriteAllText(dropped, "dropped\n");
+            (string shellProgram, string[] arguments) = OperatingSystem.IsWindows() ? TerminalSession.DefaultShell() : ("/bin/sh", []);
+            (MainWindow window, TerminalSession shell) = Open(folder, shellProgram, arguments);
+            window.KeyTextInput(OperatingSystem.IsWindows() ? "Split-Path -Leaf " : "basename ");
+            Ui.Drop(window, window.TerminalPanel.View, dropped);
+            Ui.Press(window, "ENTER");
+            WaitForLine(shell, name, "the dropped file's name, read by the shell from its path as it is");
+            Assert.False(File.Exists(Path.Combine(folder, "ran")), $"The command in the dropped file's name ran in {Path.GetFileName(shellProgram)}");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
     [AvaloniaFact]
     public void A_decomposed_accent_shows_on_its_letter_in_one_cell_and_copies_with_it()
     {
