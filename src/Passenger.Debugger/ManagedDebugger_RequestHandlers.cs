@@ -246,23 +246,9 @@ public partial class ManagedDebugger
         }
         string? why = await DiagnosticClientHelper.ResumeAsync(target, within).ConfigureAwait(false);
         _logger?.Invoke(why is null ? $"Let process {target} go: the debugger did not take hold of it" : $"Process {target}, not taken hold of, was not let go: {why}");
-        if (why is not null && Lives(target))
+        if (why is not null && Core.DotnetProcesses.Runs(target))
         {
             OnConsole?.Invoke($"Process {target} was not let go ({why}): a .NET program held at its start waits there until a debugger attaches to it or it is stopped.\n");
-        }
-    }
-
-    /// <summary>Whether the process is still there.</summary>
-    private static bool Lives(int processId)
-    {
-        try
-        {
-            using Process process = Process.GetProcessById(processId);
-            return !process.HasExited;
-        }
-        catch (Exception gone) when (gone is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            return false;
         }
     }
 
