@@ -485,32 +485,42 @@ internal static class BindingReader
 }
 
 /// <summary>The properties each XAML file's values read over the socket showed, watched while the app runs: a change to any of
-/// them tells Passenger once, a quarter second after the first, that what it shows is out of date. A UI-thread object.</summary>
+/// them tells Passenger once, a quarter second after the first, that what it shows is out of date. Its controls are held
+/// weakly, so a window of the app's that closes goes with its controls whatever was shown of them. A UI-thread object.</summary>
 internal sealed class ValueWatch(Connection connection)
 {
     private static readonly TimeSpan Gather = TimeSpan.FromMilliseconds(250);
 
-    private readonly Dictionary<string, List<(AvaloniaObject Instance, AvaloniaProperty Property)>> byFile = new(StringComparer.Ordinal);
-    private readonly Dictionary<AvaloniaObject, HashSet<AvaloniaProperty>> watched = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<string, List<(WeakReference<AvaloniaObject> Instance, AvaloniaProperty Property)>> byFile = new(StringComparer.Ordinal);
+    private readonly ConditionalWeakTable<AvaloniaObject, HashSet<AvaloniaProperty>> watched = new();
     private bool telling;
 
     /// <summary>Watches these of a file's from now, with those it watched of it before (<paramref name="more"/>) or in their place.</summary>
     public void Watch(string file, IEnumerable<(AvaloniaObject Instance, AvaloniaProperty Property)> properties, bool more)
     {
-        if (!more || !byFile.TryGetValue(file, out List<(AvaloniaObject, AvaloniaProperty)>? kept))
+        if (!more || !byFile.TryGetValue(file, out List<(WeakReference<AvaloniaObject>, AvaloniaProperty)>? kept))
         {
             byFile[file] = kept = [];
         }
-        kept.AddRange(properties);
+        kept.AddRange(properties.Select(p => (new WeakReference<AvaloniaObject>(p.Instance), p.Property)));
         Unhook();
-        foreach ((AvaloniaObject instance, AvaloniaProperty property) in byFile.Values.SelectMany(p => p))
+        foreach (List<(WeakReference<AvaloniaObject> Instance, AvaloniaProperty Property)> those in byFile.Values)
         {
-            if (!watched.TryGetValue(instance, out HashSet<AvaloniaProperty>? those))
+            // Those of controls collected since are let go of.
+            those.RemoveAll(p => !p.Instance.TryGetTarget(out _));
+            foreach ((WeakReference<AvaloniaObject> held, AvaloniaProperty property) in those)
             {
-                watched[instance] = those = [];
-                instance.PropertyChanged += OnChanged;
+                if (held.TryGetTarget(out AvaloniaObject? instance))
+                {
+                    if (!watched.TryGetValue(instance, out HashSet<AvaloniaProperty>? read))
+                    {
+                        read = [];
+                        watched.Add(instance, read);
+                        instance.PropertyChanged += OnChanged;
+                    }
+                    read.Add(property);
+                }
             }
-            those.Add(property);
         }
     }
 
@@ -522,9 +532,9 @@ internal sealed class ValueWatch(Connection connection)
 
     private void Unhook()
     {
-        foreach (AvaloniaObject instance in watched.Keys)
+        foreach (KeyValuePair<AvaloniaObject, HashSet<AvaloniaProperty>> instance in watched)
         {
-            instance.PropertyChanged -= OnChanged;
+            instance.Key.PropertyChanged -= OnChanged;
         }
         watched.Clear();
     }

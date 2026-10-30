@@ -109,6 +109,47 @@ public sealed class BindingValuesTests : IClassFixture<RestoredFolders>, IDispos
         window.Close();
     }
 
+    /// <summary>A second window of the app's whose values were shown, then closed as the app runs while another file's are
+    /// shown, is collected by the app's GC: the values watched hold none of its controls.</summary>
+    [AvaloniaFact]
+    public void A_window_whose_values_were_shown_is_collected_once_it_closes_as_the_app_runs()
+    {
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
+        LiveTreeView tree = window.LiveTree;
+        Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Customer"),
+            $"the Live Visual Tree to show the app's window ({window.LiveApp?.State} {window.LiveApp?.Problem})", TimeSpan.FromMinutes(2));
+        Ui.TypeToDebugged(window, "details");
+        Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Note"), () => $"the details window in the Live Visual Tree; the app said: {Console(window)}", TimeSpan.FromMinutes(1));
+        // Running, values are read for the control chosen.
+        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Customer");
+
+        string details = Path.Combine(folder, "DetailsWindow.axaml");
+        Assert.Null(window.OpenFile(details));
+        int note = Line(details, "x:Name=\"Note\"");
+        Ui.WaitFor(() => Value(window.EditorArea.CodeEditor, note) == "Text: \"Kept apart\"",
+            () => $"the details' note after its binding, not {Value(window.EditorArea.CodeEditor, note)} ({window.Status})", TimeSpan.FromMinutes(1));
+        Assert.Null(window.OpenFile(Xaml));
+        int customer = Line(Xaml, "x:Name=\"Customer\"");
+        Ui.WaitFor(() => Value(window.EditorArea.CodeEditor, customer) is not null, "the main window's values, read in their turn", TimeSpan.FromMinutes(1));
+
+        Ui.TypeToDebugged(window, "close details");
+        Ui.WaitFor(() => Console(window).Contains("Details collected:", StringComparison.Ordinal), () => $"the app to say whether the details window was collected: {Console(window)}",
+            TimeSpan.FromMinutes(1));
+        Assert.Contains("Details collected: True", Console(window), StringComparison.Ordinal);
+
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");
+        window.Close();
+    }
+
+    /// <summary>What the debugged app has written to its console.</summary>
+    private static string Console(MainWindow window)
+    {
+        window.BottomPanel.Debug.Console.Flush();
+        return window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
+    }
+
     /// <summary>The binding values after a line (from zero), as the editor shows them; null for none.</summary>
     private static string? Value(CodeEditor editor, int line) =>
         editor.LineAnnotations.Where(a => a.Line == line).Select(a => a.Text).FirstOrDefault();

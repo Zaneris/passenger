@@ -11,7 +11,8 @@ public static class Program
     public static Dispatcher? Ui { get; set; }
 
     /// <summary>Headless, so a test's run puts nothing on the screen. A line "rename" on its standard input has the window's
-    /// code-behind change the customer's name on the UI thread, as something a person did in it would.</summary>
+    /// code-behind change the customer's name on the UI thread, as something a person did in it would; "details" shows a
+    /// second window and "close details" closes it (<see cref="DetailsShown"/>).</summary>
     public static int Main(string[] args)
     {
         // Named, as an app may name its UI thread: the debugger still knows it for Main's, where binding values are read.
@@ -30,6 +31,12 @@ public static class Program
     {
         while (Console.ReadLine() is { } line)
         {
+            if (line.Trim() is "details" or "close details")
+            {
+                Action asked = line.Trim() == "details" ? DetailsShown.Open : DetailsShown.Close;
+                Ui?.Post(asked);
+                continue;
+            }
             if (line.Trim() != "rename")
             {
                 continue;
