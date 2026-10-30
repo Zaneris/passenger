@@ -963,8 +963,8 @@ public sealed class DebugSession
 
     /// <summary>What a file's breakpoints ask of the debugger, at their built lines, to tell a change worth sending.</summary>
     private string Signature(string path) => breakpoints.Muted ? "muted" :
-        string.Join(';', breakpoints.In(path).Where(b => b.Enabled).Select(b =>
-            $"{(lines.IsBuilt(path, b.Line) ? $"{lines.ToBuilt(path, b.Line)}" : $"new {b.Line}")}:{b.Attribute}:{b.Column}|{b.Condition}|{b.HitCondition}|{b.LogMessage}|{b.Suspend}"));
+        Signatures.Of([.. breakpoints.In(path).Where(b => b.Enabled).Select(b => Signatures.Of(
+            lines.IsBuilt(path, b.Line) ? $"{lines.ToBuilt(path, b.Line)}" : $"new {b.Line}", b.Attribute, b.Column, b.Condition, b.HitCondition, b.LogMessage, b.Suspend))]);
 
     /// <summary>The exception breakpoints that are on, as the protocol's exception options; none while muted, so no exception
     /// stops the program, not even one left unhandled.</summary>
@@ -1040,7 +1040,7 @@ public sealed class DebugSession
         }
     }
 
-    private string DataSignature() => string.Join(';', DataSending().Select(d => $"{d.DataId}|{d.Condition}|{d.HitCondition}|{d.LogMessage}|{d.Suspend}"));
+    private string DataSignature() => Signatures.Of([.. DataSending().Select(d => Signatures.Of(d.DataId, d.Condition, d.HitCondition, d.LogMessage, d.Suspend))]);
 
     /// <summary>The property breakpoints on this session's app that are on; none while muted.</summary>
     private List<PropertyBreakpoint> PropertiesSending() => breakpoints.Muted ? [] : [.. breakpoints.Properties.Where(p => p.Enabled && p.Session == this)];
@@ -1172,12 +1172,18 @@ public sealed class DebugSession
         SetState(DebugState.Paused);
     }
 
-    private string FunctionSignature() =>
-        string.Join(';', PropertiesSending().Select(p => $"{p.Id}|{p.Condition}|{p.HitCondition}|{p.LogMessage}|{p.Suspend}"))
-        + (BindingErrorsSending() is { } b ? $";binding|{b.Condition}|{b.HitCondition}|{b.LogMessage}|{b.Suspend}" : string.Empty);
+    private string FunctionSignature()
+    {
+        List<object?> sending = [.. PropertiesSending().Select(p => Signatures.Of(p.Id, p.Condition, p.HitCondition, p.LogMessage, p.Suspend))];
+        if (BindingErrorsSending() is { } b)
+        {
+            sending.Add(Signatures.Of("binding", b.Condition, b.HitCondition, b.LogMessage, b.Suspend));
+        }
+        return Signatures.Of([.. sending]);
+    }
 
-    private string ExceptionSignature() => string.Join(';', ExceptionOptions().Select(s =>
-        $"{s.Breakpoint.Type}|{string.Join(',', s.Option.Scenarios ?? [])}|{s.Option.Condition}|{s.Option.HitCondition}|{s.Option.LogMessage}|{s.Option.Suspend}"));
+    private string ExceptionSignature() => Signatures.Of([.. ExceptionOptions().Select(s => Signatures.Of(
+        s.Breakpoint.Type, Signatures.Of([.. s.Option.Scenarios ?? []]), s.Option.Condition, s.Option.HitCondition, s.Option.LogMessage, s.Option.Suspend))]);
 
     private void OnEvent(string name, JsonElementCopy body)
     {
