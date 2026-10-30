@@ -2014,9 +2014,9 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             {
                 Ui.Click(group.PreviewToggle);
                 Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException($"Round {round}: the toggle showed no preview");
-                Ui.WaitFor(() => preview.Status.StartsWith("The previewer ended: ", StringComparison.Ordinal),
+                Ui.WaitFor(() => preview.Status.StartsWith("The previewer ended ", StringComparison.Ordinal),
                     () => $"round {round}'s previewer to end, the pane saying so, not '{preview.Status}'", TimeSpan.FromSeconds(60));
-                Assert.Equal("The previewer ended: the previewer's last words", preview.Status);
+                Assert.Equal("The previewer ended with exit code 3: the previewer's last words", preview.Status);
                 Ui.Click(group.PreviewToggle);
                 Ui.Settle();
             }
@@ -2028,50 +2028,76 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
-    /// <summary>An Avalonia previewer that ends as it draws (a crash) has its end in passenger.log, with the last words the
-    /// pane says it ended with, as the WPF previewer's is.</summary>
+    /// <summary>An Avalonia previewer that ends as it draws (a crash, here killed) is let go of: the pane says its exit code
+    /// and last words, which passenger.log has too, as the WPF previewer's end, and the next edit starts a new previewer,
+    /// whose frame draws the edit.</summary>
     [AvaloniaFact]
-    public void An_Avalonia_previewer_that_ends_leaves_its_end_and_last_words_in_the_log()
+    public void An_Avalonia_previewer_that_ends_says_its_exit_and_the_next_edit_draws_in_a_new_one()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
         OpenDocument document = window.EditorArea.Active!;
         Ui.Run(window, AppActions.Build);
         Ui.Settle();
-        int previewer = 0;
+        List<int> previewers = [];
         void OnStarted(object? sender, ChildStart start)
         {
             if (start.Command.Contains("Avalonia.Designer.HostApp", StringComparison.Ordinal))
             {
-                Volatile.Write(ref previewer, start.ProcessId);
+                lock (previewers)
+                {
+                    previewers.Add(start.ProcessId);
+                }
+            }
+        }
+        int[] Previewers()
+        {
+            lock (previewers)
+            {
+                return [.. previewers];
             }
         }
         ChildProcesses.Started += OnStarted;
-        Passenger.App.Xaml.XamlPreview preview;
         try
         {
             Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
             Ui.Settle();
-            preview = window.PreviewOf(document) ?? throw new InvalidOperationException("XAML Preview showed no preview beside the file");
+            Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException("XAML Preview showed no preview beside the file");
             Ui.WaitFor(() => preview.Frame is not null, "the previewer's first frame", TimeSpan.FromSeconds(60));
+            int killed = Assert.Single(Previewers());
+
+            using (System.Diagnostics.Process host = System.Diagnostics.Process.GetProcessById(killed))
+            {
+                host.Kill();
+            }
+            Ui.WaitFor(() => preview.Status.StartsWith("The previewer ended", StringComparison.Ordinal), () => $"the pane saying the previewer ended, not '{preview.Status}'");
+            // Process.Kill ends it with TerminateProcess's -1 on Windows, and with SIGKILL on macOS and Linux.
+            string exit = OperatingSystem.IsWindows() ? "exit code -1 (0xFFFFFFFF)" : "exit code 137 (SIGKILL)";
+            string ended = $"The previewer ended with {exit}: ";
+            Assert.True(preview.Status.StartsWith(ended, StringComparison.Ordinal), $"The pane said '{preview.Status}', not how the previewer ended ('{ended}')");
+            Assert.False(preview.Running, "The preview kept the previewer that ended as its own");
+            string last = preview.Status[ended.Length..];
+            IdeErrors.Flush();
+            string log = Ui.Shared(IdeErrors.LogPath);
+            string? line = log.Split('\n').LastOrDefault(l => l.Contains($"The Avalonia previewer of MainWindow.axaml ended with {exit}: ", StringComparison.Ordinal));
+            Assert.True(line is not null && line.Contains(last, StringComparison.Ordinal),
+                $"passenger.log has {(line is null ? "nothing of the Avalonia previewer's end" : $"its end as '{line}'")}, where the pane says it ended with '{last}'");
+
+            Avalonia.Controls.Image frame = window.PreviewPaneOf(document)!.Frame;
+            // A point of the panel below its children, where its background shows.
+            Color Below() => Ui.Pixel(window, frame.TranslatePoint(new Point(400, 300), window) ?? throw new InvalidOperationException("The preview's frame is not on the window"));
+            Color orange = Color.Parse("#E2A33F");
+            Assert.NotEqual(orange, Below());
+            Ui.PlaceAfter(editor, "<StackPanel");
+            window.KeyTextInput(" Background=\"#E2A33F\"");
+            Ui.WaitFor(() => Previewers().Length == 2, () => $"a new previewer started by the edit after the last ended (the pane says: {preview.Status})", TimeSpan.FromSeconds(30));
+            Ui.WaitFor(() => Below() == orange, () => $"the new previewer drawing the panel's new background (the pane says: {preview.Status})", TimeSpan.FromSeconds(60));
+            Assert.True(preview.Running && preview.Status == "Live", $"The new previewer is not live: the pane says '{preview.Status}'");
         }
         finally
         {
             ChildProcesses.Started -= OnStarted;
         }
-        Assert.True(Volatile.Read(ref previewer) != 0, "No Avalonia.Designer.HostApp was started for the preview");
-
-        using (System.Diagnostics.Process host = System.Diagnostics.Process.GetProcessById(Volatile.Read(ref previewer)))
-        {
-            host.Kill();
-        }
-        const string Ended = "The previewer ended: ";
-        Ui.WaitFor(() => preview.Status.StartsWith(Ended, StringComparison.Ordinal), () => $"the pane saying the previewer ended, not '{preview.Status}'");
-        string last = preview.Status[Ended.Length..];
-        IdeErrors.Flush();
-        string log = Ui.Shared(IdeErrors.LogPath);
-        string? line = log.Split('\n').LastOrDefault(l => l.Contains("The Avalonia previewer of MainWindow.axaml ended: ", StringComparison.Ordinal));
-        Assert.True(line is not null && line.Contains(last, StringComparison.Ordinal),
-            $"passenger.log has {(line is null ? "nothing of the Avalonia previewer's end" : $"its end as '{line}'")}, where the pane says it ended with '{last}'");
         window.Close();
     }
 

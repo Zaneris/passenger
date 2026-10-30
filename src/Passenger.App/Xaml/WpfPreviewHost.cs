@@ -310,7 +310,7 @@ internal sealed class WpfPreviewHost : IPreviewHost
     {
         if (!disposed && ended == process)
         {
-            log.Ended();
+            log.Ended(this, ended.ExitCode);
         }
     }
 

@@ -24,6 +24,12 @@ public sealed class XamlPreview : IDisposable
 
     /// <summary>Counts starts, so one overtaken by another (a build finishing while it copied) lets its previewer go.</summary>
     private int starts;
+
+    /// <summary>Whether the last previewer ended by itself, so the next edit starts another.</summary>
+    private bool lapsed;
+
+    /// <summary>A previewer that ended before its start handed it over, and what the pane says of its end.</summary>
+    private (IPreviewHost Host, string Words)? endedEarly;
     private double scaling = 1;
 
     /// <summary>The elements on the ranges of their XAML and of their tags, which the text carries, and the elements as last
@@ -79,6 +85,7 @@ public sealed class XamlPreview : IDisposable
     {
         UiThread.Check();
         int start = ++starts;
+        lapsed = false;
         if (await document.Loading.Builder is not { } builder || await document.Loaded is null || disposed)
         {
             Say("Previews are for the XAML of an Avalonia or WPF project");
@@ -97,7 +104,7 @@ public sealed class XamlPreview : IDisposable
                     drawing?.Dispose();
                     return;
                 }
-                host = drawing;
+                Adopt(drawing);
                 break;
             case WpfDialect when !OperatingSystem.IsWindows():
                 // WPF draws with Windows' own graphics, which no other system has: said in its place, rather than a pane that never draws.
@@ -110,7 +117,7 @@ public sealed class XamlPreview : IDisposable
                     started?.Dispose();
                     return;
                 }
-                host = started;
+                Adopt(started);
                 break;
             default:
                 Say($"{builder.Dialect.Name} XAML has no preview");
@@ -118,14 +125,50 @@ public sealed class XamlPreview : IDisposable
         }
     }
 
-    /// <summary>The file's text as it stands, sent to the previewer to draw.</summary>
+    /// <summary>The file's text as it stands, sent to the previewer to draw, or to a new one where the last ended.</summary>
     public void Update()
     {
         UiThread.Check();
-        if (!disposed)
+        if (disposed)
         {
-            host?.Update();
+            return;
         }
+        if (lapsed)
+        {
+            IdeErrors.Observe(StartAsync());
+            return;
+        }
+        host?.Update();
+    }
+
+    /// <summary>The previewer a start handed over, let go of at once where it has ended already.</summary>
+    private void Adopt(IPreviewHost? started)
+    {
+        host = started;
+        (IPreviewHost Host, string Words)? early = endedEarly;
+        endedEarly = null;
+        if (started is not null && early is { } end && end.Host == started)
+        {
+            Lapsed(started, end.Words);
+        }
+    }
+
+    /// <summary>A previewer ended by itself: let go of, the pane saying how, so the next edit or change of the project
+    /// starts another.</summary>
+    internal void Lapsed(IPreviewHost ended, string words)
+    {
+        if (disposed)
+        {
+            return;
+        }
+        if (host != ended)
+        {
+            endedEarly = (ended, words);
+            return;
+        }
+        Stop();
+        lapsed = true;
+        Say(words);
     }
 
     /// <summary>The scale the pane's window draws at, which the previewer is asked to draw at too.</summary>
@@ -153,10 +196,10 @@ public sealed class XamlPreview : IDisposable
     public PreviewElement? ElementAround(int offset) =>
         Elements.Where(e => e.Whole.Start <= offset && offset < e.Whole.End).OrderBy(e => e.Whole.Length).FirstOrDefault();
 
-    /// <summary>The previewer started again on the project's newest build, the last frame shown until the new one comes.</summary>
     /// <summary>Whether a previewer runs for the file, rather than the pane saying why none does.</summary>
     public bool Running => host is not null;
 
+    /// <summary>The previewer started again on the project's newest build, the last frame shown until the new one comes.</summary>
     public Task RestartAsync()
     {
         UiThread.Check();
@@ -297,8 +340,9 @@ public sealed class XamlPreview : IDisposable
             }
         }
 
-        /// <summary>The previewer ended: its last lines written to passenger.log, its last said in the pane.</summary>
-        public void Ended()
+        /// <summary>The previewer ended by itself: its exit code and last lines written to passenger.log, the preview let go
+        /// of it, and its exit code and last line said in the pane.</summary>
+        public void Ended(IPreviewHost host, int exitCode)
         {
             string last;
             string all;
@@ -307,9 +351,9 @@ public sealed class XamlPreview : IDisposable
                 last = said.LastOrDefault() ?? "it said nothing";
                 all = said.Count == 0 ? last : string.Join(" | ", said);
             }
-            IdeErrors.Write($"The {previewer} previewer of {Path.GetFileName(preview.Document.Document.Path)} ended: {all}");
-            preview.Let();
-            preview.Say($"The previewer ended: {last}");
+            string how = ExitCodes.Said(exitCode);
+            IdeErrors.Write($"The {previewer} previewer of {Path.GetFileName(preview.Document.Document.Path)} ended with {how}: {all}");
+            preview.Lapsed(host, $"The previewer ended with {how}: {last}");
         }
     }
 }

@@ -63,7 +63,7 @@ public partial class MainWindow
             if (session == next)
             {
                 FollowPreviews();
-                // A preview that found no previewer may have read the project before its restore landed.
+                // A preview with no previewer may have read the project before its restore landed, or seen its previewer end.
                 foreach (XamlPreview preview in previews.Values.Select(p => p.Preview).Where(p => !p.Running))
                 {
                     IdeErrors.Observe(preview.RestartAsync());

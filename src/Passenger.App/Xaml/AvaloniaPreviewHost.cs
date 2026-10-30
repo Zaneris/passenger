@@ -28,7 +28,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     private Process? host;
     private bool disposed;
 
-    /// <summary>Whether the previewer's process has ended, whose end the pane says with its last words.</summary>
+    /// <summary>Whether the previewer's process has ended, whose end the pane says with its exit code and last words.</summary>
     private bool ended;
     private Stopwatch? starting;
     private bool empty;
@@ -132,7 +132,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         // A connection broken by the previewer's end says nothing over the end's own words, whichever is heard first.
         opened.OnException += (_, error) => UiThread.Post(() =>
         {
-            if (!ended)
+            if (!ended && !disposed)
             {
                 preview.Say($"The previewer's connection failed: {error.Message}");
             }
@@ -265,7 +265,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         if (!disposed && process == host)
         {
             ended = true;
-            log.Ended();
+            log.Ended(this, process.ExitCode);
         }
     }
 
