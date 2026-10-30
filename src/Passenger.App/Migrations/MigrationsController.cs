@@ -646,7 +646,8 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         running = work;
         then = relist;
         settled = false;
-        using CancellationTokenRegistration stopping = cancel.Register(parts.Work.Stop);
+        // The caller's giving up stops this command alone, never the window's other work.
+        using CancellationTokenRegistration stopping = cancel.Register(work.Cancel);
         try
         {
             (EfSetting? setting, string? why) = await PrepareAsync(session, work, asks, build);

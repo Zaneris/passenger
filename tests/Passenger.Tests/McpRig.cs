@@ -384,8 +384,9 @@ public abstract class McpRig : IDisposable
 
     /// <summary>A tool call the agent gives up on as the protocol has it: sent under an id of its own, and on giving up a
     /// "cancelled" notification naming that id. The SDK's own call can drop that notification (1 in 200 under load), leaving
-    /// the window waiting.</summary>
-    protected static async Task<CallToolResult> CallGivingUp(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?> arguments, CancellationToken giveUp)
+    /// the window waiting. With <paramref name="progress"/> it asks for progress, which <see cref="Heard.All"/> hears.</summary>
+    protected static async Task<CallToolResult> CallGivingUp(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?> arguments, CancellationToken giveUp,
+        bool progress = false)
     {
         RequestId id = new($"given-up-{Guid.NewGuid():N}");
         CallToolRequestParams call = new()
@@ -393,6 +394,10 @@ public abstract class McpRig : IDisposable
             Name = tool,
             Arguments = arguments.ToDictionary(a => a.Key, a => JsonSerializer.SerializeToElement(a.Value, ModelContextProtocol.McpJsonUtilities.DefaultOptions)),
         };
+        if (progress)
+        {
+            call.Meta = new System.Text.Json.Nodes.JsonObject { ["progressToken"] = id.ToString() };
+        }
         Task<CallToolResult> answer = client.SendRequestAsync<CallToolRequestParams, CallToolResult>(RequestMethods.ToolsCall, call, requestId: id).AsTask();
         try
         {

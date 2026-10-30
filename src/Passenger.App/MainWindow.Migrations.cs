@@ -270,6 +270,7 @@ public partial class MainWindow
             throw new InvalidOperationException($"{action} did not run: {why}");
         }
         string? given = input?.Trim() is { Length: > 0 } words ? words : null;
+        Mcp.AgentCall.Follow(actions.Work, action);
         EfDone done;
         switch (action)
         {
