@@ -28,6 +28,19 @@ public enum MergeSide
 /// compare.</summary>
 public static class ThreeWayMerge
 {
+    /// <summary>A text's lines as the merge compares them: a last line with no break after it differs from the same line
+    /// with one, so a side that adds or takes away the text's last break changes that line, as git's merge has it.</summary>
+    public static string[] Compared(string text)
+    {
+        string[] lines = LineDiff.Lines(text);
+        if (lines.Length > 0 && text[^1] != '\n')
+        {
+            // No line holds a '\n' of its own, so this one is never the same as a line a break ends.
+            lines[^1] += "\n";
+        }
+        return lines;
+    }
+
     /// <summary>The changes between the base's lines and each side's.</summary>
     public static IReadOnlyList<MergeChunk> Chunks(string[] common, string[] left, string[] right)
     {
@@ -147,12 +160,33 @@ public static class ThreeWayMerge
 
     /// <summary>The edit that puts <paramref name="lines"/> in place of a text's lines from <paramref name="start"/> to
     /// <paramref name="end"/>, each ending with <paramref name="lineBreak"/> as the text's lines do, the text ending with a
-    /// break or not as it did.</summary>
-    public static TextEdit ReplaceLines(TextSnapshot text, int start, int end, IReadOnlyList<string> lines, string lineBreak)
+    /// break or not as it did, or where the stretch reaches its end and <paramref name="breakAtEnd"/> says, as that says.</summary>
+    public static TextEdit ReplaceLines(TextSnapshot text, int start, int end, IReadOnlyList<string> lines, string lineBreak, bool? breakAtEnd = null)
     {
         int count = LineCount(text);
-        string joined = string.Join(lineBreak, lines);
         bool endsWithBreak = count > 0 && text.LineCount > count;
+        TextEdit edit = Replaced(text, start, end, lines, lineBreak, count, endsWithBreak);
+        if (end < count || breakAtEnd is not { } wanted || wanted == endsWithBreak)
+        {
+            return edit;
+        }
+        // The stretch reaches the text's end, so the edit runs to it too: its break is added after what is put there, or taken off.
+        if (wanted)
+        {
+            return edit.Start > 0 || edit.Text.Length > 0 ? edit with { Text = edit.Text + lineBreak } : edit;
+        }
+        if (lines.Count > 0)
+        {
+            return edit with { Text = edit.Text[..^lineBreak.Length] };
+        }
+        int after = start > 0 ? text.GetLine(start - 1).End : 0;
+        return new TextEdit(after, text.Length - after, string.Empty);
+    }
+
+    /// <summary>The edit of <see cref="ReplaceLines"/> that keeps the text's last break as it is.</summary>
+    private static TextEdit Replaced(TextSnapshot text, int start, int end, IReadOnlyList<string> lines, string lineBreak, int count, bool endsWithBreak)
+    {
+        string joined = string.Join(lineBreak, lines);
         if (end < count || endsWithBreak)
         {
             // Every line of the stretch ends with a break, which each line put there takes too.

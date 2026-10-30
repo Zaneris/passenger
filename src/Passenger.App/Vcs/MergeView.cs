@@ -66,7 +66,8 @@ public sealed class MergeView : DockPanel
         leftLines = LineDiff.Lines(texts.Left);
         rightLines = LineDiff.Lines(texts.Right);
         lineBreak = TextDocument.DetectLineEnding(texts.Base.Length > 0 ? texts.Base : texts.Left);
-        chunks = ThreeWayMerge.Chunks(common, leftLines, rightLines);
+        // Compared with their last breaks, so a side that adds or takes away the file's last one has a change there.
+        chunks = ThreeWayMerge.Chunks(ThreeWayMerge.Compared(texts.Base), ThreeWayMerge.Compared(texts.Left), ThreeWayMerge.Compared(texts.Right));
         simple = [.. chunks.Select(c => c.IsConflict ? ThreeWayMerge.ResolveSimply(common[c.BaseStart..c.BaseEnd], leftLines[c.LeftStart..c.LeftEnd], rightLines[c.RightStart..c.RightEnd]) : null)];
         Texts = texts;
 
@@ -188,7 +189,7 @@ public sealed class MergeView : DockPanel
         string[] lines = Lines(chunk, side);
         if (!chunk.IsConflict)
         {
-            Take([(index, lines, now with { Left = true, Right = true })]);
+            Take([(index, lines, now with { Left = true, Right = true }, BreakAtEnd(index, side))]);
             return;
         }
         string[] put = now.Taken ? [.. Current(now), .. lines] : lines;
@@ -196,7 +197,7 @@ public sealed class MergeView : DockPanel
         // A conflict whose other side only took lines away has nothing left to add.
         bool both = resolve || chunk.Start(other) == chunk.End(other);
         Resolution next = (side == MergeSide.Left ? now with { Left = true } : now with { Right = true }) with { Taken = true };
-        Take([(index, put, both ? next with { Left = true, Right = true } : next)]);
+        Take([(index, put, both ? next with { Left = true, Right = true } : next, BreakAtEnd(index, side))]);
     }
 
     /// <summary>A change's X: that side left out; a change only one side made is then resolved as the base has it.</summary>
@@ -209,7 +210,7 @@ public sealed class MergeView : DockPanel
         }
         Resolution next = !chunks[index].IsConflict ? now with { Left = true, Right = true }
             : side == MergeSide.Left ? now with { Left = true } : now with { Right = true };
-        Take([(index, null, next)]);
+        Take([(index, null, next, null)]);
     }
 
     /// <summary>Apply All Non-Conflicting Changes: every change only one side made (or both alike) taken.</summary>
@@ -219,26 +220,45 @@ public sealed class MergeView : DockPanel
     /// of its lines, both sides' words taken.</summary>
     public void ResolveSimpleConflicts()
     {
-        List<(int, string[]?, Resolution)> taken = [.. NonConflicting()];
+        List<(int, string[]?, Resolution, bool?)> taken = [.. NonConflicting()];
         for (int i = 0; i < chunks.Count; i++)
         {
             if (chunks[i].IsConflict && !Done(i) && !state[i].Taken && simple[i] is { } merged)
             {
-                taken.Add((i, merged, state[i] with { Left = true, Right = true }));
+                taken.Add((i, merged, state[i] with { Left = true, Right = true }, BreakAtEnd(i, null)));
             }
         }
         Take(taken);
     }
 
-    private IEnumerable<(int, string[]?, Resolution)> NonConflicting()
+    private IEnumerable<(int, string[]?, Resolution, bool?)> NonConflicting()
     {
         for (int i = 0; i < chunks.Count; i++)
         {
             if (!chunks[i].IsConflict && !Done(i))
             {
-                yield return (i, Lines(chunks[i], chunks[i].LeftChanged ? MergeSide.Left : MergeSide.Right), state[i] with { Left = true, Right = true });
+                MergeSide side = chunks[i].LeftChanged ? MergeSide.Left : MergeSide.Right;
+                yield return (i, Lines(chunks[i], side), state[i] with { Left = true, Right = true }, BreakAtEnd(i, side));
             }
         }
+    }
+
+    /// <summary>Whether the file ends with a break once a change at its end is taken from a side (from both, with
+    /// <paramref name="side"/> null: the side that changed it from the base's); null for a change before the end.</summary>
+    private bool? BreakAtEnd(int index, MergeSide? side)
+    {
+        if (chunks[index].BaseEnd < baseLines.Length)
+        {
+            return null;
+        }
+        bool left = Texts.Left.EndsWith('\n');
+        bool right = Texts.Right.EndsWith('\n');
+        return side switch
+        {
+            MergeSide.Left => left,
+            MergeSide.Right => right,
+            _ => left != Texts.Base.EndsWith('\n') ? left : right,
+        };
     }
 
     /// <summary>The next or previous change not dealt with yet from the result's caret, round past the ends.</summary>
@@ -293,13 +313,13 @@ public sealed class MergeView : DockPanel
     }
 
     /// <summary>Puts lines in the result in place of changes' (as one undo step) and marks what is done with each.</summary>
-    private void Take(IReadOnlyList<(int Index, string[]? Lines, Resolution Next)> taken)
+    private void Take(IReadOnlyList<(int Index, string[]? Lines, Resolution Next, bool? BreakAtEnd)> taken)
     {
         if (taken.Count == 0)
         {
             return;
         }
-        Dictionary<int, (string[]? Lines, Resolution Next)> chosen = taken.ToDictionary(t => t.Index, t => (t.Lines, t.Next));
+        Dictionary<int, (string[]? Lines, Resolution Next, bool? BreakAtEnd)> chosen = taken.ToDictionary(t => t.Index, t => (t.Lines, t.Next, t.BreakAtEnd));
         TextSnapshot text = result.Snapshot;
         Resolution[] next = new Resolution[state.Length];
         List<TextEdit> edits = [];
@@ -307,14 +327,14 @@ public sealed class MergeView : DockPanel
         for (int i = 0; i < state.Length; i++)
         {
             Resolution now = state[i];
-            if (!chosen.TryGetValue(i, out (string[]? Lines, Resolution Next) change))
+            if (!chosen.TryGetValue(i, out (string[]? Lines, Resolution Next, bool? BreakAtEnd) change))
             {
                 next[i] = now with { Start = now.Start + shift, End = now.End + shift };
                 continue;
             }
             if (change.Lines is { } lines)
             {
-                edits.Add(ThreeWayMerge.ReplaceLines(text, now.Start, now.End, lines, lineBreak));
+                edits.Add(ThreeWayMerge.ReplaceLines(text, now.Start, now.End, lines, lineBreak, change.BreakAtEnd));
                 next[i] = change.Next with { Start = now.Start + shift, End = now.Start + shift + lines.Length };
                 shift += lines.Length - (now.End - now.Start);
             }

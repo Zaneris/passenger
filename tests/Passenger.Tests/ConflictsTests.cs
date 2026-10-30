@@ -377,6 +377,44 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file whose last line break one side added, with a conflict elsewhere, is merged with that break: the merge
+    /// window has a change at the end, and taking it with the conflict's side writes and stages the file ending as yours.</summary>
+    [AvaloniaFact]
+    public void A_last_line_break_one_side_added_is_a_change_the_merge_window_takes_into_the_file_it_writes()
+    {
+        Write("Ends.txt", "x\na\nb");
+        Git("add", "Ends.txt");
+        Git("commit", "-q", "-m", "Ends");
+        Git("switch", "-q", "-c", "feature");
+        Write("Ends.txt", "X2\na\nb");
+        Git("commit", "-q", "-am", "Feature");
+        Git("switch", "-q", "main");
+        Write("Ends.txt", "X1\na\nb\n");
+        Git("commit", "-q", "-am", "Main");
+        Conflicting("merge", "feature");
+
+        MainWindow window = Open();
+        Assert.True(window.Perform(AppActions.ResolveConflicts), window.Status);
+        Ui.Settle();
+        ConflictsDialog dialog = Assert.IsType<ConflictsDialog>(window.Frontmost);
+        dialog.Chosen = [dialog.Rows.Single(r => r.Conflict.Name == "Ends.txt")];
+        Press(dialog, "Merge…");
+        Ui.Landed(() => window.Frontmost is MergeWindow, "the merge window");
+        MergeWindow merge = (MergeWindow)window.Frontmost!;
+        MergeView view = merge.View;
+        Assert.True((view.UnresolvedChanges, view.UnresolvedConflicts) == (1, 1),
+            $"The merge window found {view.UnresolvedChanges} changes and {view.UnresolvedConflicts} conflicts, where yours added the last line break and both changed the first line");
+        Press(merge, "Apply All Non-Conflicting Changes");
+        Click(merge, view, view.IconAt(0, MergeSide.Left, ignore: false));
+        Click(merge, view, view.IconAt(0, MergeSide.Right, ignore: true));
+        Assert.Equal("X1\na\nb\n", view.ResultText);
+        Press(merge, "Apply Changes");
+        Ui.Landed(() => !merge.IsVisible, "the merge window closed");
+        Assert.Equal("X1\na\nb\n", Read("Ends.txt"));
+        Assert.Equal("X1\na\nb\n", Git("show", ":Ends.txt"));
+        window.Close();
+    }
+
     /// <summary>A rebase stopped on a conflict, resolved, is still said in the Commit window, whose Commit refuses to commit
     /// beside it on its detached head, naming Continue Rebase, and whose Continue Rebase goes on with it.</summary>
     [AvaloniaFact]
