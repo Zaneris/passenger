@@ -765,18 +765,21 @@ public static partial class ContainerSecrets
     private static partial Regex UserBefore();
 
     /// <summary>A <c>NAME=value</c> in what a program said (an option's <c>--password=</c>, a query's <c>token=</c>, a
-    /// connection string's part), its value quoted or up to a space, comma, semicolon, ampersand or closing bracket.</summary>
-    [GeneratedRegex("""(?<head>(?<![\w.])(?<name>[A-Za-z_][\w.\-]*)\s*=\s*)(?<value>"[^"]*"|'[^']*'|[^\s"',;&}\]]+)""")]
+    /// connection string's part), its value quoted or up to a space, comma, semicolon, ampersand or closing bracket; a
+    /// double-quoted one runs to its closing quote, passing over a quote after a backslash, or to the next quote where
+    /// none closes it.</summary>
+    [GeneratedRegex("""(?<head>(?<![\w.])(?<name>[A-Za-z_][\w.\-]*)\s*=\s*)(?<value>"(?:[^"\\]|\\.)*"|"[^"]*"|'[^']*'|[^\s"',;&}\]]+)""")]
     private static partial Regex Assignment();
 
     /// <summary>A word after a flag (<c>--name</c> or <c>-name</c> where a word begins, after <see cref="BeforeFlag"/>'s
     /// characters) in what a program said, the flag its group, the word quoted or up to what ends an
     /// <see cref="Assignment"/>'s value.</summary>
-    [GeneratedRegex("""(?<=(?:^|[ \t"'`(\[{])(?<flag>--?[A-Za-z][A-Za-z0-9_.:\-]*)[ \t]+)(?<value>"[^"]*"|'[^']*'|[^\s"',;&}\]]+)""")]
+    [GeneratedRegex("""(?<=(?:^|[ \t"'`(\[{])(?<flag>--?[A-Za-z][A-Za-z0-9_.:\-]*)[ \t]+)(?<value>"(?:[^"\\]|\\.)*"|"[^"]*"|'[^']*'|[^\s"',;&}\]]+)""")]
     private static partial Regex FlagValue();
 
-    /// <summary>A JSON or YAML member whose name is quoted (<c>"apiKey": "…"</c>), its value quoted or up to a comma or bracket.</summary>
-    [GeneratedRegex("""(?<head>(?<q>["'])(?<name>[A-Za-z_][\w.\-]*)\k<q>\s*:\s*)(?<value>"[^"]*"|'[^']*'|[^\s,}\]]+)""")]
+    /// <summary>A JSON or YAML member whose name is quoted (<c>"apiKey": "…"</c>), its value quoted, as an
+    /// <see cref="Assignment"/>'s is, or up to a comma or bracket.</summary>
+    [GeneratedRegex("""(?<head>(?<q>["'])(?<name>[A-Za-z_][\w.\-]*)\k<q>\s*:\s*)(?<value>"(?:[^"\\]|\\.)*"|"[^"]*"|'[^']*'|[^\s,}\]]+)""")]
     private static partial Regex Member();
 
     [GeneratedRegex(@"(?<head>\bAuthorization\s*[:=]\s*)\S.*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
