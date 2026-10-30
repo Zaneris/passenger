@@ -181,9 +181,10 @@ internal sealed partial class WebAssist
         return outcome;
     }
 
-    /// <summary>A file formatted by its project's Prettier as one undoable edit, only the lines that changed replaced,
-    /// the caret where Prettier carried it, the file's own line breaks kept; what came of it.</summary>
-    internal async Task<(Prettified Outcome, string Said)> PrettifyAsync(WebLanguages web, OpenDocument document, string what)
+    /// <summary>A file formatted by its project's Prettier as one undoable edit, only <paramref name="within"/> when given,
+    /// only the lines that changed replaced, the caret where Prettier carried it, the file's own line breaks kept; what
+    /// came of it.</summary>
+    internal async Task<(Prettified Outcome, string Said)> PrettifyAsync(WebLanguages web, OpenDocument document, string what, TextRange? within = null)
     {
         if (document.IsReadOnly)
         {
@@ -192,7 +193,7 @@ internal sealed partial class WebAssist
         string text = document.Text.Snapshot.ToString();
         int version = document.Text.Version;
         int caret = context.Editors.Active == document ? context.Editor.Selections.Primary.Caret : document.Selections.Primary.Caret;
-        PrettierAnswer answer = await BackgroundWork.Run(() => web.Prettier.FormatAsync(document.Path, text, caret));
+        PrettierAnswer answer = await BackgroundWork.Run(() => web.Prettier.FormatAsync(document.Path, text, caret, within));
         if (answer.Ignored)
         {
             return (Prettified.Ignored, $"Prettier: file {document.Name} was ignored with .prettierignore");

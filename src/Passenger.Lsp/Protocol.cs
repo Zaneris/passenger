@@ -228,6 +228,8 @@ public sealed record FormattingOptions(int TabSize, bool InsertSpaces, bool Trim
 
 public sealed record DocumentFormattingParams(TextDocumentIdentifier TextDocument, FormattingOptions Options);
 
+public sealed record DocumentRangeFormattingParams(TextDocumentIdentifier TextDocument, LspRange Range, FormattingOptions Options);
+
 // Symbols
 
 public sealed record WorkspaceSymbolParams(string Query);

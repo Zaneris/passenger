@@ -593,6 +593,23 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     [AvaloniaFact]
+    public void Reformat_code_with_a_method_selected_reformats_that_method_alone_and_leaves_the_code_around_it()
+    {
+        MainWindow window = project.Open("Ragged.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        int start = Ragged.IndexOf("    public static int Chosen()", StringComparison.Ordinal);
+        int end = Ragged.LastIndexOf("    }", StringComparison.Ordinal) + "    }".Length;
+        editor.Selections = SelectionSet.Single(new Selection(start, end));
+        Ui.Run(window, AppActions.Reformat);
+        Ui.WaitFor(() => window.Status is not null && window.Status.Contains("formatted", StringComparison.Ordinal), () => $"the reformat; the status says '{window.Status}'");
+        string chosen = "    public static int Chosen()\n    {\n        int two = 2;\n        return two;\n    }\n}\n";
+        Assert.True(editor.Document.Snapshot.ToString() == Ragged[..start] + chosen,
+            $"Reformat Code with Chosen() selected left the file as:\n{editor.Document.Snapshot}");
+        Assert.Equal("Reformatted", window.Status);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_letter_deleted_inside_a_name_the_server_coloured_leaves_its_colour_on_the_name_left_until_the_server_answers()
     {
         MainWindow window = project.Open("Separators.cs");
@@ -2333,6 +2350,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         return (items, key);
     }
 
+    /// <summary>Two methods each with a line as badly indented as the other's, in four spaces as the file has them.</summary>
+    private const string Ragged = "static class Ragged\n{\n    public static int Untouched()\n    {\n        int one = 1;\n            return one;\n    }\n\n"
+        + "    public static int Chosen()\n    {\n        int two = 2;\n            return two;\n    }\n}\n";
+
     /// <summary>A small console project on disk, restored once for every test, and the warm server they share on it.</summary>
     public sealed class Project : SharedProject
     {
@@ -2379,6 +2400,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 + "        int total = 0;\n        int count = 0;\n        foreach (int value in values)\n        {\n            total += value;\n            count++;\n        }\n"
                 + "        return total / count;\n    }\n}\n");
             File.WriteAllText(PathOf("Casts.cs"), "static class Casts\n{\n    public static int Three() => (int)3;\n}\n");
+            File.WriteAllText(PathOf("Ragged.cs"), Ragged);
             File.WriteAllText(PathOf("Wide.cs"), "static class Wide\n{\n    public static int Four()\n    {\n        return Area.Of(2, 2);\n    }\n}\n", Encoding.Unicode);
             File.WriteAllText(PathOf("Actions.cs"), "static class Actions\n{\n    public static int Go()\n    {\n        int half = Half(4);\n"
                 + "        Missing gone = null;\n        return half;\n    }\n\n    private static int Half(int value) => value / 2;\n}\n");

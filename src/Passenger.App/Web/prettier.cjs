@@ -2,7 +2,7 @@
 // One request per line on standard input, one answer per line on standard output, in turn, so a process stays warm for
 // a folder and loads each package once:
 //   { "id": 1, "prettier": "<the package's folder>", "file": "<the file's path>", "text": "...", "cursor": 12,
-//     "ignorePath": "<the nearest .prettierignore>" | null }
+//     "ignorePath": "<the nearest .prettierignore>" | null, "rangeStart": 40, "rangeEnd": 90 (only a range formatted) }
 // answered { "id": 1, "formatted": "...", "cursor": 10, "version": "3.9.9" }, or { "id": 1, "ignored": true } for a file
 // .prettierignore names, { "id": 1, "unsupported": true } for one Prettier has no parser for, { "id": 1, "error": "..." }.
 // The file's .prettierrc (any of Prettier's configuration files) and .editorconfig are read by Prettier itself. Standard
@@ -52,7 +52,8 @@ async function answer(request) {
     }
     const options = (await prettier.resolveConfig(request.file, { editorconfig: true })) || {};
     const cursor = Math.max(0, Math.min(request.cursor || 0, request.text.length));
-    const result = await prettier.formatWithCursor(request.text, { ...options, filepath: request.file, cursorOffset: cursor });
+    const range = typeof request.rangeEnd === "number" ? { rangeStart: request.rangeStart, rangeEnd: request.rangeEnd } : {};
+    const result = await prettier.formatWithCursor(request.text, { ...options, ...range, filepath: request.file, cursorOffset: cursor });
     return { formatted: result.formatted, cursor: result.cursorOffset, version: prettier.version };
 }
 

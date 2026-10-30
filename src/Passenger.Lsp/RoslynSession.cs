@@ -727,6 +727,15 @@ public sealed class LspDocument : IDisposable
         await Server.RequestAsync<List<LspTextEdit>>(LspMethods.Formatting,
             new DocumentFormattingParams(Identifier, FormattingOptions.Of(indent, conventions, Text.Snapshot)), cancel) ?? [];
 
+    /// <summary>Whether the server formats a range of a document, not only the whole.</summary>
+    public bool FormatsRanges => Server.Provides("documentRangeFormattingProvider");
+
+    /// <summary>A range of the document formatted, the code around it left as it is, by the options the whole document's
+    /// formatting takes.</summary>
+    public async Task<IReadOnlyList<LspTextEdit>> FormatAsync(TextRange range, IndentOptions indent, EditorConfig conventions, CancellationToken cancel = default) =>
+        await Server.RequestAsync<List<LspTextEdit>>(LspMethods.RangeFormatting,
+            new DocumentRangeFormattingParams(Identifier, RangeOf(range), FormattingOptions.Of(indent, conventions, Text.Snapshot)), cancel) ?? [];
+
     /// <summary>The whole document's tokens; <paramref name="sent"/>, when given, is told where the request reached the
     /// server among its words that its colours moved.</summary>
     public async Task<(SemanticTokens? Tokens, int Version)> SemanticTokensAsync(CancellationToken cancel = default, SentRequest? sent = null)

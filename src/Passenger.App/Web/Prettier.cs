@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Passenger.App.Settings;
 using Passenger.Core;
+using Passenger.Text;
 
 namespace Passenger.App.Web;
 
@@ -87,9 +88,9 @@ public sealed class PrettierService : IAsyncDisposable
         return null;
     }
 
-    /// <summary>A file's text formatted by its Prettier, with the caret's offset carried into it. Run off the UI thread:
-    /// it starts the runner the first time.</summary>
-    public async Task<PrettierAnswer> FormatAsync(string path, string text, int cursor, CancellationToken cancel = default)
+    /// <summary>A file's text formatted by its Prettier, only <paramref name="range"/> when given, with the caret's offset
+    /// carried into it. Run off the UI thread: it starts the runner the first time.</summary>
+    public async Task<PrettierAnswer> FormatAsync(string path, string text, int cursor, TextRange? range = null, CancellationToken cancel = default)
     {
         if (PackageFor(path) is not { } package)
         {
@@ -143,6 +144,11 @@ public sealed class PrettierService : IAsyncDisposable
                 ["cursor"] = cursor,
                 ["ignorePath"] = IgnoreFile(path),
             };
+            if (range is { } within)
+            {
+                request["rangeStart"] = within.Start;
+                request["rangeEnd"] = within.End;
+            }
             long began = Stopwatch.GetTimestamp();
             string? line;
             try

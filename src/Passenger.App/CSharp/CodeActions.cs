@@ -532,25 +532,29 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// formatted already), and what to say of it, or why it was not applied.</summary>
     internal sealed record Reformatted(bool Applied, bool Changed, string Said);
 
-    /// <summary>Reformat Code on a file, the window's and an agent's alike, as one undoable edit: XAML by Passenger's own
-    /// layout (only <paramref name="within"/> when given), a web language by its project's Prettier where it formats it
-    /// on Reformat Code, else the language <paramref name="server"/> gives, asked for only then. Null with no server to
-    /// ask, or once the file has closed.</summary>
+    /// <summary>Reformat Code on a file, the window's and an agent's alike, as one undoable edit, only <paramref name="within"/>
+    /// when given: XAML by Passenger's own layout, a web language by its project's Prettier where it formats it on Reformat
+    /// Code, else the language <paramref name="server"/> gives, asked for only then. Null with no server to ask, or once
+    /// the file has closed.</summary>
     internal async Task<Reformatted?> ReformatAsync(OpenDocument document, TextRange? within, Func<LspDocument?> server)
     {
         if (await context.Languages.FormatAsync(document, within) is { } done)
         {
             return done;
         }
-        return server() is { } lsp ? await ServerFormatAsync(lsp, document, "Reformat Code") : null;
+        return server() is { } lsp ? await ServerFormatAsync(lsp, document, "Reformat Code", within) : null;
     }
 
-    /// <summary>The language server's formatting of a file, carried through what was typed as it worked, applied; null
-    /// once the file has closed.</summary>
-    private async Task<Reformatted?> ServerFormatAsync(LspDocument lsp, OpenDocument document, string what)
+    /// <summary>The language server's formatting of a file, or of <paramref name="within"/> where the server formats a
+    /// range (else the whole file, said), carried through what was typed as it worked, applied; null once the file has
+    /// closed.</summary>
+    private async Task<Reformatted?> ServerFormatAsync(LspDocument lsp, OpenDocument document, string what, TextRange? within = null)
     {
         using ChangeTracker asked = new(document.Text);
-        IReadOnlyList<LspTextEdit> answer = await lsp.FormatAsync(document.Indentation.Options, document.Conventions);
+        bool whole = within is null || !lsp.FormatsRanges;
+        IReadOnlyList<LspTextEdit> answer = within is { } range && !whole
+            ? await lsp.FormatAsync(range, document.Indentation.Options, document.Conventions)
+            : await lsp.FormatAsync(document.Indentation.Options, document.Conventions);
         if (!context.Editors.Documents.Contains(document))
         {
             return null;
@@ -563,7 +567,8 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             WorkspaceEdits.ApplyTo(context.Editors, document, edits);
         }
-        return new Reformatted(true, edits.Count > 0, answer.Count == 0 ? "Already formatted" : "Reformatted");
+        string said = answer.Count == 0 ? "Already formatted" : "Reformatted";
+        return new Reformatted(true, edits.Count > 0, within is not null && whole ? $"{said} the whole file: its language server formats no selection" : said);
     }
 
     /// <summary>The selection a file's reformatting keeps to: the editor's, when it shows the file and something is selected.</summary>

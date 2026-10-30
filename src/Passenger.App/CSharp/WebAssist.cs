@@ -96,15 +96,15 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         return true;
     }
 
-    /// <summary>Prettier's "Run on 'Reformat Code' action", for any file it formats: one its .prettierignore names, or of a
-    /// type it does not format, goes to its language server.</summary>
+    /// <summary>Prettier's "Run on 'Reformat Code' action", for any file it formats, only <paramref name="within"/> when
+    /// given: one its .prettierignore names, or of a type it does not format, goes to its language server.</summary>
     public override async Task<CodeActions.Reformatted?> FormatAsync(OpenDocument document, TextRange? within)
     {
         if (!PrettierReformats(document) || context.Web?.Invoke() is not { } web)
         {
             return null;
         }
-        (Prettified outcome, string said) = await PrettifyAsync(web, document, "Reformat Code");
+        (Prettified outcome, string said) = await PrettifyAsync(web, document, "Reformat Code", within);
         return outcome is Prettified.Ignored or Prettified.Unsupported ? null : new CodeActions.Reformatted(outcome != Prettified.Failed, outcome == Prettified.Formatted, said);
     }
 

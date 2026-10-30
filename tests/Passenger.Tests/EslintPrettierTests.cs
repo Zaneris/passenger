@@ -272,6 +272,30 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
     }
 
     [AvaloniaFact]
+    public void Reformat_Code_with_a_statement_selected_has_Prettier_format_that_statement_alone()
+    {
+        Project.SkipWithoutNode();
+        const string Text = "const  first = {name:\"tea\"};\nconst  second = [1,2,3];\n";
+        project.AddFolder("src/ranged", ("partly.js", Text));
+        MainWindow window = project.Open("src/ranged/partly.js");
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            int second = Text.IndexOf("const  second", StringComparison.Ordinal);
+            editor.Selections = SelectionSet.Single(new Selection(second, Text.Length - 1));
+            Ui.Run(window, AppActions.Reformat);
+            Ui.WaitFor(() => window.Status?.StartsWith("Prettier", StringComparison.Ordinal) == true, () => $"Prettier's format; the status says '{window.Status}'");
+            Assert.True(editor.Document.Snapshot.ToString() == "const  first = {name:\"tea\"};\nconst second = [1, 2, 3]\n",
+                $"Reformat Code with the second statement selected left the file as:\n{editor.Document.Snapshot}");
+        }
+        finally
+        {
+            window.Close();
+            project.Reset();
+        }
+    }
+
+    [AvaloniaFact]
     public void Each_file_Prettier_formats_gets_its_own_text_back_though_its_configuration_prints_to_standard_output()
     {
         Project.SkipWithoutNode();
