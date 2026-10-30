@@ -204,12 +204,15 @@ Projects in `src/`; `find_symbol` finds the rest:
   bytes), `SharedNames` (a name read from bytes, made once), `ContentLengthHeader` (every LSP and DAP message's header),
   `RazorFiles` and `MSBuildNames` (compiled into the extension and the host; every MSBuild name Passenger writes but
   those the evaluation's `CarriedProperties` holds, MSBuildNamesTests holding both; a build's and a publish's command
-  line end in `BuildOutput.Tail`), `PrimitiveTypes` (the one table of primitives; the debugger's element types through
-  `MetadataTypeNames.ElementTypeOf`, a generic name closed through `CSharpTypeNames.Closed`).
+  line end in `BuildOutput.Tail`), `ProjectFolders` (a project's own folders, linked into the host), `FrameworkNames`,
+  `PrimitiveTypes` (the one table of primitives; the debugger's element types through `MetadataTypeNames.ElementTypeOf`,
+  a generic name closed through `CSharpTypeNames.Closed`).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
   function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `Outline` (a tree's rows in reading order, kept where
-  unchanged), `FileText`, and anchors (`AnchorAt`/`RangeAt`/`MarkAt`, `AnchoredList`; moved before `Changed`, each
-  handler isolated): hold a place in the text with one, never your own `TextEditing.Map*`.
+  unchanged), `FileText`, `XmlEntities` (every XML value decoded and escaped, never `SecurityElement.Escape` or a hand
+  Replace), `RoslynLines` (Roslyn's line breaks, which `ServerLines` takes), and anchors (`AnchorAt`/`RangeAt`/`MarkAt`,
+  `AnchoredList`; moved before `Changed`, each handler isolated): hold a place in the text with one, never your own
+  `TextEditing.Map*`.
 - `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets). The gutter's columns
   but numbers and folds are the App's (`IGutterColumn`), the editor naming no debugger, test or VCS concept
   (EditorRulesTests); what a file's editors draw is its one `DocumentDecorations`, never fed per split. With soft wrap,
