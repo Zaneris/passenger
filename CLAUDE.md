@@ -129,23 +129,24 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
 - **Writes go one way.** A workspace file: `FileText.Save` (atomic, through symlinks, permissions, Windows attributes,
   ACL and streams, macOS metadata, and Linux's extended attributes, ACL, owner and group where it may kept
   (`UnixFileMetadata`, `AtomicFile.Write`'s too), a file another hard link names written in place, a read-only file
-  refused, Local History given the old bytes). Any other whole file: `AtomicFile.Write`. Never `File.WriteAll*`.
-  Passenger saves an open project, solution, solution filter, nuget.config or Directory.Packages.props before writing it
-  and loads what it wrote after (`SaveBeforeWriting`, `FollowWritten`). A change of several files, or one that moves a
-  file, is one command of global undo (`EditorArea.Commands.Record`), and the window follows only what a change of files
-  made, moved or deleted (`Following`, `CameOrWent`, through `ProjectSession.CameOrWent`, which lets go of a failed
-  evaluation where its file comes back), never a whole re-read of the folder. Server edits pass `LineEndings.Fit` then
-  `Indentation.Fit`. A save Windows refuses while another program holds the file lands in the background, in order
-  (`FileText.Landed`; `FileText.Read` gives its bytes meanwhile), and what hands the files to another program (a build,
-  Git, a restore, an agent) waits for it (`SaveAllLandedAsync`); a change that writes a file not open (several files, a
-  fix, Undo and Redo) says it is done only once its own writes have landed (`WorkspaceEdits.LandedAsync`,
-  `EditorArea.LandedAsync(paths, …)`), every command waiting inside its recording (`Recording.LandedAsync`,
-  `WorkspaceEdits.LandedAsync(recording, …)`: the open files' changes taken first, a file never written left out;
-  `TypeRename.Apply` and `ApplyAsCommand` take the caller's), the window's words through `UnlandedAsync`; a command that
-  waits between its writes records with `Commands.RecordWrites`, so only what it wrote is its own; its moves go through
-  `Recording.Move`, never a bare `EditorArea.MoveFile`, which no recording follows; every write of closed files goes in
-  turn through `CommandHistory.InTurnAsync`; a closed file changes through `Recording.Change` (or `Wrote` for texts it
-  holds), written off the window's thread by `Recording.WriteAsync`, the window following once they are written
+  refused, Local History given the old bytes). Any other whole file: `AtomicFile.Write`. Never `File.WriteAll*`. A state
+  file only the person may read goes through `OwnFiles` (`Folder`, `Write`, `Create`). Passenger saves an open project,
+  solution, solution filter, nuget.config or Directory.Packages.props before writing it and loads what it wrote after
+  (`SaveBeforeWriting`, `FollowWritten`). A change of several files, or one that moves a file, is one command of global
+  undo (`EditorArea.Commands.Record`), and the window follows only what a change of files made, moved or deleted
+  (`Following`, `CameOrWent`, through `ProjectSession.CameOrWent`, which lets go of a failed evaluation where its file
+  comes back), never a whole re-read of the folder. Server edits pass `LineEndings.Fit` then `Indentation.Fit`. A save
+  Windows refuses while another program holds the file lands in the background, in order (`FileText.Landed`;
+  `FileText.Read` gives its bytes meanwhile), and what hands the files to another program (a build, Git, a restore, an
+  agent) waits for it (`SaveAllLandedAsync`); a change that writes a file not open (several files, a fix, Undo and Redo)
+  says it is done only once its own writes have landed (`WorkspaceEdits.LandedAsync`, `EditorArea.LandedAsync(paths,
+  …)`), every command waiting inside its recording (`Recording.LandedAsync`, `WorkspaceEdits.LandedAsync(recording, …)`:
+  the open files' changes taken first, a file never written left out; `TypeRename.Apply` and `ApplyAsCommand` take the
+  caller's), the window's words through `UnlandedAsync`; a command that waits between its writes records with
+  `Commands.RecordWrites`, so only what it wrote is its own; its moves go through `Recording.Move`, never a bare
+  `EditorArea.MoveFile`, which no recording follows; every write of closed files goes in turn through
+  `CommandHistory.InTurnAsync`; a closed file changes through `Recording.Change` (or `Wrote` for texts it holds),
+  written off the window's thread by `Recording.WriteAsync`, the window following once they are written
   (`AssistContext.ChangeFilesAsync`, `MainWindow.FollowingAsync`); Undo and Redo put closed files back off it
   (`CommandHistory.BlockedAsync`, `PutAsync`), a command's `Part` saying why it could not be put and one the disk may
   refuse going `First`; one refused partway takes back what it did (`CommandHistory.TakenBackAsync`), and a file a
