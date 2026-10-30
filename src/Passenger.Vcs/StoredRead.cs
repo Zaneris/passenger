@@ -1,4 +1,5 @@
 using System.Buffers;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Vcs;
@@ -15,32 +16,15 @@ internal static class StoredRead
     /// <summary>The bytes whole where they are text, else only how many there are.</summary>
     public static async Task<StoredBytes> ReadAsync(Stream stored)
     {
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(ReadSize);
-        try
+        using PooledBytes bytes = new();
+        int probed = await FillAsync(stored, bytes.GetMemory(FileText.BinaryProbe)[..FileText.BinaryProbe]);
+        bytes.Advance(probed);
+        if (FileText.LooksBinary(bytes.Written))
         {
-            int length = await FillAsync(stored, buffer.AsMemory(0, FileText.BinaryProbe));
-            if (FileText.LooksBinary(buffer.AsSpan(0, length)))
-            {
-                return new StoredBytes(null, length + await RestAsync(stored, buffer));
-            }
-            int read;
-            while ((read = await stored.ReadAsync(buffer.AsMemory(length))) > 0)
-            {
-                length += read;
-                if (length == buffer.Length)
-                {
-                    byte[] larger = ArrayPool<byte>.Shared.Rent(buffer.Length * 2);
-                    buffer.AsSpan(0, length).CopyTo(larger);
-                    ArrayPool<byte>.Shared.Return(buffer);
-                    buffer = larger;
-                }
-            }
-            return new StoredBytes(buffer.AsSpan(0, length).ToArray(), length);
+            return new StoredBytes(null, probed + await RestAsync(stored, bytes.GetMemory()));
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        await bytes.ReadToEndAsync(stored);
+        return new StoredBytes(bytes.Written.ToArray(), bytes.Written.Length);
     }
 
     /// <summary>How <paramref name="after"/> differs from <paramref name="before"/> where either is binary, each null where
@@ -95,7 +79,7 @@ internal static class StoredRead
     }
 
     /// <summary>How many bytes are left, passed over through <paramref name="buffer"/>, or told by a stream that knows.</summary>
-    private static async Task<long> RestAsync(Stream stream, byte[] buffer)
+    private static async Task<long> RestAsync(Stream stream, Memory<byte> buffer)
     {
         if (stream.CanSeek)
         {

@@ -3,8 +3,8 @@ using Passenger.Vcs;
 namespace Passenger.UnitTests.Vcs;
 
 /// <summary>What Git reads of git's answers and gives it, apart from any git: the working tree's top as rev-parse names
-/// it, a space it ends with kept, a path as git takes it, a backslash a letter of its name off Windows, and why git did
-/// not start.</summary>
+/// it, a space it ends with kept, a path as git takes it, a backslash a letter of its name off Windows, why git did not
+/// start, and why its output could not be read.</summary>
 public class GitTests
 {
     [Fact]
@@ -31,6 +31,15 @@ public class GitTests
         Assert.Equal((126, "git could not be started: Argument list too long"), (tooLong.Code, tooLong.Message));
         GitResult unrunnable = Git.StartFailure(new System.ComponentModel.Win32Exception(13, "Permission denied"));
         Assert.Equal("git could not be started: Permission denied", unrunnable.Message);
+    }
+
+    [Fact]
+    public void A_read_of_gits_output_that_failed_is_a_failure_in_the_systems_words_never_git_missing_nor_unstarted()
+    {
+        GitResult unread = Git.ReadFailure(new IOException("Broken pipe"));
+        Assert.False(unread.Succeeded, "A call whose output could not be read was taken for git's success");
+        Assert.Equal("git's output could not be read: Broken pipe", unread.Message);
+        Assert.DoesNotContain(unread.Code, (int[])[126, 127, 128]);
     }
 
     [Fact]

@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Security.Cryptography;
@@ -421,7 +420,7 @@ public sealed class Git
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> binaryBlobs = new(StringComparer.Ordinal);
 
     /// <summary>Reads, by one git, the first bytes of each of these blobs not read before (<see cref="BlobProbe"/>), and
-    /// keeps whether it is binary.</summary>
+    /// keeps whether it is binary; those it could not read are read again by the next status.</summary>
     private async Task BinaryBlobsAsync(IEnumerable<string> blobs)
     {
         string[] unread = [.. blobs.Distinct(StringComparer.Ordinal).Where(b => !binaryBlobs.ContainsKey(b))];
@@ -429,53 +428,11 @@ public sealed class Git
         {
             return;
         }
-        using IDisposable held = BackgroundWork.Scope();
-        if (await StartAsync(Root, ["cat-file", "--batch"]) is not { } start)
+        (_, Dictionary<string, bool>? probed) = await RunAsync(Root, ["cat-file", "--batch"], output => BlobProbe.ReadAsync(output, unread, FileText.LooksBinary),
+            Encoding.ASCII.GetBytes(string.Concat(unread.Select(b => $"{b}\n"))));
+        foreach ((string blob, bool binary) in probed ?? [])
         {
-            return;
-        }
-        start.RedirectStandardInput = true;
-        start.RedirectStandardOutput = true;
-        start.RedirectStandardError = true;
-        try
-        {
-            using Process process = await ChildProcesses.StartAsync(start);
-            Task<string> error = process.StandardError.ReadToEndAsync();
-            // Asked off this thread, so a list longer than the pipe holds never waits on the answers read here.
-            Task asked = BackgroundWork.Run(() => AskAsync(process.StandardInput, unread));
-            Stream output = process.StandardOutput.BaseStream;
-            try
-            {
-                foreach ((string blob, bool binary) in await BlobProbe.ReadAsync(output, unread, FileText.LooksBinary))
-                {
-                    binaryBlobs[blob] = binary;
-                }
-                // Past an answer the probe could not read, git still writes the rest.
-                await output.CopyToAsync(Stream.Null);
-            }
-            finally
-            {
-                await asked;
-            }
-            await process.WaitForExitAsync();
-            await error;
-        }
-        catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or IOException)
-        {
-            // Those not read are read again by the next status.
-        }
-
-        static async Task AskAsync(StreamWriter input, string[] blobs)
-        {
-            try
-            {
-                await input.BaseStream.WriteAsync(Encoding.ASCII.GetBytes(string.Concat(blobs.Select(b => $"{b}\n"))));
-                input.Close();
-            }
-            catch (IOException)
-            {
-                // It ended before reading all it was given: what it answered says how far it went.
-            }
+            binaryBlobs[blob] = binary;
         }
     }
 
@@ -582,28 +539,8 @@ public sealed class Git
     /// <summary>What a git command writes, as bytes, or null when it fails (128 for something not there, its answer).</summary>
     private static async Task<byte[]?> BytesAsync(string folder, IReadOnlyList<string> arguments)
     {
-        using IDisposable held = BackgroundWork.Scope();
-        if (await StartAsync(folder, arguments) is not { } start)
-        {
-            return null;
-        }
-        start.RedirectStandardOutput = true;
-        start.RedirectStandardError = true;
-        try
-        {
-            using Process process = await ChildProcesses.StartAsync(start);
-            using MemoryStream output = new();
-            Task copied = process.StandardOutput.BaseStream.CopyToAsync(output);
-            Task<string> error = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
-            await copied;
-            await error;
-            return process.ExitCode == 0 ? output.ToArray() : null;
-        }
-        catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or IOException)
-        {
-            return null;
-        }
+        (GitResult ran, byte[]? bytes) = await RunAsync(folder, arguments, WholeAsync, answers: [NotThere]);
+        return ran.Succeeded ? bytes : null;
     }
 
     /// <summary>Accept Yours or Accept Theirs over conflicted files: each takes that side's version (ours, or theirs with
@@ -1104,8 +1041,8 @@ public sealed class Git
     /// does not track. Git takes them through the file's clean filter, as it would the file on disk.</summary>
     public async Task<IReadOnlyList<BlameLine>?> BlameAsync(string path, byte[] contents)
     {
-        (int code, byte[] output) = await ExchangeAsync(Root, ["blame", "--porcelain", "--contents", "-", "--", Relative(path)], contents);
-        if (code != 0)
+        (GitResult blamed, byte[]? output) = await RunAsync(Root, ["blame", "--porcelain", "--contents", "-", "--", Relative(path)], WholeAsync, contents);
+        if (!blamed.Succeeded || output is null)
         {
             return null;
         }
@@ -1190,8 +1127,9 @@ public sealed class Git
         bool composed = batched.Any(b => !Ascii.IsValid(b.Name)) && await ComposesAsync();
         batched = [.. batched.Select(b => (b.Path, GitForm(b.Name, composed)))];
         // Each blob by its name first: a filtered batch takes an object and a path, parted at the first space.
-        (_, byte[] checks) = await ExchangeAsync(Root, ["cat-file", "--batch-check"], Encoding.UTF8.GetBytes(string.Concat(batched.Select(b => $"{revision}:{b.Name}\n"))));
-        string[] found = Encoding.UTF8.GetString(checks).Split('\n');
+        (_, byte[]? checks) = await RunAsync(Root, ["cat-file", "--batch-check"], WholeAsync,
+            Encoding.UTF8.GetBytes(string.Concat(batched.Select(b => $"{revision}:{b.Name}\n"))));
+        string[] found = Encoding.UTF8.GetString(checks ?? []).Split('\n');
         List<(string Path, string Name, string Blob)> blobs = [];
         for (int i = 0; i < batched.Count; i++)
         {
@@ -1225,7 +1163,7 @@ public sealed class Git
                 input.Append(System.Globalization.CultureInfo.InvariantCulture, $"{blob} {name}\n{end} -\n");
             }
         }
-        (_, byte[] output) = asked.Count == 0 ? (0, []) : await ExchangeAsync(Root, ["cat-file", "--batch", "--filters"], Encoding.UTF8.GetBytes(input.ToString()));
+        byte[] output = asked.Count == 0 ? [] : (await RunAsync(Root, ["cat-file", "--batch", "--filters"], WholeAsync, Encoding.UTF8.GetBytes(input.ToString()))).Read ?? [];
         int at = 0;
         HashSet<string> given = new(StringComparer.Ordinal);
         foreach ((string path, _, string blob, string end) in asked)
@@ -1298,9 +1236,10 @@ public sealed class Git
                 : await BlobAtAsync(revision, name) is { } blob ? [["cat-file", "--filters", $"--path={name}", blob], ["cat-file", "blob", blob]] : [];
             foreach (string[] arguments in reads)
             {
-                if (await StreamAsync(Root, arguments, read) is (true, var answer))
+                // An answer may be null (a reader's no), which is an answer all the same.
+                if (await RunAsync(Root, arguments, read, answers: [NotThere]) is ({ Succeeded: true }, var answer))
                 {
-                    return (true, answer);
+                    return (true, answer!);
                 }
             }
         }
@@ -1312,36 +1251,8 @@ public sealed class Git
     private async Task<string?> BlobAtAsync(string revision, string name)
     {
         bool composed = !Ascii.IsValid(name) && await ComposesAsync();
-        (_, byte[] check) = await ExchangeAsync(Root, ["cat-file", "--batch-check"], Encoding.UTF8.GetBytes($"{revision}:{GitForm(name, composed)}\n"));
-        return Encoding.UTF8.GetString(check).TrimEnd('\n').Split(' ') is [{ } blob, "blob", _] && blob.All(char.IsAsciiHexDigit) ? blob : null;
-    }
-
-    /// <summary>Hands what a git command writes to <paramref name="read"/> as it comes, and passes over what it leaves;
-    /// true with its answer where git then exits 0.</summary>
-    private static async Task<(bool Succeeded, T Answer)> StreamAsync<T>(string folder, IReadOnlyList<string> arguments, Func<Stream, Task<T>> read)
-    {
-        using IDisposable held = BackgroundWork.Scope();
-        if (await StartAsync(folder, arguments) is not { } start)
-        {
-            return (false, default!);
-        }
-        start.RedirectStandardOutput = true;
-        start.RedirectStandardError = true;
-        try
-        {
-            using Process process = await ChildProcesses.StartAsync(start);
-            Task<string> error = process.StandardError.ReadToEndAsync();
-            Stream output = process.StandardOutput.BaseStream;
-            T answer = await read(output);
-            await output.CopyToAsync(Stream.Null);
-            await process.WaitForExitAsync();
-            await error;
-            return (process.ExitCode == 0, answer);
-        }
-        catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or IOException)
-        {
-            return (false, default!);
-        }
+        (_, byte[]? check) = await RunAsync(Root, ["cat-file", "--batch-check"], WholeAsync, Encoding.UTF8.GetBytes($"{revision}:{GitForm(name, composed)}\n"));
+        return Encoding.UTF8.GetString(check ?? []).TrimEnd('\n').Split(' ') is [{ } blob, "blob", _] && blob.All(char.IsAsciiHexDigit) ? blob : null;
     }
 
     /// <summary>Whether a path is in the working tree, where git has a last commit's text for it.</summary>
@@ -1828,16 +1739,29 @@ public sealed class Git
     /// <summary>A name as git takes it from its input: composed where it composes names.</summary>
     private static string GitForm(string relative, bool composed) => composed ? relative.Normalize(NormalizationForm.FormC) : relative;
 
-    /// <summary>Runs git to its end, its output read whole, what it asks of the person going to <paramref name="asker"/>;
-    /// canceled, it is ended with all it started (a fetch's upload-pack, a push's ssh) and the task is canceled.</summary>
+    /// <summary>Runs git to its end (<see cref="RunAsync{T}"/>), its input and its output text in UTF-8, its output read whole.</summary>
     private static async Task<GitResult> RunAsync(string folder, IReadOnlyList<string> arguments, string? input = null, IReadOnlyDictionary<string, string>? environment = null,
         IReadOnlyCollection<int>? answers = null, CancellationToken cancel = default, GitAsker? asker = null)
+    {
+        (GitResult ran, string? output) = await RunAsync(folder, arguments, TextAsync, input is null ? default : Encoding.UTF8.GetBytes(input), environment, answers,
+            cancel, asker);
+        return ran with { Output = output ?? string.Empty };
+    }
+
+    /// <summary>Runs git to its end, the one way every call but a clone runs it: <paramref name="input"/> written to it, what
+    /// it writes handed to <paramref name="read"/> as it comes (<see cref="ChildProcesses.RunAsync{T}"/>), and what it asks
+    /// of the person going to <paramref name="asker"/>; canceled, it is ended with all it started (a fetch's upload-pack, a
+    /// push's ssh) and the task is canceled. A start or a read that fails is a failure in the system's words, with no
+    /// answer (<see cref="StartFailure"/>, <see cref="ReadFailure"/>), never thrown.</summary>
+    private static async Task<(GitResult Result, T? Read)> RunAsync<T>(string folder, IReadOnlyList<string> arguments, Func<Stream, Task<T>> read,
+        ReadOnlyMemory<byte> input = default, IReadOnlyDictionary<string, string>? environment = null, IReadOnlyCollection<int>? answers = null,
+        CancellationToken cancel = default, GitAsker? asker = null)
     {
         // What git answers is what the window shows next (the branch, the bars, the log, a blame): a screenshot waits for it.
         using GitHold held = new();
         if (await StartAsync(folder, arguments) is not { } start)
         {
-            return NotInstalled;
+            return (NotInstalled, default);
         }
         foreach ((string name, string value) in environment ?? new Dictionary<string, string>())
         {
@@ -1846,13 +1770,33 @@ public sealed class Git
         await using Prompting? prompting = Asking(start, asker, held, cancel);
         try
         {
-            ChildResult result = await ChildProcesses.RunAsync(start, input, cancel: cancel, answers: answers);
-            return new GitResult(result.ExitCode, result.Output, result.Error, prompting?.Refused);
+            ChildRead<T> ran = await ChildProcesses.RunAsync(start, read, input, answers, cancel);
+            return (new GitResult(ran.ExitCode, string.Empty, ran.Error, prompting?.Refused), ran.Output);
         }
         catch (System.ComponentModel.Win32Exception unstarted)
         {
-            return StartFailure(unstarted);
+            return (StartFailure(unstarted), default);
         }
+        catch (IOException unread)
+        {
+            return (ReadFailure(unread), default);
+        }
+    }
+
+    /// <summary>What git writes, as text in UTF-8, or in the encoding a byte order mark it begins with names.</summary>
+    private static async Task<string> TextAsync(Stream output)
+    {
+        using StreamReader reader = new(output, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+        return await reader.ReadToEndAsync();
+    }
+
+    /// <summary>What git writes, whole, as bytes: for output that counts its lengths in bytes (cat-file's objects) and a
+    /// file's text in its own encoding (blame's).</summary>
+    private static async Task<byte[]> WholeAsync(Stream output)
+    {
+        using PooledBytes bytes = new();
+        await bytes.ReadToEndAsync(output);
+        return bytes.Written.ToArray();
     }
 
     /// <summary>Git started to ask <paramref name="asker"/> what it asks of the person through a socket of its own, the
@@ -1870,113 +1814,29 @@ public sealed class Git
         return prompting;
     }
 
-    /// <summary>What git writes, read into a buffer of the pool's as it comes, and how it exited: 127 and nothing when git
-    /// is not there.</summary>
+    /// <summary>What git writes, read into a buffer of the pool's as it comes, and whether git succeeded; nothing where it
+    /// did not run, or what it wrote could not be read.</summary>
     private static async Task<GitOutput> OutputOfAsync(string folder, IReadOnlyList<string> arguments)
     {
-        using IDisposable held = BackgroundWork.Scope();
-        if (await StartAsync(folder, arguments) is not { } start)
+        (GitResult ran, PooledBytes? bytes) = await RunAsync(folder, arguments, PooledAsync);
+        return new GitOutput(ran.Succeeded, bytes);
+
+        static async Task<PooledBytes> PooledAsync(Stream output)
         {
-            return new GitOutput(Absent, [], 0);
-        }
-        start.RedirectStandardOutput = true;
-        start.RedirectStandardError = true;
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
-        try
-        {
-            using Process process = await ChildProcesses.StartAsync(start);
-            Task<string> error = process.StandardError.ReadToEndAsync();
-            Stream output = process.StandardOutput.BaseStream;
-            int length = 0;
-            int read;
-            while ((read = await output.ReadAsync(buffer.AsMemory(length))) > 0)
-            {
-                length += read;
-                if (length == buffer.Length)
-                {
-                    byte[] larger = ArrayPool<byte>.Shared.Rent(buffer.Length * 2);
-                    buffer.AsSpan(0, length).CopyTo(larger);
-                    ArrayPool<byte>.Shared.Return(buffer);
-                    buffer = larger;
-                }
-            }
-            await process.WaitForExitAsync();
-            await error;
-            GitOutput written = new(process.ExitCode, buffer, length);
-            buffer = [];
-            return written;
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            return new GitOutput(Absent, [], 0);
-        }
-        finally
-        {
-            if (buffer.Length > 0)
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
+            PooledBytes bytes = new();
+            await bytes.ReadToEndAsync(output);
+            return bytes;
         }
     }
 
-    /// <summary>What a git command wrote and how it exited, its bytes in a buffer of the pool's until disposed.</summary>
-    private sealed class GitOutput(int code, byte[] buffer, int length) : IDisposable
+    /// <summary>Whether a git command succeeded and what it wrote, its bytes in a buffer of the pool's until disposed.</summary>
+    private sealed class GitOutput(bool succeeded, PooledBytes? bytes) : IDisposable
     {
-        private byte[] buffer = buffer;
-        private int length = length;
+        public bool Succeeded => succeeded;
 
-        public bool Succeeded => code == 0;
+        public ReadOnlySpan<byte> Bytes => bytes is null ? [] : bytes.Written;
 
-        public ReadOnlySpan<byte> Bytes => buffer.AsSpan(0, length);
-
-        public void Dispose()
-        {
-            if (buffer.Length > 0)
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
-            buffer = [];
-            length = 0;
-        }
-    }
-
-    /// <summary>What git writes, as bytes, given <paramref name="input"/> as bytes, and how it exited: for output that
-    /// counts its lengths in bytes (cat-file's objects) and input in a file's own encoding (blame's contents); 127 and
-    /// nothing when git is not there or fails to start.</summary>
-    private static async Task<(int Code, byte[] Output)> ExchangeAsync(string folder, IReadOnlyList<string> arguments, byte[] input)
-    {
-        using IDisposable held = BackgroundWork.Scope();
-        if (await StartAsync(folder, arguments) is not { } start)
-        {
-            return (Absent, []);
-        }
-        start.RedirectStandardInput = true;
-        start.RedirectStandardOutput = true;
-        start.RedirectStandardError = true;
-        try
-        {
-            using Process process = await ChildProcesses.StartAsync(start);
-            using MemoryStream output = new();
-            Task copied = process.StandardOutput.BaseStream.CopyToAsync(output);
-            Task<string> error = process.StandardError.ReadToEndAsync();
-            try
-            {
-                await process.StandardInput.BaseStream.WriteAsync(input);
-                process.StandardInput.Close();
-            }
-            catch (IOException)
-            {
-                // It ended before reading all it was given: its exit says how it went.
-            }
-            await process.WaitForExitAsync();
-            await copied;
-            await error;
-            return (process.ExitCode, output.ToArray());
-        }
-        catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or IOException)
-        {
-            return (Absent, []);
-        }
+        public void Dispose() => bytes?.Dispose();
     }
 
     /// <summary>What a call gives in place of git's exit code when git is not there to run, as a shell does.</summary>
@@ -1985,6 +1845,12 @@ public sealed class Git
     /// <summary>What a call gives in place of git's exit code when git is there but could not be started (its command
     /// line too long, its file not one the system runs), as a shell does.</summary>
     private const int Unstarted = 126;
+
+    /// <summary>What a call gives in place of git's exit code when what git wrote could not be read: none git exits with.</summary>
+    private const int Unread = -1;
+
+    /// <summary>Why a call has no answer from git where what it wrote could not be read, in the system's words.</summary>
+    internal static GitResult ReadFailure(IOException failed) => new(Unread, string.Empty, $"git's output could not be read: {failed.Message}");
 
     /// <summary>Why git did not start, in the system's words: as git not installed only where the system found no file to
     /// run (ENOENT, or on Windows no such file or path), else as git that could not be started.</summary>

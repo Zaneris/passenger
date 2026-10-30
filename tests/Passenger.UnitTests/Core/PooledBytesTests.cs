@@ -3,8 +3,8 @@ using Passenger.Core;
 
 namespace Passenger.UnitTests.Core;
 
-/// <summary>The pooled buffer a message is written into before it is sent: every byte written read back in order, however
-/// large the message grows it, and nothing of one message left in the next.</summary>
+/// <summary>The pooled buffer a message is written into before it is sent, or a stream read into: every byte written or
+/// read back in order, however large the message grows it, and nothing of one message left in the next.</summary>
 public class PooledBytesTests
 {
     [Fact]
@@ -49,6 +49,34 @@ public class PooledBytesTests
         bytes.Advance(3);
         Assert.Equal([2, 2, 2], bytes.Written.ToArray());
         bytes.Clear();
+        Assert.Equal(0, bytes.Written.Length);
+    }
+
+    [Fact]
+    public async Task A_stream_read_to_its_end_into_it_reads_back_whole_after_what_was_written_as_the_buffer_grows()
+    {
+        using PooledBytes bytes = new();
+        bytes.GetSpan(3)[..3].Fill(7);
+        bytes.Advance(3);
+        byte[] streamed = new byte[300_000];
+        new Random(7).NextBytes(streamed);
+        await bytes.ReadToEndAsync(new MemoryStream(streamed, writable: false));
+        Assert.True(((byte[])[7, 7, 7, .. streamed]).AsSpan().SequenceEqual(bytes.Written), "The bytes read back are not those written, then those the stream held");
+    }
+
+    [Fact]
+    public void Disposed_it_holds_nothing_and_written_again_holds_only_what_came_after()
+    {
+        PooledBytes bytes = new();
+        bytes.GetSpan(100_000)[..100_000].Fill(1);
+        bytes.Advance(100_000);
+        bytes.Dispose();
+        Assert.Equal(0, bytes.Written.Length);
+        bytes.GetSpan(2)[..2].Fill(2);
+        bytes.Advance(2);
+        Assert.Equal([2, 2], bytes.Written.ToArray());
+        bytes.Dispose();
+        bytes.Dispose();
         Assert.Equal(0, bytes.Written.Length);
     }
 

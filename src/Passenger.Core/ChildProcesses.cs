@@ -210,11 +210,70 @@ public static class ChildProcesses
         // Output past what the caller reads of it ends the child as an overrun limit does, said by the size it went past.
         Reading output = new(process.StandardOutput, mostOutput, ending);
         Reading errors = new(process.StandardError, mostOutput, ending);
-        Task read = Task.WhenAll(output.Done, errors.Done);
         if (limit is { } most)
         {
             ending.CancelAfter(most);
         }
+        bool ran = await RunToEndAsync(process, Task.WhenAll(output.Done, errors.Done), input is null ? default : process.StandardInput.Encoding.GetBytes(input),
+            ending, cancel);
+        if (output.Overran || errors.Overran)
+        {
+            throw new ChildOutputException($"{Shown(start)} wrote more than the {mostOutput} characters read of it{(ran ? string.Empty : ", and was ended")}");
+        }
+        if (!ran)
+        {
+            throw new TimeoutException($"{Shown(start)} had not ended after {limit.GetValueOrDefault().TotalSeconds:0} s");
+        }
+        return new ChildResult(process.ExitCode, output.Text, errors.Text);
+    }
+
+    /// <summary><see cref="RunAsync(ProcessStartInfo, string, TimeSpan?, CancellationToken, IReadOnlyCollection{int}, int?)"/>
+    /// for a child whose output is bytes: <paramref name="input"/> written to it as they are, what it writes handed to
+    /// <paramref name="read"/> as it comes and the rest passed over, its errors read whole. A read that fails ends the
+    /// child, and the task fails with what the read threw; so it does, with an <see cref="IOException"/>, where something
+    /// the child left running holds its output open past its end.</summary>
+    public static async Task<ChildRead<T>> RunAsync<T>(ProcessStartInfo start, Func<Stream, Task<T>> read, ReadOnlyMemory<byte> input = default,
+        IReadOnlyCollection<int>? answers = null, CancellationToken cancel = default)
+    {
+        start.RedirectStandardInput = true;
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        using Process process = await StartOffAsync(start, answers);
+        using CancellationTokenSource ending = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        Reading errors = new(process.StandardError);
+        Task<T> output = ReadThroughAsync(process, read);
+        await RunToEndAsync(process, Task.WhenAll(output, errors.Done), input, ending, cancel);
+        if (!output.IsCompleted)
+        {
+            throw new IOException($"{Shown(start)} exited, but what it left running held its output open");
+        }
+        return new ChildRead<T>(process.ExitCode, await output, errors.Text);
+    }
+
+    /// <summary>A child's output handed to <paramref name="read"/>, and what it leaves passed over to the output's end. A
+    /// read that fails ends the child, whose writes to a pipe nobody reads would wait for good, and passes on what it threw.</summary>
+    private static async Task<T> ReadThroughAsync<T>(Process process, Func<Stream, Task<T>> read)
+    {
+        Stream output = process.StandardOutput.BaseStream;
+        try
+        {
+            T answer = await read(output);
+            await output.CopyToAsync(Stream.Null);
+            return answer;
+        }
+        catch
+        {
+            Kill(process);
+            throw;
+        }
+    }
+
+    /// <summary>A started child, its reads under way, run to its end: <paramref name="input"/> given, its exit waited for, and
+    /// its reads given the grace a job it left holding them gets (<see cref="OutputEndsAsync"/>), then let go. False where
+    /// <paramref name="ending"/> ended it first (its limit, its output overrun), the child given up; canceled, the task is.</summary>
+    private static async Task<bool> RunToEndAsync(Process process, Task read, ReadOnlyMemory<byte> input, CancellationTokenSource ending,
+        CancellationToken cancel)
+    {
         try
         {
             await GiveInputAsync(process, input, ending.Token);
@@ -227,25 +286,18 @@ public static class ChildProcesses
             // The kill ends the reads at their pipes' end; their ends are nobody's to report.
             Forget(read);
             cancel.ThrowIfCancellationRequested();
-            if (output.Overran || errors.Overran)
-            {
-                throw new ChildOutputException($"{Shown(start)} wrote more than the {mostOutput} characters read of it, and was ended");
-            }
-            throw new TimeoutException($"{Shown(start)} had not ended after {limit.GetValueOrDefault().TotalSeconds:0} s");
+            return false;
         }
         // What a job out of the kill's reach still holds (on Windows, which ends a tree, one whose parent has gone) is let go.
         Forget(read);
-        if (output.Overran || errors.Overran)
-        {
-            throw new ChildOutputException($"{Shown(start)} wrote more than the {mostOutput} characters read of it");
-        }
-        return new ChildResult(process.ExitCode, output.Text, errors.Text);
+        return true;
     }
 
     /// <summary>Runs a child until a line of its output is its answer (<paramref name="isAnswer"/>), and gives that line as
     /// it comes: whatever the child does after answering (the .NET SDK sending what its telemetry stored, a job left holding
-    /// its output) is never waited for, the child ending as <see cref="RunAsync"/> ends one, at its limit or with the IDE.
-    /// One whose output ends with no answer is run to its end, saying why; canceled or unanswered at the limit, as RunAsync.</summary>
+    /// its output) is never waited for, the child ending as
+    /// <see cref="RunAsync(ProcessStartInfo, string, TimeSpan?, CancellationToken, IReadOnlyCollection{int}, int?)"/> ends one, at its limit or
+    /// with the IDE. One whose output ends with no answer is run to its end, saying why; canceled or unanswered at the limit, as RunAsync.</summary>
     public static async Task<ChildAnswer> AnswerAsync(ProcessStartInfo start, Func<string, bool> isAnswer, string? input = null,
         TimeSpan? limit = null, CancellationToken cancel = default)
     {
@@ -297,8 +349,9 @@ public static class ChildProcesses
         }
     }
 
-    /// <summary>The rest of a child's run once it has answered, as <see cref="RunAsync"/> runs one to its end: its exit
-    /// waited for within its limit, then its reads' end, given the grace a job it left holding them gets.</summary>
+    /// <summary>The rest of a child's run once it has answered, as
+    /// <see cref="RunAsync(ProcessStartInfo, string, TimeSpan?, CancellationToken, IReadOnlyCollection{int}, int?)"/> runs one to its end: its
+    /// exit waited for within its limit, then its reads' end, given the grace a job it left holding them gets.</summary>
     private static async Task AnsweredAsync(Process process, Task exited, Task<bool>? ends, Task read, CancellationTokenSource ending,
         CancellationToken cancel)
     {
@@ -319,13 +372,17 @@ public static class ChildProcesses
     }
 
     /// <summary>Writes a child's input, when it is given one, and closes it.</summary>
-    private static async Task GiveInputAsync(Process process, string? input, CancellationToken cancel)
+    private static Task GiveInputAsync(Process process, string? input, CancellationToken cancel) =>
+        GiveInputAsync(process, input is null ? default : process.StandardInput.Encoding.GetBytes(input), cancel);
+
+    /// <summary>Writes a child's input as bytes, when it is given any, and closes it.</summary>
+    private static async Task GiveInputAsync(Process process, ReadOnlyMemory<byte> input, CancellationToken cancel)
     {
         try
         {
-            if (input is not null)
+            if (!input.IsEmpty)
             {
-                await process.StandardInput.WriteAsync(input.AsMemory(), cancel);
+                await process.StandardInput.BaseStream.WriteAsync(input, cancel);
             }
             process.StandardInput.Close();
         }
@@ -679,6 +736,10 @@ public sealed record ChildResult(int ExitCode, string Output, string Error)
         }
     }
 }
+
+/// <summary>How a child run to its end went, its output read as it came (<see cref="ChildProcesses.RunAsync{T}"/>): its exit
+/// code, what the reader made of its output, and its errors.</summary>
+public sealed record ChildRead<T>(int ExitCode, T Output, string Error);
 
 /// <summary>What a child run for an answer gave (<see cref="ChildProcesses.AnswerAsync"/>): the line it answered with, else
 /// null and what it said instead, as <see cref="ChildResult.Said"/> says it.</summary>
