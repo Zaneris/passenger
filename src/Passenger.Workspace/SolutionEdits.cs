@@ -707,6 +707,14 @@ public static class SolutionEdits
             {
                 return $"{NameOf(project)} is already in the solution";
             }
+            // MSBuild refuses a .slnx whose folder holds two projects of one file name, whatever their letter case.
+            XElement? holder = folder is null ? Solution : Folders().FirstOrDefault(f => f.Path == folder).Element;
+            if (holder?.Elements().Any(e => e.Name.LocalName == "Project" && e.Attribute("Path") is { } path
+                && string.Equals(NameOf(Resolve(path.Value)), NameOf(project), StringComparison.OrdinalIgnoreCase)) == true)
+            {
+                string where = folder is null ? "the solution's top" : $"the solution folder {folder.Trim('/').Split('/')[^1]}";
+                return $"A project named {NameOf(project)} is in {where} already, which can hold only one of a name: put it in another solution folder";
+            }
             XElement into = folder is null ? Solution : Element(folder);
             string added = $"<Project Path=\"{XmlText.Quoted(Relative(project).Replace('\\', '/'), '"')}\" />";
             if (into.Elements().LastOrDefault(e => e.Name.LocalName == "Project") is { } last)
