@@ -1417,6 +1417,32 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>An element whose code-behind uses its field only as this.Go has that use renamed with it, as a use of the
+    /// name alone is.</summary>
+    [AvaloniaFact]
+    public void An_elements_name_renames_its_code_behinds_uses_written_after_this()
+    {
+        string written = Gallery.CodeBehind.Replace("        Go.Content", "        this.Go.Content", StringComparison.Ordinal);
+        app.Rewrite("MainWindow.axaml.cs", written);
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
+        OpenDocument behind = window.EditorArea.Active!;
+        window.OpenFile(app.PathOf("MainWindow.axaml"));
+        Ui.Settle();
+        OpenDocument view = window.EditorArea.Active!;
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "<Button Name=\"G");
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.Renaming == "Go", "the rename box on the button's name");
+        window.KeyTextInput("Start");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => view.Text.Snapshot.ToString().Contains("<Button Name=\"Start\"", StringComparison.Ordinal), $"the button renamed: {window.Status}");
+        Ui.Settle();
+
+        Assert.True(behind.Text.Snapshot.ToString() == written.Replace("this.Go.Content", "this.Start.Content", StringComparison.Ordinal),
+            $"The code-behind's this.Go was left naming the old field, so it no longer builds ({window.Status}):\n{behind.Text.Snapshot}");
+        Assert.Contains("{Binding #Start.Content}", view.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+    }
+
     /// <summary>An element renamed to a C# keyword is refused, saying why, and neither the XAML nor the code-behind's use of
     /// its field changes: the generated field and that use would not be C#.</summary>
     [AvaloniaFact]

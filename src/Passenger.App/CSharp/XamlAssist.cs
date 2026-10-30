@@ -609,7 +609,8 @@ internal sealed partial class XamlAssist : LanguageAssist
             return ([], null);
         }
         IEnumerable<string> files = file.Types.PlacesOf(className).Select(p => p.Path).Append(file.Path + ".cs").Where(File.Exists).Distinct(StringComparer.Ordinal);
-        Regex word = new($@"(?<![\w.]){Regex.Escape(name)}\b", RegexOptions.CultureInvariant);
+        // The name alone or after this. or base., the field's own; never another object's member of that name.
+        Regex word = new($@"(?:(?<![\w.])|(?<=(?<![\w.])(?:this|base)\s*\.\s*)){Regex.Escape(name)}\b", RegexOptions.CultureInvariant);
         foreach (string path in files)
         {
             OpenDocument? open = context.Editors.Find(path);
