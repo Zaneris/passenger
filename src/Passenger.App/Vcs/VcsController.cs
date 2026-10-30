@@ -71,8 +71,13 @@ public sealed class VcsController : IDisposable
     /// <summary>What is said where Git is asked for and the window has none: why git cannot read one, where it cannot.</summary>
     public string NoRepository => Refused ?? Refusals.NoRepository;
 
-    /// <summary>The folder whose repository git refused or could not look for, looked in again by each read.</summary>
-    private string? refusedIn;
+    /// <summary>The open folder, whose working tree each read looks for again while the window has none (git refused it,
+    /// is not installed, or found none: one made since, by git init in a terminal or a clone, is taken), and a read after
+    /// Git's own state moved looks for again where it has one (one removed, or another put in its place, is let go).</summary>
+    private string? lookIn;
+
+    /// <summary>Whether the next read looks for the working tree again though the window has one: Git's state moved.</summary>
+    private bool lookAgain;
 
     /// <summary>The branch checked out, or null on a detached head or outside a working tree.</summary>
     public string? Branch { get; private set; }
@@ -200,7 +205,7 @@ public sealed class VcsController : IDisposable
         git = found.Tree;
         Refused = found.Refused;
         GitMissing = found.Missing;
-        refusedIn = found.Refused is null ? null : folder;
+        lookIn = folder;
         WatchGit(folder);
         historyHeard = git is not null;
         heads.Clear();
@@ -253,7 +258,8 @@ public sealed class VcsController : IDisposable
         git = null;
         Refused = null;
         GitMissing = false;
-        refusedIn = null;
+        lookIn = null;
+        lookAgain = false;
         heads.Clear();
         textsOf = null;
         textsRead = false;
@@ -298,11 +304,13 @@ public sealed class VcsController : IDisposable
     }
 
     /// <summary>Another program changed the folder's files, or Git's own state with <paramref name="gitMoved"/>: the status
-    /// read again, and the history too where Git's state moved or the folder watcher cannot hear it move.</summary>
+    /// read again, and the history too where Git's state moved or the folder watcher cannot hear it move; where Git's state
+    /// moved, the working tree is looked for again first, as a repository made, removed or replaced moves it.</summary>
     public Task FolderChangedAsync(bool gitMoved)
     {
         UiThread.Check();
         historyAsked |= gitMoved || !historyHeard;
+        lookAgain |= gitMoved;
         return ReadAsync();
     }
 
@@ -327,10 +335,12 @@ public sealed class VcsController : IDisposable
             {
                 asked = null;
                 bool history = historyAsked;
+                bool again = lookAgain;
                 historyAsked = false;
+                lookAgain = false;
                 try
                 {
-                    await ReadOnceAsync(history);
+                    await ReadOnceAsync(history, again);
                     answered.SetResult();
                 }
                 catch (Exception failed)
@@ -345,18 +355,15 @@ public sealed class VcsController : IDisposable
         }
     }
 
-    /// <summary>One read: the status (the branch, HEAD and the files), with the refs when the history is wanted too; where
-    /// git refused the folder's repository, it is looked for again first.</summary>
-    private async Task ReadOnceAsync(bool history)
+    /// <summary>One read: the status (the branch, HEAD and the files), with the refs when the history is wanted too. The
+    /// working tree is looked for again first where the window has none, or <paramref name="again"/>, and after a status
+    /// git could not read, unless it was just <paramref name="looked"/> for; another found is read whole.</summary>
+    private async Task ReadOnceAsync(bool history, bool again, bool looked = false)
     {
-        if (git is null && refusedIn is { } folder)
+        if (!looked && (git is null || again))
         {
-            int generation = opened;
-            GitLookup again = await Git.OpenAsync(folder);
-            if (generation == opened && git is null && refusedIn == folder)
-            {
-                Take(folder, again);
-            }
+            looked = true;
+            history |= await LookAgainAsync();
         }
         if (git is not { } repository)
         {
@@ -401,6 +408,12 @@ public sealed class VcsController : IDisposable
             // Another folder was opened meanwhile: this is the last one's.
             return;
         }
+        if (failure is not null && !looked && await LookAgainAsync())
+        {
+            // The working tree went, or another took its place, as it was read.
+            await ReadOnceAsync(history: true, again: false, looked: true);
+            return;
+        }
         if (failure is not null)
         {
             Message?.Invoke(this, failure);
@@ -437,6 +450,30 @@ public sealed class VcsController : IDisposable
             HistoryChanged?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>Looks for the open folder's working tree again, taking what is found where it is not what the window holds (a
+    /// repository made, removed or put in another's place by another program): whether it took another.</summary>
+    private async Task<bool> LookAgainAsync()
+    {
+        if (lookIn is not { } folder)
+        {
+            return false;
+        }
+        int generation = opened;
+        Git? held = git;
+        GitLookup found = await Git.OpenAsync(folder);
+        if (generation != opened || git != held || Holds(found))
+        {
+            return false;
+        }
+        Take(folder, found);
+        return true;
+    }
+
+    /// <summary>Whether a lookup found what the window holds: the same working tree, or none for the same reason.</summary>
+    private bool Holds(GitLookup found) => found.Tree is { } tree
+        ? git is { } held && PathNames.Same(tree.Root, held.Root) && PathNames.Same(tree.GitDir, held.GitDir)
+        : git is null && found.Refused == Refused && found.Missing == GitMissing;
 
     /// <summary>HEAD names another commit (or the tree is another): every open file's text in it, read by one git, and
     /// their change bars against it. A file open as its bytes (binary) has no bars, so its version is never read.</summary>

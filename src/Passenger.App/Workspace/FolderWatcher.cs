@@ -6,8 +6,9 @@ namespace Passenger.App.Workspace;
 
 /// <summary>What changed in a folder while it was watched: the files created, changed, renamed or deleted, whether
 /// any of that changed which files there are, whether a project or solution file was among them, and whether Git's
-/// own state moved (a commit or checkout made elsewhere); and, apart from the files, the restores written (each
-/// project's <c>obj/project.assets.json</c>), whatever ran them: the language server, a terminal's dotnet, a build.</summary>
+/// own state moved (a commit or checkout made elsewhere, a repository made or removed); and, apart from the files, the
+/// restores written (each project's <c>obj/project.assets.json</c>), whatever ran them: the language server, a
+/// terminal's dotnet, a build.</summary>
 public sealed record FolderChanges(IReadOnlySet<string> Paths, bool Structure, bool Projects, bool Git)
 {
     public IReadOnlySet<string> Restored { get; init; } = new HashSet<string>();
@@ -32,10 +33,10 @@ public sealed record FolderChanges(IReadOnlySet<string> Paths, bool Structure, b
 
 /// <summary>Watches a folder for what other programs change in it (a terminal's <c>git pull</c>, an agent's edits,
 /// <c>dotnet new</c>), handing the changes over on the UI thread. Build output, dependencies and Git's folder are passed
-/// over, except Git's HEAD, index and refs (<see cref="Vcs.GitWatcher.Moves"/>) and a restore's assets; where each folder
-/// is watched on its own (Linux), they are never watched at all but for Git's and each obj itself, and a folder made later
-/// is watched as it appears, what was written in it before then taken as made with it. A burst's lost changes are found as
-/// <see cref="WatchedTree"/> finds them.</summary>
+/// over, except Git's folder come or gone, its HEAD, index and refs (<see cref="Vcs.GitWatcher.Moves"/>) and a restore's
+/// assets; where each folder is watched on its own (Linux), they are never watched at all but for Git's and each obj
+/// itself, and a folder made later is watched as it appears, what was written in it before then taken as made with it. A
+/// burst's lost changes are found as <see cref="WatchedTree"/> finds them.</summary>
 public sealed class FolderWatcher : WatchedTree
 {
     /// <summary>How long after a save its file's events are taken for the save's own.</summary>
@@ -177,7 +178,9 @@ public sealed class FolderWatcher : WatchedTree
         bool inGit = First(parts, out ReadOnlySpan<char> rest).SequenceEqual(".git");
         if (inGit)
         {
-            return Vcs.GitWatcher.Moves(First(rest, out _)) ? new Notice(Takes: true, Counts: false, Canonical: null) : default;
+            // Git's folder itself come or gone is a repository made or removed (git init, a clone, its .git moved away).
+            bool moved = rest.IsEmpty ? created : Vcs.GitWatcher.Moves(First(rest, out _));
+            return moved ? new Notice(Takes: true, Counts: false, Canonical: null) : default;
         }
         if (IsRestore(parts))
         {

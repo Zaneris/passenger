@@ -68,6 +68,39 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A repository git init makes in the folder from outside the window (a terminal) is taken as the folder watcher
+    /// hears it, the branch widget naming its branch and the Commit window listing the folder's files; its .git removed,
+    /// the window says again that the folder is in none. Watched each folder on its own as on Linux too.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_repository_git_init_makes_outside_the_window_is_taken_and_one_removed_is_let_go(bool eachFolder)
+    {
+        Write("Shop.cs", "class Shop { }\n");
+        MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
+        window.Perform(AppActions.ShowCommit);
+        Passenger.App.ToolWindows.CommitView commit = window.CommitView;
+        Avalonia.Controls.TextBlock branch = Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.TextBlock>(window, "BranchName")!;
+        Ui.Settle();
+        Assert.True(window.Vcs.Repository is null && Said(commit) == Refusals.NoRepository,
+            $"The folder of no repository opened with the Commit window saying '{Said(commit)}'");
+        string Shown() => $"the branch widget says {branch.Text}, the Commit window lists [{string.Join(", ", Listed(commit))}] and says '{Said(commit)}'";
+
+        Git("init", "-q", "-b", "main");
+        Ui.WaitFor(() => branch.Text == "main" && Listed(commit).Contains("Shop.cs"), () => $"the repository git init made to be taken, where {Shown()}");
+
+        TestFolders.Delete(Path.Combine(folder, ".git"));
+        Ui.WaitFor(() => window.Vcs.Repository is null && branch.Text == "Version control" && Listed(commit).Length == 0 && Said(commit) == Refusals.NoRepository,
+            () => $"the repository whose .git was removed to be let go, where {Shown()}");
+        window.Close();
+
+        static string[] Listed(Passenger.App.ToolWindows.CommitView commit) =>
+            [.. commit.Rows.OfType<Passenger.App.ToolWindows.CommitRow>().Select(r => r.Change.Name)];
+
+        static string? Said(Passenger.App.ToolWindows.CommitView commit) => Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(commit)
+            .OfType<Avalonia.Controls.TextBlock>().SingleOrDefault(t => t.Classes.Contains("emptyText") && t.IsEffectivelyVisible)?.Text;
+    }
+
     /// <summary>Git's checkout and rollback, and editors that save so, delete a file and write it anew: the open file
     /// keeps its tab, even when the deletion is handed over just before the file is there again.</summary>
     [AvaloniaFact]
