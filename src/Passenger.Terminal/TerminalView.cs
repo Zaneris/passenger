@@ -541,14 +541,9 @@ public sealed partial class TerminalView : Control
         TerminalScreen screen = session!.Screen;
         int column = Math.Clamp((int)((at.X - Pad) / cellWidth), 0, screen.Columns - 1) + 1;
         int row = Math.Clamp((int)((at.Y - Pad) / cellHeight), 0, screen.Rows - 1) + 1;
-        if (screen.SgrMouse)
+        if (MouseReports.Of(button, column, row, release, screen.SgrMouse) is { } report)
         {
-            session.Write($"\x1b[<{button};{column};{row}{(release ? 'm' : 'M')}");
-        }
-        else if (column < 224 && row < 224)
-        {
-            int code = release ? 3 : button;
-            session.Write(Encoding.Latin1.GetString([0x1b, (byte)'[', (byte)'M', (byte)(32 + code), (byte)(32 + column), (byte)(32 + row)]));
+            session.Write(report);
         }
     }
 
