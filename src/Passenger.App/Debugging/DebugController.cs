@@ -1604,7 +1604,7 @@ public sealed class DebugController : IDisposable
         EventHandler<DocumentChangedEventArgs> follow = (_, change) =>
         {
             // The built lines first, each session's: a breakpoint's move asks them what it now asks of the debugger.
-            bool code = change.Edits.Count > 0 && Path.GetExtension(document.Path).ToLowerInvariant() is ".cs" or ".razor" or ".cshtml";
+            bool code = change.Edits.Count > 0 && Path.GetExtension(document.Path).ToLowerInvariant() is ".cs" or RazorFiles.Component or RazorFiles.Page;
             foreach (DebugTab tab in view.Sessions)
             {
                 tab.Lines?.Follow(document.Path, change);
@@ -1959,7 +1959,7 @@ public sealed class DebugController : IDisposable
         }
         string[] paused = [.. live.Where(t => t.Session!.State == DebugState.Paused).Select(t => t.Name)];
         return $"{said}; {Plural.Of(live.Count, "program")} debugged"
-            + (paused.Length > 0 ? $", {string.Join(" and ", paused)} paused" : string.Empty);
+            + (paused.Length > 0 ? $", {Plural.Listed(paused)} paused" : string.Empty);
     }
 
     /// <summary>A session's state in words; what its stop was read to be only for the chosen tab, whose stop is read; while it

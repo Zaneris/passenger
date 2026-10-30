@@ -35,15 +35,15 @@ public static partial class FileNesting
             yield return (".tt", ".generated" + code);
             yield return (".edmx", ".designer" + code);
             yield return (".xsd", ".designer" + code);
-            yield return (".cshtml", ".cshtml" + code);
-            yield return (".razor", ".razor" + code);
+            yield return (RazorFiles.Page, RazorFiles.Page + code);
+            yield return (RazorFiles.Component, RazorFiles.Component + code);
             foreach (string page in (string[])[".aspx", ".asax", ".ascx", ".master"])
             {
                 yield return (page, page + code);
                 yield return (page, page + ".designer" + code);
             }
         }
-        foreach (string markup in (string[])[".razor", ".cshtml"])
+        foreach (string markup in (string[])[RazorFiles.Component, RazorFiles.Page])
         {
             foreach (string asset in (string[])[".css", ".scss", ".sass", ".js"])
             {

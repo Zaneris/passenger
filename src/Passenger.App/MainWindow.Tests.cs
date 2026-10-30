@@ -338,7 +338,7 @@ public partial class MainWindow
     {
         if (session != running || running.IsEnded)
         {
-            throw new InvalidOperationException("The test run's solution was closed");
+            throw new InvalidOperationException(Refusals.SolutionClosed);
         }
     }
 }

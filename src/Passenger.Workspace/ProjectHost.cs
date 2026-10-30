@@ -105,7 +105,7 @@ public sealed class ProjectHost : IAsyncDisposable
         // The newest runtime there is, a prerelease too, so the SDK a folder picks can always load in it.
         start.Environment[RuntimeVariables.RollForwardToPrerelease] = "1";
         // A build's own, from a Passenger started under one (dotnet run, dotnet test): the host finds its SDK itself.
-        foreach (string variable in new[] { "MSBUILD_EXE_PATH", "MSBuildExtensionsPath", "MSBuildSDKsPath", "MSBuildLoadMicrosoftTargetsReadOnly" })
+        foreach (string variable in (string[])[MSBuildNames.ExePath, MSBuildNames.ExtensionsPath, MSBuildNames.SdksPath, MSBuildNames.LoadMicrosoftTargetsReadOnly])
         {
             start.Environment.Remove(variable);
         }

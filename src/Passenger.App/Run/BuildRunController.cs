@@ -1364,7 +1364,7 @@ public sealed partial class BuildRunController
         string[] marked = [.. configuration.ServiceActions.Where(pair => pair.Value == ServiceStart.Debug).Select(pair => pair.Key).Order(StringComparer.Ordinal)];
         return ServicesStarted(configuration.Name, mode, mode switch
         {
-            RunStart.Debug => marked.Length > 0 ? string.Join(" and ", marked) : "each .NET service it starts",
+            RunStart.Debug => marked.Length > 0 ? Plural.Listed(marked) : "each .NET service it starts",
             RunStart.Profile => started.Select(app => app.Profiled?.Name).OfType<string>().FirstOrDefault() ?? "its service",
             _ => "its .NET services",
         });

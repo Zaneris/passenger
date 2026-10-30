@@ -149,7 +149,7 @@ public partial class MainWindow
         {
             said.Add($"changed {Plural.Listed(changed)}");
         }
-        return said.Count == 0 ? null : $"its template {string.Join(" and ", said)}";
+        return said.Count == 0 ? null : $"its template {Plural.Listed(said)}";
     }
 
     /// <summary>The projects New Project or New Solution made where packages are managed centrally put in that form (their

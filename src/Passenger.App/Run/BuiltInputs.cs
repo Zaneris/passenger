@@ -106,6 +106,6 @@ public static class BuiltInputs
     /// web assets, served from where they are.</summary>
     private static bool IsInput(string file) => PathNames.HasExtension(file, [".json"])
         ? !file.EndsWith(".dcp.json", StringComparison.OrdinalIgnoreCase)
-        : PathNames.HasExtension(file, [".cs", ".vb", ".fs", ".fsi", ".csproj", ".vbproj", ".fsproj", ".props", ".targets", ".razor", ".cshtml",
+        : PathNames.HasExtension(file, [".cs", ".vb", ".fs", ".fsi", ".csproj", ".vbproj", ".fsproj", ".props", ".targets", RazorFiles.Component, RazorFiles.Page,
             ".vbhtml", ".resx", ".xaml", ".axaml", ".paml", ".config", ".proto"]) || BuildInputs.IsProcessedStatic(file);
 }

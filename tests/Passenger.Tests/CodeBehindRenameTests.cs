@@ -317,9 +317,9 @@ public sealed class CodeBehindRenameTests : McpRig
     private static void RenamedWhole(MainWindow window, string folder, string name, string after)
     {
         string components = Path.Combine(folder, "Components");
-        string[] files = [.. new[] { "Home.razor", "Registry.cs", $"{name}.razor", $"{name}.razor.css" }.Order(StringComparer.Ordinal)];
+        string[] files = [.. new[] { "Home.razor", "Registry.cs", name + RazorFiles.Component, $"{name}.razor.css" }.Order(StringComparer.Ordinal)];
         Assert.True(Names(components).SequenceEqual(files), $"The component's files after {after}: [{string.Join(", ", Names(components))}], {window.Status}");
-        Assert.Equal(GreetingAlone, File.ReadAllText(Path.Combine(components, $"{name}.razor")));
+        Assert.Equal(GreetingAlone, File.ReadAllText(Path.Combine(components, name + RazorFiles.Component)));
         Assert.Equal(GreetingStyle, File.ReadAllText(Path.Combine(components, $"{name}.razor.css")));
         Assert.Equal(Home.Replace("<Greeting", $"<{name}", StringComparison.Ordinal), Shown(window, Path.Combine(components, "Home.razor")));
         Assert.Equal(Registry.Replace("typeof(Greeting)", $"typeof({name})", StringComparison.Ordinal), Shown(window, Path.Combine(components, "Registry.cs")));

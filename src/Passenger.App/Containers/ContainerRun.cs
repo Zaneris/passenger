@@ -272,7 +272,7 @@ public static class ContainerPlans
                 if (kept.Length > 0)
                 {
                     string who = engineState.Rootless ? "as root in its container, which is you on this rootless engine" : $"as you ({user}) on this Linux engine";
-                    notes.Add($"{runs.Service} runs {who}, as fast mode does, so it can read the {string.Join(" and ", kept)} kept for you alone");
+                    notes.Add($"{runs.Service} runs {who}, as fast mode does, so it can read the {Plural.Listed(kept)} kept for you alone");
                 }
             }
         }

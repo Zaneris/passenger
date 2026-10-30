@@ -259,10 +259,10 @@ public sealed class WebLanguages : IAsyncDisposable
             document.NoticeAction = null;
             return;
         }
-        string packages = string.Join(" and ", tools.Select(t => t.ToLowerInvariant()));
+        string packages = Plural.Listed([.. tools.Select(t => t.ToLowerInvariant())]);
         document.Notice = tools.Count == 1
             ? $"{tools[0]} is not installed: {Shown(manifest)} lists {packages}, which is not in node_modules."
-            : $"{string.Join(" and ", tools)} are not installed: {Shown(manifest)} lists {packages}, which are not in node_modules.";
+            : $"{Plural.Listed(tools)} are not installed: {Shown(manifest)} lists {packages}, which are not in node_modules.";
         document.NoticeAction = new NoticeAction("Run 'npm install'", () => IdeErrors.Observe(InstallAsync(where)));
     }
 

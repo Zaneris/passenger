@@ -289,7 +289,7 @@ public sealed partial class PassengerTools
         {
             return $"Scrolled over {Named(element)}, and {paused}";
         }
-        string turned = string.Join(" and ", new[] { Notches(down, "down", "up"), Notches(across, "right", "left") }.Where(n => n.Length > 0));
+        string turned = Plural.Listed([.. ((string[])[Notches(down, "down", "up"), Notches(across, "right", "left")]).Where(n => n.Length > 0)]);
         string scrolled = $"Scrolled {turned} over {Aimed(element, done)}{Took(element, done, "wheel")}";
         return done.Shows is { } where ? $"{scrolled}: {where}" : $"{scrolled}, which no scroll viewer holds";
 
@@ -417,7 +417,7 @@ public sealed partial class PassengerTools
         {
             [InspectedApp only] => only.App,
             [] => throw new InvalidOperationException(WhyNoneRuns()),
-            _ => throw new ArgumentException($"{string.Join(" and ", live.Select(a => $"{a.App.Name} ({AppName(a)})"))} are running: name one with app"),
+            _ => throw new ArgumentException($"{Plural.Listed([.. live.Select(a => $"{a.App.Name} ({AppName(a)})")])} are running: name one with app"),
         };
     }
 

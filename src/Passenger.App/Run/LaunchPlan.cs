@@ -68,7 +68,7 @@ public sealed partial record LaunchPlan
     /// <summary>What a debugger of this plan cannot debug, in words for the person: code that runs in the browser, which no
     /// breakpoint stops; null when it debugs all of it.</summary>
     public string? NotDebugged => InBrowser.Count == 0 || Project is null ? null
-        : $"{string.Join(" and ", InBrowser)}'s components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet, so their breakpoints are not hit: "
+        : $"{Plural.Listed(InBrowser)}'s components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet, so their breakpoints are not hit: "
             + (InBrowser[0] == System.IO.Path.GetFileNameWithoutExtension(Project) ? "only the development server that serves them runs under the debugger"
                 : $"{System.IO.Path.GetFileNameWithoutExtension(Project)}'s are");
 

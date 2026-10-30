@@ -19,7 +19,7 @@ internal sealed record Localized(IReadOnlyList<LocalizedKey> Keys, IReadOnlyList
     public static IReadOnlyList<ResourceSet?> UnnamedOf(string path, IReadOnlyList<LocalizedResource> resources, IReadOnlyList<ResourceSet?> sets,
         Func<string, TextSnapshot?> open)
     {
-        bool razor = path.EndsWith(".razor", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase);
+        bool razor = RazorFiles.Is(path);
         string stem = Path.Combine(Path.GetDirectoryName(path)!, Path.GetFileNameWithoutExtension(path));
         return [.. resources.Select((r, i) => razor && sets[i] is null && r.Kind == LocalizedKinds.Localizer
             && !Path.GetFileName(stem).Equals(r.Name.Split('.')[^1], StringComparison.OrdinalIgnoreCase)

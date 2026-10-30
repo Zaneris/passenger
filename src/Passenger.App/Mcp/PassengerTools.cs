@@ -940,7 +940,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         string place = $"{Relative(served.Document.Path)}:{line}:{column}";
         throw new InvalidOperationException(declared.Count == 0
             ? $"No symbol at {place}, and line {line} declares none: give the line and column of a name, or symbol, the name"
-            : $"No symbol at {place}, and line {line} declares {string.Join(" and ", declared.Select(d => d.Name))}: give the column of the one meant");
+            : $"No symbol at {place}, and line {line} declares {Plural.Listed([.. declared.Select(d => d.Name)])}: give the column of the one meant");
 
         void Gather(IReadOnlyList<DocumentSymbol> symbols)
         {

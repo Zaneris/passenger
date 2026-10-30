@@ -1,15 +1,31 @@
 namespace Passenger.Core;
 
-/// <summary>MSBuild's names Passenger writes, each named once: what it gives the builds, servers and evaluations it starts (in
-/// their environment, where a property given is one MSBuild takes as the project's, or as a global property), the
-/// properties it asks an evaluation for or writes into a project or publish profile, and the targets it runs. Those an
-/// evaluation carries (Host's CarriedProperties) are named there. Framework-free, since the project host compiles it in.</summary>
+/// <summary>MSBuild's names Passenger writes, each named once: what it gives the builds, servers and evaluations it starts, or
+/// keeps from them (in their environment, where a property given is one MSBuild takes as the project's, or as a global
+/// property), the properties it asks an evaluation for or writes into a project or publish profile, and the targets it runs.
+/// Those an evaluation carries (Host's CarriedProperties) are named there. Framework-free, since the project host compiles
+/// it in.</summary>
 [IdentifierHome]
 public static class MSBuildNames
 {
     /// <summary>The salt of MSBuild's handshake with its worker nodes: a build takes up only a node left by one of the same
     /// salt.</summary>
     public const string NodeHandshakeSalt = "MSBUILDNODEHANDSHAKESALT";
+
+    /// <summary>"0" keeps a build out of MSBuild's server, by MSBuild's own switch.</summary>
+    public const string UseServer = "MSBUILDUSESERVER";
+
+    /// <summary>"0" keeps a build out of MSBuild's server, by the .NET command line's switch.</summary>
+    public const string CliUseServer = "DOTNET_CLI_USE_MSBUILD_SERVER";
+
+    /// <summary>Set by dotnet test for what it runs: each worker node then holds the command's output open as its own.</summary>
+    public const string EnsureStdOutForTaskProcesses = "MSBUILDENSURESTDOUTFORTASKPROCESSES";
+
+    // Where MSBuild and its SDKs are, as a build gives them to the programs it runs (dotnet run's, dotnet test's).
+    public const string ExePath = "MSBUILD_EXE_PATH";
+    public const string ExtensionsPath = "MSBuildExtensionsPath";
+    public const string SdksPath = "MSBuildSDKsPath";
+    public const string LoadMicrosoftTargetsReadOnly = "MSBuildLoadMicrosoftTargetsReadOnly";
 
     /// <summary>"true" lets a project that references a framework the SDK marks Windows-only restore and build off Windows
     /// (NETSDK1100).</summary>

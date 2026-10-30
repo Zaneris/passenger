@@ -91,13 +91,13 @@ public static class ChildProcesses
         // MSBuild writes UTF-8, which is how its output is read, on every Windows: by itself it does only from 10 1909 on.
         start.Environment["DOTNET_CLI_FORCE_UTF8_ENCODING"] = "true";
         // The SDK's switch for MSBuild's server, and MSBuild's own, which a person's environment may set over the SDK's.
-        start.Environment["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0";
-        start.Environment["MSBUILDUSESERVER"] = "0";
+        start.Environment[MSBuildNames.CliUseServer] = "0";
+        start.Environment[MSBuildNames.UseServer] = "0";
         // No other build takes up a node of the IDE's, to have it ended under it when the IDE ends.
         start.Environment.TryGetValue(MSBuildNames.NodeHandshakeSalt, out string? salt);
         start.Environment[MSBuildNames.NodeHandshakeSalt] = $"{salt}passenger-{Environment.ProcessId}";
         // Set by dotnet test for what it runs: each node would hold the command's output open as its own.
-        start.Environment.Remove("MSBUILDENSURESTDOUTFORTASKPROCESSES");
+        start.Environment.Remove(MSBuildNames.EnsureStdOutForTaskProcesses);
         return start;
     }
 

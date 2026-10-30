@@ -2,6 +2,7 @@ namespace Passenger.Core;
 
 /// <summary>What names a Razor file: a component, or a page or view. Framework-free, since Passenger's extension inside Roslyn's
 /// server compiles it in.</summary>
+[IdentifierHome]
 public static class RazorFiles
 {
     /// <summary>A Razor component's extension.</summary>

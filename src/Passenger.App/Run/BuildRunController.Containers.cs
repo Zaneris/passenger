@@ -262,7 +262,7 @@ public sealed partial class BuildRunController
         if (debugged.Count > 0)
         {
             // Each held service's image is built to read whether its own environment turns its debugger off.
-            work.Say($"Building {string.Join(" and ", debugged.Select(d => d.Service))}'s {(debugged.Count == 1 ? "image" : "images")}…");
+            work.Say($"Building {Plural.Listed([.. debugged.Select(d => d.Service)])}'s {Plural.Noun(debugged.Count, "image")}…");
         }
         try
         {
@@ -379,7 +379,7 @@ public sealed partial class BuildRunController
             await session.StopContainersAsync(run);
             return following;
         }
-        string what = ServicesStarted(chosen.Name, how, string.Join(" and ", debugged.Select(s => s.Service)));
+        string what = ServicesStarted(chosen.Name, how, Plural.Listed([.. debugged.Select(s => s.Service)]));
         parts.Say($"{what}{(how == RunStart.Run ? ":" : ";")} {Plural.Of(plan.Dotnet.Count(d => plan.Starts(d.Service)), ".NET service")} from Passenger's build"
             + $"{(plan.Mode == ContainerMode.Images ? " images" : string.Empty)}, {Plural.Of(plan.Backing.Count, "other service")}; Stop takes them down"
             + (notes.Count > 0 ? $" ({string.Join("; ", notes)})" : string.Empty),

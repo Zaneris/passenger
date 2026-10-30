@@ -8,7 +8,7 @@ using Passenger.App;
 namespace Passenger.Tests;
 
 /// <summary>Why an action cannot run reads the same wherever it is said, as <see cref="Refusals"/> words it: no string the
-/// IDE's code writes is a refusal's words again, whole or as one of Refusals' methods makes them.</summary>
+/// IDE's code writes is a refusal's words again, whole, with words added, or as one of Refusals' methods makes them.</summary>
 [Collection(Beside.Name)]
 public sealed class RefusalsTests
 {
@@ -26,6 +26,8 @@ public sealed class RefusalsTests
     {
         HashSet<string> words = [.. typeof(Refusals).GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(field => field.IsLiteral && field.FieldType == typeof(string)).Select(field => (string)field.GetRawConstantValue()!)];
+        // A constant's words with more after them ("The solution was closed while …"), alone or after what the refusal stopped.
+        Regex[] added = [.. words.Select(word => new Regex($@"(?:^|: ){Regex.Escape(word)}\W"))];
         string root = Debugging.Helpers.Debuggees.Root;
         List<string> found = [];
         foreach (string file in Directory.EnumerateFiles(Path.Combine(root, "src", "Passenger.App"), "*.cs", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
@@ -44,7 +46,7 @@ public sealed class RefusalsTests
                     InterpolatedStringExpressionSyntax interpolated => string.Concat(interpolated.Contents.Select(part => part is InterpolatedStringTextSyntax text ? text.TextToken.ValueText : "{}")),
                     _ => null,
                 };
-                if (written is not null && (words.Contains(written) || Made.Any(made => made.IsMatch(written))))
+                if (written is not null && (words.Contains(written) || Made.Concat(added).Any(made => made.IsMatch(written))))
                 {
                     found.Add($"{relative}:{node.GetLocation().GetLineSpan().StartLinePosition.Line + 1}: \"{written}\"");
                 }

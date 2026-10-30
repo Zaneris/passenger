@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.App.Explorer;
 
 /// <summary>A shape of Passenger's file icons (<c>FileIcon.*</c>, Theme/FileIconSet.axaml) in one of their colours
@@ -164,8 +166,8 @@ public static class FileIconSet
         [".xaml"] = new("Code", Blue),
         [".axaml"] = new("Code", Purple),
         [".paml"] = new("Code", Purple),
-        [".razor"] = new("Html", Purple),
-        [".cshtml"] = new("Html", Red),
+        [RazorFiles.Component] = new("Html", Purple),
+        [RazorFiles.Page] = new("Html", Red),
         [".linq"] = new("LinqPad", Blue),
         [".kql"] = new("Kusto", Blue),
         [".csl"] = new("Kusto", Blue),

@@ -1238,7 +1238,7 @@ public sealed class ProjectSession : IAsyncDisposable
             }
             catch (TimeoutException)
             {
-                string late = string.Join(" and ", parts.Where(p => !p.Ending.IsCompleted).Select(p => p.What));
+                string late = Plural.Listed([.. parts.Where(p => !p.Ending.IsCompleted).Select(p => p.What)]);
                 IdeErrors.Write($"Closing{(folder is null ? string.Empty : $" {folder}")}: {late} had not ended after {limit.TotalSeconds:0} s");
             }
             catch (Exception error)

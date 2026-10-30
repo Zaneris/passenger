@@ -708,7 +708,7 @@ internal static partial class RouteReading
                 {
                     continue;
                 }
-                if (path.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
+                if (path.EndsWith(RazorFiles.Component, StringComparison.OrdinalIgnoreCase))
                 {
                     SourceText text = await document.GetTextAsync(cancel).ConfigureAwait(false);
                     foreach ((int line, string template) in Directives(text, page: true))
@@ -719,7 +719,7 @@ internal static partial class RouteReading
                             Path.GetFileNameWithoutExtension(path), path, PlaceAt(text, row.Start), PlaceAt(text, row.End), Hash(path, text), path, PlaceAt(text, row.Start)));
                     }
                 }
-                else if (path.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase))
+                else if (path.EndsWith(RazorFiles.Page, StringComparison.OrdinalIgnoreCase))
                 {
                     await RazorPageAsync(document, path).ConfigureAwait(false);
                 }
@@ -775,7 +775,7 @@ internal static partial class RouteReading
             {
                 return;
             }
-            string name = under[..^".cshtml".Length];
+            string name = under[..^RazorFiles.Page.Length];
             if (name.Equals("Index", StringComparison.OrdinalIgnoreCase))
             {
                 name = string.Empty;

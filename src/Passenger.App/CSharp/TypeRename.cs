@@ -94,7 +94,7 @@ public static class TypeRename
     /// <summary>Whether a file is a Razor component's whose class Razor names as the file: a .razor file, not the folder's
     /// imports, whose name is a C# name.</summary>
     public static bool IsComponentFile(string path) =>
-        path.EndsWith(".razor", StringComparison.OrdinalIgnoreCase) && Path.GetFileNameWithoutExtension(path) is var name
+        path.EndsWith(RazorFiles.Component, StringComparison.OrdinalIgnoreCase) && Path.GetFileNameWithoutExtension(path) is var name
         && !name.Equals("_Imports", StringComparison.OrdinalIgnoreCase) && SyntaxFacts.IsValidIdentifier(name);
 
     /// <summary>What a type's rename to <paramref name="name"/> takes along of its markup. A Razor component's class is
@@ -347,5 +347,5 @@ public static class TypeRename
     private static bool IsCSharp(string path) => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A Razor component's code-behind's ending, after the component's own file name.</summary>
-    private const string RazorCodeBehind = ".razor.cs";
+    private const string RazorCodeBehind = RazorFiles.Component + ".cs";
 }

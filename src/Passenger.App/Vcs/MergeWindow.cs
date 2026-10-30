@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
+using Passenger.Core;
 using Passenger.Vcs;
 
 namespace Passenger.App.Vcs;
@@ -143,7 +144,7 @@ public sealed class MergeWindow : IdeWindow, IOwnKeys
             left.Add(conflicts == 1 ? "one conflict" : $"{conflicts} conflicts");
         }
         string verb = (changes > 0 ? changes : conflicts) == 1 ? "is" : "are";
-        return $"There {verb} {string.Join(" and ", left)} left unprocessed.\nSave changes and mark the conflict resolved anyway?";
+        return $"There {verb} {Plural.Listed(left)} left unprocessed.\nSave changes and mark the conflict resolved anyway?";
     }
 
     private static Button Action(string label, Func<Task> run)

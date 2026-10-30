@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.Editing;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Simplification;
+using Passenger.Core;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -335,7 +336,7 @@ internal static class MemberMoves
         {
             INamedTypeSymbol[] those = [.. lacking.Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)];
             return those.Length > 0 && those.All(l => l.BaseType is { } up && Same(up, type))
-                ? $": push it down to {string.Join(" and ", those.Select(l => $"'{l.Name}'"))} too"
+                ? $": push it down to {Plural.Listed([.. those.Select(l => $"'{l.Name}'")])} too"
                 : string.Empty;
         }
         List<INamedTypeSymbol> overriding = [];

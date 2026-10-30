@@ -41,7 +41,7 @@ public sealed partial class AspireController
             {
                 await execution.DisposeAsync();
                 starting.Token.ThrowIfCancellationRequested();
-                throw new InvalidOperationException("The solution was closed while starting integration tests");
+                throw new InvalidOperationException(Refusals.SolutionClosed);
             }
             Dictionary<string, string> environment = new(execution.Environment, StringComparer.Ordinal)
             {
