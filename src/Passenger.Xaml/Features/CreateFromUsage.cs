@@ -350,8 +350,9 @@ public static class CreateFromUsage
         return relative == "." ? root : root + "." + relative.Replace(Path.DirectorySeparatorChar, '.').Replace('/', '.');
     }
 
-    /// <summary>A converter's file: its class implementing the dialect's IValueConverter, each method left to write,
-    /// the namespace written as the project's other C# writes it.</summary>
+    /// <summary>A converter's file: its class implementing the dialect's IValueConverter (a name that is a C# keyword
+    /// escaped, as the compiler takes it), each method left to write, the namespace written as the project's other C#
+    /// writes it.</summary>
     private static string ConverterText(XamlFile file, string space, string name, bool avalonia)
     {
         bool nullable = string.Equals(file.Project.Inputs.PropertyValue("Nullable"), "enable", StringComparison.OrdinalIgnoreCase);
@@ -368,7 +369,7 @@ public static class CreateFromUsage
         made.Append("using System.Globalization;\n").Append(avalonia ? "using Avalonia.Data.Converters;\n" : "using System.Windows.Data;\n").Append('\n');
         string indent = scoped ? string.Empty : Unit;
         made.Append(scoped ? $"namespace {space};\n\n" : $"namespace {space}\n{{\n");
-        made.Append($"{indent}public class {name} : IValueConverter\n{indent}{{\n");
+        made.Append($"{indent}public class {(SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None ? name : "@" + name)} : IValueConverter\n{indent}{{\n");
         foreach (string method in (string[])["Convert", "ConvertBack"])
         {
             made.Append($"{indent}{Unit}public {ret} {method}({value} value, Type targetType, {value} parameter, CultureInfo culture)\n")
