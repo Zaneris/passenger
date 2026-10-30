@@ -218,7 +218,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   lets one writer have a file). A file-based program is a project named by its C# file (`ProgramFiles`), the SDK's
   project of it (`dotnet run-api`, `ProgramProjects`) evaluated in memory (`VirtualProjects`).
 - `Passenger.Vcs`, `Passenger.Workspace`, `Passenger.Packages`: the App's Git, folder model and NuGet code that needs no
-  UI; what belongs to the UI thread stays in the App's folder of the same name.
+  UI; what belongs to the UI thread stays in the App's folder of the same name. A revision's text is `Git.BytesAtAsync`
+  (through the file's filters) read in the open file's encoding (`FileVersion`), never `git show` decoded as UTF-8.
 - `Passenger.Dap`, `Passenger.Debugger` (+`.Interop`), `Passenger.DebugAdapter`: Passenger's own debugger behind its own
   DAP, in a process of its own under `debugger/`. `Passenger.ContainerTools` (`passenger-tools`) runs inside a Linux
   container, self-contained, carried only in the release's archives.
