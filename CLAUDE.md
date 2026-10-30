@@ -284,8 +284,10 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **Build and run.** A folder with no usable .NET SDK is `ProjectModels.MissingSdk`, said through `Refusals.NoSdk`.
   `BuildRunController` (partials), `ConsoleSink` (every console through one `PumpAsync`), `RunConfiguration` (data,
   edited in place as `ConfigurationEdit`s), `LaunchPlan` (one resolution for Run, Debug, Profile, Hot Reload and a
-  debugged test host; a Passenger it launches keeps its state in the launcher's `sandbox/`), `UpToDate` (a launch's
-  build skipped while what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`.
+  debugged test host; a RunCommand naming another program run as `dotnet run` runs it, `OtherProgram`; a Blazor Web
+  App's client no program of its own, `ProjectModel.IsBrowserClient`; a Passenger it launches keeps its state in the
+  launcher's `sandbox/`), `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build
+  under way waited out first), `TogetherBuild`.
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach,
   Restart and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time
   (`TakeStartAsync`); Stop ends every session and recording before the programs go.
@@ -485,15 +487,17 @@ pass is `Ui.Hold(time, why)`, `Ui.Stall` or `Waiting.For`. Every limit is writte
 it started scale by `PASSENGER_WAIT_SCALE`. `FLAKES.md` records each CI failure's cause.
 
 **Isolation.** A run keeps to its own folder (`TestRun`): the IDE's state, logs and sockets, every test folder
-(`TestFolders.Create`), shells' history, an empty Git configuration, NuGet's home on macOS and Linux, MSBuild's node salt,
-container labels, user secrets (`TestRun.UserSecrets`), dotnet new's templates, Aspire's HOME and CLI. It never reaches
-nuget.org (local feeds: `AvaloniaApp.Feed`, `StandInFeed`, and the restore-only `tests/EfGraphs` and `tests/AspireGraphs`
-that fill the package cache), GitHub (`PASSENGER_RELEASES` dead), registries (`PASSENGER_BUILDKIT_CHECKS=off`), Docker Hub,
-symbol servers, Discord, or the person's Passenger (`PASSENGER_START=headless`). It shortens `PASSENGER_EVAL_TIMEOUT_MS`
-(3 s), `PASSENGER_WATCH_LATER_MS` (3 s), `PASSENGER_MCP_PROGRESS_MS` (1 s) and `PASSENGER_REGEX_TIMEOUT_MS` (1 s); a test holding a server to not answering
-sets that server's limits, never the run's. After each window test its windows close (those it closed itself too) and what they started is waited out
-(`TestsLeaveNothingBehind`). A plain `[Fact]` using `HeadlessUnitTestSession.Dispatch` must not end on the session's
-thread (`await Task.Yield()` before throwing). A sleeping Mac fails tests: full runs go under `caffeinate -is`.
+(`TestFolders.Create`), shells' history, an empty Git configuration, NuGet's home on macOS and Linux, MSBuild's node
+salt, container labels, user secrets (`TestRun.UserSecrets`), dotnet new's templates, Aspire's HOME and CLI. It never
+reaches nuget.org (local feeds: `AvaloniaApp.Feed`, `StandInFeed`, and the restore-only `tests/EfGraphs`,
+`tests/AspireGraphs` and `tests/BlazorGraphs` that fill the package cache), GitHub (`PASSENGER_RELEASES` dead),
+registries (`PASSENGER_BUILDKIT_CHECKS=off`), Docker Hub, symbol servers, Discord, or the person's Passenger
+(`PASSENGER_START=headless`). It shortens `PASSENGER_EVAL_TIMEOUT_MS` (3 s), `PASSENGER_WATCH_LATER_MS` (3 s),
+`PASSENGER_MCP_PROGRESS_MS` (1 s) and `PASSENGER_REGEX_TIMEOUT_MS` (1 s); a test holding a server to not answering sets
+that server's limits, never the run's. After each window test its windows close (those it closed itself too) and what
+they started is waited out (`TestsLeaveNothingBehind`). A plain `[Fact]` using `HeadlessUnitTestSession.Dispatch` must
+not end on the session's thread (`await Task.Yield()` before throwing). A sleeping Mac fails tests: full runs go under
+`caffeinate -is`.
 
 **Collections and shared projects** (`Collections.cs`). Window tests run one at a time on the session's thread. Beside
 them run only the debug adapter's protocol tests (`DebugSession.Collection`) and `Beside` classes (no window, nothing the
