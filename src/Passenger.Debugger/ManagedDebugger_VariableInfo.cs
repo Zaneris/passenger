@@ -395,9 +395,11 @@ public partial class ManagedDebugger
         }
     }
 
-    /// Returns a bool indicating if a Static Members pseudo variable is required
-    private async Task<bool> AddMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, bool includeNonPublicMembers = true)
+    /// <summary>A type's members and then its base types', each base's member that one derived from it hides by its name
+    /// (<paramref name="derived"/>, the names they took) saying its type; true where a Static members row is needed.</summary>
+    private async Task<bool> AddMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, bool includeNonPublicMembers = true, HashSet<string>? derived = null)
     {
+        int first = result.Count;
         bool hasStaticMembers = false;
         ICorDebugClass corDebugClass = corDebugType.Class;
         ICorDebugModule module = corDebugClass.Module;
@@ -417,6 +419,13 @@ public partial class ManagedDebugger
         await AddFields(nonStaticFieldDefs, metadataImport, corDebugType, corDebugValue, result, threadId, stackDepth);
         // The reference itself, not unwrapped: the getters are called on it.
         await AddProperties(nonStaticProperties, metadataImport, corDebugClass, threadId, stackDepth, corDebugValue, result);
+        if (derived is not null)
+        {
+            foreach (VariableInfo hidden in result.Skip(first).Where(member => derived.Contains(member.Name)))
+            {
+                hidden.DeclaringType = GetCorDebugTypeFriendlyName(corDebugType);
+            }
+        }
 
         ICorDebugType? baseType = corDebugType.Base;
         if (baseType is null)
@@ -430,7 +439,9 @@ public partial class ManagedDebugger
             return hasStaticMembers;
         }
 
-        return hasStaticMembers | await AddMembers(corDebugValue, baseType, threadId, stackDepth, result);
+        HashSet<string> taken = derived is null ? new(StringComparer.Ordinal) : new(derived, StringComparer.Ordinal);
+        taken.UnionWith(result.Skip(first).Select(member => member.Name));
+        return hasStaticMembers | await AddMembers(corDebugValue, baseType, threadId, stackDepth, result, derived: taken);
     }
 
     private async Task AddStaticMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result)

@@ -139,6 +139,7 @@ public sealed class DebugAdapter
             {
                 Name = v.Name,
                 EvaluateName = v.EvaluateName ?? v.Name,
+                DeclaringType = v.DeclaringType,
                 Value = v.Value,
                 Type = v.Type,
                 PresentationHint = ToProtocol(v.PresentationHint),

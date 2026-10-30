@@ -1273,6 +1273,47 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         }
     }
 
+    /// <summary>A base class's field that a derived class hides by its name takes a value set in its own row: the base's
+    /// field changes, the derived one's stays as it was.</summary>
+    [AvaloniaFact]
+    public void A_value_set_on_a_hidden_base_field_changes_that_field_and_not_the_one_hiding_it()
+    {
+        Write("Program.cs", "Derived item = new();\nConsole.WriteLine($\"counts {((Base)item).count} {item.count}\");\n\n"
+            + "class Base\n{\n    public int count = 1;\n}\n\nclass Derived : Base\n{\n    public new int count = 2;\n}\n");
+        MainWindow window = Open();
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(1, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        WaitDebugging(window, () => Row(window, "item") is not null, "the stop before the line that writes the counts");
+
+        VariableNode item = Row(window, "item")!;
+        Task opened = window.BottomPanel.Debug.Tree.Expand(item);
+        Ui.WaitFor(() => opened.IsCompleted, "item's rows");
+        VariableNode[] counts = [.. (item.Children ?? []).Where(c => c.Name == "count")];
+        Assert.True(counts.Select(c => c.Value).SequenceEqual(["2", "1"]), $"item lists its counts as {string.Join(", ", counts.Select(c => c.Value))}, not the derived 2 and the base's 1");
+        SetInRow(window, counts[1], "5");
+        Assert.True(window.Status?.StartsWith("Could not set", StringComparison.Ordinal) != true, $"Set Value was refused: {window.Status}");
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("counts ", StringComparison.Ordinal),
+            "the program to write the counts");
+        Assert.True(window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("counts 5 2", StringComparison.Ordinal),
+            $"The program wrote {window.BottomPanel.Debug.Console.Document.Snapshot}, where the base's count set to 5 leaves the derived one 2");
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+    }
+
+    /// <summary>Set Value as a person gives it: the row clicked, F2, the value typed and Enter, the variables shown again after.</summary>
+    private static void SetInRow(MainWindow window, VariableNode row, string value)
+    {
+        VariableNode top = window.BottomPanel.Debug.Tree.Rows.First(r => r.Depth == 0);
+        Ui.Click(Ui.Row(window.DebugWindow.VariablesList, row), settle: false);
+        Ui.Press(window, "F2");
+        Assert.True(row.IsEditing, $"F2 on {row.Name} did not open its value for editing");
+        window.KeyTextInput(value);
+        Ui.Press(window, "Enter");
+        Ui.WaitFor(() => window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0) is { } again && again != top, "the variables shown again once the value was set");
+    }
+
     [AvaloniaFact]
     public void An_evaluation_that_could_not_be_stopped_leaves_the_program_paused_and_a_step_goes_on_once_it_returns()
     {

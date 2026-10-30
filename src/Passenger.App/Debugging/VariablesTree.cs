@@ -1,4 +1,6 @@
 using Avalonia;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.Dap;
 
 namespace Passenger.App.Debugging;
@@ -23,6 +25,10 @@ public sealed class VariableNode(string name, string value, string? type, int re
     /// <summary>What the debugger says names the value in an expression, where its name does not: a call's value
     /// ("Count() returned") is $ReturnValue.</summary>
     public string? EvaluateName { get; init; }
+
+    /// <summary>The type declaring the member this row is, where a type derived from it hides the member by its name: its
+    /// expression reaches it through a cast to this type.</summary>
+    public string? DeclaringType { get; init; }
 
     /// <summary>A value a call of the last step returned, listed at the top of the frame's values.</summary>
     public bool IsReturnValue => Depth == 0 && Role == VariableRole.Value && EvaluateName?.StartsWith("$ReturnValue", StringComparison.Ordinal) == true;
@@ -50,8 +56,8 @@ public sealed class VariableNode(string name, string value, string? type, int re
     public bool IsQueryText => IsQuerySql && WasRead && Role != VariableRole.Error;
 
     /// <summary>The C# that reaches this value from the frame, for Set Value: a local's name, a member after its
-    /// object's expression, an element's index after its array's. Null for a row no expression reaches (a
-    /// scope, the static members, a result, a row the debugger adds).</summary>
+    /// object's expression (a hidden one's cast to the type declaring it), an element's index after its array's. Null for
+    /// a row no expression reaches (a scope, the static members, a result, a row the debugger adds).</summary>
     public string? Expression
     {
         get
@@ -73,9 +79,21 @@ public sealed class VariableNode(string name, string value, string? type, int re
                 return null;
             }
             string? owner = Parent.Reach;
-            return owner is null ? null : Name.StartsWith('[') ? $"{owner}{Name}" : $"{owner}.{Name}";
+            return owner is null ? null
+                : Name.StartsWith('[') ? $"{Operand(owner)}{Name}"
+                : DeclaringType is { } declaring ? $"(({declaring}){Operand(owner)}).{Name}"
+                : $"{Operand(owner)}.{Name}";
         }
     }
+
+    /// <summary>An expression as the operand of a member's dot, an index or a cast: in parentheses unless it is already a
+    /// primary expression (a name, the debugger's $exception, a member, an element, a call).</summary>
+    private static string Operand(string expression) =>
+        expression.StartsWith('$') && SyntaxFacts.IsValidIdentifier(expression[1..])
+        || SyntaxFactory.ParseExpression(expression) is { ContainsDiagnostics: false } and (IdentifierNameSyntax or MemberAccessExpressionSyntax
+            or ElementAccessExpressionSyntax or InvocationExpressionSyntax or ParenthesizedExpressionSyntax or ThisExpressionSyntax)
+            ? expression
+            : $"({expression})";
 
     /// <summary>What the rows under this one reach their values from: its own expression, or for a row that only groups
     /// others the one above it's (the raw view lists the members of the object above it, a range the elements of the array
@@ -140,6 +158,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
         {
             Parent = parent,
             EvaluateName = variable.EvaluateName is { Length: > 0 } named && named != variable.Name ? named : null,
+            DeclaringType = variable.DeclaringType,
             IsVirtual = variable.PresentationHint?.Kind == "virtual",
             IsLazy = variable.PresentationHint?.Lazy == true && variable.VariablesReference > 0,
         };
@@ -151,6 +170,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
         {
             Parent = lazy.Parent,
             EvaluateName = lazy.EvaluateName,
+            DeclaringType = lazy.DeclaringType,
             IsVirtual = lazy.IsVirtual,
             WasRead = true,
         };
