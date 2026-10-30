@@ -278,7 +278,7 @@ internal static class Evaluation
     internal static HashSet<string> OutsideRoots(Project project)
     {
         HashSet<string> roots = new(PathNames.Comparer);
-        foreach (string property in new[] { "NetCoreRoot", "NetCoreTargetingPackRoot", "MSBuildBinPath", "MSBuildExtensionsPath", CarriedProperties.NuGetPackageRoot })
+        foreach (string property in new[] { "NetCoreRoot", "NetCoreTargetingPackRoot", "MSBuildBinPath", MSBuildNames.ExtensionsPath, CarriedProperties.NuGetPackageRoot })
         {
             Add(project.GetPropertyValue(property));
         }

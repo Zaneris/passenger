@@ -202,11 +202,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   place the version is read), `PassengerLog` (below the App, never `IdeLog`; a line quoting a program's words through
   `WriteMasked`), `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's lines read and messages written as pooled
   bytes), `SharedNames` (a name read from bytes, made once), `ContentLengthHeader` (every LSP and DAP message's header),
-  `RazorFiles` and `MSBuildNames` (compiled into the extension and the host; every MSBuild name Passenger writes but
-  those the evaluation's `CarriedProperties` holds, MSBuildNamesTests holding both; a build's and a publish's command
-  line end in `BuildOutput.Tail`), `ProjectFolders` (a project's own folders, linked into the host), `FrameworkNames`,
-  `PrimitiveTypes` (the one table of primitives; the debugger's element types through `MetadataTypeNames.ElementTypeOf`,
-  a generic name closed through `CSharpTypeNames.Closed`).
+  `RazorFiles` (an `[IdentifierHome]`) and `MSBuildNames` (MSBuild's environment variables too) (compiled into the
+  extension and the host; every MSBuild name Passenger writes but those the evaluation's `CarriedProperties` holds,
+  MSBuildNamesTests holding both; a build's and a publish's command line end in `BuildOutput.Tail`), `ProjectFolders` (a
+  project's own folders, linked into the host), `FrameworkNames`, `PrimitiveTypes` (the one table of primitives; the
+  debugger's element types through `MetadataTypeNames.ElementTypeOf`, a generic name closed through
+  `CSharpTypeNames.Closed`).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
   function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `Outline` (a tree's rows in reading order, kept where
   unchanged), `FileText`, `XmlEntities` (every XML value decoded and escaped, never `SecurityElement.Escape` or a hand
@@ -264,9 +265,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   A run keeps its newest three memory snapshots' objects (`KeptSnapshots`). A heap dump is Passenger's own (`DumpTool`,
   deleted only once its writer and reader end, `DeleteAfterAsync`; leftovers swept, `Sweep`): the runtime's createdump
   writes into the program's stdout, and Windows' dumps only its parent.
-- `Passenger.Inspector` (+`.Wpf`): the Live Visual Tree's helper, loaded into the app by a startup hook, answering over a
-  Unix socket (`Protocol.cs` compiled into both ends). `Passenger.WpfPreview` (Windows only), `Passenger.TestFrames`
-  (pictures of a failed headless test), `Passenger.Terminal` (the VT emulator, Porta.Pty).
+- `Passenger.Inspector` (+`.Wpf`): the Live Visual Tree's helper, loaded into the app by a startup hook, answering over
+  a Unix socket (`Protocol.cs` compiled into both ends; what both say in `Serving.cs`'s `Words`, an agent's input aimed
+  by `Driving<T, TTop>.At`, Select Element ended by `Picking<T>`). `Passenger.WpfPreview` (Windows only),
+  `Passenger.TestFrames` (pictures of a failed headless test), `Passenger.Terminal` (the VT emulator, Porta.Pty).
 - `Passenger.Analyzers`: the PSG rules (`Rules.cs`); a rule goes on only where nothing it flags is left.
 - `tools/`: the notices, the web servers without Node.js, the test runner and shard scripts, packaging, site shots.
 
