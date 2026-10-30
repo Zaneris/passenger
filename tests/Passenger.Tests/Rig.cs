@@ -38,7 +38,7 @@ public static class TestApp
 /// never writes to the person's own state, log or history, an agent of theirs never attaches to a test's window, and a
 /// person's commit signing or hooks never reach a test's commit. The folder goes when the run ends; one a run that was
 /// killed left goes when the next begins.</summary>
-public sealed partial class TestRun : IAsyncDisposable
+public sealed class TestRun : IAsyncDisposable
 {
     internal const string Prefix = "passenger-run-";
 
@@ -117,8 +117,8 @@ public sealed partial class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable("GIT_CONFIG_GLOBAL", gitConfig);
         Environment.SetEnvironmentVariable("GIT_CONFIG_NOSYSTEM", "1");
         // Configuration given on git's command line through the environment, which would come before the file's.
-        Environment.SetEnvironmentVariable("GIT_CONFIG_PARAMETERS", null);
-        Environment.SetEnvironmentVariable("GIT_CONFIG_COUNT", null);
+        OwnEnvironment.Set("GIT_CONFIG_PARAMETERS", null);
+        OwnEnvironment.Set("GIT_CONFIG_COUNT", null);
         // The terminals' shells keep their history in the run's: sh takes HISTFILE, zsh its startup files from ZDOTDIR.
         Environment.SetEnvironmentVariable("HISTFILE", Path.Combine(Root, "history"));
         Environment.SetEnvironmentVariable("ZDOTDIR", Directory.CreateDirectory(Path.Combine(Root, "zsh")).FullName);
@@ -153,7 +153,7 @@ public sealed partial class TestRun : IAsyncDisposable
         // Nor the person's colour choices: what a test runs writes in colour on a terminal alone, as with none of them set.
         foreach (string colour in (string[])["NO_COLOR", "FORCE_COLOR", "CLICOLOR_FORCE", "DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION"])
         {
-            Unset(colour);
+            OwnEnvironment.Set(colour, null);
         }
         // Nor the person's application data, where a Testing Platform app writes its first-run sentinel unless opted out.
         Environment.SetEnvironmentVariable("TESTINGPLATFORM_TELEMETRY_OPTOUT", "1");
@@ -177,20 +177,6 @@ public sealed partial class TestRun : IAsyncDisposable
         // A run stopped before its end (Ctrl+C) leaves nothing either, but what is held, which the next run's start removes.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => End(waiting: false);
     }
-
-    /// <summary>Takes a variable out of the run's environment, on macOS and Linux out of the process's own as well: a
-    /// terminal's program starts from that, given only what was set over it.</summary>
-    private static void Unset(string variable)
-    {
-        Environment.SetEnvironmentVariable(variable, null);
-        if (!OperatingSystem.IsWindows() && UnsetEnv(variable) != 0)
-        {
-            throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastPInvokeError(), $"{variable} could not be taken out of the run's environment");
-        }
-    }
-
-    [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "unsetenv", SetLastError = true, StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf8)]
-    private static partial int UnsetEnv(string name);
 
     /// <summary>On macOS and Linux, NuGet's home for the run, which NuGet takes from DOTNET_CLI_HOME: its user nuget.config,
     /// its credential providers and its HTTP cache are the run's, so no test reads the person's feeds or credentials or writes

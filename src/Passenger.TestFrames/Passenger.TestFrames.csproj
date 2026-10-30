@@ -6,6 +6,8 @@
     <!-- The oldest .NET an Avalonia 12 test project runs on, so it loads into any of them. -->
     <TargetFramework>net8.0</TargetFramework>
     <RootNamespace>Passenger.TestFrames</RootNamespace>
+    <!-- The calls into libc that OwnEnvironment makes are generated as unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,9 +19,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The runtime's variables, and the startup hooks' rule (this hook first, taken out as it starts), as Passenger names them. -->
+    <!-- The runtime's variables, and the startup hooks' rule (this hook first, taken out as it starts, out of the process's
+         own environment too), as Passenger names them. -->
     <Compile Include="../Passenger.Core/RuntimeVariables.cs" Link="RuntimeVariables.cs" />
     <Compile Include="../Passenger.Core/StartupHooks.cs" Link="StartupHooks.cs" />
+    <Compile Include="../Passenger.Core/OwnEnvironment.cs" Link="OwnEnvironment.cs" />
     <!-- The context the hook runs in, and what it reads of Avalonia's insides, as the inspector reads them. -->
     <Compile Include="../Passenger.Inspector/AvaloniaHooks.cs" Link="AvaloniaHooks.cs" />
   </ItemGroup>

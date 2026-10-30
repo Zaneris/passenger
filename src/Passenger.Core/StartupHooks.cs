@@ -32,7 +32,7 @@ public static class StartupHooks
             // Compared as the system compares names: Windows' ignore letter case.
             StringComparison comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
             string[] others = [.. hooks.Split(Path.PathSeparator).Where(h => h.Length > 0 && !string.Equals(Path.GetFullPath(h), hook, comparison))];
-            Environment.SetEnvironmentVariable(RuntimeVariables.StartupHooks, others.Length == 0 ? null : string.Join(Path.PathSeparator, others));
+            OwnEnvironment.Set(RuntimeVariables.StartupHooks, others.Length == 0 ? null : string.Join(Path.PathSeparator, others));
         }
     }
 }

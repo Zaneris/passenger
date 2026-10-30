@@ -36,9 +36,11 @@
     <Compile Include="../Passenger.Dap/HitCondition.cs" Link="HitCondition.cs" />
     <!-- A failed binding's nearest names, measured as the rest of Passenger measures a misspelling. -->
     <Compile Include="../Passenger.Core/Spelling.cs" Link="Spelling.cs" />
-    <!-- The runtime's variables, and the startup hooks' rule (this hook first, taken out as it starts), as Passenger names them. -->
+    <!-- The runtime's variables, and the startup hooks' rule (this hook first, taken out as it starts, out of the process's
+         own environment too), as Passenger names them. -->
     <Compile Include="../Passenger.Core/RuntimeVariables.cs" Link="RuntimeVariables.cs" />
     <Compile Include="../Passenger.Core/StartupHooks.cs" Link="StartupHooks.cs" />
+    <Compile Include="../Passenger.Core/OwnEnvironment.cs" Link="OwnEnvironment.cs" />
     <!-- Passenger's requests read as every JSON-lines peer reads its messages. -->
     <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
   </ItemGroup>

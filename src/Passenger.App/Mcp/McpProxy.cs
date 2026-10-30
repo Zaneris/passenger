@@ -105,11 +105,11 @@ public sealed partial class McpProxy
                 throw new FormatException($"{StartedForVariable} takes agent (a Passenger an agent's --mcp-attach started), not '{started}'");
             }
             StartedForAgent = true;
-            Environment.SetEnvironmentVariable(StartedForVariable, null);
+            OwnEnvironment.Set(StartedForVariable, null);
         }
         if (Environment.GetEnvironmentVariable(SessionVariable) is { Length: > 0 } session)
         {
-            Environment.SetEnvironmentVariable(SessionVariable, null);
+            OwnEnvironment.Set(SessionVariable, null);
             try
             {
                 followed = RelaySession.Read(File.ReadAllText(session));

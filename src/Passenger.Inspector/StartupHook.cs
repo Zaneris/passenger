@@ -58,8 +58,8 @@ internal static class StartupHook
     /// <summary>This hook, the socket and the overlays, out of the environment the app's own programs inherit; other hooks stay.</summary>
     private static void Unlist()
     {
-        Environment.SetEnvironmentVariable(Wire.SocketVariable, null);
-        Environment.SetEnvironmentVariable(Wire.OverlaysVariable, null);
+        OwnEnvironment.Set(Wire.SocketVariable, null);
+        OwnEnvironment.Set(Wire.OverlaysVariable, null);
         StartupHooks.TakeOut(typeof(StartupHook).Assembly.Location);
     }
 }

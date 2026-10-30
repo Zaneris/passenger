@@ -281,6 +281,48 @@ public sealed class TerminalTests
         }
     }
 
+    /// <summary>What an agent's --mcp-attach and a relay's session hand a Passenger they start, which it takes out of its
+    /// environment as it starts, reaches no shell of its Terminal: each set as a parent's variables are, in the process's
+    /// own environment, before the start's check takes them.</summary>
+    [AvaloniaFact]
+    public void What_Passenger_takes_out_of_its_environment_as_it_starts_reaches_no_shell_in_its_terminal()
+    {
+        string folder = TestFolders.Create("terminal-");
+        string session = Path.Combine(folder, "relay-session.json");
+        string[] takenOut = [Passenger.App.Mcp.McpProxy.StartedForVariable, Passenger.App.Mcp.McpProxy.SessionVariable];
+        try
+        {
+            File.WriteAllText(session, """{"tools":"","carried":[],"begun":""}""");
+            OwnEnvironment.Set(takenOut[0], "agent");
+            OwnEnvironment.Set(takenOut[1], session);
+            Passenger.App.Mcp.McpProxy.CheckVariable();
+            Assert.False(File.Exists(session), "The start's check did not take the relay's session, so the test checks nothing");
+
+            (MainWindow window, TerminalSession shell) = Open(folder);
+            // Only these variables listed, so nothing else of the machine's environment reaches the screen.
+            Run(window, OperatingSystem.IsWindows()
+                ? $"set {takenOut[0]}& set {takenOut[1]}& set TERM_PROGRAM& echo listed-929"
+                : $"env | grep -e '^{takenOut[0]}=' -e '^{takenOut[1]}=' -e '^TERM_PROGRAM='; echo listed-929");
+            WaitForLine(shell, "listed-929", "the shell's environment listed");
+            List<string> listed = Lines(shell.Screen);
+            Assert.True(listed.Contains("TERM_PROGRAM=Passenger"), $"The shell's environment was not listed:\n{Screen(shell)}");
+            foreach (string variable in takenOut)
+            {
+                Assert.False(listed.Any(line => line.StartsWith(variable + "=", StringComparison.Ordinal)),
+                    $"{variable}, taken out as Passenger started, reached the Terminal's shell and every program run there:\n{Screen(shell)}");
+            }
+            window.Close();
+        }
+        finally
+        {
+            foreach (string variable in takenOut)
+            {
+                OwnEnvironment.Set(variable, null);
+            }
+            TestFolders.Delete(folder);
+        }
+    }
+
     [AvaloniaFact]
     public void A_decomposed_accent_shows_on_its_letter_in_one_cell_and_copies_with_it()
     {

@@ -42,7 +42,7 @@ internal static class StartupHook
     /// <summary>This hook and its variable, out of the environment the tests' own programs inherit; other hooks stay.</summary>
     private static void Unlist()
     {
-        Environment.SetEnvironmentVariable(Variables.Frames, null);
+        OwnEnvironment.Set(Variables.Frames, null);
         StartupHooks.TakeOut(typeof(StartupHook).Assembly.Location);
     }
 }
