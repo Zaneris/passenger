@@ -178,13 +178,15 @@ public partial class MainWindow
         return CreateFile(into, type + ".cs", $"namespace {NamespaceFor(into)};\n\n{declaration}");
     }
 
-    /// <summary>The namespace a folder's code takes: its project's root namespace (its name, "Shop.App"), then the
-    /// folders below, each name a C# identifier or dotted ones.</summary>
+    /// <summary>The namespace a folder's code takes: its project's evaluated RootNamespace (until it is evaluated, its
+    /// name, "Shop.App"), then the folders below, each name a C# identifier or dotted ones.</summary>
     private string NamespaceFor(string into)
     {
         string full = PathNames.Canonical(into);
         ProjectModel? project = ProjectOf(full);
-        string root = project is null ? Path.GetFileName(Folder ?? full) : Path.GetFileNameWithoutExtension(project.Path);
+        string root = project is null ? Path.GetFileName(Folder ?? full)
+            : project.Property(Passenger.Host.CarriedProperties.RootNamespace) is { Length: > 0 } named ? named
+            : Path.GetFileNameWithoutExtension(project.Path);
         string below = project is null ? string.Empty : Path.GetRelativePath(project.Folder, full);
         IEnumerable<string> parts = [root, .. below == "." ? [] : below.Split(Path.DirectorySeparatorChar)];
         return string.Join('.', parts.SelectMany(p => p.Split('.', StringSplitOptions.RemoveEmptyEntries)).Select(Identifier));

@@ -199,11 +199,14 @@ public static class CarriedProperties
     /// <summary>The lock file the project's restore writes, when the project names its own.</summary>
     public const string NuGetLockFilePath = "NuGetLockFilePath";
 
+    /// <summary>The namespace the project's code begins from, which a type added to it takes.</summary>
+    public const string RootNamespace = "RootNamespace";
+
     public static readonly IReadOnlyList<string> Names =
     [
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
-        NuGetPackageRoot, TargetPath, NuGetLockFilePath,
+        NuGetPackageRoot, TargetPath, NuGetLockFilePath, RootNamespace,
     ];
 }
 

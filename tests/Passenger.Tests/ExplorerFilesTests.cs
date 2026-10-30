@@ -93,6 +93,24 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>New Class in a project that names its own RootNamespace begins the type's namespace with it, as the rest of its
+    /// code and the SDK's item templates do, never with the project file's name.</summary>
+    [AvaloniaFact]
+    public void New_class_in_a_project_with_its_own_RootNamespace_begins_its_namespace_with_it()
+    {
+        File.Delete(Path.Combine(folder, "Shop.csproj"));
+        File.WriteAllText(Path.Combine(folder, "Shop.Core.Impl.csproj"), TestProjects.Library("<RootNamespace>Shop.Core</RootNamespace>"));
+        MainWindow window = Open();
+        string models = PathNames.Canonical(Path.Combine(folder, "Models"));
+        Ui.WaitFor(() => window.ProjectOf(models) is { IsEvaluated: true }, "the project evaluated", TimeSpan.FromMinutes(1));
+
+        Assert.Null(window.CreateClass(models, "Order"));
+        string written = File.ReadAllText(Path.Combine(models, "Order.cs"));
+        Assert.True(written == "namespace Shop.Core.Models;\n\npublic class Order\n{\n}\n",
+            $"New Class took a namespace other than the project's RootNamespace and the folder's:\n{written}");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Delete_on_a_project_in_its_own_folder_moves_that_folder_to_the_Trash_only_once_asked_again_and_one_beside_its_solution_leaves_the_folder()
     {
