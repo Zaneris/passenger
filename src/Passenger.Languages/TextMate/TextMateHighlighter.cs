@@ -72,11 +72,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
 
     /// <summary>How long the grammar may read one line, checked between its searches: 1 s, or what
     /// <see cref="LineTimeVariable"/> gives; a value there that is no whole number of milliseconds above 0 is fatal.</summary>
-    public static TimeSpan LineTime => Environment.GetEnvironmentVariable(LineTimeVariable) is { Length: > 0 } given
-        ? int.TryParse(given, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int milliseconds) && milliseconds > 0
-            ? TimeSpan.FromMilliseconds(milliseconds)
-            : throw new FormatException($"{LineTimeVariable} takes a whole number of milliseconds above 0, not '{given}'")
-        : TimeSpan.FromSeconds(1);
+    public static TimeSpan LineTime => EnvironmentValues.Milliseconds(LineTimeVariable, TimeSpan.FromSeconds(1));
 
     /// <summary>How long the grammar may read a line too long to colour for the state it ends in: a tenth of
     /// <see cref="LineTime"/>.</summary>

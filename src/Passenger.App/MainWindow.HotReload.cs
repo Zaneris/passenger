@@ -72,11 +72,7 @@ public partial class MainWindow
     /// still end in when the program next calls a method the update deleted (one whose signature changed); the status
     /// bar follows on whatever the answer. 10 s, or what <see cref="WatchSaysLaterVariable"/> gives; a value there that
     /// is no whole number of milliseconds above 0 is fatal.</summary>
-    internal static TimeSpan WatchSaysLater => Environment.GetEnvironmentVariable(WatchSaysLaterVariable) is { Length: > 0 } given
-        ? int.TryParse(given, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int milliseconds) && milliseconds > 0
-            ? TimeSpan.FromMilliseconds(milliseconds)
-            : throw new FormatException($"{WatchSaysLaterVariable} takes a whole number of milliseconds above 0, not '{given}'")
-        : TimeSpan.FromSeconds(10);
+    internal static TimeSpan WatchSaysLater => EnvironmentValues.Milliseconds(WatchSaysLaterVariable, TimeSpan.FromSeconds(10));
 
     /// <summary>Ends following what dotnet watch says of the last save made for it; null when none is followed.</summary>
     private Action? unfollowWatch;

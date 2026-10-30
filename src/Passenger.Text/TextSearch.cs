@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Text.Unicode;
+using Passenger.Core;
 
 namespace Passenger.Text;
 
@@ -34,11 +35,7 @@ public static class TextSearch
     /// hundred milliseconds a busy machine keeps a quick search waiting, so only a regex backtracking without end
     /// (`(a+)+b` over a long run of a's) stops. 5 s, or what <see cref="ApartVariable"/> gives; a value there that is no
     /// whole number of milliseconds above 0 is fatal.</summary>
-    public static TimeSpan Apart => Environment.GetEnvironmentVariable(ApartVariable) is { Length: > 0 } given
-        ? int.TryParse(given, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int milliseconds) && milliseconds > 0
-            ? TimeSpan.FromMilliseconds(milliseconds)
-            : throw new FormatException($"{ApartVariable} takes a whole number of milliseconds above 0, not '{given}'")
-        : TimeSpan.FromSeconds(5);
+    public static TimeSpan Apart => EnvironmentValues.Milliseconds(ApartVariable, TimeSpan.FromSeconds(5));
 
     /// <summary>Every match of a query, a regex's search stopping past <paramref name="within"/> (<see cref="AtOnce"/> on
     /// the UI thread, <see cref="Apart"/> off it).</summary>

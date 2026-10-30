@@ -1,4 +1,4 @@
-using System.Globalization;
+using Passenger.Core;
 
 namespace Passenger.Dap;
 
@@ -21,11 +21,7 @@ public static class AdapterEnvironment
     /// <summary>How long code the debugger runs in the program may take: <see cref="DefaultEvaluationTimeout"/>, or
     /// what <see cref="EvaluationTimeoutVariable"/> gives; a value there that is no whole number of milliseconds above
     /// 0 is fatal, as a malformed flag is.</summary>
-    public static TimeSpan EvaluationTimeout => Environment.GetEnvironmentVariable(EvaluationTimeoutVariable) is { Length: > 0 } given
-        ? int.TryParse(given, NumberStyles.None, CultureInfo.InvariantCulture, out int milliseconds) && milliseconds > 0
-            ? TimeSpan.FromMilliseconds(milliseconds)
-            : throw new FormatException($"{EvaluationTimeoutVariable} takes a whole number of milliseconds above 0, not '{given}'")
-        : DefaultEvaluationTimeout;
+    public static TimeSpan EvaluationTimeout => EnvironmentValues.Milliseconds(EvaluationTimeoutVariable, DefaultEvaluationTimeout);
 
     /// <summary>The file <see cref="EngineLogVariable"/> names, or null when it names none.</summary>
     public static string? EngineLog => Environment.GetEnvironmentVariable(EngineLogVariable) is { Length: > 0 } file ? file : null;

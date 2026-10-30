@@ -32,11 +32,7 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>How long a server started ahead may take to start, and then the projects to load, before the status bar
     /// warns that C# is still starting or loading, C# going on however long they take: 5 minutes, or what
     /// <see cref="SlowLoadVariable"/> gives; a value there that is no whole number of milliseconds above 0 is fatal.</summary>
-    public static TimeSpan SlowLoad => Environment.GetEnvironmentVariable(SlowLoadVariable) is { Length: > 0 } given
-        ? int.TryParse(given, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int milliseconds) && milliseconds > 0
-            ? TimeSpan.FromMilliseconds(milliseconds)
-            : throw new FormatException($"{SlowLoadVariable} takes a whole number of milliseconds above 0, not '{given}'")
-        : TimeSpan.FromMinutes(5);
+    public static TimeSpan SlowLoad => EnvironmentValues.Milliseconds(SlowLoadVariable, TimeSpan.FromMinutes(5));
 
     private readonly Dictionary<OpenDocument, CSharpDocument> documents = [];
     private readonly ServerRestarts restarts = new();

@@ -70,11 +70,7 @@ public sealed class AgentCall : IAsyncDisposable
 
     /// <summary>How often a call that takes a while tells its agent so: 10 s, or what <see cref="EveryVariable"/>
     /// gives; a value there that is no whole number of milliseconds above 0 is fatal.</summary>
-    public static TimeSpan Every => Environment.GetEnvironmentVariable(EveryVariable) is { Length: > 0 } given
-        ? int.TryParse(given, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int milliseconds) && milliseconds > 0
-            ? TimeSpan.FromMilliseconds(milliseconds)
-            : throw new FormatException($"{EveryVariable} takes a whole number of milliseconds above 0, not '{given}'")
-        : TimeSpan.FromSeconds(10);
+    public static TimeSpan Every => EnvironmentValues.Milliseconds(EveryVariable, TimeSpan.FromSeconds(10));
 
     /// <summary>The call this flow serves, or null outside one.</summary>
     public static AgentCall? Current => Serving.Value;
