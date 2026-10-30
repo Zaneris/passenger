@@ -304,6 +304,23 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "the members moved");
     }
 
+    /// <summary>Extract Interface from a class whose type parameter a member uses is constrained by another the members do
+    /// not name: the interface declares both, so the constraint it copies names a type parameter of its own.</summary>
+    [Fact]
+    public async Task An_agent_extracting_an_interface_has_it_declare_every_type_parameter_its_constraints_name()
+    {
+        await TakeFolderAsync();
+        const string Holder = "namespace Shop;\n\npublic class Holder<T, U, V> where T : U\n{\n    public T Keep(T value) => value;\n\n    public V Other(V value) => value;\n}\n";
+        Shop(("Holder.cs", Holder));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        JsonElement extracted = await Call(client, McpTools.Refactor, Place("extract_interface", "Holder.cs", Holder, "class Hol", new { members = new[] { "Keep" } }));
+        Assert.Equal(["Holder.cs changed", "IHolder.cs created"], Files(extracted));
+        Assert.Equal("namespace Shop;\n\npublic interface IHolder<T, U> where T : U\n{\n    T Keep(T value);\n}\n", File.ReadAllText(PathOf("IHolder.cs")).ReplaceLineEndings("\n"));
+        Assert.Equal(Holder.Replace("Holder<T, U, V> where", "Holder<T, U, V> : IHolder<T, U> where", StringComparison.Ordinal), File.ReadAllText(PathOf("Holder.cs")));
+        await Compiles(client, "the interface was extracted");
+    }
+
     [Fact]
     public async Task An_agent_that_writes_a_new_class_and_its_caller_and_at_once_renames_it_or_asks_its_usages_has_the_caller_counted()
     {
