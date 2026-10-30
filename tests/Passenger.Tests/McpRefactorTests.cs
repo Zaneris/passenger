@@ -432,6 +432,44 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "members nothing left behind uses were pushed down");
     }
 
+    /// <summary>Push Members Down of a member the base implements an interface with, or a class not chosen does, is refused
+    /// naming the interface, nothing changed; kept abstract in the base, which becomes abstract, it goes, and the project
+    /// builds.</summary>
+    [Fact]
+    public async Task An_agent_pushing_down_a_member_implementing_an_interface_finds_it_refused_unless_kept_abstract()
+    {
+        await TakeFolderAsync();
+        const string Shape = "namespace Shop;\n\npublic interface IDescribable\n{\n    string Describe();\n}\n\npublic interface INamed\n{\n    string Name();\n}\n\n"
+            + "public class Shape : IDescribable\n{\n    public string Describe() => \"shape\";\n\n    public string Name() => \"name\";\n}\n";
+        const string Square = "namespace Shop;\n\npublic class Square : Shape\n{\n}\n";
+        const string Circle = "namespace Shop;\n\npublic class Circle : Shape, INamed\n{\n}\n";
+        Shop(("Shape.cs", Shape), ("Square.cs", Square), ("Circle.cs", Circle));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        foreach ((string member, string[] targets, string said) in new[]
+        {
+            ("Describe", new[] { "Square", "Circle" }, "'Shape' implements IDescribable with Describe(): string, which it would no longer have: keep it abstract in 'Shape'"),
+            ("Name", new[] { "Square" }, "'Circle' implements INamed with Name(): string, which it would no longer have: push it down to 'Circle' too"),
+        })
+        {
+            CallToolResult refused = await Result(client, McpTools.Refactor, Place("push_members_down", "Shape.cs", Shape, "class Sha", new { targets, members = new[] { member } }));
+            Assert.True(refused.IsError == true && Text(refused).Contains(said, StringComparison.Ordinal), $"Pushing {member} down answered: {Text(refused)}");
+            Assert.Equal(Shape, File.ReadAllText(PathOf("Shape.cs")));
+            Assert.Equal(Square, File.ReadAllText(PathOf("Square.cs")));
+            Assert.Equal(Circle, File.ReadAllText(PathOf("Circle.cs")));
+        }
+
+        JsonElement pushed = await Call(client, McpTools.Refactor, Place("push_members_down", "Shape.cs", Shape, "class Sha",
+            new { targets = new[] { "Square", "Circle" }, members = new[] { "Describe" }, @abstract = new[] { "Describe" } }));
+        Assert.Equal(["Circle.cs changed", "Shape.cs changed", "Square.cs changed"], Files(pushed));
+        string shape = File.ReadAllText(PathOf("Shape.cs"));
+        string square = File.ReadAllText(PathOf("Square.cs"));
+        Assert.True(shape.Contains("public abstract class Shape : IDescribable", StringComparison.Ordinal) && shape.Contains("    public abstract string Describe();\n", StringComparison.Ordinal)
+            && square.Contains("    public override string Describe() => \"shape\";\n", StringComparison.Ordinal),
+            $"Pushing Describe down kept abstract left Shape.cs so:\n{shape}\nand Square.cs so:\n{square}");
+        await Compiles(client, "a member implementing an interface was pushed down kept abstract");
+    }
+
     /// <summary>Extract Interface from a class whose type parameter a member uses is constrained by another the members do
     /// not name: the interface declares both, so the constraint it copies names a type parameter of its own.</summary>
     [Fact]

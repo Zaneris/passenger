@@ -145,7 +145,7 @@ internal static class MemberMoves
         foreach (ISymbol member in members)
         {
             bool keepAbstract = move.Abstract.Contains(Id(member));
-            if (keepAbstract && (member is IFieldSymbol || member.IsStatic))
+            if (keepAbstract && (member is IFieldSymbol || member.IsStatic || Explicit(member)))
             {
                 return Changes.Refused($"'{member.Name}' cannot be made abstract");
             }
@@ -274,8 +274,9 @@ internal static class MemberMoves
             && (p.First.RefKind == RefKind.None) == (p.Second.RefKind == RefKind.None));
 
     /// <summary>Why a member cannot be pushed down into the targets; null when it can. Code that would still reach it where
-    /// it is gone (the base's own, a class not chosen, anything through the base's type or a base. call) or an override in
-    /// a class not chosen would not build; kept abstract in the base, a base. call or a class left without it would not.</summary>
+    /// it is gone (the base's own, a class not chosen, anything through the base's type or a base. call), an override in a
+    /// class not chosen, or an interface the base or a class not chosen implements with it would not build; kept abstract
+    /// in the base, a base. call or a class left without it would not.</summary>
     private static async Task<string?> PushProblemAsync(Solution solution, ISymbol member, INamedTypeSymbol type, IReadOnlyList<INamedTypeSymbol> targets,
         IReadOnlyList<SyntaxNode> pushed, bool keepAbstract, CancellationToken cancel)
     {
@@ -302,9 +303,23 @@ internal static class MemberMoves
                 return $"'{over.ContainingType.Name}' overrides {text}, which it would no longer have{Hint([over.ContainingType])}";
             }
         }
+        IEnumerable<INamedTypeSymbol> below = await SymbolFinder.FindDerivedClassesAsync(type, solution, transitive: true, cancellationToken: cancel).ConfigureAwait(false);
+        if (!keepAbstract && !member.IsOverride)
+        {
+            foreach (INamedTypeSymbol holder in below.Where(d => !Gets(d)).Prepend(type))
+            {
+                if (Implementing(holder, member) is { } implemented)
+                {
+                    string hint = !Same(holder, type) ? Hint([holder])
+                        : member.IsStatic || Explicit(member) ? string.Empty
+                        : $": keep it abstract in '{type.Name}'";
+                    return $"'{holder.Name}' implements {implemented.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} with {text}, which it would no longer have{hint}";
+                }
+            }
+        }
         if (keepAbstract && !member.IsAbstract)
         {
-            foreach (INamedTypeSymbol derived in await SymbolFinder.FindDerivedClassesAsync(type, solution, transitive: true, cancellationToken: cancel).ConfigureAwait(false))
+            foreach (INamedTypeSymbol derived in below)
             {
                 if (!derived.IsAbstract && !Gets(derived) && !Bases(derived).Prepend(derived).TakeWhile(b => !Same(b, type)).Any(b => overriding.Any(o => Same(o, b))))
                 {
@@ -427,6 +442,19 @@ internal static class MemberMoves
             _ => symbol?.Name ?? "code",
         };
     }
+
+    /// <summary>An interface a type implements with a member, where it does.</summary>
+    private static INamedTypeSymbol? Implementing(INamedTypeSymbol type, ISymbol member) => type.AllInterfaces.FirstOrDefault(i => i.GetMembers().Any(m =>
+        type.FindImplementationForInterfaceMember(m) is { } found && SymbolEqualityComparer.Default.Equals(found.OriginalDefinition, member.OriginalDefinition)));
+
+    /// <summary>Whether a member is an explicit implementation of an interface's member.</summary>
+    private static bool Explicit(ISymbol member) => member switch
+    {
+        IMethodSymbol method => method.ExplicitInterfaceImplementations.Length > 0,
+        IPropertySymbol property => property.ExplicitInterfaceImplementations.Length > 0,
+        IEventSymbol @event => @event.ExplicitInterfaceImplementations.Length > 0,
+        _ => false,
+    };
 
     /// <summary>A type's own override of a member, where it declares one.</summary>
     private static ISymbol? OverrideIn(INamedTypeSymbol type, ISymbol member) =>
