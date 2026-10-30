@@ -5,7 +5,8 @@ using Passenger.Text;
 
 namespace Passenger.App.Workspace;
 
-/// <summary>A match: the file, where it is (line and column from zero, its length), and its line's text.</summary>
+/// <summary>A match: the file, where it is (line and column from zero, its length), and its line's text (empty where it is
+/// found only to be replaced, <see cref="FileSearch.FindAsync"/>).</summary>
 public sealed record SearchMatch(string Path, int Line, int Column, int Length, string LineText)
 {
     public string Name => System.IO.Path.GetFileName(Path);
@@ -94,10 +95,11 @@ public static class FileSearch
     }
 
     /// <summary>The matches in the files of a place (every file the index has, or those a scope and a mask leave), file
-    /// by file in the index's order, at most <paramref name="most"/>; a regex has <see cref="TextSearch.Apart"/> in each,
-    /// and the files it ran too long in are named.</summary>
+    /// by file in the index's order, at most <paramref name="most"/>, each with its line's text unless they are found only
+    /// to be replaced (<paramref name="lines"/> false); a regex has <see cref="TextSearch.Apart"/> in each, and the files
+    /// it ran too long in are named.</summary>
     public static Task<FilesFound> FindAsync(string root, IReadOnlyList<string> files, SearchPlace place, SearchQuery query,
-        Editors.OpenTexts open, CancellationToken cancellation, int most = MostMatches) => BackgroundWork.Run(() =>
+        Editors.OpenTexts open, CancellationToken cancellation, int most = MostMatches, bool lines = true) => BackgroundWork.Run(() =>
     {
         List<SearchMatch> found = [];
         List<string> stopped = [];
@@ -126,14 +128,14 @@ public static class FileSearch
                 foreach (TextRange match in searched.Matches)
                 {
                     TextPosition at = shown.GetPosition(match.Start);
-                    string line = shown.GetLineText(at.Line);
-                    found.Add(new SearchMatch(path, at.Line, at.Column, Math.Min(match.Length, Math.Max(0, line.Length - at.Column)), line));
+                    int width = shown.GetLine(at.Line).Length;
+                    found.Add(new SearchMatch(path, at.Line, at.Column, Math.Min(match.Length, Math.Max(0, width - at.Column)), lines ? shown.GetLineText(at.Line) : string.Empty));
                 }
             }
             else if (Read(path) is { } text)
             {
                 searched = TextSearch.FindAll(text, pattern, most - found.Count);
-                AddMatches(found, path, text, searched.Matches);
+                AddMatches(found, path, text, searched.Matches, lines);
             }
             else
             {
@@ -160,8 +162,9 @@ public static class FileSearch
     private static string? Read(string path) => new FileInfo(path) is { Exists: true, Length: <= LargestFile } ? Editors.EditorArea.ReadText(path) : null;
 
     /// <summary>Adds the matches in a closed file's text, each on its line as the editor's lines are read (to a '\n', a
-    /// '\r' before it the break's), its column at most the line's length; the lines are walked once, in the matches' order.</summary>
-    private static void AddMatches(List<SearchMatch> found, string path, string text, IReadOnlyList<TextRange> matches)
+    /// '\r' before it the break's), its column at most the line's length, with that line's text given <paramref name="lines"/>;
+    /// the lines are walked once, in the matches' order.</summary>
+    private static void AddMatches(List<SearchMatch> found, string path, string text, IReadOnlyList<TextRange> matches, bool lines)
     {
         int line = 0;
         int start = 0;
@@ -177,9 +180,9 @@ public static class FileSearch
                 shown = null;
             }
             int end = next == 0 ? text.Length : next - 1 > start && text[next - 2] == '\r' ? next - 2 : next - 1;
-            shown ??= text[start..end];
+            shown ??= lines ? text[start..end] : string.Empty;
             int column = Math.Min(match.Start - start, end - start);
-            found.Add(new SearchMatch(path, line, column, Math.Min(match.Length, Math.Max(0, shown.Length - column)), shown));
+            found.Add(new SearchMatch(path, line, column, Math.Min(match.Length, Math.Max(0, end - start - column)), shown));
         }
     }
 

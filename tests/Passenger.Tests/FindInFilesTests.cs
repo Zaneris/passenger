@@ -151,6 +151,54 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Replace All past the list's 1,000 matches finds every match under the window's work, which Stop ends: held,
+    /// the status says it is finding them and Stop is offered; stopped, nothing is asked or replaced and the window is
+    /// free, a Replace All asked again replacing every match.</summary>
+    [AvaloniaFact]
+    public void Replace_all_past_the_lists_thousand_matches_is_stopped_by_Stop_while_it_finds_them_replacing_nothing()
+    {
+        TestFolders.WriteAll(folder, Enumerable.Range(0, 110).Select(file =>
+            ($"Tally{file:000}.txt", string.Concat(Enumerable.Range(0, 10).Select(i => $"tally {i} of {file}\n")))));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Ui.WaitFor(() => window.FileIndex.Count >= 112 && !window.FileIndex.IsWalking, "the folder's files indexed");
+            FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
+            Search(popup, "tally");
+            Assert.Equal(FileSearch.MostMatches, popup.Matches.Count);
+            List<string> asked = [];
+            window.Confirm = (_, question, _) =>
+            {
+                asked.Add(question);
+                return Task.FromResult(true);
+            };
+
+            Task held = window.HoldNextFindEvery(release.Task);
+            popup.Replacement = "sum";
+            popup.RequestReplace();
+            Ui.PumpUntil(() => held.IsCompleted, "Replace All's find of every match to be held");
+            Assert.Equal("Finding every match to replace…", window.Status);
+            Assert.True(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()) is null, "Stop is not offered while Replace All finds every match");
+            Ui.Run(window, AppActions.Stop, settle: false);
+            Ui.WaitFor(() => window.Status == "Stopped finding every match to replace: nothing was replaced",
+                () => $"Replace All's find to end once stopped; the status says '{window.Status}'");
+            Assert.True(asked.Count == 0, $"Replace All stopped while it found every match asked '{string.Join("; ", asked)}'");
+            string[] changed = [.. Directory.GetFiles(folder, "Tally*.txt").Where(f => !File.ReadAllText(f).StartsWith("tally 0 of", StringComparison.Ordinal)).Select(Path.GetFileName)!];
+            Assert.True(changed.Length == 0, $"Replace All stopped while it found every match replaced in {string.Join(", ", changed)}");
+            Assert.True(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()) is not null, "Replace All's find, stopped, left work under way for Stop to end");
+
+            popup.RequestReplace();
+            Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"Replace All asked again; the status says '{window.Status}'");
+            Assert.Equal("Replaced 1100 matches in 110 files", window.Status);
+        }
+        finally
+        {
+            release.TrySetResult();
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_UTF_16_file_is_found_and_replaced_in_as_the_editor_reads_it_and_a_binary_file_is_still_passed_over()
     {

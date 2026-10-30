@@ -19,6 +19,8 @@ public partial class MainWindow
     /// <summary>Find in Files' mask and whether a directory's subdirectories are searched, every folder's.</summary>
     private FindSettingsState findSettings = new();
 
+    private (Task Until, TaskCompletionSource Reached)? holdFindEvery;
+
     /// <summary>Find in Files (Ctrl+Shift+F) or, with replace, Replace in Files (Ctrl+Shift+H), seeded with the
     /// selection's word, in the scope given (from the Solution view), else the one chosen last.</summary>
     public Navigation.FindInFilesPopup? ShowFindInFiles(bool replace, SearchScope? on = null)
@@ -185,9 +187,13 @@ public partial class MainWindow
         FilesFound found = asked.Found;
         if (found.Matches.Count >= FileSearch.MostMatches)
         {
-            SearchScope scope = popup.Scope;
-            status.Text = "Finding every match to replace…";
-            found = await SearchFiles(asked.Query, scope, CancellationToken.None, int.MaxValue);
+            (FilesFound? every, string? why) = await FindEveryMatchAsync(asked.Query, popup.Scope, CancellationToken.None);
+            if (every is null)
+            {
+                status.Text = why;
+                return;
+            }
+            found = every;
         }
         string? left = FilesReplaced.Listed(found.Unreplaceable, Path.GetFileName);
         if (found.Replaceable.Count == 0)
@@ -333,12 +339,51 @@ public partial class MainWindow
     }
 
     /// <summary>Find in Files for an agent: a query's matches in a scope under its mask, as the popup searches them, at most
-    /// <paramref name="most"/>.</summary>
-    public Task<FilesFound> FindInFilesAsync(SearchQuery query, SearchScope scope, CancellationToken cancellation, int most = FileSearch.MostMatches) =>
-        SearchFiles(query, scope, cancellation, most);
+    /// the list's limit.</summary>
+    public Task<FilesFound> FindInFilesAsync(SearchQuery query, SearchScope scope, CancellationToken cancellation) =>
+        SearchFiles(query, scope, cancellation, FileSearch.MostMatches);
 
-    private Task<FilesFound> SearchFiles(SearchQuery query, SearchScope scope, CancellationToken cancellation, int most)
+    /// <summary>Every match of a query in a scope, past the list's limit, as Replace All and an agent's replace_in_files
+    /// replace them, each kept without its line's text: found off the window's thread while the window's work says so,
+    /// which Stop ends as <paramref name="cancel"/> does. Null with why when Stop ended it or another such find is under way.</summary>
+    public async Task<(FilesFound? Found, string? Why)> FindEveryMatchAsync(SearchQuery query, SearchScope scope, CancellationToken cancel)
     {
-        return FileSearch.FindAsync(session.Index.Root ?? Folder!, session.Index.Files, Place(scope), query, Editors.Texts(), cancellation, most);
+        if (work.Begin(AppActions.ReplaceInFiles, "Finding every match to replace…") is not { } finding)
+        {
+            return (null, ActionWork.Busy(work.Of(AppActions.ReplaceInFiles)!));
+        }
+        using (finding)
+        {
+            using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(cancel, finding.Stopping);
+            try
+            {
+                if (holdFindEvery is { } hold)
+                {
+                    holdFindEvery = null;
+                    hold.Reached.TrySetResult();
+                    await hold.Until.WaitAsync(stopping.Token);
+                }
+                return (await SearchFiles(query, scope, stopping.Token, int.MaxValue, lines: false), null);
+            }
+            catch (OperationCanceledException) when (finding.IsStopped)
+            {
+                return (null, "Stopped finding every match to replace: nothing was replaced");
+            }
+        }
+    }
+
+    /// <summary>The next find of every match (<see cref="FindEveryMatchAsync"/>) waits until <paramref name="until"/> has
+    /// ended, or it is stopped, before it searches, as a large folder keeps it, for a test of what goes on meanwhile: done
+    /// once it is waiting.</summary>
+    public Task HoldNextFindEvery(Task until)
+    {
+        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        holdFindEvery = (until, reached);
+        return reached.Task;
+    }
+
+    private Task<FilesFound> SearchFiles(SearchQuery query, SearchScope scope, CancellationToken cancellation, int most, bool lines = true)
+    {
+        return FileSearch.FindAsync(session.Index.Root ?? Folder!, session.Index.Files, Place(scope), query, Editors.Texts(), cancellation, most, lines);
     }
 }

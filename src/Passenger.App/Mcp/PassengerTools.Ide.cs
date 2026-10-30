@@ -208,7 +208,8 @@ public sealed partial class PassengerTools
         (SearchQuery query, SearchScope chosen) = Search(text, matchCase, wholeWords, regex, scope, project, directory, recursive, mask);
         // Looked at every 50 ms: an index cleared as its folder closes, or another folder's, says nothing to this wait.
         await Until(() => !Session.Index.IsWalking, IndexLimit, cancel);
-        FilesFound searched = await window.FindInFilesAsync(query, chosen, cancel, int.MaxValue);
+        (FilesFound? every, string? why) = await window.FindEveryMatchAsync(query, chosen, cancel);
+        FilesFound searched = every ?? throw new InvalidOperationException(why);
         IReadOnlyList<SearchMatch> found = searched.Matches;
         if (found.Count == 0)
         {
