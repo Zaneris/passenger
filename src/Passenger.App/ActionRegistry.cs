@@ -111,7 +111,8 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
     public string? Run(string id) => Run(id, Context());
 
     /// <summary>Runs an action an agent asks for (ide_action) where it is asked for now, without the person's keys or a
-    /// window brought forward (<see cref="ActionContext.ByAgent"/>); null once it has run, else why it could not.</summary>
+    /// window brought forward (<see cref="ActionContext.ByAgent"/>), and refused where it would open a popup or dialog
+    /// (<see cref="AgentAsks.Act"/>); null once it has run, else why it could not.</summary>
     public string? RunForAgent(string id) => Run(id, Context().ForAgent());
 
     /// <summary>Runs an action in a context made before something else took the keys (a menu, a popup); null once it has
@@ -124,6 +125,10 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
         }
         IdeAction action = byId[AppActions.Now(id)];
         Running?.Invoke(this, (action, context));
+        if (context.ByAgent)
+        {
+            return AgentAsks.Act(() => action.Run(context));
+        }
         action.Run(context);
         return null;
     }

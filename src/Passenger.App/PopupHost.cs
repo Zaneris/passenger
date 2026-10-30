@@ -76,6 +76,7 @@ public sealed class PopupHost
     /// <see cref="PointIn"/>), kept inside it. Another open on another window's layer goes.</summary>
     public void Show(Control popup, Point? at = null)
     {
+        AgentAsks.Popup();
         Shown++;
         (Panel layer, ContentControl host) = InFront();
         if (Layers.Layer != layer)

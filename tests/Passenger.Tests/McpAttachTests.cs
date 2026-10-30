@@ -546,6 +546,62 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's ide_action of an action that asks the person in a popup (Go to File) or a dialog (Edit
+    /// Configurations) is refused saying why, opening neither, so an Enter the person types still goes into their file; and
+    /// the Build window, floating, shows for the agent's build behind what the person is in, activating no window.</summary>
+    [AvaloniaFact]
+    public void An_agents_ide_action_of_a_popup_or_dialog_is_refused_and_its_build_shows_the_Build_window_behind()
+    {
+        string typed = TestFolders.Write(Folder, "Typed.txt", "typed\n");
+        MainWindow window = Ui.OpenFolder(Folder, languageServer: false);
+        window.ApplySettings(window.Settings with { McpServer = true });
+        window.OpenFile(typed);
+        Ui.Settle();
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "typed");
+        editor.Focus();
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Asked(window, client, McpTools.IdeAction, "run an IDE action", new() { ["action"] = AppActions.ShowProblems });
+            Ui.Settle();
+            foreach (string action in (string[])[AppActions.GoToFile, AppActions.EditConfigurations])
+            {
+                int owned = window.OwnedWindows.Count;
+                CallToolResult refused = Await(Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = action })), $"the agent's {action}");
+                Ui.Settle();
+                Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.AsksThePerson, StringComparison.Ordinal),
+                    $"The agent's {action} in the person's window was answered: {Text(refused)}");
+                Assert.True(!window.IsPopupOpen && window.OwnedWindows.Count == owned,
+                    $"The agent's {action} opened {(window.IsPopupOpen ? window.Popup?.GetType().Name : window.OwnedWindows.LastOrDefault()?.GetType().Name)} over the person's work");
+            }
+            Ui.Press(window, "enter");
+            Assert.True(editor.Document.Snapshot.ToString() == "typed\n\n",
+                $"After the agent's Go to File and Edit Configurations, an Enter the person typed went to {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, not into their file");
+
+            Asked(window, client, McpTools.Build, "build");
+            window.DockHost.SetMode(window.DockHost[ToolWindowIds.Build], Passenger.App.Docking.ToolMode.Floating);
+            window.DockHost.Hide(ToolWindowIds.Build);
+            Ui.Settle();
+            List<Window> floats = [];
+            window.DockHost.WindowOpened += (_, opened) => floats.Add(opened);
+            Ui.Leave(window);
+            Assert.False(window.IsActive, "The IDE's window is still active once the person went elsewhere");
+            JsonElement built = Await(Waiting.Apart(() => Call(client, McpTools.Build)), "the agent's second build");
+            Ui.Settle();
+            Window build = Assert.Single(floats);
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Build) && build.IsVisible, $"The agent's build did not show the floating Build window: {built}");
+            Assert.True(!build.IsActive && !window.IsActive,
+                $"The agent's build activated {(build.IsActive ? "the floating Build window" : "the IDE's window")}, bringing it in front of what the person was in");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { McpServer = false });
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>A question shown without the keys: an Enter in the window goes to the editor; chosen from the status bar's
     /// words, the question takes the keys, and an Enter there answers nothing, the agent's call still waiting.</summary>
     private void EnterLeavesWaiting(MainWindow window, Passenger.Editor.CodeEditor editor, Window question, Task waiting, string afterEnter)

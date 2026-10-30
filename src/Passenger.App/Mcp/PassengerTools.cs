@@ -1753,7 +1753,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         action.StartsWith("app.migrations.", StringComparison.Ordinal) && window.Actions[action] is not null ? await window.MigrationsForAgentAsync(action, input, cancel)
         : action == AppActions.SaveAsLaunchProfile ? await window.SaveAsLaunchProfileForAgentAsync(input)
         : input is not null ? throw new InvalidOperationException($"{action} takes no input")
-        : window.Actions.RunForAgent(action) is { } why ? throw new InvalidOperationException($"{action} did not run: {why}") : $"Ran {action}");
+        : (Beside ? window.Actions.RunForAgent(action) : window.Actions.Run(action)) is { } why ? throw new InvalidOperationException($"{action} did not run: {why}")
+        : $"Ran {action}");
 
     [McpServerTool(Name = McpTools.IdeActions, Title = "The IDE's actions", ReadOnly = true), Description(
         "Every action ide_action runs (those with no shortcut too), as id: name [group] (shortcut on this platform), " +
@@ -1761,7 +1762,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     public Task<IReadOnlyList<string>> IdeActions(CancellationToken cancel = default) => OnUi(cancel, () =>
     {
         ActionRegistry actions = window.Actions;
-        ActionContext context = actions.Context().ForAgent();
+        ActionContext context = Beside ? actions.Context().ForAgent() : actions.Context();
         return Task.FromResult((IReadOnlyList<string>)[.. actions.All.Select(a =>
             $"{a.Id}: {a.Title} [{a.Group}]{(actions.Shortcut(a.Id) is { } keys ? $" ({keys})" : string.Empty)}{(a.WhyNot(context) is { } why ? $" - cannot run: {why}" : string.Empty)}")]);
     });
@@ -1772,6 +1773,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// call, or went), once the folder's projects are read and evaluated, which is what every tool that runs, builds or
     /// tests a project asks about. What it refuses (nothing to debug, no such file) reaches the agent in its own words: the
     /// SDK passes only an McpException's message on, and hides every other's.</summary>
+    /// <summary>Whether the agent is attached to a person's window, beside the person, rather than in an IDE of its own.</summary>
+    private bool Beside => connection is { Attached: true };
+
     private async Task<T> OnUi<T>(CancellationToken cancel, Func<Task<T>> work)
     {
         cancel.ThrowIfCancellationRequested();
@@ -1782,7 +1786,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 // Ended while it waited its turn (its agent shut out as the window left the folder): it does nothing in the next.
                 cancel.ThrowIfCancellationRequested();
                 // A tool run inside another's call reads its files into that call's, let go as that one ends.
-                CallFiles? own = Files.Value is null ? new CallFiles(Editors, connection is { Attached: true }) : null;
+                CallFiles? own = Files.Value is null ? new CallFiles(Editors, Beside) : null;
+                if (Beside)
+                {
+                    AgentAsks.Call();
+                }
                 if (own is not null)
                 {
                     Files.Value = own;

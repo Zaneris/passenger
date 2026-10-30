@@ -60,6 +60,10 @@ public static class Refusals
     /// moves them.</summary>
     public const string PersonsKeys = "It moves the person's keys, which only the person does";
 
+    /// <summary>An action that asks the person in a popup or dialog (Go to File, Rename, Settings), asked for by an agent,
+    /// whose own tools do what those ask for.</summary>
+    public const string AsksThePerson = "It asks the person in a popup or dialog, which would take their keys: the agent's own tools do its work";
+
     /// <summary>An agent's call whose question the window took away as it left the folder it was asked in (<paramref
     /// name="left"/>), for another or none, before the person answered: an answer would have allowed it where it no longer is.</summary>
     public static string FolderChanged(string? left) =>

@@ -25,7 +25,7 @@ internal sealed class FloatWindow : IdeWindow
 
     /// <summary>One that last stood at <paramref name="kept"/> (screen pixels for its place, its own units for its
     /// size), or that is new and opens <paramref name="size"/> large over <paramref name="ide"/>.</summary>
-    public FloatWindow(Visual ide, PixelRect? kept, Size size)
+    public FloatWindow(Visual ide, PixelRect? kept, Size size) : base(asks: false)
     {
         this.Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Panel));
         if (kept is { } was && StoodOn(was) is { } screen)

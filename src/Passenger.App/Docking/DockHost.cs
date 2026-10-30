@@ -189,8 +189,9 @@ public sealed class DockHost : Grid
         LayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Shows a window in its place, hiding the one that was there.</summary>
-    public void Show([IdentifierOf(typeof(ToolWindowIds))] string id) => Show(id, forward: true);
+    /// <summary>Shows a window in its place, hiding the one that was there; for an attached agent's call, behind
+    /// (<see cref="ShowBehind"/>).</summary>
+    public void Show([IdentifierOf(typeof(ToolWindowIds))] string id) => Show(id, forward: !AgentAsks.Beside);
 
     /// <summary>Shows a window in its place as <see cref="Show(string)"/> does, but brings no window forward: a floating or
     /// windowed one already open stays where it is, and one opened comes without the keys (an agent's asking).</summary>
@@ -217,9 +218,15 @@ public sealed class DockHost : Grid
         LayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Shows a window in its place, as <see cref="Show"/> does, and gives it the keys (<see cref="ToolWindow.TakeKeys"/>).</summary>
+    /// <summary>Shows a window in its place, as <see cref="Show"/> does, and gives it the keys (<see cref="ToolWindow.TakeKeys"/>);
+    /// for an attached agent's call, only shows it behind, the keys left where they are.</summary>
     public void Activate([IdentifierOf(typeof(ToolWindowIds))] string id)
     {
+        if (AgentAsks.Beside)
+        {
+            ShowBehind(id);
+            return;
+        }
         Show(id);
         // A view just put in its place joins the window as the window is laid out.
         UpdateLayout();
