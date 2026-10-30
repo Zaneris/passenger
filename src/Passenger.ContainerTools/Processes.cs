@@ -36,7 +36,7 @@ public static class Processes
         }
         foreach (int id in Running())
         {
-            if (id == Environment.ProcessId || listed.Contains(id) || !MapsRuntime(id) || DotnetProcesses.Describe(id) is not { } process)
+            if (id == Environment.ProcessId || listed.Contains(id) || DotnetProcesses.RuntimeFolder(id) is null || DotnetProcesses.Describe(id) is not { } process)
             {
                 continue;
             }
@@ -77,19 +77,6 @@ public static class Processes
             {
                 yield return id;
             }
-        }
-    }
-
-    /// <summary>Whether a process has CoreCLR loaded, read from its memory map (another user's is not readable, and passed over).</summary>
-    private static bool MapsRuntime(int id)
-    {
-        try
-        {
-            return File.ReadLines($"/proc/{id}/maps").Any(line => line.EndsWith("/libcoreclr.so", StringComparison.Ordinal));
-        }
-        catch (Exception unreadable) when (unreadable is IOException or UnauthorizedAccessException)
-        {
-            return false;
         }
     }
 
