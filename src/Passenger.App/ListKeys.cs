@@ -7,9 +7,31 @@ namespace Passenger.App;
 /// templates, Attach to Process): Up and Down choose the row above or below, Page Up and Page Down a page of rows (those
 /// in sight, less one, so the row chosen last stays in view), the choice stopping at the ends and kept in sight. Left,
 /// Right, Home and End stay the field's, for its text. A row that cannot be chosen (a heading) is passed over. One
-/// behaviour for every such list.</summary>
+/// behaviour for every such list; and a list given the keys has them on its chosen row (<see cref="Hold"/>).</summary>
 public static class ListKeys
 {
+    /// <summary>Gives a list's chosen row the keys, as a click on it does (the first chosen where none is and
+    /// <paramref name="chooseFirst"/> asks): a row out of sight has no container to take them until it is brought into
+    /// view. False where the list has no row chosen to give them to.</summary>
+    public static bool Hold(ListBox list, bool chooseFirst = false)
+    {
+        if (list.SelectedIndex < 0 && chooseFirst && list.ItemCount > 0)
+        {
+            list.SelectedIndex = 0;
+        }
+        int index = list.Selection.AnchorIndex >= 0 && list.Selection.IsSelected(list.Selection.AnchorIndex) ? list.Selection.AnchorIndex : list.SelectedIndex;
+        if (index < 0 || index >= list.ItemCount)
+        {
+            return false;
+        }
+        if (list.ContainerFromIndex(index) is null)
+        {
+            list.ScrollIntoView(index);
+            list.UpdateLayout();
+        }
+        return list.ContainerFromIndex(index)?.Focus() == true;
+    }
+
     /// <summary>Moves the list's choice for a key pressed in its field, with no modifier held; true when the key was the
     /// list's, which the caller marks handled.</summary>
     public static bool Move(ListBox list, KeyEventArgs e, Func<int, bool>? choosable = null)

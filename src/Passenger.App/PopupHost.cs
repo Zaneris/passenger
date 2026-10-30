@@ -41,9 +41,9 @@ public sealed class PopupHost
     /// <summary>The window of the IDE's the person last worked in: its keys, a click in it or its coming to the front.</summary>
     private TopLevel? worked;
 
-    /// <summary>The window other than the editors' a popup is over, and what had the keys there as it opened, which has
-    /// them back as it closes; null over the editors' windows, whose editor shown has them back.</summary>
-    private (TopLevel Window, IInputElement? Had)? over;
+    /// <summary>The window a popup is over, what had the keys there as it opened and the list whose row that was, which
+    /// have them back as it closes.</summary>
+    private (TopLevel Window, Control? Had, ListBox? Rows)? over;
 
     /// <param name="overlay">The main window's layer over everything, and the host in it a popup goes in.</param>
     /// <param name="breakpoints">The open folder's breakpoints, which a breakpoint's popup dismissed keeps its edits in.</param>
@@ -80,9 +80,8 @@ public sealed class PopupHost
         }
         if (!layer.IsVisible)
         {
-            over = TopLevel.GetTopLevel(layer) is { } window && layer != overlay && editors.Windows.All(w => w.Window != window)
-                ? (window, window.FocusManager?.GetFocusedElement())
-                : null;
+            Control? had = TopLevel.GetTopLevel(layer)?.FocusManager?.GetFocusedElement() as Control;
+            over = TopLevel.GetTopLevel(layer) is { } window ? (window, had, had is null ? null : ItemsControl.ItemsControlFromItemContainer(had) as ListBox) : null;
         }
         shown = (layer, host);
         Thickness shadow = MakeRoom(popup, host);
@@ -102,7 +101,7 @@ public sealed class PopupHost
         else
         {
             host.HorizontalAlignment = HorizontalAlignment.Center;
-            double top = layer == overlay ? WindowPopupTop : over is null ? EditorWindowPopupTop : OtherWindowPopupTop;
+            double top = layer == overlay ? WindowPopupTop : ShowsEditors(TopLevel.GetTopLevel(layer)) ? EditorWindowPopupTop : OtherWindowPopupTop;
             host.Margin = new Thickness(0, top - shadow.Top, 0, 0);
         }
         Fit(popup, host, room);
@@ -172,24 +171,38 @@ public sealed class PopupHost
         return room;
     }
 
-    /// <summary>Closes the popup: what had the keys in a window other than the editors' has them again, else the editor
-    /// shown.</summary>
+    /// <summary>Closes the popup: what had the keys as it opened has them again (a list's chosen row where a row of it
+    /// had them), else, where that is gone from a window of the editors', the editor shown.</summary>
     public void Close()
     {
         Layers.Layer.IsVisible = false;
         Layers.Host.Content = null;
-        if (over is { } other)
+        (TopLevel Window, Control? Had, ListBox? Rows)? was = over;
+        over = null;
+        if (was is { } back && GiveBack(back.Window, back.Had, back.Rows))
         {
-            if (other.Had is Visual had && TopLevel.GetTopLevel(had) == other.Window)
-            {
-                other.Had.Focus();
-            }
+            return;
         }
-        else if (editors.Active is not null)
+        if (editors.Active is not null && (was is null || ShowsEditors(was.Value.Window)))
         {
             editors.CodeEditor.Focus();
         }
-        over = null;
+    }
+
+    /// <summary>Whether a window shows the editors: the main window or an editor window.</summary>
+    private bool ShowsEditors(TopLevel? window) => window is not null && (window == TopLevel.GetTopLevel(overlay) || editors.Windows.Any(w => w.Window == window));
+
+    /// <summary>Gives the keys back to what had them in a window, still shown there: a list whose row had them to its
+    /// chosen row, whose container the list may have made again meanwhile; false where nothing of it is left.</summary>
+    private static bool GiveBack(TopLevel window, Control? had, ListBox? rows)
+    {
+        if (rows is not null && Shown(rows) && ListKeys.Hold(rows))
+        {
+            return true;
+        }
+        return had is not null && had != window && Shown(had) && had.Focus();
+
+        bool Shown(Control control) => TopLevel.GetTopLevel(control) == window && control.IsEffectivelyVisible && control.IsEffectivelyEnabled;
     }
 
     /// <summary>Closes the popup as a click outside it or Escape does: a breakpoint's popup or window keeps what was
