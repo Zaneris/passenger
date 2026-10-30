@@ -177,10 +177,10 @@ Projects in `src/`; `find_symbol` finds the rest:
 - `Passenger.Core`: what everything shares, no UI: `ChildProcesses` (`StartAsync` forks off the UI thread: a fork costs
   a large process tens of ms), `Dotnet`/`Programs`/`ShellEnvironment` (tools found as the login shell would; the
   installation's folder is `Dotnet.Root`, from the host's real path, never the folder of `Dotnet.Host()`), `PathNames`,
-  `AtomicFile`, `SocketFolders` (every Unix socket), `InFlight`, `BackgroundWork`, `Product` (the one place the version
-  is read), `PassengerLog` (below the App, never `IdeLog`; a line quoting a program's words through `WriteMasked`),
-  `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's lines read and messages written as pooled bytes),
-  `SharedNames` (a name read from bytes, made once).
+  `AtomicFile`, `SocketFolders` (every Unix socket), `InFlight`, `BackgroundWork`, `ExitCodes` (an exit code said with
+  its signal), `Product` (the one place the version is read), `PassengerLog` (below the App, never `IdeLog`; a line
+  quoting a program's words through `WriteMasked`), `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's lines read
+  and messages written as pooled bytes), `SharedNames` (a name read from bytes, made once).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
   function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `Outline` (a tree's rows in reading order, kept where
   unchanged), `FileText`, and anchors (`AnchorAt`/`RangeAt`/`MarkAt`, `AnchoredList`; moved before `Changed`, each
@@ -220,9 +220,11 @@ Projects in `src/`; `find_symbol` finds the rest:
 - `Passenger.Dap`, `Passenger.Debugger` (+`.Interop`), `Passenger.DebugAdapter`: Passenger's own debugger behind its own
   DAP, in a process of its own under `debugger/`. `Passenger.ContainerTools` (`passenger-tools`) runs inside a Linux
   container, self-contained, carried only in the release's archives.
-- `Passenger.Profiler`: EventPipe sampling and ClrMD heap snapshots (its Azure packages stay carried; its DAC stays loaded
-  once used: unloading it crashed on Linux); recording inside a container trusts nothing in a frame. A heap dump is Passenger's
-  own (`DumpTool`): the runtime's createdump writes into the program's stdout, and Windows' dumps only its parent.
+- `Passenger.Profiler`: EventPipe sampling and ClrMD heap snapshots (its Azure packages stay carried; its DAC stays
+  loaded once used: unloading it crashed on Linux); recording inside a container trusts nothing in a frame. A run keeps
+  its newest three memory snapshots' objects (`KeptSnapshots`). A heap dump is Passenger's own (`DumpTool`, deleted only
+  once its writer and reader end, `DeleteAfterAsync`; leftovers swept, `Sweep`): the runtime's createdump writes into
+  the program's stdout, and Windows' dumps only its parent.
 - `Passenger.Inspector` (+`.Wpf`): the Live Visual Tree's helper, loaded into the app by a startup hook, answering over a
   Unix socket (`Protocol.cs` compiled into both ends). `Passenger.WpfPreview` (Windows only), `Passenger.TestFrames`
   (pictures of a failed headless test), `Passenger.Terminal` (the VT emulator, Porta.Pty).
@@ -241,9 +243,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   `CloseTab` is the one close); a preview holds no text (`HoldsText` false). The Markdown preview draws only the blocks
   near its sight (`MarkdownBlocks`), a page kept per tab, a scroll it sets going through `Jump`.
 - **Docking.** A kept layout records windows by `ToolWindowIds`, so a value never changes; add a window with one
-  `Dock.Add`; its floats close with their window (`DockHost.CloseFloats`). A view is built when first shown: what the
-  IDE writes while it's hidden lives in a model, and code reaches a view only through a property that builds it for a
-  person's action.
+  `Dock.Add`; its floats close with their window (`DockHost.CloseFloats`); its action gives it the keys
+  (`DockHost.Activate`, `ToolWindow.TakeKeys`), and Escape in it unhandled is Focus Editor (`ToolPane`). A view is built
+  when first shown: what the IDE writes while it's hidden lives in a model, and code reaches a view only through a
+  property that builds it for a person's action.
 - **C#.** `CSharpService`, `ServerDiagnostics` (one pull at a time after a pause), `CodeAssist` (the window's wiring)
   over its parts; each language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a
   server's edit to a file not open written in the 2 s before it was asked waits for the server to read it (`Patience`,
@@ -525,15 +528,15 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
 - A visual inconsistency is fixed once, in a shared place (a token, a base style, a helper), never per control:
   Passenger's own consistency settles a design question. The shared pieces: dialogs `DialogFooter` (`Of`, `Listed`,
   `Answers`, `Bar`, `Page`) in a `Border.footerBar`; lists in a page `Border.framed`; rules `Passenger.Separator`
-  (`Passenger.Divider` between panels); menus' value in force `MenuChoice` (`Holding` makes its submenu as it opens);
-  tool window tabs `ToolTabs.Tab`; popups' widths `PopupFrame`, titles `popupTitle`; every row `ListRow.Height` (24);
-  empty states `TextBlock.emptyText`; toolbar icon buttons `ToolButtons.Of`/`Toggle` (never focusable); muted words
-  `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`; rounded borders `Border.kindBadge`, `tag` or `box`, never
-  a literal radius; lists of what runs `RunRows`, Details tabs `DetailsTables`, merged consoles `MergedLog` (a console's
-  Find `OutputView.Find`); a tree window's Expand and Collapse All `ToolWindow.ExpandAll`/`CollapseAll`; a toolbar down
-  a side `ToolColumn`; scrollbars `ControlThemes.axaml`; the focus ring `FocusRing`; a window's icon `AppIcon`; a list's
-  rows `ReusedRows` (`Use`, `Showing`), their icons `RowIcon` (a tree row's chevron and icon `RowGlyphs`), drawn as
-  `PathIcon` draws for a fraction of its cost, never `PathIcon` (UiRulesTests). A row hears its item only while shown
-  (`Observable.FollowWhileShown`).
+  (`Passenger.Divider` between panels); menus' value in force `MenuChoice` (`Holding` makes its submenu as it opens); a
+  menu the menu key opens `ListMenus.PlaceForKeys`; tool window tabs `ToolTabs.Tab`; popups' widths `PopupFrame`, titles
+  `popupTitle`; every row `ListRow.Height` (24); empty states `TextBlock.emptyText`; toolbar icon buttons
+  `ToolButtons.Of`/`Toggle` (never focusable); muted words `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`;
+  rounded borders `Border.kindBadge`, `tag` or `box`, never a literal radius; lists of what runs `RunRows`, Details tabs
+  `DetailsTables`, merged consoles `MergedLog` (a console's Find `OutputView.Find`); a tree window's Expand and Collapse
+  All `ToolWindow.ExpandAll`/`CollapseAll`; a toolbar down a side `ToolColumn`; scrollbars `ControlThemes.axaml`; the
+  focus ring `FocusRing`; a window's icon `AppIcon`; a list's rows `ReusedRows` (`Use`, `Showing`), their icons
+  `RowIcon` (a tree row's chevron and icon `RowGlyphs`), drawn as `PathIcon` draws for a fraction of its cost, never
+  `PathIcon` (UiRulesTests). A row hears its item only while shown (`Observable.FollowWhileShown`).
 - `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, and new windows fit the screen's
   working area (`FitToScreen`).
