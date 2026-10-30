@@ -1772,14 +1772,74 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     // The IDE itself
 
     [McpServerTool(Name = McpTools.IdeAction, Title = "Run an IDE action", Destructive = true), Description(
-        "Runs an IDE action by its id (app.build, app.debug.stepOver...; ide_actions lists them) as its shortcut would, or " +
-        "says why it cannot. input: app.migrations.add's name, updateTo's target; app.saveAsLaunchProfile's configuration (else the chosen one).")]
+        "Runs an IDE action by its id (app.build, app.debug.stepOver...; ide_actions lists them) as its shortcut would, waits " +
+        "for the work it begins and says what it came to, or says why it cannot. input: app.migrations.add's name, updateTo's " +
+        "target; app.saveAsLaunchProfile's configuration (else the chosen one).")]
     public Task<string> IdeAction(string action, string? input = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
-        action.StartsWith("app.migrations.", StringComparison.Ordinal) && window.Actions[action] is not null ? await window.MigrationsForAgentAsync(action, input, cancel)
-        : action == AppActions.SaveAsLaunchProfile ? await window.SaveAsLaunchProfileForAgentAsync(input)
-        : input is not null ? throw new InvalidOperationException($"{action} takes no input")
-        : (Beside ? window.Actions.RunForAgent(action) : window.Actions.Run(action)) is { } why ? throw new InvalidOperationException($"{action} did not run: {why}")
-        : $"Ran {action}");
+    {
+        if (action.StartsWith("app.migrations.", StringComparison.Ordinal) && window.Actions[action] is not null)
+        {
+            return await window.MigrationsForAgentAsync(action, input, cancel);
+        }
+        if (action == AppActions.SaveAsLaunchProfile)
+        {
+            return await window.SaveAsLaunchProfileForAgentAsync(input);
+        }
+        if (input is not null)
+        {
+            throw new InvalidOperationException($"{action} takes no input");
+        }
+        IdeAction? named = window.Actions[action];
+        if (named is { Group: GitGroup })
+        {
+            // Read now, as the vcs tools read it: the agent's shell may have begun a rebase a moment ago.
+            await Session.Vcs.Opened;
+            await Session.Vcs.RefreshAsync();
+        }
+        if (named is not null)
+        {
+            AgentCall.Follow(window.Actions.Work, named.WorkId);
+        }
+        Hearing heard = ActionWork.Hear();
+        List<string> unanswered = [];
+        // An agent's own IDE has nobody to answer a dialog its action opens: closed unanswered, and said.
+        using IDisposable? asking = Beside ? null : Avalonia.Controls.Window.WindowOpenedEvent.AddClassHandler<Avalonia.Controls.Window>((opened, _) =>
+        {
+            if (opened.IsDialog && ActionWork.Heard == heard)
+            {
+                unanswered.Add(opened.Title ?? "a dialog");
+                UiThread.Post(opened.Close);
+            }
+        }, handledEventsToo: true);
+        string? why;
+        try
+        {
+            why = Beside ? window.Actions.RunForAgent(action) : window.Actions.Run(action);
+        }
+        finally
+        {
+            heard.Ran();
+        }
+        if (why is not null)
+        {
+            throw new InvalidOperationException($"{action} did not run: {why}");
+        }
+        await heard.DoneAsync(cancel);
+        if (unanswered.Count > 0)
+        {
+            throw new InvalidOperationException($"{action} asked in {string.Join(", ", unanswered)}, which nobody is at this IDE to answer: it was closed unanswered"
+                + (heard.Outcome is { } then ? $"; {then.Said}" : string.Empty));
+        }
+        return heard.Outcome switch
+        {
+            { Failed: true } failed => throw new InvalidOperationException(failed.Said),
+            { } came => came.Said,
+            null => $"Ran {action}",
+        };
+    });
+
+    /// <summary>The group of Git's actions, whose state ide_action reads fresh before asking whether one can run.</summary>
+    private const string GitGroup = "Git";
 
     [McpServerTool(Name = McpTools.IdeActions, Title = "The IDE's actions", ReadOnly = true), Description(
         "Every action ide_action runs (those with no shortcut too), as id: name [group] (shortcut on this platform), " +

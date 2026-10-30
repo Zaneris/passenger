@@ -897,6 +897,7 @@ public sealed class VcsController : IDisposable
     /// <summary>An operation's outcome, told to the status bar in the words it is returned in.</summary>
     private VcsOutcome Report(bool succeeded, string message)
     {
+        ActionWork.Tell(succeeded, message);
         Message?.Invoke(this, message);
         return new VcsOutcome(succeeded, message);
     }
@@ -1328,35 +1329,55 @@ public sealed class VcsController : IDisposable
     }
 
     /// <summary>Abort Merge, Abort Rebase, Abort Cherry-Pick and Abort Revert, whichever is under way: the tree back as it
-    /// was before the operation began.</summary>
-    public Task<VcsOutcome> AbortAsync()
+    /// was before the operation began, held as that action's work.</summary>
+    public async Task<VcsOutcome> AbortAsync()
     {
         MergeOperation operation = Merge.Operation;
         if (operation is MergeOperation.None)
         {
-            return Task.FromResult(Report(false, "Nothing is under way to abort"));
+            return Report(false, "Nothing is under way to abort");
         }
         string name = operation switch
         {
             MergeOperation.CherryPick => "cherry-pick",
             _ => operation.ToString().ToLowerInvariant(),
         };
-        return SwitchAsync(repository => repository.AbortAsync(operation), $"Abort {name} succeeded", $"Git abort {name}");
+        string id = operation switch
+        {
+            MergeOperation.Rebase => AppActions.AbortRebase,
+            MergeOperation.CherryPick => AppActions.AbortCherryPick,
+            MergeOperation.Revert => AppActions.AbortRevert,
+            _ => AppActions.AbortMerge,
+        };
+        if (!Begin(id, $"Aborting the {name}…", out Working? work))
+        {
+            return Report(false, UnderWay(id));
+        }
+        using Working? held = work;
+        return await SwitchAsync(repository => repository.AbortAsync(operation), $"Abort {name} succeeded", $"Git abort {name}");
     }
 
-    /// <summary>Continue Rebase, once every conflict is resolved.</summary>
-    public Task<VcsOutcome> ContinueRebaseAsync()
+    /// <summary>Continue Rebase, once every conflict is resolved, held as its action's work.</summary>
+    public async Task<VcsOutcome> ContinueRebaseAsync()
     {
         if (Merge.Operation is not MergeOperation.Rebase)
         {
-            return Task.FromResult(Report(false, "No rebase in progress"));
+            return Report(false, "No rebase in progress");
         }
         if (Conflicts.Count > 0)
         {
-            return Task.FromResult(Report(false, "Resolve conflicts in order to continue rebase"));
+            return Report(false, ContinueRefused);
         }
-        return SwitchAsync(repository => repository.ContinueRebaseAsync(), "Rebase successful", "Git rebase", "Rebase stopped due to conflicts");
+        if (!Begin(AppActions.ContinueRebase, "Continuing the rebase…", out Working? work))
+        {
+            return Report(false, UnderWay(AppActions.ContinueRebase));
+        }
+        using Working? held = work;
+        return await SwitchAsync(repository => repository.ContinueRebaseAsync(), "Rebase successful", "Git rebase", "Rebase stopped due to conflicts");
     }
+
+    /// <summary>Why Continue Rebase cannot go on while a conflict is left.</summary>
+    public const string ContinueRefused = "Resolve conflicts in order to continue rebase";
 
     /// <summary>A file's text as the last commit has it, or null when it has none (new, or outside the tree) or it is
     /// binary there (<see cref="HeadAsync"/>).</summary>

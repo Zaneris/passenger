@@ -81,6 +81,10 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         CallToolResult notRun = await Result(client, McpTools.Run);
         Assert.True(notRun.IsError == true && Text(notRun).Contains("Bad.cs:3:", StringComparison.Ordinal) && Text(notRun).Contains("CS0029", StringComparison.Ordinal),
             $"A run refused for a failed build answered: {Text(notRun)}");
+        // The action waits for its build, and says what came of it.
+        CallToolResult rebuilt = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.RebuildSolution });
+        Assert.True(rebuilt.IsError == true && Text(rebuilt).Contains("Rebuild failed", StringComparison.Ordinal) && Text(rebuilt).Contains("Problems lists them", StringComparison.Ordinal),
+            $"Rebuild Solution with an error to find answered: {Text(rebuilt)}");
 
         JsonElement turnedOn = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["solutionWideAnalysis"] = true } })).EnumerateArray());
         Assert.Equal((false, true), (turnedOn.GetProperty("before").GetBoolean(), turnedOn.GetProperty("after").GetBoolean()));
@@ -205,6 +209,58 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
 
         static JsonElement Setting(JsonElement read, string name) =>
             read.GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == name);
+    }
+
+    /// <summary>ide_action waits for the work its action begins and answers what it came to: Fetch from a remote that is not
+    /// there fails with git's words; Abort Rebase in an agent's own IDE, which has nobody to ask, aborts the rebase the
+    /// agent's shell began a moment before; Continue Rebase right after the shell's interactive rebase stopped to edit goes
+    /// on with it, Git's state read fresh; Settings…, a dialog nobody is there to answer, is closed and said. Each answered "Ran"
+    /// before, the fetch's failure unsaid, the questions left open, and Continue Rebase refused as no rebase was known.</summary>
+    [Fact]
+    public async Task An_agents_ide_action_waits_for_its_work_and_answers_what_it_came_to_asking_nobody()
+    {
+        string repository = TestFolders.Create("mcp-action-outcome-");
+        DeleteAtEnd(repository);
+        string notes = Path.Combine(repository, "Notes.txt");
+        File.WriteAllText(notes, "one\ntwo\nthree\n");
+        await TestGit.InitAsync(repository);
+        await TestGit.RunAsync(repository, "remote", "add", "origin", Path.Combine(repository, "gone", "remote.git"));
+        await TestGit.RunAsync(repository, "switch", "-q", "-c", "feature");
+        File.WriteAllText(notes, "one\nTWO\nthree\n");
+        await TestGit.RunAsync(repository, "commit", "-q", "-am", "Two in capitals");
+        await TestGit.RunAsync(repository, "switch", "-q", "main");
+        File.WriteAllText(notes, "one\nII\nthree\n");
+        await TestGit.RunAsync(repository, "commit", "-q", "-am", "Two in Roman");
+        await TestGit.RunAsync(repository, "switch", "-q", "feature");
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        await Call(client, McpTools.VcsStatus);
+
+        CallToolResult fetched = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.Fetch });
+        Assert.True(fetched.IsError == true && Text(fetched).Contains("Fetch failed: fatal: ", StringComparison.Ordinal),
+            $"Fetch from a remote that is not there answered: {Text(fetched)}");
+
+        string feature = (await TestGit.RunAsync(repository, "rev-parse", "HEAD")).Trim();
+        ChildResult rebasing = await ChildProcesses.RunAsync(ChildProcesses.Command("git", ["rebase", "main"], repository), limit: TimeSpan.FromMinutes(1), cancel: Cancel);
+        Assert.False(rebasing.Succeeded, $"The rebase was to stop for its conflict: {rebasing.Output}");
+        Assert.Equal("Abort rebase succeeded", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.AbortRebase })).GetString());
+        Assert.False(Directory.Exists(Path.Combine(repository, ".git", "rebase-merge")), "Abort Rebase answered while the rebase was still in progress");
+        Assert.Equal(("feature", feature), ((await TestGit.RunAsync(repository, "rev-parse", "--abbrev-ref", "HEAD")).Trim(), (await TestGit.RunAsync(repository, "rev-parse", "HEAD")).Trim()));
+        JsonElement windows = await Call(client, McpTools.AppWindows, new() { ["app"] = "ide" });
+        Assert.DoesNotContain("Abort Rebase", windows.GetRawText(), StringComparison.Ordinal);
+
+        ProcessStartInfo editing = ChildProcesses.Command("git", ["rebase", "-i", "HEAD~1"], repository);
+        // The list's one step, the commit's pick, made an edit, as a person's editor would.
+        editing.Environment["GIT_SEQUENCE_EDITOR"] = "sed -i.bak -e 1s/^pick/edit/";
+        ChildResult stopping = await ChildProcesses.RunAsync(editing, limit: TimeSpan.FromMinutes(1), cancel: Cancel);
+        Assert.True(File.Exists(Path.Combine(repository, ".git", "rebase-merge", "amend")), $"The rebase was to stop to edit: {stopping.Error}{stopping.Output}");
+        Assert.Equal("Rebase successful", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ContinueRebase })).GetString());
+        Assert.False(Directory.Exists(Path.Combine(repository, ".git", "rebase-merge")), "Continue Rebase answered while the rebase was still in progress");
+
+        CallToolResult settings = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.ShowSettings });
+        Assert.True(settings.IsError == true && Text(settings).Contains("which nobody is at this IDE to answer: it was closed unanswered", StringComparison.Ordinal),
+            $"Settings… in an agent's own IDE answered: {Text(settings)}");
+        Assert.True(await Waiting.UntilAsync(async () => (await Call(client, McpTools.AppWindows, new() { ["app"] = "ide" })).GetProperty("windows").GetArrayLength() == 1, TimeSpan.FromSeconds(10), Cancel),
+            $"Settings' dialog was left open: {(await Call(client, McpTools.AppWindows, new() { ["app"] = "ide" })).GetRawText()}");
     }
 
     /// <summary>Razor for an agent: a component's errors, what a name in its markup is, and a method's usages across its

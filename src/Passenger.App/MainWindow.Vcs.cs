@@ -57,9 +57,13 @@ public partial class MainWindow
 
     private Func<string, string, string, Task<bool>>? confirm;
 
-    /// <summary>Asks as <see cref="Confirm"/> does, with what it applies to under the question (Rollback's files).</summary>
+    /// <summary>Asks as <see cref="Confirm"/> does, with what it applies to under the question (Rollback's files). In an
+    /// agent's own IDE nobody is there to ask: an action the agent ran (<see cref="ActionWork.Hear"/>) is its asking, so
+    /// what that action asks is agreed to.</summary>
     private Task<bool> ConfirmAsync(string title, string text, string yes, Control? detail) =>
-        confirm is { } answer ? answer(title, text, yes) : new ConfirmDialog(title, text, yes, detail: detail).ShowDialog<bool>(this);
+        confirm is { } answer ? answer(title, text, yes)
+        : AgentsOwn && ActionWork.Heard is not null ? Task.FromResult(true)
+        : new ConfirmDialog(title, text, yes, detail: detail).ShowDialog<bool>(this);
 
     /// <summary>Asks the person for a value a fix sets (an AppHost parameter's), as <see cref="Confirm"/> asks, with a box for
     /// it under the question, its characters masked for a secret; null when they cancel or give none.</summary>

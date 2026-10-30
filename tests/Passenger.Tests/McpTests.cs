@@ -736,7 +736,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         File.WriteAllText(notes, "one\nTWO\n");
         CallToolResult amend = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Two in capitals", ["amend"] = true });
         Assert.True(amend.IsError != true, $"vcs_commit refused to amend the commit an interactive rebase stopped to edit: {Text(amend)}");
-        Assert.Equal($"Ran {AppActions.ContinueRebase}", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ContinueRebase })).GetString());
+        Assert.Equal("Rebase successful", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ContinueRebase })).GetString());
         Assert.True(await Waiting.UntilAsync(() => !Directory.Exists(Path.Combine(repository, ".git", "rebase-merge")), TimeSpan.FromMinutes(1), Cancel),
             $"Continue Rebase did not finish the rebase after the amend: {(await Call(client, McpTools.VcsStatus)).GetRawText()}");
 

@@ -332,6 +332,7 @@ public sealed partial class BuildRunController
             BuildOutcome nothing = new(BuildStatus.Refused, "Nothing to build: every project is unloaded");
             publishing = null;
             together = null;
+            work?.Tell(false, nothing.Message);
             work?.Dispose();
             parts.Say(nothing.Message);
             then?.Invoke(nothing);
@@ -633,6 +634,7 @@ public sealed partial class BuildRunController
         building = null;
         publishing = null;
         together = null;
+        buildWork?.Tell(outcome.Succeeded, outcome.Message);
         buildWork?.Dispose();
         buildWork = null;
         builtTexts = null;

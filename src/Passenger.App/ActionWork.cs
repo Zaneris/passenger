@@ -7,7 +7,19 @@ namespace Passenger.App;
 /// Stop ends the starts it can. UI thread only.</summary>
 public sealed class ActionWork
 {
+    private static readonly AsyncLocal<Hearing?> hearing = new();
+
     private readonly List<Working> under = [];
+
+    /// <summary>Hears the action about to run in this flow (an agent's ide_action), for the rest of the caller's flow: the
+    /// works it begins as it runs (until <see cref="Hearing.Ran"/>) and what its operations come to.</summary>
+    public static Hearing Hear() => hearing.Value = new Hearing();
+
+    /// <summary>The action heard in this flow, or null.</summary>
+    public static Hearing? Heard => hearing.Value;
+
+    /// <summary>Tells what an operation came to, in its words, to the action heard in its flow (<see cref="Hear"/>), if any.</summary>
+    public static void Tell(bool succeeded, string said) => hearing.Value?.Came(succeeded, said);
 
     /// <summary>Raised as a work begins, says a new stage, or ends.</summary>
     public event EventHandler<WorkChange>? Changed;
@@ -28,6 +40,10 @@ public sealed class ActionWork
             return null;
         }
         Working work = new(this, id, stage, stoppable);
+        if (hearing.Value is { } heard && heard.Began(work))
+        {
+            work.Heard = heard;
+        }
         under.Add(work);
         Changed?.Invoke(this, new WorkChange(work, Ended: false));
         return work;
@@ -87,7 +103,47 @@ public sealed class ActionWork
     {
         if (under.Remove(work))
         {
+            work.Heard?.Ended();
             Changed?.Invoke(this, new WorkChange(work, Ended: true));
+        }
+    }
+}
+
+/// <summary>What an action an agent runs does (<see cref="ActionWork.Hear"/>): the works it begins as it runs, each held
+/// from its first moment to its hand-over, and what its operations said they came to, the last told standing. UI thread
+/// only.</summary>
+public sealed class Hearing
+{
+    private readonly List<Working> begun = [];
+    private readonly TaskCompletionSource handedOver = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private bool running = true;
+
+    /// <summary>What the action came to as its operation told it, and whether that failed; null while none has told.</summary>
+    public (bool Failed, string Said)? Outcome { get; private set; }
+
+    /// <summary>The action has run: a work begun from here is not its own.</summary>
+    public void Ran() => running = false;
+
+    /// <summary>Comes back once every work the action began as it ran has ended (done, or handed over: a program running,
+    /// a session open), at once with none, or the wait is canceled.</summary>
+    public Task DoneAsync(CancellationToken cancel) => begun.All(w => w.HasEnded) ? Task.CompletedTask : handedOver.Task.WaitAsync(cancel);
+
+    internal void Came(bool succeeded, string said) => Outcome = (!succeeded, said);
+
+    internal bool Began(Working work)
+    {
+        if (running)
+        {
+            begun.Add(work);
+        }
+        return running;
+    }
+
+    internal void Ended()
+    {
+        if (begun.All(w => w.HasEnded))
+        {
+            handedOver.TrySetResult();
         }
     }
 }
@@ -111,6 +167,12 @@ public sealed class Working : IDisposable
         Stage = stage;
         Stoppable = stoppable;
     }
+
+    /// <summary>The action an agent runs that began it as it ran, heard so (<see cref="ActionWork.Hear"/>).</summary>
+    internal Hearing? Heard { get; set; }
+
+    /// <summary>Whether it is done or handed over.</summary>
+    public bool HasEnded { get; private set; }
 
     /// <summary>The id of the action whose work this is.</summary>
     public string Id { get; }
@@ -136,6 +198,13 @@ public sealed class Working : IDisposable
 
     internal void Cancel() => stopping.Cancel();
 
+    /// <summary>Tells what the work came to, in its words, to the action an agent runs that began it, if one did.</summary>
+    public void Tell(bool succeeded, string said) => Heard?.Came(succeeded, said);
+
     /// <summary>The work is done or handed over.</summary>
-    public void Dispose() => owner.Ended(this);
+    public void Dispose()
+    {
+        HasEnded = true;
+        owner.Ended(this);
+    }
 }
