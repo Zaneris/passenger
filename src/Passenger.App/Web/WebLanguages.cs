@@ -622,9 +622,6 @@ public sealed class WebLanguages : IAsyncDisposable
         schemas = new Dictionary<string, string[]> { [JsonSchemas.ComposeUri] = JsonSchemas.ComposeFiles },
     };
 
-    /// <summary>The settings a server reads from <c>workspace/didChangeConfiguration</c> rather than asks for, sent once it
-    /// has started: the JSON server's validation and formatting, and which schema each well-known file takes; and the YAML
-    /// server's word that Passenger answers for schemas over HTTP.</summary>
     /// <summary>Holds the next server's configuring, its process started, until <paramref name="until"/> ends, for a test of
     /// what goes on meanwhile; its process's id once it is held.</summary>
     public Task<int> HoldNextConfigure(Task until)
@@ -645,6 +642,9 @@ public sealed class WebLanguages : IAsyncDisposable
         await Configure(kind, server);
     }
 
+    /// <summary>The settings a server reads from <c>workspace/didChangeConfiguration</c> rather than asks for, sent once it
+    /// has started: the JSON server's validation and formatting, and which schema each well-known file takes; and the YAML
+    /// server's word that Passenger answers for schemas over HTTP.</summary>
     private static async Task Configure(WebServerKind kind, LanguageServer server)
     {
         switch (kind)

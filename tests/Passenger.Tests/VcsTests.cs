@@ -1944,11 +1944,11 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
-    [Gate]
     /// <summary>A submodule whose own files alone changed (a file it does not track put in it) has nothing to commit here:
     /// the Commit window lists it with no box, saying why, and leaves it out; a commit of it is refused, and Rollback leaves
     /// it as it is, each saying why. Once its commit moves it is offered and committed, and its commit moved again is rolled
     /// back by checking the recorded one out in it, the file it does not track kept.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_submodule_whose_own_files_alone_changed_is_not_offered_for_commit_and_one_whose_commit_moved_is()
     {

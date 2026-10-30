@@ -88,7 +88,6 @@ public sealed class ErrorsPopup : UserControl
     /// <summary>Raised when the popup is done with, by Close or Clear All.</summary>
     public event EventHandler? Done;
 
-    /// <summary>An error's row: when it first came, its kind and first line, and how many times when more than once.</summary>
     /// <summary>An error's row: when it came, its kind and message on one line, and how often it came at the right.</summary>
     private static Control Row()
     {

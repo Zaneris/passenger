@@ -585,7 +585,6 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         return button;
     }
 
-    /// <summary>A match's line, its leading space trimmed and the match itself bold, and where it is at the right.</summary>
     /// <summary>A match's row for whichever match the list hands its container: its line, the match in bold, and where it is.</summary>
     private static Control Row(bool ligatures)
     {

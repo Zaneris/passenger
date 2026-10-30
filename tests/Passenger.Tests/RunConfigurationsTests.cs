@@ -650,9 +650,6 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
-    /// <summary>A file-based program's launch profiles, in its app.run.json, changed on disk reach its run configuration as
-    /// a launchSettings.json's do, the Explorer left as it was.</summary>
-    [Gate]
     /// <summary>Save as Launch Profile in a project with no launchSettings.json follows the file and folder it makes as it
     /// makes them, not when the folder's watcher hears of them: with the watcher stopped, Go to File finds the file.</summary>
     [AvaloniaFact]
@@ -681,6 +678,9 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
+    /// <summary>A file-based program's launch profiles, in its app.run.json, changed on disk reach its run configuration as
+    /// a launchSettings.json's do, the Explorer left as it was.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_file_based_programs_run_json_changed_on_disk_reaches_its_run_configuration()
     {

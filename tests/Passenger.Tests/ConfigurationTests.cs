@@ -244,9 +244,6 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
     private static HashSet<string> Missing(MainWindow window) => [.. window.EditorArea.Active!.Markers
         .Where(m => m.Message.StartsWith("Nothing Shop runs with gives the configuration key '", StringComparison.Ordinal)).Select(m => m.Message.Split('\'')[1])];
 
-    /// <summary>Manage User Secrets on the project's row gives a project with none a UserSecretsId and opens its secrets.json,
-    /// made in the run's own user secrets folder, never the person's; its keys complete there as appsettings.json's do, and
-    /// asked again it opens the same file, the project left as it is.</summary>
     /// <summary>A read through a field another part of its partial class declares, in a file that never names configuration's
     /// API, is warned of as a read in the declaring file would be.</summary>
     [AvaloniaFact]
@@ -329,6 +326,9 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
         }
     }
 
+    /// <summary>Manage User Secrets on the project's row gives a project with none a UserSecretsId and opens its secrets.json,
+    /// made in the run's own user secrets folder, never the person's; its keys complete there as appsettings.json's do, and
+    /// asked again it opens the same file, the project left as it is.</summary>
     [AvaloniaFact]
     public void Manage_User_Secrets_gives_the_project_its_secrets_and_opens_them()
     {

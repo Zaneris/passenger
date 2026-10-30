@@ -611,7 +611,6 @@ public sealed class DockingTests
         return weak;
     }
 
-    /// <summary>A window, keeping its state in a folder of the test's own when it is given one.</summary>
     /// <summary>Every tool window behaves alike: a tab that closes closes on a middle-click, a tree's rows close and open
     /// from its header's Collapse All and Expand All, and a double-click on an editor's tab gives the editors the frame.</summary>
     [AvaloniaFact]
@@ -697,6 +696,7 @@ public sealed class DockingTests
         window.DockHost[id].Content.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains("toolPane"))
             .GetVisualDescendants().OfType<Button>().First(b => b.Name == action);
 
+    /// <summary>A window, keeping its state in a folder of the test's own when it is given one.</summary>
     private static MainWindow Open(string? state = null)
     {
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = state ?? Passenger.App.State.StateStore.DefaultRoot };

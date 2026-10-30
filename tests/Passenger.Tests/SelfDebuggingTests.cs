@@ -127,8 +127,6 @@ public sealed class SelfDebuggingTests : IDisposable
     private static string? Value(MainWindow window, string name) =>
         window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0 && r.Name == name)?.Value;
 
-    /// <summary>Each file of the checkout's restore (each project's project.assets.json, dgspec, nuget.g.props and the rest
-    /// beside them under artifacts/obj) with its bytes.</summary>
     /// <summary>The first line a restore file kept before the build reads otherwise after it, as a failure says it.</summary>
     private static string FirstChange(Dictionary<string, byte[]> restore)
     {
@@ -155,6 +153,8 @@ public sealed class SelfDebuggingTests : IDisposable
         return "none of them reads otherwise";
     }
 
+    /// <summary>Each file of the checkout's restore (each project's project.assets.json, dgspec, nuget.g.props and the rest
+    /// beside them under artifacts/obj) with its bytes.</summary>
     private static Dictionary<string, byte[]> RestoreFiles(string repository) =>
         Directory.EnumerateDirectories(Path.Combine(repository, "artifacts", "obj")).SelectMany(d => Directory.EnumerateFiles(d)).ToDictionary(f => f, File.ReadAllBytes);
 

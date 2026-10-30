@@ -1947,13 +1947,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     // The work behind them
 
+    /// <summary>Whether the agent is attached to a person's window, beside the person, rather than in an IDE of its own.</summary>
+    private bool Beside => connection is { Attached: true };
+
     /// <summary>A tool's work on the UI thread, its waits ended by <paramref name="cancel"/> (the agent gave up on the
     /// call, or went), once the folder's projects are read and evaluated, which is what every tool that runs, builds or
     /// tests a project asks about. What it refuses (nothing to debug, no such file) reaches the agent in its own words: the
     /// SDK passes only an McpException's message on, and hides every other's.</summary>
-    /// <summary>Whether the agent is attached to a person's window, beside the person, rather than in an IDE of its own.</summary>
-    private bool Beside => connection is { Attached: true };
-
     private async Task<T> OnUi<T>(CancellationToken cancel, Func<Task<T>> work)
     {
         cancel.ThrowIfCancellationRequested();
@@ -2791,9 +2791,8 @@ public sealed record Finding(string Severity, string? Code, string Message, stri
 
 public sealed record Place(string Path, int Line, int Column, string Text);
 
-/// <summary>usages' answer: the C# symbol the place took, as its card names it, how many places, and each file's places as
-/// "line:column text".</summary>
-/// <summary>usages' answer, and what it went without (files the C# language server has yet to take in), when it did.</summary>
+/// <summary>usages' answer: the C# symbol the place took, as its card names it, how many places, each file's places as
+/// "line:column text", and what it went without (files the C# language server has yet to take in), when it did.</summary>
 public sealed record UsagesFound(string? Symbol, int Count, IReadOnlyList<FilePlaces> Files, string? Note = null);
 
 public sealed record FilePlaces(string Path, IReadOnlyList<string> Places);

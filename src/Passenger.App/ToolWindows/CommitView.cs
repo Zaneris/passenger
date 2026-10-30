@@ -276,11 +276,11 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// <summary>A conflicted file to merge, double-clicked.</summary>
     public event EventHandler<string>? MergeRequested;
 
-    /// <summary>What a double-click or Enter opens: a conflicted file's merge, any other file's diff.</summary>
     /// <summary>Show Diff's keys, as the Commit window takes them (<see cref="AppActions.KeysIn"/>), ahead of what they run
     /// elsewhere while a file is chosen.</summary>
     public bool TakesKey(KeyEventArgs e) => list.IsKeyboardFocusWithin && list.SelectedItem is CommitRow && AppActions.Presses(AppActions.ShowDiff, e);
 
+    /// <summary>What a double-click or Enter opens: a conflicted file's merge, any other file's diff.</summary>
     private void Open(FileChange change)
     {
         if (change.Kind is ChangeKind.Conflicted)
