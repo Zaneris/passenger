@@ -154,10 +154,11 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   (`TextDocument.IsReadOnly`, set only by `OpenDocument`), and an action on it greys with `Refusals.ReadOnly`.
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
-  `workspaces/<name>-<hash>/`, held by each window with the folder open (`StateStore.Hold`/`LetGo`); a failed write is
-  tried again, and a key a later build renamed moves in `IStateDocument.Renamed`; a value of the wrong kind is passed
-  over alone (`StateFile.Read`). A new setting: an `AppSettings` property, its row and range declared in `Declared` and
-  `Add`ed in its place in `SettingsDialog`, a line in `MainWindow.Follow` or `SettingsStore.InForce`.
+  `workspaces/<name>-<hash>/`, held by each window with the folder open (`StateStore.Hold`/`LetGo`); its writes hold a
+  lock file every process honours (`StateFile.Hold`); a failed write is tried again, and a key a later build renamed
+  moves in `IStateDocument.Renamed`; a value of the wrong kind is passed over alone (`StateFile.Read`). A new setting:
+  an `AppSettings` property, its row and range declared in `Declared` and `Add`ed in its place in `SettingsDialog`, a
+  line in `MainWindow.Follow` or `SettingsStore.InForce`.
 - **Every action is an `IdeAction`** in the window's `ActionRegistry` (ids and keymaps in `AppActions.cs`): keys, menus,
   Find Action, context menus and MCP's `ide_action` all run it, `WhyNot` greys it with why, titles come from the
   registry (`TitleWhere`), a title that asks more ends in "…", and what's missing is said in `Refusals`' words. Anything
@@ -182,10 +183,11 @@ Projects in `src/`; `find_symbol` finds the rest:
 - `Passenger.Core`: what everything shares, no UI: `ChildProcesses` (`StartAsync` forks off the UI thread: a fork costs
   a large process tens of ms), `Dotnet`/`Programs`/`ShellEnvironment` (tools found as the login shell would; the
   installation's folder is `Dotnet.Root`, from the host's real path, never the folder of `Dotnet.Host()`), `PathNames`,
-  `AtomicFile`, `SocketFolders` (every Unix socket), `InFlight`, `BackgroundWork`, `ExitCodes` (an exit code said with
-  its signal), `Product` (the one place the version is read), `PassengerLog` (below the App, never `IdeLog`; a line
-  quoting a program's words through `WriteMasked`), `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's lines read
-  and messages written as pooled bytes), `SharedNames` (a name read from bytes, made once).
+  `AtomicFile`, `FolderMoves` (a folder moved whole, across volumes too), `SocketFolders` (every Unix socket),
+  `InFlight`, `BackgroundWork`, `ExitCodes` (an exit code said with its signal), `Product` (the one place the version is
+  read), `PassengerLog` (below the App, never `IdeLog`; a line quoting a program's words through `WriteMasked`),
+  `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's lines read and messages written as pooled bytes),
+  `SharedNames` (a name read from bytes, made once).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
   function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `Outline` (a tree's rows in reading order, kept where
   unchanged), `FileText`, and anchors (`AnchorAt`/`RangeAt`/`MarkAt`, `AnchoredList`; moved before `Changed`, each
