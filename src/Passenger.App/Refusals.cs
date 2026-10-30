@@ -44,7 +44,7 @@ public static class Refusals
         { Asked: { } asked } => $"The .NET SDK {asked} that {(missing.GlobalJson is { } file ? PathNames.Shown(PathNames.Canonical(file), folder) : "global.json")} "
             + "asks for is not installed: install it, or have global.json name one that is",
         { NoneInstalled: true } => "No .NET SDK is installed: install one to load, build and run projects",
-        _ => $"No .NET SDK was found for this folder: {missing.Said.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()}",
+        _ => $"No .NET SDK was found for this folder: {ChildResult.FirstLineOf(missing.Said)}",
     };
 
     /// <summary>No run configuration to run, debug or profile (the <paramref name="verb"/>): the folder has no SDK to

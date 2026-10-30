@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Passenger.Core;
@@ -220,6 +221,19 @@ public sealed class ContainerEngine
             throw new ContainerCommandException(Said(result));
         }
         return JsonLines(result.Output);
+    }
+
+    /// <summary>The port a compose service's port is published on on the engine's machine, as Compose answers it in the
+    /// folder its files run in (<c>compose port</c>, which knows an ephemeral one too): the port, else null and what Compose
+    /// said instead.</summary>
+    public async Task<(int? Port, string Said)> PublishedPortAsync(IReadOnlyList<string> compose, string service, int target, string folder, CancellationToken cancel)
+    {
+        ChildResult said = await RunAsync([.. compose, "port", "--", service, target.ToString(CultureInfo.InvariantCulture)], AskLimit, cancel, folder);
+        string answer = said.FirstLine;
+        int colon = answer.LastIndexOf(':');
+        return said.Succeeded && colon >= 0 && int.TryParse(answer[(colon + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out int port) && port > 0
+            ? (port, answer)
+            : (null, said.Succeeded ? answer : Said(said, folder));
     }
 
     /// <summary>The JSON objects in a command's output: an array's items, or one object a line, other lines passed over.</summary>

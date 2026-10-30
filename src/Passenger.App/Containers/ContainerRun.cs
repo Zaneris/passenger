@@ -1153,7 +1153,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         {
             bool ended = up.IsCompleted;
             ChildResult found = await engine.RunAsync([.. plan.Compose, "ps", "-q", "--", service], cancel: stop);
-            if (found.Succeeded && found.Output.Trim().Split('\n')[0].Trim() is { Length: > 0 } container)
+            if (found.Succeeded && found.FirstLine is { Length: > 0 } container)
             {
                 return container;
             }
@@ -1595,19 +1595,17 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         {
             return null;
         }
-        ChildResult published = await engine.RunAsync([.. Plan.Compose, "port", "--", service, port.ToString(CultureInfo.InvariantCulture)], cancel: cancel);
-        string answer = published.Output.Trim().Split('\n')[0].Trim();
-        int colon = answer.LastIndexOf(':');
-        if (!published.Succeeded || colon < 0)
+        if ((await engine.PublishedPortAsync(Plan.Compose, service, port, Plan.Folder, cancel)).Port is not { } published)
         {
             return null;
         }
+        string on = published.ToString(CultureInfo.InvariantCulture);
         string scheme = ContainerPlans.HttpsPort(port) || url.StartsWith("https", StringComparison.OrdinalIgnoreCase) ? "https" : "http";
-        string host = new ContainerPort(answer[(colon + 1)..], port.ToString(CultureInfo.InvariantCulture), "tcp").LinkOn((await engine.StateAsync(cancel: cancel)).Endpoint)?.Host
+        string host = new ContainerPort(on, port.ToString(CultureInfo.InvariantCulture), "tcp").LinkOn((await engine.StateAsync(cancel: cancel)).Endpoint)?.Host
             ?? "localhost";
         return url.Replace("{Scheme}", scheme, StringComparison.OrdinalIgnoreCase)
             .Replace("{ServiceHost}", host, StringComparison.OrdinalIgnoreCase)
-            .Replace("{ServicePort}", answer[(colon + 1)..], StringComparison.OrdinalIgnoreCase);
+            .Replace("{ServicePort}", on, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Runs a docker command to its end, its output streamed into the console, its words first.</summary>

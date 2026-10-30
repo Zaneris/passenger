@@ -666,7 +666,7 @@ public sealed class VcsController : IDisposable
                 1 => "1 file committed",
                 _ => $"{count} files committed",
             };
-            VcsOutcome done = Report(true, $"{committed}: {FirstLine(message)}");
+            VcsOutcome done = Report(true, $"{committed}: {ChildResult.FirstLineOf(message)}");
             await RefreshAsync();
             return new CommitResult(done, made, null);
         }, refused => new CommitResult(refused, null, null));
@@ -1606,9 +1606,6 @@ public sealed class VcsController : IDisposable
         LargestComparison = Math.Max(LargestComparison, bytes);
         return diff;
     }
-
-    private static string FirstLine(string message) => message.Trim().Split('\n')[0].Trim();
-
 
     /// <summary>An open file as Git follows it: one handler for its edits and one for its saves, and one wait each for its
     /// bars and its blame, all dropped with it.</summary>

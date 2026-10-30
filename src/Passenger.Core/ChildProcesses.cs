@@ -645,6 +645,22 @@ public sealed record ChildResult(int ExitCode, string Output, string Error)
 {
     public bool Succeeded => ExitCode == 0;
 
+    /// <summary>The first line of its output that says anything (<see cref="FirstLineOf"/>).</summary>
+    public string FirstLine => FirstLineOf(Output);
+
+    /// <summary>The first line of a program's words that says anything, trimmed; empty where none does.</summary>
+    public static string FirstLineOf(string words)
+    {
+        foreach (ReadOnlySpan<char> line in words.AsSpan().EnumerateLines())
+        {
+            if (!line.IsWhiteSpace())
+            {
+                return line.Trim().ToString();
+            }
+        }
+        return string.Empty;
+    }
+
     /// <summary>The most lines of a child's words <see cref="Said"/> joins: a tool's own words whole, with every link
     /// they give; a log's beginning.</summary>
     private const int SaidLines = 40;

@@ -291,7 +291,7 @@ public sealed class EslintService : IAsyncDisposable
     /// the status bar, not an error for the log.</summary>
     private static bool IsConfigMissing(string logged)
     {
-        string first = logged.Split('\n', 2)[0].Trim();
+        string first = ChildResult.FirstLineOf(logged);
         foreach (string lead in (string[])["An unexpected error occurred: ", "Error: "])
         {
             first = first.StartsWith(lead, StringComparison.Ordinal) ? first[lead.Length..] : first;

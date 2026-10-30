@@ -150,8 +150,8 @@ public sealed partial record LaunchProfile(
         }
     }
 
-    /// <summary>The profiles a settings file's text gives, in its order; none when it does not read. A value that is not a
-    /// string is taken as its JSON, as <c>dotnet run</c> takes it.</summary>
+    /// <summary>The profiles a settings file's text gives, in its order; none when it does not read or is no JSON object. A
+    /// value that is not a string is taken as its JSON, as <c>dotnet run</c> takes it.</summary>
     public static IReadOnlyList<LaunchProfile> Parse(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -161,7 +161,8 @@ public sealed partial record LaunchProfile(
         try
         {
             using JsonDocument settings = JsonDocument.Parse(text, Lenient);
-            if (!settings.RootElement.TryGetProperty("profiles", out JsonElement profiles) || profiles.ValueKind != JsonValueKind.Object)
+            if (settings.RootElement.ValueKind != JsonValueKind.Object || !settings.RootElement.TryGetProperty("profiles", out JsonElement profiles)
+                || profiles.ValueKind != JsonValueKind.Object)
             {
                 return [];
             }

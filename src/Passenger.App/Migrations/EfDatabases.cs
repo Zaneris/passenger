@@ -103,20 +103,17 @@ public static class EfDatabases
     /// which knows an ephemeral one too); null for one it does not publish.</summary>
     private static async Task<(ContainerPort Link, int Port)?> PublishedAsync(ContainerRun run, ComposeService service, int target, CancellationToken cancel)
     {
-        string port = target.ToString(CultureInfo.InvariantCulture);
-        ChildResult said;
+        int? published;
         try
         {
-            said = await run.Engine.RunAsync([.. run.Plan.Compose, "port", "--", service.Name, port], ContainerEngine.AskLimit, cancel, run.Plan.Folder);
+            (published, _) = await run.Engine.PublishedPortAsync(run.Plan.Compose, service.Name, target, run.Plan.Folder, cancel);
         }
         catch (Exception failed) when (failed is TimeoutException or IOException or System.ComponentModel.Win32Exception)
         {
             return null;
         }
-        string answer = said.Output.Trim().Split('\n')[0].Trim();
-        int colon = answer.LastIndexOf(':');
-        return said.Succeeded && colon >= 0 && int.TryParse(answer[(colon + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out int published) && published > 0
-            ? (new ContainerPort(published.ToString(CultureInfo.InvariantCulture), port, "tcp"), published)
+        return published is { } port
+            ? (new ContainerPort(port.ToString(CultureInfo.InvariantCulture), target.ToString(CultureInfo.InvariantCulture), "tcp"), port)
             : null;
     }
 

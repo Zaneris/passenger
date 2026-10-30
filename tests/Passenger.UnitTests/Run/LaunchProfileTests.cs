@@ -3,7 +3,7 @@ using Passenger.App.Run;
 namespace Passenger.UnitTests.Run;
 
 /// <summary>Where a launch profile opens the browser: its launch URL from its first application URL, a host the program
-/// listens on everywhere opened as this machine's.</summary>
+/// listens on everywhere opened as this machine's; a settings file that is no JSON object gives no profiles.</summary>
 public class LaunchProfileTests
 {
     [Theory]
@@ -20,5 +20,17 @@ public class LaunchProfileTests
         LaunchProfile profile = new("web", LaunchProfile.ProjectCommand, null, null, null, new Dictionary<string, string>(), applicationUrl, true, launchUrl);
         Assert.True(profile.BrowserUrl() == opened,
             $"A profile serving {applicationUrl ?? "nothing"} with launchUrl '{launchUrl}' opens the browser at '{profile.BrowserUrl()}', not {opened}, so the page it names never shows");
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("[{ \"profiles\": {} }]")]
+    [InlineData("\"profiles\"")]
+    [InlineData("42")]
+    [InlineData("null")]
+    public void A_settings_file_that_is_no_object_lists_no_profiles(string text)
+    {
+        IReadOnlyList<LaunchProfile> profiles = LaunchProfile.Parse(text);
+        Assert.True(profiles.Count == 0, $"A launchSettings.json of {text} listed {profiles.Count} profiles, where Run Configurations, Run and an agent's workspace read none");
     }
 }

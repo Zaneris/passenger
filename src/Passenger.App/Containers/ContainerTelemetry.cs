@@ -87,12 +87,10 @@ public sealed record ContainerTelemetry(string OtlpKey, string ApiKey)
     /// (<c>compose port</c>), with its key; null, saying why in <c>Why</c>, when it cannot be read from here.</summary>
     public async Task<(TelemetrySource? Source, string? Why)> ReadAsync(ContainerEngine engine, IReadOnlyList<string> compose, string folder, CancellationToken cancel)
     {
-        Core.ChildResult said = await engine.RunAsync([.. compose, "port", "--", Service, ApiPort.ToString(CultureInfo.InvariantCulture)], ContainerEngine.AskLimit, cancel, folder);
-        string answer = said.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? string.Empty;
-        int colon = answer.LastIndexOf(':');
-        if (!said.Succeeded || colon < 0 || !int.TryParse(answer[(colon + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out int port))
+        (int? published, string said) = await engine.PublishedPortAsync(compose, Service, ApiPort, folder, cancel);
+        if (published is not { } port)
         {
-            return (null, $"its dashboard's port could not be read ({(said.Succeeded ? answer : ContainerEngine.Said(said))})");
+            return (null, $"its dashboard's port could not be read ({said})");
         }
         // An engine on another machine publishes on its own loopback, which this machine cannot reach.
         if (await engine.StateAsync(cancel: cancel) is { Endpoint: { } endpoint } && Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? machine)

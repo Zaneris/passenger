@@ -227,7 +227,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             string message = details.LineNumber is null ? details.Message : XamlDocument.Plain(details.Message);
             return $"{details.ExceptionType}: {message}{XamlPreview.Where(sent, details.LineNumber, details.LinePosition)}";
         }
-        return result.Error.Split('\n')[0].Trim();
+        return ChildResult.FirstLineOf(result.Error);
     }
 
     /// <summary>Has <paramref name="ended"/> run once on the window's thread after a previewer's process ends, an end

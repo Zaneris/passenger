@@ -205,7 +205,7 @@ internal sealed partial class WebAssist
         if (answer.Formatted is not { } formatted)
         {
             // A syntax error's first line says where it is ("Unexpected token (1:9)"); the code frame after it is for a console.
-            return (Prettified.Failed, $"Prettier: {(answer.Error ?? "it gave nothing back").Split('\n')[0].Trim()}");
+            return (Prettified.Failed, $"Prettier: {ChildResult.FirstLineOf(answer.Error ?? "it gave nothing back")}");
         }
         if (document.Text.Version != version)
         {
