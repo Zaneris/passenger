@@ -368,6 +368,11 @@ public sealed class VsTestRunner : ITestRunner
 
         private RunSummary? ended;
 
+        /// <summary>The tests VSTest last said were running, and the last error it said: what a run broken off is said by.</summary>
+        private IReadOnlyList<TestCase> active = [];
+
+        private string? lastError;
+
         public TaskCompletionSource<RunSummary> Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         /// <summary>The run let go of: how it ended if it has, else what it told before, in the time given.</summary>
@@ -382,6 +387,13 @@ public sealed class VsTestRunner : ITestRunner
 
         public void HandleTestRunStatsChange(TestRunChangedEventArgs? testRunChangedArgs)
         {
+            if (testRunChangedArgs?.ActiveTests is { } now)
+            {
+                lock (all)
+                {
+                    active = [.. now];
+                }
+            }
             List<TestOutcome> batch = [.. (testRunChangedArgs?.NewTestResults ?? [])
                 .Select(r => running.TryGetValue((r.TestCase.Id, r.TestCase.Source), out TestItem? test) ? Outcome(test, r) : null)
                 .OfType<TestOutcome>()];
@@ -410,7 +422,8 @@ public sealed class VsTestRunner : ITestRunner
             RunSummary summary;
             lock (all)
             {
-                summary = new RunSummary(testRunCompleteArgs.ElapsedTimeInRunningTests, testRunCompleteArgs.IsCanceled, testRunCompleteArgs.IsAborted, testRunCompleteArgs.Error?.Message)
+                string? why = testRunCompleteArgs.Error?.Message ?? (testRunCompleteArgs.IsAborted && !testRunCompleteArgs.IsCanceled ? BrokenOff() : null);
+                summary = new RunSummary(testRunCompleteArgs.ElapsedTimeInRunningTests, testRunCompleteArgs.IsCanceled, testRunCompleteArgs.IsAborted, why)
                 {
                     Outcomes = [.. all],
                 };
@@ -418,15 +431,39 @@ public sealed class VsTestRunner : ITestRunner
             }
             string how = testRunCompleteArgs.IsCanceled ? "stopped" : testRunCompleteArgs.IsAborted ? "aborted" : "complete";
             IdeLog.Write(IdeLog.Tests, $"Run {how}: {Plural.Of(summary.Outcomes.Count, "result")} in {testRunCompleteArgs.ElapsedTimeInRunningTests.TotalSeconds:0.00} s"
-                + (testRunCompleteArgs.Error is { } failed ? $": {failed.Message}" : string.Empty));
+                + (summary.Error is { } failed ? $": {failed}" : string.Empty));
             Done.TrySetResult(summary);
         }
 
         public int LaunchProcessWithDebuggerAttached(TestProcessStartInfo testProcessStartInfo) => -1;
 
-        public void HandleLogMessage(TestMessageLevel level, string? message) => Said(level, message, log);
+        public void HandleLogMessage(TestMessageLevel level, string? message)
+        {
+            if (level == TestMessageLevel.Error && message is not null)
+            {
+                lock (all)
+                {
+                    lastError = message;
+                }
+            }
+            Said(level, message, log);
+        }
 
         public void HandleRawMessage(string rawMessage) => Raw(rawMessage);
+
+        /// <summary>Why a run broke off with no error of its own (its test host crashed): the last error VSTest said, and the
+        /// test running then, as VSTest last named it, else the one test asked that told nothing; under the lock.</summary>
+        private string? BrokenOff()
+        {
+            HashSet<TestItem> told = new(all.Select(outcome => outcome.Test), ReferenceEqualityComparer.Instance);
+            List<TestItem> then = [.. active.Select(test => running.GetValueOrDefault((test.Id, test.Source))).OfType<TestItem>().Where(test => !told.Contains(test))];
+            if (then.Count == 0 && running.Values.Where(test => !told.Contains(test)).ToList() is [{ } only])
+            {
+                then = [only];
+            }
+            string? named = then.Count == 0 ? null : $"while {string.Join(", ", then.Select(test => test.FullyQualifiedName))} ran";
+            return lastError is null ? named : named is null ? lastError : $"{lastError}, {named}";
+        }
     }
 
     /// <summary>VSTest's way to debug: it hands over the test host it would start, and the IDE starts it under its

@@ -277,6 +277,27 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>A run broken off by its test host's crash, a test calling Environment.Exit(3), says why in its tally, which
+    /// an agent's tests_run answers with, in the Unit Tests window and on the status bar: the crash as VSTest tells it, and
+    /// the test running then.</summary>
+    [AvaloniaFact]
+    public void A_run_whose_test_host_crashes_says_the_crash_and_the_test_running_then()
+    {
+        Write("ExitingTests.cs",
+            "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class ExitingTests\n{\n    [Fact]\n    public void Exits() => Environment.Exit(3);\n}\n");
+        MainWindow window = Open();
+        Tree(window);
+        Ui.WaitFor(() => Method(window, "Exits") is not null, "the exiting test in the Unit Tests window");
+        Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [Method(window, "Exits")!]), "the run of the test that exits", TimeSpan.FromSeconds(120));
+        string said = window.Tests.Summary;
+        Assert.True(said.Contains(", broken off: ", StringComparison.Ordinal) && said.Contains("Test host process crashed", StringComparison.Ordinal)
+            && said.EndsWith("while Sums.Tests.ExitingTests.Exits ran", StringComparison.Ordinal),
+            $"A run whose test host crashed as Sums.Tests.ExitingTests.Exits ran did not say so: '{said}'");
+        Assert.Equal(said, window.BottomPanel.Tests.Status);
+        Assert.Equal(said, window.Status);
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Typing_in_one_file_among_many_open_reads_and_marks_that_files_tests_and_no_others()
