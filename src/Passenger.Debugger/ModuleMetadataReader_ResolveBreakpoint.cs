@@ -5,18 +5,25 @@ using Passenger.Debugger.ExpressionEvaluator.Cil;
 namespace Passenger.Debugger;
 public partial class ModuleMetadataReader
 {
-    /// <summary>Each source file's best document, as worked out: a breakpoint's file is asked of every module with symbols at
-    /// each bind, and of all of them again as each such module loads while it waits, each asking a match of every document.
-    /// Forgotten as an update brings documents.</summary>
-    private readonly Dictionary<string, (string? Document, int Score)> _bestDocuments = new(StringComparer.Ordinal);
+    /// <summary>Each source file's best document, as worked out, and whether the file was on disk then: a breakpoint's file
+    /// is asked of every module with symbols at each bind, and of all of them again as each such module loads while it
+    /// waits, each asking a match of every document. Forgotten as an update brings documents.</summary>
+    private readonly Dictionary<string, (string? Document, int Score, bool OnDisk)> _bestDocuments = new(StringComparer.Ordinal);
 
     /// <summary>The name of the module's document that names a source file best, by the PDB's name of it (the build's, or
-    /// one an update brought).</summary>
+    /// one an update brought). A match worked out while the file was not on disk stands only until it is, when its
+    /// canonical name may match a document no name of it did.</summary>
     private (string? Document, int Score) BestDocument(string sourceFilePath)
     {
-        if (_bestDocuments.TryGetValue(sourceFilePath, out (string? Document, int Score) known))
+        bool worked = _bestDocuments.TryGetValue(sourceFilePath, out (string? Document, int Score, bool OnDisk) known);
+        if (worked && known.OnDisk)
         {
-            return known;
+            return (known.Document, known.Score);
+        }
+        bool onDisk = SourcePaths.OnDisk(sourceFilePath);
+        if (worked && !onDisk)
+        {
+            return (known.Document, known.Score);
         }
         (string? Document, int Score) best = (null, 0);
         foreach (string name in DocumentNames())
@@ -27,7 +34,8 @@ public partial class ModuleMetadataReader
                 best = (name, score);
             }
         }
-        return _bestDocuments[sourceFilePath] = best;
+        _bestDocuments[sourceFilePath] = (best.Document, best.Score, onDisk);
+        return best;
     }
 
     private sealed record MethodCandidate(

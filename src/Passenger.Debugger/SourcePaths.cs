@@ -66,6 +66,10 @@ public static class SourcePaths
         string.Equals(name, other, StringComparison.Ordinal)
         || string.Equals(name, other, StringComparison.OrdinalIgnoreCase) && (paths.Equals(folder + name, folder + other) || !exists(folder + other));
 
+    /// <summary>Whether a breakpoint's file is on this disk, so matched by its canonical name: one not here yet (a generated
+    /// file, a branch checked out later) is matched so once it is written.</summary>
+    internal static bool OnDisk(string requested) => Canonical(Normalize(requested)) is not null;
+
     /// <summary>A path a Windows machine gave, a drive's (C:\ or C:/) or a share's (\\server\share), on any system.</summary>
     private static bool IsWindows(string path) =>
         (path.Length >= 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] is '\\' or '/')
