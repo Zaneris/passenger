@@ -275,6 +275,52 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(["Coins.cs changed"], Files(handled));
     }
 
+    /// <summary>Change Signature onto a name and parameter types another member of the type has (renamed to an existing
+    /// overload's, or a parameter retyped to match one) is refused naming that member, nothing changed, and a change made
+    /// says the files it changed: the build would otherwise break, a second change writing its temporary names into the
+    /// other member.</summary>
+    [Fact]
+    public async Task An_agent_changing_a_signature_onto_another_members_is_refused_naming_it_and_a_change_counts_the_files_it_changed()
+    {
+        await TakeFolderAsync();
+        const string Tally = "namespace Shop;\n\npublic class Tally\n{\n    public int Add(int a, int b)\n    {\n        return a + b;\n    }\n\n"
+            + "    public int Multiply(int a, int b) => a * b;\n\n    public int Multiply(long a, int b) => (int)a * b;\n\n    public int Count;\n}\n";
+        Shop(("Calc.cs", Calc), ("Till.cs", Till), ("Report.cs", Report), ("Tally.cs", Tally));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        CallToolResult renamed = await Result(client, McpTools.Refactor, Place("change_signature", "Tally.cs", Tally, "int Ad", new { name = "Multiply" }));
+        Assert.True(renamed.IsError == true && Text(renamed).Contains("Tally already has Tally.Multiply(int a, int b), whose name and parameter types the new signature of method 'Tally.Add' would take", StringComparison.Ordinal),
+            $"Change Signature renaming Add(int, int) to Multiply beside Multiply(int, int) answered: {Text(renamed)}");
+        CallToolResult retyped = await Result(client, McpTools.Refactor, Place("change_signature", "Tally.cs", Tally, "int Multiply(int", new
+        {
+            parameters = new object[] { new { from = "a", type = "long" }, new { from = "b" } },
+        }));
+        Assert.True(retyped.IsError == true && Text(retyped).Contains("Tally already has Tally.Multiply(long a, int b)", StringComparison.Ordinal),
+            $"Change Signature retyping Multiply(int, int)'s first parameter to long beside Multiply(long, int) answered: {Text(retyped)}");
+        CallToolResult field = await Result(client, McpTools.Refactor, Place("change_signature", "Tally.cs", Tally, "int Ad", new { name = "Count" }));
+        Assert.True(field.IsError == true && Text(field).Contains("Tally already has the field Tally.Count, whose name the new signature of method 'Tally.Add' would take", StringComparison.Ordinal),
+            $"Change Signature renaming Add to Count beside the field Count answered: {Text(field)}");
+        Assert.Equal(Tally, File.ReadAllText(PathOf("Tally.cs")));
+        const string Twins = "namespace Shop;\n\npublic class Twins\n{\n    public int Of(int a) => a;\n\n    public int Of(int b) => b;\n}\n";
+        Write("Twins.cs", Twins);
+        CallToolResult twin = await Result(client, McpTools.Refactor, Place("change_signature", "Twins.cs", Twins, "int Of(int b", new
+        {
+            parameters = new object[] { new { from = "b", name = "c" } },
+        }));
+        Assert.True(twin.IsError == true && Text(twin).Contains("Twins already has Twins.Of(int a) with the parameter types of method 'Twins.Of': Change Signature cannot tell the two apart", StringComparison.Ordinal),
+            $"Change Signature of one of two methods declared alike answered: {Text(twin)}");
+        Assert.Equal(Twins, File.ReadAllText(PathOf("Twins.cs")));
+
+        JsonElement changed = await Call(client, McpTools.Refactor, Place("change_signature", "Tally.cs", Tally, "int Ad", new
+        {
+            name = "Sum",
+            parameters = new object[] { new { from = "b", name = "second" }, new { from = "a", name = "first" } },
+        }));
+        Assert.Equal(["Tally.cs changed"], Files(changed));
+        Assert.Equal("Changed the signature of Tally.Sum in 1 file", changed.GetProperty("said").GetString());
+        Assert.Contains("public int Sum(int second, int first)\n    {\n        return first + second;", File.ReadAllText(PathOf("Tally.cs")), StringComparison.Ordinal);
+    }
+
     /// <summary>Push Members Down gives a method to a derived class that declares only another overload of it, and Pull
     /// Members Up takes one variable of a field declaring two as a field of its own, the other staying: no member is lost
     /// on the way, so the project still builds.</summary>

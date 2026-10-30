@@ -64,6 +64,10 @@ internal static class Signatures
                 return Changes.Refused($"Unable to change signature of {Describe(member)}: it is declared as a record's or a type's parameters");
             }
         }
+        if (await ClashAsync(before, family, change, cancel).ConfigureAwait(false) is { } clash)
+        {
+            return Changes.Refused(clash);
+        }
         List<MethodId> members = [.. family.Select(m => Identify(before, m))];
         Solution solution = await RenameParametersAsync(before, members, change, cancel).ConfigureAwait(false);
         SyntaxAnnotation marker = new();
@@ -276,6 +280,72 @@ internal static class Signatures
         }
         return [.. family];
     }
+
+    /// <summary>Why a method of the hierarchy cannot take the signature asked: another member of its type has the name and
+    /// parameter types it would have (a member not a method, the name alone), or has its own now, which leaves the two
+    /// apart by nothing the change could find again; null when none has.</summary>
+    private static async Task<string?> ClashAsync(Solution solution, IReadOnlyList<IMethodSymbol> family, SignatureChange change, CancellationToken cancel)
+    {
+        foreach (IMethodSymbol member in family)
+        {
+            string type = member.ContainingType.Name;
+            if (Twin(member, member.Name, [.. member.Parameters.Select(p => (p.Type, p.RefKind != RefKind.None))]) is { } now)
+            {
+                return $"{type} already has {now.ToDisplayString(Shown)} with the parameter types of {Describe(member)}: Change Signature cannot tell the two apart, so change one by hand first";
+            }
+            string name = member.MethodKind == MethodKind.Constructor ? member.Name : change.Name.Trim();
+            if (name != member.Name && member.ContainingType.GetMembers(name).FirstOrDefault(m => m is not IMethodSymbol && !m.IsImplicitlyDeclared) is { } named)
+            {
+                return $"{type} already has the {KindOf(named)} {named.ToDisplayString(Shown)}, whose name the new signature of {Describe(member)} would take";
+            }
+            BaseMethodDeclarationSyntax declaration = (await DeclarationsAsync(member, cancel).ConfigureAwait(false))[0];
+            SemanticModel model = (await solution.GetDocument(declaration.SyntaxTree)!.GetSemanticModelAsync(cancel).ConfigureAwait(false))!;
+            List<(ITypeSymbol Type, bool ByRef)> parameters = [];
+            foreach (ParameterChange parameter in change.Parameters)
+            {
+                TypeInfo bound = model.GetSpeculativeTypeInfo(declaration.ParameterList.SpanStart, SyntaxFactory.ParseTypeName(parameter.Type), SpeculativeBindingOption.BindAsTypeOrNamespace);
+                if (bound.Type is { TypeKind: not TypeKind.Error } found)
+                {
+                    parameters.Add((found, RefKindOf(parameter.Modifier).Length > 0));
+                }
+            }
+            if (parameters.Count == change.Parameters.Count && Twin(member, name, parameters) is { } other)
+            {
+                string what = member.MethodKind == MethodKind.Constructor ? "parameter types" : "name and parameter types";
+                return $"{type} already has {other.ToDisplayString(Shown)}, whose {what} the new signature of {Describe(member)} would take";
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Another method of a method's type (another constructor of a constructor's) of this name taking these
+    /// parameter types, each by reference or not alike, as the compiler tells overloads apart; null for none.</summary>
+    private static IMethodSymbol? Twin(IMethodSymbol method, string name, IReadOnlyList<(ITypeSymbol Type, bool ByRef)> parameters) =>
+        method.ContainingType.GetMembers(name).OfType<IMethodSymbol>().FirstOrDefault(other => other.MethodKind == method.MethodKind && !other.IsImplicitlyDeclared
+            && !SymbolEqualityComparer.Default.Equals(other.PartialDefinitionPart ?? other, method.PartialDefinitionPart ?? method)
+            && other.TypeParameters.Length == method.TypeParameters.Length && other.Parameters.Length == parameters.Count
+            && other.Parameters.Select((p, i) => SameType(p.Type, parameters[i].Type) && (p.RefKind != RefKind.None) == parameters[i].ByRef).All(same => same));
+
+    /// <summary>Whether two parameters' types are one to the compiler: a method's type parameter by its place among them.</summary>
+    private static bool SameType(ITypeSymbol one, ITypeSymbol other) => SymbolEqualityComparer.Default.Equals(one, other)
+        || (one is ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Method } first && other is ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Method } second
+            && first.Ordinal == second.Ordinal);
+
+    private static string KindOf(ISymbol member) => member switch
+    {
+        IFieldSymbol => "field",
+        IPropertySymbol => "property",
+        IEventSymbol => "event",
+        INamedTypeSymbol => "type",
+        _ => "member",
+    };
+
+    /// <summary>A member as a clash names it: its type's name, its own and its parameters ("Calc.Scale(int value, int factor)").</summary>
+    private static readonly SymbolDisplayFormat Shown = new(
+        memberOptions: SymbolDisplayMemberOptions.IncludeParameters | SymbolDisplayMemberOptions.IncludeContainingType,
+        parameterOptions: SymbolDisplayParameterOptions.IncludeType | SymbolDisplayParameterOptions.IncludeName | SymbolDisplayParameterOptions.IncludeModifiers,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
 
     /// <summary>A member found again in a later solution: its documentation comment id in the project declaring it,
     /// which renaming its parameters leaves as it was.</summary>
