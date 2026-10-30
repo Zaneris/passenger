@@ -205,6 +205,36 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         TestNode Under(string framework, string method) => project.Children.Single(c => c.Name == framework).Methods.Single(m => m.Name == method);
     }
 
+    /// <summary>The first run of a multi-targeted project's test, from its run icon before any build, runs it under each
+    /// framework, where the tree's row the menu chose, from the code, is gone once the build's tests come; and the method's
+    /// row chosen in the window before a build runs it under each too.</summary>
+    [AvaloniaFact]
+    public void The_first_run_of_a_multi_targeted_projects_test_from_its_run_icon_runs_it_under_each_framework()
+    {
+        string solution = NewFolder();
+        Write(solution, "Frameworks.Tests/Frameworks.Tests.csproj", TestProject($"{TestProjects.Framework};net11.0"));
+        string file = Write(solution, "Frameworks.Tests/RuntimeTests.cs",
+            "using Xunit;\n\nnamespace Frameworks.Tests;\n\npublic class RuntimeTests\n{\n    [Fact]\n    public void Runs_anywhere() { }\n\n    [Fact]\n    public void Runs_too() { }\n}\n");
+        Restore.Run(Path.Combine(solution, "Frameworks.Tests"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        Ui.WaitFor(() => Method(window, "Runs_too") is not null, "the tests from their code");
+        TestNode chosenBefore = Method(window, "Runs_too")!;
+
+        Assert.Contains("Run 'Runs_anywhere'", TestMarkMenu(window, file, "    public void Runs_anywhere() { }").Select(i => i.Header as string));
+        Ui.Choose(window.TestMarkMenu, "Run 'Runs_anywhere'");
+        Ui.WaitFor(() => !window.Tests.IsBusy, "the run from the run icon", TimeSpan.FromSeconds(180));
+        List<TestNode> anywhere = [.. window.Tests.Tree.Methods.Where(m => m.Name == "Runs_anywhere")];
+        Assert.True(anywhere.Count == 2 && anywhere.All(m => m.State == TestState.Passed),
+            $"The first run of Runs_anywhere from its run icon said '{window.BottomPanel.Tests.Status}' and left it [{string.Join(", ", anywhere.Select(m => $"{m.Framework}: {m.State}"))}], not passed under both frameworks");
+        Assert.StartsWith("Tests passed: 2, failed: 0 of 2", window.BottomPanel.Tests.Status, StringComparison.Ordinal);
+
+        Assert.True(chosenBefore.Gone, "The row of Runs_too from the code stayed in the tree once the build found it under each framework");
+        Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [chosenBefore]), "the run of the row chosen before the build", TimeSpan.FromSeconds(180));
+        Assert.All(window.Tests.Tree.Methods.Where(m => m.Name == "Runs_too"), m => Assert.Equal(TestState.Passed, m.State));
+        Assert.StartsWith("Tests passed: 2, failed: 0 of 2", window.BottomPanel.Tests.Status, StringComparison.Ordinal);
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Stop_in_the_unit_tests_window_ends_a_run_while_it_builds_and_while_it_finds_the_tests()
@@ -1304,6 +1334,22 @@ public abstract class UnitTestsFolders : IDisposable
         menu.Close();
         Ui.Settle();
         return items;
+    }
+
+    /// <summary>The menu a click on the run icon beside a line of a file opens, the file opened first.</summary>
+    protected static MenuItem[] TestMarkMenu(MainWindow window, string path, string line)
+    {
+        window.OpenFile(path);
+        Ui.Settle();
+        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+        int at = Array.IndexOf(document.Text.Snapshot.ToString().Split('\n'), line);
+        Assert.True(at >= 0, $"{Path.GetFileName(path)} has no line '{line}'");
+        Ui.WaitFor(() => document.TestMarks.Any(m => m.Line == at),
+            () => $"the run icon beside {line.Trim()} in {Path.GetFileName(path)}; it has icons on lines [{string.Join(", ", document.TestMarks.Select(m => m.Line))}]");
+        CodeEditor shown = window.EditorArea.CodeEditor;
+        double x = Enumerable.Range(0, 400).First(x => shown.IsOnGutterColumn(shown.Gutter!.Marks, new Point(x, 0))) + 3;
+        Ui.Click(shown, new Point(x, shown.PointOf(document.Text.Snapshot.GetLineStart(at)).Y + (shown.LineHeight / 2)));
+        return [.. Assert.IsType<MenuFlyout>(window.TestMarkMenu).Items.OfType<MenuItem>()];
     }
 
     /// <summary>The Unit Tests window's Stop, on its toolbar.</summary>

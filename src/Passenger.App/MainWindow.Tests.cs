@@ -181,9 +181,13 @@ public partial class MainWindow
         menu.Items.Add(run);
         menu.Items.Add(debugIt);
         menu.Items.Add(untilFailure);
+        TestMarkMenu = menu;
         menu.Placement = Avalonia.Controls.PlacementMode.Pointer;
         menu.ShowAt(editor, showAtPointer: true);
     }
+
+    /// <summary>A test's run icon's menu last opened.</summary>
+    public MenuFlyout? TestMarkMenu { get; private set; }
 
     /// <summary>Run (or Debug) Unit Tests in context: the Unit Tests window's chosen rows when it has the keys, the
     /// projects chosen in the Explorer (a solution folder's, those under it) when it has them, else the test method or

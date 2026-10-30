@@ -410,17 +410,44 @@ public sealed class TestController : IAsyncDisposable
     }
 
     /// <summary>The tests these rows run: a method's or a group's tests as a runner found them, a data row's own (its
-    /// method's for a row its run made); none of a method no runner has found, or one no longer in the tree.</summary>
-    private static List<TestItem> Chosen(IEnumerable<TestNode> rows)
+    /// method's for a row its run made); none of a method no runner has found. A row no longer in the tree (a method found
+    /// again for each of its project's frameworks, a test the tree showed again) runs as the tree's rows of its test now.</summary>
+    private List<TestItem> Chosen(IEnumerable<TestNode> rows)
     {
         List<TestItem> tests = [];
         HashSet<string> seen = new(StringComparer.Ordinal);
-        foreach (TestNode row in rows.Where(r => !r.Gone))
+        foreach (TestNode row in rows.SelectMany(Now))
         {
             IEnumerable<TestItem> its = row.Kind == TestNodeKind.Row ? row.Item is { } item ? [item] : row.Parent!.Items : row.Methods.SelectMany(m => m.Items);
             tests.AddRange(its.Where(t => seen.Add(t.Key)));
         }
         return tests;
+    }
+
+    /// <summary>A row as the tree has it now: itself while it is in the tree; once gone, a method's or data row's test under
+    /// the tree's methods of the same project and full name (its own framework's alone when it had one and that is there).</summary>
+    private IEnumerable<TestNode> Now(TestNode row)
+    {
+        if (!row.Gone)
+        {
+            return [row];
+        }
+        TestNode? method = row.Kind switch
+        {
+            TestNodeKind.Method => row,
+            TestNodeKind.Row => row.Parent,
+            _ => null,
+        };
+        if (method is not { FullName: { } name, ProjectPath: { } project })
+        {
+            return [];
+        }
+        List<TestNode> same = [.. Tree.Methods.Where(m => !m.Gone && m.FullName == name && m.ProjectPath is { } its && PathNames.Same(its, project))];
+        if (method.Framework is { } framework && same.Where(m => m.Framework == framework).ToList() is { Count: > 0 } its)
+        {
+            same = its;
+        }
+        return row.Kind == TestNodeKind.Row ? same.SelectMany(m => m.Children.Where(c => c.Name == row.Name)) : same;
     }
 
     /// <summary>The tree for the test projects: each one's tests from its code and from what was discovered in it, and
