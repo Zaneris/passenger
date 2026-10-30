@@ -291,9 +291,11 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach,
   Restart and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time
   (`TakeStartAsync`); Stop ends every session and recording before the programs go.
-- **Containers.** The person's `docker` CLI and context only, never the Engine API or a Docker package; a service's name
-  always after `--`. Compose's own model is the plan, Passenger's override goes to the state, and the tools downloaded
-  from the release are SHA256-checked. Podman works both ways it's set up (`EngineState.IsPodman`).
+- **Containers.** An app's variables are named in Core's `AppVariables` (its environment
+  `AspNetCoreVariables.EnvironmentOf`, HTTPS `ServesHttps`), the engine's in `EngineVariables`; a compose file is
+  `ComposeFiles.IsCompose`. The person's `docker` CLI and context only, never the Engine API or a Docker package; a
+  service's name always after `--`. Compose's own model is the plan, Passenger's override goes to the state, and the
+  tools downloaded from the release are SHA256-checked. Podman works both ways it's set up (`EngineState.IsPodman`).
 - **Aspire.** `AspireController` (the IDE execution protocol on loopback, bearer tokens checked first),
   `AspireInteractions` (gRPC, its C# checked in), `AspireClient` (the CLI, for an AppHost Passenger didn't start).
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
