@@ -154,6 +154,33 @@ public class ResourceFilesTests
     }
 
     [Theory]
+    [InlineData("Apple", new[] { "Apple", "Bye", "Greeting" })]
+    [InlineData("Cancel", new[] { "Bye", "Cancel", "Greeting" })]
+    [InlineData("Zed", new[] { "Bye", "Greeting", "Zed" })]
+    public void A_unit_written_into_a_one_line_XLIFF_file_goes_inside_its_body_in_order_of_the_ids(string key, string[] ids)
+    {
+        const string Text = "<?xml version=\"1.0\" encoding=\"utf-8\"?><xliff xmlns=\"urn:oasis:names:tc:xliff:document:1.2\" version=\"1.2\">"
+            + "<file datatype=\"xml\" source-language=\"en\" target-language=\"fr\" original=\"../Strings.resx\"><body>"
+            + "<trans-unit id=\"Bye\"><source>Goodbye</source><target state=\"translated\">Au revoir</target><note /></trans-unit>"
+            + "<trans-unit id=\"Greeting\"><source>Hello</source><target state=\"new\">Hello</target><note /></trans-unit>"
+            + "</body></file></xliff>";
+        string made = ResourceFiles.WithTarget(Text, key, "Fait", "Done", null)!;
+        System.Xml.Linq.XDocument read;
+        try
+        {
+            read = System.Xml.Linq.XDocument.Parse(made);
+        }
+        catch (System.Xml.XmlException error)
+        {
+            throw new Xunit.Sdk.XunitException($"Adding '{key}' to a one-line XLIFF file left it no longer XML ({error.Message}), so the build refuses it:\n{made}");
+        }
+        System.Xml.Linq.XNamespace xliff = "urn:oasis:names:tc:xliff:document:1.2";
+        Assert.Equal(ids, read.Root!.Element(xliff + "file")!.Element(xliff + "body")!.Elements(xliff + "trans-unit").Select(u => (string?)u.Attribute("id")));
+        Assert.True(ResourceFiles.Parse("x.fr.xlf", "fr", ResourceFormat.Xliff, made).Entry(key) is { Value: "Fait", Translated: true }, made);
+        Assert.StartsWith("<?xml version=\"1.0\" encoding=\"utf-8\"?><xliff ", made, StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData("Strings.fr", "fr")]
     [InlineData("Strings.zh-Hans", "zh-Hans")]
     [InlineData("Strings.pt-BR", "pt-BR")]

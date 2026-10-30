@@ -393,7 +393,9 @@ public static class ResourceFiles
         if (neighbour is not null)
         {
             int lineStart = text.LastIndexOf('\n', Math.Max(0, neighbour.Start - 1)) + 1;
-            return text[..lineStart] + made + newline + text[lineStart..];
+            return text.AsSpan(lineStart, neighbour.Start - lineStart).IsWhiteSpace()
+                ? text[..lineStart] + made + newline + text[lineStart..]
+                : text[..neighbour.Start] + made.TrimStart() + newline + outer + text[neighbour.Start..];
         }
         if (model is not null)
         {
