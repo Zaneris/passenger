@@ -35,4 +35,29 @@ public sealed class ExpectationTests
         Assert.False(result.Passed, "An element at index 99999999999 of a one-item array was found");
         Assert.Equal("none", result.Actual);
     }
+
+    /// <summary>A body cut at <see cref="EndpointClient.MostRead"/>: what the unread rest could hold fails, naming the cut,
+    /// and what the part read holds passes.</summary>
+    [Fact]
+    public void A_body_cut_short_fails_what_its_unread_rest_could_hold_and_passes_what_its_part_read_holds()
+    {
+        EndpointResponse cut = new() { Status = 200, Body = new string('a', 1000), Cut = true };
+
+        ExpectationResult lacks = Expectation.Read("body not-contains \"x\"").Check(cut);
+        Assert.False(lacks.Passed, "body not-contains \"x\" passed on a body cut short, whose unread rest may hold an x");
+        Assert.Contains("cut at 16 MB", lacks.Actual, StringComparison.Ordinal);
+        foreach (string unknowable in (string[])["body not-equals \"b\"", "body equals \"a\"", "json $.items exists"])
+        {
+            ExpectationResult result = Expectation.Read(unknowable).Check(cut);
+            Assert.True(!result.Passed && result.Actual.Contains("cut at 16 MB", StringComparison.Ordinal),
+                $"{unknowable} on a body cut short did not fail naming the cut: {(result.Passed ? "passed" : "failed")}, got {result.Actual}");
+        }
+
+        Assert.True(Expectation.Read("body contains aaa").Check(cut).Passed, "body contains aaa failed on a cut body whose part read holds it");
+        Assert.True(Expectation.Read("body exists").Check(cut).Passed, "body exists failed on a cut body");
+        ExpectationResult missing = Expectation.Read("body contains x").Check(cut);
+        Assert.True(!missing.Passed && missing.Actual.Contains("not in the part read", StringComparison.Ordinal),
+            $"body contains x on a cut body without one did not fail saying the part read lacks it: got {missing.Actual}");
+        Assert.True(Expectation.Read("body not-contains \"x\"").Check(cut with { Cut = false }).Passed, "body not-contains \"x\" failed on a whole body without one");
+    }
 }

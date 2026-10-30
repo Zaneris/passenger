@@ -130,11 +130,29 @@ public sealed partial record Expectation(string Kind, string Subject, string Op,
                 string[] values = [.. response.Headers.Where(h => h.Key.Equals(Subject, StringComparison.OrdinalIgnoreCase)).Select(h => h.Value)];
                 return Text(values.Length == 0 ? null : string.Join(", ", values));
             case "body":
-                return Text(response.Body);
+                return response.Cut ? CutText(response.Body) : Text(response.Body);
             default:
-                return Json(response.Body);
+                return response.Cut ? new ExpectationResult(this, false, Cut("which this needs whole")) : Json(response.Body);
         }
     }
+
+    /// <summary>The criterion on the part read of a body longer than <see cref="EndpointClient.MostRead"/>: one met in the
+    /// part read (it exists, contains, matches) passes, and one the unread rest could change fails saying the body was cut.</summary>
+    private ExpectationResult CutText(string read)
+    {
+        if (Op is "exists" or "missing" or "empty")
+        {
+            return Text(read);
+        }
+        if (Op is "contains" or "matches")
+        {
+            ExpectationResult found = Text(read);
+            return found.Passed ? found : found with { Actual = Cut("not in the part read") };
+        }
+        return new ExpectationResult(this, false, Cut("which this needs whole"));
+    }
+
+    private static string Cut(string why) => $"a body cut at {EndpointClient.MostRead / 1024 / 1024} MB, {why}";
 
     private ExpectationResult Text(string? actual)
     {
