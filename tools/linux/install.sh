@@ -98,6 +98,20 @@ is_passenger "$here" || fail "$here holds no Passenger: run the install.sh of an
 case $dest in
     *[\"\`\$\\%]*) fail "$dest has a character a desktop entry cannot name (\" \` \$ \\ %)" ;;
 esac
+# The command's link goes only where nothing is or a link leads to a Passenger: another program of its name stays.
+if [ -L "$link" ]; then
+    to=$(readlink "$link")
+    led=$(readlink -f "$link" || true)
+    if [ "$to" != "$dest/passenger" ] && ! { [ "${led##*/}" = passenger ] && is_passenger "${led%/*}"; }; then
+        fail "$link is there, a link to $to, which is not Passenger: move it away first"
+    fi
+elif [ -d "$link" ]; then
+    fail "$link is there, a folder: move it away first"
+elif [ -x "$link" ]; then
+    fail "$link is there, another program of that name: move it away first"
+elif [ -e "$link" ]; then
+    fail "$link is there, a file: move it away first"
+fi
 
 # The new files beside the old, then swapped in, so a Passenger still running keeps the files it has open.
 if [ "$here" != "$dest" ]; then
