@@ -660,7 +660,7 @@ public sealed partial class BuildRunController
 
     /// <summary>Where a build's end has more to see: its problems in Problems' Build, the first chosen, or the Build window's
     /// output when it failed with none read; nowhere for a build that succeeded cleanly, was stopped or never started.</summary>
-    private StatusPlace? Place(BuildOutcome ended) =>
+    public StatusPlace? Place(BuildOutcome ended) =>
         ended is { Succeeded: true, Published: { } folder } && parts.ShowFolder is { } show
             ? new StatusPlace($"open {Path.GetFileName(folder)} in {FileManager.Name}", () => show(folder))
         : ended.Problems.Count > 0 ? StatusPlace.Problems(parts.Dock, parts.Views.Problems, ProblemsTab.Build, _ => true)

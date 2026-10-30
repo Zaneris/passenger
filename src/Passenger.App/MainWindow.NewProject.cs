@@ -1,6 +1,7 @@
 using Passenger.App.Editors;
 using Passenger.App.Explorer;
 using Passenger.App.MSBuild;
+using Passenger.App.Run;
 using Passenger.App.Templates;
 using Passenger.Core;
 using Passenger.Text;
@@ -88,7 +89,7 @@ public partial class MainWindow
                 return status.Text;
             }
             Reveal(into, last);
-            string? problem = made.Setup == ProjectSetup.None ? null : await SetUpAsync(made.Projects[0], made.Setup, recording);
+            string? problem = made.Setup == ProjectSetup.None ? null : (await SetUpAsync(made.Projects[0], made.Setup, recording)).Problem;
             if (problem is null && await UnlandedAsync(recording) is { } unlanded)
             {
                 problem = status.Text = $"{Path.GetFileNameWithoutExtension(made.Projects[0])} could not be set up: {unlanded.Message}";
@@ -210,19 +211,24 @@ public partial class MainWindow
     }
 
     /// <summary>A new solution's service set up to run as New Solution chose, one command Undo takes back, then the solution
-    /// built: null once its configuration is chosen, else why not.</summary>
+    /// built, how the set-up went said again before the build's words once it ends, a failure marked as one: null once its
+    /// configuration is chosen, else why not.</summary>
     private async Task<string?> SetUpNewAsync(string project, ProjectSetup setup)
     {
         string? problem;
+        string said;
         using (CommandHistory.Recording recording = Editors.Commands.RecordWrites($"Set Up {Path.GetFileNameWithoutExtension(project)} with {SetupWords(setup)}"))
         {
-            problem = await SetUpAsync(project, setup, recording);
+            (problem, said) = await SetUpAsync(project, setup, recording);
             if (problem is null && await UnlandedAsync(recording) is { } unlanded)
             {
-                problem = status.Text = $"{Path.GetFileNameWithoutExtension(project)} could not be set up: {unlanded.Message}";
+                (problem, said) = NotSetUp($"{Path.GetFileNameWithoutExtension(project)} could not be set up: {unlanded.Message}");
             }
         }
-        BuildSolution();
+        TaskCompletionSource<BuildOutcome> building = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        BuildSolution(ended => building.TrySetResult(ended));
+        BuildOutcome built = await building.Task;
+        status.Say($"{said}; {built.Message}", problem is null ? null : ProblemSeverity.Warning, buildRun.Place(built));
         return problem;
     }
 

@@ -272,9 +272,64 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
             Assert.Contains("AddServiceDefaults()", File.ReadAllText(Path.Combine(folder, "Api", "Program.cs")), StringComparison.Ordinal);
             Assert.True(window.Configuration is { Aspire: true } chosen && PathNames.Same(chosen.Project, host),
                 $"The configuration chosen is {window.Configuration?.Name}, not the AppHost's: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+            Assert.False(window.IsBuilding, "New Solution's set-up was done before the solution's build ended");
+            Assert.True(window.Status?.StartsWith($"Api runs with Aspire: Run and Debug launch {window.Configuration!.Name}; Build ", StringComparison.Ordinal) == true
+                && window.StatusSeverity is null, $"Once the new solution's build ended the status bar said '{window.Status}' ({window.StatusSeverity}), not how its set-up went");
         }
         finally
         {
+            NewProjectDialog.Remembered = ProjectSetup.None;
+            window.Close();
+            TestFolders.Delete(settings);
+            TestFolders.Delete(place);
+        }
+    }
+
+    /// <summary>New Solution of a web project with Aspire whose project makes no program by the time its set-up reads it (a
+    /// library, written as Create is held): once the solution's build ends, the status bar says the set-up failed and why,
+    /// with the warning mark, before the build's words.</summary>
+    [AvaloniaFact]
+    public void New_Solution_whose_set_up_fails_says_why_once_its_build_ends()
+    {
+        string place = TestFolders.Create("aspire-unset-");
+        string settings = TestFolders.Create("settings-");
+        TestFolders.Write(place, "Directory.Build.props", "<Project><PropertyGroup><AspireUseCliBundle>false</AspireUseCliBundle></PropertyGroup></Project>");
+        AspireApp.UseFeed(place);
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
+        window.Show();
+        window.KeepLayout();
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Ui.Click(window.Welcome.NewSolutionButton);
+            NewProjectDialog dialog = NewServiceSetupTests.Opened(window);
+            dialog.Folder = place;
+            NewServiceSetupTests.Choose(dialog, "web");
+            dialog.SolutionName = "Mall";
+            dialog.ProjectName = "Api";
+            dialog.Framework = TestProjects.Framework;
+            dialog.SetupChooser.SelectedIndex = (int)ProjectSetup.Aspire;
+            Ui.Settle();
+            Task held = dialog.HoldNextMade(release.Task);
+            Ui.Click(dialog.CreateButton, settle: false);
+            Ui.PumpUntil(() => held.IsCompleted || dialog.Problem is not null, "dotnet new to make Api", TimeSpan.FromMinutes(5));
+            Assert.True(dialog.Problem is null, $"Api was not made: {dialog.Problem}");
+            string api = Path.Combine(place, "Mall", "Api", "Api.csproj");
+            File.WriteAllText(api, File.ReadAllText(api).Replace("<PropertyGroup>", "<PropertyGroup>\n    <OutputType>Library</OutputType>", StringComparison.Ordinal));
+            release.SetResult();
+            Ui.WaitFor(() => !dialog.IsVisible || dialog.Problem is not null, "Create to end", TimeSpan.FromMinutes(5));
+            Assert.True(dialog.Problem is null, $"Api was not made: {dialog.Problem}");
+
+            const string Why = "Api was not set up to run with Aspire: it makes no program to run";
+            Assert.Equal(Why, NewServiceSetupTests.SetUp(window));
+            Assert.False(window.IsBuilding, "New Solution's set-up was done before the solution's build ended");
+            Assert.True(window.Status?.StartsWith($"{Why}; Build ", StringComparison.Ordinal) == true && window.StatusSeverity == Passenger.App.Run.ProblemSeverity.Warning,
+                $"Once the new solution's build ended the status bar said '{window.Status}' ({window.StatusSeverity}), not that its set-up failed and why");
+            Assert.False(Directory.Exists(Path.Combine(place, "Mall", "Mall.AppHost")), "The set-up that failed made an AppHost");
+        }
+        finally
+        {
+            release.TrySetResult();
             NewProjectDialog.Remembered = ProjectSetup.None;
             window.Close();
             TestFolders.Delete(settings);

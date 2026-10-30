@@ -17,7 +17,7 @@ namespace Passenger.App;
 public partial class MainWindow
 {
     /// <summary>The set-up of the last service New Solution or New Project made in this window: null once it is made and
-    /// its configuration chosen, else why not, which the status bar says too.</summary>
+    /// its configuration chosen, else why not, which the status bar says too (New Solution's once its build has ended).</summary>
     public Task<string?>? ServiceSetUp { get; private set; }
 
     /// <summary>The longest a new project's first read is waited for before its set-up is given up, saying why.</summary>
@@ -27,8 +27,8 @@ public partial class MainWindow
     private static string ContainerProfile(ProjectSetup setup) => setup == ProjectSetup.SdkContainer ? "Container (.NET SDK)" : "Container (Dockerfile)";
 
     /// <summary>Sets a new project up to run as asked, into <paramref name="made"/>, and chooses the configuration that so
-    /// runs it: null once chosen, else why not, which the status bar says.</summary>
-    private async Task<string?> SetUpAsync(string project, ProjectSetup setup, CommandHistory.Recording made)
+    /// runs it: why not (null once chosen), and what the status bar says of it, a failure marked as one.</summary>
+    private async Task<(string? Problem, string Said)> SetUpAsync(string project, ProjectSetup setup, CommandHistory.Recording made)
     {
         using IDisposable held = BackgroundWork.Scope();
         string name = Path.GetFileNameWithoutExtension(project);
@@ -37,11 +37,11 @@ public partial class MainWindow
         made.TakeOpen();
         if (await ReadProjectAsync(project) is not { } model)
         {
-            return status.Text = $"{name} was not set up to run with {SetupWords(setup)}: it was not read within {Waits.Of(SetUpRead).TotalMinutes:0} minutes";
+            return NotSetUp($"{name} was not set up to run with {SetupWords(setup)}: it was not read within {Waits.Of(SetUpRead).TotalMinutes:0} minutes");
         }
         if (!model.IsRunnable)
         {
-            return status.Text = $"{name} was not set up to run with {SetupWords(setup)}: it makes no program to run";
+            return NotSetUp($"{name} was not set up to run with {SetupWords(setup)}: it makes no program to run");
         }
         string? problem;
         Func<RunConfiguration, bool> runs;
@@ -63,19 +63,27 @@ public partial class MainWindow
                 runs = c => c.Aspire && host is not null && PathNames.Same(c.Project, host);
                 break;
             default:
-                return null;
+                return (null, string.Empty);
         }
         if (problem is not null)
         {
-            return status.Text = $"{name} was not set up to run with {SetupWords(setup)}: {problem}";
+            return NotSetUp($"{name} was not set up to run with {SetupWords(setup)}: {problem}");
         }
         session.Configurations.Configure(Projects);
         if (Configurations.FirstOrDefault(runs) is not { } chosen || !SelectConfiguration(chosen.Name))
         {
-            return status.Text = $"{name} was set up to run with {SetupWords(setup)}, but no run configuration runs it so";
+            return NotSetUp($"{name} was set up to run with {SetupWords(setup)}, but no run configuration runs it so");
         }
-        status.Text = $"{name} runs with {SetupWords(setup)}: Run and Debug launch {chosen.Name}";
-        return null;
+        string said = $"{name} runs with {SetupWords(setup)}: Run and Debug launch {chosen.Name}";
+        status.Text = said;
+        return (null, said);
+    }
+
+    /// <summary>A set-up that failed, said with the warning mark so it reads as a failure: its words, as why and as said.</summary>
+    private (string? Problem, string Said) NotSetUp(string why)
+    {
+        status.Say(why, ProblemSeverity.Warning);
+        return (why, why);
     }
 
     private static string SetupWords(ProjectSetup setup) => setup switch
