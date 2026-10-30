@@ -562,6 +562,49 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         }
     }
 
+    /// <summary>A .dockerignore the context has already, keeping a nuget.config Add Docker Support's Dockerfile mounts as a
+    /// secret (its line leaves out the lower-case spelling alone), is given the line leaving every spelling out, in its own
+    /// line breaks, the rest of it as it was; Undo takes the line back with the Dockerfile. One that leaves every spelling
+    /// out already, or every file, is given nothing, and one taking nuget.config back after leaving it out is.</summary>
+    [AvaloniaFact]
+    public void Add_docker_support_adds_the_line_keeping_nuget_config_out_to_a_dockerignore_there_and_undo_takes_it_back()
+    {
+        foreach ((string had, bool kept) in ((string, bool)[])[(DockerFiles.Ignore, false), ("*\n", false), ("# Mine\nbin/\n**/[Nn]u[Gg]et.[Cc]onfig\n", false),
+            ("**/nuget.config\n", true), ("**/[Nn][Uu][Gg][Ee][Tt].[Cc][Oo][Nn][Ff][Ii][Gg]\n!**/NuGet.Config\n", true), ("nuget.config\nNuGet.Config\n", true)])
+        {
+            Assert.True(kept == DockerFiles.IgnoringNuGetConfig(had) is not null,
+                $"A .dockerignore of [{had.ReplaceLineEndings(" | ")}] {(kept ? "keeping" : "leaving out")} a nuget.config was {(kept ? "given no line" : "given the line")}");
+        }
+
+        const string Had = "# The team's own.\r\n**/bin\r\n**/obj\r\n**/nuget.config";
+        string ignore = app.PathOf(".dockerignore");
+        File.WriteAllText(ignore, Had);
+        MainWindow window = app.Open(null);
+        try
+        {
+            AwaitEvaluated(window);
+            string dockerfile = app.PathOf("Api/Dockerfile");
+            Assert.Null(Ui.Await(window.AddDockerSupportAsync(app.PathOf("Api/Api.csproj"), DockerSupportKind.Dockerfile), "Docker Support added"));
+            Assert.Equal($"{Had}\r\n{DockerFiles.NuGetConfigIgnored}\r\n", File.ReadAllText(ignore));
+            Assert.Contains("--mount=type=secret,id=nugetconfig,", File.ReadAllText(dockerfile), StringComparison.Ordinal);
+            Assert.Contains("the line keeping nuget.config", window.Status, StringComparison.Ordinal);
+
+            List<string> asked = Answer(window);
+            window.ExplorerView.Reveal(app.PathOf("Api/Api.csproj"));
+            Ui.Settle();
+            Ui.ClickRow(window, Row(window, NodeKind.Project, "Api"));
+            Ui.Run(window, EditorActions.Undo);
+            Assert.Equal(["Undo"], asked);
+            Assert.Equal(Had, File.ReadAllText(ignore));
+            Assert.False(File.Exists(dockerfile), $"Undo left the Dockerfile: {window.Status}");
+        }
+        finally
+        {
+            window.Close();
+            app.Reset();
+        }
+    }
+
     [AvaloniaFact]
     public void Add_docker_support_by_the_sdk_sets_a_workers_container_properties_and_leaves_the_rest_of_its_project_file_as_it_was()
     {

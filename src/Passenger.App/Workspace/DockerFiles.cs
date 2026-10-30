@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Passenger.App.Containers;
 using Passenger.Core;
 using Passenger.Host;
@@ -253,8 +254,126 @@ public static class DockerFiles
     public const string Ignore =
         "# Kept out of the build's context, so a change to them never rebuilds an image.\n"
         + "**/bin\n**/obj\nartifacts/\n**/.git\n**/.gitignore\n**/.vs\n**/.vscode\n**/.idea\n**/*.user\n**/node_modules\n**/npm-debug.log\n"
-        + "**/.env\n**/secrets.json\n**/[Nn][Uu][Gg][Ee][Tt].[Cc][Oo][Nn][Ff][Ii][Gg]\n"
+        + "**/.env\n**/secrets.json\n" + NuGetConfigIgnored + "\n"
         + "**/.dockerignore\n**/Dockerfile*\n**/compose*.y*ml\n**/docker-compose*\nLICENSE\nREADME.md\n";
+
+    /// <summary>The line of a .dockerignore that leaves nuget.config out, in any letter case, wherever it stands.</summary>
+    public const string NuGetConfigIgnored = "**/[Nn][Uu][Gg][Ee][Tt].[Cc][Oo][Nn][Ff][Ii][Gg]";
+
+    /// <summary>A .dockerignore's text with <see cref="NuGetConfigIgnored"/> added at its end, in its line breaks, where
+    /// it keeps a nuget.config in the build's context (by a name NuGet reads, at the root or in a folder, as Docker reads
+    /// its patterns: <see cref="LeavesOut"/>); null where it leaves every one out already.</summary>
+    public static string? IgnoringNuGetConfig(string text)
+    {
+        string[] names = ["nuget.config", "NuGet.config", "NuGet.Config"];
+        if (names.All(n => LeavesOut(text, n) && LeavesOut(text, $"Project/{n}") && LeavesOut(text, $"Project/Folder/{n}")))
+        {
+            return null;
+        }
+        string newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        return $"{text}{(text.Length == 0 || text.EndsWith('\n') ? string.Empty : newline)}{NuGetConfigIgnored}{newline}";
+    }
+
+    /// <summary>Whether a .dockerignore leaves a path of the build's context ('/' between its folders) out, as Docker reads
+    /// it: a line a pattern (one starting '#' a comment), cleaned as a path, '*' and '?' within a name, '**' across folders,
+    /// a '!' line taking back what came before; the last line matching the path or a folder holding it decides.</summary>
+    public static bool LeavesOut(string ignore, string path)
+    {
+        bool left = false;
+        string[] folders = path.Split('/');
+        foreach (string line in ignore.TrimStart('\uFEFF').Split('\n'))
+        {
+            string pattern = line.Trim();
+            if (line.StartsWith('#') || pattern.Length == 0)
+            {
+                continue;
+            }
+            bool back = pattern[0] == '!';
+            // A line taking back is read only of what is left out, any other only of what is not.
+            if (back != left)
+            {
+                continue;
+            }
+            Regex matching = IgnorePattern(Cleaned(back ? pattern[1..].Trim() : pattern));
+            if (matching.IsMatch(path) || Enumerable.Range(1, folders.Length - 1).Any(n => matching.IsMatch(string.Join('/', folders[..n]))))
+            {
+                left = !back;
+            }
+        }
+        return left;
+    }
+
+    /// <summary>A pattern as a path cleaned (its '.' parts and empty ones gone, a '..' taking the part before it) and its
+    /// leading '/' taken off.</summary>
+    private static string Cleaned(string pattern)
+    {
+        List<string> parts = [];
+        foreach (string part in pattern.Split('/'))
+        {
+            if (part == "..")
+            {
+                if (parts.Count > 0 && parts[^1] != "..")
+                {
+                    parts.RemoveAt(parts.Count - 1);
+                }
+                else if (!pattern.StartsWith('/'))
+                {
+                    parts.Add(part);
+                }
+            }
+            else if (part is not ("" or "."))
+            {
+                parts.Add(part);
+            }
+        }
+        return parts.Count == 0 ? "." : string.Join('/', parts);
+    }
+
+    /// <summary>A cleaned pattern as Docker makes it a regular expression of a whole path: '**' any folders (none too), '*'
+    /// and '?' within a name, '\' escaping the character after it, the characters a path pattern gives no meaning
+    /// escaped, the rest ('[…]' classes among them) as written.</summary>
+    private static Regex IgnorePattern(string pattern)
+    {
+        StringBuilder made = new("^");
+        for (int i = 0; i < pattern.Length; i++)
+        {
+            char c = pattern[i];
+            if (c == '*' && i + 1 < pattern.Length && pattern[i + 1] == '*')
+            {
+                i++;
+                if (i + 1 < pattern.Length && pattern[i + 1] == '/')
+                {
+                    i++;
+                }
+                made.Append(i + 1 == pattern.Length ? ".*" : "(.*/)?");
+            }
+            else if (c == '*')
+            {
+                made.Append("[^/]*");
+            }
+            else if (c == '?')
+            {
+                made.Append("[^/]");
+            }
+            else if (c == '\\')
+            {
+                made.Append(i + 1 < pattern.Length ? Regex.Escape(pattern[++i].ToString()) : @"\\");
+            }
+            else
+            {
+                made.Append(c is '.' or '+' or '(' or ')' or '|' or '{' or '}' or '$' ? $"\\{c}" : c.ToString());
+            }
+        }
+        try
+        {
+            return new Regex(made.Append('$').ToString(), RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        }
+        catch (ArgumentException)
+        {
+            // A class left open, which Docker refuses too: it matches nothing here.
+            return new Regex("(?!)", RegexOptions.None, TimeSpan.FromSeconds(1));
+        }
+    }
 
     /// <summary>A compose service's name from a project's: lowercase, every run of other characters a dash.</summary>
     public static string ServiceName(string name)

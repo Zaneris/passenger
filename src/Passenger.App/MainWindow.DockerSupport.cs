@@ -43,9 +43,10 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Gives a project its image: a Dockerfile beside it (and a .dockerignore at the context unless one is there),
-    /// or the SDK's container properties in its project file. Null once done and landed, else why not, which the status bar
-    /// says too. Given a command (<paramref name="into"/>), it is part of that one, else a command of its own.</summary>
+    /// <summary>Gives a project its image: a Dockerfile beside it (and a .dockerignore at the context, or the line keeping
+    /// nuget.config out of the one there: <see cref="KeepNuGetConfigOut"/>), or the SDK's container properties in its
+    /// project file. Null once done and landed, else why not, which the status bar says too. Given a command
+    /// (<paramref name="into"/>), it is part of that one, else a command of its own.</summary>
     public async Task<string?> AddDockerSupportAsync(string project, DockerSupportKind kind, CommandHistory.Recording? into = null)
     {
         if (SolutionProject(project) is not { } model || DockerContext is not { } context)
@@ -66,7 +67,11 @@ public partial class MainWindow
             return DockerSaid($"{described.Name} has a Dockerfile already: {DockerShown(had)}");
         }
         string ignore = Path.Combine(context, ".dockerignore");
-        bool ignoring = !File.Exists(ignore);
+        if (SaveBeforeWriting([ignore]) is { } unsaved)
+        {
+            return DockerSaid($"Docker Support could not be added to {described.Name}: {unsaved}");
+        }
+        IgnoreWritten ignoring = IgnoreWritten.Nothing;
         using CommandHistory.Recording? own = into is null ? Editors.Commands.Record("Add Docker Support") : null;
         CommandHistory.Recording made = into ?? own!;
         try
@@ -74,10 +79,7 @@ public partial class MainWindow
             Following([described.Dockerfile, ignore], () =>
             {
                 WriteNew(made, described.Dockerfile, DockerFiles.Dockerfile(described, context));
-                if (ignoring)
-                {
-                    WriteNew(made, ignore, DockerFiles.Ignore);
-                }
+                ignoring = KeepNuGetConfigOut(made, ignore);
             });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -89,7 +91,13 @@ public partial class MainWindow
             return DockerSaid($"Docker Support could not be added to {described.Name}: {unlanded.Message}");
         }
         OpenFile(described.Dockerfile);
-        return DockerSaid(null, ignoring ? $"Added a Dockerfile to {described.Name}, and a .dockerignore at {(Solution is { } solution ? $"{solution.Name}'s folder" : DockerShown(context))}" : $"Added a Dockerfile to {described.Name}");
+        string at = Solution is { } solution ? $"{solution.Name}'s folder" : DockerShown(context);
+        return DockerSaid(null, ignoring switch
+        {
+            IgnoreWritten.Made => $"Added a Dockerfile to {described.Name}, and a .dockerignore at {at}",
+            IgnoreWritten.NuGetConfigLeftOut => $"Added a Dockerfile to {described.Name}, and to the .dockerignore at {at} {NuGetConfigLine}",
+            _ => $"Added a Dockerfile to {described.Name}",
+        });
     }
 
     /// <summary>The SDK's container support in a project file: EnableSdkContainerSupport where the SDK does not turn it on
@@ -184,8 +192,8 @@ public partial class MainWindow
 
     /// <summary>Writes the solution's compose.yaml for the projects given, beside the backing services named (postgres,
     /// redis...) that their packages point to, listed in the solution's Solution Items; a project with no Dockerfile gets
-    /// one, and the context a .dockerignore unless it has one. Null once done and landed, else why not. Given a command
-    /// (<paramref name="into"/>), it is part of that one, else a command of its own.</summary>
+    /// one, and the context a .dockerignore (<see cref="KeepNuGetConfigOut"/>). Null once done and landed, else why not.
+    /// Given a command (<paramref name="into"/>), it is part of that one, else a command of its own.</summary>
     public async Task<string?> AddDockerComposeAsync(IReadOnlyList<string> projects, IReadOnlyList<string> services, CommandHistory.Recording? into = null)
     {
         if (Solution is not { } solution || DockerContext is not { } context)
@@ -212,12 +220,13 @@ public partial class MainWindow
         {
             return DockerSaid("No project was chosen for compose.yaml");
         }
-        if (SaveBeforeWriting([solution.Path]) is { } unsaved)
+        string compose = Path.Combine(context, "compose.yaml");
+        string ignore = Path.Combine(context, ".dockerignore");
+        if (SaveBeforeWriting([solution.Path, ignore]) is { } unsaved)
         {
             return DockerSaid($"{solution.Name} could not be changed: {unsaved}");
         }
-        string compose = Path.Combine(context, "compose.yaml");
-        string ignore = Path.Combine(context, ".dockerignore");
+        IgnoreWritten ignoring = IgnoreWritten.Nothing;
         List<string> dockerfiles = [];
         string? problem = null;
         using CommandHistory.Recording? own = into is null ? Editors.Commands.Record("Add Docker Compose") : null;
@@ -231,10 +240,7 @@ public partial class MainWindow
                     WriteNew(made, project.Dockerfile, DockerFiles.Dockerfile(project, context));
                     dockerfiles.Add(project.Name);
                 }
-                if (!File.Exists(ignore))
-                {
-                    WriteNew(made, ignore, DockerFiles.Ignore);
-                }
+                ignoring = KeepNuGetConfigOut(made, ignore);
                 WriteNew(made, compose, DockerFiles.Compose(context, composed));
                 made.Watch(solution.Path);
                 try
@@ -262,13 +268,15 @@ public partial class MainWindow
             return DockerSaid($"compose.yaml could not be added to {solution.Name}: {problem}");
         }
         OpenFile(compose);
-        return DockerSaid(null, dockerfiles.Count == 0 ? $"Added compose.yaml to {solution.Name}"
-            : $"Added compose.yaml to {solution.Name}, and a Dockerfile to {string.Join(", ", dockerfiles)}");
+        return DockerSaid(null, (dockerfiles.Count == 0 ? $"Added compose.yaml to {solution.Name}"
+            : $"Added compose.yaml to {solution.Name}, and a Dockerfile to {string.Join(", ", dockerfiles)}")
+            + (ignoring == IgnoreWritten.NuGetConfigLeftOut ? $"; added to its .dockerignore {NuGetConfigLine}" : string.Empty));
     }
 
     /// <summary>A project joins the compose file the solution's folder has as a service of it, after those there, built as
     /// Add Docker Compose builds one (<see cref="DockerFiles.Compose"/>), a Dockerfile made for it when it has none and the
-    /// context a .dockerignore unless it has one; part of the command given. Null once done and landed, else why not.</summary>
+    /// context a .dockerignore (<see cref="KeepNuGetConfigOut"/>); part of the command given. Null once done and landed,
+    /// else why not.</summary>
     public async Task<string?> AddComposeServiceAsync(string project, CommandHistory.Recording made)
     {
         if (Solution is not { } solution || DockerContext is not { } context || ComposeFileIn(context) is not { } compose)
@@ -284,11 +292,12 @@ public partial class MainWindow
             return DockerSaid(unread);
         }
         DockerProject described = DockerFiles.Describe(model, session.Workspace?.Projects ?? []);
-        if (SaveBeforeWriting([compose]) is { } unsaved)
+        string ignore = Path.Combine(context, ".dockerignore");
+        if (SaveBeforeWriting([compose, ignore]) is { } unsaved)
         {
             return DockerSaid($"{Path.GetFileName(compose)} could not be changed: {unsaved}");
         }
-        string ignore = Path.Combine(context, ".dockerignore");
+        IgnoreWritten ignoring = IgnoreWritten.Nothing;
         string? problem = null;
         try
         {
@@ -305,10 +314,7 @@ public partial class MainWindow
                 {
                     WriteNew(made, described.Dockerfile, DockerFiles.Dockerfile(described, context));
                 }
-                if (!File.Exists(ignore))
-                {
-                    WriteNew(made, ignore, DockerFiles.Ignore);
-                }
+                ignoring = KeepNuGetConfigOut(made, ignore);
                 made.Watch(compose);
                 try
                 {
@@ -330,7 +336,8 @@ public partial class MainWindow
             problem = unlanded.Message;
         }
         return problem is null
-            ? DockerSaid(null, $"{described.Name} joined {Path.GetFileName(compose)} as the service {described.Service}")
+            ? DockerSaid(null, $"{described.Name} joined {Path.GetFileName(compose)} as the service {described.Service}"
+                + (ignoring == IgnoreWritten.NuGetConfigLeftOut ? $"; added to the .dockerignore {NuGetConfigLine}" : string.Empty))
             : DockerSaid($"{described.Name} could not join {Path.GetFileName(compose)}: {problem}");
     }
 
@@ -376,6 +383,43 @@ public partial class MainWindow
         FileEncoding charset = conventions.Charset ?? FileEncoding.Utf8;
         LineSeparator separator = conventions.EndOfLine ?? LineSeparator.LF;
         FileText.Save(path, LineEndings.In(text, separator.Held()), charset.Encoding, charset.Bom, separator == LineSeparator.CR);
+    }
+
+    /// <summary>What an Add did to the context's .dockerignore.</summary>
+    private enum IgnoreWritten
+    {
+        Nothing,
+        Made,
+        NuGetConfigLeftOut,
+    }
+
+    /// <summary>What the status bar says of the line an Add gives a .dockerignore that kept nuget.config.</summary>
+    private const string NuGetConfigLine = "the line keeping nuget.config, which may hold a feed's password, out of the image";
+
+    /// <summary>The context's .dockerignore made where it has none, else given the line keeping nuget.config out of the
+    /// image where nothing in it does (<see cref="DockerFiles.IgnoringNuGetConfig"/>), its other characters as they were,
+    /// as part of the command (an open one taking the text inside it, so its Undo takes the line back too).</summary>
+    private IgnoreWritten KeepNuGetConfigOut(CommandHistory.Recording made, string ignore)
+    {
+        if (!File.Exists(ignore))
+        {
+            WriteNew(made, ignore, DockerFiles.Ignore);
+            return IgnoreWritten.Made;
+        }
+        if (FileText.Load(ignore) is not { IsBinary: false } file || DockerFiles.IgnoringNuGetConfig(file.Text) is not { } text)
+        {
+            return IgnoreWritten.Nothing;
+        }
+        made.Watch(ignore);
+        try
+        {
+            FileText.Save(ignore, text, file.Encoding, file.HasBom, file.CrBreaks);
+        }
+        finally
+        {
+            FollowWritten([ignore]);
+        }
+        return IgnoreWritten.NuGetConfigLeftOut;
     }
 
     /// <summary>A path as the status bar names it: from the folder open when it is inside it.</summary>
