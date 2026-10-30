@@ -498,6 +498,32 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"A run refused for its own build's failure did not name that build's error: {Text(sum)}");
     }
 
+    /// <summary>An agent's run of a web app, which serves until it is stopped, answers once the app's host has started,
+    /// still running and saying where it listens, rather than waiting out its time for an end that never comes; the app
+    /// answers there.</summary>
+    [Fact]
+    public async Task An_agents_run_of_a_web_app_answers_once_it_serves_saying_where_it_listens()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-web-run-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
+        TestFolders.Write(folder, "Program.cs", "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/\", () => \"served\");\napp.Run();\n");
+        // Port 0: where it listens is the port the app took, which only its own words tell.
+        TestFolders.Write(folder, "Properties/launchSettings.json",
+            "{\n  \"profiles\": {\n    \"Serve\": { \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:0\" }\n  }\n}\n");
+        await Restore.RunAsync(Path.Combine(folder, "Web.csproj"));
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        // Far longer than the app takes to start, which the answer is not to wait out.
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = "Web: Serve", ["waitSeconds"] = 600 });
+        Match listening = Regex.Match(ran.GetProperty("status").GetString() ?? string.Empty, @"^Running Web: Serve, listening at (http://127\.0\.0\.1:\d+)$");
+        Assert.True(ran.GetProperty("stillRunning").GetBoolean() && listening.Success, $"run of a web app answered: {ran.GetRawText()}");
+        using (System.Net.Http.HttpClient http = new())
+        {
+            Assert.Equal("served", await http.GetStringAsync(new Uri(listening.Groups[1].Value), TestContext.Current.CancellationToken));
+        }
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>A package an agent installs or removes is in or out of the project file and Directory.Packages.props the
     /// editor holds once the tool answers, which names the version installed and the files it changed, so the agent's
     /// next look sees what it did, not the text from before.</summary>

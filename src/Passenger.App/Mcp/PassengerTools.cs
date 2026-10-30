@@ -1023,7 +1023,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.Run, Title = "Run a configuration", Destructive = true), Description(
         "Runs a configuration as Run does, built first when it says so, and waits for it to end, an Avalonia or WPF app's " +
-        "UI or an AppHost's resources to be up. Returns its output so far and its exit code once it has one; a run refused (one " +
+        "UI or an AppHost's resources to be up, or its host's start (where it listens). Returns its output so far and its exit code once it has one; a run refused (one " +
         "running, a failed build with its errors) is an error. A terminal configuration runs in a Terminal tab (terminal_run " +
         "types into it); a container configuration answers once its services are up, with each one's state. With resource, " +
         "that one alone, its configuration started if no run has it.")]
@@ -1073,6 +1073,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         Task<int> ended = builds.RunEnd;
         LiveTree.LiveApp? app = Session.RunApp;
+        HeardServing serving = HeardServing.Ran(Session);
         if (Session.Configurations.Chosen is { } host && Session.Aspire.IsAspire(host) && Session.Aspire.FindApp(host.Project) is { } aspireApp)
         {
             AgentCall.Say($"Running {name}: waiting up to {Math.Max(0, waitSeconds)} s for it to end or its resources to be up");
@@ -1080,15 +1081,15 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         else
         {
-            AgentCall.Say($"Running {name}: waiting up to {Math.Max(0, waitSeconds)} s for it to end or its UI to be up");
-            // An app with a window never ends by itself: the wait is over once its UI is up, which the app_ tools look at.
-            await When(() => ended.IsCompleted || app is { State: not LiveTree.LiveAppState.Waiting }, TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), cancel,
-                Ends(ended), app is null ? _ => () => { } : On(h => app.StateChanged += h, h => app.StateChanged -= h));
+            AgentCall.Say($"Running {name}: waiting up to {Math.Max(0, waitSeconds)} s for it to end, its UI to be up or its host to start");
+            // A window or a serving host never ends by itself; looked at every 50 ms, its words reaching the console unannounced.
+            await Until(() => ended.IsCompleted || app is { State: not LiveTree.LiveAppState.Waiting } || serving.Serves(), TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), cancel);
         }
         int? code = ended.IsCompletedSuccessfully ? ended.Result : null;
         string output = RunOutput(200);
         string status = code is int exit ? BuildRunController.RunEnded(name, exit)
             : app is { State: LiveTree.LiveAppState.Connected } ? $"Running {name}, its UI up: app_windows, app_screenshot and app_click look at it and use it"
+            : serving.Said is { } said ? $"Running {name}, {said}"
             : $"Running {name}";
         // What an Aspire run said of itself as it started (its HTTPS over HTTP).
         if (Session.Configurations.Chosen is { } chosen && Session.Aspire.IsAspire(chosen) && Session.Aspire.FindApp(chosen.Project) is { } aspire)
@@ -1596,7 +1597,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         DateTime until = DateTime.UtcNow + limit;
         AgentCall.Say($"Debugging: waiting up to {limit.TotalSeconds:0} s for a stop, the program's end, its UI or its host's start");
         Func<bool> going = () => Session.Debug.Session is { State: DebugState.Running or DebugState.Starting };
-        HeardServing serving = new(Session.Debug);
+        HeardServing serving = HeardServing.Debugged(Session.Debug);
         // Looked at every 50 ms: the session the launch makes can come after the wait begins, and the debugger tells of none.
         await Until(() => !going() || app is { State: not LiveTree.LiveAppState.Waiting } || serving.Serves(), limit, cancel);
         if (going() && app is { State: LiveTree.LiveAppState.Connected })
@@ -1611,18 +1612,26 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             : started;
     }
 
-    /// <summary>The debugged program's output heard as it comes, each line once it is whole, from its Debug console or its
-    /// terminal tab, for the words its host says as it starts serving (<see cref="ListeningLines"/>).</summary>
-    private sealed class HeardServing(DebugController debugger)
+    /// <summary>A program's output heard as it comes, each line once it is whole, from its console or its terminal tab, for
+    /// the words its host says as it starts serving (<see cref="ListeningLines"/>): the debugged program's, or Run's.</summary>
+    private sealed class HeardServing(Func<object?> program, Func<global::Passenger.Terminal.TerminalSession?> terminal, Func<TextSnapshot> console)
     {
         /// <summary>How long more addresses are listened for after the first, where the host never says it started.</summary>
         private static readonly TimeSpan MoreAddresses = TimeSpan.FromSeconds(1);
 
-        private DebugSession? session;
+        private object? heard;
         private ListeningLines lines = new();
         private int consoleNext;
         private long terminalNext;
         private long firstAddress;
+
+        /// <summary>The program the debugger shows (<see cref="DebugController.Session"/>), from its Debug console or its tab.</summary>
+        public static HeardServing Debugged(DebugController debugger) =>
+            new(() => debugger.Session, () => debugger.Session?.Terminal?.Session, () => debugger.Output(debugger.Session));
+
+        /// <summary>Run's program, from the Run console or its terminal configuration's tab.</summary>
+        public static HeardServing Ran(ProjectSession session) =>
+            new(() => session.RunProgram, () => (session.RunProgram as TerminalRun)?.Session, session.Runner.Shown);
 
         /// <summary>Whether the program serves now: its host said it started, or an address was heard a moment ago.</summary>
         public bool Serves()
@@ -1637,21 +1646,21 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
         private void Hear()
         {
-            if (debugger.Session is not { } now)
+            if (program() is not { } now)
             {
                 return;
             }
-            if (now != session)
+            if (now != heard)
             {
-                session = now;
+                heard = now;
                 lines = new ListeningLines();
                 consoleNext = 0;
                 terminalNext = 0;
             }
             int had = lines.Addresses.Count;
-            if (now.Terminal is { } inTerminal)
+            if (terminal() is { } inTerminal)
             {
-                global::Passenger.Terminal.TerminalScreen screen = inTerminal.Session.Screen;
+                global::Passenger.Terminal.TerminalScreen screen = inTerminal.Screen;
                 // The cursor's line may still be written; those above it are whole.
                 long whole = screen.ScreenTop + screen.CursorRow;
                 for (long line = Math.Max(terminalNext, screen.FirstLine); line < whole; line++)
@@ -1662,7 +1671,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
             else
             {
-                TextSnapshot text = debugger.Output(now);
+                TextSnapshot text = console();
                 // The last line has no break yet; a console that dropped its oldest lines is read again from its first.
                 int whole = text.LineCount - 1;
                 consoleNext = whole < consoleNext ? 0 : consoleNext;
