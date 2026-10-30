@@ -117,12 +117,12 @@ public partial class ManagedDebugger
             {
                 StoredReferenceKind.StaticClassVariable => new DataBreakpointAnswer(null, "Static fields and properties are not supported"),
                 StoredReferenceKind.StackVariable when container.DebuggerProxyInstance is not null =>
-                    new DataBreakpointAnswer(null, "These are the members its debugger view shows; its own are under Raw View"),
+                    new DataBreakpointAnswer(null, $"These are the members its debugger view shows; its own are under {DapRows.RawView}"),
                 StoredReferenceKind.StackVariable or StoredReferenceKind.RawView or StoredReferenceKind.ArrayRange => Locate(container.ObjectValue!, name, container.ThreadId),
                 _ => new DataBreakpointAnswer(null, NotAMember),
             };
         }
-        catch (Exception error) when (error is COMException or InvalidOperationException or ArgumentException or InvalidCastException)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             _logger?.Invoke($"dataBreakpointInfo {name}: {error}");
             return new DataBreakpointAnswer(null, $"The debugger could not read {name}: {error.Message}");
@@ -431,7 +431,7 @@ public partial class ManagedDebugger
         {
             ApplyDataRegisters();
         }
-        catch (Exception error) when (error is COMException or InvalidOperationException)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             _logger?.Invoke($"Data breakpoints could not be taken out of the program: {error.Message}");
         }

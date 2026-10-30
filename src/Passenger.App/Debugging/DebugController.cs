@@ -2437,7 +2437,7 @@ public sealed class DebugController : IDisposable
     /// <summary>A watched member as a data breakpoint's stop names it: the member on its object, and its type.</summary>
     private static string DataLocation(VariableNode node)
     {
-        VariableNode owner = node.Parent is { Name: "Raw View", Parent: { } viewed } ? viewed : node.Parent!;
+        VariableNode owner = node.Parent is { Name: DapRows.RawView, Parent: { } viewed } ? viewed : node.Parent!;
         string what = owner.Expression ?? owner.Name;
         return owner.Type is { Length: > 0 } type ? $"{node.Name} on {what} ({type})" : $"{node.Name} on {what}";
     }

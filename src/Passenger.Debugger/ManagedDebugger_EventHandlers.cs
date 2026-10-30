@@ -135,12 +135,12 @@ public partial class ManagedDebugger
         ModuleSet_Version++;
         TryBindEntryBreakpoint(moduleInfo);
 
-        if (moduleName is "System.Private.CoreLib.dll")
+        if (IsCoreLib(moduleInfo))
         {
             Passenger.Debugger.ExpressionEvaluator.Cil.CilValue.PointerSize = metadataReader.PointerSize;
             Passenger.Debugger.ExpressionEvaluator.Cil.CilValue.RuntimeVersion = metadataReader.PeMetadataReader.GetAssemblyDefinition().Version.Major;
             // Evaluations call methods on primitives through their value classes.
-            MapRuntimePrimitiveTypesToCorDebugClass(corModule);
+            MapRuntimePrimitiveTypesToCorDebugClass(moduleInfo);
             // Made with CoreLib, which loads before any stop.
             RuntimeAssemblyPrimitiveTypeClasses runtimeAssemblyPrimitiveTypeClasses = new RuntimeAssemblyPrimitiveTypeClasses(CorElementToValueClassMap, CorVoidClass, CorDecimalClass);
             _expressionEvaluator = new CilExpressionEvaluator(runtimeAssemblyPrimitiveTypeClasses, this);

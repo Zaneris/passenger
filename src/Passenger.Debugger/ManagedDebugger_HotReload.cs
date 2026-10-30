@@ -71,9 +71,9 @@ public partial class ManagedDebugger
     /// or why they are unknown.</summary>
     public (IReadOnlyList<string>? Capabilities, string? Unknown) HotReloadCapabilities()
     {
-        if (_modules.Values.FirstOrDefault(m => m.ModuleName == "System.Private.CoreLib.dll") is not { } coreLib)
+        if (CoreLib is not { } coreLib)
         {
-            return (null, "The program's runtime has not loaded its CoreLib yet");
+            return (null, CoreLibNotLoaded);
         }
         string? said = coreLib.MetadataReader.ConstantString("System.Reflection.Metadata.MetadataUpdater", "GetCapabilities");
         return said is null
@@ -103,7 +103,7 @@ public partial class ManagedDebugger
             }
             flags = module.JITCompilerFlags;
         }
-        catch (COMException error)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             info.WhyNotEditable = $"The runtime would not say whether {info.ModuleName} can be edited: {error.Message}";
             return;
@@ -172,7 +172,7 @@ public partial class ManagedDebugger
             {
                 frames = [.. EnumerateFramesForThread(thread.Thread)];
             }
-            catch (COMException)
+            catch (Exception error) when (Failures.OfRuntime(error))
             {
                 continue;
             }
@@ -226,7 +226,7 @@ public partial class ManagedDebugger
                         ? same with { Flags = same.Flags | flags }
                         : new ActiveStatementInfo(key.Item1, token, version, key.Item4, document, startLine, startColumn, endLine, endColumn, flags);
                 }
-                catch (COMException)
+                catch (Exception error) when (Failures.OfRuntime(error))
                 {
                     // A frame the runtime will not describe (being unwound) has no statement to tell of.
                 }
@@ -307,7 +307,7 @@ public partial class ManagedDebugger
         {
             module.MetadataReader.AddGeneration(update.Metadata, update.IL, update.Pdb, update.UpdatedMethods, update.Lines, update.TextChanges);
         }
-        catch (Exception error) when (error is BadImageFormatException or InvalidOperationException)
+        catch (Exception error) when (Failures.OfReading(error))
         {
             // The program runs the new code; only its lines are unknown to the debugger, which says so.
             _logger?.Invoke($"The debug information of the update to {module.ModuleName} could not be read: {error.Message}");
@@ -373,7 +373,7 @@ public partial class ManagedDebugger
             _logger?.Invoke($"  {module.ModuleName}'s updated metadata saved: {size} bytes");
             return saved;
         }
-        catch (Exception error) when (error is COMException or InvalidCastException)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             _logger?.Invoke($"  {module.ModuleName}'s updated metadata could not be read: {error.Message}");
             return null;
@@ -444,7 +444,7 @@ public partial class ManagedDebugger
                 _logger?.Invoke($"  The old code runs on from IL_{remap.OldILOffset:X4}: no statement of the new code is known to start there");
             }
         }
-        catch (Exception error) when (error is COMException or InvalidOperationException)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             _logger?.Invoke($"A remap opportunity could not be taken: {error.Message}");
         }
@@ -513,7 +513,7 @@ public partial class ManagedDebugger
                 ICorDebugILFrame? now = complete.Thread.ActiveFrame as ICorDebugILFrame;
                 _logger?.Invoke($"The {_lastStep} under way on thread {thread} goes on in the new code, v{(now is null ? null : ModuleMetadataReader.VersionOf(now))} IL_{now?.IP.pnOffset:X4}");
             }
-            catch (Exception error) when (error is COMException or InvalidOperationException)
+            catch (Exception error) when (Failures.OfRuntime(error))
             {
                 _logger?.Invoke($"The step could not go on in the new code: {error.Message}");
             }

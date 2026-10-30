@@ -309,7 +309,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         // Each turn the racing thread's exception finds its handler before, as or after the step ends.
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         (int letGo, int stepped, _) = RaceLines;
-        DapExceptionOptions raced = new([new DapExceptionPathSegment(["CLR"]), new DapExceptionPathSegment(["RaceException"])], "always")
+        DapExceptionOptions raced = new([new DapExceptionPathSegment(["CLR"]), new DapExceptionPathSegment(["RaceException"])], DapBreakModes.Always)
         {
             Condition = "$exception.Message.Length < 0",
         };

@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -62,14 +61,12 @@ internal sealed partial class AsyncStepper
     /// is a class (a Debug build's), read with nothing run in the program, else the id its builder gives a debugger.</summary>
     private sealed record RunId(ICorDebugHandleValue Handle, bool IsStateMachine);
 
-    private readonly Dictionary<ICorDebugModule, ModuleInfo> _modules;
     // Every call comes under the engine's lock (a request or a runtime event at a time), so the stepper needs no lock of its own.
     private AsyncStep? _currentAsyncStep;
     private AsyncBreakpoint? _notifyDebuggerBreakpoint;
 
-    public AsyncStepper(Dictionary<ICorDebugModule, ModuleInfo> modules, ManagedDebugger debugger)
+    public AsyncStepper(ManagedDebugger debugger)
     {
-        _modules = modules;
         _debugger = debugger;
     }
 
@@ -120,21 +117,10 @@ internal sealed partial class AsyncStepper
     {
         try
         {
-            const string assemblyName = "System.Private.CoreLib.dll";
             const string className = "System.Threading.Tasks.Task";
             const string methodName = "NotifyDebuggerOfWaitCompletion";
 
-            ICorDebugModule? targetModule = null;
-            foreach (ModuleInfo module in _modules.Values)
-            {
-                if (module.Module.Name.EndsWith(assemblyName, StringComparison.OrdinalIgnoreCase))
-                {
-                    targetModule = module.Module;
-                    break;
-                }
-            }
-
-            if (targetModule is null)
+            if (_debugger.CoreLib?.Module is not { } targetModule)
             {
                 return false;
             }
@@ -383,7 +369,7 @@ internal sealed partial class AsyncStepper
         {
             return resumed.Handle.Dereference().Address == run.Handle.Dereference().Address;
         }
-        catch (COMException error)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             _debugger.Log($"Which run of the method resumed on thread {thread.Id} could not be told: {error.Message}");
             return true;
@@ -405,7 +391,7 @@ internal sealed partial class AsyncStepper
                 ? new RunId(heap.CreateHandle(CorDebugHandleType.HANDLE_STRONG), IsStateMachine: true)
                 : null;
         }
-        catch (Exception error) when (error is COMException or InvalidCastException)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             _debugger.Log($"The async method's state machine could not be read: {error.Message}");
             return null;
@@ -420,7 +406,7 @@ internal sealed partial class AsyncStepper
         {
             return await GetAsyncIdReference(frame) is { } id ? new RunId(id, IsStateMachine: false) : null;
         }
-        catch (Exception error) when (error is ManagedDebugger.EvalException or COMException or InvalidOperationException)
+        catch (Exception error) when (error is ManagedDebugger.EvalException || Failures.OfRuntime(error))
         {
             _debugger.Log($"Which run of the async method this is could not be read, so its first resume is taken as the step's: {error.Message}");
             return null;

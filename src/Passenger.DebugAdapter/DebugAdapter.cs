@@ -521,11 +521,10 @@ public sealed class DebugAdapter
             Description = info.Description,
             BreakMode = info.BreakMode switch
             {
-                ExceptionBreakMode.Never => "never",
-                ExceptionBreakMode.Always => "always",
-                ExceptionBreakMode.Unhandled => "unhandled",
-                ExceptionBreakMode.UserUnhandled => "userUnhandled",
-                _ => "unhandled",
+                ExceptionBreakMode.Never => DapBreakModes.Never,
+                ExceptionBreakMode.Always => DapBreakModes.Always,
+                ExceptionBreakMode.UserUnhandled => DapBreakModes.UserUnhandled,
+                _ => DapBreakModes.Unhandled,
             },
             Code = info.Code,
             Details = ToProtocol(info.Details),

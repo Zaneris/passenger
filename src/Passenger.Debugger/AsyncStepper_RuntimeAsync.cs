@@ -186,18 +186,16 @@ internal sealed partial class AsyncStepper
     private bool IsDispatcher(ICorDebugFrame frame)
     {
         ICorDebugFunction function = frame.Function;
-        return function.Module.Name.EndsWith(CoreLib, StringComparison.OrdinalIgnoreCase)
+        return _debugger.FindModule(function.Module, reread: false) is { } module && ManagedDebugger.IsCoreLib(module)
             && function.Module.GetMetaDataInterface<IMetaDataImport>().GetMethodProps(function.Token).szMethod is "DispatchContinuations" or "InstrumentedDispatchContinuations";
     }
-
-    private const string CoreLib = "System.Private.CoreLib.dll";
 
     /// <summary>A field of what the thread's innermost dispatcher of continuations is doing (AsyncDispatcherInfo.t_current,
     /// read with a frame of the thread): the task it runs (CurrentTask), or the continuation it goes on with next
     /// (NextContinuation). None with no dispatcher on the thread, or a runtime with none.</summary>
     private ICorDebugReferenceValue? Dispatching(ICorDebugFrame frame, string field)
     {
-        if (_modules.Values.FirstOrDefault(module => module.Module.Name.EndsWith(CoreLib, StringComparison.OrdinalIgnoreCase)) is not { } coreLib)
+        if (_debugger.CoreLib is not { } coreLib)
         {
             return null;
         }

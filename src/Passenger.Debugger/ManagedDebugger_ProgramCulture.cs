@@ -56,7 +56,7 @@ public partial class ManagedDebugger
     {
         try
         {
-            if (_modules.Values.FirstOrDefault(module => module.ModuleName == "System.Private.CoreLib.dll") is not { } coreLib
+            if (CoreLib is not { } coreLib
                 || coreLib.Module.GetMetaDataInterface<IMetaDataImport>().FindTypeDefByNameOrNull("System.Globalization.CultureInfo", mdToken.Nil) is not { } cultureType)
             {
                 return null;

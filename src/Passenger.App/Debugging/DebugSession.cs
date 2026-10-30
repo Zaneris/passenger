@@ -993,7 +993,8 @@ public sealed class DebugSession
     private List<(ExceptionBreakpoint Breakpoint, DapExceptionOptions Option)> ExceptionOptions() => breakpoints.Muted ? [] :
         [.. breakpoints.Exceptions.Where(e => e.Enabled).Select(e => (e, new DapExceptionOptions(
             e.Type is { } type ? [new DapExceptionPathSegment(["CLR"]), new DapExceptionPathSegment([type])] : [new DapExceptionPathSegment(["CLR"])],
-            e.Scenarios.HasFlag(ExceptionScenarios.HandledInUserCode) ? "always" : e.Scenarios.HasFlag(ExceptionScenarios.HandledInExternalCode) ? "userUnhandled" : "unhandled")
+            e.Scenarios.HasFlag(ExceptionScenarios.HandledInUserCode) ? DapBreakModes.Always
+                : e.Scenarios.HasFlag(ExceptionScenarios.HandledInExternalCode) ? DapBreakModes.UserUnhandled : DapBreakModes.Unhandled)
         {
             Scenarios = ExceptionScenarioNames.Of(e.Scenarios),
             Condition = e.Condition,

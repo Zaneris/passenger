@@ -22,10 +22,10 @@ public sealed class VariableNode(string name, string value, string? type, int re
     public string? EvaluateName { get; init; }
 
     /// <summary>A value a call of the last step returned, listed at the top of the frame's values.</summary>
-    public bool IsReturnValue => Depth == 0 && Role == VariableRole.Value && EvaluateName?.StartsWith("$ReturnValue", StringComparison.Ordinal) == true;
+    public bool IsReturnValue => Depth == 0 && Role == VariableRole.Value && EvaluateName?.StartsWith(DapRows.ReturnValue, StringComparison.Ordinal) == true;
 
     /// <summary>The exception the program stopped at, $exception, or the failed binding, $bindingError.</summary>
-    public bool IsException => Depth == 0 && Role == VariableRole.Value && Name is "$exception" or BindingStop.Name;
+    public bool IsException => Depth == 0 && Role == VariableRole.Value && Name is DapRows.Exception or BindingStop.Name;
 
     /// <summary>A row the debugger adds to show a value (an array's elements a hundred at a time, a multi-dimensional
     /// array's row, an EF Core query's SQL), which no expression reaches: the rows under it reach theirs from the row
@@ -61,7 +61,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
         : Role == VariableRole.Result ? "An evaluated result is no variable: its expression is the one evaluated"
         : Role == VariableRole.Error ? "This row says why a value could not be read and is no value of its own"
         : EvaluateName is not null ? null
-        : IsVirtual || Name is "Raw View" or "Static members" or "Results" ? "The debugger adds this row to group the values under it, and no expression reaches it"
+        : IsVirtual || Name is DapRows.RawView or DapRows.StaticMembers or DapRows.Results ? "The debugger adds this row to group the values under it, and no expression reaches it"
         : "No C# expression reaches this value from the frame";
 
     /// <summary>The debugger says this row's expression reaches only a copy it made to show the value (an element of a

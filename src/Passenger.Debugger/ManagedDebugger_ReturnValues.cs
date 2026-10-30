@@ -1,8 +1,7 @@
 using System.Reflection.Metadata;
-using System.Runtime.InteropServices;
+using Passenger.Dap;
 using Passenger.Debugger.Interop;
 using Passenger.Debugger.Models.Response;
-using Passenger.Debugger.PresentationHintModels;
 
 namespace Passenger.Debugger;
 
@@ -229,7 +228,7 @@ public partial class ManagedDebugger
             }
             return new ReturnedValue(method, handle, typeName, aliasType, null);
         }
-        catch (Exception error) when (error is COMException or InvalidOperationException or InvalidCastException or EvalException)
+        catch (Exception error) when (error is EvalException || Failures.OfRuntime(error))
         {
             _logger?.Invoke($"What {method} returned could not be kept: {error.Message}");
             return new ReturnedValue(method, null, typeName, aliasType, $"{{{typeName}}}");
@@ -267,14 +266,7 @@ public partial class ManagedDebugger
     {
         if (stackDepth.Value == 0 && _unshown is (int unshownThread, StepBegan method, string why) && unshownThread == threadId.Value)
         {
-            result.Add(new VariableInfo
-            {
-                Name = $"{method.Method} returned",
-                Value = why,
-                Type = method.ReturnType,
-                PresentationHint = new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation },
-                VariablesReference = 0,
-            });
+            result.Add(FailedRow(ReturnedRow(method.Method), why, method.ReturnType));
         }
         if (stackDepth.Value != 0 || _returnedThread != threadId.Value)
         {
@@ -283,29 +275,20 @@ public partial class ManagedDebugger
         for (int i = 0; i < _returned.Count; i++)
         {
             ReturnedValue returned = _returned[i];
-            string name = $"{returned.Method} returned";
+            string name = ReturnedRow(returned.Method);
             string evaluateName = ReturnValueName(i);
             if (returned.Value is not { } handle)
             {
                 result.Add(new VariableInfo { Name = name, EvaluateName = evaluateName, Value = returned.Lost ?? "null", Type = returned.TypeName, VariablesReference = 0 });
                 continue;
             }
-            await WithFailureHandling(result, name, async () =>
-            {
-                (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError) = await GetValueForCorDebugValueAsync(handle, threadId, stackDepth, true);
-                result.Add(new VariableInfo
-                {
-                    Name = name,
-                    EvaluateName = evaluateName,
-                    Value = value,
-                    Type = friendlyTypeName,
-                    PresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null,
-                    // The object itself, not the handle, which is the step's to let go, not the stop's.
-                    VariablesReference = GetVariablesReference(handle.Dereference(), friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, expression: evaluateName),
-                });
-            });
+            // Opening to the object itself, not the handle, which is the step's to let go, not the stop's.
+            await WithFailureHandling(result, name, async () => result.Add(await ValueRow(name, evaluateName, handle, threadId, stackDepth, opens: handle.Dereference)));
         }
     }
+
+    /// <summary>The row of what a call returned, named by its method's label (<see cref="MethodLabel"/>).</summary>
+    private static string ReturnedRow(string method) => $"{method} returned";
 
     /// <summary>Whether a stopped thread's top frame has return values to show.</summary>
     private bool HasReturnedValues(ThreadId threadId, FrameStackDepth stackDepth) =>
@@ -313,7 +296,7 @@ public partial class ManagedDebugger
 
     /// <summary>An expression's name for the i-th value returned (from zero): $ReturnValue for the last, $ReturnValue1 on
     /// for the others, in the order they returned.</summary>
-    private string ReturnValueName(int index) => index == _returned.Count - 1 ? "$ReturnValue" : $"$ReturnValue{index + 1}";
+    private string ReturnValueName(int index) => index == _returned.Count - 1 ? DapRows.ReturnValue : $"{DapRows.ReturnValue}{index + 1}";
 
     /// <summary>The value an expression's $ReturnValue (0: the last) or $ReturnValueN (from one) names on a thread, and
     /// whether there is one: a null value is there, with no handle.</summary>
@@ -331,17 +314,16 @@ public partial class ManagedDebugger
     /// <summary>The return values' names and types, for the expression compiler's aliases: $ReturnValue, then $ReturnValue1 on.</summary>
     internal IReadOnlyList<(string Name, string Type)> ReturnValueAliases(ThreadId threadId) => _returnedThread != threadId.Value || _returned.Count == 0
         ? []
-        : [("$ReturnValue", _returned[^1].AliasType), .. _returned.Select((returned, i) => ($"$ReturnValue{i + 1}", returned.AliasType))];
+        : [(DapRows.ReturnValue, _returned[^1].AliasType), .. _returned.Select((returned, i) => ($"{DapRows.ReturnValue}{i + 1}", returned.AliasType))];
 
     /// <summary>A $ReturnValue name's index (0 for $ReturnValue), any letter case, as Roslyn's expression compiler reads it.</summary>
     internal static int? ReturnValueIndex(string expression)
     {
-        const string name = "$ReturnValue";
-        if (!expression.StartsWith(name, StringComparison.OrdinalIgnoreCase))
+        if (!expression.StartsWith(DapRows.ReturnValue, StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
-        string rest = expression[name.Length..];
+        string rest = expression[DapRows.ReturnValue.Length..];
         return rest.Length == 0 ? 0 : rest.All(char.IsAsciiDigit) && int.TryParse(rest, out int index) && index > 0 ? index : null;
     }
 
@@ -379,7 +361,7 @@ public partial class ManagedDebugger
             (string name, string assembly) = ReflectionName(type);
             return $"{name}, {assembly}";
         }
-        catch (Exception error) when (error is COMException or InvalidOperationException or BadImageFormatException)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return typeof(object).AssemblyQualifiedName!;
         }
@@ -390,8 +372,7 @@ public partial class ManagedDebugger
         string? primitive = MetadataTypeNames.PrimitiveOf(type.Type)?.SystemName;
         if (primitive is not null)
         {
-            ModuleInfo coreLib = _modules.Values.FirstOrDefault(module => module.ModuleName == "System.Private.CoreLib.dll")
-                ?? throw new InvalidOperationException("CoreLib is not loaded");
+            ModuleInfo coreLib = CoreLib ?? throw new InvalidOperationException(CoreLibNotLoaded);
             return (primitive, AssemblyName(coreLib));
         }
         if (type.Type is CorElementType.SZARRAY or CorElementType.ARRAY)

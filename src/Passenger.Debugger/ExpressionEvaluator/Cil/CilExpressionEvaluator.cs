@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
 using Microsoft.CodeAnalysis.CSharp;
+using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator.Compiler;
 using Passenger.Debugger.Interop;
 
@@ -14,7 +15,7 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
     {
         try
         {
-            if (expression == "$exception" && debugger.GetCurrentException(context.ThreadId) is { } currentException)
+            if (expression == DapRows.Exception && debugger.GetCurrentException(context.ThreadId) is { } currentException)
             {
                 if (currentException is not ICorDebugReferenceValue { IsNull: false } reference)
                 {
@@ -26,7 +27,7 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
             }
             if (ManagedDebugger.ReturnValueIndex(expression) is int index && debugger.TryGetReturnedValue(context.ThreadId, index, out ICorDebugHandleValue? returned) && returned is not null)
             {
-                // What a call returned, named alone: the value itself, as $exception is, with no code compiled to reach it.
+                // What a call returned, named alone: the value itself, as the exception is, with no code compiled to reach it.
                 using EvaluationHandleScope handles = new EvaluationHandleScope();
                 ICorDebugHandleValue handle = handles.CreateOwnedHandle(returned);
                 return new EvaluationResult { Value = handle, OwnedResultHandle = handles.DetachIfOwned(handle) };

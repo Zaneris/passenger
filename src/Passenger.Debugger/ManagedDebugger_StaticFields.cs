@@ -59,7 +59,7 @@ public partial class ManagedDebugger
             return _suppressFinalizeFunction;
         }
 
-        ModuleInfo coreLib = _modules.Values.SingleOrDefault(module => module.ModuleName == "System.Private.CoreLib.dll") ?? throw new InvalidOperationException("System.Private.CoreLib.dll is not loaded");
+        ModuleInfo coreLib = CoreLib ?? throw new InvalidOperationException(CoreLibNotLoaded);
         IMetaDataImport metadata = coreLib.Module.GetMetaDataInterface<IMetaDataImport>();
         mdTypeDef gcType = metadata.FindTypeDefByNameOrNull("System.GC", mdToken.Nil) ?? throw new InvalidOperationException("Could not find System.GC");
         mdMethodDef suppressFinalize = metadata.EnumMethodsWithName(gcType, "SuppressFinalize").SingleOrDefault();

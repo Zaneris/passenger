@@ -155,9 +155,9 @@ public sealed record SetExceptionBreakpointsArguments(
 public sealed record DapExceptionFilterOptions(string FilterId, string? Condition = null);
 
 /// <summary>Exceptions by their path ("CLR", then the types' full names; "CLR" alone is every exception) and when to
-/// stop (never, always, unhandled or userUnhandled). The rest is Passenger's own: scenarios in place of the break mode,
+/// stop (a <see cref="DapBreakModes"/>). The rest is Passenger's own: scenarios in place of the break mode,
 /// and a condition, hit count and log message as a line breakpoint has.</summary>
-public sealed record DapExceptionOptions(IReadOnlyList<DapExceptionPathSegment>? Path, string BreakMode)
+public sealed record DapExceptionOptions(IReadOnlyList<DapExceptionPathSegment>? Path, [IdentifierOf(typeof(DapBreakModes))] string BreakMode)
 {
     /// <summary>Where the exception was thrown and where it is handled, by <see cref="ExceptionScenarioNames"/>.</summary>
     public IReadOnlyList<string>? Scenarios { get; init; }
@@ -222,13 +222,13 @@ public static class ExceptionScenarioNames
 
     /// <summary>A break mode's scenarios: always is every one, userUnhandled those handled outside the user's code or
     /// not at all, unhandled only the last.</summary>
-    public static ExceptionScenarios OfBreakMode(string breakMode) => breakMode switch
+    public static ExceptionScenarios OfBreakMode([IdentifierOf(typeof(DapBreakModes))] string breakMode) => breakMode switch
     {
-        "always" => ExceptionScenarios.All,
-        "userUnhandled" => ExceptionScenarios.Thrown | ExceptionScenarios.HandledInExternalCode | ExceptionScenarios.Unhandled,
-        "unhandled" => ExceptionScenarios.Thrown | ExceptionScenarios.Unhandled,
-        "never" => ExceptionScenarios.None,
-        _ => throw new ArgumentException($"No exception break mode '{breakMode}': it is never, always, unhandled or userUnhandled"),
+        DapBreakModes.Always => ExceptionScenarios.All,
+        DapBreakModes.UserUnhandled => ExceptionScenarios.Thrown | ExceptionScenarios.HandledInExternalCode | ExceptionScenarios.Unhandled,
+        DapBreakModes.Unhandled => ExceptionScenarios.Thrown | ExceptionScenarios.Unhandled,
+        DapBreakModes.Never => ExceptionScenarios.None,
+        _ => throw new ArgumentException($"No exception break mode '{breakMode}': it is {DapBreakModes.Never}, {DapBreakModes.Always}, {DapBreakModes.Unhandled} or {DapBreakModes.UserUnhandled}"),
     };
 }
 
@@ -372,8 +372,9 @@ public sealed record ExceptionInfoResponse
     public string ExceptionId { get; init; } = string.Empty;
     public string? Description { get; init; }
 
-    /// <summary>never, always, unhandled or userUnhandled.</summary>
-    public string BreakMode { get; init; } = "unhandled";
+    /// <summary>When the exception stopped the program, by <see cref="DapBreakModes"/>.</summary>
+    [IdentifierOf(typeof(DapBreakModes))]
+    public string BreakMode { get; init; } = DapBreakModes.Unhandled;
 
     /// <summary>The exception's HRESULT.</summary>
     public int? Code { get; init; }

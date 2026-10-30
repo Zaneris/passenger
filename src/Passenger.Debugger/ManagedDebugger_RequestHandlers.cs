@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Dap;
@@ -9,7 +8,6 @@ using Passenger.Debugger.ExpressionEvaluator.Compiler;
 using Passenger.Debugger.Interop;
 using Passenger.Debugger.Models;
 using Passenger.Debugger.Models.Response;
-using Passenger.Debugger.PresentationHintModels;
 using ZLinq;
 
 namespace Passenger.Debugger;
@@ -603,7 +601,7 @@ public partial class ManagedDebugger
         {
             return EnumerateFramesForThread(thread).Any();
         }
-        catch (Exception error) when (error is COMException or InvalidOperationException)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return false;
         }
@@ -724,7 +722,7 @@ public partial class ManagedDebugger
         {
             return CreateStackFrameInfo(frameId, frame, false);
         }
-        catch (Exception error) when (error is COMException or InvalidOperationException or ArgumentException or BadImageFormatException)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             _logger?.Invoke($"Frame {frameId} could not be read: {error.Message}");
             return new StackFrameInfo
@@ -915,17 +913,8 @@ public partial class ManagedDebugger
                         // What the view holds it made itself, but for a list's elements, each the list's own.
                         Copies(result);
                     }
-                    int rawValueVariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.RawView, variablesReference.ObjectValue, variablesReference.ThreadId, variablesReference.FrameStackDepth, null,
-                        Declared: variablesReference.Declared, Expression: expression, Copied: variablesReference.Copied));
-                    VariableInfo rawValuePseudoVariable = new VariableInfo
-                    {
-                        Name = "Raw View",
-                        Value = "",
-                        Type = "",
-                        PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Class },
-                        VariablesReference = rawValueVariablesReference
-                    };
-                    result.Add(rawValuePseudoVariable);
+                    result.Add(GroupRow(DapRows.RawView, new VariablesReference(StoredReferenceKind.RawView, variablesReference.ObjectValue, variablesReference.ThreadId, variablesReference.FrameStackDepth, null,
+                        Declared: variablesReference.Declared, Expression: expression, Copied: variablesReference.Copied)));
                     return result;
                 }
                 ICorDebugValue unwrappedDebugValue = variablesReference.ObjectValue!.UnwrapDebugValue();
@@ -1072,36 +1061,18 @@ public partial class ManagedDebugger
         if (result.Error is not null)
         {
             _logger?.Invoke($"Evaluation error: {result.Error}");
-            return new VariableInfo
-            {
-                Name = null!,
-                Value = result.Error,
-                Type = null,
-                PresentationHint = new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation },
-                VariablesReference = 0
-            };
+            return FailedRow(named, result.Error);
         }
         if (result.Text is { } text)
         {
-            return new VariableInfo { Name = null!, Value = SymbolDisplay.FormatLiteral(text, quote: true), Type = "string", VariablesReference = 0 };
+            return new VariableInfo { Name = named, Value = SymbolDisplay.FormatLiteral(text, quote: true), Type = "string", VariablesReference = 0 };
         }
-        (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError) = await GetValueForCorDebugValueAsync(result.Value!, threadId, frameStackDepth, true);
-        VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null;
-        int variablesReference = GetVariablesReference(result.Value!, friendlyTypeName, threadId, frameStackDepth, debuggerProxyInstance, named, result.Declared, named);
-        VariableInfo variableInfo = new VariableInfo
-        {
-            Name = null!,
-            Value = value,
-            Type = friendlyTypeName,
-            PresentationHint = variablePresentationHint,
-            VariablesReference = variablesReference
-        };
-        if (variablesReference != 0)
+        VariableInfo row = await ValueRow(named, named, result.Value!, threadId, frameStackDepth, result.Declared);
+        if (row.VariablesReference != 0)
         {
             result.RelinquishResultHandleOwnership();
         }
-
-        return variableInfo;
+        return row;
     }
 
     /// <summary>Where an expression is evaluated: a frame of the stopped program, one an evaluation can run in.</summary>
@@ -1209,7 +1180,7 @@ public partial class ManagedDebugger
 
             string source = await GetExceptionPropertyValue(currentException, "Source");
             string message = await GetExceptionPropertyValue(currentException, "Message");
-            ExceptionInfo.ExceptionDetails details = await Details(currentException, friendlyTypeName, "$exception", depth: 0);
+            ExceptionInfo.ExceptionDetails details = await Details(currentException, friendlyTypeName, DapRows.Exception, depth: 0);
             string innermost = Innermost(details);
 
             ExceptionInfo exceptionInfo = new ExceptionInfo
@@ -1217,7 +1188,7 @@ public partial class ManagedDebugger
                 ExceptionId = $"CLR/{friendlyTypeName}",
                 // With an inner exception, a line naming the innermost.
                 Description = $"Exception thrown: '{friendlyTypeName}' in {source}.dll: '{message}'"
-                    + (details.InnerException.Count > 0 ? $"\n Inner exceptions found, see $exception in variables window for more details.\n Innermost exception: {innermost}" : ""),
+                    + (details.InnerException.Count > 0 ? $"\n Inner exceptions found, see {DapRows.Exception} in variables window for more details.\n Innermost exception: {innermost}" : ""),
                 BreakMode = _exceptionBreakModes.GetValueOrDefault(threadId, ExceptionBreakMode.Unknown),
                 Code = 0,
                 Details = details,
@@ -1314,7 +1285,7 @@ public partial class ManagedDebugger
                 Message = message,
                 TypeName = lastDot is not -1 ? typeName[(lastDot + 1)..] : typeName,
                 FullTypeName = typeName,
-                EvaluateName = "$exception",
+                EvaluateName = DapRows.Exception,
                 StackTrace = "",
                 InnerException = [],
                 FormattedDescription = $"**{typeName}:** '{message}'",

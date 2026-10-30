@@ -395,9 +395,7 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
         {
             return underlying;
         }
-        if (type is not { RuntimeType: { } runtimeType, ElementType: null }
-            || runtimeType.Module.MetadataReader.PeMetadataReader is not { IsAssembly: true } reader
-            || reader.GetString(reader.GetAssemblyDefinition().Name) != "System.Private.CoreLib")
+        if (type is not { RuntimeType: { } runtimeType, ElementType: null } || !ManagedDebugger.IsCoreLib(runtimeType.Module))
         {
             return null;
         }
@@ -752,7 +750,7 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
         }
 
         ModuleInfo module = type.Primitive is not null
-            ? FindModules("System.Private.CoreLib").First()
+            ? debugger.CoreLib ?? throw new InvalidOperationException(ManagedDebugger.CoreLibNotLoaded)
             : type.RuntimeType?.Module ?? throw new TypeLoadException("The CIL type is unresolved");
         MetadataReader reader = module.MetadataReader.PeMetadataReader;
         if (!reader.IsAssembly)

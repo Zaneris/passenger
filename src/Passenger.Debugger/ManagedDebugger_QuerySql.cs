@@ -52,16 +52,9 @@ public partial class ManagedDebugger
         {
             return new VariableInfo { Name = DapRows.QuerySql, Value = await QuerySqlAsync(query), Type = null, VariablesReference = 0 };
         }
-        catch (Exception error) when (error is EvalException or COMException or InvalidOperationException)
+        catch (Exception error) when (error is EvalException || Failures.OfRuntime(error))
         {
-            return new VariableInfo
-            {
-                Name = DapRows.QuerySql,
-                Value = error.Message,
-                Type = null,
-                PresentationHint = new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation },
-                VariablesReference = 0,
-            };
+            return FailedRow(DapRows.QuerySql, error.Message);
         }
     }
 

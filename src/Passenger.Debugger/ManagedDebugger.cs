@@ -240,7 +240,7 @@ public partial class ManagedDebugger
             WhyNoAbortTakes = WhyNoAbortTakes,
             Log = logger,
         };
-        _asyncStepper = new AsyncStepper(_modules, this);
+        _asyncStepper = new AsyncStepper(this);
         // The runtime's callback thread writes, and so does whichever thread hands back an event put off during an evaluation.
         _runtimeEventChannel = Channel.CreateUnbounded<CorDebugManagedCallbackEventArgs>(new UnboundedChannelOptions
         {
@@ -382,7 +382,7 @@ public partial class ManagedDebugger
         {
             wanted = thread?.ActiveFrame is ICorDebugILFrame frame && FindModule(frame.Function.Module) is { } module ? WantedFor(module) : null;
         }
-        catch (Exception error) when (error is COMException or InvalidOperationException)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return false;
         }
@@ -1016,6 +1016,17 @@ public partial class ManagedDebugger
     }
 
     internal IReadOnlyCollection<ModuleInfo> AllModules => _modules.Values;
+
+    /// <summary>The program's CoreLib, which defines its primitives, its tasks and its culture; null until the runtime has
+    /// loaded it, before any of the program's own code runs.</summary>
+    internal ModuleInfo? CoreLib => _modules.Values.FirstOrDefault(IsCoreLib);
+
+    /// <summary>Whether a module is the program's CoreLib, System.Private.CoreLib.</summary>
+    internal static bool IsCoreLib(ModuleInfo module) => module.ModuleName == "System.Private.CoreLib.dll";
+
+    /// <summary>Why what <see cref="CoreLib"/> holds cannot be read yet.</summary>
+    internal const string CoreLibNotLoaded = "The program's runtime has not loaded its CoreLib yet";
+
     internal ModuleInfo GetModuleInfoForModule(ICorDebugModule module) => FindModule(module) ?? throw new InvalidOperationException(ModuleWithoutMetadata);
 
     private const string ModuleWithoutMetadata = "The code is in a module whose metadata the debugger could not read";
@@ -1060,7 +1071,7 @@ public partial class ManagedDebugger
             System.Runtime.InteropServices.Marshal.Copy(pointer, metadata, 0, size);
             return ModuleMetadataReader.TryLoadFromMetadata(metadata);
         }
-        catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidCastException)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             _logger?.Invoke($"  The emitted module's metadata could not be read: {error.Message}");
             return null;

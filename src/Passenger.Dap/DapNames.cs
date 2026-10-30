@@ -87,8 +87,9 @@ public static class StopReasons
     public const string Unknown = "unknown";
 }
 
-/// <summary>The rows Passenger's debug adapter adds among a value's members, by their names, which the IDE tells apart: each
-/// written once for both ends.</summary>
+/// <summary>The rows Passenger's debug adapter adds to a frame's values and among a value's members, by their names, which
+/// the IDE tells apart and an expression may name (<see cref="Exception"/>, <see cref="ReturnValue"/>): each written once
+/// for both ends.</summary>
 [IdentifierHome]
 public static class DapRows
 {
@@ -97,6 +98,36 @@ public static class DapRows
 
     /// <summary>What <see cref="QuerySql"/> says before it is opened.</summary>
     public const string QuerySqlUnread = "Opening it runs ToQueryString() in the program";
+
+    /// <summary>A value's own members, beneath the rows its debugger view or enumeration shows in their place.</summary>
+    public const string RawView = "Raw View";
+
+    /// <summary>The static fields and properties of a value's type and the types it derives from.</summary>
+    public const string StaticMembers = "Static members";
+
+    /// <summary>What a sequence yields, enumerated in the program as the row is opened.</summary>
+    public const string Results = "Results";
+
+    /// <summary>What <see cref="Results"/> says before it is opened.</summary>
+    public const string ResultsUnread = "Expanding will force enumeration of the object";
+
+    /// <summary>The exception the thread stopped with, as its row and an expression name it.</summary>
+    public const string Exception = "$exception";
+
+    /// <summary>The value the last step's last call returned, as an expression names it; the calls before it are this name
+    /// followed by their place from one, in the order they returned.</summary>
+    public const string ReturnValue = "$ReturnValue";
+}
+
+/// <summary>When an exception stops the program, an exception option's and an exceptionInfo answer's break mode, by the
+/// protocol's names: each written once for both ends.</summary>
+[IdentifierHome]
+public static class DapBreakModes
+{
+    public const string Never = "never";
+    public const string Always = "always";
+    public const string Unhandled = "unhandled";
+    public const string UserUnhandled = "userUnhandled";
 }
 
 /// <summary>The exception filters Passenger's debug adapter offers, by their ids: what initialize's answer lists, what

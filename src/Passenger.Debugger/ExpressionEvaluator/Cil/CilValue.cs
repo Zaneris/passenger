@@ -198,7 +198,7 @@ internal sealed class CilValue
             string name = corClass.Module.GetMetaDataInterface<IMetaDataImport>().GetTypeDefProps(corClass.Token).szTypeDef;
             return PrimitiveTypes.Named(name) is { IsPrimitiveValue: true } primitive ? primitive : null;
         }
-        catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidOperationException)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return null;
         }
@@ -245,7 +245,7 @@ internal sealed class CilValue
             // A field signature is FIELD (0x06), then the field's type.
             return (CorElementType)System.Runtime.InteropServices.Marshal.ReadByte(signature, 1);
         }
-        catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidOperationException)
+        catch (Exception error) when (Failures.OfRuntime(error))
         {
             return null;
         }

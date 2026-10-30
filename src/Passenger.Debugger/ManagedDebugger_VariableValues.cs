@@ -142,7 +142,7 @@ public partial class ManagedDebugger
         typeName = typeName.IndexOf('[', StringComparison.Ordinal) is var arguments and >= 0 ? typeName[..arguments] : typeName;
         string? assemblyName = comma < 0 ? null : proxyTypeName[(comma + 1)..].Split(',')[0].Trim();
         IEnumerable<ICorDebugModule> candidates = assemblyName is null
-            ? [shownModule, .. _modules.Values.Where(module => AssemblyNameOf(module) == "System.Private.CoreLib").Select(module => module.Module)]
+            ? [shownModule, .. CoreLib is { } coreLib ? [coreLib.Module] : Array.Empty<ICorDebugModule>()]
             : _modules.Values.Where(module => string.Equals(AssemblyNameOf(module), assemblyName, StringComparison.OrdinalIgnoreCase)).Select(module => module.Module);
         foreach (ICorDebugModule candidate in candidates)
         {

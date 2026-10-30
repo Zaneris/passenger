@@ -14,6 +14,7 @@ using Microsoft.CodeAnalysis.ExpressionEvaluator;
 using Microsoft.CodeAnalysis.PooledObjects;
 using Microsoft.VisualStudio.Debugger.Clr;
 using Microsoft.VisualStudio.Debugger.Evaluation;
+using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.Interop;
 
@@ -286,7 +287,7 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
     /// last step's calls returned, each typed as it is.</summary>
     private static ImmutableArray<Alias> GetAliases(string? exception, IReadOnlyList<(string Name, string Type)> returnValues) =>
     [
-        .. exception is not null ? [new Alias(DkmClrAliasKind.Exception, "Error", "$exception", exception, Guid.Empty, null!)] : ImmutableArray<Alias>.Empty,
+        .. exception is not null ? [new Alias(DkmClrAliasKind.Exception, "Error", DapRows.Exception, exception, Guid.Empty, null!)] : ImmutableArray<Alias>.Empty,
         .. returnValues.Select(returned => new Alias(DkmClrAliasKind.ReturnValue, returned.Name, returned.Name, returned.Type, Guid.Empty, null!)),
     ];
 

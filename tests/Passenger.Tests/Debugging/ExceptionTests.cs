@@ -72,7 +72,7 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
         {
             ExceptionId = "CLR/System.InvalidOperationException",
             Description = "Exception thrown: 'System.InvalidOperationException' in DebuggableConsoleApp.dll: 'Test exception'",
-            BreakMode = "always",
+            BreakMode = DapBreakModes.Always,
             Code = 0,
             Details = new DapExceptionDetails
             {
@@ -157,7 +157,7 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
         {
             ExceptionId = "CLR/System.FormatException",
             Description = "Exception thrown: 'System.FormatException' in System.Private.CoreLib.dll: 'The input string 'x' was not in a correct format.'",
-            BreakMode = "always",
+            BreakMode = DapBreakModes.Always,
             Code = 0,
             Details = new DapExceptionDetails
             {

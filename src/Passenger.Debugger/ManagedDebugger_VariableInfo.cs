@@ -7,6 +7,7 @@ using System.Runtime.InteropServices.Marshalling;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Symbols;
 using Passenger.Core;
+using Passenger.Dap;
 using Passenger.Debugger.Interop;
 using Passenger.Debugger.Models.Response;
 using Passenger.Debugger.PresentationHintModels;
@@ -44,22 +45,8 @@ public partial class ManagedDebugger
                 await AddClosureChainMembers(localVariableCorDebugValue, threadId, stackDepth, result);
                 continue;
             }
-            string expression = RowExpressions.Name(localVariableName);
-            await WithFailureHandling(result, localVariableName, async () =>
-            {
-                (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError) = await GetValueForCorDebugValueAsync(localVariableCorDebugValue, threadId, stackDepth, true);
-                VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null;
-                result.Add(new VariableInfo
-                {
-                    Name = localVariableName,
-                    EvaluateName = expression,
-                    Value = value,
-                    Type = friendlyTypeName,
-                    PresentationHint = variablePresentationHint,
-                    VariablesReference = GetVariablesReference(localVariableCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, localVariableName,
-                        index < declared.Length ? declared[index] : null, expression)
-                });
-            });
+            await AddValueRow(result, localVariableName, RowExpressions.Name(localVariableName), localVariableCorDebugValue, threadId, stackDepth,
+                index < declared.Length ? declared[index] : null);
         }
     }
 
@@ -166,21 +153,9 @@ public partial class ManagedDebugger
             }
             if (implicitThisValue is not null)
             {
-                DeclaredType? declaredThis = DeclaredThis(module, corDebugFunction, generated: classContainingHoistedLocalsValue is not null);
-                await WithFailureHandling(result, "this", async () =>
-                {
-                    (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError) = await GetValueForCorDebugValueAsync(implicitThisValue, threadId, stackDepth, true);
-                    VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null;
-                    result.Add(new VariableInfo
-                    {
-                        Name = "this", // Hardcoded - 'this' has no metadata
-                        EvaluateName = "this",
-                        Value = value,
-                        Type = friendlyTypeName,
-                        PresentationHint = variablePresentationHint,
-                        VariablesReference = GetVariablesReference(implicitThisValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, declared: declaredThis, expression: "this")
-                    });
-                });
+                // Named by C#'s keyword: 'this' has no row in the metadata.
+                await AddValueRow(result, "this", "this", implicitThisValue, threadId, stackDepth,
+                    DeclaredThis(module, corDebugFunction, generated: classContainingHoistedLocalsValue is not null));
             }
         }
         int skipCount = isStatic ? 0 : 1; // Skip 'this' for instance methods, as we already handled it
@@ -202,23 +177,8 @@ public partial class ManagedDebugger
             {
                 continue;
             }
-            string? expression = parameterName is null ? null : RowExpressions.Name(parameterName);
-
-            await WithFailureHandling(result, argumentName, async () =>
-            {
-                (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError) = await GetValueForCorDebugValueAsync(argumentCorDebugValue, threadId, stackDepth, true);
-                VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null;
-                result.Add(new VariableInfo
-                {
-                    Name = argumentName,
-                    EvaluateName = expression,
-                    Value = value,
-                    Type = friendlyTypeName,
-                    PresentationHint = variablePresentationHint,
-                    VariablesReference = GetVariablesReference(argumentCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, argumentName,
-                        index < declared.Length ? declared[index] : null, expression)
-                });
-            });
+            await AddValueRow(result, argumentName, parameterName is null ? null : RowExpressions.Name(parameterName), argumentCorDebugValue, threadId, stackDepth,
+                index < declared.Length ? declared[index] : null);
         }
         return classContainingHoistedLocalsValue;
     }
@@ -230,20 +190,7 @@ public partial class ManagedDebugger
         thread.TryGetCurrentException(out ICorDebugValue? currentException);
         if (currentException is not null)
         {
-            await WithFailureHandling(result, "$exception", async () =>
-            {
-                (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError) = await GetValueForCorDebugValueAsync(currentException, threadId, stackDepth, true);
-                VariablePresentationHint? presentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null;
-                result.Add(new VariableInfo
-                {
-                    Name = "$exception",
-                    EvaluateName = "$exception",
-                    Value = value,
-                    Type = friendlyTypeName,
-                    PresentationHint = presentationHint,
-                    VariablesReference = GetVariablesReference(currentException, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, expression: "$exception")
-                });
-            });
+            await AddValueRow(result, DapRows.Exception, DapRows.Exception, currentException, threadId, stackDepth);
         }
     }
 
@@ -325,20 +272,7 @@ public partial class ManagedDebugger
     {
         ICorDebugValue pointedAt = ((ICorDebugReferenceValue)pointer.ObjectValue!).Dereference();
         string name = pointer.Name is { } named ? (SyntaxFacts.IsValidIdentifier(named) ? $"*{named}" : $"*({named})") : "*";
-        string? expression = RowExpressions.Pointed(pointer.Expression);
-        await WithFailureHandling(result, name, async () =>
-        {
-            (string friendlyTypeName, string value, ICorDebugValue? proxy, bool resultIsError) = await GetValueForCorDebugValueAsync(pointedAt, pointer.ThreadId, pointer.FrameStackDepth, true);
-            result.Add(new VariableInfo
-            {
-                Name = name,
-                EvaluateName = expression,
-                Value = value,
-                Type = friendlyTypeName,
-                PresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null,
-                VariablesReference = GetVariablesReference(pointedAt, friendlyTypeName, pointer.ThreadId, pointer.FrameStackDepth, proxy, name, expression: expression)
-            });
-        });
+        await AddValueRow(result, name, RowExpressions.Pointed(pointer.Expression), pointedAt, pointer.ThreadId, pointer.FrameStackDepth);
     }
 
     private int GenerateUniqueVariableReference(ICorDebugValue value, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance, DeclaredType? declared, string? expression)
@@ -354,36 +288,14 @@ public partial class ManagedDebugger
         bool requiresStaticPseudoVariable = await AddMembers(corDebugValue, corDebugType, threadId, stackDepth, result, includeNonPublicMembers, declared, owner, listed);
         if (requiresStaticPseudoVariable)
         {
-            VariableInfo variableInfo = new VariableInfo
-            {
-                Name = "Static members",
-                Value = "",
-                Type = "",
-                PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Class },
-                VariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.StaticClassVariable, corDebugValue, threadId, stackDepth, null))
-            };
-            result.Add(variableInfo);
+            result.Add(GroupRow(DapRows.StaticMembers, new VariablesReference(StoredReferenceKind.StaticClassVariable, corDebugValue, threadId, stackDepth, null)));
         }
     }
 
     private void AddEnumerablePseudoVariables(VariablesReference variablesReference, List<VariableInfo> result)
     {
-        result.Add(new VariableInfo
-        {
-            Name = "Raw View",
-            Value = "",
-            Type = "",
-            PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Class },
-            VariablesReference = _variableManager.CreateReference(variablesReference with { ReferenceKind = StoredReferenceKind.RawView })
-        });
-        result.Add(new VariableInfo
-        {
-            Name = "Results",
-            Value = "Expanding will force enumeration of the object",
-            Type = "",
-            PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Class },
-            VariablesReference = _variableManager.CreateReference(variablesReference with { ReferenceKind = StoredReferenceKind.EnumerableResults })
-        });
+        result.Add(GroupRow(DapRows.RawView, variablesReference with { ReferenceKind = StoredReferenceKind.RawView }));
+        result.Add(GroupRow(DapRows.Results, variablesReference with { ReferenceKind = StoredReferenceKind.EnumerableResults }, value: DapRows.ResultsUnread));
     }
 
     /// <summary>Whether a type is a list, whose elements C# reaches by their index.</summary>
@@ -624,22 +536,12 @@ public partial class ManagedDebugger
                 }
                 bool isStatic = fieldProps.pdwAttr.IsFdStatic();
                 bool isLiteral = fieldProps.pdwAttr.IsFdLiteral();
-                bool debuggerBrowsableRootHidden = false;
-                bool hasDebuggerBrowsableAttribute = metadataImport.TryGetCustomAttributeByName(mdFieldDef, "System.Diagnostics.DebuggerBrowsableAttribute", out nint debuggerBrowsableAttributePointer, out uint debuggerBrowsableAttributeSize) is Cor.S_OK;
-                if (hasDebuggerBrowsableAttribute)
+                DebuggerBrowsableState? browsable = BrowsableOf(metadataImport, mdFieldDef);
+                if (browsable is DebuggerBrowsableState.Never)
                 {
-                    // https://github.com/Samsung/netcoredbg/blob/6476bc00c2beaab9255c750235a68de3a3d0cfae/src/debugger/evaluator.cpp#L913
-                    DebuggerBrowsableState debuggerBrowsableState = (DebuggerBrowsableState)GetDebuggerBrowsableCustomAttributeResultInt(debuggerBrowsableAttributePointer, debuggerBrowsableAttributeSize);
-                    if (debuggerBrowsableState == DebuggerBrowsableState.Never)
-                    {
-                        return;
-                    }
-
-                    if (debuggerBrowsableState == DebuggerBrowsableState.RootHidden)
-                    {
-                        debuggerBrowsableRootHidden = true;
-                    }
+                    return;
                 }
+                bool debuggerBrowsableRootHidden = browsable is DebuggerBrowsableState.RootHidden;
                 if (isLiteral)
                 {
                     object? literalValue = GetLiteralValue(fieldProps.ppValue, fieldProps.pdwCPlusTypeFlag, fieldProps.pcchValue);
@@ -685,21 +587,12 @@ public partial class ManagedDebugger
                         return;
                     }
                 }
-                (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError, string? displayName) = await GetDisplayedValueAsync(fieldCorDebugValue, threadId, stackDepth, true);
-                VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null;
+                VariableInfo row = await ValueRow(fieldName, null, fieldCorDebugValue, threadId, stackDepth, DeclaredField(corDebugClass, mdFieldDef), displayed: true);
                 // An enum's value__ is its number, which C# reaches by a cast.
                 bool number = fieldName is "value__" && fieldProps.pdwAttr.HasFlag(CorFieldAttr.fdRTSpecialName);
-                VariableInfo variableInfo = new VariableInfo
-                {
-                    Name = displayName ?? fieldName,
-                    EvaluateName = number ? RowExpressions.Cast(owner, friendlyTypeName) : null,
-                    Member = number ? null : fieldName,
-                    Value = value,
-                    Type = friendlyTypeName,
-                    PresentationHint = variablePresentationHint,
-                    VariablesReference = GetVariablesReference(fieldCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, fieldName, DeclaredField(corDebugClass, mdFieldDef))
-                };
-                result.Add(variableInfo);
+                row.EvaluateName = number && row.Type is { } type ? RowExpressions.Cast(owner, type) : null;
+                row.Member = number ? null : fieldName;
+                result.Add(row);
             });
         }
     }
@@ -770,22 +663,12 @@ public partial class ManagedDebugger
 
                 bool isStatic = getterAttr.IsMdStatic();
 
-                bool debuggerBrowsableRootHidden = false;
-                bool hasDebuggerBrowsableAttribute = metadataImport.TryGetCustomAttributeByName(mdProperty, "System.Diagnostics.DebuggerBrowsableAttribute", out nint debuggerBrowsableAttributePointer, out uint debuggerBrowsableAttributeSize) is Cor.S_OK;
-                if (hasDebuggerBrowsableAttribute)
+                DebuggerBrowsableState? browsable = BrowsableOf(metadataImport, mdProperty);
+                if (browsable is DebuggerBrowsableState.Never)
                 {
-                    // https://github.com/Samsung/netcoredbg/blob/6476bc00c2beaab9255c750235a68de3a3d0cfae/src/debugger/evaluator.cpp#L913
-                    DebuggerBrowsableState debuggerBrowsableState = (DebuggerBrowsableState)GetDebuggerBrowsableCustomAttributeResultInt(debuggerBrowsableAttributePointer, debuggerBrowsableAttributeSize);
-                    if (debuggerBrowsableState == DebuggerBrowsableState.Never)
-                    {
-                        return;
-                    }
-
-                    if (debuggerBrowsableState == DebuggerBrowsableState.RootHidden)
-                    {
-                        debuggerBrowsableRootHidden = true;
-                    }
+                    return;
                 }
+                bool debuggerBrowsableRootHidden = browsable is DebuggerBrowsableState.RootHidden;
 
                 ICorDebugFunction getMethod = corDebugClass.Module.GetFunctionFromToken(getMethodDef);
                 ICorDebugEval eval = variablesReferenceIlFrame.Chain.Thread.CreateEval();
@@ -820,22 +703,12 @@ public partial class ManagedDebugger
                             return;
                         }
                     }
-                    (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError, string? displayName) = await GetDisplayedValueAsync(returnValue, threadId, stackDepth, true);
-                    VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null;
-                    int variablesReference = GetVariablesReference(returnValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, declared: DeclaredProperty(corDebugClass, mdProperty));
+                    VariableInfo row = await ValueRow(propertyName, null, returnValue, threadId, stackDepth, DeclaredProperty(corDebugClass, mdProperty), displayed: true, namesPointee: false);
                     (string Interface, string Member)? implemented = propertyName.Contains('.') ? ExplicitOf(declaringType, propertyName) : null;
-                    VariableInfo variableInfo = new VariableInfo
-                    {
-                        Name = displayName ?? propertyName,
-                        Member = implemented?.Member ?? propertyName,
-                        Interface = implemented?.Interface,
-                        Value = value,
-                        Type = friendlyTypeName,
-                        PresentationHint = variablePresentationHint,
-                        VariablesReference = variablesReference
-                    };
-                    retainReturnValue = variablesReference != 0;
-                    result.Add(variableInfo);
+                    row.Member = implemented?.Member ?? propertyName;
+                    row.Interface = implemented?.Interface;
+                    retainReturnValue = row.VariablesReference != 0;
+                    result.Add(row);
                 }
                 finally
                 {
@@ -916,15 +789,8 @@ public partial class ManagedDebugger
                 uint firstIndex = currentDimensionStart + rangeStart;
                 uint lastIndex = firstIndex + rangeCount - 1;
                 string name = $"[{string.Concat(indexPrefix.Select(index => $"{index}, "))}{firstIndex}..{lastIndex}{(outer ? ", ..." : "")}]";
-                result.Add(new VariableInfo
-                {
-                    Name = name,
-                    Value = "",
-                    Type = "",
-                    PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Virtual },
-                    VariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.ArrayRange, referenceValue ?? arrayValue, threadId, stackDepth, null, indexPrefix, rangeStart, rangeCount, Declared: declared,
-                        Expression: expression))
-                });
+                result.Add(GroupRow(name, new VariablesReference(StoredReferenceKind.ArrayRange, referenceValue ?? arrayValue, threadId, stackDepth, null, indexPrefix, rangeStart, rangeCount,
+                    Declared: declared, Expression: expression), PresentationHintKind.Virtual));
             }
             return true;
         }
@@ -935,15 +801,8 @@ public partial class ManagedDebugger
             {
                 uint[] indices = [.. indexPrefix, currentDimensionStart + offset];
                 string name = $"[{string.Join(", ", indices)}, ...]";
-                result.Add(new VariableInfo
-                {
-                    Name = name,
-                    Value = "",
-                    Type = "",
-                    PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Virtual },
-                    VariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.ArrayRange, referenceValue ?? arrayValue, threadId, stackDepth, null, indices, Declared: declared,
-                        Expression: expression))
-                });
+                result.Add(GroupRow(name, new VariablesReference(StoredReferenceKind.ArrayRange, referenceValue ?? arrayValue, threadId, stackDepth, null, indices, Declared: declared,
+                    Expression: expression), PresentationHintKind.Virtual));
             }
             return true;
         }
@@ -963,20 +822,9 @@ public partial class ManagedDebugger
             string name = indices.Length == 1 ? $"[{indices[0]}]" : $"[{string.Join(", ", indices)}]";
             await WithFailureHandling(result, name, async () =>
             {
-                (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError, string? displayName) = await GetDisplayedValueAsync(element, threadId, stackDepth, true);
-                VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : new VariablePresentationHint { Kind = PresentationHintKind.Data };
-                string? reached = RowExpressions.Element(expression, indices);
-                int variableReference = GetVariablesReference(element, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, declared: elementDeclared, expression: reached);
-                VariableInfo variableInfo = new VariableInfo
-                {
-                    Name = displayName ?? name,
-                    EvaluateName = reached,
-                    Type = friendlyTypeName,
-                    Value = value,
-                    PresentationHint = variablePresentationHint,
-                    VariablesReference = variableReference
-                };
-                result.Add(variableInfo);
+                VariableInfo row = await ValueRow(name, RowExpressions.Element(expression, indices), element, threadId, stackDepth, elementDeclared, displayed: true, namesPointee: false);
+                row.PresentationHint ??= new VariablePresentationHint { Kind = PresentationHintKind.Data };
+                result.Add(row);
             });
         }
         return false;
@@ -993,14 +841,55 @@ public partial class ManagedDebugger
         catch (Exception ex)
         {
             _logger?.Invoke($"{fieldName} could not be read: {ex}");
-            result.Add(new VariableInfo
-            {
-                Name = fieldName,
-                Value = ex.Message,
-                Type = null,
-                PresentationHint = new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation },
-                VariablesReference = 0
-            });
+            result.Add(FailedRow(fieldName, ex.Message));
         }
     }
+
+    /// <summary>A value's row (<see cref="ValueRow"/>) added, or, where reading it throws, a row saying why.</summary>
+    private Task AddValueRow(List<VariableInfo> result, string name, string? expression, ICorDebugValue value, ThreadId threadId, FrameStackDepth stackDepth,
+        DeclaredType? declared = null) =>
+        WithFailureHandling(result, name, async () => result.Add(await ValueRow(name, expression, value, threadId, stackDepth, declared)));
+
+    /// <summary>A value's row: its value and type as shown, a failed read marked, reached by <paramref name="expression"/>
+    /// and opening to the rows of what <paramref name="opens"/> gives once the value is read (else the value's own), kept with
+    /// the type it is <paramref name="declared"/> as; named by its [DebuggerDisplay] where <paramref name="displayed"/>, and a
+    /// pointer's row naming what it points at after it where <paramref name="namesPointee"/>.</summary>
+    private async Task<VariableInfo> ValueRow(string name, string? expression, ICorDebugValue value, ThreadId threadId, FrameStackDepth stackDepth,
+        DeclaredType? declared = null, bool displayed = false, bool namesPointee = true, Func<ICorDebugValue>? opens = null)
+    {
+        (string type, string shown, ICorDebugValue? proxy, bool failed, string? displayName) = await GetDisplayedValueAsync(value, threadId, stackDepth, true);
+        return new VariableInfo
+        {
+            Name = displayed ? (displayName ?? name) : name,
+            EvaluateName = expression,
+            Value = shown,
+            Type = type,
+            PresentationHint = failed ? FailedRead : null,
+            VariablesReference = GetVariablesReference(opens?.Invoke() ?? value, type, threadId, stackDepth, proxy, namesPointee ? name : null, declared, expression),
+        };
+    }
+
+    /// <summary>A row saying why its value could not be read, which opens to nothing.</summary>
+    private static VariableInfo FailedRow(string name, string why, string? type = null) =>
+        new() { Name = name, Value = why, Type = type, PresentationHint = FailedRead, VariablesReference = 0 };
+
+    /// <summary>The hint of a row whose value is why it could not be read.</summary>
+    private static readonly VariablePresentationHint FailedRead = new() { Attributes = AttributesValue.FailedEvaluation };
+
+    /// <summary>A row the debugger adds to group values under it (<see cref="DapRows"/>' own, a range of an array's
+    /// elements), which no expression reaches and which opens to <paramref name="opens"/>.</summary>
+    private VariableInfo GroupRow(string name, VariablesReference opens, PresentationHintKind kind = PresentationHintKind.Class, string value = "") => new()
+    {
+        Name = name,
+        Value = value,
+        Type = "",
+        PresentationHint = new VariablePresentationHint { Kind = kind },
+        VariablesReference = _variableManager.CreateReference(opens),
+    };
+
+    /// <summary>How a field's or property's [DebuggerBrowsable] has its row shown; null where it has none.</summary>
+    private static DebuggerBrowsableState? BrowsableOf(IMetaDataImport metadata, mdToken member) =>
+        metadata.TryGetCustomAttributeByName(member, "System.Diagnostics.DebuggerBrowsableAttribute", out nint blob, out uint size) is Cor.S_OK
+            ? (DebuggerBrowsableState)GetDebuggerBrowsableCustomAttributeResultInt(blob, size)
+            : null;
 }

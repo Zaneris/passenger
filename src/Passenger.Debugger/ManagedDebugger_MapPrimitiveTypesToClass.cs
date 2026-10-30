@@ -10,12 +10,13 @@ public partial class ManagedDebugger
     public ICorDebugClass? CorDecimalClass { get; set; }
     public ICorDebugClass? CorVoidClass { get; set; }
 
-    private void MapRuntimePrimitiveTypesToCorDebugClass(ICorDebugModule module)
+    private void MapRuntimePrimitiveTypesToCorDebugClass(ModuleInfo coreLib)
     {
-        if (Path.GetFileName(module.Name) is not "System.Private.CoreLib.dll")
+        if (!IsCoreLib(coreLib))
         {
-            throw new InvalidOperationException("Mapping primitive types to classes is only supported for System.Private.CoreLib.dll");
+            throw new InvalidOperationException($"Primitive types are mapped to CoreLib's classes, not {coreLib.ModuleName}'s");
         }
+        ICorDebugModule module = coreLib.Module;
 
         IMetaDataImport metadataImport = module.GetMetaDataInterface<IMetaDataImport>();
 
