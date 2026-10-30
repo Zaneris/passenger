@@ -96,9 +96,12 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     public static bool LooksBinary(ReadOnlySpan<byte> bytes) =>
         Bom(bytes) is null && bytes[..Math.Min(bytes.Length, BinaryProbe)].Contains((byte)0);
 
-    /// <summary>The encoding a byte-order mark at the start of the bytes is, or null without one.</summary>
+    /// <summary>The encoding a byte-order mark at the start of the bytes is, or null without one. UTF-32 LE's mark begins
+    /// with UTF-16 LE's, so it is asked first.</summary>
     public static Encoding? Bom(ReadOnlySpan<byte> bytes) =>
         bytes.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]) ? new UTF8Encoding(true)
+        : bytes.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xFE, 0x00, 0x00]) ? new UTF32Encoding(bigEndian: false, byteOrderMark: true)
+        : bytes.StartsWith((ReadOnlySpan<byte>)[0x00, 0x00, 0xFE, 0xFF]) ? new UTF32Encoding(bigEndian: true, byteOrderMark: true)
         : bytes.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xFE]) ? Encoding.Unicode
         : bytes.StartsWith((ReadOnlySpan<byte>)[0xFE, 0xFF]) ? Encoding.BigEndianUnicode
         : null;
@@ -119,6 +122,8 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
         65001 => [0xEF, 0xBB, 0xBF],
         1200 => [0xFF, 0xFE],
         1201 => [0xFE, 0xFF],
+        12000 => [0xFF, 0xFE, 0x00, 0x00],
+        12001 => [0x00, 0x00, 0xFE, 0xFF],
         _ => encoding.GetPreamble(),
     };
 

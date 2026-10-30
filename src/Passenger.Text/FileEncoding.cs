@@ -18,6 +18,8 @@ public sealed record FileEncoding(string Name, int CodePage, bool Bom = false)
     public static FileEncoding Utf16BigEndian { get; } = new("UTF-16 BE", 1201, Bom: true);
     public static FileEncoding Latin1 { get; } = new("ISO-8859-1", 28591);
     public static FileEncoding Windows1252 { get; } = new("windows-1252", 1252);
+    public static FileEncoding Utf32 { get; } = new("UTF-32 LE", 12000, Bom: true);
+    public static FileEncoding Utf32BigEndian { get; } = new("UTF-32 BE", 12001, Bom: true);
 
     /// <summary>What the widget lists first: the Unicode encodings and the common Western ones.</summary>
     public static IReadOnlyList<FileEncoding> First { get; } =
@@ -68,13 +70,15 @@ public sealed record FileEncoding(string Name, int CodePage, bool Bom = false)
         65001 => new UTF8Encoding(Bom),
         1200 => Encoding.Unicode,
         1201 => Encoding.BigEndianUnicode,
+        12000 => new UTF32Encoding(bigEndian: false, byteOrderMark: false),
+        12001 => new UTF32Encoding(bigEndian: true, byteOrderMark: false),
         28591 => Encoding.Latin1,
         20127 => Encoding.ASCII,
         _ => Encoding.GetEncoding(CodePage),
     };
 
     /// <summary>Whether it is a Unicode encoding, which holds every character.</summary>
-    public bool IsUnicode => CodePage is 65001 or 1200 or 1201;
+    public bool IsUnicode => CodePage is 65001 or 1200 or 1201 or 12000 or 12001;
 
     private bool Available
     {
@@ -91,11 +95,13 @@ public sealed record FileEncoding(string Name, int CodePage, bool Bom = false)
         }
     }
 
-    /// <summary>The listed encoding a file stored so is in, or one named by .NET's name for it.</summary>
+    /// <summary>The listed encoding a file stored so is in, UTF-32 (read by its BOM, never listed), or one named by .NET's
+    /// name for it.</summary>
     public static FileEncoding Of(Encoding encoding, bool bom)
     {
         bool Stores(FileEncoding e) => e.CodePage == encoding.CodePage && (e.CodePage != 65001 || e.Bom == bom);
         // More is read only for a file in none of the first, which most are.
-        return First.FirstOrDefault(Stores) ?? More.FirstOrDefault(Stores) ?? new FileEncoding(encoding.WebName, encoding.CodePage, bom);
+        return First.FirstOrDefault(Stores) ?? (encoding.CodePage switch { 12000 => Utf32, 12001 => Utf32BigEndian, _ => null })
+            ?? More.FirstOrDefault(Stores) ?? new FileEncoding(encoding.WebName, encoding.CodePage, bom);
     }
 }
