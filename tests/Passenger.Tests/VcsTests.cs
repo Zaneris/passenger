@@ -255,6 +255,39 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Amend's last-commit message, read while the person types or unticks Amend, never replaces what was typed
+    /// meanwhile nor lands once Amend is off.</summary>
+    [AvaloniaFact]
+    public void Amends_last_message_read_late_keeps_what_was_typed_meanwhile_and_lands_nowhere_once_amend_is_off()
+    {
+        MainWindow window = Open();
+        CommitView commit = window.CommitView;
+        window.Perform(AppActions.Commit);
+        Ui.Settle();
+
+        TaskCompletionSource answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        window.Vcs.HoldNextLastMessage(answer.Task);
+        Ui.ClickButton(commit, "Amend");
+        commit.FocusMessage();
+        window.KeyTextInput("Typed while git read");
+        answer.SetResult();
+        Ui.Settle();
+        Assert.True(commit.Message == "Typed while git read", $"The last commit's message, read as Amend was ticked, replaced what was typed meanwhile: the box reads \"{commit.Message}\"");
+
+        Ui.ClickButton(commit, "Amend");
+        commit.Message = string.Empty;
+        Ui.Settle();
+        answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        window.Vcs.HoldNextLastMessage(answer.Task);
+        Ui.ClickButton(commit, "Amend");
+        Ui.ClickButton(commit, "Amend");
+        answer.SetResult();
+        Ui.Settle();
+        Assert.False(commit.Amend);
+        Assert.True(commit.Message.Length == 0, $"The last commit's message landed in the box after Amend was unticked: it reads \"{commit.Message}\"");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Rollback_lines_puts_the_change_under_the_caret_back_as_the_last_commit_has_it()
     {

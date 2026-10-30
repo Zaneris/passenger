@@ -228,13 +228,15 @@ public sealed class CommitView : DockPanel, IOwnKeys
 
     private void OnChanged(object? sender, EventArgs e) => Fill();
 
-    /// <summary>Amend checked starts from the last commit's message, and unchecked gives back what was typed.</summary>
+    /// <summary>Amend checked starts from the last commit's message, unless something is typed before git answers or Amend
+    /// is unchecked by then, and unchecked gives back what was typed.</summary>
     private async Task AmendChangedAsync()
     {
         if (amend.IsChecked == true)
         {
-            beforeAmend = message.Text;
-            if (await vcs.LastMessageAsync() is { } last && (beforeAmend ?? string.Empty).Trim().Length == 0)
+            string? typed = message.Text;
+            beforeAmend = typed;
+            if (await vcs.LastMessageAsync() is { } last && (typed ?? string.Empty).Trim().Length == 0 && amend.IsChecked == true && message.Text == typed)
             {
                 message.Text = last;
             }

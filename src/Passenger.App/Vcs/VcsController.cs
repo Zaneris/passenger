@@ -821,7 +821,28 @@ public sealed class VcsController : IDisposable
     }
 
     /// <summary>The last commit's message, which Amend starts from.</summary>
-    public async Task<string?> LastMessageAsync() => git is { } repository ? await repository.LastMessageAsync() : null;
+    public async Task<string?> LastMessageAsync()
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return null;
+        }
+        Task<string?> read = repository.LastMessageAsync();
+        if (lastMessageHeld is { } held)
+        {
+            lastMessageHeld = null;
+            await held;
+        }
+        return await read;
+    }
+
+    /// <summary>What the next read of the last commit's message waits for before it answers (<see cref="HoldNextLastMessage"/>).</summary>
+    private Task? lastMessageHeld;
+
+    /// <summary>Holds the next answer of <see cref="LastMessageAsync"/> until <paramref name="until"/> ends, for a test of
+    /// what is typed meanwhile.</summary>
+    public void HoldNextLastMessage(Task until) => lastMessageHeld = until;
 
     public Task<VcsOutcome> CheckoutAsync(string branch) =>
         SwitchAsync(repository => repository.CheckoutAsync(branch), $"Checked out {branch}", "Git checkout");
