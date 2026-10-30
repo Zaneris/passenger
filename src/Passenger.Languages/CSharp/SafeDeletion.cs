@@ -38,7 +38,7 @@ public static class SafeDeletion
             PropertyDeclarationSyntax p when p.Identifier == name => Whole(syntax.Text, p, text, "property"),
             EventDeclarationSyntax e when e.Identifier == name => Whole(syntax.Text, e, text, "event"),
             ConstructorDeclarationSyntax c when c.Identifier == name => Whole(syntax.Text, c, text, "constructor"),
-            EnumMemberDeclarationSyntax e => Whole(syntax.Text, e, text, "enum member"),
+            EnumMemberDeclarationSyntax e => EnumMember(syntax.Text, e, text),
             DelegateDeclarationSyntax d when d.Identifier == name => Whole(syntax.Text, d, text, "delegate"),
             BaseTypeDeclarationSyntax t when t.Identifier == name => Whole(syntax.Text, t, text, t switch
             {
@@ -72,21 +72,34 @@ public static class SafeDeletion
         return new Removal(range, name, kind);
     }
 
-    /// <summary>A whole declaration, from its doc comment to its end and a comment after it on its line: its lines when it
-    /// has them to itself, then a blank line it would leave beside another or against a brace; else its text and the
-    /// spaces after it.</summary>
-    private static Removal Whole(TextSnapshot text, SyntaxNode node, string name, string kind)
+    /// <summary>An enum member with the comma that parts it from the next, as a whole declaration; the last, with none
+    /// after it, from the comma before it, unless a comment follows that comma, which then stays as the enum's last.</summary>
+    private static Removal EnumMember(TextSnapshot text, EnumMemberDeclarationSyntax member, string name)
+    {
+        const string Kind = "enum member";
+        SeparatedSyntaxList<EnumMemberDeclarationSyntax> members = ((EnumDeclarationSyntax)member.Parent!).Members;
+        int index = members.IndexOf(member);
+        if (index < members.SeparatorCount)
+        {
+            return Whole(text, member, members.GetSeparator(index), name, Kind);
+        }
+        if (index == 0 || members.GetSeparator(index - 1).TrailingTrivia.Any(t => !t.IsKind(SyntaxKind.EndOfLineTrivia) && !t.IsKind(SyntaxKind.WhitespaceTrivia)))
+        {
+            return Whole(text, member, member.GetLastToken(), name, Kind);
+        }
+        return new Removal(TextRange.FromBounds(members.GetSeparator(index - 1).SpanStart, End(member.GetLastToken())), name, Kind);
+    }
+
+    private static Removal Whole(TextSnapshot text, SyntaxNode node, string name, string kind) => Whole(text, node, node.GetLastToken(), name, kind);
+
+    /// <summary>A whole declaration, from its doc comment to its last token (or the comma after it) and a comment after
+    /// that on its line: its lines when it has them to itself, then a blank line it would leave beside another or against
+    /// a brace; else its text and the spaces after it.</summary>
+    private static Removal Whole(TextSnapshot text, SyntaxNode node, SyntaxToken through, string name, string kind)
     {
         int start = node.GetLeadingTrivia().FirstOrDefault(t => t.IsKind(SyntaxKind.SingleLineDocumentationCommentTrivia)
             || t.IsKind(SyntaxKind.MultiLineDocumentationCommentTrivia)) is { RawKind: not 0 } doc ? doc.FullSpan.Start : node.SpanStart;
-        int end = node.Span.End;
-        foreach (SyntaxTrivia trailing in node.GetTrailingTrivia())
-        {
-            if (!trailing.IsKind(SyntaxKind.EndOfLineTrivia) && !trailing.IsKind(SyntaxKind.WhitespaceTrivia))
-            {
-                end = trailing.Span.End;
-            }
-        }
+        int end = End(through);
         int firstLine = text.GetLineFromOffset(start);
         int lastLine = text.GetLineFromOffset(end);
         LineSpan first = text.GetLine(firstLine);
@@ -117,6 +130,20 @@ public static class SafeDeletion
             to = next!.Value.EndIncludingBreak;
         }
         return new Removal(TextRange.FromBounds(from, to), name, kind);
+    }
+
+    /// <summary>Where a token ends with a comment after it on its line.</summary>
+    private static int End(SyntaxToken token)
+    {
+        int end = token.Span.End;
+        foreach (SyntaxTrivia trailing in token.TrailingTrivia)
+        {
+            if (!trailing.IsKind(SyntaxKind.EndOfLineTrivia) && !trailing.IsKind(SyntaxKind.WhitespaceTrivia))
+            {
+                end = trailing.Span.End;
+            }
+        }
+        return end;
     }
 
     private static bool Blank(TextSnapshot text, int start, int end)

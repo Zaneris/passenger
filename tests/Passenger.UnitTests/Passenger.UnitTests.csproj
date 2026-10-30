@@ -26,6 +26,13 @@
     <ProjectReference Include="../../src/Passenger.Xaml/Passenger.Xaml.csproj" />
   </ItemGroup>
 
+  <!-- What Safe Delete takes out of a C# file, read from Roslyn's syntax alone, compiled in since its project's editor
+       brings Avalonia. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.Languages/CSharp/ParsedText.cs" Link="Languages/ParsedText.cs" />
+    <Compile Include="../../src/Passenger.Languages/CSharp/SafeDeletion.cs" Link="Languages/SafeDeletion.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
