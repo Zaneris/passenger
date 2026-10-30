@@ -156,10 +156,12 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   over alone (`StateFile.Read`). A new setting: an `AppSettings` property, its row and range declared in `Declared` and
   `Add`ed in its place in `SettingsDialog`, a line in `MainWindow.Follow` or `SettingsStore.InForce`.
 - **Every action is an `IdeAction`** in the window's `ActionRegistry` (ids and keymaps in `AppActions.cs`): keys, menus,
-  Find Action, context menus and MCP's `ide_action` all run it, `WhyNot` greys it with why, titles come from the registry
-  (`TitleWhere`), a title that asks more ends in "…", and what's missing is said in `Refusals`' words. Anything that
-  takes a while holds a `Working` (`ActionWork.Begin`) from its first moment to its hand-over, saying each stage and
-  honouring `Stopping`; toolbar buttons bind with `ActionButtons.Bind`.
+  Find Action, context menus and MCP's `ide_action` all run it, `WhyNot` greys it with why, titles come from the
+  registry (`TitleWhere`), a title that asks more ends in "…", and what's missing is said in `Refusals`' words. Anything
+  that takes a while holds a `Working` (`ActionWork.Begin`) from its first moment to its hand-over, saying each stage
+  and honouring `Stopping`; toolbar buttons bind with `ActionButtons.Bind`. An agent's run
+  (`ActionRegistry.RunForAgent`, `ActionContext.ByAgent`) never takes the person's keys or brings a window forward
+  (`DockHost.ShowBehind`).
 - **One way out to the system:** a browser only through `MainWindow.Browse`, the file manager only through
   `ShowInFileManager` (both recorded for tests).
 - **Shortcuts follow Rider's**: its Visual Studio (Windows) or Visual Studio OSX (macOS) keymap, and its VS Code keymaps
@@ -492,7 +494,8 @@ dialog is held to `DialogButtonsTests.Check`, the window to `UiRulesTests`. A st
 it found them (a new one makes MSBuild skip the target). Containers: `Docker.Stopped`/`TakenDown`; MCP: `McpRig.Text`,
 `Gone`; an agent that gives up sends "cancelled" itself (`CallGivingUp`). A headless click runs the window's queued work
 and draws frames after itself, so what a status said during a click is read from what it showed throughout, not after; a
-count of a key's frames sets aside the caret's blinks (`CodeEditor.Blinks`).
+count of a key's frames sets aside the caret's blinks (`CodeEditor.Blinks`). A window closed as the application's Quit
+closes it: `Ui.CloseAsQuit`; a headless window made inactive: `Ui.Leave`.
 
 **What a test needs, or skips saying why without:** a Linux container engine (`docker info`'s OSType; tests label
 everything with `Docker.RunLabel`, remove dead runs' leftovers, never prune or start or stop Docker Desktop, and pull
