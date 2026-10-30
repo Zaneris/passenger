@@ -242,7 +242,8 @@ Projects in `src/`; `find_symbol` finds the rest:
 - `Passenger.Roslyn.Extension`: Passenger's handlers inside Roslyn's server, compiled against its publicized assemblies
   (`src/Publicize.targets`). A handler reads the solution, never changes it.
 - `Passenger.Host`: MSBuild in a process of its own per SDK and global.json (`ProjectHosts`), over JSON lines, its
-  results stamped with what they read; `hold` keeps generating design-time builds off while Passenger builds (Windows
+  results stamped with what they read (a folder's stamp counting what `ProjectFolders.Enters` enters; a project's
+  frameworks `Evaluation.FrameworksOf`); `hold` keeps generating design-time builds off while Passenger builds (Windows
   lets one writer have a file). A file-based program is a project named by its C# file (`ProgramFiles`), the SDK's
   project of it (`dotnet run-api`, `ProgramProjects`) evaluated in memory (`VirtualProjects`).
 - `Passenger.Vcs`, `Passenger.Workspace`, `Passenger.Packages`: the App's Git, folder model and NuGet code that needs no
