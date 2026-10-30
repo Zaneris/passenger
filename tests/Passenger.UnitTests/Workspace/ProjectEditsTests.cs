@@ -71,6 +71,48 @@ public sealed class ProjectEditsTests : IDisposable
         Assert.Equal(Lib, File.ReadAllText(lib));
     }
 
+    /// <summary>A file a project names, renamed to a name holding an ampersand, is named escaped, so the project still reads
+    /// as XML and names it; and one already named escaped is found by its name and followed as it moves.</summary>
+    [Fact]
+    public void A_file_whose_name_holds_an_ampersand_is_named_escaped_as_it_moves_and_the_project_still_reads_as_xml()
+    {
+        const string App = """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup>
+                <Compile Include="A.cs" />
+                <Compile Include="A.Designer.cs" DependentUpon="A.cs" />
+                <Compile Include='Tom&amp;Jerry.cs' />
+                <None Include="Tom&amp;Jerry.json">
+                  <DependentUpon>Tom&amp;Jerry.cs</DependentUpon>
+                </None>
+              </ItemGroup>
+            </Project>
+
+            """;
+        Write("App/App.csproj", App);
+        string folder = Path.Combine(root, "App");
+        string project = Path.Combine(folder, "App.csproj");
+
+        Assert.True(ProjectEdits.MoveItems(project, [(Path.Combine(folder, "A.cs"), Path.Combine(folder, "A&B.cs"))]), "The project did not follow A.cs renamed to A&B.cs");
+        string renamed = App.Replace("\"A.cs\"", "\"A&amp;B.cs\"", StringComparison.Ordinal);
+        Assert.Equal(renamed, File.ReadAllText(project));
+        Assert.Equal(["A&B.cs", "A.Designer.cs", "Tom&Jerry.cs", "Tom&Jerry.json", "A&B.cs", "Tom&Jerry.cs"], Named(project));
+
+        Assert.True(ProjectEdits.MoveItems(project, [(Path.Combine(folder, "Tom&Jerry.cs"), Path.Combine(folder, "Cartoons", "Tom&Jerry.cs"))]),
+            "The project did not follow Tom&Jerry.cs, which it names as Tom&amp;Jerry.cs, into Cartoons, so it names a file no longer there");
+        Assert.Equal(renamed.Replace("'Tom&amp;Jerry.cs'", "'Cartoons/Tom&amp;Jerry.cs'", StringComparison.Ordinal)
+            .Replace(">Tom&amp;Jerry.cs<", ">Cartoons/Tom&amp;Jerry.cs<", StringComparison.Ordinal), File.ReadAllText(project));
+        Assert.Equal(["A&B.cs", "A.Designer.cs", "Cartoons/Tom&Jerry.cs", "Tom&Jerry.json", "A&B.cs", "Cartoons/Tom&Jerry.cs"], Named(project));
+    }
+
+    /// <summary>The paths a project's items name, as XML reads them: each Include, then each DependentUpon.</summary>
+    private static string[] Named(string project)
+    {
+        System.Xml.Linq.XDocument read = System.Xml.Linq.XDocument.Parse(File.ReadAllText(project));
+        return [.. read.Descendants().Select(e => (string?)e.Attribute("Include")).OfType<string>(),
+            .. read.Descendants().Select(e => (string?)e.Attribute("DependentUpon") ?? (e.Name.LocalName == "DependentUpon" ? e.Value : null)).OfType<string>()];
+    }
+
     private void Write(string relative, string text)
     {
         string path = Path.Combine(root, relative);

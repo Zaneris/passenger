@@ -223,12 +223,12 @@ public static class ProjectEdits
                     {
                         foreach (Group exists in ExistsIn.Matches(xml.Written(condition)).Select(m => m.Groups["path"]))
                         {
-                            Follow((condition.Start + exists.Index, exists.Length));
+                            Follow((condition.Start + exists.Index, exists.Length), xml.Text[condition.Start - 1]);
                         }
                     }
                     continue;
                 case "HintPath" when !item.HasElements:
-                    Follow(xml.InnerOf(item));
+                    Follow(xml.InnerOf(item), '\0');
                     continue;
             }
             Follow(xml.ValueOf(item, "HintPath"));
@@ -239,7 +239,7 @@ public static class ProjectEdits
                 {
                     continue;
                 }
-                string items = xml.Written(span);
+                string items = XmlText.Unquoted(xml.Written(span));
                 own ??= kind is "Include" or "Update" && OneFile(items) ? items : null;
                 Follow(span);
             }
@@ -250,15 +250,19 @@ public static class ProjectEdits
             // What the item names beside it, relative to its file: where that is now, from where its file is now.
             string was = Path.GetDirectoryName(Full(before, own))!;
             string at = Path.GetDirectoryName(Moved(Full(before, own)))!;
-            IEnumerable<(int Start, int Length)?> related = ((string[])["DependentUpon", "LastGenOutput"]).Select(n => xml.ValueOf(item, n))
-                .Concat(item.Elements().Where(e => e.Name.LocalName is "DependentUpon" or "LastGenOutput" && !e.HasElements).Select(xml.InnerOf));
-            foreach ((int Start, int Length) span in related.OfType<(int Start, int Length)>())
+            IEnumerable<((int Start, int Length)? Span, char? Quote)> related = ((string[])["DependentUpon", "LastGenOutput"]).Select(n => (xml.ValueOf(item, n), (char?)null))
+                .Concat(item.Elements().Where(e => e.Name.LocalName is "DependentUpon" or "LastGenOutput" && !e.HasElements).Select(e => (xml.InnerOf(e), (char?)'\0')));
+            foreach (((int Start, int Length)? named, char? quote) in related)
             {
-                string value = xml.Written(span);
+                if (named is not { } span)
+                {
+                    continue;
+                }
+                string value = XmlText.Unquoted(xml.Written(span));
                 string target = Moved(Full(was, value.Trim()));
                 if (value.Trim().Length > 0 && !PathNames.Same(Full(at, value.Trim()), target))
                 {
-                    edits.Add((span.Start, span.Length, Written(Path.GetRelativePath(at, target), value)));
+                    edits.Add((span.Start, span.Length, XmlText.Quoted(Written(Path.GetRelativePath(at, target), value), quote ?? xml.Text[span.Start - 1])));
                 }
             }
         }
@@ -270,16 +274,17 @@ public static class ProjectEdits
         file.Write(xml.Text);
         return true;
 
-        // A path named from the project's folder names where that is now; a glob, by the folder it begins in.
-        void Follow((int Start, int Length)? at)
+        // A path named from the project's folder names where that is now; a glob, by its folder. Read and written as XML.
+        void Follow((int Start, int Length)? at, char? quote = null)
         {
             if (at is not { } span)
             {
                 return;
             }
-            string written = xml.Written(span);
-            string items = written.Trim();
-            int start = span.Start + written.Length - written.TrimStart().Length;
+            string raw = xml.Written(span);
+            string written = raw.Trim();
+            int start = span.Start + raw.Length - raw.TrimStart().Length;
+            string items = XmlText.Unquoted(written);
             int wild = items.IndexOfAny(['*', '?']);
             string path = (wild < 0 ? items : items[..Math.Max(0, items.LastIndexOfAny(['\\', '/'], wild))]).TrimEnd('\\', '/');
             if (path.Length == 0 || items.IndexOfAny([';', '$', '@', '%']) >= 0)
@@ -289,7 +294,8 @@ public static class ProjectEdits
             string now = Moved(Full(before, path));
             if (!PathNames.Same(Full(folder, path), now))
             {
-                edits.Add((start, items.Length, Written(Path.GetRelativePath(folder, now), path) + items[path.Length..]));
+                string moved = Written(Path.GetRelativePath(folder, now), path) + items[path.Length..];
+                edits.Add((start, written.Length, XmlText.Quoted(moved, quote ?? xml.Text[span.Start - 1])));
             }
         }
 

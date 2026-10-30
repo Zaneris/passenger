@@ -262,6 +262,24 @@ internal sealed class XmlText
         };
     }
 
+    /// <summary>What a value as the file writes it says (between quotes or tags): its entities and character references
+    /// read as the characters they stand for.</summary>
+    public static string Unquoted(string written)
+    {
+        if (!written.Contains('&', StringComparison.Ordinal))
+        {
+            return written;
+        }
+        try
+        {
+            return XElement.Parse($"<v>{written}</v>").Value;
+        }
+        catch (XmlException)
+        {
+            return written;
+        }
+    }
+
     /// <summary>Takes an element out, with its line when it stands on one of its own, and then with a blank line after it
     /// too for <paramref name="spaced"/> where one stands before it as well.</summary>
     public void Remove(XElement element, bool spaced = false)
