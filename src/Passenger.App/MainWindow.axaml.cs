@@ -359,7 +359,11 @@ public partial class MainWindow : IdeWindow
             return problem;
         }
         session.Opened(full);
-        Explorer.Reveal(full);
+        // Behind the file shown (an agent's), it is not the Explorer's to follow.
+        if (Editors.Active?.Path == full)
+        {
+            Explorer.Reveal(full);
+        }
         return null;
     }
 

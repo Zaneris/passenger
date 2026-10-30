@@ -602,6 +602,55 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A file an agent opens or edits on the person's window comes in a tab behind theirs: with the keys in their file,
+    /// the agent's open of a closed file, and its edit of that file once its tab is closed again, each leave the person's tab
+    /// shown and an Enter they type going into it, the agent's file's tab there behind.</summary>
+    [AvaloniaFact]
+    public void An_agents_open_or_edit_of_a_closed_file_gives_it_a_tab_behind_the_persons_which_keeps_the_keys()
+    {
+        string folder = Plain("mcp-behind-");
+        string typed = TestFolders.Write(folder, "Typed.txt", "typed\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.ApplySettings(window.Settings with { McpServer = true });
+        window.OpenFile(typed);
+        Ui.Settle();
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "typed");
+        editor.Focus();
+        Passenger.App.Workspace.OpenDocument persons = window.EditorArea.Active!;
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            string expected = "typed\n";
+            void LeftBehind(string what)
+            {
+                Ui.Settle();
+                Passenger.App.Workspace.OpenDocument? notes = window.EditorArea.Documents.FirstOrDefault(d => d.Name == "Notes.txt");
+                Assert.True(window.EditorArea.Active == persons && ReferenceEquals(editor, window.FocusManager?.GetFocusedElement()),
+                    $"The agent's {what} showed {window.EditorArea.Active?.Name ?? "nothing"}, the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, in place of the person's Typed.txt");
+                Assert.True(notes is not null && window.EditorArea.HasTab(notes), $"The agent's {what} left Notes.txt with no tab");
+                Ui.Press(window, "enter");
+                expected += "\n";
+                Assert.True(editor.Document.Snapshot.ToString() == expected,
+                    $"After the agent's {what}, an Enter the person typed went to {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, not into their file: {editor.Document.Snapshot}");
+            }
+
+            Await(Waiting.Apart(() => Call(client, McpTools.Open, new() { ["path"] = "Notes.txt", ["line"] = 1, ["column"] = 3 })), "the agent's open");
+            LeftBehind("open");
+            Assert.True(window.EditorArea.Close(window.EditorArea.Documents.Single(d => d.Name == "Notes.txt")), "Notes.txt's tab did not close");
+            Ui.Settle();
+            Asked(window, client, McpTools.Edit, "edit a file", Note("behind"));
+            LeftBehind("edit");
+            Assert.Equal("notes behind\n", File.ReadAllText(Path.Combine(folder, "Notes.txt")));
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { McpServer = false });
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>A question shown without the keys: an Enter in the window goes to the editor; chosen from the status bar's
     /// words, the question takes the keys, and an Enter there answers nothing, the agent's call still waiting.</summary>
     private void EnterLeavesWaiting(MainWindow window, Passenger.Editor.CodeEditor editor, Window question, Task waiting, string afterEnter)

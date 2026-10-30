@@ -81,12 +81,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
             // Its disk's text taken first, as every tool naming a file does, then shown.
             OpenDocument document = await DocumentAsync(full, cancel);
+            // On a person's window, the file they have shown keeps their caret, and another comes behind it.
+            bool theirs = Beside && Editors.Active == document;
             if (window.OpenFile(full) is { } problem)
             {
                 throw new InvalidOperationException(problem);
             }
             await Previewed(document, cancel);
-            if (line is int l)
+            if (line is int l && !theirs)
             {
                 window.NavigateTo(document.Path, new TextPosition(Math.Max(0, l - 1), Math.Max(0, (column ?? 1) - 1)));
             }

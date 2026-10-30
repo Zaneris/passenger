@@ -239,14 +239,23 @@ public sealed partial class EditorArea : UserControl
     }
 
     /// <summary>Shows a file in the window in front: in the active group if it has its tab, else in the group there
-    /// that does, else in a new tab of the active group.</summary>
+    /// that does, else in a new tab of the active group. For an attached agent (<see cref="AgentAsks.Beside"/>), its tab
+    /// comes behind the file the person has shown there, which keeps the keys.</summary>
     public void Activate(OpenDocument document)
     {
         EditorGroup group = activeGroup.Has(document) ? activeGroup : ActiveFrame.Groups.FirstOrDefault(g => g.Has(document)) ?? activeGroup;
+        if (AgentAsks.Beside && group.Active is not null)
+        {
+            group.Add(document);
+            return;
+        }
         group.Show(document);
         SetActiveGroup(group);
         Refresh();
-        group.FocusShown();
+        if (!AgentAsks.Beside)
+        {
+            group.FocusShown();
+        }
         ActiveChanged?.Invoke(this, EventArgs.Empty);
     }
 
