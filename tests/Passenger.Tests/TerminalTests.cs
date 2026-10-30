@@ -871,6 +871,58 @@ public sealed class TerminalTests
         }
     }
 
+    /// <summary>On macOS a run in the terminal that takes a variable away (the outer tmux's) still hands its program the
+    /// loader's variables, which the loader takes out of a protected program's environment (env's, sh's): one Passenger
+    /// inherited, held as a parent's are in the process's own environment, and one the run configuration gives.</summary>
+    [AvaloniaFact]
+    public void A_run_in_the_terminal_that_takes_a_variable_away_keeps_the_loaders_variables_on_macOS()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's loader takes its variables out of what a program it guards runs");
+        string folder = TestFolders.Create("terminal-loader-");
+        // Folders searched before the loader's own, each empty, so every library loads as it would without them.
+        string inherited = $"{Path.Combine(folder, "inherited")}:/usr/local/lib:/usr/lib";
+        string given = Path.Combine(folder, "given");
+        string carried = TerminalSession.KeptPrefix + "DYLD_LIBRARY_PATH";
+        try
+        {
+            OwnEnvironment.Set("TMUX", "/tmp/tmux-501/default,4242,0");
+            OwnEnvironment.Set("DYLD_FALLBACK_LIBRARY_PATH", inherited);
+            string project = TestFolders.Write(folder, "Listed/Listed.csproj", TestProjects.Console());
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            window.SetConfigurations([new RunConfiguration
+            {
+                Name = "Loader",
+                Project = PathNames.Canonical(project),
+                // .NET's host keeps the loader's variables, where the system's own programs lose them.
+                Program = Dotnet.Host(),
+                Arguments = $"\"{Debugging.Helpers.Debuggees.Program("TerminalCases")}\" variables DYLD_FALLBACK_LIBRARY_PATH DYLD_LIBRARY_PATH TMUX {carried}",
+                WorkingDirectory = folder,
+                Environment = { ["DYLD_LIBRARY_PATH"] = given },
+                BuildBeforeLaunch = false,
+                Console = ConsoleKind.Terminal,
+            }], "Loader");
+            Ui.Launched(window, window.RunAsync(), "the run to start", TimeSpan.FromMinutes(1));
+            TerminalSession program = Assert.IsType<TerminalRun>(window.RunInTerminal).Session;
+            WaitForLine(program, "listed", "the program's variables listed");
+            List<string> listed = Lines(program.Screen);
+            Assert.False(listed.Any(line => line.StartsWith("TMUX=", StringComparison.Ordinal)),
+                $"The outer tmux's TMUX reached the program, so its run took nothing away through env:\n{Screen(program)}");
+            Assert.True(listed.Contains($"DYLD_FALLBACK_LIBRARY_PATH={inherited}"),
+                $"DYLD_FALLBACK_LIBRARY_PATH, which Passenger inherited, never reached the program run in the terminal:\n{Screen(program)}");
+            Assert.True(listed.Contains($"DYLD_LIBRARY_PATH={given}"),
+                $"DYLD_LIBRARY_PATH, which the run configuration gives, never reached the program run in the terminal:\n{Screen(program)}");
+            Assert.False(listed.Any(line => line.StartsWith(carried + "=", StringComparison.Ordinal)),
+                $"What carried DYLD_LIBRARY_PATH past env reached the program too:\n{Screen(program)}");
+            window.Close();
+        }
+        finally
+        {
+            OwnEnvironment.Set("TMUX", null);
+            OwnEnvironment.Set("DYLD_FALLBACK_LIBRARY_PATH", null);
+            TestFolders.Delete(folder);
+        }
+    }
+
     /// <summary>The terminal's links: an address is a link a click opens (a drag from it selects instead) and so does
     /// Cmd+click (Ctrl+click elsewhere), wrapped across rows or not; a file's path is text until Cmd or Ctrl is held over
     /// it, and Cmd+click opens it at its line.</summary>

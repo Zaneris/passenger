@@ -188,6 +188,11 @@ switch (args)
         }
         Write("done\n");
         break;
+    case ["variables", .. string[] names]:
+        // Each of these variables the program has, as env lists it, then a line saying they are listed.
+        Write(string.Concat(names.Where(name => Environment.GetEnvironmentVariable(name) is not null)
+            .Select(name => $"{name}={Environment.GetEnvironmentVariable(name)}\n")) + "listed\n");
+        break;
     default:
         Console.Error.WriteLine($"No case '{string.Join(' ', args)}'");
         return 2;

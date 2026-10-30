@@ -68,6 +68,14 @@ public sealed class TerminalSession : IAsyncDisposable
     /// the person's own session), a screen window, an X terminal's window, its terminal description and its size.</summary>
     private static readonly string[] OuterTerminal = ["TMUX", "TMUX_PANE", "STY", "WINDOW", "WINDOWID", "TERMCAP", "COLUMNS", "LINES"];
 
+    /// <summary>What begins the name of each variable of macOS's loader, which it takes out of the environment of a
+    /// program System Integrity Protection guards (env and sh among them), and so out of whatever that program runs.</summary>
+    private const string LoaderPrefix = "DYLD_";
+
+    /// <summary>What a loader variable is carried under past env and sh (<see cref="Unsetting"/>), its own name after it.</summary>
+    [IdentifierHome]
+    public const string KeptPrefix = "PASSENGER_KEPT_";
+
     public TerminalSession(int columns = 80, int rows = 24)
     {
         Screen = new TerminalScreen(columns, rows);
@@ -116,7 +124,8 @@ public sealed class TerminalSession : IAsyncDisposable
         {
             // A shell keeps an inherited PWD naming its folder through a link, and a build there by it undoes the IDE's.
             environment.TryAdd("PWD", cwd);
-            (app, args) = Unsetting([.. environment.Where(v => v.Value.Length == 0).Select(v => v.Key)], app, args);
+            IReadOnlyDictionary<string, string> loader = OperatingSystem.IsMacOS() ? LoaderVariables(environment, Inherited()) : new Dictionary<string, string>();
+            (app, args) = Unsetting([.. environment.Where(v => v.Value.Length == 0).Select(v => v.Key)], app, args, environment, loader);
         }
         PtyOptions options = new()
         {
@@ -276,8 +285,11 @@ public sealed class TerminalSession : IAsyncDisposable
 
     /// <summary>A program run on macOS or Linux with these variables taken out of what it inherits: its pseudo-terminal
     /// starts it from the process's own environment, setting over it only what has a value, so env unsets them before it
-    /// runs the program. A program whose name holds '=', which env would take for a variable, is run by sh's exec.</summary>
-    public static (string App, string[] Arguments) Unsetting(IReadOnlyList<string> variables, string app, string[] arguments)
+    /// runs the program. The <paramref name="loader"/>'s variables, which env would lose, go into the environment under
+    /// <see cref="KeptPrefix"/> for sh to set again before its exec, their values on no command line; a program whose name
+    /// holds '=', which env would take for a variable, is run by sh's exec too.</summary>
+    public static (string App, string[] Arguments) Unsetting(IReadOnlyList<string> variables, string app, string[] arguments,
+        IDictionary<string, string> environment, IReadOnlyDictionary<string, string> loader)
     {
         // No environment holds a name with '=' in it, and env refuses to unset one.
         string[] names = [.. variables.Where(name => name.Length > 0 && !name.Contains('=', StringComparison.Ordinal))];
@@ -286,12 +298,50 @@ public sealed class TerminalSession : IAsyncDisposable
             return (app, arguments);
         }
         List<string> words = [.. names.SelectMany(name => (string[])["-u", name]), "--"];
-        if (app.Contains('=', StringComparison.Ordinal))
+        // sh sets only a name that is an identifier, as each the loader reads is.
+        string[] kept = [.. loader.Keys.Where(IsIdentifier).Order(StringComparer.Ordinal)];
+        if (kept.Length > 0 || app.Contains('=', StringComparison.Ordinal))
         {
-            words.AddRange(["/bin/sh", "-c", "exec \"$0\" \"$@\""]);
+            foreach (string name in kept)
+            {
+                environment[KeptPrefix + name] = loader[name];
+            }
+            string setAgain = string.Concat(kept.Select(name => $"{name}=\"${KeptPrefix}{name}\"; export {name}; unset {KeptPrefix}{name}; "));
+            words.AddRange(["/bin/sh", "-c", setAgain + "exec \"$0\" \"$@\""]);
         }
         return ("/usr/bin/env", [.. words, app, .. arguments]);
     }
+
+    /// <summary>The variables of macOS's loader a program started with this environment is to have: each one Passenger
+    /// inherited, set over by the start's own, less each the start takes away (an empty value).</summary>
+    public static Dictionary<string, string> LoaderVariables(IReadOnlyDictionary<string, string> environment, IEnumerable<KeyValuePair<string, string>> inherited)
+    {
+        Dictionary<string, string> loader = new(StringComparer.Ordinal);
+        foreach ((string name, string value) in inherited.Concat(environment))
+        {
+            if (!name.StartsWith(LoaderPrefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+            if (value.Length == 0)
+            {
+                loader.Remove(name);
+            }
+            else
+            {
+                loader[name] = value;
+            }
+        }
+        return loader;
+    }
+
+    /// <summary>The process's environment as a program it starts inherits it.</summary>
+    private static IEnumerable<KeyValuePair<string, string>> Inherited() =>
+        Environment.GetEnvironmentVariables().Cast<System.Collections.DictionaryEntry>()
+            .Select(variable => new KeyValuePair<string, string>((string)variable.Key, variable.Value as string ?? string.Empty));
+
+    private static bool IsIdentifier(string name) =>
+        name.Length > 0 && !char.IsAsciiDigit(name[0]) && name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_');
 
     /// <summary>The user's shell as a login shell: $SHELL (zsh where unset on macOS, bash on Linux); PowerShell on
     /// Windows, the newer one when it is installed, keeping its history in HISTFILE when that is set.</summary>
