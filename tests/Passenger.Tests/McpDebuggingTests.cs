@@ -120,6 +120,15 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
                 Assert.Equal(("paused", Passenger.Dap.StopReasons.Breakpoint), (attached.GetProperty("state").GetString(), attached.GetProperty("reason").GetString()));
                 Assert.EndsWith($"Program.cs:{line}:5", attached.GetProperty("location").GetString(), StringComparison.Ordinal);
                 Assert.True(long.TryParse(Local(attached, "turns"), out long turns) && turns >= 0, $"The stop's locals had no count of turns: {attached}");
+                // Paused in its sleep, below the runtime's frames: an evaluation reads the locals of the frame the stop shows.
+                await Call(client, McpTools.BreakpointSet, new() { ["path"] = source, ["line"] = line, ["remove"] = true });
+                await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 0 });
+                JsonElement pausedInSleep = await Call(client, McpTools.DebugPause);
+                string counted = Local(pausedInSleep, "turns") ?? throw new Xunit.Sdk.XunitException($"The pause's locals had no count of turns: {pausedInSleep}");
+                JsonElement evaluated = await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "turns" });
+                Assert.True(evaluated.GetProperty("value").GetString() == counted
+                    && (!evaluated.TryGetProperty("frame", out JsonElement below) || below.GetString()!.Contains("Program.cs:", StringComparison.Ordinal)),
+                    $"Evaluating turns, which the pause listed as {counted}, did not read it in the stop's frame: {evaluated}");
                 Assert.Equal("Detached from LoopingConsoleApp, which runs on", (await Call(client, McpTools.Stop, new() { ["detach"] = true })).GetString());
                 Assert.Equal("not debugging", (await Call(client, McpTools.DebugState)).GetProperty("state").GetString());
                 Assert.False(looping.WaitForExit(TimeSpan.FromSeconds(2)), "The program the agent detached from ended");
@@ -172,7 +181,8 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>A debugged test run an agent goes on with from its stop answers, as its test host ends, with the tally and
-    /// failures tests_run gives; its stop answers that it is paused there, never an earlier run's tally.</summary>
+    /// failures tests_run gives; its stop answers that it is paused there, never an earlier run's tally; and stopped at a
+    /// failed assertion, an evaluation reads the test's own local, not the assertion's.</summary>
     [Fact]
     public async Task An_agent_going_on_from_a_stop_in_a_debugged_test_run_gets_its_tally_as_it_ends()
     {
@@ -186,7 +196,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
                 "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
             File.WriteAllText(Path.Combine(tests, "SumTests.cs"),
                 "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    public void Two_and_two_make_four()\n    {\n        int sum = 2 + 2;\n" +
-                "        Assert.Equal(4, sum);\n    }\n\n    [Fact]\n    public void Two_and_two_make_five() => Assert.Equal(5, 2 + 2);\n}\n");
+                "        Assert.Equal(4, sum);\n    }\n\n    [Fact]\n    public void Two_and_two_make_five()\n    {\n        int two = 2;\n        Assert.Equal(5, two + two);\n    }\n}\n");
             await Restore.RunAsync(tests);
         }, tests);
         await using McpClient client = await Start(["--mcp", tests], languageServer: false);
@@ -201,9 +211,18 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         while (ended.GetProperty("state").GetString() == "paused" && stops.Count < 5)
         {
             stops.Add(ended.GetProperty("location").GetString()!);
+            if (ended.GetProperty("reason").GetString() == Passenger.Dap.StopReasons.Exception)
+            {
+                // Stopped in the assertion's code, the stop shows the test's frame: an evaluation reads that frame's locals.
+                JsonElement two = await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "two" });
+                Assert.True(two.GetProperty("value").GetString() == "2" && two.TryGetProperty("frame", out JsonElement test)
+                    && test.GetString()!.Contains("Two_and_two_make_five", StringComparison.Ordinal),
+                    $"At the failed assertion, the test's own local was not read in the test's frame: {two}");
+            }
             ended = await Call(client, McpTools.DebugContinue);
         }
         Assert.Contains(stops, s => s.StartsWith("SumTests.cs:10:", StringComparison.Ordinal));
+        Assert.Contains(stops, s => s.StartsWith("SumTests.cs:18:", StringComparison.Ordinal));
         Assert.Equal("not debugging", ended.GetProperty("state").GetString());
         Assert.True(ended.TryGetProperty("tests", out JsonElement tally), $"debug_continue answered the debugged run's end without its tests: {ended}");
         Assert.StartsWith("Tests passed: 1, failed: 1 of 2", tally.GetProperty("summary").GetString(), StringComparison.Ordinal);

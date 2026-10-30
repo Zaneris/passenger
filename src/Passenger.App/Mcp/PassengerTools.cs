@@ -1734,23 +1734,23 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     [McpServerTool(Name = McpTools.DebugEvaluate, Title = "Evaluate an expression", Destructive = true), Description(
-        "Evaluates a C# expression, which may call the program's methods, in a frame of the stopped thread (0, the top, by " +
-        "default), as the Debug window's evaluate box does; a result with members has a reference debug_state opens. With " +
-        "value, a C# expression, assigns it to expression (a local, member or element) as Set Value does, answering what it " +
-        "now is.")]
-    public Task<VariableInfo> DebugEvaluate(string expression, int frame = 0, string? session = null,
+        "Evaluates a C# expression, which may call the program's methods, in a frame of the stopped thread (by default the " +
+        "stop's, whose locals debug_state lists), as the Debug window's evaluate box does; a result with members has a " +
+        "reference debug_state opens. With value, a C# expression, assigns it to expression (a local, member or element) as " +
+        "Set Value does, answering what it now is.")]
+    public Task<VariableInfo> DebugEvaluate(string expression, int? frame = null, string? session = null,
         string? value = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         DebugSession paused = await Paused(session, choose: value is not null);
-        DapStackFrame chosen = await FrameAt(paused, frame);
+        (DapStackFrame chosen, string? below) = frame is int at ? (await FrameAt(paused, at), null) : await StopFrameAsync(paused);
         if (value is not null)
         {
             SetExpressionResponse set = await paused.SetExpressionAsync(expression, value, chosen.Id);
             await Session.Debug.RefreshAsync();
-            return Variable(expression, set.Value, set.Type, set.VariablesReference, expression);
+            return Variable(expression, set.Value, set.Type, set.VariablesReference, expression) with { Frame = below };
         }
         EvaluateResponse result = await paused.EvaluateAsync(expression, chosen.Id, "repl");
-        return Variable(expression, result.Result, result.Type, result.VariablesReference, expression);
+        return Variable(expression, result.Result, result.Type, result.VariablesReference, expression) with { Frame = below };
     });
 
     private Task<IReadOnlyList<VariableInfo>> DebugVariables(int reference, string? session, CancellationToken cancel) => OnUi(cancel, async () =>
@@ -2098,14 +2098,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         string? folder = Session.Folder;
         bool Own(DapStackFrame frame) => frame.Source?.Path is { } path && (folder is null || PathNames.IsUnder(path, folder));
-        // The editor's line (from one) of the frame's code, in its file now: the debugger's is its build's compiler's.
-        int LineOf(DapStackFrame frame) => (Session.Debug.PlaceOf(frame, session)?.Line ?? frame.Line - 1) + 1;
         List<string> lines = [];
         for (int i = 0; i < frames.Count && lines.Count < 20; i++)
         {
             if (Own(frames[i]))
             {
-                lines.Add($"{i}: {frames[i].Name} at {Relative(frames[i].Source!.Path!)}:{LineOf(frames[i])}");
+                lines.Add(FrameLine(i, frames[i], session));
                 continue;
             }
             int last = i;
@@ -2115,7 +2113,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
             if (last == i)
             {
-                lines.Add($"{i}: {frames[i].Name}{(frames[i].Source?.Path is { } path ? $" at {path}:{LineOf(frames[i])}" : "")}");
+                lines.Add(FrameLine(i, frames[i], session));
                 continue;
             }
             string[] modules = [.. frames.Skip(i).Take(last - i + 1).Select(f => f.Name.IndexOf('!', StringComparison.Ordinal) is > 0 and int bang ? f.Name[..bang] : null)
@@ -2125,6 +2123,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         return lines;
     }
+
+    /// <summary>One frame as <see cref="Frames"/> lists it: its index, name and place, the folder's own code relative to it,
+    /// at the editor's line of its file now (the debugger's is its build's compiler's).</summary>
+    private string FrameLine(int index, DapStackFrame frame, DebugSession session) =>
+        $"{index}: {frame.Name}{(frame.Source?.Path is { } path ? $" at {Relative(path)}:{(Session.Debug.PlaceOf(frame, session)?.Line ?? frame.Line - 1) + 1}" : "")}";
 
     /// <summary>How long a stop's answer waits for the binding values of the .axaml files shown to be read.</summary>
     private static readonly TimeSpan BindingValuesLimit = TimeSpan.FromSeconds(20);
@@ -2177,6 +2180,19 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 1 => $"There is no frame {frame}: the stopped thread has 1 frame, 0",
                 _ => $"There is no frame {frame}: the stopped thread has {frames.Count} frames, 0 (the top) to {frames.Count - 1}, as debug_state numbers them",
             });
+    }
+
+    /// <summary>The frame a stop shows, whose locals debug_state lists, and where it is not the top, its line as
+    /// <see cref="Frames"/> lists it.</summary>
+    private async Task<(DapStackFrame Frame, string? Below)> StopFrameAsync(DebugSession session)
+    {
+        (IReadOnlyList<DapStackFrame> frames, DapStackFrame? shown) = await StopFramesAsync(session);
+        if (shown is null)
+        {
+            return (await FrameAt(session, 0), null);
+        }
+        int index = frames.TakeWhile(f => f != shown).Count();
+        return (shown, index > 0 ? FrameLine(index, shown, session) : null);
     }
 
     /// <summary>The program a tool acts on (<see cref="TabFor"/>), being debugged; with <paramref name="choose"/> its tab is
@@ -2707,6 +2723,9 @@ public sealed record VariableInfo(string Name, string Value, string? Type, int R
 {
     /// <summary>Where the value runs past what an answer shows: its length and how debug_evaluate reads on.</summary>
     public string? Cut { get; init; }
+
+    /// <summary>The frame debug_evaluate used by default where it is not the top, as debug_state lists it.</summary>
+    public string? Frame { get; init; }
 }
 
 /// <summary>A .NET program the debugger can attach to, as Attach to Process lists it, its command line's secrets masked.</summary>
