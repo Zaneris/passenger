@@ -76,6 +76,8 @@ internal sealed class Grammar
             using Stream resource = Resource(file);
             JsonNode node = JsonNode.Parse(resource) ?? throw new InvalidOperationException($"Empty grammar {file}");
             Tidy(node);
+            // A grammar embedded under another scope than its own (Markdown's TSX blocks read by TypeScript's) is registered as that scope.
+            node["scopeName"] = name;
             if (name == "source.yaml")
             {
                 KeysAreKeys(node);

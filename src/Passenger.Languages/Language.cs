@@ -71,9 +71,24 @@ public sealed class Language
     /// <summary>Every language in the order declared, each adding itself as it is made, so this comes before them.</summary>
     private static readonly List<Language> All = [];
 
-    /// <summary>Each grammar's file by the scope it names, every language's, for the grammars that embed others.</summary>
-    private static readonly Lazy<Dictionary<string, string>> GrammarFiles = new(() => All.Select(l => l.Grammar).OfType<GrammarFile>()
-        .DistinctBy(g => g.Scope).ToDictionary(g => g.Scope, g => g.File, StringComparer.Ordinal));
+    /// <summary>Scopes the grammars here embed for a language under another name than its own grammar's, each read by the
+    /// grammar its files are coloured by: JSON with comments and JSON Lines by JSON's (which reads comments), TSX by
+    /// TypeScript's (a .tsx file's), and HTML inside another document (Markdown's) by HTML's.</summary>
+    private static readonly (string Scope, string Carried)[] EmbeddedAs =
+        [("source.json.comments", "source.json"), ("source.json.lines", "source.json"), ("source.tsx", "source.ts"), ("text.html.derivative", "text.html.basic")];
+
+    /// <summary>Each grammar's file by the scope it names, every language's, for the grammars that embed others, and by
+    /// the scopes of <see cref="EmbeddedAs"/>.</summary>
+    private static readonly Lazy<Dictionary<string, string>> GrammarFiles = new(() =>
+    {
+        Dictionary<string, string> files = All.Select(l => l.Grammar).OfType<GrammarFile>()
+            .DistinctBy(g => g.Scope).ToDictionary(g => g.Scope, g => g.File, StringComparer.Ordinal);
+        foreach ((string scope, string carried) in EmbeddedAs)
+        {
+            files[scope] = files[carried];
+        }
+        return files;
+    });
 
     private readonly IReadOnlyList<FilePattern> patterns;
 

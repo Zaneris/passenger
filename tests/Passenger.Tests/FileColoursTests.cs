@@ -379,6 +379,28 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
+    /// <summary>A Markdown file's blocks of JSON with comments and of TSX, and its raw HTML, are coloured as their own files
+    /// are: the jsonc block's comment and key, the tsx block's comment and keywords, and the HTML's tag, attribute and value.</summary>
+    [AvaloniaFact]
+    public void A_markdown_files_jsonc_and_tsx_blocks_and_raw_html_are_coloured_as_their_own_files_are()
+    {
+        MainWindow window = Window();
+        try
+        {
+            CodeEditor editor = Open(window, "EMBEDS.md", "# Embeds\n\n```jsonc\n{\n  // The port.\n  \"port\": 8080\n}\n```\n\n"
+                + "```tsx\n// A greeting.\nexport function greeting(): string {\n  return \"Hello\";\n}\n```\n\n<div class=\"note\">\n  Raw <b>HTML</b>\n</div>\n");
+            (string Stretch, TokenKind Kind)[] expected = [("// The port.", TokenKind.Comment), ("\"port\"", TokenKind.JsonKey), ("// A greeting.", TokenKind.Comment),
+                ("export", TokenKind.Keyword), ("function", TokenKind.Keyword), ("<div", TokenKind.Tag), ("class", TokenKind.AttributeName), ("\"note\"", TokenKind.AttributeValue)];
+            string[] wrong = [.. expected.Select(e => (e.Stretch, e.Kind, Found: KindOf(editor, e.Stretch))).Where(e => e.Found != e.Kind)
+                .Select(e => $"{e.Stretch} as {e.Found?.ToString() ?? "several kinds"}, not {e.Kind}")];
+            Assert.True(wrong.Length == 0, $"Markdown's JSON with comments, TSX and raw HTML are not coloured as in their own files: {string.Join("; ", wrong)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A shared tokenizer's scratch buffers must not become a document's saved state or colours. Leave
     /// a comment open in one file, then edit both files before comparing their colours with fresh passes.</summary>
     [AvaloniaFact]
