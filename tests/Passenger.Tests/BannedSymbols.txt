@@ -1,7 +1,7 @@
 M:Passenger.Terminal.TerminalScreen.#ctor(System.Int32,System.Int32);The terminal is tested in the Terminal window, a real shell in a pseudo-terminal
 M:Passenger.Lsp.RoslynSession.StartAsync(System.String,System.String,System.Collections.Generic.IReadOnlyList{System.String},System.String,System.Threading.CancellationToken,System.Collections.Generic.IReadOnlyDictionary{System.String,System.Object},System.Action{Passenger.Lsp.LanguageServer},System.Func{System.Threading.Tasks.Task{System.Collections.Generic.IReadOnlyList{System.String}}},Passenger.Lsp.IProjectFeed,System.String);C# is tested through the window, whose language server the IDE starts
 M:Passenger.Profiler.ProfilingSession.StartAsync(Passenger.Profiler.ProfileTarget,System.String,System.String,Passenger.Profiler.ProgramPump,System.Threading.CancellationToken);The profiler is tested through the window's Profile
-M:Passenger.Editor.Snippet.Parse(System.String,System.Collections.Generic.IReadOnlyList{Passenger.Editor.SnippetVariable},System.String,System.String,System.String);Templates are tested by typing their abbreviations in the window
+M:Passenger.Editor.Snippet.Parse(System.String,System.Collections.Generic.IReadOnlyList{Passenger.Editor.SnippetVariable},System.String,System.String,System.String,System.Collections.Generic.IReadOnlySet{System.Int32});Templates are tested by typing their abbreviations in the window
 T:Passenger.Text.LineDiff;Change bars are tested in the window over a real repository
 T:Passenger.Vcs.CommitGraph;The log's graph is tested in the Git window over a real repository
 M:Passenger.Text.TextDocument.#ctor(System.String);A test types into an editor (EditorRig) or the window, never into a document alone

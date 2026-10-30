@@ -51,7 +51,8 @@ internal sealed partial class CodeCompletion
                     context.Say("Surround With was not applied: the code it wraps was edited meanwhile");
                     return Task.CompletedTask;
                 }
-                Surround(template, new TextRange(wrapped.Start, wrapped.Length));
+                TextRange wrapping = new(wrapped.Start, wrapped.Length);
+                Surround(template, wrapping, SurroundScopes.InStrings(parser.Current, wrapping));
                 return Task.CompletedTask;
             });
     }
@@ -90,8 +91,9 @@ internal sealed partial class CodeCompletion
     }
 
     /// <summary>A surround template over code: the code's lines after its first written relative to its first line's
-    /// indentation, which the template's lines take.</summary>
-    private void Surround(LiveTemplate template, TextRange range)
+    /// indentation, which the template's lines take, but those that begin inside a string (<paramref name="inStrings"/>,
+    /// counted from its first), kept as written.</summary>
+    private void Surround(LiveTemplate template, TextRange range, IReadOnlySet<int>? inStrings = null)
     {
         TextSnapshot text = Editor.Document.Snapshot;
         int lineStart = text.GetLineStart(text.GetLineFromOffset(range.Start));
@@ -104,6 +106,10 @@ internal sealed partial class CodeCompletion
         string[] lines = text.GetText(range).Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
         for (int i = 1; i < lines.Length; i++)
         {
+            if (inStrings?.Contains(i) == true)
+            {
+                continue;
+            }
             int strip = 0;
             while (strip < indent.Length && strip < lines[i].Length && lines[i][strip] is ' ' or '\t')
             {
@@ -111,7 +117,7 @@ internal sealed partial class CodeCompletion
             }
             lines[i] = lines[i][strip..];
         }
-        Editor.InsertSnippet(range, Snippet.Parse(template.Text, Values(template, range.Start), indent, Editor.Indent.Unit, string.Join('\n', lines)));
+        Editor.InsertSnippet(range, Snippet.Parse(template.Text, Values(template, range.Start), indent, Editor.Indent.Unit, string.Join('\n', lines), inStrings));
     }
 
     /// <summary>Complete context.Current Statement on the caret's line (<see cref="StatementCompletion"/>), as one undo

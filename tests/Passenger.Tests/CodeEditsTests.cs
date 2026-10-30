@@ -147,6 +147,23 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
         window.Close();
     }
 
+    /// <summary>Surround With around statements holding a verbatim string and an interpolated one, each over two lines,
+    /// indents the code it wraps and leaves each string's second line as written, so neither string's value changes.</summary>
+    [AvaloniaFact]
+    public void Surround_with_indents_the_code_it_wraps_but_never_the_lines_inside_a_string()
+    {
+        MainWindow window = project.Open("Quote.cs", languageServer: false);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Choose(editor, "string text = @\"first\n  second\";\n        string more = $@\"{text}\n    third\";\n        System.Console.WriteLine(text + more);");
+        editor.Focus();
+        Ui.Run(window, AppActions.SurroundWith);
+        Pick(window, "if");
+        string text = editor.Document.Snapshot.ToString();
+        Assert.True(text.Contains("        if (true)\n        {\n            string text = @\"first\n  second\";\n            string more = $@\"{text}\n    third\";\n"
+            + "            System.Console.WriteLine(text + more);\n        }\n", StringComparison.Ordinal), $"Surround With if changed what a string holds, or left the code unindented:\n{text}");
+        window.Close();
+    }
+
     /// <summary>The language server's edits, in one window: Optimize Imports removes the usings nothing needs and sorts
     /// the rest; Introduce Field makes a constant a field of the type and says why not for anything else, one Undo
     /// taking it back; Introduce Parameter makes an expression a parameter and passes it at every call; and Encapsulate
@@ -524,6 +541,8 @@ public sealed class CodeEditsTests : IClassFixture<CodeEditsTests.Project>
             File.WriteAllText(PathOf("Program.cs"), "class Program\n{\n    static void Main()\n    {\n        int four = Calc.Twice(2) + Calc.Four() + Sum.Of() + Scale.Two();\n    }\n}\n");
             File.WriteAllText(PathOf("Sum.cs"), "static class Sum\n{\n    public static int Of()\n    {\n        int total = 0;\n        total += 1;\n        total += 2;\n        return total;\n    }\n}\n");
             File.WriteAllText(PathOf("Two.cs"), "class First\n{\n}\n\nclass Second\n{\n}\n");
+            File.WriteAllText(PathOf("Quote.cs"), "static class Quote\n{\n    public static void Show()\n    {\n        string text = @\"first\n  second\";\n"
+                + "        string more = $@\"{text}\n    third\";\n        System.Console.WriteLine(text + more);\n    }\n}\n");
             File.WriteAllText(PathOf("Usings.cs"), "using System.Text;\nusing System.Collections.Generic;\nusing System;\n\nstatic class Usings\n{\n    public static int Count()\n    {\n"
                 + "        List<string> names = [];\n        Console.WriteLine(names.Count);\n        return names.Count;\n    }\n}\n");
             File.WriteAllText(PathOf("Calc.cs"), "static class Calc\n{\n    public static int Twice(int value) => value * 2;\n\n    /// <summary>Never called.</summary>\n"

@@ -15,8 +15,9 @@ public sealed record Snippet(string Text, IReadOnlyList<IReadOnlyList<TextRange>
     /// <c>$END$</c> where the caret goes after the last, <c>$SELSTART$</c> and <c>$SELEND$</c> what is selected there
     /// instead, <c>$SELECTION$</c> the text the template wraps, <c>$$</c> a dollar. Tab visits the variables in the
     /// order given, then the rest in the order they appear. Lines after the first take the indentation of the line it
-    /// goes on, a tab its unit, as do the wrapped text's lines after its first.</summary>
-    public static Snippet Parse(string template, IReadOnlyList<SnippetVariable> variables, string indent, string unit, string selection = "")
+    /// goes on, a tab its unit, as do the wrapped text's after its first but those <paramref name="asWritten"/> counts.</summary>
+    public static Snippet Parse(string template, IReadOnlyList<SnippetVariable> variables, string indent, string unit, string selection = "",
+        IReadOnlySet<int>? asWritten = null)
     {
         StringBuilder text = new();
         Dictionary<string, List<TextRange>> places = new(StringComparer.Ordinal);
@@ -53,7 +54,7 @@ public sealed record Snippet(string Text, IReadOnlyList<IReadOnlyList<TextRange>
                         selectedTo = text.Length;
                         break;
                     case "SELECTION":
-                        AppendWrapped(text, selection, indent);
+                        AppendWrapped(text, selection, indent, asWritten);
                         break;
                     default:
                         string value = given.TryGetValue(name, out SnippetVariable variable) ? variable.Value : string.Empty;
@@ -180,8 +181,9 @@ public sealed record Snippet(string Text, IReadOnlyList<IReadOnlyList<TextRange>
     }
 
     /// <summary>The wrapped text, its lines after the first indented as the template's line it starts on, which on the
-    /// template's first line is the indentation of the line it goes on; an empty line stays empty.</summary>
-    private static void AppendWrapped(StringBuilder text, string selection, string indent)
+    /// template's first line is the indentation of the line it goes on; an empty line, and one counted as written (by its
+    /// place among the wrapped text's lines), stays as it is.</summary>
+    private static void AppendWrapped(StringBuilder text, string selection, string indent, IReadOnlySet<int>? asWritten)
     {
         int lineStart = 0;
         for (int i = text.Length - 1; i >= 0; i--)
@@ -200,13 +202,14 @@ public sealed record Snippet(string Text, IReadOnlyList<IReadOnlyList<TextRange>
         string lineIndent = (lineStart == 0 ? indent : string.Empty) + text.ToString(lineStart, leading - lineStart);
         string[] lines = selection.Split('\n');
         text.Append(lines[0]);
-        foreach (string line in lines.Skip(1))
+        for (int i = 1; i < lines.Length; i++)
         {
             text.Append('\n');
-            if (line.Length > 0)
+            if (lines[i].Length > 0 && asWritten?.Contains(i) != true)
             {
-                text.Append(lineIndent).Append(line);
+                text.Append(lineIndent);
             }
+            text.Append(lines[i]);
         }
     }
 }

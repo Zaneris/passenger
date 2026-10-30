@@ -73,6 +73,24 @@ public static class SurroundScopes
         return new SurroundTarget(range, scope);
     }
 
+    /// <summary>The lines of a range after its first that begin inside a string's text (a verbatim, raw or interpolated
+    /// string's), counted from its first: they hold the string's value, which indenting them would change.</summary>
+    public static IReadOnlySet<int> InStrings(ParsedText syntax, TextRange range)
+    {
+        TextSnapshot text = syntax.Text;
+        SyntaxNode root = syntax.Root;
+        int first = text.GetLineFromOffset(range.Start);
+        HashSet<int> inside = [];
+        for (int line = first + 1; line <= text.GetLineFromOffset(range.End); line++)
+        {
+            if (InString(root, text.GetLineStart(line)))
+            {
+                inside.Add(line - first);
+            }
+        }
+        return inside;
+    }
+
     /// <summary>Whether an offset falls inside a comment or a string (a template there would be text, not code); one at
     /// a comment's start or just after its end is outside it.</summary>
     private static bool Inside(SyntaxNode root, int offset)
@@ -82,10 +100,17 @@ public static class SurroundScopes
             return false;
         }
         SyntaxTrivia trivia = root.FindTrivia(offset);
-        if (trivia.Span.Start < offset && offset < trivia.Span.End
-            && trivia.Kind() is not SyntaxKind.WhitespaceTrivia and not SyntaxKind.EndOfLineTrivia)
+        return (trivia.Span.Start < offset && offset < trivia.Span.End && trivia.Kind() is not SyntaxKind.WhitespaceTrivia and not SyntaxKind.EndOfLineTrivia)
+            || InString(root, offset);
+    }
+
+    /// <summary>Whether an offset falls inside a string's text, past its opening quote and before its closing one, but
+    /// not in the code of an interpolation.</summary>
+    private static bool InString(SyntaxNode root, int offset)
+    {
+        if (offset <= 0 || offset >= root.FullSpan.End)
         {
-            return true;
+            return false;
         }
         SyntaxToken token = root.FindToken(offset);
         if (token.Kind() is SyntaxKind.StringLiteralToken or SyntaxKind.CharacterLiteralToken or SyntaxKind.SingleLineRawStringLiteralToken
