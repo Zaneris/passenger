@@ -6,15 +6,16 @@ using Microsoft.Diagnostics.Tracing.Etlx;
 namespace Passenger.Profiler;
 
 /// <summary>A node of the call tree: a method called along one path from a thread's first frame, with how many samples
-/// found the thread in it (Total) and in it and no deeper (Self). Most nodes have one callee, which is kept without a
-/// table by name; the callees are listed once, when first asked for, the tree being whole by then.</summary>
+/// found the thread in it (Total) and in it and no deeper (Self). Callees are told apart by what they are, their name,
+/// module and code (overloads that read alike, or one name in two modules, are two); most nodes have one, which is kept
+/// without a table; the callees are listed once, when first asked for, the tree being whole by then.</summary>
 public sealed class CallNode(string name, string module, CallNode? parent, MethodCode? code = null)
 {
     /// <summary>The callee while there is one.</summary>
     private CallNode? only;
 
-    /// <summary>The callees by name, once there are two.</summary>
-    private Dictionary<string, CallNode>? children;
+    /// <summary>The callees by what they are, once there are two.</summary>
+    private Dictionary<(string Name, string Module, MethodCode? Code), CallNode>? children;
 
     /// <summary>The callees as <see cref="Ordered"/> lists them, once asked for.</summary>
     private CallNode[]? ordered;
@@ -34,27 +35,30 @@ public sealed class CallNode(string name, string module, CallNode? parent, Metho
 
     internal CallNode Child(string method, string module, MethodCode? code)
     {
-        if (children is null && (only is null || only.Name == method))
+        if (children is null && (only is null || (only.Name == method && only.Module == module && only.Code == code)))
         {
             return only ??= new CallNode(method, module, this, code);
         }
         if (children is null)
         {
-            children = new Dictionary<string, CallNode>(StringComparer.Ordinal) { [only!.Name] = only };
+            children = new() { [(only!.Name, only.Module, only.Code)] = only };
             only = null;
         }
-        if (!children.TryGetValue(method, out CallNode? child))
+        if (!children.TryGetValue((method, module, code), out CallNode? child))
         {
-            children[method] = child = new CallNode(method, module, this, code);
+            children[(method, module, code)] = child = new CallNode(method, module, this, code);
             ordered = null;
         }
         return child;
     }
 
-    private static CallNode[] Sorted(Dictionary<string, CallNode> children)
+    private static CallNode[] Sorted(Dictionary<(string Name, string Module, MethodCode? Code), CallNode> children)
     {
         CallNode[] sorted = [.. children.Values];
-        Array.Sort(sorted, static (a, b) => a.Total != b.Total ? b.Total.CompareTo(a.Total) : string.CompareOrdinal(a.Name, b.Name));
+        Array.Sort(sorted, static (a, b) => a.Total != b.Total ? b.Total.CompareTo(a.Total)
+            : string.CompareOrdinal(a.Name, b.Name) is var named and not 0 ? named
+            : string.CompareOrdinal(a.Module, b.Module) is var moduled and not 0 ? moduled
+            : (a.Code?.Token ?? 0).CompareTo(b.Code?.Token ?? 0));
         return sorted;
     }
 }
@@ -262,6 +266,24 @@ public sealed class Snapshot
         double from = Math.Max(whole.StartMs, Math.Min(fromMs, toMs));
         double to = Math.Min(whole.EndMs, Math.Max(fromMs, toMs));
         return new Snapshot(whole.runs, whole.stacks, whole.frames, whole.codes, whole.threadNames, whole.ticks, whole.allCollections, whole.allUiFrames, from, to, whole.TracePath, whole);
+    }
+
+    /// <summary>A run of one thread built without a trace, from the stacks it was caught at, each frame a method's full name
+    /// as the runtime writes it (its parameters' types in full) with its module and code, from where it was caught to the
+    /// thread's first, and how many samples caught it there, one a millisecond.</summary>
+    internal static Snapshot Of(IReadOnlyList<((string Method, string Module, MethodCode? Code)[] Frames, int Samples)> caught)
+    {
+        FrameTable table = new();
+        List<int[]> stacks = [];
+        List<SampleRun> taken = [];
+        double at = 0;
+        foreach (((string Method, string Module, MethodCode? Code)[] frames, int samples) in caught)
+        {
+            stacks.Add([.. frames.Select(f => table.Number(f.Method, f.Module, Pretty(f.Method), f.Code))]);
+            taken.Add(new SampleRun(at, at + samples - 1, stacks.Count - 1, samples));
+            at += samples;
+        }
+        return new Snapshot([(1, [.. taken])], stacks, table.Named, table.Codes, new Dictionary<int, string> { [1] = "Thread 1" }, [], [], [], 0, Math.Max(0, at - 1), string.Empty, null);
     }
 
     /// <summary>When a method was on a sampled stack, first to last, or null when it never was: what the timeline shows
@@ -613,6 +635,30 @@ public sealed class Snapshot
         }
     }
 
+    /// <summary>The frames a run's stacks are numbered into, each method once by what it is, its full name (its parameters'
+    /// types in full) in its module, and shown by its short name (<see cref="Pretty"/>): overloads that read alike stay two.</summary>
+    internal sealed class FrameTable
+    {
+        private readonly Dictionary<(string Method, string Module), int> numbers = [];
+
+        public List<(string Method, string Module)> Named { get; } = [];
+
+        /// <summary>Each frame's module file and token, beside <see cref="Named"/>.</summary>
+        public List<MethodCode?> Codes { get; } = [];
+
+        /// <summary>The number of a method's frame, by its full name and module, numbered the first time.</summary>
+        public int Number(string full, string module, string shown, MethodCode? code)
+        {
+            if (!numbers.TryGetValue((full, module), out int number))
+            {
+                numbers[(full, module)] = number = Named.Count;
+                Named.Add((shown, module));
+                Codes.Add(code);
+            }
+            return number;
+        }
+    }
+
     /// <summary>The trace's stacks as numbers into a table of frames, walked down the trace's own table of callers: each
     /// code address is numbered once, each method's name made once, and a walk's frames are written into a buffer it keeps.
     /// A frame is a method and its module; runs of unnamed native frames are one, and the runtime's GC poll at the leaf
@@ -621,7 +667,7 @@ public sealed class Snapshot
     {
         private readonly TraceCallStacks callStacks = log.CallStacks;
         private readonly TraceCodeAddresses addresses = log.CodeAddresses;
-        private readonly Dictionary<(string Method, string Module), int> table = [];
+        private readonly FrameTable table = new();
         private readonly Dictionary<string, string> natives = new(StringComparer.Ordinal);
 
         /// <summary>Per code address, its frame's number and one more: none until a walk came to it.</summary>
@@ -632,10 +678,10 @@ public sealed class Snapshot
 
         private int[] walked = new int[128];
 
-        public List<(string Method, string Module)> Named { get; } = [];
+        public List<(string Method, string Module)> Named => table.Named;
 
         /// <summary>Each frame's module file and token, beside <see cref="Named"/>.</summary>
-        public List<MethodCode?> Codes { get; } = [];
+        public List<MethodCode?> Codes => table.Codes;
 
         /// <summary>A stack's frames from where it was caught to its thread's first, good until the next walk.</summary>
         public ReadOnlySpan<int> Walk(CallStackIndex stack)
@@ -675,17 +721,14 @@ public sealed class Snapshot
             MethodIndex methodIndex = addresses.MethodIndex(address);
             TraceModuleFile? moduleFile = addresses.ModuleFile(address);
             string module = moduleFile?.Name ?? string.Empty;
-            string method = addresses.Methods.FullMethodName(methodIndex) is { Length: > 0 } full ? Method(methodIndex, full) : Native(module);
-            if (!table.TryGetValue((method, module), out int number))
-            {
-                table[(method, module)] = number = Named.Count;
-                Named.Add((method, module));
-                int token = addresses.Methods.MethodToken(methodIndex);
-                Codes.Add(methodIndex != MethodIndex.Invalid && token != 0
-                    && (addresses.ModuleFiles[addresses.Methods.MethodModuleFileIndex(methodIndex)]?.FilePath ?? (moduleFile is null ? string.Empty : moduleFile.FilePath)) is { Length: > 0 } file
-                    ? new MethodCode(file, token)
-                    : null);
-            }
+            string? full = addresses.Methods.FullMethodName(methodIndex) is { Length: > 0 } named ? named : null;
+            string method = full is null ? Native(module) : Method(methodIndex, full);
+            int token = full is null ? 0 : addresses.Methods.MethodToken(methodIndex);
+            MethodCode? code = methodIndex != MethodIndex.Invalid && token != 0
+                && (addresses.ModuleFiles[addresses.Methods.MethodModuleFileIndex(methodIndex)]?.FilePath ?? (moduleFile is null ? string.Empty : moduleFile.FilePath)) is { Length: > 0 } file
+                ? new MethodCode(file, token)
+                : null;
+            int number = table.Number(full ?? method, module, method, code);
             byAddress[index] = number + 1;
             return number;
         }
