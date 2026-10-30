@@ -1,3 +1,4 @@
+using Passenger.App.Endpoints;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
@@ -20,6 +21,7 @@ internal sealed class FileChecks : IDisposable
         new(path => Path.GetFileName(path) == EditorConfig.FileName, "Passenger's reading of its sections' globs", (_, text) =>
             [.. EditorConfig.Refused(text.ToString()).Select(r => new Marker(r.Glob, MarkerKind.Warning, $"No file matches this section: {r.Why}"))]),
         new(path => Path.GetExtension(path).Equals(".slnx", StringComparison.OrdinalIgnoreCase), "Passenger's reading of the solution", SolutionMarks),
+        new(HttpFile.Is, "Passenger's reading of its requests", RequestMarks),
     ];
 
     private readonly Dictionary<OpenDocument, (Check Kind, Debounce Wait, EventHandler<DocumentChangedEventArgs> Changed)> documents = [];
@@ -91,6 +93,19 @@ internal sealed class FileChecks : IDisposable
             at--;
         }
         return [new Marker(new TextRange(at, at < text.Length ? 1 : 0), MarkerKind.Error, $"The solution does not read: {unread.Why}")];
+    }
+
+    /// <summary>An .http file's lines that do not read as what they say, as errors on what does not read.</summary>
+    private static IReadOnlyList<Marker> RequestMarks(string path, TextSnapshot text)
+    {
+        List<Marker> marks = [];
+        foreach (HttpFileProblem problem in HttpFile.Parse(path, text.ToString()).Problems.Where(p => p.Line < text.LineCount))
+        {
+            LineSpan line = text.GetLine(problem.Line);
+            int start = line.Start + Math.Min(problem.Column, line.Length);
+            marks.Add(new Marker(new TextRange(start, Math.Min(problem.Length, line.End - start)), MarkerKind.Error, problem.Why));
+        }
+        return marks;
     }
 
     /// <summary>A kind of file checked.</summary>

@@ -24,6 +24,15 @@ public sealed record Expectation(string Kind, string Subject, string Op, string 
     /// <summary>Why a line is no criterion, or null when it is one.</summary>
     public static string? Problem(string text) => TryParse(text, out _, out string? why) ? null : why;
 
+    /// <summary>A criterion from its text, or for text that is none one standing for it (<see cref="Malformed"/>), which
+    /// fails every response saying why.</summary>
+    public static Expectation Read(string text) => TryParse(text, out Expectation? expectation, out string? why)
+        ? expectation!
+        : new Expectation(string.Empty, string.Empty, string.Empty, text.Trim()) { Malformed = why };
+
+    /// <summary>Why the text this stands for, its <see cref="Value"/>, is no criterion; null for a criterion.</summary>
+    public string? Malformed { get; init; }
+
     private static bool TryParse(string text, out Expectation? expectation, out string? why)
     {
         expectation = null;
@@ -88,7 +97,7 @@ public sealed record Expectation(string Kind, string Subject, string Op, string 
     }
 
     /// <summary>The criterion as it is written, which parses back to itself.</summary>
-    public override string ToString() => Kind switch
+    public override string ToString() => Malformed is not null ? Value : Kind switch
     {
         "status" or "time" => $"{Kind} {Value}",
         _ => string.Join(" ", new[] { Kind, Subject, Op, Op is "exists" or "missing" or "empty" ? string.Empty : Quote(Value) }.Where(p => p.Length > 0)),
@@ -97,6 +106,10 @@ public sealed record Expectation(string Kind, string Subject, string Op, string 
     /// <summary>Whether the response meets the criterion, and what it had.</summary>
     public ExpectationResult Check(EndpointResponse response)
     {
+        if (Malformed is { } why)
+        {
+            return new ExpectationResult(this, false, $"no criterion: {why}");
+        }
         if (response.Error is { } error)
         {
             return new ExpectationResult(this, false, $"no response: {error}");

@@ -48,6 +48,15 @@
     <Compile Include="../../src/Passenger.App/Tables/CellFormat.cs" Link="App/CellFormat.cs" />
   </ItemGroup>
 
+  <!-- How the Endpoints window reads an .http file and holds an answer to its criteria, from their text alone, compiled in
+       since their project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Endpoints/HttpFile.cs" Link="App/HttpFile.cs" />
+    <Compile Include="../../src/Passenger.App/Endpoints/Expectation.cs" Link="App/Expectation.cs" />
+    <Compile Include="../../src/Passenger.App/Endpoints/EndpointClient.cs" Link="App/EndpointClient.cs" />
+    <Compile Include="../../src/Passenger.App/Endpoints/HttpVariables.cs" Link="App/HttpVariables.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>

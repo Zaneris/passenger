@@ -108,6 +108,35 @@ public sealed class EndpointsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>An <c>@expect</c> that does not read is marked in the editor where it is written, saying why, and its
+    /// request's Test fails on it though the answer is a 200, so a typo never turns a check off.</summary>
+    [AvaloniaFact]
+    public void A_criterion_that_does_not_read_is_marked_in_its_file_and_fails_its_requests_test()
+    {
+        string folder = Folder();
+        string typo = Path.Combine(folder, "typo.http");
+        File.WriteAllText(typo, "### Typo\n# @expect status 20O\nGET {{base}}/items\n");
+        MainWindow window = Open(folder);
+        Assert.Null(window.OpenFile(typo));
+        Ui.Settle();
+        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+        Passenger.Editor.Marker marked = Assert.Single(document.Markers);
+        Assert.Equal(Passenger.Editor.MarkerKind.Error, marked.Kind);
+        Assert.True(document.Text.Snapshot.ToString().Substring(marked.Range.Start, marked.Range.Length) == "status 20O",
+            "The mark of the criterion that does not read is not on its text");
+        Assert.Contains("status takes a number", marked.Message, StringComparison.Ordinal);
+
+        window.ShowToolWindow(ToolWindowIds.Endpoints);
+        Ui.WaitFor(() => window.Endpoints.Requests.Count == 4, "the requests");
+        EndpointRequest request = window.Endpoints.Requests.Single(r => r.Title == "Typo");
+        Ui.Click(RowButton(window, request, "endpointTest"));
+        Ui.WaitFor(() => window.Endpoints.Response.Response is not null, "the answer");
+        Assert.StartsWith("200 OK", window.Endpoints.Response.Summary);
+        Assert.False(window.Endpoints.Response.Passed, "A 200 passed the request whose only criterion, status 20O, does not read: the typo turned its check off");
+        Assert.False(window.Endpoints.Outcome(request));
+        window.Close();
+    }
+
     /// <summary>The send icon on an .http file's request line sends that request as Test does, with the environment the
     /// Endpoints window chooses, though the window was never shown before.</summary>
     [AvaloniaFact]

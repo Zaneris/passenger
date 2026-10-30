@@ -17,10 +17,17 @@ public sealed record EndpointRequest(
     public string Title => Name.Length > 0 ? Name : Url;
 }
 
+/// <summary>A line of an .http or .rest file that does not read as what it says (an <c># @expect</c> that is no criterion):
+/// its line and the columns of what does not read, from 0, and why.</summary>
+public sealed record HttpFileProblem(int Line, int Column, int Length, string Why);
+
 /// <summary>An .http or .rest file read: its requests in order and the variables it sets (<c>@host = localhost</c>).
-/// What the file cannot mean (a block with no request line) is passed over.</summary>
+/// What the file cannot mean (a block with no request line) is passed over; a criterion that does not read is one of its
+/// <see cref="Problems"/>, and its request's criterion still, which fails.</summary>
 public sealed record HttpFile(string Path, IReadOnlyDictionary<string, string> Variables, IReadOnlyList<EndpointRequest> Requests)
 {
+    public IReadOnlyList<HttpFileProblem> Problems { get; init; } = [];
+
     /// <summary>Whether a file is one of HTTP requests, by its extension.</summary>
     public static bool Is(string path) =>
         System.IO.Path.GetExtension(path) is { } extension
@@ -42,13 +49,14 @@ public sealed record HttpFile(string Path, IReadOnlyDictionary<string, string> V
         string[] lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         Dictionary<string, string> variables = new(StringComparer.Ordinal);
         List<EndpointRequest> requests = [];
+        List<HttpFileProblem> problems = [];
         int start = 0;
         string separatorName = string.Empty;
         for (int i = 0; i <= lines.Length; i++)
         {
             if (i == lines.Length || lines[i].StartsWith("###", StringComparison.Ordinal))
             {
-                if (Block(path, lines, start, i, separatorName, variables) is { } request)
+                if (Block(path, lines, start, i, separatorName, variables, problems) is { } request)
                 {
                     requests.Add(request);
                 }
@@ -59,12 +67,13 @@ public sealed record HttpFile(string Path, IReadOnlyDictionary<string, string> V
                 }
             }
         }
-        return new HttpFile(path, variables, requests);
+        return new HttpFile(path, variables, requests) { Problems = problems };
     }
 
     /// <summary>One block between separators: comments, variables and criteria, the request line and the URL's
     /// continuation lines, headers up to a blank line, then the body, less any response handler after it.</summary>
-    private static EndpointRequest? Block(string path, string[] lines, int from, int to, string name, Dictionary<string, string> variables)
+    private static EndpointRequest? Block(string path, string[] lines, int from, int to, string name, Dictionary<string, string> variables,
+        List<HttpFileProblem> problems)
     {
         List<Expectation> expectations = [];
         int i = from;
@@ -81,9 +90,14 @@ public sealed record HttpFile(string Path, IReadOnlyDictionary<string, string> V
                 {
                     name = named;
                 }
-                else if (Tagged(comment, "@expect") is { } expected && Expectation.Parse(expected) is { } expectation)
+                else if (Tagged(comment, "@expect") is { } expected)
                 {
+                    Expectation expectation = Expectation.Read(expected);
                     expectations.Add(expectation);
+                    if (expectation.Malformed is { } why)
+                    {
+                        problems.Add(new HttpFileProblem(i, lines[i].TrimEnd().Length - expected.Length, expected.Length, $"No criterion, so the request fails its check: {why}"));
+                    }
                 }
                 continue;
             }
