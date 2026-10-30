@@ -1,0 +1,4 @@
+<Project>
+  <!-- The repo's own versions, whose tests' section names those the SDK's Blazor WebAssembly template writes. -->
+  <Import Project="../../Directory.Packages.props" />
+</Project>

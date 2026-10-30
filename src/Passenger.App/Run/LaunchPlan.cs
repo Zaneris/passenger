@@ -29,6 +29,13 @@ public sealed partial record LaunchPlan
     /// <summary>The program's arguments, the assembly first when it runs under <c>dotnet</c>.</summary>
     public IReadOnlyList<string> Arguments { get; init; } = [];
 
+    /// <summary>How many of <see cref="Arguments"/> come first to start the program, rather than being its own: the
+    /// assembly under <c>dotnet</c>, or the RunArguments of the program the project's RunCommand names.</summary>
+    public int Leading { get; init; }
+
+    /// <summary>The program's own arguments, after those that start it (<see cref="Leading"/>).</summary>
+    public IEnumerable<string> OwnArguments => Arguments.Skip(Leading);
+
     /// <summary>Whether the program's arguments are the project's own (its RunArguments, the configuration naming none),
     /// which dotnet watch gives it itself.</summary>
     public bool ArgumentsOfProject { get; init; }
@@ -53,6 +60,17 @@ public sealed partial record LaunchPlan
 
     /// <summary>Where the browser opens once the program listens, or null when the configuration opens none.</summary>
     public string? BrowserUrl { get; init; }
+
+    /// <summary>The projects of what it launches whose code runs in the browser (<see cref="ProjectModel.RunsInBrowser"/>):
+    /// its own project first when it does, then those it references.</summary>
+    public IReadOnlyList<string> InBrowser { get; init; } = [];
+
+    /// <summary>What a debugger of this plan cannot debug, in words for the person: code that runs in the browser, which no
+    /// breakpoint stops; null when it debugs all of it.</summary>
+    public string? NotDebugged => InBrowser.Count == 0 || Project is null ? null
+        : $"{string.Join(" and ", InBrowser)}'s components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet, so their breakpoints are not hit: "
+            + (InBrowser[0] == System.IO.Path.GetFileNameWithoutExtension(Project) ? "only the development server that serves them runs under the debugger"
+                : $"{System.IO.Path.GetFileNameWithoutExtension(Project)}'s are");
 
     /// <summary>The program as its messages name it: the project's assembly, else the executable, without its extension.</summary>
     public string ProgramName => System.IO.Path.GetFileNameWithoutExtension(Built ?? Program);
@@ -115,23 +133,36 @@ public sealed partial record LaunchPlan
             ? path
             : throw new LaunchException($"MSBuild could not say what {project.Name} builds"));
         List<string> arguments = [.. CommandLine.Split(Expand(configuration.Arguments))];
-        IReadOnlyList<string> ofProject = arguments.Count == 0 && configuration.Program.Length == 0 ? ProjectArguments(properties, target) : [];
-        arguments.AddRange(ofProject);
+        IReadOnlyList<string> ofProject = [];
         string program;
         string? built = null;
+        int leading = 0;
         if (configuration.Program is { Length: > 0 } named)
         {
             program = Executable(Expand(named), project.Folder);
         }
-        else if (target.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        else if (OtherProgram(properties, target) is ({ } command, { } given))
         {
-            program = Dotnet.Host();
-            arguments.Insert(0, target);
+            program = Executable(command, project.Folder);
+            arguments.InsertRange(0, given);
+            leading = given.Count;
             built = target;
         }
         else
         {
-            program = built = target;
+            ofProject = arguments.Count == 0 ? ProjectArguments(properties, target) : [];
+            arguments.AddRange(ofProject);
+            if (target.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            {
+                program = Dotnet.Host();
+                arguments.Insert(0, target);
+                built = target;
+                leading = 1;
+            }
+            else
+            {
+                program = built = target;
+            }
         }
         string? folder = configuration.WorkingDirectory is { Length: > 0 } own ? Expand(own) : properties.GetValueOrDefault(RunWorkingDirectory);
         string working = folder is not null
@@ -151,10 +182,12 @@ public sealed partial record LaunchPlan
             Name = configuration.Name,
             Program = program,
             Arguments = arguments,
+            Leading = leading,
             ArgumentsOfProject = ofProject.Count > 0,
             WorkingDirectory = working,
             Environment = environment,
             Project = project.Path,
+            InBrowser = [.. project.WithReferenced(projects).Where(p => p.RunsInBrowser).Select(p => System.IO.Path.GetFileNameWithoutExtension(p.Path))],
             Framework = framework,
             Build = configuration.BuildBeforeLaunch ? new BuildStep(project.Path, framework) : null,
             Built = built,
@@ -187,20 +220,41 @@ public sealed partial record LaunchPlan
 
     /// <summary>The program's arguments dotnet run gives it from the project's evaluation: its RunArguments, after the SDK's
     /// own <c>exec "assembly"</c> when the project runs under dotnet; none when its RunCommand starts another program
-    /// (a development server), whose arguments they are.</summary>
+    /// (<see cref="OtherProgram"/>), whose arguments they are.</summary>
     private static IReadOnlyList<string> ProjectArguments(IReadOnlyDictionary<string, string> properties, string target)
     {
         IReadOnlyList<string> given = CommandLine.Split(properties.GetValueOrDefault(RunArguments));
         string command = properties.GetValueOrDefault(RunCommand) ?? string.Empty;
-        if (string.Equals(System.IO.Path.GetFileNameWithoutExtension(command), "dotnet", StringComparison.OrdinalIgnoreCase))
+        if (IsDotnet(command))
         {
             return given is ["exec", { } assembly, ..] && PathNames.Same(PathNames.Canonical(assembly), target) ? [.. given.Skip(2)] : [];
         }
-        // The apphost the SDK makes beside the assembly, which runs it.
-        return System.IO.Path.GetDirectoryName(command) is { Length: > 0 } folder && PathNames.Same(PathNames.Canonical(folder), System.IO.Path.GetDirectoryName(target)!)
-            && PathNames.NamesIn(folder).Equals(System.IO.Path.GetFileNameWithoutExtension(command), System.IO.Path.GetFileNameWithoutExtension(target))
-            ? given : [];
+        return IsAppHost(command, target) ? given : [];
     }
+
+    /// <summary>The program dotnet run starts in place of the project's own, with the RunArguments it is given: what the
+    /// project's RunCommand names, or another assembly it has <c>dotnet</c> run (a Blazor WebAssembly app's development
+    /// server, which serves the app to the browser); null when it runs the project's assembly or its apphost.</summary>
+    private static (string Command, IReadOnlyList<string> Arguments)? OtherProgram(IReadOnlyDictionary<string, string> properties, string target)
+    {
+        string command = properties.GetValueOrDefault(RunCommand) ?? string.Empty;
+        IReadOnlyList<string> given = CommandLine.Split(properties.GetValueOrDefault(RunArguments));
+        if (IsDotnet(command))
+        {
+            IReadOnlyList<string> run = given is ["exec", ..] ? [.. given.Skip(1)] : given;
+            return run is [{ } assembly, ..] && assembly.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) && !PathNames.Same(PathNames.Canonical(assembly), target)
+                ? (command, given) : null;
+        }
+        return command.Length > 0 && !IsAppHost(command, target) ? (command, given) : null;
+    }
+
+    private static bool IsDotnet(string command) =>
+        string.Equals(System.IO.Path.GetFileNameWithoutExtension(command), "dotnet", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Whether a RunCommand is the apphost the SDK makes beside the assembly, which runs it.</summary>
+    private static bool IsAppHost(string command, string target) =>
+        System.IO.Path.GetDirectoryName(command) is { Length: > 0 } folder && PathNames.Same(PathNames.Canonical(folder), System.IO.Path.GetDirectoryName(target)!)
+        && PathNames.NamesIn(folder).Equals(System.IO.Path.GetFileNameWithoutExtension(command), System.IO.Path.GetFileNameWithoutExtension(target));
 
     /// <summary>A program a configuration names: the .NET command line by name is the one the IDE builds with, a path is
     /// the project folder's when relative, and a bare name is looked for on the PATH as a shell would.</summary>

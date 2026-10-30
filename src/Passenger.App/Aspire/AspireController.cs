@@ -871,7 +871,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             }
         }
         IReadOnlyList<string> arguments = request.Arguments is { } given
-            ? [.. plan.Built is { } built && plan.Arguments.FirstOrDefault() == built ? new[] { built } : [], .. given]
+            ? [.. plan.Arguments.Take(plan.Leading), .. given]
             : plan.Arguments;
         plan = plan with { Name = $"{app.Configuration.Name} / {project.Name}", Environment = environment, Arguments = arguments };
         LaunchPlan stamped = plan;

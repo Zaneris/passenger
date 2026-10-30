@@ -1127,14 +1127,24 @@ public sealed class NewProjectDialog : IdeWindow
         _ => "None",
     };
 
-    /// <summary>Why a template's project is set up to run no other way: it is no service (web, API, worker, Blazor, gRPC);
-    /// null for one that is.</summary>
+    /// <summary>Why a template's project is set up to run no other way: it is no service (web, API, worker, Blazor, gRPC), or
+    /// it runs in the browser (<see cref="InBrowser"/>); null for one that is a service.</summary>
     private static string? NotAService(ProjectTemplate template)
     {
         HashSet<string> kinds = new(template.Classifications, StringComparer.OrdinalIgnoreCase);
+        if (InBrowser(template))
+        {
+            return $"{template.Name} runs in the browser, served by its development server: containers and Aspire are set up for services, which run on a server";
+        }
         return !template.IsSolution && (kinds.Contains("Web") || kinds.Contains("Worker")) && !kinds.Overlaps(["Test", "Library", "Desktop"]) ? null
             : $"{template.Name} is not a service: containers and Aspire are set up for web, API, worker, Blazor and gRPC projects";
     }
+
+    /// <summary>Whether a template's project runs wholly in the browser on .NET's WebAssembly runtime: Blazor's standalone
+    /// WebAssembly app (the Microsoft.Web.Blazor.Wasm group), whose development server only serves its files.</summary>
+    private static bool InBrowser(ProjectTemplate template) =>
+        template.Variants.Any(v => v.Identity.StartsWith("Microsoft.Web.Blazor.Wasm.", StringComparison.Ordinal))
+        && !template.Classifications.Contains("Library", StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Greys the containers' set-ups once the question says no container can be set up here.</summary>
     private async Task AskEngineAsync(Task<string?> containers)

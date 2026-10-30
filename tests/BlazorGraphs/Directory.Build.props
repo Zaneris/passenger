@@ -1,0 +1,15 @@
+<Project>
+  <!-- The package graph of the Blazor WebAssembly app the tests make (dotnet new blazorwasm: Blazor's WebAssembly host,
+       its development server, and the browser's runtime pack and trimmer the SDK adds) at the tests' own target,
+       TestProjects.Framework, restored with the solution so the package cache holds them: a test folder restores from the
+       run's local feed alone, which finds the rest there (BlazorWebAssemblyTests), never on nuget.org. Restored, never
+       built nor run, under none of the repo's rules, which are for Passenger's code. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>$(MSBuildThisFileDirectory)../../artifacts</ArtifactsPath>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
+</Project>

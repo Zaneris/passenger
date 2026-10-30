@@ -291,9 +291,42 @@ public sealed record ProjectModel(
     /// references a test SDK, an adapter or a Testing Platform test framework.</summary>
     public bool IsTestProject => DeclaredTest || Packages.Any(p => TestPackages.Contains(p.Name));
 
-    /// <summary>Whether it builds something that runs: an executable, not a library or a test.</summary>
+    /// <summary>Whether it builds something that runs: an executable, not a library, a test or a Blazor Web App's client
+    /// (<see cref="IsBrowserClient"/>).</summary>
     public bool IsRunnable => (string.Equals(OutputType, "Exe", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(OutputType, "WinExe", StringComparison.OrdinalIgnoreCase)) && !IsTestProject;
+        || string.Equals(OutputType, "WinExe", StringComparison.OrdinalIgnoreCase)) && !IsTestProject && !IsBrowserClient;
+
+    /// <summary>Whether its code runs in the browser on .NET's WebAssembly runtime: it references Blazor's WebAssembly host.</summary>
+    public bool RunsInBrowser => Packages.Any(p => p.Name.Equals(BlazorWebAssembly, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Whether it runs in the browser with no development server of its own to serve it: a Blazor Web App's client,
+    /// which the web app referencing it serves, never itself.</summary>
+    public bool IsBrowserClient => RunsInBrowser && !Packages.Any(p => BlazorServers.Contains(p.Name));
+
+    private const string BlazorWebAssembly = "Microsoft.AspNetCore.Components.WebAssembly";
+
+    /// <summary>The development servers that serve a standalone Blazor WebAssembly app: before .NET 11, and since.</summary>
+    private static readonly HashSet<string> BlazorServers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Microsoft.AspNetCore.Components.WebAssembly.DevServer", "Microsoft.AspNetCore.Components.Gateway",
+    };
+
+    /// <summary>Itself, then the projects it references among <paramref name="projects"/>, and those they reference, each once.</summary>
+    public IReadOnlyList<ProjectModel> WithReferenced(IReadOnlyList<ProjectModel> projects)
+    {
+        List<ProjectModel> found = [this];
+        for (int i = 0; i < found.Count; i++)
+        {
+            foreach (string reference in found[i].ProjectReferences)
+            {
+                if (projects.FirstOrDefault(p => PathNames.Same(p.Path, reference)) is { } referenced && !found.Any(f => PathNames.Same(f.Path, referenced.Path)))
+                {
+                    found.Add(referenced);
+                }
+            }
+        }
+        return found;
+    }
 
     /// <summary>Whether Aspire's evaluated SDK identifies this project as an AppHost.</summary>
     public bool IsAspireHost => Evaluated?.IsAspireHost == true;

@@ -776,6 +776,10 @@ public sealed class DebugController : IDisposable
         {
             shown.Append($"{AttachedConsole}\n");
         }
+        if (plan?.NotDebugged is { } notDebugged)
+        {
+            shown.Append($"{notDebugged}\n");
+        }
         Message?.Invoke(this, $"Debugging {name}");
         DebugSession? starting = null;
         try
@@ -1959,8 +1963,10 @@ public sealed class DebugController : IDisposable
             + (paused.Length > 0 ? $", {string.Join(" and ", paused)} paused" : string.Empty);
     }
 
-    /// <summary>A session's state in words; what its stop was read to be only for the chosen tab, whose stop is read.</summary>
-    private string Said(DebugTab tab) => Said(tab.Session!, tab.Name, tab == chosen);
+    /// <summary>A session's state in words; what its stop was read to be only for the chosen tab, whose stop is read; while it
+    /// runs, what of it the debugger cannot debug.</summary>
+    private string Said(DebugTab tab) => Said(tab.Session!, tab.Name, tab == chosen)
+        + (tab.Session!.State is DebugState.Starting or DebugState.Running && tab.Plan?.NotDebugged is { } notDebugged ? $"; {notDebugged}" : string.Empty);
 
     private string Said(DebugSession session, string name, bool read) => session.State switch
     {

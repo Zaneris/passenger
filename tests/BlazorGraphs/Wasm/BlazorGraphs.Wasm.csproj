@@ -1,0 +1,11 @@
+<Project>
+  <!-- The SDK's blazorwasm template's references. The SDK makes any Blazor WebAssembly project a program, which needs code
+       to build, so this one is restored alone: its Build does nothing. -->
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk.BlazorWebAssembly" />
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk.BlazorWebAssembly" />
+  <Target Name="Build" />
+</Project>
