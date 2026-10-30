@@ -16,7 +16,7 @@ public static class CorDebugThreadExtensions
         public IEnumerable<ICorDebugChain> EnumerateChains()
         {
             Marshal.ThrowExceptionForHR(instance.TryEnumerateChains(out ICorDebugChainEnum ppChains));
-            return EnumerateChainsCore(ppChains);
+            return CorDebugEnums.Walk<ICorDebugChain>(ppChains.TryNext);
         }
 
         /// <inheritdoc cref="M:Passenger.Debugger.Interop.ICorDebugThread.TryCreateEval(Passenger.Debugger.Interop.ICorDebugEval@)" />
@@ -72,25 +72,5 @@ public static class CorDebugThreadExtensions
                 return ppProcess;
             }
         }
-    }
-
-    private static IEnumerable<ICorDebugChain> EnumerateChainsCore(ICorDebugChainEnum enumerator)
-    {
-        while (true)
-        {
-            ICorDebugChain[] array = new ICorDebugChain[1];
-            int errorCode = enumerator.TryNext(1u, array, out var pceltFetched);
-            if (pceltFetched == 0)
-            {
-                yield break;
-            }
-            Marshal.ThrowExceptionForHR(errorCode);
-            if (pceltFetched != 1)
-            {
-                break;
-            }
-            yield return array[0];
-        }
-        throw new InvalidOperationException("Native debugger enumerator returned an invalid item count.");
     }
 }

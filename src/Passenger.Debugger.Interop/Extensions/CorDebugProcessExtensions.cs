@@ -16,7 +16,7 @@ public static class CorDebugProcessExtensions
         public IEnumerable<ICorDebugAppDomain> EnumerateAppDomains()
         {
             Marshal.ThrowExceptionForHR(instance.TryEnumerateAppDomains(out ICorDebugAppDomainEnum ppAppDomains));
-            return EnumerateAppDomainsCore(ppAppDomains);
+            return CorDebugEnums.Walk<ICorDebugAppDomain>(ppAppDomains.TryNext);
         }
 
         /// <inheritdoc cref="M:Passenger.Debugger.Interop.ICorDebugProcess.TryReadMemory(Passenger.Debugger.Interop.CORDB_ADDRESS,System.UInt32,System.Byte[],System.UIntPtr@)" />
@@ -40,25 +40,5 @@ public static class CorDebugProcessExtensions
             Marshal.ThrowExceptionForHR(instance.TryWriteMemory(address, checked((uint)size), buffer, out var written));
             return written;
         }
-    }
-
-    private static IEnumerable<ICorDebugAppDomain> EnumerateAppDomainsCore(ICorDebugAppDomainEnum enumerator)
-    {
-        while (true)
-        {
-            ICorDebugAppDomain[] array = new ICorDebugAppDomain[1];
-            int errorCode = enumerator.TryNext(1u, array, out var pceltFetched);
-            if (pceltFetched == 0)
-            {
-                yield break;
-            }
-            Marshal.ThrowExceptionForHR(errorCode);
-            if (pceltFetched != 1)
-            {
-                break;
-            }
-            yield return array[0];
-        }
-        throw new InvalidOperationException("Native debugger enumerator returned an invalid item count.");
     }
 }

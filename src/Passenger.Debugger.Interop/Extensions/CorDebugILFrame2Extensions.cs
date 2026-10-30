@@ -16,27 +16,7 @@ public static class CorDebugILFrame2Extensions
         public IEnumerable<ICorDebugType> EnumerateTypeParameters()
         {
             Marshal.ThrowExceptionForHR(instance.TryEnumerateTypeParameters(out ICorDebugTypeEnum ppTyParEnum));
-            return EnumerateTypeParametersCore(ppTyParEnum);
+            return CorDebugEnums.Walk<ICorDebugType>(ppTyParEnum.TryNext);
         }
-    }
-
-    private static IEnumerable<ICorDebugType> EnumerateTypeParametersCore(ICorDebugTypeEnum enumerator)
-    {
-        while (true)
-        {
-            ICorDebugType[] array = new ICorDebugType[1];
-            int errorCode = enumerator.TryNext(1u, array, out var pceltFetched);
-            if (pceltFetched == 0)
-            {
-                yield break;
-            }
-            Marshal.ThrowExceptionForHR(errorCode);
-            if (pceltFetched != 1)
-            {
-                break;
-            }
-            yield return array[0];
-        }
-        throw new InvalidOperationException("Native debugger enumerator returned an invalid item count.");
     }
 }

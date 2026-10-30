@@ -16,27 +16,7 @@ public static class CorDebugAppDomainExtensions
         public IEnumerable<ICorDebugStepper> EnumerateSteppers()
         {
             Marshal.ThrowExceptionForHR(instance.TryEnumerateSteppers(out ICorDebugStepperEnum ppSteppers));
-            return EnumerateSteppersCore(ppSteppers);
+            return CorDebugEnums.Walk<ICorDebugStepper>(ppSteppers.TryNext);
         }
-    }
-
-    private static IEnumerable<ICorDebugStepper> EnumerateSteppersCore(ICorDebugStepperEnum enumerator)
-    {
-        while (true)
-        {
-            ICorDebugStepper[] array = new ICorDebugStepper[1];
-            int errorCode = enumerator.TryNext(1u, array, out var pceltFetched);
-            if (pceltFetched == 0)
-            {
-                yield break;
-            }
-            Marshal.ThrowExceptionForHR(errorCode);
-            if (pceltFetched != 1)
-            {
-                break;
-            }
-            yield return array[0];
-        }
-        throw new InvalidOperationException("Native debugger enumerator returned an invalid item count.");
     }
 }

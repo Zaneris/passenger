@@ -23,6 +23,9 @@ public static class Cor
 
     public const int CORDBG_E_OBJECT_NEUTERED = -2146233521;
 
+    /// <summary>A frame has no home for the argument or local at its IP, as optimized code leaves some (0x80131304).</summary>
+    public const int CORDBG_E_IL_VAR_NOT_AVAILABLE = -2146233596;
+
     public const int CORDBG_E_ILLEGAL_SHUTDOWN_ORDER = -2146231275;
 
     public const int CORDBG_E_ILLEGAL_AT_GC_UNSAFE_POINT = -2146231261;

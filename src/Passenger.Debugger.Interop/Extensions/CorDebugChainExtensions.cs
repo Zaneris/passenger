@@ -16,7 +16,7 @@ public static class CorDebugChainExtensions
         public IEnumerable<ICorDebugFrame> EnumerateFrames()
         {
             Marshal.ThrowExceptionForHR(instance.TryEnumerateFrames(out ICorDebugFrameEnum ppFrames));
-            return EnumerateFramesCore(ppFrames);
+            return CorDebugEnums.Walk<ICorDebugFrame>(ppFrames.TryNext);
         }
 
         /// <inheritdoc cref="M:Passenger.Debugger.Interop.ICorDebugChain.TryGetReason(Passenger.Debugger.Interop.CorDebugChainReason@)" />
@@ -48,25 +48,5 @@ public static class CorDebugChainExtensions
                 return pManaged;
             }
         }
-    }
-
-    private static IEnumerable<ICorDebugFrame> EnumerateFramesCore(ICorDebugFrameEnum enumerator)
-    {
-        while (true)
-        {
-            ICorDebugFrame[] array = new ICorDebugFrame[1];
-            int errorCode = enumerator.TryNext(1u, array, out var pceltFetched);
-            if (pceltFetched == 0)
-            {
-                yield break;
-            }
-            Marshal.ThrowExceptionForHR(errorCode);
-            if (pceltFetched != 1)
-            {
-                break;
-            }
-            yield return array[0];
-        }
-        throw new InvalidOperationException("Native debugger enumerator returned an invalid item count.");
     }
 }
