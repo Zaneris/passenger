@@ -104,25 +104,26 @@ public sealed record SearchPlace(bool All, IReadOnlyList<string> Folders, bool R
 {
     public static SearchPlace Everything(FileMask? mask) => new(true, [], true, [], [], mask);
 
-    /// <summary>The paths to read, canonical and each once: the index's first, in its order. A worker's, as what is walked
-    /// is read from the disk.</summary>
-    internal IEnumerable<string> Paths(string root, IReadOnlyList<string> indexed)
+    /// <summary>The paths to read, canonical and each once: the index's first, in its order. Each says whether a link
+    /// listed inside the open folder (or inside a folder walked outside it) leads out of it, as a walk of the folders never
+    /// goes: such a file is searched, but no Replace writes it. A worker's, as what is walked is read from the disk.</summary>
+    internal IEnumerable<(string Path, bool Outside)> Paths(string root, IReadOnlyList<string> indexed)
     {
         HashSet<string> seen = new(StringComparer.Ordinal);
-        IEnumerable<string> inIndex = indexed.Select(relative => Path.Combine(root, relative)).Where(full => All || Holds(full));
-        IEnumerable<string> walked = Folders.Where(f => !PathNames.Within(f, root) || IgnoredFolders.AnyIn(root, PathNames.Below(f, root)))
-            .SelectMany(folder => FileIndex.Walk(folder).Select(relative => Path.Combine(folder, relative)).Where(Holds));
-        foreach (string full in inIndex.Concat(walked).Where(Passes))
+        IEnumerable<(string Full, string Within)> inIndex = indexed.Select(relative => (Path.Combine(root, relative), root)).Where(file => All || Holds(file.Item1));
+        IEnumerable<(string Full, string Within)> walked = Folders.Where(f => !PathNames.Within(f, root) || IgnoredFolders.AnyIn(root, PathNames.Below(f, root)))
+            .SelectMany(folder => FileIndex.Walk(folder).Select(relative => (Path.Combine(folder, relative), PathNames.Within(folder, root) ? root : folder)).Where(file => Holds(file.Item1)));
+        foreach ((string full, string within) in inIndex.Concat(walked).Where(file => Passes(file.Full)))
         {
             string path = PathNames.Canonical(full);
             if (seen.Add(path))
             {
-                yield return path;
+                yield return (path, !PathNames.Within(path, within));
             }
         }
         foreach (string file in Files.Where(f => Passes(f) && seen.Add(f)))
         {
-            yield return file;
+            yield return (file, PathNames.IsUnder(file, root) && !PathNames.IsUnder(PathNames.Canonical(file), root));
         }
     }
 

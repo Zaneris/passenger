@@ -181,14 +181,14 @@ public partial class MainWindow
     /// in, said in the status bar, and the popup's search run again over what is left.</summary>
     private async Task ReplaceAllAsync(Navigation.FindInFilesPopup popup, (SearchQuery Query, string Replacement, FilesFound Found) asked)
     {
+        string? left = FilesReplaced.Listed(asked.Found.Unreplaceable, Path.GetFileName);
         if (asked.Found.Replaceable.Count == 0)
         {
-            status.Text = $"Nothing replaced: {asked.Found.StoppedIn(Path.GetFileName)}";
+            status.Text = $"Nothing replaced; not replaced: {left}";
             return;
         }
         string what = FilesReplaced.Count(asked.Found.Replaceable);
-        string leaving = asked.Found.Stopped.Count == 0 ? string.Empty
-            : $" Not replaced in {string.Join(", ", asked.Found.Stopped.Select(Path.GetFileName))}: {FileSearch.StoppedWhy}.";
+        string leaving = left is null ? string.Empty : $" Not replaced: {left}.";
         if (await Confirm("Replace in Files", $"Replace {what} with '{asked.Replacement}'? A closed file is written; one Undo takes back every file's change.{leaving}", "Replace All"))
         {
             FilesReplaced done = await ReplaceInFilesAsync(asked.Query, asked.Replacement, asked.Found);
@@ -208,7 +208,7 @@ public partial class MainWindow
     {
         SearchPattern pattern = SearchPattern.For(query, TextSearch.Apart);
         List<(string Path, TextSnapshot? Open)> files = [];
-        List<(string Path, string Why)> refused = [.. found.Stopped.Select(path => (path, FileSearch.StoppedWhy))];
+        List<(string Path, string Why)> refused = [.. found.Unreplaceable];
         foreach (string path in found.Replaceable.Select(m => m.Path).Distinct())
         {
             OpenDocument? open = Editors.Find(path);

@@ -218,7 +218,7 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException($"More than {FileSearch.MostMatches - 1} matches: narrow the scope or the mask, as Replace in Files lists no more");
         }
-        List<string> files = [.. found.Select(m => m.Path).Distinct()];
+        List<string> files = [.. searched.Replaceable.Select(m => m.Path).Distinct()];
         FilesReplaced done = await window.ReplaceInFilesAsync(query, replacement, searched);
         List<string> said = [.. done.Converted];
         // The open files' saves are the replace's, in its change set; what the person saves meanwhile stays theirs.

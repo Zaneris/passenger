@@ -17,8 +17,17 @@ public sealed record FilesFound(IReadOnlyList<SearchMatch> Matches, IReadOnlyLis
 {
     public static readonly FilesFound None = new([], []);
 
-    /// <summary>The matches Replace in Files replaces: those in the files whose search ended.</summary>
-    public IReadOnlyList<SearchMatch> Replaceable => Stopped.Count == 0 ? Matches : [.. Matches.Where(m => !Stopped.Contains(m.Path))];
+    /// <summary>The files with matches that a link in the folder searched leads to outside it, which Replace leaves as they
+    /// are (<see cref="SearchPlace.Paths"/>).</summary>
+    public IReadOnlyList<string> Outside { get; init; } = [];
+
+    /// <summary>The matches Replace in Files replaces: those in the files whose search ended, inside the folder searched.</summary>
+    public IReadOnlyList<SearchMatch> Replaceable => Stopped.Count == 0 && Outside.Count == 0 ? Matches
+        : [.. Matches.Where(m => !Stopped.Contains(m.Path) && !Outside.Contains(m.Path))];
+
+    /// <summary>The files Replace in Files leaves as they are whatever the replacement, each with why.</summary>
+    public IEnumerable<(string Path, string Why)> Unreplaceable =>
+        Stopped.Select(path => (path, FileSearch.StoppedWhy)).Concat(Outside.Select(path => (path, FileSearch.OutsideWhy)));
 
     /// <summary>Where the search stopped, each file named as <paramref name="name"/> gives it; null when it stopped nowhere.</summary>
     public string? StoppedIn(Func<string, string> name) =>
@@ -48,8 +57,11 @@ public sealed record FilesReplaced(IReadOnlyList<string> Converted, IReadOnlyLis
     }
 
     /// <summary>The refused files, each named as <paramref name="name"/> gives it with why; null when none was.</summary>
-    public string? NotReplaced(Func<string, string> name) =>
-        Refused.Count == 0 ? null : $"not replaced: {string.Join(", ", Refused.Select(r => $"{name(r.Path)} ({r.Why})"))}";
+    public string? NotReplaced(Func<string, string> name) => Listed(Refused, name) is { } listed ? $"not replaced: {listed}" : null;
+
+    /// <summary>Files left as they were, each named as <paramref name="name"/> gives it with why; null for none.</summary>
+    public static string? Listed(IEnumerable<(string Path, string Why)> files, Func<string, string> name) =>
+        string.Join(", ", files.Select(r => $"{name(r.Path)} ({r.Why})")) is { Length: > 0 } listed ? listed : null;
 }
 
 /// <summary>Find in Files over the open folder's files, matching as the editor's Find bar does (the same query and
@@ -95,8 +107,9 @@ public static class FileSearch
         }
         SearchPattern pattern = SearchPattern.For(query, TextSearch.Apart);
         MatchFilter? filter = MatchFilter.For(query);
+        List<string> outside = [];
         byte[] bytes = [];
-        foreach (string path in place.Paths(root, files))
+        foreach ((string path, bool leadsOut) in place.Paths(root, files))
         {
             cancellation.ThrowIfCancellationRequested();
             // A preview's or a workbook's tab holds no text, so its file is searched as a closed one is, and passed over as binary.
@@ -130,12 +143,16 @@ public static class FileSearch
             {
                 stopped.Add(path);
             }
+            if (leadsOut && searched.Matches.Count > 0)
+            {
+                outside.Add(path);
+            }
             if (found.Count >= MostMatches)
             {
                 break;
             }
         }
-        return new FilesFound(found, stopped);
+        return new FilesFound(found, stopped) { Outside = outside };
     }, cancellation);
 
     /// <summary>A closed file's text as the editor reads it (<see cref="Editors.EditorArea.ReadText"/>); null for one that
@@ -295,6 +312,9 @@ public static class FileSearch
 
     /// <summary>Why a file a regex ran too long in is left as it was.</summary>
     public const string StoppedWhy = "the regex took too long there";
+
+    /// <summary>Why a file outside the folder searched, which a link inside it leads to, is left as it was.</summary>
+    public const string OutsideWhy = "outside the folder, where a link in it leads";
 
     private static string Applied(string text, IReadOnlyList<TextEdit> edits)
     {

@@ -716,6 +716,44 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A link in the folder to a file outside it (a cloned repository may carry one): Find in Files lists its match,
+    /// but Replace All and an agent's replace_in_files leave the file outside as it was, saying why, and replace the rest.</summary>
+    [AvaloniaFact]
+    public void Replace_all_and_replace_in_files_leave_a_file_outside_the_folder_that_a_link_in_it_leads_to()
+    {
+        string outside = TestFolders.Create("outside-");
+        try
+        {
+            string target = Path.Combine(PathNames.Canonical(outside), "profile.txt");
+            const string kept = "count on me\n";
+            File.WriteAllText(target, kept);
+            TestFolders.Link(Path.Combine(folder, "notes.txt"), target);
+            MainWindow window = Open();
+            FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
+            popup.Words = true;
+            Search(popup, "count");
+            Assert.True(popup.Matches.Any(m => PathNames.Same(m.Path, target)), $"Find in Files did not list the match in profile.txt, through notes.txt: {string.Join(", ", popup.Matches.Select(m => m.Path))}");
+
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            popup.Replacement = "total";
+            popup.RequestReplace();
+            Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
+            Assert.Equal("Replaced 3 matches in 2 files; not replaced: profile.txt (outside the folder, where a link in it leads)", window.Status);
+            Assert.True(File.ReadAllText(target) == kept, $"Replace All wrote profile.txt, outside the folder, through the link notes.txt: {File.ReadAllText(target)}");
+            Assert.Equal("class Alpha\n{\n    int total;\n}\n", File.ReadAllText(Path.Combine(folder, "Alpha.cs")));
+
+            Task<string> replacing = new Passenger.App.Mcp.PassengerTools(window).ReplaceInFiles("count", "sum", wholeWords: true);
+            Exception refused = Assert.ThrowsAny<Exception>(() => Ui.Await(replacing, "replace_in_files' answer"));
+            Assert.Contains("profile.txt (outside the folder, where a link in it leads)", refused.Message, StringComparison.Ordinal);
+            Assert.True(File.ReadAllText(target) == kept, $"replace_in_files wrote profile.txt, outside the folder, through the link notes.txt: {File.ReadAllText(target)}");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(outside);
+        }
+    }
+
     /// <summary>Replace in Files of every word's edge (\b) with the whole text ($_) in a file of 12,000 characters would
     /// make it 144 million long: the file is named as left as it was, with how long its text would be.</summary>
     [Gate]
