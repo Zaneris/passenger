@@ -6,8 +6,9 @@ using Passenger.Vcs;
 
 namespace Passenger.Tests;
 
-/// <summary>What the window hands git names the files and repository the person means, however they are named: a
-/// folder whose name ends in a space is its own repository, and a\b.txt is not a/b.txt off Windows.</summary>
+/// <summary>What the window hands git names the files and repository the person means, however many and however they
+/// are named: thousands of long paths commit and roll back, a folder whose name ends in a space is its own repository,
+/// and a\b.txt is not a/b.txt off Windows.</summary>
 public sealed class GitCommandLineTests : IDisposable
 {
     private const string Original = "class Shop\n{\n    int count;\n}\n";
@@ -15,6 +16,42 @@ public sealed class GitCommandLineTests : IDisposable
     private readonly string folder = TestFolders.Create("git-lines-");
 
     public void Dispose() => TestFolders.Delete(folder);
+
+    /// <summary>Commit and Rollback of 2,000 files whose paths together overrun the system's command line (Windows' 32,767
+    /// characters, macOS's 1 MB, Linux's 2 MB) take every one of them.</summary>
+    [AvaloniaFact]
+    public void Commit_and_rollback_of_two_thousand_files_with_long_paths_take_them_all()
+    {
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original);
+        TestGit.Init(folder);
+        // Each path within what the system takes, Windows' 260 characters among them.
+        int depth = OperatingSystem.IsWindows() ? 0 : OperatingSystem.IsMacOS() ? 2 : 5;
+        string deep = Path.Combine([folder, .. Enumerable.Range(0, depth).Select(i => new string((char)('a' + i), 200))]);
+        Directory.CreateDirectory(deep);
+        string[] files = [.. Enumerable.Range(0, 2000).Select(i => Path.Combine(deep, $"{new string('f', OperatingSystem.IsWindows() ? 80 : 140)}{i:D4}.txt"))];
+        foreach (string file in files)
+        {
+            File.WriteAllText(file, "first\n");
+        }
+
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.Landed(() => window.Vcs.Changes.Count == files.Length, "the 2,000 new files listed");
+        CommitResult made = Ui.Landed(window.Vcs.CommitAsync([.. window.Vcs.Changes], "Two thousand", amend: false, push: false), "the commit");
+        Assert.True(made.Commit.Succeeded, made.Commit.Message);
+        Assert.Equal(files.Length + 1, TestGit.Run(folder, "ls-files", "-z").Split('\0', StringSplitOptions.RemoveEmptyEntries).Length);
+
+        foreach (string file in files)
+        {
+            File.WriteAllText(file, "changed\n");
+        }
+        Task read = window.Vcs.RefreshAsync();
+        Ui.Landed(() => read.IsCompleted && window.Vcs.Changes.Count == files.Length, "the 2,000 files listed as changed");
+        VcsOutcome rolled = Ui.Landed(window.Vcs.RollbackAsync([.. window.Vcs.Changes]), "the rollback");
+        Assert.True(rolled.Succeeded, rolled.Message);
+        Assert.All(files, file => Assert.Equal("first\n", File.ReadAllText(file)));
+        Ui.Landed(() => window.Vcs.Changes.Count == 0, "no file listed as changed once rolled back");
+        window.Close();
+    }
 
     /// <summary>A folder "repo " opened beside a repository "repo" is the repository git names, never its sibling: a stash
     /// puts away its own change and leaves the sibling's.</summary>

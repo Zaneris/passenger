@@ -259,9 +259,9 @@ public sealed class Git
         {
             process = await ChildProcesses.StartAsync(start);
         }
-        catch (System.ComponentModel.Win32Exception missing)
+        catch (System.ComponentModel.Win32Exception unstarted)
         {
-            return new GitResult(Absent, string.Empty, $"git is not installed: {missing.Message}");
+            return StartFailure(unstarted);
         }
         using (process)
         {
@@ -555,22 +555,22 @@ public sealed class Git
     /// <paramref name="theirs"/>, in git's own terms), or is deleted where that side deleted it, and is marked resolved.</summary>
     public async Task<GitResult> AcceptAsync(IReadOnlyList<GitConflict> conflicts, bool theirs)
     {
-        string[] kept = [.. conflicts.Where(c => theirs ? c.HasTheirs : c.HasOurs).Select(c => Literal(Relative(c.Path)))];
-        string[] deleted = [.. conflicts.Where(c => !(theirs ? c.HasTheirs : c.HasOurs)).Select(c => Literal(Relative(c.Path)))];
+        string[] kept = [.. conflicts.Where(c => theirs ? c.HasTheirs : c.HasOurs).Select(c => Relative(c.Path))];
+        string[] deleted = [.. conflicts.Where(c => !(theirs ? c.HasTheirs : c.HasOurs)).Select(c => Relative(c.Path))];
         if (kept.Length > 0)
         {
-            GitResult taken = await RunAsync(Root, ["checkout", theirs ? "--theirs" : "--ours", "--", .. kept]);
+            GitResult taken = await OnFilesAsync(["checkout", theirs ? "--theirs" : "--ours"], kept);
             if (!taken.Succeeded)
             {
                 return taken;
             }
-            GitResult added = await RunAsync(Root, ["add", "--", .. kept]);
+            GitResult added = await OnFilesAsync(["add"], kept);
             if (!added.Succeeded)
             {
                 return added;
             }
         }
-        return deleted.Length > 0 ? await RunAsync(Root, ["rm", "-q", "-f", "--", .. deleted]) : new GitResult(0, string.Empty, string.Empty);
+        return deleted.Length > 0 ? await OnFilesAsync(["rm", "-q", "-f"], deleted) : new GitResult(0, string.Empty, string.Empty);
     }
 
     /// <summary>Marks a conflicted file resolved with what is on disk now (the merge's result written there).</summary>
@@ -1272,7 +1272,7 @@ public sealed class Git
         // No paths is an amend of the message alone: "add -A --" with none would add the whole tree.
         if (relative.Length > 0)
         {
-            GitResult add = await RunAsync(Root, ["add", "-A", "--", .. relative.Select(Literal)]);
+            GitResult add = await OnFilesAsync(["add", "-A"], relative);
             if (!add.Succeeded)
             {
                 return add;
@@ -1281,7 +1281,7 @@ public sealed class Git
         string[] left = merging ? [.. (excluded ?? []).Select(Relative).Distinct().Except(relative)] : [];
         if (left.Length > 0)
         {
-            GitResult unstaged = await RunAsync(Root, ["reset", "-q", "--", .. left.Select(Literal)]);
+            GitResult unstaged = await OnFilesAsync(["reset", "-q"], left);
             if (!unstaged.Succeeded)
             {
                 return unstaged;
@@ -1291,9 +1291,11 @@ public sealed class Git
         AtomicFile.Write(file, Encoding.UTF8.GetBytes(message), UnixFileMode.UserRead | UnixFileMode.UserWrite);
         try
         {
+            string[] commit = ["commit", "-F", file, .. amend ? new[] { "--amend" } : []];
             // --only with no paths amends the message alone, leaving out what else the index holds (an IDE rename, a git add).
-            string[] only = merging ? [] : relative.Length > 0 ? ["--only", "--", .. relative.Select(Literal)] : amend ? ["--only"] : [];
-            return await RunAsync(Root, ["commit", "-F", file, .. amend ? new[] { "--amend" } : [], .. only]);
+            return merging ? await RunAsync(Root, commit)
+                : relative.Length > 0 ? await OnFilesAsync([.. commit, "--only"], relative)
+                : await RunAsync(Root, [.. commit, .. amend ? new[] { "--only" } : []]);
         }
         finally
         {
@@ -1466,11 +1468,11 @@ public sealed class Git
         changes = [.. changes.Except(ownChanges)];
         FileChange[] restoring = [.. changes.Where(c => c.Kind is not (ChangeKind.Unversioned or ChangeKind.Added))];
         string[] tracked = [.. restoring.SelectMany(c => c.From is { } from ? new[] { c.Path, from } : [c.Path]).Select(Relative)];
-        string[] staged = [.. changes.Where(c => c.Kind is ChangeKind.Added).Select(c => Literal(Relative(c.Path)))];
+        string[] staged = [.. changes.Where(c => c.Kind is ChangeKind.Added).Select(c => Relative(c.Path))];
         bool submodules = restoring.Any(c => c.Submodule.HasFlag(SubmoduleChange.Submodule));
         GitResult restored = tracked.Length == 0 ? new GitResult(0, string.Empty, string.Empty) : await RestoreAsync(tracked, submodules);
         // -f takes out a file changed again since it was added too, which --cached leaves on disk as it is now.
-        GitResult unadded = staged.Length == 0 ? restored : await RunAsync(Root, ["rm", "--cached", "-q", "-f", "--ignore-unmatch", "--", .. staged]);
+        GitResult unadded = staged.Length == 0 ? restored : await OnFilesAsync(["rm", "--cached", "-q", "-f", "--ignore-unmatch"], staged);
         restored = restored.Succeeded ? unadded : restored;
         List<string> kept = [.. ownChanges.Select(c => $"{c.Name} was left as it is: a submodule's own changes are rolled back in it")];
         foreach (FileChange unversioned in changes.Where(c => c.Kind is ChangeKind.Unversioned))
@@ -1501,7 +1503,7 @@ public sealed class Git
     {
         for (int attempt = 1; ; attempt++)
         {
-            GitResult restored = await RunAsync(Root, ["restore", .. submodules ? new[] { "--recurse-submodules" } : [], "--source=HEAD", "--staged", "--worktree", "--", .. relative.Select(Literal)]);
+            GitResult restored = await OnFilesAsync(["restore", .. submodules ? new[] { "--recurse-submodules" } : [], "--source=HEAD", "--staged", "--worktree"], relative);
             if (restored.Succeeded || attempt == Attempts)
             {
                 return restored;
@@ -1571,6 +1573,19 @@ public sealed class Git
     /// <summary>A file's name as git takes it for that file alone, never a pattern: "[ab].cs" is not also "a.cs", nor is
     /// a name starting ":" pathspec magic. (The environment's GIT_LITERAL_PATHSPECS would also stop a stash's own magic.)</summary>
     private static string Literal(string relative) => $":(literal){relative}";
+
+    /// <summary>Runs git over files named on its input, each a literal pathspec ended by a NUL (composed where git takes
+    /// names composed), never on its command line, which holds only so many (32,767 characters on Windows).</summary>
+    private async Task<GitResult> OnFilesAsync(IReadOnlyList<string> arguments, IReadOnlyCollection<string> relative)
+    {
+        bool composed = relative.Any(name => !Ascii.IsValid(name)) && await ComposesAsync();
+        StringBuilder names = new();
+        foreach (string name in relative)
+        {
+            names.Append(Literal(GitForm(name, composed))).Append('\0');
+        }
+        return await RunAsync(Root, [.. arguments, "--pathspec-from-file=-", "--pathspec-file-nul"], names.ToString());
+    }
 
     private string Full(string relative) => new DiskNames(Root).Full(relative);
 
@@ -1648,9 +1663,9 @@ public sealed class Git
             ChildResult result = await ChildProcesses.RunAsync(start, input, answers: answers);
             return new GitResult(result.ExitCode, result.Output, result.Error);
         }
-        catch (System.ComponentModel.Win32Exception missing)
+        catch (System.ComponentModel.Win32Exception unstarted)
         {
-            return new GitResult(Absent, string.Empty, $"git is not installed: {missing.Message}");
+            return StartFailure(unstarted);
         }
     }
 
@@ -1765,6 +1780,17 @@ public sealed class Git
 
     /// <summary>What a call gives in place of git's exit code when git is not there to run, as a shell does.</summary>
     private const int Absent = 127;
+
+    /// <summary>What a call gives in place of git's exit code when git is there but could not be started (its command
+    /// line too long, its file not one the system runs), as a shell does.</summary>
+    private const int Unstarted = 126;
+
+    /// <summary>Why git did not start, in the system's words: as git not installed only where the system found no file to
+    /// run (ENOENT, or on Windows no such file or path), else as git that could not be started.</summary>
+    internal static GitResult StartFailure(System.ComponentModel.Win32Exception failed) =>
+        failed.NativeErrorCode == 2 || (OperatingSystem.IsWindows() && failed.NativeErrorCode == 3)
+            ? new GitResult(Absent, string.Empty, $"git is not installed: {failed.Message}")
+            : new GitResult(Unstarted, string.Empty, $"git could not be started: {failed.Message}");
 
     private static GitResult NotInstalled =>
         new(Absent, string.Empty, OperatingSystem.IsMacOS() ? "git is not installed: xcode-select --install installs it" : "git is not installed");
