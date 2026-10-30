@@ -44,11 +44,14 @@ public sealed class ObjectSet
     private readonly int[] members;
     private readonly bool[] outermost;
 
-    internal ObjectSet(MemorySnapshot snapshot, string title, int[] members)
+    /// <summary>Its snapshot's objects, held for as long as the set is, though the snapshot let go of them.</summary>
+    private readonly HeapGraph graph;
+
+    internal ObjectSet(MemorySnapshot snapshot, HeapGraph graph, string title, int[] members)
     {
         Snapshot = snapshot;
         Title = title;
-        HeapGraph graph = snapshot.Graph;
+        this.graph = graph;
         Array.Sort(members, (a, b) => graph.Retained[b].CompareTo(graph.Retained[a]) is var c and not 0 ? c : a.CompareTo(b));
         this.members = members;
         outermost = Outermost(graph, members);
@@ -98,7 +101,6 @@ public sealed class ObjectSet
     /// are of one type and field, from the set at the top down to the roots.</summary>
     public RetentionNode ShortestPathsToRoots()
     {
-        HeapGraph graph = Snapshot.Graph;
         Step top = new(Title, null);
         for (int i = 0; i < members.Length; i++)
         {
@@ -134,7 +136,6 @@ public sealed class ObjectSet
     /// first.</summary>
     public IReadOnlyList<RetentionPath> KeyRetentionPaths()
     {
-        HeapGraph graph = Snapshot.Graph;
         // The path ends at what the set's objects are: their type.
         List<string> from = [members.Length == 0 ? Title : graph.Types[graph.Type[members[0]]].Name];
         List<RetentionPath> paths = [];

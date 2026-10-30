@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Profiler;
 
@@ -34,15 +35,34 @@ public sealed class RetentionRow(RetentionNode node, int depth) : Observable, IT
     }
 }
 
-/// <summary>The profiler window's Memory page: the run's memory snapshots on the left; on the right the chosen one's
-/// types, a comparison of two (Compare with…), or an object set opened from either, with its objects, Shortest Paths to
-/// Roots and Key Retention Paths; above it the trail of what was opened, to go back along. What takes a while on a large
-/// heap (a comparison, an object set's paths) is worked out off the UI thread.</summary>
+/// <summary>A memory snapshot as the Memory page lists it, with whether it still keeps its objects as last read.</summary>
+public sealed class SnapshotRow(MemorySnapshot snapshot) : Observable
+{
+    private string? gone = snapshot.Gone;
+
+    public MemorySnapshot Snapshot { get; } = snapshot;
+
+    /// <summary>Why its objects were let go of, or null while it keeps them.</summary>
+    public string? Gone
+    {
+        get => gone;
+        private set => Set(ref gone, value);
+    }
+
+    /// <summary>Reads again whether it keeps its objects.</summary>
+    public void Follow() => Gone = Snapshot.Gone;
+}
+
+/// <summary>The profiler window's Memory page: the run's memory snapshots on the left, only the newest keeping their
+/// objects, Delete removing one; on the right the chosen one's types, a comparison of two (Compare with…), or an object
+/// set opened from either, with its objects, Shortest Paths to Roots and Key Retention Paths; above it the trail of what
+/// was opened, to go back along. What takes a while on a large heap (a comparison, an object set's paths) is worked out
+/// off the UI thread.</summary>
 public sealed class MemoryView : DockPanel
 {
     private const double NumberWidth = 104;
 
-    private readonly ObservableCollection<MemorySnapshot> snapshots = [];
+    private readonly ObservableCollection<SnapshotRow> snapshots = [];
     private readonly ListBox snapshotList;
     private readonly StackPanel crumbs;
     private readonly StackPanel actions;
@@ -73,14 +93,26 @@ public sealed class MemoryView : DockPanel
             Classes = { "tree" },
             ItemsSource = snapshots,
         };
-        ReusedRows.Use(snapshotList, SnapshotRow);
+        ReusedRows.Use(snapshotList, Row);
         snapshotList.SelectionChanged += (_, _) =>
         {
-            if (snapshotList.SelectedItem is MemorySnapshot snapshot && (trail.Count == 0 || trail[0] is not SnapshotPage { Snapshot: var shown } || shown != snapshot))
+            if (snapshotList.SelectedItem is SnapshotRow { Snapshot: var snapshot } && (trail.Count == 0 || trail[0] is not SnapshotPage { Snapshot: var shown } || shown != snapshot))
             {
                 Go([new SnapshotPage(snapshot)]);
             }
         };
+        snapshotList.KeyDown += (_, e) =>
+        {
+            if (e.Key is Key.Delete or Key.Back && e.KeyModifiers == KeyModifiers.None && snapshotList.SelectedItem is SnapshotRow { Snapshot: var chosen })
+            {
+                Remove(chosen);
+                e.Handled = true;
+            }
+        };
+        ListMenus.Attach(snapshotList, () => snapshotList.SelectedItem is not SnapshotRow { Snapshot: var chosen } ? [] :
+        [
+            ListMenus.Item("Remove Snapshot", "Delete", () => Remove(chosen)),
+        ]);
         Border left = new() { [DockProperty] = Dock.Left, Width = 230, Child = snapshotList, BorderThickness = new Thickness(0, 0, 1, 0) };
         left.Bind(Border.BorderBrushProperty, left.GetResourceObservable(TokenKeys.Divider));
         Children.Add(left);
@@ -183,7 +215,13 @@ public sealed class MemoryView : DockPanel
     }
 
     /// <summary>The run's memory snapshots, the oldest first.</summary>
-    public IReadOnlyList<MemorySnapshot> Snapshots => snapshots;
+    public IReadOnlyList<MemorySnapshot> Snapshots => [.. snapshots.Select(r => r.Snapshot)];
+
+    /// <summary>The snapshots' rows as listed.</summary>
+    public IReadOnlyList<SnapshotRow> SnapshotRows => snapshots;
+
+    /// <summary>The list of snapshots, for a person's keys.</summary>
+    public ListBox SnapshotList => snapshotList;
 
     /// <summary>The snapshot whose types are shown, or null.</summary>
     public MemorySnapshot? Snapshot => Current is SnapshotPage page ? page.Snapshot : null;
@@ -227,15 +265,55 @@ public sealed class MemoryView : DockPanel
     /// <summary>Which of the object set's views is shown: its objects (0), Shortest Paths to Roots (1), Key Retention Paths (2).</summary>
     public int SetTab => Array.FindIndex(setTabs, t => t.IsChecked == true);
 
-    /// <summary>A snapshot taken: listed and shown. The first of a run puts the earlier run's away, which it cannot be compared with.</summary>
+    /// <summary>A snapshot taken: listed and shown, the rows of those it had the run let go of saying so. The first of a run
+    /// puts the earlier run's away, which it cannot be compared with.</summary>
     public void Add(MemorySnapshot snapshot)
     {
         if (snapshot.Number == 1)
         {
-            snapshots.Clear();
+            Clear();
         }
-        snapshots.Add(snapshot);
-        snapshotList.SelectedItem = snapshot;
+        SnapshotRow row = new(snapshot);
+        snapshots.Add(row);
+        foreach (SnapshotRow listed in snapshots)
+        {
+            listed.Follow();
+        }
+        snapshotList.SelectedItem = row;
+    }
+
+    /// <summary>Removes a snapshot: listed no more and its objects let go at once, what was opened from it going too, the
+    /// snapshot after it (else before) shown in its place.</summary>
+    public void Remove(MemorySnapshot snapshot)
+    {
+        int at = snapshots.ToList().FindIndex(r => r.Snapshot == snapshot);
+        if (at < 0)
+        {
+            return;
+        }
+        snapshot.Remove();
+        snapshots.RemoveAt(at);
+        if (!trail.Any(p => p.Holds(snapshot)))
+        {
+            return;
+        }
+        if (snapshots.Count == 0)
+        {
+            Go([]);
+            return;
+        }
+        snapshotList.SelectedItem = snapshots[Math.Min(at, snapshots.Count - 1)];
+    }
+
+    /// <summary>Puts every snapshot away, their objects let go: the folder whose runs they were of has ended.</summary>
+    public void Clear()
+    {
+        foreach (SnapshotRow row in snapshots)
+        {
+            row.Snapshot.Remove();
+        }
+        snapshots.Clear();
+        Go([]);
     }
 
     /// <summary>Chooses a row in its list: a snapshot's type, a comparison's, or an object set's object.</summary>
@@ -308,6 +386,11 @@ public sealed class MemoryView : DockPanel
             crumbs.Children.Add(crumb);
         }
         actions.Children.Clear();
+        // Only an object set's own list reads its snapshot's objects, which it would hold on after.
+        if (page is not SetPage)
+        {
+            objects.ItemsSource = null;
+        }
         typePage.IsVisible = page is SnapshotPage;
         deltaPage.IsVisible = page is ComparisonPage;
         setPage.IsVisible = page is SetPage;
@@ -317,7 +400,8 @@ public sealed class MemoryView : DockPanel
         {
             case SnapshotPage { Snapshot: var snapshot }:
                 summary.Text = $"{snapshot.Objects:N0} objects, {Size(snapshot.Bytes)} live, in {snapshot.Types.Count:N0} types; taken at "
-                    + $"{snapshot.Taken:HH:mm:ss} in {snapshot.Took.TotalSeconds:0.0} s ({snapshot.Phases})";
+                    + $"{snapshot.Taken:HH:mm:ss} in {snapshot.Took.TotalSeconds:0.0} s ({snapshot.Phases})"
+                    + (snapshot.Gone is { } gone ? $". {gone}: its types are listed, its objects no longer open" : string.Empty);
                 types.ItemsSource = snapshot.Types;
                 types.SelectedIndex = snapshot.Types.Count > 0 ? 0 : -1;
                 Button compare = Action("Compare with…", () => ShowCompareMenu(snapshot));
@@ -351,7 +435,7 @@ public sealed class MemoryView : DockPanel
     private void ShowCompareMenu(MemorySnapshot snapshot)
     {
         MenuFlyout menu = new();
-        foreach (MemorySnapshot other in snapshots.Where(s => s != snapshot))
+        foreach (MemorySnapshot other in snapshots.Select(r => r.Snapshot).Where(s => s != snapshot))
         {
             MenuItem item = new() { Header = $"{other.Name} ({other.Taken:HH:mm:ss})" };
             item.Click += (_, _) => IdeErrors.Observe(CompareWithAsync(other));
@@ -398,19 +482,33 @@ public sealed class MemoryView : DockPanel
         }
     }
 
-    /// <summary>Opens an object set, found with its paths off the UI thread, on one of its views.</summary>
+    /// <summary>Opens an object set, found with its paths off the UI thread, on one of its views; a snapshot that has let go
+    /// of its objects says so instead.</summary>
     private async Task OpenSetAsync(Func<ObjectSet> find, int tab)
     {
         List<Page> from = [.. trail];
         int load = Begin("Building the shortest paths to roots…");
-        SetPage page = await BackgroundWork.Run(() =>
+        (SetPage? page, string? gone) = await BackgroundWork.Run(() =>
         {
-            ObjectSet set = find();
-            return new SetPage(set, set.ShortestPathsToRoots(), set.KeyRetentionPaths(), tab);
+            ObjectSet set;
+            try
+            {
+                set = find();
+            }
+            catch (InvalidOperationException letGo)
+            {
+                return (null, letGo.Message);
+            }
+            return ((SetPage?)new SetPage(set, set.ShortestPathsToRoots(), set.KeyRetentionPaths(), tab), (string?)null);
         });
-        if (load == loading)
+        if (load != loading)
         {
-            Go([.. from, page]);
+            return;
+        }
+        Go(page is null ? from : [.. from, page]);
+        if (gone is not null)
+        {
+            summary.Text = gone;
         }
     }
 
@@ -594,15 +692,23 @@ public sealed class MemoryView : DockPanel
         });
     }
 
-    /// <summary>A row for whichever snapshot the list hands its container: its name, and when it was taken and what it holds.</summary>
-    private static Control SnapshotRow()
+    /// <summary>A row for whichever snapshot the list hands its container: its name, whether it let go of its objects, and
+    /// when it was taken and what it holds.</summary>
+    private static Control Row()
     {
         TextBlock name = new() { FontWeight = FontWeight.SemiBold };
+        TextBlock letGo = Muted("objects let go");
+        letGo.VerticalAlignment = VerticalAlignment.Center;
         TextBlock said = Muted(string.Empty);
-        return new StackPanel { Margin = new Thickness(2, 4), Children = { name, said } }.Showing<MemorySnapshot>(snapshot =>
+        StackPanel head = new() { Orientation = Orientation.Horizontal, Spacing = 6, Children = { name, letGo } };
+        StackPanel row = new() { Margin = new Thickness(2, 4), Children = { head, said } };
+        return row.Showing<SnapshotRow>(listed =>
         {
+            MemorySnapshot snapshot = listed.Snapshot;
             name.Text = snapshot.Name;
+            letGo.IsVisible = listed.Gone is not null;
             said.Text = $"{snapshot.Taken:HH:mm:ss} · {snapshot.Objects:N0} objects · {Size(snapshot.Bytes)}";
+            ToolTip.SetTip(row, listed.Gone);
         });
     }
 
@@ -701,11 +807,24 @@ public sealed class MemoryView : DockPanel
         }
     }
 
-    private abstract record Page(string Crumb);
+    private abstract record Page(string Crumb)
+    {
+        /// <summary>Whether it shows what a snapshot holds.</summary>
+        public abstract bool Holds(MemorySnapshot snapshot);
+    }
 
-    private sealed record SnapshotPage(MemorySnapshot Snapshot) : Page(Snapshot.Name);
+    private sealed record SnapshotPage(MemorySnapshot Snapshot) : Page(Snapshot.Name)
+    {
+        public override bool Holds(MemorySnapshot snapshot) => Snapshot == snapshot;
+    }
 
-    private sealed record ComparisonPage(SnapshotComparison Comparison) : Page(Comparison.Title);
+    private sealed record ComparisonPage(SnapshotComparison Comparison) : Page(Comparison.Title)
+    {
+        public override bool Holds(MemorySnapshot snapshot) => Comparison.Older == snapshot || Comparison.Newer == snapshot;
+    }
 
-    private sealed record SetPage(ObjectSet Set, RetentionNode Paths, IReadOnlyList<RetentionPath> KeyPaths, int Tab) : Page(Set.Title);
+    private sealed record SetPage(ObjectSet Set, RetentionNode Paths, IReadOnlyList<RetentionPath> KeyPaths, int Tab) : Page(Set.Title)
+    {
+        public override bool Holds(MemorySnapshot snapshot) => Set.Snapshot == snapshot;
+    }
 }

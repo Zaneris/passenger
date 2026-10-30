@@ -10,20 +10,22 @@ public sealed record TypeDelta(string Name, int ObjectsDelta, long BytesDelta, i
 
 /// <summary>Two snapshots of a run compared object by object: an object of the older is the same object in the newer
 /// when the run's collections moved it there (the GC's own reports of what it moved), so new and dead objects are
-/// those, not a difference in counts.</summary>
+/// those, not a difference in counts. It holds both snapshots' objects for as long as it is kept.</summary>
 public sealed class SnapshotComparison
 {
     private readonly Identity identity;
     private readonly bool[] survived;
+    private readonly HeapGraph before;
+    private readonly HeapGraph after;
 
-    internal SnapshotComparison(MemorySnapshot older, MemorySnapshot newer, Identity identity)
+    internal SnapshotComparison(MemorySnapshot older, MemorySnapshot newer, HeapGraph before, HeapGraph after, Identity identity)
     {
         Older = older;
         Newer = newer;
         this.identity = identity;
+        this.before = before;
+        this.after = after;
         Inexact = identity.Inexact;
-        HeapGraph before = older.Graph;
-        HeapGraph after = newer.Graph;
         survived = new bool[after.Count];
         Dictionary<ulong, Tally> tallies = [];
         for (int i = 0; i < before.Count; i++)
@@ -99,17 +101,16 @@ public sealed class SnapshotComparison
     public string? Inexact { get; }
 
     /// <summary>The newer snapshot's objects of a type that the older did not have.</summary>
-    public ObjectSet NewObjectsOf(TypeDelta type) => Of(Newer, type, j => !survived[j], $"New objects of the type {type.Name}");
+    public ObjectSet NewObjectsOf(TypeDelta type) => Of(Newer, after, type, j => !survived[j], $"New objects of the type {type.Name}");
 
     /// <summary>The older snapshot's objects of a type that the newer no longer has.</summary>
-    public ObjectSet DeadObjectsOf(TypeDelta type) => Of(Older, type, i => identity.Later[i] < 0, $"Dead objects of the type {type.Name}");
+    public ObjectSet DeadObjectsOf(TypeDelta type) => Of(Older, before, type, i => identity.Later[i] < 0, $"Dead objects of the type {type.Name}");
 
     /// <summary>The newer snapshot's objects of a type that the older had too.</summary>
-    public ObjectSet SurvivedObjectsOf(TypeDelta type) => Of(Newer, type, j => survived[j], $"Survived objects of the type {type.Name}");
+    public ObjectSet SurvivedObjectsOf(TypeDelta type) => Of(Newer, after, type, j => survived[j], $"Survived objects of the type {type.Name}");
 
-    private static ObjectSet Of(MemorySnapshot snapshot, TypeDelta type, Func<int, bool> chosen, string title)
+    private static ObjectSet Of(MemorySnapshot snapshot, HeapGraph graph, TypeDelta type, Func<int, bool> chosen, string title)
     {
-        HeapGraph graph = snapshot.Graph;
         List<int> found = [];
         for (int i = 0; i < graph.Count; i++)
         {
@@ -118,7 +119,7 @@ public sealed class SnapshotComparison
                 found.Add(i);
             }
         }
-        return new ObjectSet(snapshot, title, [.. found]);
+        return new ObjectSet(snapshot, graph, title, [.. found]);
     }
 
     private sealed class Tally(string name, ulong methodTable)

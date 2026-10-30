@@ -10,17 +10,19 @@ public sealed record HeapType(string Name, int Count, long Bytes, long RetainedB
 /// <summary>What a program's heap held at a moment: every object a GC root keeps alive, by type, with what each retains
 /// and the shortest path that keeps it. The runtime's createdump writes a dump of the heap (no debugger attaches) and
 /// ClrMD reads it; the dump, as large as the heap, is deleted once read. Snapshots of one run can be compared, object
-/// by object.</summary>
+/// by object, while they keep their objects (<see cref="KeptSnapshots"/>); one let go of them keeps its types.</summary>
 public sealed class MemorySnapshot
 {
-    private readonly IReadOnlyDictionary<int, Identity> earlier;
+    private readonly Dictionary<int, Identity> earlier;
+    private HeapGraph? graph;
+    private string? gone;
 
-    internal MemorySnapshot(object run, int number, DateTime taken, HeapGraph graph, TimeSpan took, string phases, IReadOnlyDictionary<int, Identity> earlier)
+    internal MemorySnapshot(KeptSnapshots run, int number, DateTime taken, HeapGraph graph, TimeSpan took, string phases, Dictionary<int, Identity> earlier)
     {
         Run = run;
         Number = number;
         Taken = taken;
-        Graph = graph;
+        this.graph = graph;
         Took = took;
         Phases = phases;
         this.earlier = earlier;
@@ -66,35 +68,108 @@ public sealed class MemorySnapshot
     /// <summary>What the time went on: the dump, its reading, the retention analysis.</summary>
     public string Phases { get; }
 
-    internal HeapGraph Graph { get; }
+    /// <summary>Its heap's objects, or null once let go of.</summary>
+    internal HeapGraph? Graph
+    {
+        get
+        {
+            lock (earlier)
+            {
+                return graph;
+            }
+        }
+    }
+
+    /// <summary>Why its objects were let go of (<see cref="KeptSnapshots"/>), or null while it keeps them.</summary>
+    public string? Gone
+    {
+        get
+        {
+            lock (earlier)
+            {
+                return gone;
+            }
+        }
+    }
 
     /// <summary>The run it was taken in: only snapshots of one run can be compared.</summary>
-    internal object Run { get; }
+    internal KeptSnapshots Run { get; }
 
     /// <summary>How each earlier snapshot of the run, by its number, has its objects in this one.</summary>
-    internal IReadOnlyDictionary<int, Identity> Earlier => earlier;
+    internal IReadOnlyDictionary<int, Identity> Earlier
+    {
+        get
+        {
+            lock (earlier)
+            {
+                return new Dictionary<int, Identity>(earlier);
+            }
+        }
+    }
 
-    /// <summary>Every object of a type, as an object set.</summary>
+    /// <summary>Lets go of its objects at once, and the run follows them no further; it is listed no more.</summary>
+    public void Remove() => Run.Remove(this);
+
+    /// <summary>Lets go of its objects and of how the earlier snapshots' are found in it, saying why.</summary>
+    internal void LetGo(string why)
+    {
+        lock (earlier)
+        {
+            graph = null;
+            gone ??= why;
+            earlier.Clear();
+        }
+    }
+
+    /// <summary>Lets go of how an earlier snapshot's objects, let go of themselves, are found in it.</summary>
+    internal void Forget(int number)
+    {
+        lock (earlier)
+        {
+            earlier.Remove(number);
+        }
+    }
+
+    /// <summary>Every object of a type, as an object set. Throws an <see cref="InvalidOperationException"/> saying why
+    /// once its objects are let go of.</summary>
     public ObjectSet ObjectsOf(HeapType type)
     {
+        HeapGraph graph = Held();
         List<int> found = [];
-        for (int i = 0; i < Graph.Count; i++)
+        for (int i = 0; i < graph.Count; i++)
         {
-            if (Graph.Type[i] == type.Index)
+            if (graph.Type[i] == type.Index)
             {
                 found.Add(i);
             }
         }
-        return new ObjectSet(this, type.Name, [.. found]);
+        return new ObjectSet(this, graph, type.Name, [.. found]);
     }
 
-    /// <summary>The object at an address, alone, as an object set; null when the snapshot has none there.</summary>
-    public ObjectSet? ObjectAt(ulong address) =>
-        Graph.IndexOf(address) is var at and >= 0 ? new ObjectSet(this, $"{Graph.Types[Graph.Type[at]].Name} at 0x{address:x}", [at]) : null;
+    /// <summary>The object at an address, alone, as an object set; null when the snapshot has none there. Throws an
+    /// <see cref="InvalidOperationException"/> saying why once its objects are let go of.</summary>
+    public ObjectSet? ObjectAt(ulong address)
+    {
+        HeapGraph graph = Held();
+        return graph.IndexOf(address) is var at and >= 0 ? new ObjectSet(this, graph, $"{graph.Types[graph.Type[at]].Name} at 0x{address:x}", [at]) : null;
+    }
+
+    private HeapGraph Held()
+    {
+        lock (earlier)
+        {
+            return graph ?? throw new InvalidOperationException(gone);
+        }
+    }
 
     /// <summary>Why this snapshot and another cannot be compared object by object, or null when they can.</summary>
-    public string? WhyNotComparable(MemorySnapshot other)
+    public string? WhyNotComparable(MemorySnapshot other) => Comparable(other, out _, out _, out _);
+
+    /// <summary>Why not comparable, or null with the older's and the newer's objects and how the older's are found in the
+    /// newer, taken together.</summary>
+    private string? Comparable(MemorySnapshot other, out HeapGraph? before, out HeapGraph? after, out Identity? identity)
     {
+        (before, after, identity) = (null, null, null);
         if (other == this)
         {
             return $"{Name} is the snapshot itself";
@@ -104,21 +179,37 @@ public sealed class MemorySnapshot
             return $"{Name} and {other.Name} are of different runs: objects are told apart only within one";
         }
         (MemorySnapshot older, MemorySnapshot newer) = other.Number < Number ? (other, this) : (this, other);
-        // A container's tools say how the older's objects are found: by one entry for each of them.
-        return newer.earlier.TryGetValue(older.Number, out Identity? identity) && identity.Later.Length == older.Graph.Count ? null
-            : $"The objects of {older.Name} could not be followed to {newer.Name}: the program's collections were not all seen";
+        lock (older.earlier)
+        {
+            before = older.graph;
+            if (before is null)
+            {
+                return older.gone;
+            }
+        }
+        lock (newer.earlier)
+        {
+            after = newer.graph;
+            if (after is null)
+            {
+                return newer.gone;
+            }
+            // A container's tools say how the older's objects are found: by one entry for each of them.
+            return newer.earlier.TryGetValue(older.Number, out identity) && identity.Later.Length == before.Count ? null
+                : $"The objects of {older.Name} could not be followed to {newer.Name}: the program's collections were not all seen";
+        }
     }
 
     /// <summary>Compares this snapshot with another of the run, the older to the newer, type by type: the new, dead and
     /// survived objects. Matching every object takes a while on a large heap: call it off the UI thread.</summary>
     public SnapshotComparison CompareWith(MemorySnapshot other)
     {
-        if (WhyNotComparable(other) is { } why)
+        if (Comparable(other, out HeapGraph? before, out HeapGraph? after, out Identity? identity) is { } why)
         {
             throw new InvalidOperationException(why);
         }
         (MemorySnapshot older, MemorySnapshot newer) = other.Number < Number ? (other, this) : (this, other);
-        return new SnapshotComparison(older, newer, newer.earlier[older.Number]);
+        return new SnapshotComparison(older, newer, before!, after!, identity!);
     }
 }
 

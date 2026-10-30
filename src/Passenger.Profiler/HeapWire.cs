@@ -115,7 +115,7 @@ internal static class HeapWire
     /// number, and those of the earlier ones it follows, after the run's <paramref name="before"/> (tools started again).
     /// What the container sent is never trusted: each count is held to the bytes left and each index to what it indexes, and
     /// a body that does not hold together is an <see cref="InvalidDataException"/>.</summary>
-    public static MemorySnapshot ReadSnapshot(byte[] body, object run, TimeSpan asked, int before = 0)
+    public static MemorySnapshot ReadSnapshot(byte[] body, KeptSnapshots run, TimeSpan asked, int before = 0)
     {
         using MemoryStream inflated = Inflate(body);
         using BinaryReader reader = new(inflated, Encoding.UTF8);
@@ -215,7 +215,7 @@ internal static class HeapWire
         writer.Write(taken.Taken.ToUniversalTime().ToBinary());
         writer.Write(taken.Took.Ticks);
         writer.Write(taken.Phases);
-        HeapGraph graph = taken.Graph;
+        HeapGraph graph = taken.Graph ?? throw new InvalidOperationException(taken.Gone);
         writer.Write(graph.PointerSize);
         writer.Write(graph.Walked.Ticks);
         writer.Write(graph.Analysed.Ticks);

@@ -149,7 +149,8 @@ public sealed class ProfilerCommands
     private ProjectSession Session => parts.Session();
 
     /// <summary>The window follows another session from now: what the profiler window showed of the last one's run, which
-    /// that folder's end ended, goes with it, and Get Snapshot no longer answers with that run's reading.</summary>
+    /// that folder's end ended, goes with it, its memory snapshots too, and Get Snapshot no longer answers with that run's
+    /// reading.</summary>
     public void Rebind()
     {
         snapshotting = null;
@@ -157,6 +158,7 @@ public sealed class ProfilerCommands
         {
             view.Stopped($"Profiling {profilingName} ended with its folder");
         }
+        view?.ForgetMemory();
     }
 
     /// <summary>Where the open folder's snapshots are kept, a .nettrace file a run: beside its state, the newest
@@ -987,7 +989,7 @@ public sealed class ProfilerCommands
     /// <summary>Get Memory Snapshot, or why there is none. Where only the program's runtime can write it, putting
     /// createdump's lines into the program's output, the person is asked first, once for the run; an agent's
     /// (<paramref name="ask"/> false), which asked for it with no one to ask, is taken, its note saying so. One the debugger
-    /// holds paused is refused, and its work, said from the first moment, Stop ends.</summary>
+    /// holds paused is refused, its work, said from the first moment, Stop ends, and one whose program ends says so.</summary>
     public async Task<(MemorySnapshot? Heap, string? Note)> MemorySnapshotAsync(bool ask, CancellationToken cancel = default)
     {
         if (Session.Profiling is not { } run)
@@ -1000,7 +1002,8 @@ public sealed class ProfilerCommands
             parts.Say(paused);
             return (null, paused);
         }
-        if (parts.Actions.Work.Begin(AppActions.MemorySnapshot, $"Taking a memory snapshot of {profilingName}…") is not { } work)
+        string name = profilingName;
+        if (parts.Actions.Work.Begin(AppActions.MemorySnapshot, $"Taking a memory snapshot of {name}…") is not { } work)
         {
             string busy = ActionWork.Busy(parts.Actions.Work.Of(AppActions.MemorySnapshot)!);
             parts.Say(busy);
@@ -1008,7 +1011,7 @@ public sealed class ProfilerCommands
         }
         using IDisposable held = BackgroundWork.Scope();
         using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(cancel, work.Stopping);
-        Action unfollow = SayPauses(work, run.ProcessId, run.Place?.Where, profilingName, ToTakeHeap);
+        Action unfollow = SayPauses(work, run.ProcessId, run.Place?.Where, name, ToTakeHeap);
         try
         {
             MemorySnapshot heap;
@@ -1017,11 +1020,11 @@ public sealed class ProfilerCommands
             {
                 heap = await run.TakeMemorySnapshotAsync(intoOutput: run == intoOutputAgreed, stopping.Token);
             }
-            catch (DumpIntoOutputException only)
+            catch (DumpIntoOutputException only) when (!run.HasExited)
             {
                 if (ask && !await parts.Confirm("Get Memory Snapshot", $"{only.Message}. Take it anyway?", "Take Snapshot"))
                 {
-                    parts.Say($"No memory snapshot of {profilingName}: its output would carry createdump's lines");
+                    parts.Say($"No memory snapshot of {name}: its output would carry createdump's lines");
                     return (null, only.Message);
                 }
                 intoOutputAgreed = run;
@@ -1029,12 +1032,18 @@ public sealed class ProfilerCommands
                 heap = await run.TakeMemorySnapshotAsync(intoOutput: true, stopping.Token);
             }
             View.ShowMemory(heap);
-            parts.Say($"{heap.Name} of {profilingName}: {heap.Objects:N0} objects, {heap.Bytes / 1048576.0:N1} MB");
+            parts.Say($"{heap.Name} of {name}: {heap.Objects:N0} objects, {heap.Bytes / 1048576.0:N1} MB");
             return (heap, note);
         }
         catch (Exception error) when (error is InvalidOperationException or IOException or ServerNotAvailableException or DiagnosticsClientException
             or TimeoutException or HeapUnreadableException or ProfilingException or OperationCanceledException)
         {
+            if (error is not OperationCanceledException && await EndedAsync(run))
+            {
+                string ended = $"{name} ended before its memory snapshot";
+                parts.Say(ended);
+                return (null, ended);
+            }
             string why = error is OperationCanceledException ? "it was stopped" : error.Message;
             parts.Say($"No memory snapshot: {why}");
             return (null, why);
@@ -1044,6 +1053,17 @@ public sealed class ProfilerCommands
             unfollow();
             work.Dispose();
         }
+    }
+
+    /// <summary>Whether a run's program has ended, or ends within a moment: what a snapshot of it failed on as it ended.</summary>
+    private static async Task<bool> EndedAsync(ProfilingSession run)
+    {
+        if (!run.HasExited)
+        {
+            // Bounded: a program that goes on was not what failed the snapshot.
+            await Task.WhenAny(run.ExitedAsync(), run.PutAway, Task.Delay(Waits.Of(TimeSpan.FromSeconds(2))));
+        }
+        return run.HasExited;
     }
 
     /// <summary>Opens a snapshot written before (a .nettrace file, Passenger's or dotnet-trace's) in the profiler window.</summary>

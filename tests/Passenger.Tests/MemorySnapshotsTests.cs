@@ -11,7 +11,9 @@ namespace Passenger.Tests;
 
 /// <summary>Memory snapshots, from the profiler window: two snapshots of a run compared object by object (new, dead and
 /// survived, however the GC moved what lived on), a type's objects opened to the shortest paths that keep them from the
-/// GC roots with each root's kind and what they retain, and a heap of a million objects read, compared and opened.</summary>
+/// GC roots with each root's kind and what they retain, and a heap of a million objects read, compared and opened; only
+/// the newest three keep their objects, a program that ends as it is snapshot is said to have ended, and a snapshot given
+/// up leaves no dump behind.</summary>
 public sealed class MemorySnapshotsTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("memory-");
@@ -361,6 +363,105 @@ public sealed class MemorySnapshotsTests : IDisposable
         window.Profiling.Kill();
         window.Close();
     }
+
+    /// <summary>Past three snapshots the oldest lets go of its objects, its row and its page saying so and a comparison with
+    /// it saying why there is none, while the rest compare as before; Delete removes a snapshot, its objects let go at once,
+    /// and the folder's end lets go of the others.</summary>
+    [AvaloniaFact]
+    public void Past_three_snapshots_the_oldest_lets_go_of_its_objects_which_a_comparison_names_and_Delete_and_the_folders_end_let_go_of_the_rest()
+    {
+        MainWindow window = Profiled("Keeper", """
+            Console.WriteLine("ready");
+            Console.ReadLine();
+            """);
+        MemoryView memory = window.ProfilerView.MemoryPage;
+        MemorySnapshot first = Snapshot(window, 1);
+        MemorySnapshot second = Snapshot(window, 2);
+        MemorySnapshot third = Snapshot(window, 3);
+        Assert.All(memory.SnapshotRows, r => Assert.Null(r.Gone));
+        MemorySnapshot fourth = Snapshot(window, 4);
+
+        const string Gone = "Snapshot #1's objects were let go as Snapshot #4 was taken: a run keeps those of its newest 3 snapshots";
+        Assert.Equal([first, second, third, fourth], memory.Snapshots);
+        Assert.Equal([Gone, null, null, null], memory.SnapshotRows.Select(r => r.Gone));
+        Assert.Single(memory.SnapshotList.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "objects let go" && t.IsEffectivelyVisible);
+        Assert.Same(fourth, memory.Snapshot);
+
+        Ui.ClickButton(memory, "Compare with…");
+        MenuItem oldest = memory.CompareMenu!.Items.OfType<MenuItem>().First();
+        Assert.StartsWith("Snapshot #1", (string?)oldest.Header, StringComparison.Ordinal);
+        Ui.Click(oldest, settle: false);
+        memory.CompareMenu.Hide();
+        Ui.WaitFor(() => memory.Summary == Gone, () => $"the comparison with the oldest to say why there is none, not '{memory.Summary}'");
+        Assert.Null(memory.Comparison);
+        Ui.Await(memory.CompareWithAsync(second), "the comparison with the second");
+        Assert.Equal("Snapshot #4 › Comparison of Snapshot #2 to Snapshot #4", memory.Trail);
+
+        // The oldest's page lists its types and says its objects no longer open, as Enter on one finds.
+        Focus(memory.SnapshotList, memory.SnapshotRows[0]);
+        Assert.Same(first, memory.Snapshot);
+        Assert.EndsWith($". {Gone}: its types are listed, its objects no longer open", memory.Summary, StringComparison.Ordinal);
+        Focus(memory.TypeList, memory.TypeRows[0]);
+        Ui.Press(window, "enter");
+        Ui.WaitFor(() => memory.Summary == Gone, () => $"the oldest's objects to be said let go, not '{memory.Summary}'");
+        Assert.Null(memory.Set);
+
+        Focus(memory.SnapshotList, memory.SnapshotRows[2]);
+        Ui.Press(window, "delete");
+        Assert.Equal([first, second, fourth], memory.Snapshots);
+        Assert.Equal("Snapshot #3 was removed", third.Gone);
+        Assert.Same(fourth, memory.Snapshot);
+
+        Assert.Null(window.CloseSolution());
+        Assert.Empty(memory.Snapshots);
+        Assert.Null(window.ProfilerView.Memory);
+        Assert.All([second, fourth], s => Assert.NotNull(s.Gone));
+        window.Close();
+    }
+
+    /// <summary>A memory snapshot of a program that ends as it is taken says the program ended, not what failed as it went.</summary>
+    [AvaloniaFact]
+    public void A_memory_snapshot_of_a_program_that_ends_as_it_is_taken_says_the_program_ended()
+    {
+        MainWindow window = Profiled("Ender", """
+            Console.WriteLine("ready");
+            Console.ReadLine();
+            """);
+        Task<(MemorySnapshot? Heap, string? Note)> taking = window.MemorySnapshotUnaskedAsync(CancellationToken.None);
+        window.Profiling!.Kill();
+        (MemorySnapshot? heap, string? note) = Ui.Await(taking, "the memory snapshot of the program that ended", TimeSpan.FromMinutes(1));
+        Assert.Null(heap);
+        Assert.Equal("Ender ended before its memory snapshot", note);
+        window.Close();
+    }
+
+    /// <summary>An agent's memory snapshot given up while its dump is on disk leaves none there once the dump's writer and
+    /// reader have ended; the program goes on, and the next snapshot is taken as before.</summary>
+    [AvaloniaFact]
+    public void An_agents_memory_snapshot_given_up_as_its_dump_is_written_leaves_no_dump_behind()
+    {
+        MainWindow window = Profiled("Quitter", """
+            Console.WriteLine("ready");
+            Console.ReadLine();
+            """);
+        int program = window.Profiling!.ProcessId;
+        using CancellationTokenSource giveUp = new();
+        Task<(MemorySnapshot? Heap, string? Note)> taking = window.MemorySnapshotUnaskedAsync(giveUp.Token);
+        Ui.PumpUntil(() => Dumps(program).Length > 0 || taking.IsCompleted, "the snapshot's dump to be written", TimeSpan.FromMinutes(1));
+        Assert.False(taking.IsCompleted, "The snapshot was over before its dump was seen on disk");
+        giveUp.Cancel();
+        (MemorySnapshot? heap, string? note) = Ui.Await(taking, "the snapshot given up", TimeSpan.FromMinutes(1));
+        Assert.Null(heap);
+        Assert.Equal("it was stopped", note);
+        Ui.PumpUntil(() => Dumps(program).Length == 0, "the given-up snapshot's dump to be deleted", TimeSpan.FromMinutes(1));
+        Assert.False(window.Profiling.HasExited, "The program ended with its snapshot given up");
+        Snapshot(window, 1);
+        window.Profiling.Kill();
+        window.Close();
+    }
+
+    /// <summary>This process's dumps of a program in the temporary folder.</summary>
+    private static string[] Dumps(int program) => Directory.GetFiles(Path.GetTempPath(), $"passenger-heap-{Environment.ProcessId}-{program}-*.dmp");
 
     /// <summary>A console project, built and started under the profiler from the window, run until it says it is ready
     /// (having been <paramref name="sent"/> a line to say back, for a program that says nothing by itself).</summary>

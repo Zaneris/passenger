@@ -13,14 +13,16 @@ namespace Passenger.Profiler;
 /// every stretch of objects it kept, moved or not. Each earlier snapshot's objects are carried through those, those in
 /// a condemned generation and in no kept stretch dying. A dump is placed among the collections by when createdump held
 /// the program, the one long stretch with no sample; a full collection induced right after it says when every
-/// collection before has been heard.</summary>
-internal sealed class HeapHistory(int processId) : IAsyncDisposable
+/// collection before has been heard. Only the snapshots kept (<see cref="KeptSnapshots"/>) are followed.</summary>
+internal sealed class HeapHistory : IAsyncDisposable
 {
     private const string Runtime = "Microsoft-Windows-DotNETRuntime";
     private const long GcKeyword = 0x1;
     private const long MovementKeyword = 0x400000;
     private const long CollectKeyword = 0x800000;
 
+    private readonly int processId;
+    private readonly KeptSnapshots kept;
     private readonly object gate = new();
     private readonly SemaphoreSlim taking = new(1, 1);
     private readonly List<GcRecord> open = [];
@@ -40,6 +42,12 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
     /// the first snapshot.</summary>
     private (string? Tool, string? WhyNot)? dumpTool;
 
+    public HeapHistory(int processId)
+    {
+        this.processId = processId;
+        kept = new KeptSnapshots(Unfollow);
+    }
+
     /// <summary>Takes the next snapshot, and finds each earlier one's objects in it. Where only the program's runtime can
     /// write its dump, which puts createdump's lines into the program's output, that is done only
     /// <paramref name="intoOutput"/>, else a <see cref="DumpIntoOutputException"/> says so before anything starts.</summary>
@@ -49,7 +57,11 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
         try
         {
             Stopwatch clock = Stopwatch.StartNew();
-            dumpTool ??= await BackgroundWork.Run(() => DumpTool.Find(processId), cancel);
+            dumpTool ??= await BackgroundWork.Run(() =>
+            {
+                DumpTool.Sweep();
+                return DumpTool.Find(processId);
+            }, cancel);
             if (dumpTool is (_, string why) && !intoOutput)
             {
                 throw new DumpIntoOutputException($"Only the program's runtime can write its memory snapshot, as {why}, and it writes "
@@ -64,12 +76,15 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
             {
                 for (int attempt = 1; ; attempt++)
                 {
-                    string dump = Path.Combine(Path.GetTempPath(), $"passenger-heap-{processId}-{Guid.NewGuid().ToString("N")[..8]}.dmp");
+                    string dump = DumpTool.Named(processId);
+                    Task? writing = null;
+                    Task<HeapGraph>? reading = null;
+                    using CancellationTokenSource unread = CancellationTokenSource.CreateLinkedTokenSource(cancel);
                     try
                     {
-                        Dumped written = await DumpAsync(dump, cancel);
+                        Dumped written = await DumpAsync(dump, started => writing = started, cancel);
                         TimeSpan dumped = clock.Elapsed;
-                        Task<HeapGraph> reading = BackgroundWork.Run(() => HeapGraph.Read(dump, cancel), cancel);
+                        reading = BackgroundWork.Run(() => HeapGraph.Read(dump, unread.Token), unread.Token);
                         int induced = await InduceAsync(cancel);
                         bool heard = induced >= 0 && await HeardAsync(induced, TimeSpan.FromSeconds(30));
                         HeapGraph graph;
@@ -86,13 +101,9 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
                     }
                     finally
                     {
-                        try
-                        {
-                            File.Delete(dump);
-                        }
-                        catch (IOException)
-                        {
-                        }
+                        // A read the snapshot no longer waits for stops; the dump goes once its writer and its reader end.
+                        unread.Cancel();
+                        UnawaitedWork.Observe(DumpTool.DeleteAfterAsync(dump, writing, reading));
                     }
                 }
             }
@@ -113,8 +124,9 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
     /// <summary>Has a dump of the program's heap written (by Passenger where it can, else by the runtime's createdump),
     /// which holds every thread of the program while it writes, and gives what shows when it held them: when
     /// it was asked for and answered, and the samples the runtime's sampler took meanwhile, every thread each
-    /// millisecond, its own thread held with the rest.</summary>
-    private async Task<Dumped> DumpAsync(string dump, CancellationToken cancel)
+    /// millisecond, its own thread held with the rest. The writing is handed to <paramref name="started"/>: given up, it
+    /// writes on.</summary>
+    private async Task<Dumped> DumpAsync(string dump, Action<Task> started, CancellationToken cancel)
     {
         DiagnosticsClient client = new(processId);
         List<DateTime> samples = [];
@@ -136,14 +148,9 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
         DateTime sent = DateTime.UtcNow;
         try
         {
-            if (dumpTool is { WhyNot: null } own)
-            {
-                await DumpTool.WriteAsync(own.Tool, processId, dump, cancel);
-            }
-            else
-            {
-                await client.WriteDumpAsync(DumpType.WithHeap, dump, logDumpGeneration: false, cancel);
-            }
+            Task writing = DumpTool.WriteAsync(dumpTool?.Tool, dumpTool is { WhyNot: null } ? null : client, processId, dump);
+            started(writing);
+            await writing.WaitAsync(cancel);
         }
         finally
         {
@@ -206,6 +213,8 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
                 {
                     Apply(held[i]);
                 }
+                // Those past the newest kept let go of their objects as this one comes: they are followed no further.
+                trackers.RemoveAll(t => t.Number <= number - KeptSnapshots.Count);
                 foreach (Tracker tracker in trackers)
                 {
                     earlier[tracker.Number] = new Identity(tracker.Match(graph), tracker.Lost);
@@ -214,7 +223,18 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
                 held.RemoveRange(0, before);
             }
             Release();
-            return new MemorySnapshot(this, number, DateTime.Now, graph, took, phases, earlier);
+            MemorySnapshot snapshot = new(kept, number, DateTime.Now, graph, took, phases, earlier);
+            kept.Took(snapshot);
+            return snapshot;
+        }
+    }
+
+    /// <summary>A snapshot removed: its objects are followed no further.</summary>
+    private void Unfollow(int number)
+    {
+        lock (gate)
+        {
+            trackers.RemoveAll(t => t.Number == number);
         }
     }
 
@@ -436,6 +456,12 @@ internal sealed class HeapHistory(int processId) : IAsyncDisposable
             await Task.WhenAny(listening, Task.Delay(TimeSpan.FromSeconds(5)));
         }
         source?.Dispose();
+        // No snapshot comes after: the objects followed are let go, the snapshots kept keeping their own.
+        lock (gate)
+        {
+            trackers.Clear();
+            held.Clear();
+        }
     }
 }
 

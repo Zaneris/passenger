@@ -13,6 +13,9 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
 {
     private readonly SemaphoreSlim taking = new(1, 1);
 
+    /// <summary>The run's snapshots that keep their objects here, the tools there following those of the newest as many.</summary>
+    private readonly KeptSnapshots kept = new();
+
     /// <summary>The last line the tools wrote to their errors: all that is kept of them, whatever they write.</summary>
     private string? lastError;
     private Process? tools;
@@ -89,7 +92,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
             try
             {
                 // Off the caller's thread and back on none of its, held by whoever asked: a heap of millions of objects takes a while.
-                taken = await BackgroundWork.Unheld(() => HeapWire.ReadSnapshot(answer.Body, this, asked, numberedAfter), CancellationToken.None).ConfigureAwait(false);
+                taken = await BackgroundWork.Unheld(() => HeapWire.ReadSnapshot(answer.Body, kept, asked, numberedAfter), CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception unreadable) when (unreadable is InvalidDataException or IOException or FormatException or OverflowException or ArgumentException
                 or IndexOutOfRangeException or OutOfMemoryException)
@@ -99,6 +102,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
                 throw new InvalidOperationException($"The snapshot Passenger's tools in {place.Where} sent could not be read: {unreadable.Message}", unreadable);
             }
             last = taken.Number;
+            kept.Took(taken);
             return taken;
         }
         finally

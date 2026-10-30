@@ -275,6 +275,17 @@ public sealed class ProfilerView : DockPanel
         ShowPage(ProfilerPage.Memory);
     }
 
+    /// <summary>Puts the Memory page's snapshots away, their objects let go: the folder whose runs they were of has ended.</summary>
+    public void ForgetMemory()
+    {
+        Memory = null;
+        memory.Clear();
+        if (pages[(int)ProfilerPage.Memory].IsChecked == true)
+        {
+            ShowPage(ProfilerPage.Memory);
+        }
+    }
+
     /// <summary>The open folder's snapshots, the newest first, as the Snapshots page lists them.</summary>
     public IReadOnlyList<SnapshotFile> Kept => kept.ItemsSource as IReadOnlyList<SnapshotFile> ?? [];
 
