@@ -288,7 +288,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   Variables and the hover card are one list. A C# breakpoint inside a lambda on its statement's line keeps the lambda's
   column (`LambdaBreakpoints`).
 - **Tests window.** `TestFinder` (tests from code before any build), `TestRunners`; `VsTestRunner` is the only file that
-  knows VSTest's object model.
+  knows VSTest's object model. A run from the editor, a filter or the Explorer chooses its tests once its build has
+  ended (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and line
+  (`DeclaredPlace`).
 - **The rest.** `Packages` (every package change's one path, its files the project, its lock file and
   Directory.Packages.props, one command of Undo, put back when it fails; credentials only to their feed's host),
   `Workspace` (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`; a version
@@ -382,10 +384,10 @@ site-shots` retakes its images.
   and two spellings of one project restored at once collide.
 - **.NET's watcher on macOS passes over FSEvents' word that it dropped events** (`MustScanSubDirs|UserDropped` arrive on
   the watched folder itself, which it skips; dotnet/runtime#136577), so a folder is watched only through `WatchedTree`
-  (the folder's watcher and each of `ServerWatches`'), never a bare `FileSystemWatcher`: it takes 256 changes within a
-  second, or an overflow, as a burst at risk and lists again the folders it touched against its record (#607, #609). The
-  one file watched alone, settings.json, is read again on its watcher's error and as a window comes in front
-  (`SettingsStore.LookAgain`).
+  (the folder's watcher, each of `ServerWatches`' and Git's folders outside it, `GitWatcher`), never a bare
+  `FileSystemWatcher`: it takes 256 changes within a second, or an overflow, as a burst at risk and lists again the
+  folders it touched against its record (#607, #609). The one file watched alone, settings.json, is read again on its
+  watcher's error and as a window comes in front (`SettingsStore.LookAgain`).
 - **macOS's "damaged" dialog** comes from a Passenger.app whose seal no longer holds being read or started: a mounted disk image
   whose file was replaced under it (`just package-mac` ejects one first) or a bundle written into (#450). Tests never start a
   program inside an unsigned bundle, and the run's folder ends in `.noindex`, so Spotlight reads none of what a run makes.
