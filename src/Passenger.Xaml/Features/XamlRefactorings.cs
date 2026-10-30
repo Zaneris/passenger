@@ -247,9 +247,10 @@ public static partial class XamlRefactorings
         Func<string, IReadOnlyList<TextEdit>> style = text => Insert(text, source.ByClass ? Container.Styles : Container.Resources, tree =>
         {
             List<TextEdit> declared = [];
+            XmlElement? at = file.Tree.Elements.FirstOrDefault(e => e.Start == source.ElementStart);
             string target = source.ElementName;
             int colon = target.IndexOf(':');
-            if (colon > 0 && place.Path != file.Path && file.UriOf(file.Tree.Elements.FirstOrDefault(e => e.Start == source.ElementStart), target[..colon]) is { } uri)
+            if (colon > 0 && place.Path != file.Path && file.UriOf(at, target[..colon]) is { } uri)
             {
                 target = Qualified(Prefix(text, tree, uri, target[..colon], declared), target[(colon + 1)..]);
             }
@@ -258,12 +259,29 @@ public static partial class XamlRefactorings
                 ? $"<Style Selector=\"{target.Replace(':', '|')}.{name}\">"
                 : $"<Style {x}:Key=\"{name}\" TargetType=\"{target}\"{(basedOn is { } based ? $" BasedOn=\"{based}\"" : string.Empty)}>";
             StringBuilder made = new(opening);
+            bool elsewhere = place.Path != file.Path;
             foreach (StyleProperty property in moved)
             {
-                made.Append('\n').Append(Unit).Append($"<Setter Property=\"{property.Name}\" Value={property.Written} />");
+                string named = elsewhere ? Requalified(property.Name, false) : property.Name;
+                string value = elsewhere ? Requalified(property.Written, true) : property.Written;
+                made.Append('\n').Append(Unit).Append($"<Setter Property=\"{named}\" Value={value} />");
             }
             made.Append("\n</Style>");
             return (made.ToString(), declared);
+
+            // A name's or a value's prefixes as the receiving file declares their namespaces, declared there where it lacks them.
+            string Requalified(string written, bool quoted)
+            {
+                string inner = quoted && written.Length >= 2 ? written[1..^1] : written;
+                bool extension = inner.TrimStart().StartsWith('{') && !inner.TrimStart().StartsWith("{}", StringComparison.Ordinal);
+                if (!extension && !QualifiedName().IsMatch(inner))
+                {
+                    return written;
+                }
+                return PrefixUse().Replace(written, use => use.Groups["prefix"].Value is var prefix && prefix != "xml" && file.UriOf(at, prefix) is { } uri
+                    ? Qualified(Prefix(text, tree, uri, prefix, declared), string.Empty)
+                    : use.Value);
+            }
         });
         if (place.Path == file.Path)
         {
@@ -589,4 +607,12 @@ public static partial class XamlRefactorings
 
     [GeneratedRegex(@"^[A-Za-z_][\w-]*$")]
     private static partial Regex ClassName();
+
+    /// <summary>A prefix where XAML reads one: a name's start before a colon, a name after it.</summary>
+    [GeneratedRegex(@"(?<![\w.:-])(?<prefix>[A-Za-z_][\w.-]*):(?=[A-Za-z_])")]
+    private static partial Regex PrefixUse();
+
+    /// <summary>A value that is one qualified name (<c>local:Sizes.Wide</c>).</summary>
+    [GeneratedRegex(@"^\s*[A-Za-z_][\w.-]*:[A-Za-z_][\w.]*\s*$")]
+    private static partial Regex QualifiedName();
 }
