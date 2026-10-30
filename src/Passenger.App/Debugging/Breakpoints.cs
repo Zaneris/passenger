@@ -771,6 +771,14 @@ public sealed class BreakpointStore
         }
     }
 
+    /// <summary>Records what a session's debugger said of one exception breakpoint since it was sent (a condition a hit could
+    /// not tell).</summary>
+    public void ReportException(object session, ExceptionBreakpoint breakpoint, BreakpointStatus status, string? message)
+    {
+        breakpoint.Tell(session, status, message);
+        ExceptionsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>Records what a session's debugger said of its data breakpoints sent, in the order they were sent; those not
     /// sent (off, or muted) go back to unknown.</summary>
     public void ReportData(object session, IReadOnlyList<(BreakpointStatus Status, string? Message)> reports, IReadOnlyList<DataBreakpoint> sent)
@@ -789,6 +797,14 @@ public sealed class BreakpointStore
             (BreakpointStatus status, string? message) = at >= 0 && at < reports.Count ? reports[at] : (BreakpointStatus.Unknown, null);
             breakpoint.Tell(session, status, message);
         }
+        DataChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Records what a session's debugger said of one data breakpoint since it was sent (a condition a hit could not
+    /// tell).</summary>
+    public void ReportData(object session, DataBreakpoint breakpoint, BreakpointStatus status, string? message)
+    {
+        breakpoint.Tell(session, status, message);
         DataChanged?.Invoke(this, EventArgs.Empty);
     }
 

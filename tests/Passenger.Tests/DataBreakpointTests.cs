@@ -223,6 +223,36 @@ public sealed class DataBreakpointTests : IClassFixture<RestoredFolders>, IDispo
         window.Close();
     }
 
+    /// <summary>A data breakpoint whose condition cannot be told stops at the write that changes its data, and the
+    /// breakpoint says why, as a line breakpoint does.</summary>
+    [AvaloniaFact]
+    public void A_data_breakpoints_condition_that_cannot_be_told_stops_at_the_write_and_says_why_on_the_breakpoint()
+    {
+        Assert.SkipUnless(Watches, OnlyOnWindowsX64);
+        MainWindow window = Open();
+        Passenger.App.ToolWindows.DebugModel view = PausedAtReady(window);
+        window.DebugWindow.VariablesList.SelectedItem = Member(view, "counter", "count");
+        Ui.ChooseFromMenu(window.DebugWindow.VariablesList, DataWatchOffer.Set);
+        DataBreakpoint watched = Assert.Single(window.Debugger.Breakpoints.Data);
+
+        Ui.Run(window, AppActions.ViewBreakpoints);
+        BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
+        Ui.Click(Row(breakpoints, watched.Location));
+        Ui.Click(breakpoints.GetVisualDescendants().OfType<TextBox>().First(t => t.PlaceholderText?.StartsWith("A C# condition", StringComparison.Ordinal) == true));
+        window.KeyTextInput("noSuchName == 3");
+        Ui.Click(breakpoints.GetVisualDescendants().OfType<Button>().First(b => (b.Content as string) == "Done" && b.IsEffectivelyVisible));
+        Assert.Equal("noSuchName == 3", watched.Condition);
+
+        Ui.Run(window, AppActions.Resume);
+        Ui.WaitFor(() => window.Debugger.Session?.StopReason == "data breakpoint" || window.Debugger.Session?.State == DebugState.Ended, "the stop at the write");
+        Ui.WaitFor(() => Value(window, "value") == "2", "the stop at Set(2), the first write that changes count");
+        Ui.WaitFor(() => watched.Message is not null, () => $"the data breakpoint to say why it stopped, its condition not told (it is {watched.Status})");
+        Assert.StartsWith(Passenger.Dap.BreakpointConditions.NotEvaluated("noSuchName == 3"), watched.Message, StringComparison.Ordinal);
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Set_data_breakpoint_is_greyed_saying_why_on_a_local_on_a_property_with_no_backing_field_and_wherever_the_runtime_cannot_watch()
     {

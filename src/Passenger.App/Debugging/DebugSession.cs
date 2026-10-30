@@ -45,8 +45,9 @@ public sealed class DebugSession
     private readonly Func<string, int, string?, int?, int?> columns;
     private readonly Dictionary<string, string> sent = new(StringComparer.Ordinal);
 
-    /// <summary>The exception breakpoints as last sent.</summary>
+    /// <summary>The exception breakpoints as last sent, and each by the id the debugger gave it.</summary>
     private string? exceptionsSent;
+    private readonly Dictionary<int, ExceptionBreakpoint> exceptionById = [];
 
     /// <summary>The data breakpoints as last sent, and each by the id the debugger gave it.</summary>
     private string? dataSent;
@@ -1009,6 +1010,14 @@ public sealed class DebugSession
         SetExceptionBreakpointsResponse response = await connection.RequestAsync<SetExceptionBreakpointsResponse>(
             DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([], [], [.. sending.Select(s => s.Option)]));
         IReadOnlyList<DapBreakpoint> said = response.Breakpoints ?? [];
+        exceptionById.Clear();
+        for (int i = 0; i < Math.Min(sending.Count, said.Count); i++)
+        {
+            if (said[i].Id is int id)
+            {
+                exceptionById[id] = sending[i].Breakpoint;
+            }
+        }
         breakpoints.ReportExceptions(this, [.. said.Select(b => (b.Verified ? BreakpointStatus.Bound : BreakpointStatus.Invalid, b.Message))], [.. sending.Select(s => s.Breakpoint)]);
     }
 
@@ -1237,6 +1246,16 @@ public sealed class DebugSession
                 else if (changed.Breakpoint.Id is int bound && bound == bindingErrorsId)
                 {
                     ReportBindingErrors(changed.Breakpoint);
+                }
+                else if (changed.Breakpoint.Id is int dataId && dataById.TryGetValue(dataId, out DataBreakpoint? data))
+                {
+                    (BreakpointStatus status, string? message, _) = Status(changed.Breakpoint);
+                    breakpoints.ReportData(this, data, status, message);
+                }
+                else if (changed.Breakpoint.Id is int exceptionId && exceptionById.TryGetValue(exceptionId, out ExceptionBreakpoint? exception))
+                {
+                    (BreakpointStatus status, string? message, _) = Status(changed.Breakpoint);
+                    breakpoints.ReportException(this, exception, status, message);
                 }
                 break;
             case DapEvents.Process:

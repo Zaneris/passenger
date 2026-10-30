@@ -32,6 +32,38 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("Lambda expressions are not supported in breakpoint conditions.", breakpoint.Message);
     }
 
+    /// <summary>A lambda condition is refused when set on a function breakpoint and on a data breakpoint, as on a line's,
+    /// rather than stopping at every hit saying it could not be told: the program runs past the function breakpoint to the
+    /// line breakpoint after it.</summary>
+    [Fact]
+    public async Task A_function_or_data_breakpoint_with_a_lambda_condition_is_refused_saying_why()
+    {
+        const string Lambda = "_intList.Any(value => value == 4)";
+        bool startSuspended = true;
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
+        await host
+            .InitializeAsync()
+            .AttachAsync(debuggee.Id)
+            .WaitForInitializedEvent();
+        SetBreakpointsResponse functions = await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints,
+            new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.MyClass.MyMethod", Condition: Lambda)]));
+        SetDataBreakpointsResponse data = await host.RequestAsync<SetDataBreakpointsResponse>(DapCommands.SetDataBreakpoints,
+            new SetDataBreakpointsArguments([new DapDataBreakpoint("data:1", "write", Condition: Lambda)]));
+        foreach ((string kind, DapBreakpoint refused) in new[] { ("function", Assert.Single(functions.Breakpoints)), ("data", Assert.Single(data.Breakpoints)) })
+        {
+            Assert.True(!refused.Verified && refused.Reason == "failed", $"The {kind} breakpoint's lambda condition was taken, to fail at every hit: {refused.Message}");
+            Assert.Equal("Lambda expressions are not supported in breakpoint conditions.", refused.Message);
+        }
+
+        await host
+            .BreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"), [new DapSourceBreakpoint(Debuggees.MyMethodEnd)])
+            .ConfigurationDoneAsync()
+            .ResumeRuntimeAsync(debuggee.Id, startSuspended);
+        StoppedEvent first = await host.WaitForStoppedEvent();
+        Assert.True(first.ReadStopInfo().line == Debuggees.MyMethodEnd,
+            $"The program stopped at line {first.ReadStopInfo().line} of {first.ReadStopInfo().filePath} before MyMethod's end: the refused function breakpoint was bound");
+    }
+
     [Gate]
     [Fact]
     public async Task A_tracepoint_writes_its_message_with_the_values_in_it_and_never_stops()

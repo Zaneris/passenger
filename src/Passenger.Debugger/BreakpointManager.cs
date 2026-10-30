@@ -12,7 +12,7 @@ public class BreakpointManager
     private readonly Dictionary<string, List<int>> _breakpointsByFile = new();
     private readonly Lock _lock = new();
 
-    public class BreakpointInfo
+    public class BreakpointInfo : IHitBreakpoint
     {
         public int Id { get; set; }
         public string FilePath { get; set; } = string.Empty;

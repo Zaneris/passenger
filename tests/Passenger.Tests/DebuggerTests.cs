@@ -911,6 +911,33 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
+    /// <summary>An exception breakpoint whose condition cannot be told stops where its type is thrown, and the breakpoint
+    /// says why, as a line breakpoint does.</summary>
+    [AvaloniaFact]
+    public void An_exception_breakpoints_condition_that_cannot_be_told_stops_at_the_throw_and_says_why_on_the_breakpoint()
+    {
+        Write("Program.cs", "for (int turn = 1; turn <= 2; turn++)\n{\n    try\n    {\n        throw new InvalidOperationException($\"operation {turn}\");\n    }\n"
+            + "    catch (InvalidOperationException)\n    {\n    }\n}\nConsole.WriteLine(\"done\");\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        BreakpointsWindow breakpoints = OpenBreakpoints(window);
+        ExceptionBreakpoint operation = AddException(window, breakpoints, "InvalidOperationEx", "System.InvalidOperationException");
+        Ui.Click(breakpoints.GetVisualDescendants().OfType<TextBox>().First(t => t.PlaceholderText?.StartsWith("A C# condition", StringComparison.Ordinal) == true));
+        window.KeyTextInput("noSuchName == 2");
+        Ui.Click(Button(breakpoints, "Done"));
+        Assert.Equal("noSuchName == 2", operation.Condition);
+
+        StartDebugging(window);
+        WaitDebugging(window, () => editor.LineAnnotations.Any(a => a.Look == LineAnnotationLook.ErrorOnGround), "the stop at the exception breakpoint");
+        Assert.Equal((4, "InvalidOperationException: operation 1"), Thrown(editor));
+        Ui.WaitFor(() => operation.Message is not null, () => $"the exception breakpoint to say why it stopped, its condition not told (it is {operation.Status})");
+        Assert.StartsWith(BreakpointConditions.NotEvaluated("noSuchName == 2"), operation.Message, StringComparison.Ordinal);
+        Assert.Equal(BreakpointStatus.Bound, operation.Status);
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void An_exception_breakpoints_handler_options_stop_it_where_the_users_code_leaves_the_exception_or_where_it_handles_it()
     {

@@ -333,44 +333,8 @@ public partial class ManagedDebugger
         }
 
         BreakpointManager.BreakpointBinding? hit = managedBreakpoint.Bindings.Find(binding => binding.CorBreakpoint == functionBreakpoint);
-        managedBreakpoint.HitCount++;
-
-        if (managedBreakpoint.HitCondition is not null && EvaluateHitCondition(managedBreakpoint.HitCount, managedBreakpoint.HitCondition) is false)
-        {
-            _logger?.Invoke($"Hit count condition not met: count={managedBreakpoint.HitCount}, condition={managedBreakpoint.HitCondition}");
-            Continue(clearVariables: true);
-            return;
-        }
-
-        if (managedBreakpoint.Condition is { } condition)
-        {
-            (bool holds, string? error) = await EvaluateBreakpointCondition(corThread, condition);
-            if (error is not null)
-            {
-                string message = $"{Passenger.Dap.BreakpointConditions.NotEvaluated(condition)}, so the breakpoint stopped: {error}";
-                managedBreakpoint.Message = message;
-                OnBreakpointChanged?.Invoke(managedBreakpoint);
-                OnConsole?.Invoke($"{message}\n");
-            }
-            else if (!holds)
-            {
-                _logger?.Invoke($"Conditional breakpoint condition not met: {condition}");
-                Continue(clearVariables: true);
-                return;
-            }
-        }
-
-        if (managedBreakpoint.LogMessage is { } logMessage)
-        {
-            (string text, _) = await RenderDebuggerDisplayAsync(logMessage, null, new ThreadId(corThread.Id), new FrameStackDepth(0), 0);
-            OnConsole?.Invoke($"{text}\n");
-        }
-        else if (!managedBreakpoint.Suspend)
-        {
-            // What a breakpoint that neither stops nor says anything of its own writes.
-            OnConsole?.Invoke($"Breakpoint reached at {Path.GetFileName(managedBreakpoint.FilePath)}:{(managedBreakpoint.IsFunctionBreakpoint ? managedBreakpoint.Line : hit?.Source.StartLine ?? managedBreakpoint.Line)}\n");
-        }
-        if (!managedBreakpoint.Suspend)
+        if (!await HitStopsAsync(corThread, managedBreakpoint, "the breakpoint",
+            () => $"Breakpoint reached at {Path.GetFileName(managedBreakpoint.FilePath)}:{(managedBreakpoint.IsFunctionBreakpoint ? managedBreakpoint.Line : hit?.Source.StartLine ?? managedBreakpoint.Line)}"))
         {
             Continue(clearVariables: true);
             return;
@@ -757,43 +721,14 @@ public partial class ManagedDebugger
         return [.. rules.Where(rule => rule.Refused is null && rule.Request.Scenarios.HasFlag(thrown) && rule.Request.Scenarios.HasFlag(handled) && rule.IsFor(exceptionType))];
     }
 
-    /// <summary>Tries the exception breakpoints an exception matched as a line breakpoint is tried: its hit count, then its
-    /// condition (one that does not evaluate stops, saying why), then its message logged. The ids of those that stop.</summary>
+    /// <summary>Tries the exception breakpoints an exception matched as every breakpoint's hit is tried
+    /// (<see cref="HitStopsAsync"/>). The ids of those that stop.</summary>
     private async Task<IReadOnlyList<int>> TryExceptionRules(ICorDebugThread thread, string exceptionType, IReadOnlyList<ExceptionRule> rules)
     {
         List<int> stopping = [];
         foreach (ExceptionRule rule in rules)
         {
-            ExceptionRuleRequest request = rule.Request;
-            rule.HitCount++;
-            if (request.HitCondition is { } hits && !EvaluateHitCondition(rule.HitCount, hits))
-            {
-                _logger?.Invoke($"Exception breakpoint {rule.Id}: hit count not met: count={rule.HitCount}, condition={hits}");
-                continue;
-            }
-            if (request.Condition is { } condition)
-            {
-                (bool holds, string? error) = await EvaluateBreakpointCondition(thread, condition);
-                if (error is not null)
-                {
-                    OnConsole?.Invoke($"{Passenger.Dap.BreakpointConditions.NotEvaluated(condition)}, so the breakpoint on {exceptionType} stopped: {error}\n");
-                }
-                else if (!holds)
-                {
-                    _logger?.Invoke($"Exception breakpoint {rule.Id}: condition not met: {condition}");
-                    continue;
-                }
-            }
-            if (request.LogMessage is { } logMessage)
-            {
-                (string text, _) = await RenderDebuggerDisplayAsync(logMessage, null, new ThreadId(thread.Id), new FrameStackDepth(0), 0);
-                OnConsole?.Invoke($"{text}\n");
-            }
-            else if (!request.Suspend)
-            {
-                OnConsole?.Invoke($"Exception breakpoint reached: {exceptionType}\n");
-            }
-            if (request.Suspend)
+            if (await HitStopsAsync(thread, rule, $"the breakpoint on {exceptionType}", () => $"Exception breakpoint reached: {exceptionType}"))
             {
                 stopping.Add(rule.Id);
             }

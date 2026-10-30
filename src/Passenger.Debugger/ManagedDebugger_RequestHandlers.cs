@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
@@ -33,7 +32,7 @@ public sealed record ExceptionRuleRequest(
 }
 
 /// <summary>An exception breakpoint as the engine keeps it: its request, its id, its hits, and whether it was refused.</summary>
-public sealed class ExceptionRule(int id, ExceptionRuleRequest request)
+public sealed class ExceptionRule(int id, ExceptionRuleRequest request) : IHitBreakpoint
 {
     public int Id { get; } = id;
     public ExceptionRuleRequest Request { get; } = request;
@@ -41,6 +40,14 @@ public sealed class ExceptionRule(int id, ExceptionRuleRequest request)
 
     /// <summary>Why the debugger will not take it as it is (a hit count or condition it cannot read); it never stops.</summary>
     public string? Refused { get; init; }
+
+    /// <summary>The debugger's word on it since it was set: a condition a hit could not tell.</summary>
+    public string? Message { get; set; }
+
+    public string? Condition => Request.Condition;
+    public string? HitCondition => Request.HitCondition;
+    public string? LogMessage => Request.LogMessage;
+    public bool Suspend => Request.Suspend;
 
     public bool IsFor(string exceptionType)
     {
@@ -467,22 +474,18 @@ public partial class ManagedDebugger
     {
         _logger?.Invoke($"SetBreakpoints: {filePath}, breakpoints: {string.Join(",", breakpoints.Select(b => $"L{b.Line} {(b.Column is not null ? $"C{b.Column}" : null)} {(b.Condition is not null ? $"[{b.Condition}]" : null)}{(b.HitCondition is not null ? $" hits {b.HitCondition}" : null)}"))}");
 
-        List<BreakpointManager.BreakpointInfo> existingBreakpoints = _breakpointManager.GetBreakpointsForFile(filePath);
-        BreakpointManager.BreakpointInfo?[] kept = new BreakpointManager.BreakpointInfo?[breakpoints.Length];
-        for (int i = 0; i < breakpoints.Length; i++)
+        (BreakpointManager.BreakpointInfo? Kept, int Hits)[] matched = Reconcile(breakpoints, _breakpointManager.GetBreakpointsForFile(filePath), b => b.Request,
+            static (was, now) => was.Line == now.Line && was.Column == now.Column, out List<BreakpointManager.BreakpointInfo> gone);
+        foreach (BreakpointManager.BreakpointInfo each in gone)
         {
-            kept[i] = existingBreakpoints.FirstOrDefault(b => b.Request == breakpoints[i] && !kept.Contains(b));
-        }
-        foreach (BreakpointManager.BreakpointInfo gone in existingBreakpoints.Where(b => !kept.Contains(b)))
-        {
-            LetGo(gone);
-            _breakpointManager.RemoveBreakpoint(gone.Id);
+            LetGo(each);
+            _breakpointManager.RemoveBreakpoint(each.Id);
         }
 
         List<BreakpointManager.BreakpointInfo> result = new List<BreakpointManager.BreakpointInfo>();
         for (int i = 0; i < breakpoints.Length; i++)
         {
-            if (kept[i] is { } same)
+            if (matched[i].Kept is { } same)
             {
                 _logger?.Invoke($"Breakpoint {same.Id} at {filePath}:{breakpoints[i].Line} kept as it was, {same.HitCount} hits in");
                 result.Add(same);
@@ -491,20 +494,10 @@ public partial class ManagedDebugger
             BreakpointRequest request = breakpoints[i];
             BreakpointManager.BreakpointInfo bp = _breakpointManager.CreateBreakpoint(filePath, request.Line, request.Column, request.Condition, request.HitCondition, request.LogMessage, request.Suspend);
             bp.Request = request;
-            if (existingBreakpoints.FirstOrDefault(b => !kept.Contains(b) && b.Request is { } was && was.Line == request.Line && was.Column == request.Column) is { } changed)
+            bp.HitCount = matched[i].Hits;
+            if (Unreadable(bp.Condition, bp.HitCondition) is { } unreadable)
             {
-                bp.HitCount = changed.HitCount;
-            }
-            if (request.Condition is not null && SyntaxFactory.ParseExpression(request.Condition).DescendantNodesAndSelf().Any(static node => node is AnonymousFunctionExpressionSyntax))
-            {
-                bp.Message = "Lambda expressions are not supported in breakpoint conditions.";
-                bp.Refused = true;
-                result.Add(bp);
-                continue;
-            }
-            if (bp.HitCondition is { } hits && !Passenger.Dap.HitCondition.TryParse(hits, out _, out string? problem))
-            {
-                bp.Message = problem;
+                bp.Message = unreadable;
                 bp.Refused = true;
                 result.Add(bp);
                 continue;
@@ -525,27 +518,23 @@ public partial class ManagedDebugger
         return result;
     }
 
-    /// <summary>Sets the function breakpoints to those asked for, which replace those set before. One asked for again just as
-    /// it was is kept whole, as <see cref="SetBreakpoints"/> keeps a line's: its id, its bindings and its hit count, so a
-    /// change beside it (a property breakpoint added) starts no count again and a hit of it on its way still stops.</summary>
+    /// <summary>Sets the function breakpoints to those asked for, which replace those set before, kept and counted on as
+    /// <see cref="SetBreakpoints"/> does a file's, one of the same name with other settings counting on from the hits of the
+    /// one it replaces: a change beside one (a property breakpoint added) starts no count again.</summary>
     public List<BreakpointManager.BreakpointInfo> SetFunctionBreakpoints(FunctionBreakpointRequest[] breakpoints)
     {
-        List<BreakpointManager.BreakpointInfo> existing = _breakpointManager.GetFunctionBreakpoints();
-        BreakpointManager.BreakpointInfo?[] kept = new BreakpointManager.BreakpointInfo?[breakpoints.Length];
-        for (int i = 0; i < breakpoints.Length; i++)
+        (BreakpointManager.BreakpointInfo? Kept, int Hits)[] matched = Reconcile(breakpoints, _breakpointManager.GetFunctionBreakpoints(), b => b.FunctionRequest,
+            static (was, now) => was.Name == now.Name, out List<BreakpointManager.BreakpointInfo> gone);
+        foreach (BreakpointManager.BreakpointInfo each in gone)
         {
-            kept[i] = existing.FirstOrDefault(b => b.FunctionRequest == breakpoints[i] && !kept.Contains(b));
-        }
-        foreach (BreakpointManager.BreakpointInfo gone in existing.Where(b => !kept.Contains(b)))
-        {
-            LetGo(gone);
-            _breakpointManager.RemoveBreakpoint(gone.Id);
+            LetGo(each);
+            _breakpointManager.RemoveBreakpoint(each.Id);
         }
 
         List<BreakpointManager.BreakpointInfo> result = new List<BreakpointManager.BreakpointInfo>();
         for (int i = 0; i < breakpoints.Length; i++)
         {
-            if (kept[i] is { } same)
+            if (matched[i].Kept is { } same)
             {
                 _logger?.Invoke($"Function breakpoint {same.Id} on {same.FunctionName} kept as it was, {same.HitCount} hits in");
                 result.Add(same);
@@ -554,9 +543,10 @@ public partial class ManagedDebugger
             FunctionBreakpointRequest request = breakpoints[i];
             BreakpointManager.BreakpointInfo bp = _breakpointManager.CreateFunctionBreakpoint(request.Name, request.Condition, request.HitCondition, request.LogMessage, request.Suspend);
             bp.FunctionRequest = request;
-            if (bp.HitCondition is { } hits && !Passenger.Dap.HitCondition.TryParse(hits, out _, out string? problem))
+            bp.HitCount = matched[i].Hits;
+            if (Unreadable(bp.Condition, bp.HitCondition) is { } unreadable)
             {
-                bp.Message = problem;
+                bp.Message = unreadable;
                 bp.Refused = true;
                 result.Add(bp);
                 continue;
@@ -1365,7 +1355,8 @@ public partial class ManagedDebugger
     }
 
     /// <summary>The client's exception filters, and its CLR exception breakpoints when it gives them (null when it gives none,
-    /// so every unhandled exception stops). One asked for again just as it was keeps its hits, as a line breakpoint does.</summary>
+    /// so every unhandled exception stops), kept and counted on as a file's line breakpoints are, one for the same exception
+    /// types counting on from the hits of the one it replaces.</summary>
     public IReadOnlyList<ExceptionRule> SetExceptionBreakpoints(IReadOnlyList<ExceptionBreakpointRequest> filters, IReadOnlyList<ExceptionRuleRequest>? rules = null)
     {
         _exceptionBreakpoints = filters.ToArray();
@@ -1374,30 +1365,19 @@ public partial class ManagedDebugger
             _exceptionRules = null;
             return [];
         }
-        List<ExceptionRule> before = [.. _exceptionRules ?? []];
+        (ExceptionRule? Kept, int Hits)[] matched = Reconcile(rules, _exceptionRules ?? [], rule => rule.Request,
+            static (was, now) => was.Excluded == now.Excluded && was.Types.SequenceEqual(now.Types), out _);
         List<ExceptionRule> now = [];
-        foreach (ExceptionRuleRequest request in rules)
+        for (int i = 0; i < rules.Count; i++)
         {
-            int same = before.FindIndex(rule => rule.Request.Equals(request));
-            if (same >= 0)
+            ExceptionRuleRequest request = rules[i];
+            now.Add(matched[i].Kept ?? new ExceptionRule(_breakpointManager.NextId(), request)
             {
-                now.Add(before[same]);
-                before.RemoveAt(same);
-                continue;
-            }
-            now.Add(new ExceptionRule(_breakpointManager.NextId(), request) { Refused = Unreadable(request.Condition, request.HitCondition) });
+                HitCount = matched[i].Hits,
+                Refused = Unreadable(request.Condition, request.HitCondition),
+            });
         }
         _exceptionRules = now;
         return now;
-    }
-
-    /// <summary>Why the debugger will not take a breakpoint's condition or hit count as it is, if it will not.</summary>
-    private static string? Unreadable(string? condition, string? hitCondition)
-    {
-        if (condition is not null && SyntaxFactory.ParseExpression(condition).DescendantNodesAndSelf().Any(static node => node is AnonymousFunctionExpressionSyntax))
-        {
-            return "Lambda expressions are not supported in breakpoint conditions.";
-        }
-        return hitCondition is { } hits && !Passenger.Dap.HitCondition.TryParse(hits, out _, out string? problem) ? problem : null;
     }
 }

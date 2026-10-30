@@ -283,6 +283,7 @@ public sealed class DebugAdapter
             });
         };
         debugger.OnBreakpointChanged += breakpoint => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = "changed", Breakpoint = ToProtocol(breakpoint, isEvent: true) });
+        debugger.OnBreakpointMessage += (id, message) => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = "changed", Breakpoint = new DapBreakpoint { Id = id, Verified = true, Message = message } });
         // Told only when known: a process attached to on macOS or Linux tells its exit code to its parent alone.
         debugger.OnExited += exitCode =>
         {
@@ -461,7 +462,7 @@ public sealed class DebugAdapter
         return new SetExceptionBreakpointsResponse(
         [
             .. requests.Select(_ => new DapBreakpoint { Verified = true }),
-            .. made.Select(rule => new DapBreakpoint { Id = rule.Id, Verified = rule.Refused is null, Message = rule.Refused, Reason = rule.Refused is null ? null : "failed" }),
+            .. made.Select(rule => new DapBreakpoint { Id = rule.Id, Verified = rule.Refused is null, Message = rule.Refused ?? rule.Message, Reason = rule.Refused is null ? null : "failed" }),
         ]);
 
         static ExceptionBreakpointFilter ExceptionFilter(string filter) => filter switch

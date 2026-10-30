@@ -58,13 +58,18 @@ public partial class ManagedDebugger
             && value.TryGetAddress(out CORDB_ADDRESS address) == Cor.S_OK ? address.Value : 0;
     }
 
-    /// <summary>A data breakpoint set: its id, as asked for, on what, and its hits so far.</summary>
-    private sealed class DataWatch(int id, DataBreakpointRequest request, DataTarget target)
+    /// <summary>A data breakpoint set: its id, as asked for, on what, its hits so far and the debugger's word on it.</summary>
+    private sealed class DataWatch(int id, DataBreakpointRequest request, DataTarget target) : IHitBreakpoint
     {
         public int Id { get; } = id;
         public DataBreakpointRequest Request { get; } = request;
         public DataTarget Target { get; } = target;
         public int HitCount { get; set; }
+        public string? Message { get; set; }
+        public string? Condition => Request.Condition;
+        public string? HitCondition => Request.HitCondition;
+        public string? LogMessage => Request.LogMessage;
+        public bool Suspend => Request.Suspend;
     }
 
     /// <summary>Every data id given this session: one per place, given again when asked of again.</summary>
@@ -265,25 +270,21 @@ public partial class ManagedDebugger
         return resolved.Value is { } present ? GetValueForCorDebugValue(present, true).Value : "null";
     }
 
-    /// <summary>Sets the data breakpoints to those asked for: one asked for again just as it was keeps its id and hit count;
-    /// the places no longer watched are let go (their objects unpinned), and new ones are pinned and put in a free debug
-    /// register of every thread. The program, stopped for it if it runs, goes on as it was.</summary>
+    /// <summary>Sets the data breakpoints to those asked for, kept and counted on as a file's line breakpoints are, one on the
+    /// same data counting on from the hits of the one it replaces; the places no longer watched are let go (their objects
+    /// unpinned), and new ones are pinned and put in a free debug register of every thread. The program, stopped for it if
+    /// it runs, goes on as it was.</summary>
     public List<DataBreakpointResult> SetDataBreakpoints(IReadOnlyList<DataBreakpointRequest> requests)
     {
         _logger?.Invoke($"SetDataBreakpoints: {string.Join(", ", requests.Select(r => r.DataId))}");
-        DataWatch?[] kept = new DataWatch?[requests.Count];
-        for (int i = 0; i < requests.Count; i++)
-        {
-            kept[i] = _dataWatches.FirstOrDefault(w => w.Request == requests[i] && !kept.Contains(w));
-        }
+        (DataWatch? Kept, int Hits)[] matched = Reconcile(requests, _dataWatches, w => w.Request, static (was, now) => was.DataId == now.DataId, out _);
         _dataWatches.Clear();
         List<DataBreakpointResult> results = [];
         for (int i = 0; i < requests.Count; i++)
         {
             DataBreakpointRequest request = requests[i];
-            DataWatch? watch = kept[i];
-            string? refused = DataBreakpointsUnavailable
-                ?? (request.HitCondition is { } hits && !Passenger.Dap.HitCondition.TryParse(hits, out _, out string? problem) ? problem : null);
+            DataWatch? watch = matched[i].Kept;
+            string? refused = Unreadable(request.Condition, request.HitCondition) ?? DataBreakpointsUnavailable;
             DataTarget? target = watch?.Target ?? _dataTargets.FirstOrDefault(t => t.Id == request.DataId);
             if (refused is null && target is null)
             {
@@ -296,9 +297,9 @@ public partial class ManagedDebugger
             int id = watch?.Id ?? _breakpointManager.NextId();
             if (refused is null)
             {
-                _dataWatches.Add(watch ?? new DataWatch(id, request, target!));
+                _dataWatches.Add(watch ?? new DataWatch(id, request, target!) { HitCount = matched[i].Hits });
             }
-            results.Add(new DataBreakpointResult(id, refused is null, refused));
+            results.Add(new DataBreakpointResult(id, refused is null, refused ?? watch?.Message));
         }
         if (_process is not null && !_exited.IsSet)
         {
@@ -472,36 +473,8 @@ public partial class ManagedDebugger
         string? before = target.Shown;
         target.Last = now;
         target.Shown = target.Pinned is { } pinned ? Shown(target.Read(pinned.Dereference())) : null;
-        watch.HitCount++;
-        DataBreakpointRequest request = watch.Request;
-        if (request.HitCondition is { } hits && !EvaluateHitCondition(watch.HitCount, hits))
-        {
-            Continue(clearVariables: true);
-            return;
-        }
-        if (request.Condition is { } condition)
-        {
-            (bool holds, string? error) = await EvaluateBreakpointCondition(thread, condition);
-            if (error is not null)
-            {
-                OnConsole?.Invoke($"{Passenger.Dap.BreakpointConditions.NotEvaluated(condition)}, so the data breakpoint on {target.Description} stopped: {error}\n");
-            }
-            else if (!holds)
-            {
-                Continue(clearVariables: true);
-                return;
-            }
-        }
-        if (request.LogMessage is { } logMessage)
-        {
-            (string text, _) = await RenderDebuggerDisplayAsync(logMessage, null, new ThreadId(thread.Id), new FrameStackDepth(0), 0);
-            OnConsole?.Invoke($"{text}\n");
-        }
-        else if (!request.Suspend)
-        {
-            OnConsole?.Invoke($"Data breakpoint reached: {target.Description} is changed from {before ?? "?"} to {target.Shown ?? "?"}\n");
-        }
-        if (!request.Suspend)
+        if (!await HitStopsAsync(thread, watch, $"the data breakpoint on {target.Description}",
+            () => $"Data breakpoint reached: {target.Description} is changed from {before ?? "?"} to {target.Shown ?? "?"}"))
         {
             Continue(clearVariables: true);
             return;

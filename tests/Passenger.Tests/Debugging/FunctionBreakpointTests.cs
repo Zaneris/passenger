@@ -132,6 +132,35 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
             "The function breakpoints asked for again just as they were were made anew, with new ids");
     }
 
+    /// <summary>A function breakpoint sent again with another hit count, as an edit in the Breakpoints window sends it,
+    /// counts on from the hits of the one it replaces: made to stop on its second hit after its first, it stops on the
+    /// program's second call, not two calls after the change.</summary>
+    [Fact]
+    public async Task A_function_breakpoint_sent_again_with_other_settings_counts_on_from_its_hits()
+    {
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process program);
+        await host
+            .InitializeAsync()
+            .AttachAsync(program.Id)
+            .WaitForInitializedEvent();
+        DapFunctionBreakpoint everyPass = new("DebuggableConsoleApp.MyClassNoMembers.MyMethod");
+        await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints,
+            new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.HitConditionClass.Test", HitCondition: "==3"), everyPass]));
+        await host.ConfigurationDoneAsync();
+
+        // Each pass of the program's loop stops in MyMethod first, then calls Test: the second pass's stop comes after Test's first hit.
+        Assert.EndsWith("MyClassNoMembers.cs", (await host.WaitForStoppedEvent()).Source?.Path);
+        Assert.EndsWith("MyClassNoMembers.cs", (await host.ContinueAsync().WaitForStoppedEvent()).Source?.Path);
+        await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints,
+            new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.HitConditionClass.Test", HitCondition: "==2"), everyPass]));
+
+        StoppedEvent hit = await host.ContinueAsync().WaitForStoppedEvent();
+        Assert.True(hit.Source?.Path?.EndsWith("HitConditionClass.cs", StringComparison.Ordinal) == true,
+            $"Test's second call did not stop it, its hit count started again by the change: the program stopped in {hit.Source?.Path}:{hit.Line}");
+        EvaluateResponse passes = await host.EvaluateAsync((await host.TopFrameAsync(hit.ThreadId!.Value)).Id, "_count");
+        Assert.Equal("1", passes.Result);
+    }
+
     [Gate]
     [Fact]
     public async Task A_function_breakpoint_naming_no_parameters_stops_in_every_overload()
