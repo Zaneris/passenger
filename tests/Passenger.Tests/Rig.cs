@@ -1028,6 +1028,15 @@ public static class Ui
         task.GetAwaiter().GetResult();
     }
 
+    /// <summary>Closes a window as the application's shutdown does (the application menu's Quit on macOS): its owned windows
+    /// asked first, each with the same reason.</summary>
+    public static void CloseAsQuit(Window window)
+    {
+        MethodInfo close = typeof(Window).GetMethod("CloseCore", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("Avalonia no longer closes a window for the system's shutdown through Window.CloseCore");
+        close.Invoke(window, [WindowCloseReason.ApplicationShutdown, false, false]);
+    }
+
     /// <summary>Whether what a closed window started ended within its limit and a moment more, as the IDE's process waits for
     /// it before it goes (<see cref="Passenger.App.MainWindow.EndLimit"/>), the loop running meanwhile; its fault thrown.</summary>
     public static bool Ended(Passenger.App.MainWindow window)

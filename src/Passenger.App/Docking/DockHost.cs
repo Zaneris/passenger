@@ -373,16 +373,22 @@ public sealed class DockHost : Grid
         floats.Clear();
     }
 
-    /// <summary>The person closed a floating window's own window: the tool window is hidden, its bounds kept.</summary>
+    /// <summary>A floating window's own window closed by the person: the tool window is hidden, its bounds kept. Closed by
+    /// the application's or the system's shutdown, it stays shown where it stood, as the layout kept has it.</summary>
     private void FloatClosed(ToolWindow window, FloatWindow closed)
     {
-        if (floats.Remove(window))
+        if (!floats.Remove(window))
         {
-            window.WindowBounds = closed.Placement;
-            window.IsShown = false;
-            Layout();
-            LayoutChanged?.Invoke(this, EventArgs.Empty);
+            return;
         }
+        window.WindowBounds = closed.Placement;
+        if (closed.ShutDown)
+        {
+            return;
+        }
+        window.IsShown = false;
+        Layout();
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void Toggle([IdentifierOf(typeof(ToolWindowIds))] string id)

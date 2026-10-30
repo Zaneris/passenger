@@ -192,6 +192,42 @@ public sealed class DockingTests
         Assert.False(othersGit.IsVisible, "The other IDE window's Git window set to Window stayed open after it closed");
     }
 
+    /// <summary>A floating tool window closed by the application's shutdown (the application menu's Quit, a logout), which
+    /// closes it before the IDE's window it floats over, is kept as it stood: the next window on the layout kept opens it
+    /// floating there.</summary>
+    [AvaloniaFact]
+    public void A_floating_tool_window_closed_by_the_applications_quit_opens_again_where_it_stood()
+    {
+        string settings = TestFolders.Create("settings-");
+        MainWindow first = Open(settings);
+        first.KeepLayout();
+        List<Window> opened = [];
+        first.DockHost.WindowOpened += (_, window) => opened.Add(window);
+        first.DockHost.Show(ToolWindowIds.Structure);
+        first.DockHost.SetMode(first.DockHost[ToolWindowIds.Structure], ToolMode.Floating);
+        Ui.Settle();
+        Window structure = Assert.Single(opened);
+        structure.Position = new PixelPoint(160, 110);
+        (structure.Width, structure.Height) = (430, 380);
+        Ui.Settle();
+
+        Ui.CloseAsQuit(first);
+        Ui.Settle();
+        Assert.False(first.IsVisible || structure.IsVisible, "The application's quit left the IDE's window or its floating Structure window open");
+
+        MainWindow next = Open(settings);
+        List<Window> nexts = [];
+        next.DockHost.WindowOpened += (_, window) => nexts.Add(window);
+        next.KeepLayout();
+        Ui.Settle();
+        ToolWindow kept = next.DockHost[ToolWindowIds.Structure];
+        Assert.True(kept is { IsShown: true, Mode: ToolMode.Floating },
+            $"The floating Structure window, closed by the application's quit, was kept {(kept.IsShown ? "shown" : "hidden")} and {kept.Mode}, not shown floating");
+        Assert.Equal(new PixelRect(160, 110, 430, 380), kept.WindowBounds);
+        Assert.Equal(["Structure"], nexts.Where(w => w.IsVisible).Select(w => w.Title));
+        next.Close();
+    }
+
     [AvaloniaFact]
     public void Maximize_gives_a_tool_window_the_frame_and_hide_all_clears_it_for_the_editor()
     {

@@ -284,11 +284,9 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
 
             // As the application menu's Quit: the system closes each window in the order they opened.
             EditLocked(other);
-            System.Reflection.MethodInfo close = typeof(Window).GetMethod("CloseCore", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-                ?? throw new InvalidOperationException("Avalonia no longer closes a window for the system's shutdown through Window.CloseCore");
             foreach (MainWindow window in PassengerApp.Windows.ToList())
             {
-                close.Invoke(window, [WindowCloseReason.ApplicationShutdown, false, false]);
+                Ui.CloseAsQuit(window);
             }
             Ui.ClickButton(Unsaved(other), "Close Without Saving");
             Ui.WaitFor(() => !again.IsVisible && !other.IsVisible, "the system's quit to close every window once the read-only file's question was answered");

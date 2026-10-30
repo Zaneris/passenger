@@ -15,6 +15,10 @@ internal sealed class FloatWindow : IdeWindow
     /// shows as it was.</summary>
     private bool closingWithOwner;
 
+    /// <summary>Whether its last close was the application's or the system's shutting down (the application menu's Quit, a
+    /// logout), never the person's own.</summary>
+    public bool ShutDown { get; private set; }
+
     /// <summary>Asked as the person closes it (never as the IDE closes it quietly, nor as the application quits): false
     /// keeps it open, what it shows having had something it could not finish (a file it could not save).</summary>
     public Func<bool>? MayClose { get; init; }
@@ -43,6 +47,7 @@ internal sealed class FloatWindow : IdeWindow
         Closing += (_, e) =>
         {
             closingWithOwner = e.CloseReason == WindowCloseReason.OwnerWindowClosing;
+            ShutDown = e.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown;
             if (!closingQuietly && e.CloseReason != WindowCloseReason.ApplicationShutdown && MayClose?.Invoke() == false)
             {
                 e.Cancel = true;
@@ -57,7 +62,7 @@ internal sealed class FloatWindow : IdeWindow
         };
     }
 
-    /// <summary>The person or the system closed it, not the IDE.</summary>
+    /// <summary>The person or the system closed it, not the IDE (<see cref="ShutDown"/> tells which).</summary>
     public event EventHandler? Dismissed;
 
     /// <summary>Where it stands: its position in screen pixels, its size in its own units.</summary>
