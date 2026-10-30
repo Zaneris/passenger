@@ -66,7 +66,7 @@ public partial class MainWindow
             string[] existing = [solution.Path, .. filter is null ? [] : new[] { filter }, .. choice.Services.SelectMany(p => new[] { p.Path, Path.Combine(p.Folder, "Program.cs") }),
                 .. choice.AppHost is { } host ? (string[])[host.Path, .. AspireOrchestration.AppHostSources(host.Path)] : [],
                 .. choice.ServiceDefaults is { } defaults ? new[] { defaults.Path } : [],
-                .. AspireOrchestration.PackagesPropsOver([Path.GetDirectoryName(solution.Path)!, .. choice.AppHost is { } chosen ? new[] { chosen.Folder } : []])];
+                .. AspireOrchestration.PackagesProps(choice, session.Workspace?.Projects ?? [])];
             if (SaveBeforeWriting(existing) is { } unsaved)
             {
                 return status.Text = unsaved;

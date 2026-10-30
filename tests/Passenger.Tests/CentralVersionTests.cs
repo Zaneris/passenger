@@ -5,7 +5,8 @@ namespace Passenger.Tests;
 
 /// <summary>A package's version placed in Directory.Packages.props, as completing a package in a project under central
 /// package management and a project given packages there place it: the file still reads as XML, the new PackageVersion
-/// in an ItemGroup, its id and version escaped, whether the file is written on one line or many.</summary>
+/// in an ItemGroup, its id and version escaped, whether the file is written on one line or many; and which file that is,
+/// as a project's evaluation names it.</summary>
 [Collection(Beside.Name)]
 public sealed class CentralVersionTests
 {
@@ -48,6 +49,19 @@ public sealed class CentralVersionTests
         XElement version = XDocument.Parse(placed).Descendants("PackageVersion").Single();
         Assert.True((string?)version.Attribute("Include") == "Odd&Id" && (string?)version.Attribute("Version") == "1.0.0-\"a\"<b>",
             $"The id and version read back as {version}, not as given: {placed}");
+    }
+
+    [Fact]
+    public void The_central_file_is_the_one_the_evaluation_names_and_none_where_central_management_is_off_or_names_none()
+    {
+        string folder = Passenger.Core.PathNames.Canonical(Path.GetTempPath());
+        string named = Path.Combine(folder, "eng", "Versions.props");
+        Assert.Equal(named, CentralPackages.PropsOf("true", named));
+        Assert.Equal(named, CentralPackages.PropsOf("True", named));
+        Assert.True(CentralPackages.PropsOf("false", named) is null, "A project that turns central package management off was given a central file to write");
+        Assert.True(CentralPackages.PropsOf(null, named) is null, "A project that never turns central package management on was given a central file to write");
+        Assert.True(CentralPackages.PropsOf("true", string.Empty) is null && CentralPackages.PropsOf("true", null) is null,
+            "A project that imports no Directory.Packages.props (ImportDirectoryPackagesProps false, none above it) was given one");
     }
 
     /// <summary>The props file with the package's version placed, held to reading as XML with it in an ItemGroup.</summary>

@@ -54,11 +54,8 @@ public sealed class MSBuildInsight
 
     public MSBuildPlace Place(InsightPlace place) => new(place.File >= 0 && place.File < paths.Length ? paths[place.File] : string.Empty, place.Line, place.Column);
 
-    /// <summary>Whether the project manages its packages' versions centrally (Directory.Packages.props).</summary>
-    public bool CentralPackages => Value("ManagePackageVersionsCentrally").Equals("true", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>The Directory.Packages.props central package management reads, when it is on.</summary>
-    public string? PackagesProps => CentralPackages && Value("DirectoryPackagesPropsPath") is { Length: > 0 } path ? PathNames.Canonical(path) : null;
+    /// <summary>The Directory.Packages.props central package management reads, when it is on (<see cref="CentralPackages.PropsOf(string?, string?)"/>).</summary>
+    public string? PackagesProps => CentralPackages.PropsOf(Value(CarriedProperties.ManagePackageVersionsCentrally), Value(CarriedProperties.DirectoryPackagesPropsPath));
 
     /// <summary>The items an element of a file made, by the place of its <c>&lt;</c>.</summary>
     public InsightItem? ItemsAt(string path, int line, int column) =>

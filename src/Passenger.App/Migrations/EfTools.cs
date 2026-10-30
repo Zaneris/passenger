@@ -110,10 +110,14 @@ public static class EfTools
 
         """;
 
-    /// <summary>The person's global tool, from their tools folder (DOTNET_CLI_HOME's, else their home's); null with none.</summary>
+    /// <summary>The person's global tool, from their tools folder under the CLI's home (<see cref="Dotnet.CliHome"/>); null
+    /// with none.</summary>
     public static EfTool? Global()
     {
-        string home = Environment.GetEnvironmentVariable("DOTNET_CLI_HOME") is { Length: > 0 } cli ? cli : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (Dotnet.CliHome() is not { } home)
+        {
+            return null;
+        }
         string tools = Path.Combine(home, ".dotnet", "tools");
         string program = Path.Combine(tools, OperatingSystem.IsWindows() ? $"{Id}.exe" : Id);
         string store = Path.Combine(tools, ".store", Id);

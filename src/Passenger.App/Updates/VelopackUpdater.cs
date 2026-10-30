@@ -163,7 +163,7 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
     {
         public async Task<VelopackAssetFeed> GetReleaseFeed(IVelopackLogger logger, string? appId, string channel, Guid? stagingId = null, VelopackAsset? latestLocalRelease = null)
         {
-            string json = await Releases.ReadTextAsync(release.File(feed)!, Product.Version, cancel).ConfigureAwait(false);
+            string json = await Releases.ReadTextAsync(release.File(feed)!, cancel).ConfigureAwait(false);
             VelopackAssetFeed parsed;
             try
             {
@@ -186,7 +186,7 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
         {
             ReleaseFile file = release.File(releaseEntry.FileName)
                 ?? throw new UpdateRefusedException($"the release's {feed} names {releaseEntry.FileName}, which the release does not carry");
-            return Releases.DownloadAsync(file, localFile, Product.Version, progress, cancelToken);
+            return Releases.DownloadAsync(file, localFile, progress, cancelToken);
         }
     }
 }

@@ -195,12 +195,17 @@ public sealed class FeedSet(string name, IReadOnlyList<IPackageFeed> feeds, Func
             or IOException or UnauthorizedAccessException or UriFormatException or NotSupportedException;
 }
 
-/// <summary>A feed's HTTP: its requests, with its credentials sent to its own host alone (those of its nuget.config, else
-/// what a credential provider gives when it answers 401 without any), the certificate check its configuration may turn
-/// off, and HTTP refused unless the feed allows insecure connections. Credentials are never logged.</summary>
+/// <summary>A feed's HTTP: its requests, made as <see cref="OutboundHttp"/> makes them, with its credentials sent to its
+/// own host alone (those of its nuget.config, else what a credential provider gives when it answers 401 without any), the
+/// certificate check its configuration may turn off, and HTTP refused unless the feed allows insecure connections.
+/// Credentials are never logged.</summary>
 public sealed class FeedClient
 {
-    private static readonly HttpClient Shared = new(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) }) { Timeout = TimeSpan.FromSeconds(30) };
+    /// <summary>A feed's answers are read as they come; one read whole is at most a registration page of some megabytes.</summary>
+    private static readonly HttpClient Shared = OutboundHttp.Client(TimeSpan.FromSeconds(30), most: 64 * 1024 * 1024);
+
+    /// <summary><see cref="Shared"/> for the feeds whose configuration turns the certificate check off.</summary>
+    private static readonly HttpClient Unchecked = OutboundHttp.Client(TimeSpan.FromSeconds(30), most: 64 * 1024 * 1024, anyCertificate: true);
 
     private readonly HttpClient http;
     private readonly bool configured;
@@ -213,9 +218,7 @@ public sealed class FeedClient
         this.credentials = credentials;
         configured = credentials is not null;
         AllowInsecure = allowInsecure;
-        this.http = http ?? (skipCertificateCheck
-            ? new HttpClient(new SocketsHttpHandler { SslOptions = { RemoteCertificateValidationCallback = (_, _, _, _) => true } }) { Timeout = Shared.Timeout }
-            : Shared);
+        this.http = http ?? (skipCertificateCheck ? Unchecked : Shared);
     }
 
     public string Name { get; }
@@ -304,8 +307,7 @@ public sealed class FeedClient
 
     private async Task<HttpResponseMessage> SendAsync(Uri url, FeedCredentials? with, CancellationToken cancel)
     {
-        using HttpRequestMessage request = new(HttpMethod.Get, url);
-        request.Headers.UserAgent.Add(new ProductInfoHeaderValue("Passenger", Product.Version));
+        using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, url);
         if (with is not null)
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", with.Basic());

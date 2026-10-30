@@ -268,24 +268,16 @@ public static class AspireOrchestration
         }
     }
 
-    /// <summary>The Directory.Packages.props nearest above each folder, as MSBuild finds the one a project there reads.</summary>
-    public static IReadOnlyList<string> PackagesPropsOver(IEnumerable<string> folders)
-    {
-        List<string> found = [];
-        foreach (string start in folders)
-        {
-            for (string? folder = start; folder is not null; folder = Path.GetDirectoryName(folder))
-            {
-                string props = Path.Combine(folder, "Directory.Packages.props");
-                if (File.Exists(props))
-                {
-                    found.Add(PathNames.Canonical(props));
-                    break;
-                }
-            }
-        }
-        return [.. found.Distinct(PathNames.Comparer)];
-    }
+    /// <summary>The Directory.Packages.props files orchestration may pin versions in (<see cref="CentralPackages.PropsOf(ProjectModel)"/>):
+    /// the chosen AppHost's, and where it makes a project, those of the solution's <paramref name="projects"/>, one of
+    /// which a project made beside them reads.</summary>
+    public static IReadOnlyList<string> PackagesProps(AspireOrchestrationChoice choice, IEnumerable<ProjectModel> projects) =>
+        [.. (choice.AppHost is null || choice.ServiceDefaults is null ? projects : [])
+            .Prepend(choice.AppHost)
+            .OfType<ProjectModel>()
+            .Select(CentralPackages.PropsOf)
+            .OfType<string>()
+            .Distinct(PathNames.Comparer)];
 
     public static IReadOnlyList<string> AppHostSources(string project) =>
         [.. Directory.EnumerateFiles(Path.GetDirectoryName(project)!, "*.cs", SearchOption.TopDirectoryOnly)];

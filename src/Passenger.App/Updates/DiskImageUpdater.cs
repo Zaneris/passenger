@@ -105,10 +105,10 @@ public sealed partial class DiskImageUpdater : Updater
             }
         }
         Directory.CreateDirectory(folder);
-        string expected = Expected(await Releases.ReadTextAsync(sums, Product.Version, cancel).ConfigureAwait(false), download.Name)
+        string expected = Expected(await Releases.ReadTextAsync(sums, cancel).ConfigureAwait(false), download.Name)
             ?? throw new UpdateRefusedException($"the release's {Sums} gives no SHA-256 for {download.Name}");
         string saved = Path.Combine(folder, download.Name);
-        string actual = await Releases.DownloadAsync(download, saved, Product.Version, progress, cancel).ConfigureAwait(false);
+        string actual = await Releases.DownloadAsync(download, saved, progress, cancel).ConfigureAwait(false);
         if (actual != expected)
         {
             throw new UpdateRefusedException($"{download.Name} does not match the SHA-256 the release's {Sums} gives", $"it is {actual}; {Sums} says {expected}");

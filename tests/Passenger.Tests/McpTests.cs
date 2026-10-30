@@ -597,6 +597,42 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"nuget_install's update answered that it changed [{string.Join(", ", changed)}], the lock file now holding:\n{locked}");
     }
 
+    /// <summary>Where a Directory.Build.props names the file central package versions are kept in (DirectoryPackagesPropsPath),
+    /// nuget_install names that file among those it changed, the one dotnet wrote the version to, not the
+    /// Directory.Packages.props nearest the project, which the evaluation never reads.</summary>
+    [Fact]
+    public async Task An_agents_package_install_under_central_versions_kept_where_the_build_names_names_that_file_among_those_it_changed()
+    {
+        string root = PathNames.Canonical(TestFolders.Create("mcp-nuget-central-"));
+        DeleteAtEnd(root);
+        string feed = Directory.CreateDirectory(Path.Combine(root, "feed")).FullName;
+        File.WriteAllBytes(Path.Combine(feed, "Passenger.Sample.1.0.0.nupkg"), StandInFeed.Package("Passenger.Sample", "1.0.0"));
+        File.WriteAllText(Path.Combine(root, "nuget.config"),
+            "<configuration>\n  <packageSources>\n    <clear />\n    <add key=\"local\" value=\"feed\" />\n  </packageSources>\n"
+            + "  <config>\n    <add key=\"globalPackagesFolder\" value=\"packages\" />\n  </config>\n</configuration>\n");
+        File.WriteAllText(Path.Combine(root, "Directory.Build.props"),
+            "<Project>\n  <PropertyGroup>\n    <DirectoryPackagesPropsPath>$(MSBuildThisFileDirectory)eng/Versions.props</DirectoryPackagesPropsPath>\n  </PropertyGroup>\n</Project>\n");
+        string central = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "eng")).FullName, "Versions.props");
+        File.WriteAllText(central, "<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n</Project>\n");
+        string library = Directory.CreateDirectory(Path.Combine(root, "Lib")).FullName;
+        string nearest = Path.Combine(library, "Directory.Packages.props");
+        const string Unread = "<Project>\n  <ItemGroup>\n  </ItemGroup>\n</Project>\n";
+        File.WriteAllText(nearest, Unread);
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        await using McpClient client = await Start(["--mcp", root], languageServer: false);
+
+        JsonElement made = await Call(client, McpTools.NugetInstall, new() { ["project"] = "Lib", ["id"] = "Passenger.Sample", ["version"] = "1.0.0" });
+        string[] changed = [.. made.GetProperty("changed").EnumerateArray().Select(f => f.GetString()!).Order(StringComparer.Ordinal)];
+        string versions = File.ReadAllText(central);
+        Assert.True(versions.Contains("\"Passenger.Sample\"", StringComparison.Ordinal) && versions.Contains("\"1.0.0\"", StringComparison.Ordinal),
+            $"dotnet add package did not write the version to {central}, which DirectoryPackagesPropsPath names:\n{versions}");
+        string[] expected = [.. new[] { Path.Combine("Lib", "Lib.csproj"), Path.Combine("eng", "Versions.props") }.Order(StringComparer.Ordinal)];
+        Assert.True(changed.SequenceEqual(expected),
+            $"nuget_install answered that it changed [{string.Join(", ", changed)}], where dotnet wrote the version to eng/Versions.props: "
+            + "a package change that names, records and puts back the wrong central file leaves the version out of Undo and of what an agent commits");
+        Assert.True(File.ReadAllText(nearest) == Unread, $"The Directory.Packages.props nearest the project, which its evaluation never reads, was changed:\n{File.ReadAllText(nearest)}");
+    }
+
     /// <summary>Git's tools on a repository, a merge stopped for a conflict among them: the agent finds it in vcs_status (what
     /// is under way, each side's branch, what each did to the file), resolves it with theirs, and its commit finishes the
     /// merge; and a command in the IDE's terminal.</summary>
@@ -1301,6 +1337,40 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(runs == read,
             $"With no SHELL, Passenger's environment was read through the login profile {read} and its terminal's shell read {runs ?? "none"}: "
             + $"a PATH or variable set in one is not what the other finds. The terminal answered:\n{answer}");
+    }
+
+    /// <summary>Started as the Finder starts it, over a login profile that takes a while to set DOTNET_CLI_HOME, Passenger
+    /// finds the global dotnet-ef under that home, as the dotnet it starts would: Migrations names it.</summary>
+    [Fact]
+    public async Task A_global_dotnet_ef_under_the_DOTNET_CLI_HOME_a_login_profile_sets_is_found()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("A Windows program gets the person's whole environment, and reads no login profile");
+            return;
+        }
+        string folder = await ShopApp.MakeAsync(design: true, tool: null);
+        string home = TestFolders.Create("home-");
+        DeleteAtEnd(folder);
+        DeleteAtEnd(home);
+        string cli = Directory.CreateDirectory(Path.Combine(home, "cli")).FullName;
+        // A global tool as dotnet tool install -g leaves it, of a major other than the project's EF Core, so Migrations refuses it by name.
+        string tools = Directory.CreateDirectory(Path.Combine(cli, ".dotnet", "tools")).FullName;
+        Executable(Path.Combine(tools, "dotnet-ef"), "#!/bin/sh\nexit 1\n");
+        Directory.CreateDirectory(Path.Combine(tools, ".store", "dotnet-ef", "1.0.0"));
+        // NuGet takes its settings from DOTNET_CLI_HOME too: the run's, so nothing is restored anew.
+        string settings = Path.Combine(Environment.GetEnvironmentVariable("DOTNET_CLI_HOME")!, ".nuget", "NuGet", "NuGet.Config");
+        File.Copy(settings, Path.Combine(Directory.CreateDirectory(Path.Combine(cli, ".nuget", "NuGet")).FullName, "NuGet.Config"));
+        foreach (string profile in (string[])[".profile", ".bash_profile", ".zprofile"])
+        {
+            File.WriteAllText(Path.Combine(home, profile), $"sleep 3\nexport DOTNET_CLI_HOME=\"{cli}\"\n");
+        }
+        Dictionary<string, string?> environment = Launchd(home);
+        environment["DOTNET_CLI_HOME"] = null;
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false, environment: environment);
+        string found = Text(await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.AddMigration, ["input"] = "Initial" }));
+        Assert.True(found.Contains("the global dotnet-ef 1.0.0", StringComparison.OrdinalIgnoreCase),
+            $"Add Migration did not name the global dotnet-ef under the DOTNET_CLI_HOME the login profile sets ({cli}), answering: {found}");
     }
 
     /// <summary>A script at <paramref name="path"/> that only its owner may change, as a shell or a tool on the PATH is.</summary>

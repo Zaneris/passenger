@@ -72,24 +72,14 @@ public abstract record ReleaseAnswer(string Said)
     public sealed record Failed(string Reason, string Said) : ReleaseAnswer(Said);
 }
 
-/// <summary>Asks GitHub's releases/latest, a GET with nothing in it but a User-Agent naming Passenger and its version
-/// (GitHub refuses a request without one) and the API's media type: no token, no cookie, no trace header. Pre-releases
-/// and drafts are never offered, whether GitHub marks them so or their tag carries a pre-release label.</summary>
+/// <summary>Asks GitHub's releases/latest, a GET as <see cref="OutboundHttp"/> makes it with the API's media type added:
+/// no token. Pre-releases and drafts are never offered, whether GitHub marks them so or their tag carries a pre-release
+/// label.</summary>
 public static partial class Releases
 {
-    private static readonly HttpClient Http = new(new SocketsHttpHandler
-    {
-        UseCookies = false,
-        // Nothing but the request itself: no traceparent header from an activity that happens to be current.
-        ActivityHeadersPropagator = null,
-        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-    })
-    {
-        // The feed's own timeout is the one that applies.
-        Timeout = System.Threading.Timeout.InfiniteTimeSpan,
-        // A release's JSON is some kilobytes; anything far past that is not one.
-        MaxResponseContentBufferSize = 4 * 1024 * 1024,
-    };
+    /// <summary>The feed's own timeout, or a download's stall, is the one that applies; a release's JSON is some kilobytes,
+    /// and anything far past that is not one.</summary>
+    private static readonly HttpClient Http = OutboundHttp.Client(System.Threading.Timeout.InfiniteTimeSpan, most: 4 * 1024 * 1024);
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
 
@@ -119,8 +109,7 @@ public static partial class Releases
         limit.CancelAfter(feed.Timeout);
         try
         {
-            using HttpRequestMessage request = new(HttpMethod.Get, feed.Latest);
-            request.Headers.UserAgent.Add(new ProductInfoHeaderValue("Passenger", running));
+            using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, feed.Latest);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
             using HttpResponseMessage response = await Http.SendAsync(request, limit.Token).ConfigureAwait(false);
             if (response.StatusCode == HttpStatusCode.NotFound)

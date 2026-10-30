@@ -1,5 +1,6 @@
 using Passenger.App.CSharp;
 using Passenger.Core;
+using Passenger.Host;
 using Passenger.Workspace;
 
 namespace Passenger.App.MSBuild;
@@ -39,6 +40,16 @@ public sealed record CentralPackages(string Props, IReadOnlyDictionary<string, s
         return new CentralPackages(props, insight.CentralVersions().ToDictionary(v => v.Key, v => v.Value.Version, StringComparer.OrdinalIgnoreCase),
             !insight.Value("CentralPackageVersionOverrideEnabled").Equals("false", StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>The Directory.Packages.props a project's central package management reads and a package change writes, as
+    /// its evaluation names it; null where central package management is off, or before the project is evaluated.</summary>
+    public static string? PropsOf(ProjectModel project) =>
+        PropsOf(project.Property(CarriedProperties.ManagePackageVersionsCentrally), project.Property(CarriedProperties.DirectoryPackagesPropsPath));
+
+    /// <summary>The file an evaluation's DirectoryPackagesPropsPath names, canonical, where its ManagePackageVersionsCentrally
+    /// (<paramref name="managed"/>) is true; else null.</summary>
+    public static string? PropsOf(string? managed, string? path) =>
+        string.Equals(managed, "true", StringComparison.OrdinalIgnoreCase) && path is { Length: > 0 } ? PathNames.Canonical(path) : null;
 
     /// <summary>Directory.Packages.props' text with a PackageVersion for each package pinned that it lacks, in turn.</summary>
     public static string Pinned(string text, IEnumerable<(string Id, string Version)> pins)

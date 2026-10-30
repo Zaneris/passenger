@@ -98,6 +98,17 @@ public static partial class Dotnet
     /// host's real path, as a link to it (a Linux distribution's /usr/bin/dotnet) lies outside the installation.</summary>
     public static string Root() => Path.GetDirectoryName(PathNames.Canonical(Host()))!;
 
+    /// <summary>The folder dotnet keeps a person's global tools and templates under, as the dotnet Passenger starts finds
+    /// it: DOTNET_CLI_HOME, else the home folder (USERPROFILE on Windows, HOME elsewhere), read once the login shell's
+    /// environment is in; null when neither is set.</summary>
+    public static string? CliHome()
+    {
+        ShellEnvironment.Ready();
+        return Set("DOTNET_CLI_HOME") ?? Set(OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME");
+
+        static string? Set(string name) => Environment.GetEnvironmentVariable(name) is { Length: > 0 } value ? value : null;
+    }
+
     /// <summary>Where Microsoft's installers, the install script and the package managers put the .NET command line.</summary>
     private static IEnumerable<string> Installed(string name)
     {

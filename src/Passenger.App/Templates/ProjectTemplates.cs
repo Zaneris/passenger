@@ -272,7 +272,7 @@ public static partial class ProjectTemplates
     /// <summary>The folder dotnet new keeps what it installs and caches in: .templateengine in its home, or the custom
     /// hive, which is what it keeps there; null when there is no home.</summary>
     private static string? TemplateRoot(string? custom) =>
-        custom ?? (TemplateHome() is { } home ? Path.Combine(home, ".templateengine") : null);
+        custom ?? (Dotnet.CliHome() is { } home ? Path.Combine(home, ".templateengine") : null);
 
     /// <summary>The templates in dotnet new's cache, each one's options from its ide.host.json, with the known packages'
     /// kinds it has not got, in families.</summary>
@@ -304,15 +304,6 @@ public static partial class ProjectTemplates
         }
         (IReadOnlyList<string> formats, string format) = SolutionFormats(all);
         return new TemplateCatalog(sdk, TemplateFamilies.Of([.. templates, .. TemplatePacks.Offered(templates)]), formats, format);
-    }
-
-    /// <summary>The folder dotnet keeps its templates under for the programs it runs: DOTNET_CLI_HOME, else the home
-    /// folder, as the SDK finds it.</summary>
-    private static string? TemplateHome()
-    {
-        IDictionary<string, string?> environment = ChildProcesses.DotnetCommand([]).Environment;
-        string? Value(string name) => environment.TryGetValue(name, out string? value) && !string.IsNullOrEmpty(value) ? value : null;
-        return Value("DOTNET_CLI_HOME") ?? Value(OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME");
     }
 
     /// <summary>The cache, read as another dotnet new may be writing it: a read that does not parse is tried again.</summary>

@@ -206,11 +206,19 @@ public static class CarriedProperties
     /// another.</summary>
     public const string PublishProfileRootFolder = "_PublishProfileRootFolder";
 
+    /// <summary>Whether the project's package versions are managed centrally, in <see cref="DirectoryPackagesPropsPath"/>.</summary>
+    public const string ManagePackageVersionsCentrally = "ManagePackageVersionsCentrally";
+
+    /// <summary>The Directory.Packages.props NuGet imports into the project, and writes a package's version to under central
+    /// package management: the nearest above it, or the one the project names; none where the project turns it off.</summary>
+    public const string DirectoryPackagesPropsPath = "DirectoryPackagesPropsPath";
+
     public static readonly IReadOnlyList<string> Names =
     [
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
-        NuGetPackageRoot, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder,
+        NuGetPackageRoot, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
+        DirectoryPackagesPropsPath,
     ];
 }
 

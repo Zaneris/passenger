@@ -18,7 +18,10 @@ public sealed record ProjectModelCache : IStateDocument<ProjectModelCache>
     public Dictionary<string, EvaluatedProject> Projects { get; init; } = [];
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeted, ForgetAll, ForgetUncarried, ForgetUnpublishable, ForgetAll,
-        ForgetUnrestored, ForgetUndefined, ForgetUnversioned, ForgetUnserved];
+        ForgetUnrestored, ForgetUndefined, ForgetUnversioned, ForgetUnserved, ForgetUncentral];
+
+    /// <summary>Every evaluation, kept before they carried the Directory.Packages.props a package change writes.</summary>
+    private static void ForgetUncentral(JsonObject document) => document.Remove("projects");
 
     /// <summary>Every evaluation, kept before they carried whether a web SDK builds the project, by which its wwwroot shows
     /// as its web root.</summary>

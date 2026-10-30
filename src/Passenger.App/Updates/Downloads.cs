@@ -1,11 +1,11 @@
-using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
+using Passenger.Core;
 
 namespace Passenger.App.Updates;
 
-/// <summary>A release's files as an update downloads them: over HTTPS (http only to a loopback address), with nothing in
-/// the request but a User-Agent naming Passenger and its version, each file's SHA-256 taken as it comes.</summary>
+/// <summary>A release's files as an update downloads them: over HTTPS (http only to a loopback address), each a GET as
+/// <see cref="OutboundHttp"/> makes it, each file's SHA-256 taken as it comes.</summary>
 public static partial class Releases
 {
     /// <summary>How long a download may go without a byte before it is given up: a connection that stalled, not one that
@@ -17,22 +17,22 @@ public static partial class Releases
 
     /// <summary>A small text file of the release, whole. Throws <see cref="UpdateFailedException"/> when it does not come and
     /// <see cref="UpdateRefusedException"/> when it would not come over HTTPS or is far larger than such a file is.</summary>
-    public static async Task<string> ReadTextAsync(ReleaseFile file, string running, CancellationToken cancel)
+    public static async Task<string> ReadTextAsync(ReleaseFile file, CancellationToken cancel)
     {
         using MemoryStream text = new();
-        await DownloadAsync(file, text, running, TextLimit, progress: null, cancel).ConfigureAwait(false);
+        await DownloadAsync(file, text, TextLimit, progress: null, cancel).ConfigureAwait(false);
         return Encoding.UTF8.GetString(text.GetBuffer(), 0, (int)text.Length);
     }
 
     /// <summary>Downloads a release's file to a path, reporting the percent done, and gives its SHA-256 in lowercase hex. The
     /// file is the caller's to remove when this throws.</summary>
-    public static async Task<string> DownloadAsync(ReleaseFile file, string path, string running, Action<int>? progress, CancellationToken cancel)
+    public static async Task<string> DownloadAsync(ReleaseFile file, string path, Action<int>? progress, CancellationToken cancel)
     {
         await using FileStream into = new(path, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
-        return await DownloadAsync(file, into, running, long.MaxValue, progress, cancel).ConfigureAwait(false);
+        return await DownloadAsync(file, into, long.MaxValue, progress, cancel).ConfigureAwait(false);
     }
 
-    private static async Task<string> DownloadAsync(ReleaseFile file, Stream into, string running, long limit, Action<int>? progress, CancellationToken cancel)
+    private static async Task<string> DownloadAsync(ReleaseFile file, Stream into, long limit, Action<int>? progress, CancellationToken cancel)
     {
         if (!Secure(file.Url))
         {
@@ -41,8 +41,7 @@ public static partial class Releases
         using IncrementalHash sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         try
         {
-            using HttpRequestMessage request = new(HttpMethod.Get, file.Url);
-            request.Headers.UserAgent.Add(new ProductInfoHeaderValue("Passenger", running));
+            using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, file.Url);
             using HttpResponseMessage response = await Stalling(cancel,
                 token => Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)).ConfigureAwait(false);
             // A redirect GitHub gives is followed, but never from HTTPS to http, which the handler refuses.

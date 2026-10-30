@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Passenger.App.Editors;
+using Passenger.App.MSBuild;
 using Passenger.Core;
 using Passenger.Packages;
 using Passenger.Text;
@@ -422,20 +423,9 @@ public sealed class FolderPackages
     }
 
     /// <summary>The files a package change can write: the project, its lock file (<see cref="ProjectModel.LockFile"/>),
-    /// which its restore writes when it restores with one, and under central package management the nearest
-    /// Directory.Packages.props, where dotnet add package puts the version.</summary>
-    private static IReadOnlyList<string> PackageFiles(ProjectModel project)
-    {
-        List<string> files = [project.Path, PathNames.Canonical(project.LockFile)];
-        for (string? at = Path.GetDirectoryName(project.Path); at is not null; at = Path.GetDirectoryName(at))
-        {
-            string props = Path.Combine(at, "Directory.Packages.props");
-            if (File.Exists(props))
-            {
-                files.Add(PathNames.Canonical(props));
-                break;
-            }
-        }
-        return files;
-    }
+    /// which its restore writes when it restores with one, and under central package management its
+    /// Directory.Packages.props (<see cref="CentralPackages.PropsOf(ProjectModel)"/>), where dotnet add package puts the
+    /// version.</summary>
+    private static IReadOnlyList<string> PackageFiles(ProjectModel project) =>
+        [project.Path, PathNames.Canonical(project.LockFile), .. CentralPackages.PropsOf(project) is { } props ? [props] : (string[])[]];
 }

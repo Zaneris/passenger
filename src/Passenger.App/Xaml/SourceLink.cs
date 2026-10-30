@@ -16,7 +16,8 @@ public interface ILibraryFiles
 
 /// <summary>A library's files through its Source Link: the portable PDB its assembly names, from NuGet's symbol server
 /// (<c>PASSENGER_SYMBOLS</c> names another), its Source Link map from the build's paths to the repository's, and the
-/// project folder its documents are in; each file downloaded once over HTTPS into MetadataAsSource/SourceLink/, which the
+/// project folder its documents are in; each file downloaded once over HTTPS (<see cref="OutboundHttp"/>) into
+/// MetadataAsSource/SourceLink/, which the
 /// editor shows read-only, written whole or not at all and never outside its assembly version's folder.</summary>
 public sealed class SourceLink : ILibraryFiles
 {
@@ -25,7 +26,8 @@ public sealed class SourceLink : ILibraryFiles
 
     private static readonly Guid SourceLinkKind = new("CC110556-A091-4D38-9FEC-25AB9A351A6A");
 
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    /// <summary>A library's portable PDB is some megabytes, the largest some tens of them.</summary>
+    private static readonly HttpClient Http = OutboundHttp.Client(TimeSpan.FromSeconds(20), most: 256 * 1024 * 1024);
 
     /// <summary>The symbol server asked for PDBs.</summary>
     public static string Server => Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } set ? set.TrimEnd('/') + "/" : "https://symbols.nuget.org/download/symbols/";
@@ -64,7 +66,8 @@ public sealed class SourceLink : ILibraryFiles
                 why?.Report($"{assemblyName}'s Source Link is not HTTPS: {url}");
                 return null;
             }
-            byte[] bytes = await Http.GetByteArrayAsync(url, cancel);
+            using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, new Uri(url));
+            byte[] bytes = await DownloadAsync(request, cancel);
             await BackgroundWork.Run(() => LibrarySources.WriteWhole(local, bytes));
             return local;
         }
@@ -108,17 +111,23 @@ public sealed class SourceLink : ILibraryFiles
         }
         // A portable PDB's key on a symbol server is its id with FFFFFFFF where a Windows PDB's age would be.
         string url = $"{Server}{Uri.EscapeDataString(name)}/{codeView.Guid:N}FFFFFFFF/{Uri.EscapeDataString(name)}";
-        using HttpRequestMessage request = new(HttpMethod.Get, url);
+        using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, new Uri(url));
         // NuGet's symbol server gives a portable PDB only to a request naming the checksum the assembly holds of it.
         if (checksums.Count > 0)
         {
             request.Headers.Add("SymbolChecksum", string.Join(';', checksums));
         }
-        using HttpResponseMessage response = await Http.SendAsync(request, cancel);
-        response.EnsureSuccessStatusCode();
-        byte[] bytes = await response.Content.ReadAsByteArrayAsync(cancel);
+        byte[] bytes = await DownloadAsync(request, cancel);
         await BackgroundWork.Run(() => LibrarySources.WriteWhole(pdb, bytes));
         return pdb;
+    }
+
+    /// <summary>A request's answer whole; an <see cref="HttpRequestException"/> for one that does not succeed.</summary>
+    private static async Task<byte[]> DownloadAsync(HttpRequestMessage request, CancellationToken cancel)
+    {
+        using HttpResponseMessage response = await Http.SendAsync(request, cancel);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsByteArrayAsync(cancel);
     }
 
     /// <summary>A PDB's Source Link map, and the folder of the project the assembly was built from: the one of its

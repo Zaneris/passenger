@@ -29,15 +29,8 @@ public sealed class JsonSchemas(Func<bool> download)
         (["global.json"], "https://json.schemastore.org/global.json"),
     ];
 
-    private static readonly HttpClient Http = new(new SocketsHttpHandler
-    {
-        UseCookies = false,
-        ActivityHeadersPropagator = null,
-        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-    })
-    {
-        Timeout = TimeSpan.FromSeconds(15),
-    };
+    /// <summary>A schema is some kilobytes, the largest SchemaStore lists some megabytes.</summary>
+    private static readonly HttpClient Http = OutboundHttp.Client(TimeSpan.FromSeconds(15), most: 64 * 1024 * 1024);
 
     private readonly ConcurrentDictionary<string, Task<string>> downloaded = new(StringComparer.Ordinal);
 
@@ -121,8 +114,7 @@ public sealed class JsonSchemas(Func<bool> download)
 
     private static async Task<string> DownloadAsync(Uri uri)
     {
-        using HttpRequestMessage request = new(HttpMethod.Get, uri);
-        request.Headers.UserAgent.ParseAdd($"Passenger/{Product.Version}");
+        using HttpRequestMessage request = OutboundHttp.Request(HttpMethod.Get, uri);
         using HttpResponseMessage response = await Http.SendAsync(request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync();

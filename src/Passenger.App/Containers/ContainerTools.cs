@@ -171,14 +171,14 @@ public static class ContainerTools
         try
         {
             say?.Invoke($"Downloading Passenger's container tools for {rid}");
-            string sums = await Releases.ReadTextAsync(new ReleaseFile("SHA256SUMS", new Uri(release, "SHA256SUMS"), 0), version, cancel).ConfigureAwait(false);
+            string sums = await Releases.ReadTextAsync(new ReleaseFile("SHA256SUMS", new Uri(release, "SHA256SUMS"), 0), cancel).ConfigureAwait(false);
             string? expected = sums.Split('\n').Select(line => line.Trim().Split(' ', 2, StringSplitOptions.TrimEntries))
                 .FirstOrDefault(parts => parts.Length == 2 && parts[1].TrimStart('*') == asset)?[0].ToLowerInvariant();
             if (expected is null)
             {
                 throw new ContainerToolsException($"The {tag} release's SHA256SUMS lists no {asset}");
             }
-            string got = await Releases.DownloadAsync(new ReleaseFile(asset, new Uri(release, asset), 0), archive, version,
+            string got = await Releases.DownloadAsync(new ReleaseFile(asset, new Uri(release, asset), 0), archive,
                 percent => say?.Invoke($"Downloading Passenger's container tools for {rid}: {percent}%"), cancel).ConfigureAwait(false);
             if (got != expected)
             {
