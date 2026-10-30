@@ -25,7 +25,9 @@ internal readonly record struct ResolvedRuntimeMethod(ResolvedRuntimeType Declar
 }
 
 internal readonly record struct ResolvedEvaluationMethod(MethodDefinitionHandle Handle, MethodSignature<string> Signature, bool IsStatic);
-internal sealed record ResolvedCilType(PrimitiveTypeCode? Primitive, ResolvedRuntimeType? RuntimeType, ResolvedCilType? ElementType = null, int ArrayRank = 0, bool IsSzArray = false);
+/// <summary>A type an evaluation names: a primitive, a type of the program's, or an array or a pointer of its
+/// <see cref="ElementType"/> (a pointer where <see cref="IsPointer"/>).</summary>
+internal sealed record ResolvedCilType(PrimitiveTypeCode? Primitive, ResolvedRuntimeType? RuntimeType, ResolvedCilType? ElementType = null, int ArrayRank = 0, bool IsSzArray = false, bool IsPointer = false);
 internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, MetadataReader evaluationReader, PEReader evaluationPeReader, ICorDebugAppDomain appDomain, ICorDebugType[] typeGenericArguments, ICorDebugType[] methodGenericArguments, ModuleInfo? currentFrameModule)
 {
     /// <summary>The concrete generic arguments the evaluation method's type parameters (<c>!i</c>, then <c>!!i</c>) map
@@ -113,6 +115,7 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
             CorElementType.CLASS or CorElementType.VALUETYPE => new ResolvedCilType(null, ResolveRuntimeType(type)),
             CorElementType.SZARRAY => new ResolvedCilType(null, null, ResolveCorDebugType(type.FirstTypeParameter), 1, true),
             CorElementType.ARRAY => new ResolvedCilType(null, null, ResolveCorDebugType(type.FirstTypeParameter), type.Rank),
+            CorElementType.PTR => new ResolvedCilType(null, null, ResolveCorDebugType(type.FirstTypeParameter), IsPointer: true),
             _ => throw new NotSupportedException($"Cannot resolve a CIL type from CorElementType '{type.Type}'")
         };
     }
@@ -318,7 +321,7 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
         if (type.ElementType is not null)
         {
             return ((ICorDebugAppDomain2)appDomain).GetArrayOrPointerType(
-                type.IsSzArray ? CorElementType.SZARRAY : CorElementType.ARRAY,
+                type.IsPointer ? CorElementType.PTR : type.IsSzArray ? CorElementType.SZARRAY : CorElementType.ARRAY,
                 type.ArrayRank,
                 GetCorDebugType(type.ElementType));
         }
@@ -397,6 +400,10 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
         if (type.Primitive is { } primitive)
         {
             return SizeOf((SignatureTypeCode)primitive);
+        }
+        if (type.IsPointer)
+        {
+            return CilValue.PointerSize;
         }
         return EnumUnderlyingType(type) is { } underlying ? SizeOf((SignatureTypeCode)underlying) : 0;
     }
@@ -747,7 +754,7 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
     {
         if (type.ElementType is not null)
         {
-            string suffix = type.IsSzArray ? "[]" : $"[{new string(',', type.ArrayRank - 1)}]";
+            string suffix = type.IsPointer ? "*" : type.IsSzArray ? "[]" : $"[{new string(',', type.ArrayRank - 1)}]";
             return GetReflectionTypeName(type.ElementType) + suffix;
         }
         if (type.Primitive is { } primitive)
@@ -811,7 +818,7 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
         public ResolvedCilType GetArrayType(ResolvedCilType elementType, ArrayShape shape) => new(null, null, elementType, shape.Rank);
         public ResolvedCilType GetSZArrayType(ResolvedCilType elementType) => new(null, null, elementType, 1, true);
         public ResolvedCilType GetByReferenceType(ResolvedCilType elementType) => elementType;
-        public ResolvedCilType GetPointerType(ResolvedCilType elementType) => elementType;
+        public ResolvedCilType GetPointerType(ResolvedCilType elementType) => new(null, null, elementType, IsPointer: true);
         public ResolvedCilType GetPinnedType(ResolvedCilType elementType) => elementType;
         public ResolvedCilType GetModifiedType(ResolvedCilType modifier, ResolvedCilType unmodifiedType, bool isRequired) => unmodifiedType;
         public ResolvedCilType GetFunctionPointerType(MethodSignature<ResolvedCilType> signature) => throw new NotSupportedException("Function pointer types are not supported");

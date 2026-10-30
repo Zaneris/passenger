@@ -22,6 +22,17 @@ public class ReckoningTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("Low", await Evaluate(host, frame, "~big & wide"));
     }
 
+    [Fact]
+    public async Task A_pointer_type_is_its_own_type_never_the_type_it_points_at()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        (_, int frame) = await StoppedAtReckoningAsync(host);
+
+        string same = await Evaluate(host, frame, "typeof(int*) == typeof(int)");
+        Assert.True(same == "false", $"typeof(int*) == typeof(int) is {same}, where the program finds them different");
+        Assert.Equal("true", await Evaluate(host, frame, "typeof(int*).IsPointer"));
+    }
+
     /// <summary>The program launched to Reckoning.Run's stop, and its top frame.</summary>
     private static async Task<(StoppedEvent Stop, int Frame)> StoppedAtReckoningAsync(DebugSession host)
     {

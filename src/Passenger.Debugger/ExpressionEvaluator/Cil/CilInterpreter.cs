@@ -1094,6 +1094,10 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         {
             return CilValue.Null();
         }
+        if (type.IsPointer)
+        {
+            return CilValue.PointerSize == 8 ? CilValue.FromPrimitive(0UL) : CilValue.FromPrimitive(0U);
+        }
         ResolvedRuntimeType runtimeType = type.RuntimeType ?? throw new NotSupportedException("Initializing this CIL type is not supported");
         ICorDebugType[] typeArguments = runtimeType.TypeArguments.IsDefaultOrEmpty
             ? []
@@ -1119,7 +1123,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
 
         if (type.ElementType is not null)
         {
-            return true;
+            return !type.IsPointer;
         }
 
         return type.RuntimeType is { } runtimeType && !EvaluationMetadataResolver.IsValueType(runtimeType);
