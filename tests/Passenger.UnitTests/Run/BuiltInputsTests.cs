@@ -77,14 +77,15 @@ public sealed class BuiltInputsTests : IDisposable
             "A database gone, DCP's file come or a build's output was taken for a change of the project's code, so Rerun would restart a service that did not change");
     }
 
-    /// <summary>A file under the test's folder, written with a time well before any listing.</summary>
+    /// <summary>A file under the test's folder, written with a time well before any listing, by its canonical path, as the
+    /// IDE's project models name a project.</summary>
     private string Write(string relative, string text)
     {
         string path = Path.Join(root, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, text);
         File.SetLastWriteTimeUtc(path, Before);
-        return path;
+        return PathNames.Canonical(path);
     }
 
     private static ProjectModel Model(string project, params string[] references) =>
