@@ -327,9 +327,13 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
         // box/unbox round-trip of an exact enum type
         EvaluateResponse? enumBoxResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(MyEnum)(object)enumVar");
         Assert.Equal("ThirdValue", enumBoxResponse.Result);
-        // This is technically not correct behaviour, ie doesn't match behaviour of actual code, but no other debugger handles it. Assert it.
+        // An int's box unboxes as an int-based enum, and an enum's as its int, as the runtime allows.
         EvaluateResponse? enumBoxResponse2 = await debugProtocolHost.EvaluateAsync(stackFrameId, "(MyEnum)(object)2");
-        Assert.Contains("InvalidCastException", enumBoxResponse2.Result);
+        Assert.True(enumBoxResponse2.Result == "ThirdValue", $"(MyEnum)(object)2 is {enumBoxResponse2.Result}, where the program unboxes an int's box as an int-based enum");
+        EvaluateResponse? enumUnderlyingUnboxResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(int)(object)MyEnum.SecondValue");
+        Assert.True(enumUnderlyingUnboxResponse.Result == "1", $"(int)(object)MyEnum.SecondValue is {enumUnderlyingUnboxResponse.Result}, where the program unboxes an int-based enum's box as its int");
+        EvaluateResponse? enumWiderUnboxResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "(long)(object)MyEnum.SecondValue");
+        Assert.Contains("InvalidCastException", enumWiderUnboxResponse.Result);
         EvaluateResponse? genericMethodResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "Array.Empty<int>().Length");
         Assert.Equal("0", genericMethodResponse.Result);
         EvaluateResponse? throwingMethodResponse = await debugProtocolHost.EvaluateAsync(stackFrameId, "int.Parse(anotherVar)");

@@ -226,6 +226,29 @@ internal sealed class CilValue
         return data.Length is 1 or 2 or 4 or 8;
     }
 
+    /// <summary>The element type a box's value is stored as: a primitive's own, whether the box names it as an element
+    /// type or as its CoreLib class, or an enum's underlying one; null for any other struct.</summary>
+    internal static CorElementType? StoredAs(ICorDebugValue value) => value is ICorDebugGenericValue { Type: not CorElementType.VALUETYPE } generic
+        ? generic.Type
+        : UnderlyingType(value) ?? PrimitiveClassName(value) switch
+        {
+            "System.Boolean" => CorElementType.BOOLEAN,
+            "System.Char" => CorElementType.CHAR,
+            "System.SByte" => CorElementType.I1,
+            "System.Byte" => CorElementType.U1,
+            "System.Int16" => CorElementType.I2,
+            "System.UInt16" => CorElementType.U2,
+            "System.Int32" => CorElementType.I4,
+            "System.UInt32" => CorElementType.U4,
+            "System.Int64" => CorElementType.I8,
+            "System.UInt64" => CorElementType.U8,
+            "System.Single" => CorElementType.R4,
+            "System.Double" => CorElementType.R8,
+            "System.IntPtr" => CorElementType.I,
+            "System.UIntPtr" => CorElementType.U,
+            _ => null,
+        };
+
     /// <summary>An enum's underlying element type, from its value__ field's signature; null for a struct
     /// that is not an enum.</summary>
     private static CorElementType? UnderlyingType(ICorDebugValue value)

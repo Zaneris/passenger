@@ -398,9 +398,38 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
         {
             return SizeOf((SignatureTypeCode)primitive);
         }
+        return EnumUnderlyingType(type) is { } underlying ? SizeOf((SignatureTypeCode)underlying) : 0;
+    }
+
+    /// <summary>The primitive a type is stored as: its own, the one CoreLib's class of it stands for (System.Int32 as a
+    /// type reference names it), or an enum's underlying one; null for any other type.</summary>
+    public PrimitiveTypeCode? StoredAs(ResolvedCilType type)
+    {
+        if (type.Primitive is { } primitive)
+        {
+            return primitive;
+        }
+        if (EnumUnderlyingType(type) is { } underlying)
+        {
+            return underlying;
+        }
+        if (type is not { RuntimeType: { } runtimeType, ElementType: null }
+            || runtimeType.Module.MetadataReader.PeMetadataReader is not { IsAssembly: true } reader
+            || reader.GetString(reader.GetAssemblyDefinition().Name) != "System.Private.CoreLib")
+        {
+            return null;
+        }
+        string name = GetTypeName(runtimeType);
+        return Enum.GetValues<PrimitiveTypeCode>().Where(code => MetadataTypeNames.ElementTypeOf(code)
+            is not (CorElementType.END or CorElementType.VOID or CorElementType.STRING or CorElementType.OBJECT or CorElementType.TYPEDBYREF))
+            .Select(code => (PrimitiveTypeCode?)code).FirstOrDefault(code => MetadataTypeNames.Of(code!.Value) == name);
+    }
+
+    /// <summary>The primitive an enum is stored as, from its one instance field; null for any other type.</summary>
+    public static PrimitiveTypeCode? EnumUnderlyingType(ResolvedCilType type)
+    {
         if (type is { RuntimeType: { } runtimeType, ElementType: null } && IsValueType(runtimeType))
         {
-            // An enum's one instance field holds its value.
             MetadataReader reader = runtimeType.Module.MetadataReader.PeMetadataReader;
             foreach (FieldDefinitionHandle handle in reader.GetTypeDefinition(runtimeType.Handle).GetFields())
             {
@@ -409,11 +438,11 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
                 {
                     BlobReader signature = reader.GetBlobReader(field.Signature);
                     signature.ReadSignatureHeader();
-                    return SizeOf(signature.ReadSignatureTypeCode());
+                    return (PrimitiveTypeCode)signature.ReadSignatureTypeCode();
                 }
             }
         }
-        return 0;
+        return null;
     }
 
     private static int SizeOf(SignatureTypeCode code) => code switch

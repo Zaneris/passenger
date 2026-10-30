@@ -371,8 +371,9 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                         break;
                     case ILOpCode.Unbox_any:
                     {
-                        ICorDebugBoxValue boxed = Unbox(stack.Pop(), resolver.ResolveTypeToken(instruction.Token), resolver);
-                        stack.Push(CilValue.FromCorValue(boxed.Object));
+                        ResolvedCilType target = resolver.ResolveTypeToken(instruction.Token);
+                        ICorDebugBoxValue boxed = Unbox(stack.Pop(), target, resolver);
+                        stack.Push(await UnboxedAsAsync(boxed.Object, target, run));
                         break;
                     }
                     case ILOpCode.Unbox:
@@ -443,7 +444,21 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             : throw new InvalidCastException($"InvalidCastException: Cannot cast the debuggee value to '{targetType.RuntimeType?.ToString() ?? "the requested type"}'");
     }
 
-    /// <summary>The box unbox and unbox.any take apart, which must hold the very type they name.</summary>
+    /// <summary>What unbox.any gives from a box: its value, as the enum it names where the box holds another type
+    /// stored as that enum is (an int's box unboxed as an int-based enum).</summary>
+    private async Task<CilValue> UnboxedAsAsync(ICorDebugValue held, ResolvedCilType target, Interpretation run)
+    {
+        if (target is { Primitive: null, RuntimeType: { } enumType } && EvaluationMetadataResolver.EnumUnderlyingType(target) is not null
+            && (held.ExactType.Class.Token != enumType.Class.Token || held.ExactType.Class.Module.BaseAddress != enumType.Class.Module.BaseAddress))
+        {
+            CilValue retyped = await BoxAsync(CilValue.FromCorValue(held), run.Resolver.GetCorDebugType(target), run.Context, run.Handles);
+            return CilValue.FromCorValue(retyped.CorValue!.UnwrapDebugValue());
+        }
+        return CilValue.FromCorValue(held);
+    }
+
+    /// <summary>The box unbox and unbox.any take apart, which must hold the very type they name, or, for a primitive or
+    /// an enum, one stored as it is.</summary>
     private static ICorDebugBoxValue Unbox(CilValue source, ResolvedCilType targetType, EvaluationMetadataResolver resolver)
     {
         if (source.Location is not null)
@@ -1213,18 +1228,16 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             && valueClass.Module.BaseAddress == elementClass.Module.BaseAddress);
     }
 
-    /// <summary>
-    /// Verifies that a boxed value can be unboxed to <paramref name="targetType"/>: the boxed value must be an
-    /// exact primitive match or an exact runtime type match. Enum/underlying-type and interface-compatible boxes
-    /// are intentionally not accepted (unbox.any is only emitted for value-type targets).
-    /// </summary>
+    /// <summary>Whether unbox and unbox.any take a box apart as <paramref name="targetType"/>, as the runtime does: a
+    /// primitive or an enum from a box of either whose underlying type is the same (an int's box as an int-based enum, an
+    /// enum's as its int), any other struct from a box of that very type.</summary>
     private static bool IsUnboxCompatible(ICorDebugValue boxedObject, ResolvedCilType targetType, EvaluationMetadataResolver resolver)
     {
         ICorDebugValue unwrapped = boxedObject.UnwrapDebugValue();
-        if (targetType.Primitive is { } primitive)
+        if (resolver.StoredAs(targetType) is { } storedAs)
         {
-            CorElementType? expectedElementType = GetPrimitiveElementType(primitive);
-            return unwrapped is ICorDebugGenericValue generic && expectedElementType is not null && generic.Type == expectedElementType;
+            CorElementType? expectedElementType = GetPrimitiveElementType(storedAs);
+            return expectedElementType is not null && CilValue.StoredAs(unwrapped) == expectedElementType;
         }
         if (targetType.RuntimeType is { } runtimeType)
         {
