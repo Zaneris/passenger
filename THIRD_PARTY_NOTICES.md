@@ -639,8 +639,10 @@ reordering, Remove ending tag of empty element); (c) Xavalon. All rights reserve
 
 `src/Passenger.App/MSBuild/Schemas/` holds `Microsoft.Build.Core.xsd` and `Microsoft.Build.CommonTypes.xsd`, MSBuild's own
 schemas of its elements, properties, items, metadata and tasks (`src/MSBuild/MSBuild/` of https://github.com/dotnet/msbuild
-at commit 7af2a3b, October 14, 2026), unchanged. The app embeds them for the code help in project files, which offers and
-describes what they declare; the .NET SDK does not carry them.
+at commit 7af2a3b, October 14, 2026), unchanged but for `AnalysisLevel` in `Microsoft.Build.CommonTypes.xsd`, which also
+lists the levels of .NET 7 to 11 (`7.0` to `11.0`, each with `-minimum`, `-recommended` and `-all`) that the SDKs take.
+The app embeds them for the code help in project files, which offers and describes what they declare; the .NET SDK does
+not carry them.
 
 ```
 The MIT License (MIT)

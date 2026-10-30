@@ -1858,6 +1858,26 @@ elementFormDefault="qualified">
           <xs:enumeration value="6.0-minimum" />
           <xs:enumeration value="6.0-recommended" />
           <xs:enumeration value="6.0-all" />
+          <xs:enumeration value="7.0" />
+          <xs:enumeration value="7.0-minimum" />
+          <xs:enumeration value="7.0-recommended" />
+          <xs:enumeration value="7.0-all" />
+          <xs:enumeration value="8.0" />
+          <xs:enumeration value="8.0-minimum" />
+          <xs:enumeration value="8.0-recommended" />
+          <xs:enumeration value="8.0-all" />
+          <xs:enumeration value="9.0" />
+          <xs:enumeration value="9.0-minimum" />
+          <xs:enumeration value="9.0-recommended" />
+          <xs:enumeration value="9.0-all" />
+          <xs:enumeration value="10.0" />
+          <xs:enumeration value="10.0-minimum" />
+          <xs:enumeration value="10.0-recommended" />
+          <xs:enumeration value="10.0-all" />
+          <xs:enumeration value="11.0" />
+          <xs:enumeration value="11.0-minimum" />
+          <xs:enumeration value="11.0-recommended" />
+          <xs:enumeration value="11.0-all" />
         </xs:restriction>
       </xs:simpleType>
     </xs:element>
