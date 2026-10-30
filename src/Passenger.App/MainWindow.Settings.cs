@@ -118,7 +118,7 @@ public partial class MainWindow
     /// <summary>Settings (Ctrl+Alt+S, Cmd+, on the Mac), over this window until OK or Cancel.</summary>
     public SettingsDialog ShowSettings()
     {
-        SettingsDialog dialog = new(settings, actions!, (from, to) => settingsStore.Apply(from, to), Mcp.AgentSetup.Here(Folder));
+        SettingsDialog dialog = new(settings, actions!, (from, to) => settingsStore.Apply(from, to), Mcp.AgentSetup.Here(Folder, settings.TerminalShell));
         IdeErrors.Observe(dialog.ShowDialog(this));
         return dialog;
     }

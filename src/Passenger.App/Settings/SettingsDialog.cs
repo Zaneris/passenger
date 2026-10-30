@@ -113,7 +113,7 @@ public sealed partial class SettingsDialog : IdeWindow
         MinHeight = 400;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        AddOptions(agents ?? Mcp.AgentSetup.Here(null));
+        AddOptions(agents ?? Mcp.AgentSetup.Here(null, current.TerminalShell));
         search = new TextBox { Classes = { "search" }, PlaceholderText = "Search settings", Margin = new Thickness(10, 10, 10, 6) };
         search.TextChanged += (_, _) => Filter();
         pages = new ListBox { Classes = { "tree", "pages" } };

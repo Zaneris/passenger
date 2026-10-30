@@ -19,8 +19,8 @@ public enum ShellKind
     Nushell,
 }
 
-/// <summary>A path written for a shell as one word it takes as it is, nothing in it expanded or run: bare where nothing
-/// in it means anything to that shell, else quoted as the shell reads quotes.</summary>
+/// <summary>A path, or any word, written for a shell as one word it takes as it is, nothing in it expanded or run: bare
+/// where nothing in it means anything to that shell, else quoted as the shell reads quotes.</summary>
 public static class ShellWords
 {
     /// <summary>The quotes PowerShell reads as a single quote: the ASCII one and the typographic ones.</summary>

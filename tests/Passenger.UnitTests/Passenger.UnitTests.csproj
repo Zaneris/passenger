@@ -129,6 +129,12 @@
     <Compile Include="../../src/Passenger.App/Mcp/AgentAnswers.cs" Link="App/AgentAnswers.cs" />
   </ItemGroup>
 
+  <!-- The command lines Settings give an agent to add Passenger with, from the executable's path and the shell alone,
+       compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Mcp/AgentSetup.cs" Link="App/AgentSetup.cs" />
+  </ItemGroup>
+
   <!-- Where a copy of a source generator's code goes and whose project it is, from their names alone, and what a C# file
        declares, from its syntax alone, compiled in since their project is the app's. -->
   <ItemGroup>

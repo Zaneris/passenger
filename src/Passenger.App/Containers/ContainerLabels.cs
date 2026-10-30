@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Passenger.Core;
+using Passenger.Terminal;
 
 namespace Passenger.App.Containers;
 
@@ -228,8 +229,8 @@ public static partial class ContainerLabels
         static string Named(IEnumerable<string> words) => string.Concat(words.Select(word => $" {Quoted(word)}"));
     }
 
-    /// <summary>A word in single quotes for sh, a quote in it closed, escaped and opened again.</summary>
-    private static string Quoted(string word) => $"'{word.Replace("'", "'\\''", StringComparison.Ordinal)}'";
+    /// <summary>A word as sh, which the watchdog runs the command in, takes it whole.</summary>
+    private static string Quoted(string word) => ShellWords.Quoted(word, ShellKind.Posix);
 
     /// <summary>A name the CLI takes for a context.</summary>
     [GeneratedRegex(@"^[a-zA-Z0-9][a-zA-Z0-9_.+-]*$")]

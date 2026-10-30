@@ -86,10 +86,10 @@ public sealed partial class SettingsDialog
             AddBlock(SetupBlock(title, text, note), title, $"{SetupWords} {words}");
         }
         Setup("Claude Code", setup.ClaudeCode,
-            "Run it in a terminal in your project's folder (with --scope user after add, for every project).", "terminal cli");
+            $"Run it in {setup.RunIn} in your project's folder (with --scope user after add, for every project).", "terminal cli");
         Setup("A repository's .mcp.json", setup.McpJson,
             "For everyone who works in the repository with Claude Code, in .mcp.json at its root.", "repository project team shared");
-        Setup("Codex", setup.Codex, "Run it in a terminal. The Codex app shares the CLI's settings.", "terminal cli openai");
+        Setup("Codex", setup.Codex, $"Run it in {setup.RunIn}. The Codex app shares the CLI's settings.", "terminal cli openai");
         Setup("Codex's config.toml", setup.CodexToml, "Or in ~/.codex/config.toml.", "toml file openai");
         Setup("Claude Desktop", setup.ClaudeDesktop,
             setup.Folder is null

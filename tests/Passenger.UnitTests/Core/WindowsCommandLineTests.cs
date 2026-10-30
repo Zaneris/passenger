@@ -51,7 +51,7 @@ public sealed class WindowsCommandLineTests
     /// <summary>A command line's words after a program's name, split as the C runtime splits them: white space apart outside
     /// quotes, backslashes literal unless before a quote, where each pair is one backslash and an odd one escapes the quote,
     /// and two quotes inside quotes one quote.</summary>
-    private static List<string> Split(string line)
+    internal static List<string> Split(string line)
     {
         List<string> words = [];
         int i = 0;
