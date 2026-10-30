@@ -248,12 +248,18 @@ public sealed class DockHost : Grid
                 window.WindowBounds = open.Placement;
                 open.CloseQuietly();
             }
-            if (Active == window)
-            {
-                Active = windows.FirstOrDefault(w => w.IsShown);
-            }
+            PassActive(window);
             Layout();
             LayoutChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>A window hidden is no longer the one Shift+Escape hides: a window still shown is.</summary>
+    private void PassActive(ToolWindow hidden)
+    {
+        if (Active == hidden)
+        {
+            Active = windows.FirstOrDefault(w => w.IsShown);
         }
     }
 
@@ -404,6 +410,7 @@ public sealed class DockHost : Grid
             return;
         }
         window.IsShown = false;
+        PassActive(window);
         Layout();
         LayoutChanged?.Invoke(this, EventArgs.Empty);
     }

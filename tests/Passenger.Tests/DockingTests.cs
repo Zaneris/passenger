@@ -142,6 +142,32 @@ public sealed class DockingTests
         window.Close();
     }
 
+    /// <summary>A floating tool window whose own window the person closes is hidden as Hide hides one: Shift+Escape then
+    /// hides the docked window still shown, not the one already gone.</summary>
+    [AvaloniaFact]
+    public void Shift_Escape_hides_the_docked_window_still_shown_once_a_floating_windows_own_window_is_closed()
+    {
+        MainWindow window = Open();
+        DockHost dock = window.DockHost;
+        if (dock.IsShown(ToolWindowIds.Explorer))
+        {
+            Ui.Click(Button(window, ToolWindowIds.Explorer));
+        }
+        dock.SetMode(dock[ToolWindowIds.Structure], ToolMode.Floating);
+        Ui.Click(Button(window, ToolWindowIds.Run));
+        Ui.Click(Button(window, ToolWindowIds.Structure));
+        Window floating = Assert.Single(window.OwnedWindows);
+        Assert.True(dock.Windows.Where(w => w.IsShown).Select(w => w.Id).Order().SequenceEqual([ToolWindowIds.Run, ToolWindowIds.Structure]),
+            $"Run docked and Structure floating are not the only windows shown: {string.Join(", ", dock.Windows.Where(w => w.IsShown).Select(w => w.Id))}");
+
+        floating.Close();
+        Ui.Settle();
+        Assert.False(dock.IsShown(ToolWindowIds.Structure), "Structure stayed shown once its floating window was closed");
+        Ui.Press(window, "shift ESCAPE");
+        Assert.False(dock.IsShown(ToolWindowIds.Run), "Shift+Escape left the docked Run window shown once the floating Structure window was closed");
+        window.Close();
+    }
+
     /// <summary>A tool window set to Window, and one floating, close with the IDE's window they belong to, quietly: with
     /// two windows open, closing one closes only its own, and the next window on the layout kept opens them again as they
     /// were, where they stood.</summary>
