@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
@@ -115,6 +116,7 @@ internal static partial class RouteReading
         private readonly string folder = Path.GetDirectoryName(project.FilePath!)!;
         private readonly Dictionary<string, string> hashes = new(StringComparer.Ordinal);
         private readonly List<(string Pattern, string? Area)> conventional = [];
+        private bool? enumsByName;
 
         public async Task ReadAsync()
         {
@@ -139,6 +141,36 @@ internal static partial class RouteReading
             }
             ReadControllers();
             await ReadRazorAsync().ConfigureAwait(false);
+        }
+
+        /// <summary>Whether the app reads every enum by name: its own code makes a JsonStringEnumConverter (for its JSON
+        /// options) or gives a source-generated context UseStringEnumConverter. Read once, at the first enum of a body.</summary>
+        private bool EnumsByName() => enumsByName ??= ReadsEnumsByName();
+
+        private bool ReadsEnumsByName()
+        {
+            HashSet<string> own = new(project.Documents.Select(d => d.FilePath).OfType<string>(), StringComparer.Ordinal);
+            foreach (SyntaxTree tree in compilation.SyntaxTrees.Where(t => own.Contains(t.FilePath)))
+            {
+                foreach (SyntaxNode node in tree.GetRoot(cancel).DescendantNodes())
+                {
+                    if (node is ObjectCreationExpressionSyntax { Type: var made } && TypeName(made) == "JsonStringEnumConverter"
+                        || node is AttributeArgumentSyntax { NameEquals.Name.Identifier.ValueText: "UseStringEnumConverter", Expression: var given }
+                            && given.IsKind(SyntaxKind.TrueLiteralExpression))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+
+            static string? TypeName(TypeSyntax type) => type switch
+            {
+                QualifiedNameSyntax qualified => qualified.Right.Identifier.ValueText,
+                AliasQualifiedNameSyntax alias => alias.Name.Identifier.ValueText,
+                SimpleNameSyntax simple => simple.Identifier.ValueText,
+                _ => null,
+            };
         }
 
         private string Hash(string path, SourceText text)
@@ -225,7 +257,7 @@ internal static partial class RouteReading
             (List<RouteParameter> parameters, ITypeSymbol? body) = Bind(whole, handled?.Parameters ?? [], apiController: true, bodied, minimal: true);
             routes.Add(new WebRoute(projectPath, RouteKinds.Minimal, methods, whole, null, parameters, handlerName, path, at,
                 PlaceAt(text, patternArgument!.Span.End), Hash(path, text), handlerPath, handlerAt,
-                body?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), body is null ? null : JsonSample.Of(body)));
+                body?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), body is null ? null : JsonSample.Of(body, EnumsByName)));
         }
 
         /// <summary>The route group a map call's receiver is, as its prefix; null when it cannot be proven.</summary>
@@ -638,7 +670,7 @@ internal static partial class RouteReading
                 (string? handlerPath, Place? handlerAt) = DeclarationOf(action);
                 routes.Add(new WebRoute(projectPath, RouteKinds.Controller, verbs, filled, null, parameters, $"{type.Name}.{action.Name}", path,
                     PlaceAt(text, span.Start), PlaceAt(text, span.End), Hash(path, text), handlerPath, handlerAt,
-                    body?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), body is null ? null : JsonSample.Of(body)));
+                    body?.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), body is null ? null : JsonSample.Of(body, EnumsByName)));
             }
         }
 
@@ -871,18 +903,21 @@ internal static partial class RouteReading
 }
 
 /// <summary>A JSON body shaped from a type, as a person would start writing one: its properties by System.Text.Json's web
-/// names (camelCase, or [JsonPropertyName]'s), nested objects, a collection as one element, an enum as its first name, and
-/// a value of each kind that reads as a placeholder.</summary>
+/// names (camelCase, or [JsonPropertyName]'s), nested objects, a collection as one element, an enum as its first member's
+/// number, or its name where the app, the enum or the property reads it by name (a JsonStringEnumConverter), and a value of
+/// each kind that reads as a placeholder.</summary>
 internal static class JsonSample
 {
-    public static string Of(ITypeSymbol type)
+    /// <summary>The body for a type, <paramref name="enumsByName"/> asked at its first enum whether the app reads every enum
+    /// by name.</summary>
+    public static string Of(ITypeSymbol type, Func<bool> enumsByName)
     {
         StringBuilder written = new();
-        Write(written, type, 0, []);
+        Write(written, type, 0, [], enumsByName, byName: false);
         return written.ToString();
     }
 
-    private static void Write(StringBuilder written, ITypeSymbol type, int depth, HashSet<ITypeSymbol> open)
+    private static void Write(StringBuilder written, ITypeSymbol type, int depth, HashSet<ITypeSymbol> open, Func<bool> enumsByName, bool byName)
     {
         if (type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T, TypeArguments: [var inner] })
         {
@@ -912,8 +947,10 @@ internal static class JsonSample
         }
         if (type.TypeKind == TypeKind.Enum)
         {
-            string? first = type.GetMembers().OfType<IFieldSymbol>().FirstOrDefault(f => f.HasConstantValue)?.Name;
-            written.Append(first is null ? "0" : $"\"{first}\"");
+            IFieldSymbol? first = type.GetMembers().OfType<IFieldSymbol>().FirstOrDefault(f => f.HasConstantValue);
+            written.Append(first is null ? "0"
+                : byName || ReadByName(type) || enumsByName() ? $"\"{EnumName(first)}\""
+                : Convert.ToString(first.ConstantValue, CultureInfo.InvariantCulture));
             return;
         }
         switch (name)
@@ -948,13 +985,13 @@ internal static class JsonSample
         if (values is not null)
         {
             written.Append("{\n").Append(indent).Append("\"key\": ");
-            Write(written, values, depth + 1, open);
+            Write(written, values, depth + 1, open, enumsByName, byName: false);
             written.Append('\n').Append(closing).Append('}');
         }
         else if (element is not null)
         {
             written.Append("[\n").Append(indent);
-            Write(written, element, depth + 1, open);
+            Write(written, element, depth + 1, open, enumsByName, byName: false);
             written.Append('\n').Append(closing).Append(']');
         }
         else if (properties.Count == 0)
@@ -968,7 +1005,7 @@ internal static class JsonSample
             {
                 IPropertySymbol property = properties[i];
                 written.Append(indent).Append('"').Append(JsonName(property)).Append("\": ");
-                Write(written, property.Type, depth + 1, open);
+                Write(written, property.Type, depth + 1, open, enumsByName, ReadByName(property));
                 written.Append(i < properties.Count - 1 ? ",\n" : "\n");
             }
             written.Append(closing).Append('}');
@@ -998,6 +1035,16 @@ internal static class JsonSample
             }
         }
     }
+
+    /// <summary>Whether an enum, or a property of one, is read by name: [JsonConverter(typeof(JsonStringEnumConverter))]
+    /// on it, or the generic converter's.</summary>
+    private static bool ReadByName(ISymbol symbol) => symbol.GetAttributes().Any(a => a.AttributeClass?.Name == "JsonConverterAttribute"
+        && a.ConstructorArguments is [{ Value: INamedTypeSymbol { Name: "JsonStringEnumConverter" } }]);
+
+    /// <summary>An enum member's name as System.Text.Json writes it: [JsonStringEnumMemberName]'s, else its own.</summary>
+    private static string EnumName(IFieldSymbol member) =>
+        member.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "JsonStringEnumMemberNameAttribute")?.ConstructorArguments.FirstOrDefault().Value as string
+        ?? member.Name;
 
     private static string JsonName(IPropertySymbol property) =>
         property.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "JsonPropertyNameAttribute")?.ConstructorArguments.FirstOrDefault().Value as string

@@ -59,7 +59,7 @@ public sealed class WebRoutesTests
             WebRoute order = Route(window, "PUT /orders/{id:guid}");
             Assert.Equal("Orders.Update", order.Handler);
             Assert.Equal("Order", order.BodyType);
-            Assert.Equal("{\n  \"customer\": \"\",\n  \"lines\": [\n    {\n      \"product\": \"\",\n      \"quantity\": 0\n    }\n  ],\n  \"status\": \"Open\"\n}",
+            Assert.Equal("{\n  \"customer\": \"\",\n  \"lines\": [\n    {\n      \"product\": \"\",\n      \"quantity\": 0\n    }\n  ],\n  \"status\": 0\n}",
                 order.Body);
             WebRoute product = Route(window, "GET /api/Products/{id}");
             Assert.Equal(["id (route)", "details (query)"], product.Parameters.Select(p => $"{p.Name} ({p.Source})"));
@@ -449,6 +449,66 @@ public sealed class WebRoutesTests
             Assert.Equal(("Node", "[\n  []\n]"), (nodes.BodyType, nodes.Body));
             WebRoute maps = Route(window, "POST /maps");
             Assert.Equal(("Map", "{\n  \"key\": {}\n}"), (maps.BodyType, maps.Body));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>An enum in an example body is its first member's number, as System.Text.Json reads enums by default, in an
+    /// app that adds no JsonStringEnumConverter; and its name where the app adds one to its JSON options, or where the
+    /// enum or the property names one.</summary>
+    [AvaloniaFact]
+    public void An_enum_in_an_example_body_is_its_number_unless_the_app_reads_enums_by_name()
+    {
+        string folder = TestFolders.Create("routes-enums-");
+        const string Paints = """
+            using System.Text.Json.Serialization;
+
+            public record Paint(Color Color, Shade Shade, [property: JsonConverter(typeof(JsonStringEnumConverter))] Color Trim);
+
+            public enum Color
+            {
+                First = 1,
+                Second,
+            }
+
+            [JsonConverter(typeof(JsonStringEnumConverter<Shade>))]
+            public enum Shade
+            {
+                Light,
+                Dark,
+            }
+            """;
+        foreach (string app in (string[])["Plain", "Named"])
+        {
+            TestFolders.Write(folder, $"{app}/{app}.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
+            TestFolders.Write(folder, $"{app}/Paint.cs", Paints);
+            Restore.Run(Path.Combine(folder, app));
+        }
+        TestFolders.Write(folder, "Plain/Program.cs", """
+            WebApplication app = WebApplication.CreateBuilder(args).Build();
+            app.MapPost("/plain", (Paint paint) => paint);
+            app.Run();
+            """);
+        TestFolders.Write(folder, "Named/Program.cs", """
+            using System.Text.Json.Serialization;
+
+            WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+            builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+            WebApplication app = builder.Build();
+            app.MapPost("/named", (Paint paint) => paint);
+            app.Run();
+            """);
+        MainWindow window = Ui.OpenFolder(folder);
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Endpoints);
+            Ui.WaitFor(() => Titles(window).Contains("POST /plain") && Titles(window).Contains("POST /named"),
+                () => $"both apps' routes, listed (listed: {string.Join(", ", Titles(window))})", TimeSpan.FromMinutes(3));
+            Assert.Equal("{\n  \"color\": 1,\n  \"shade\": \"Light\",\n  \"trim\": \"First\"\n}", Route(window, "POST /plain").Body);
+            Assert.Equal("{\n  \"color\": \"First\",\n  \"shade\": \"Light\",\n  \"trim\": \"First\"\n}", Route(window, "POST /named").Body);
         }
         finally
         {
