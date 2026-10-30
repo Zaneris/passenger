@@ -612,6 +612,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
 
         string text = window.EditorArea.CodeEditor.Document.Snapshot.ToString();
         int at = text.IndexOf("before", StringComparison.Ordinal);
+        window.Perform(AppActions.FocusEditor);
         window.EditorArea.CodeEditor.Selections = SelectionSet.Single(new Selection(at, at + "before".Length));
         window.KeyTextInput("typed");
         Ui.WaitFor(() => Saying("typed", closed: false) == 1, "the open file's edit's warning");

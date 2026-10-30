@@ -1304,6 +1304,7 @@ public sealed class VcsTests : IDisposable
         GitLogView log = window.GitLog;
         Ui.Landed(() => log.Rows.Count == 1, "the log");
         string before = Listed(log);
+        window.Perform(AppActions.FocusEditor);
 
         // A stash with a new file in it is three commits of git's own under refs/stash.
         window.EditorArea.CodeEditor.GoTo(new TextPosition(2, 4));
@@ -1668,6 +1669,7 @@ public sealed class VcsTests : IDisposable
         window.ExplorerView.Choose(chosen);
         int loads = window.GitLog.Loads;
 
+        window.Perform(AppActions.FocusEditor);
         window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);
         window.KeyTextInput("sealed ");
         window.Perform(AppActions.Save);
@@ -1719,6 +1721,7 @@ public sealed class VcsTests : IDisposable
             MainWindow window = Ui.OpenFolder(root, languageServer: false);
             window.OpenFile(Path.Combine(root, "Shop.cs"));
             window.Perform(AppActions.ShowGit);
+            window.Perform(AppActions.FocusEditor);
             Ui.Settle();
             bool heard = false;
             window.FolderWatcher!.Changed += (_, changes) => heard |= changes.Paths.Any(p => Path.GetFileName(p) == "Shop.cs");
@@ -1964,6 +1967,7 @@ public sealed class VcsTests : IDisposable
         CodeEditor editor = window.EditorArea.CodeEditor;
         CommitView commit = window.CommitView;
         window.Perform(AppActions.ShowCommit);
+        window.Perform(AppActions.FocusEditor);
         editor.GoTo(new TextPosition(2, 4));
         window.KeyTextInput("long ");
         window.Perform(AppActions.Save);
