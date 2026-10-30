@@ -89,6 +89,7 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly ComboBox setup = new() { Classes = { "form" } };
     private readonly ComboBoxItem[] setups = [.. Enum.GetValues<ProjectSetup>().Select(s => new ComboBoxItem { Content = SetupName(s) })];
     private readonly TextBlock setupNote = new() { Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly Button installSetup = new() { Classes = { "link" }, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
     private readonly Control setupRow;
 
     /// <summary>The set-up chosen last, in any dialog, which the next service made offers.</summary>
@@ -221,20 +222,27 @@ public sealed class NewProjectDialog : IdeWindow
         details = new StackPanel
         {
             Spacing = 10,
-            Children = { Row("Target framework:", framework), languageRow, options, setupRow, Row(null, setupNote), Row(null, command) },
+            Children = { Row("Target framework:", framework), languageRow, options, setupRow, Row(null, new StackPanel { Spacing = 4, Children = { setupNote, installSetup } }), Row(null, command) },
         };
         install.Click += (_, _) => IdeErrors.Observe(InstallAsync());
+        installSetup.Click += (_, _) =>
+        {
+            if (AspireMissing() is { } pack)
+            {
+                IdeErrors.Observe(InstallAsync(pack, null));
+            }
+        };
         offer = new StackPanel
         {
             Spacing = 10,
             IsVisible = false,
-            Children = { offerText, offerCommand, install, installOutput },
+            Children = { offerText, offerCommand, install },
         };
         StackPanel right = new()
         {
             Margin = new Thickness(24, 18, 24, 18),
             Spacing = 10,
-            Children = { new StackPanel { Children = { heading, description }, Margin = new Thickness(0, 0, 0, 8) }, fields, Rule(), typeRow, details, offer },
+            Children = { new StackPanel { Children = { heading, description }, Margin = new Thickness(0, 0, 0, 8) }, fields, Rule(), typeRow, details, offer, installOutput },
         };
         Border rightPane = new() { Child = new ScrollViewer { Content = right } };
 
@@ -407,6 +415,10 @@ public sealed class NewProjectDialog : IdeWindow
 
     /// <summary>The Install button, for a click on it.</summary>
     public Button InstallButton => install;
+
+    /// <summary>The link under the set-up's note that installs what a greyed set-up needs (Aspire's templates), shown only
+    /// while one is greyed for it.</summary>
+    public Button SetupInstall => installSetup;
 
     /// <summary>What the last install's dotnet new install wrote, as the dialog shows it.</summary>
     public string InstallOutput
@@ -592,9 +604,14 @@ public sealed class NewProjectDialog : IdeWindow
 
     /// <summary>Install, as its button does: dotnet new install of the chosen template's package, its output shown as it
     /// comes, then the templates read again and the one installed chosen, with its options.</summary>
-    public async Task InstallAsync()
+    public Task InstallAsync() => template is { Pack: { } pack } wanted ? InstallAsync(pack, wanted) : Task.CompletedTask;
+
+    /// <summary>dotnet new install of a package, its output shown as it comes, then the templates read again: for the
+    /// template chosen (<paramref name="wanted"/>), which the one installed takes the place of, else for a set-up the
+    /// package's templates make, offered once they are read. Output of a failure stays shown.</summary>
+    private async Task InstallAsync(TemplatePack pack, ProjectTemplate? wanted)
     {
-        if (template is not { Pack: { } pack } wanted || installing is not null || creating is not null)
+        if (installing is not null || creating is not null)
         {
             return;
         }
@@ -632,9 +649,17 @@ public sealed class NewProjectDialog : IdeWindow
             progress.Text = "Reading the templates…";
             // The Type offered stays chosen, now the one installed.
             await RefreshAsync();
-            if (template is { Pack: not null })
+            if (wanted is not null && template is { Pack: not null })
             {
                 Fail($"{pack.Id} is installed, but dotnet new has no {wanted.Name} ({wanted.ShortName}) from it");
+            }
+            else if (wanted is null && AspireMissing() is not null)
+            {
+                Fail($"{pack.Id} is installed, but dotnet new has no Aspire AppHost (aspire-apphost) from it");
+            }
+            else
+            {
+                installOutput.IsVisible = false;
             }
         }
         finally
@@ -1087,14 +1112,19 @@ public sealed class NewProjectDialog : IdeWindow
     }
 
     /// <summary>The set-up offered for the template chosen: the one chosen last for a service, none and greyed with why for
-    /// a template that is none, a container's greyed with no container engine.</summary>
+    /// a template that is none; a container's greyed with no container engine, and Aspire's without its templates, which
+    /// the link under the note installs. A greyed set-up says why on hover too.</summary>
     private void ShowSetup()
     {
         string? why = template is null ? null : NotAService(template);
+        string? noContainers = noEngine is { } none ? $"{none}: Docker and Docker Compose are not offered" : null;
         foreach (ProjectSetup kind in (ProjectSetup[])[ProjectSetup.Dockerfile, ProjectSetup.SdkContainer, ProjectSetup.Compose])
         {
-            setups[(int)kind].IsEnabled = noEngine is null;
+            Greyed(kind, noContainers);
         }
+        TemplatePack? aspire = AspireMissing();
+        string? noAspire = aspire is null ? null : "Aspire's templates are not installed: Aspire is not offered";
+        Greyed(ProjectSetup.Aspire, noAspire);
         ProjectSetup offered = why is null && setups[(int)Remembered].IsEnabled ? Remembered : ProjectSetup.None;
         bool was = setting;
         setting = true;
@@ -1102,9 +1132,26 @@ public sealed class NewProjectDialog : IdeWindow
         setting = was;
         setup.IsEnabled = why is null && creating is null && installing is null;
         setupRow.Opacity = why is null ? 1 : 0.55;
-        setupNote.Text = why ?? Said(offered) ?? (noEngine is { } none ? $"{none}: Docker and Docker Compose are not offered" : string.Empty);
+        setupNote.Text = why ?? Said(offered) ?? string.Join("; ", ((string?[])[noContainers, noAspire]).OfType<string>());
         setupNote.IsVisible = setupNote.Text.Length > 0;
+        installSetup.Content = aspire is null ? null : $"Install {aspire.Id}";
+        installSetup.IsVisible = why is null && aspire is not null;
+        installSetup.IsEnabled = creating is null && installing is null;
     }
+
+    /// <summary>A set-up greyed with why, said on hover, or offered given null.</summary>
+    private void Greyed(ProjectSetup kind, string? why)
+    {
+        ComboBoxItem item = setups[(int)kind];
+        item.IsEnabled = why is null;
+        ToolTip.SetTip(item, why);
+        ToolTip.SetShowOnDisabled(item, true);
+    }
+
+    /// <summary>The package of Aspire's templates where an Aspire set-up makes its AppHost and ServiceDefaults from them
+    /// (no AppHost in the solution) and dotnet new has not got them; null where it has, or the AppHost takes the service.</summary>
+    private TemplatePack? AspireMissing() => target?.AppHost is not null || catalog is null ? null
+        : catalog.Templates.FirstOrDefault(t => t.Pack is not null && t.ShortNames.Any(n => n is "aspire-apphost" or "aspire-servicedefaults"))?.Pack;
 
     /// <summary>What a set-up makes, as the dialog says it; null for none.</summary>
     private string? Said(ProjectSetup kind) => kind switch
@@ -1182,7 +1229,7 @@ public sealed class NewProjectDialog : IdeWindow
                     choices.SelectedIndex = Math.Max(0, option.Choices.ToList().FindIndex(c => c.Value.Equals(value, StringComparison.OrdinalIgnoreCase)));
                     choices.SelectionChanged += (_, _) =>
                     {
-                        if (choices.SelectedIndex >= 0)
+                        if (!setting && choices.SelectedIndex >= 0)
                         {
                             Changed(option, option.Choices[choices.SelectedIndex].Value);
                         }
@@ -1207,6 +1254,12 @@ public sealed class NewProjectDialog : IdeWindow
         Enable();
     }
 
+    /// <summary>What a project has of an option its template turns off, where that is not the option's value: VSTest for a
+    /// test template's Test runner, as a test project runs on the Testing Platform only where its template sets that up.</summary>
+    private static string? WhenOff(TemplateOption option) => option.Name.Equals("TestRunner", StringComparison.OrdinalIgnoreCase)
+        ? option.Choices.FirstOrDefault(c => c.Value.Equals("VSTest", StringComparison.OrdinalIgnoreCase))?.Value
+        : null;
+
     private void Changed(TemplateOption option, string value)
     {
         values[option.Name] = value;
@@ -1214,13 +1267,23 @@ public sealed class NewProjectDialog : IdeWindow
         Enable();
     }
 
-    /// <summary>Enables each option its template's condition allows with the others as they are now.</summary>
+    /// <summary>Enables each option its template's condition allows with the others as they are now; a list turned off
+    /// shows what the project will have (<see cref="WhenOff"/>), its value kept for when it is on again.</summary>
     private void Enable()
     {
         foreach ((TemplateOption option, Control row, Control editor) in shown)
         {
             editor.IsEnabled = ProjectTemplates.IsEnabled(option.EnabledWhen, values);
             row.Opacity = editor.IsEnabled ? 1 : 0.55;
+            if (editor is ComboBox choices)
+            {
+                string value = (editor.IsEnabled ? null : WhenOff(option)) ?? values.GetValueOrDefault(option.Name, option.Default);
+                int at = option.Choices.ToList().FindIndex(c => c.Value.Equals(value, StringComparison.OrdinalIgnoreCase));
+                bool was = setting;
+                setting = true;
+                choices.SelectedIndex = Math.Max(0, at);
+                setting = was;
+            }
         }
         command.Text = template is null ? string.Empty : $"dotnet new {string.Join(' ', Arguments(null).Select(ChildProcesses.Quote))}";
     }
@@ -1320,6 +1383,7 @@ public sealed class NewProjectDialog : IdeWindow
         problem.IsVisible = !busy && problem.Text is not null;
         create.IsEnabled = !busy && template is { Pack: null };
         install.IsEnabled = !busy;
+        installSetup.IsEnabled = !busy;
         list.IsEnabled = !busy;
         foreach (Control field in (Control[])[search, typeChooser, solutionName, projectName, directory, browse, sameDirectory, format, framework, language, options, setup])
         {

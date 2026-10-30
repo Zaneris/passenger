@@ -136,6 +136,9 @@ public sealed class TemplateFamiliesTests : IDisposable
 
         Choose(dialog, "xUnit");
         Assert.Equal(["xUnit.net version", TestRunner], dialog.OptionLabels);
+        // xUnit v2 turns its runner off, its project running on VSTest; v3 takes the value set again.
+        Assert.Equal("VSTest", Value(dialog, TestRunner));
+        Pick(dialog, "xUnit.net version", "v3");
         Assert.Equal(Platform, Value(dialog, TestRunner));
         Assert.DoesNotContain("--fixture", dialog.Command, StringComparison.Ordinal);
         Choose(dialog, "MSTest");
@@ -163,6 +166,49 @@ public sealed class TemplateFamiliesTests : IDisposable
             Assert.Contains(name, window.WorkspaceModel!.Projects.Select(p => p.Name));
         }
         window.Close();
+    }
+
+    /// <summary>With Aspire's templates not installed (a template home of the test's own, which has none), New Solution's web
+    /// project offers no Aspire set-up, saying why and offering the link that installs them; and xUnit v2's Test runner,
+    /// which its template turns off, shows VSTest, which its project runs on, greyed, until v3 turns it on.</summary>
+    [AvaloniaFact]
+    public void Aspire_is_greyed_with_an_Install_link_without_its_templates_and_xUnit_v2_shows_its_project_running_on_VSTest()
+    {
+        using IDisposable theme = TestsTheme();
+        string? hive = ProjectTemplates.Hive;
+        ProjectTemplates.Hive = Directory.CreateDirectory(Path.Combine(place, "hive")).FullName;
+        ProjectTemplates.Forget();
+        try
+        {
+            MainWindow window = Started();
+            Ui.Click(window.Welcome.NewSolutionButton);
+            NewProjectDialog dialog = Opened(window);
+            Assert.True(Family(dialog, "Aspire").NotInstalled, "The test's own template home has Aspire's templates");
+            NewServiceSetupTests.Choose(dialog, "web");
+            Assert.False(dialog.Offers(ProjectSetup.Aspire), $"A web project was offered Aspire with its templates not installed: {dialog.SetupNote}");
+            Assert.Contains("Aspire's templates are not installed: Aspire is not offered", dialog.SetupNote, StringComparison.Ordinal);
+            Assert.True(dialog.SetupInstall is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true, Content: "Install Aspire.ProjectTemplates" },
+                $"No link installs Aspire's templates beside the set-up: '{dialog.SetupInstall.Content}', shown {dialog.SetupInstall.IsEffectivelyVisible}");
+            Assert.True(dialog.Offers(ProjectSetup.None), "A web project was offered no set-up at all");
+
+            Ui.Click(dialog.FamilyRow("Unit Test")!);
+            Choose(dialog, "xUnit");
+            Assert.Equal("v2", Value(dialog, "xUnit.net version"));
+            Assert.True(Value(dialog, TestRunner) == "VSTest" && dialog.OptionEditor(TestRunner) is { IsEnabled: false },
+                $"xUnit v2's project runs on VSTest, but its greyed Test runner shows {Value(dialog, TestRunner)}");
+            Assert.DoesNotContain("--test-runner", dialog.Command, StringComparison.Ordinal);
+            Assert.False(dialog.SetupInstall.IsEffectivelyVisible, "A test project, which is no service, offers to install Aspire's templates for its set-up");
+            Pick(dialog, "xUnit.net version", "v3");
+            Assert.True(Value(dialog, TestRunner) == Platform && dialog.OptionEditor(TestRunner) is { IsEnabled: true },
+                $"xUnit v3's Test runner shows {Value(dialog, TestRunner)}, not its own default, the Testing Platform");
+            dialog.Cancel();
+            window.Close();
+        }
+        finally
+        {
+            ProjectTemplates.Hive = hive;
+            ProjectTemplates.Forget();
+        }
     }
 
     [AvaloniaFact]
