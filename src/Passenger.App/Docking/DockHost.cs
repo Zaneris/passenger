@@ -51,6 +51,9 @@ public sealed class DockHost : Grid
     private (ToolWindow Window, double Left, double Right, double Bottom)? maximized;
     private List<ToolWindow>? hiddenAll;
 
+    /// <summary>The IDE's window the frame is in, once it is.</summary>
+    private Window? host;
+
     public DockHost()
     {
         ColumnDefinitions = new ColumnDefinitions($"{StripeWidth},0,0,*,0,0,{StripeWidth}");
@@ -98,6 +101,18 @@ public sealed class DockHost : Grid
         Drag = drag.Gesture;
         Place(drag.Overlay, 0, 0, rowSpan: 3, columnSpan: 7);
         Layout();
+        AttachedToVisualTree += (_, _) => FollowHost();
+    }
+
+    /// <summary>The IDE's window's close: its floating and windowed tool windows go with it, quietly, each kept shown where
+    /// it stood by the layout kept as it closed.</summary>
+    private void FollowHost()
+    {
+        if (host is null && TopLevel.GetTopLevel(this) is Window window)
+        {
+            host = window;
+            host.Closed += (_, _) => CloseFloats();
+        }
     }
 
     /// <summary>A window dragged by its stripe button or its header.</summary>
@@ -334,6 +349,21 @@ public sealed class DockHost : Grid
         }
     }
 
+    /// <summary>Every floating or windowed window's own window closed quietly, the tool window left shown, its bounds kept;
+    /// one that went with the IDE's window it floated over has closed already.</summary>
+    private void CloseFloats()
+    {
+        foreach ((ToolWindow window, FloatWindow open) in floats.ToList())
+        {
+            if (open.IsVisible)
+            {
+                window.WindowBounds = open.Placement;
+                open.CloseQuietly();
+            }
+        }
+        floats.Clear();
+    }
+
     /// <summary>The person closed a floating window's own window: the tool window is hidden, its bounds kept.</summary>
     private void FloatClosed(ToolWindow window, FloatWindow closed)
     {
@@ -417,12 +447,7 @@ public sealed class DockHost : Grid
     /// another (a folder's over the window's), the windows floating now are docked back first.</summary>
     public void Apply(DockLayout layout)
     {
-        foreach ((ToolWindow window, FloatWindow open) in floats.ToList())
-        {
-            window.WindowBounds = open.Placement;
-            open.CloseQuietly();
-        }
-        floats.Clear();
+        CloseFloats();
         Restore();
         hiddenAll = null;
         others = layout.Windows.Where(w => Find(w.Key) is null).ToDictionary();

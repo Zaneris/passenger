@@ -6,10 +6,14 @@ namespace Passenger.App.Docking;
 
 /// <summary>A window of its own for something taken out of the IDE's (a tool window floating or windowed, editor tabs):
 /// it opens where it last stood, fitted to a screen there is now, else over the IDE. The IDE closes it quietly when it
-/// puts what it shows back; closed by the person, it says so.</summary>
+/// puts what it shows back, and it goes quietly with the window it floats over; closed by the person, it says so.</summary>
 internal sealed class FloatWindow : Window
 {
     private bool closingQuietly;
+
+    /// <summary>Whether its last close was asked as the window it floats over closed, which, gone through, leaves what it
+    /// shows as it was.</summary>
+    private bool closingWithOwner;
 
     /// <summary>Asked as the person closes it (never as the IDE closes it quietly, nor as the application quits): false
     /// keeps it open, what it shows having had something it could not finish (a file it could not save).</summary>
@@ -36,6 +40,7 @@ internal sealed class FloatWindow : Window
         }
         Closing += (_, e) =>
         {
+            closingWithOwner = e.CloseReason == WindowCloseReason.OwnerWindowClosing;
             if (!closingQuietly && e.CloseReason != WindowCloseReason.ApplicationShutdown && MayClose?.Invoke() == false)
             {
                 e.Cancel = true;
@@ -43,7 +48,7 @@ internal sealed class FloatWindow : Window
         };
         Closed += (_, _) =>
         {
-            if (!closingQuietly)
+            if (!closingQuietly && !closingWithOwner)
             {
                 Dismissed?.Invoke(this, EventArgs.Empty);
             }

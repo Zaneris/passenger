@@ -142,6 +142,56 @@ public sealed class DockingTests
         window.Close();
     }
 
+    /// <summary>A tool window set to Window, and one floating, close with the IDE's window they belong to, quietly: with
+    /// two windows open, closing one closes only its own, and the next window on the layout kept opens them again as they
+    /// were, where they stood.</summary>
+    [AvaloniaFact]
+    public void A_windowed_tool_window_closes_with_its_window_alone_and_opens_again_where_it_stood()
+    {
+        string settings = TestFolders.Create("settings-");
+        MainWindow first = Open(settings);
+        first.KeepLayout();
+        MainWindow other = Open();
+        List<Window> firsts = [];
+        List<Window> others = [];
+        first.DockHost.WindowOpened += (_, opened) => firsts.Add(opened);
+        other.DockHost.WindowOpened += (_, opened) => others.Add(opened);
+        foreach ((DockHost dock, string id, ToolMode mode) in new[] { (first.DockHost, ToolWindowIds.Git, ToolMode.Windowed), (first.DockHost, ToolWindowIds.Structure, ToolMode.Floating), (other.DockHost, ToolWindowIds.Git, ToolMode.Windowed) })
+        {
+            dock.Show(id);
+            dock.SetMode(dock[id], mode);
+        }
+        Ui.Settle();
+        Window git = Assert.Single(firsts, w => w.Title == "Git");
+        git.Position = new PixelPoint(140, 90);
+        (git.Width, git.Height) = (610, 430);
+        Ui.Settle();
+        PixelRect stood = new(140, 90, 610, 430);
+        Window othersGit = Assert.Single(others);
+        Assert.True(firsts.All(w => w.IsVisible) && othersGit.IsVisible, "A tool window set to Window or floating did not open a window of its own");
+
+        first.Close();
+        Ui.Settle();
+        Assert.False(first.IsVisible);
+        Assert.All(firsts, w => Assert.False(w.IsVisible, $"The {w.Title} window, set to {(w.Owner is null ? "Window" : "Floating")}, stayed open after its IDE window closed"));
+        Assert.True(othersGit.IsVisible, "Closing one IDE window closed the Git window set to Window of the other");
+
+        MainWindow next = Open(settings);
+        List<Window> nexts = [];
+        next.DockHost.WindowOpened += (_, opened) => nexts.Add(opened);
+        next.KeepLayout();
+        Ui.Settle();
+        ToolWindow nextGit = next.DockHost[ToolWindowIds.Git];
+        Assert.True(nextGit is { IsShown: true, Mode: ToolMode.Windowed }, "The Git window set to Window, closed with its IDE window, was not kept open in the layout");
+        Assert.True(next.DockHost[ToolWindowIds.Structure] is { IsShown: true, Mode: ToolMode.Floating }, "The floating Structure window, closed with its IDE window, was not kept open in the layout");
+        Assert.Equal(stood, nextGit.WindowBounds);
+        Assert.Equal(["Git", "Structure"], nexts.Where(w => w.IsVisible).Select(w => w.Title).Order());
+        next.Close();
+        other.Close();
+        Ui.Settle();
+        Assert.False(othersGit.IsVisible, "The other IDE window's Git window set to Window stayed open after it closed");
+    }
+
     [AvaloniaFact]
     public void Maximize_gives_a_tool_window_the_frame_and_hide_all_clears_it_for_the_editor()
     {
