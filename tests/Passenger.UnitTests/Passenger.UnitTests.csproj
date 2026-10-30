@@ -101,6 +101,12 @@
     <Compile Include="../../src/Passenger.App/Run/BuiltInputs.cs" Link="App/BuiltInputs.cs" />
   </ItemGroup>
 
+  <!-- What a publish profile is written with for the Publish dialog's options, from their values alone, compiled in since
+       its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Run/PublishOptions.cs" Link="App/PublishOptions.cs" />
+  </ItemGroup>
+
   <!-- How a build's lines name its problems, from their text alone, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Run/Building.cs" Link="App/Building.cs" />

@@ -329,6 +329,45 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>Framework-dependent with a single file for this system publishes the app as one file that runs on the
+    /// installed runtime, none of the runtime's files beside it; its profile says SelfContained false, and the dialog
+    /// reopened on it says framework-dependent and a single file again.</summary>
+    [AvaloniaFact]
+    public void A_framework_dependent_single_file_publish_leaves_the_runtime_out_and_its_profile_says_so()
+    {
+        MainWindow window = Open();
+        try
+        {
+            PublishDialog dialog = Show(window, "Solo");
+            dialog.Runtime = RuntimeInformation.RuntimeIdentifier;
+            Ui.Settle();
+            dialog.SingleFile = true;
+            Ui.Settle();
+            Assert.Equal((RuntimeInformation.RuntimeIdentifier, false, true), (dialog.Runtime, dialog.SelfContained, dialog.SingleFile));
+            string landing = PathNames.Canonical(Path.Combine(folder, "src", "Solo", "bin", "Release", AvaloniaApp.Metadata("TargetFramework"), RuntimeInformation.RuntimeIdentifier, "publish"));
+            BuildOutcome ended = Publish(window, dialog.PublishAsync);
+            Assert.True(ended.Succeeded, $"The publish did not succeed: {ended.Message}\n{string.Join('\n', ended.Output)}");
+            string program = Path.Combine(landing, OperatingSystem.IsWindows() ? "Solo.exe" : "Solo");
+            string[] landed = [.. Directory.EnumerateFiles(landing).Select(f => Path.GetFileName(f)!).Order(StringComparer.Ordinal)];
+            long size = File.Exists(program) ? new FileInfo(program).Length : 0;
+            // Self-contained, the single file would hold the runtime, tens of MB.
+            Assert.True(landed.SequenceEqual([Path.GetFileName(program), "Solo.pdb"]) && size is > 0 and < 10_000_000,
+                $"The framework-dependent single file's folder holds [{string.Join(", ", landed.Take(12))}], {Path.GetFileName(program)} {size} bytes: the runtime was carried as if self-contained");
+            Assert.StartsWith("Solo on .NET", Run(ChildProcesses.Command(program, [], landing)), StringComparison.Ordinal);
+            string saved = File.ReadAllText(Path.Combine(folder, "src", "Solo", "Properties", "PublishProfiles", "FolderProfile.pubxml"));
+            Assert.True(saved.Contains("<SelfContained>false</SelfContained>", StringComparison.Ordinal)
+                && saved.Contains("<PublishSingleFile>true</PublishSingleFile>", StringComparison.Ordinal), $"The profile says:\n{saved}");
+
+            dialog = Show(window, "Solo");
+            Assert.Equal(("FolderProfile", RuntimeInformation.RuntimeIdentifier, false, true), (dialog.Chosen?.Name, dialog.Runtime, dialog.SelfContained, dialog.SingleFile));
+            dialog.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_publish_whose_build_fails_lists_its_error_in_problems_and_never_says_it_published()
     {
