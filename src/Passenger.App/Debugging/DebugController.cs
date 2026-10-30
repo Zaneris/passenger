@@ -1773,7 +1773,7 @@ public sealed class DebugController : IDisposable
         list.TextOpened += (_, node) => TextOpened?.Invoke(this, node.Value);
         return list;
 
-        VariableNode Hovered(EvaluateResponse read) => new(expression, read.Result, read.Type, read.VariablesReference, 0, VariableRole.Value);
+        VariableNode Hovered(EvaluateResponse read) => new(expression, read.Result, read.Type, read.VariablesReference, 0, VariableRole.Value) { EvaluateName = expression };
 
         async Task SetHoveredAsync(VariableNode node, string typed)
         {
@@ -2221,7 +2221,7 @@ public sealed class DebugController : IDisposable
         if (bindingStop is { } failed && Stop is { } stopped && stopped.Frames.Any(f => f.Id == current.Id))
         {
             // The failed binding above the frame's own values, where $exception would be: the inspector call's parameter.
-            rows.Add(new VariableNode(BindingStop.Name, failed.Value, failed.Type, failed.Reference, 0, VariableRole.Value));
+            rows.Add(new VariableNode(BindingStop.Name, failed.Value, failed.Type, failed.Reference, 0, VariableRole.Value) { EvaluateName = BindingStop.Name });
         }
         foreach (string watch in watches)
         {

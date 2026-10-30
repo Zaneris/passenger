@@ -291,10 +291,6 @@ public sealed record DapVariable
     [JsonConverter(typeof(SharedNames))]
     public string? Type { get; init; }
     public string? EvaluateName { get; init; }
-
-    /// <summary>The type declaring a member that a type derived from it hides by its name, which an expression reaches it
-    /// through a cast to; null for any other variable.</summary>
-    public string? DeclaringType { get; init; }
     public int VariablesReference { get; init; }
     public DapPresentationHint? PresentationHint { get; init; }
 }

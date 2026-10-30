@@ -1,6 +1,4 @@
 using Avalonia;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.Dap;
 
 namespace Passenger.App.Debugging;
@@ -19,13 +17,9 @@ public sealed class VariableNode(string name, string value, string? type, int re
     /// <summary>The row this one opened from, if any.</summary>
     public VariableNode? Parent { get; init; }
 
-    /// <summary>What the debugger says names the value in an expression, where its name does not: a call's value
-    /// ("Count() returned") is $ReturnValue.</summary>
+    /// <summary>The C# the debugger says reaches the value from the frame: a local's name, a call's value ("Count()
+    /// returned") $ReturnValue, a member's after its owner's. Null where none does.</summary>
     public string? EvaluateName { get; init; }
-
-    /// <summary>The type declaring the member this row is, where a type derived from it hides the member by its name: its
-    /// expression reaches it through a cast to this type.</summary>
-    public string? DeclaringType { get; init; }
 
     /// <summary>A value a call of the last step returned, listed at the top of the frame's values.</summary>
     public bool IsReturnValue => Depth == 0 && Role == VariableRole.Value && EvaluateName?.StartsWith("$ReturnValue", StringComparison.Ordinal) == true;
@@ -54,55 +48,21 @@ public sealed class VariableNode(string name, string value, string? type, int re
     /// <summary>An EF Core query's SQL as it read, whose text opens whole in a read-only editor tab.</summary>
     public bool IsQueryText => IsQuerySql && WasRead && Role != VariableRole.Error;
 
-    /// <summary>The C# that reaches this value from the frame, for Set Value: a local's name, a member after its
-    /// object's expression (a hidden one's cast to the type declaring it), an element's index after its array's, what a
-    /// pointer points at after a star. Null for a row no expression reaches (a scope, the static members, a result, a row
-    /// the debugger adds).</summary>
-    public string? Expression
-    {
-        get
-        {
-            if (Role == VariableRole.Watch)
-            {
-                return Name;
-            }
-            if (Role is VariableRole.Scope or VariableRole.Result or VariableRole.Error || IsVirtual)
-            {
-                return null;
-            }
-            if (Parent is null || Parent.Role == VariableRole.Scope)
-            {
-                return EvaluateName ?? Name;
-            }
-            string? owner = Parent.Reach;
-            return owner is null ? null
-                : Name.StartsWith('*') ? $"*{Operand(owner)}"
-                : Name.StartsWith('[') ? $"{Operand(owner)}{Name}"
-                : DeclaringType is { } declaring ? $"(({declaring}){Operand(owner)}).{Name}"
-                : $"{Operand(owner)}.{Name}";
-        }
-    }
+    /// <summary>The C# that reaches this value from the frame, for Set Value, Add to Watches and Inspect: a watch's own, else
+    /// the debugger's (<see cref="EvaluateName"/>). Null for a row no expression reaches (<see cref="NoExpression"/> says
+    /// why).</summary>
+    public string? Expression => Role == VariableRole.Watch ? Name : NoExpression is null ? EvaluateName : null;
 
-    /// <summary>An expression as the operand of a member's dot, an index, a cast or a star: in parentheses unless it is
-    /// already a primary expression (a name, the debugger's $exception, a member, an element, a call), so *p's member is
-    /// (*p).x.</summary>
-    private static string Operand(string expression) =>
-        expression.StartsWith('$') && SyntaxFacts.IsValidIdentifier(expression[1..])
-        || SyntaxFactory.ParseExpression(expression) is { ContainsDiagnostics: false } and (IdentifierNameSyntax or MemberAccessExpressionSyntax
-            or ElementAccessExpressionSyntax or InvocationExpressionSyntax or ParenthesizedExpressionSyntax or ThisExpressionSyntax)
-            ? expression
-            : $"({expression})";
-
-    /// <summary>What the rows under this one reach their values from: its own expression, or for a row that only groups
-    /// others the one above it's (the raw view lists the members of the object above it, a virtual row the elements of the
-    /// array above it, each by its whole index); null where no expression reaches them.</summary>
-    private string? Reach => Name switch
-    {
-        "Static members" or "Results" => null,
-        "Raw View" => Parent?.Reach,
-        _ when IsVirtual => Parent?.Reach,
-        _ => Expression,
-    };
+    /// <summary>Why no expression reaches this row's value, so it can be neither set, watched nor inspected; null where one
+    /// does.</summary>
+    public string? NoExpression =>
+        Role == VariableRole.Watch ? null
+        : Role == VariableRole.Scope ? "A scope groups the frame's values and is no value of its own"
+        : Role == VariableRole.Result ? "An evaluated result is no variable: its expression is the one evaluated"
+        : Role == VariableRole.Error ? "This row says why a value could not be read and is no value of its own"
+        : EvaluateName is not null ? null
+        : IsVirtual || Name is "Raw View" or "Static members" or "Results" ? "The debugger adds this row to group the values under it, and no expression reaches it"
+        : "No C# expression reaches this value from the frame";
 
     /// <summary>Its value is being typed over, in its row (Set Value, F2).</summary>
     public bool IsEditing
@@ -151,8 +111,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
             variable.PresentationHint?.Attributes?.Contains("failedEvaluation") == true ? VariableRole.Error : VariableRole.Value)
         {
             Parent = parent,
-            EvaluateName = variable.EvaluateName is { Length: > 0 } named && named != variable.Name ? named : null,
-            DeclaringType = variable.DeclaringType,
+            EvaluateName = variable.EvaluateName is { Length: > 0 } named ? named : null,
             IsVirtual = variable.PresentationHint?.Kind == "virtual",
             IsLazy = variable.PresentationHint?.Lazy == true && variable.VariablesReference > 0,
         };
@@ -164,7 +123,6 @@ public sealed class VariableNode(string name, string value, string? type, int re
         {
             Parent = lazy.Parent,
             EvaluateName = lazy.EvaluateName,
-            DeclaringType = lazy.DeclaringType,
             IsVirtual = lazy.IsVirtual,
             WasRead = true,
         };

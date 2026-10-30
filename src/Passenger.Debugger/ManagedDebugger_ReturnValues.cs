@@ -262,7 +262,7 @@ public partial class ManagedDebugger
                     Type = friendlyTypeName,
                     PresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null,
                     // The object itself, not the handle, which is the step's to let go, not the stop's.
-                    VariablesReference = GetVariablesReference(handle.Dereference(), friendlyTypeName, threadId, stackDepth, debuggerProxyInstance),
+                    VariablesReference = GetVariablesReference(handle.Dereference(), friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, expression: evaluateName),
                 });
             });
         }

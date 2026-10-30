@@ -917,10 +917,15 @@ public partial class ManagedDebugger
             {
                 if (variablesReference.DebuggerProxyInstance is not null)
                 {
+                    // The view's rows are reached through a view made over the value, but a list's elements by their index in it.
                     ICorDebugObjectValue objectValue = variablesReference.DebuggerProxyInstance.UnwrapDebugValueToObject();
-                    await AddMembersAndStaticPseudoVariable(variablesReference.DebuggerProxyInstance, objectValue.ExactType, variablesReference.ThreadId, variablesReference.FrameStackDepth, result, false);
+                    string? expression = variablesReference.Expression;
+                    string? viewed = RowExpressions.Viewed(expression, GetCorDebugTypeFriendlyName(objectValue.ExactType));
+                    string? listed = expression is not null && variablesReference.ObjectValue!.UnwrapDebugValueToObjectOrNull() is { } viewedValue && IsList(viewedValue.ExactType) ? expression : null;
+                    await AddMembersAndStaticPseudoVariable(variablesReference.DebuggerProxyInstance, objectValue.ExactType, variablesReference.ThreadId, variablesReference.FrameStackDepth, result, false,
+                        owner: viewed, listed: listed);
                     int rawValueVariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.RawView, variablesReference.ObjectValue, variablesReference.ThreadId, variablesReference.FrameStackDepth, null,
-                        Declared: variablesReference.Declared));
+                        Declared: variablesReference.Declared, Expression: expression));
                     VariableInfo rawValuePseudoVariable = new VariableInfo
                     {
                         Name = "Raw View",
@@ -936,7 +941,8 @@ public partial class ManagedDebugger
 
                 if (unwrappedDebugValue is ICorDebugArrayValue arrayValue)
                 {
-                    await AddArrayElements(arrayValue, variablesReference.ThreadId, variablesReference.FrameStackDepth, result, referenceValue: variablesReference.ObjectValue, declared: variablesReference.Declared);
+                    await AddArrayElements(arrayValue, variablesReference.ThreadId, variablesReference.FrameStackDepth, result, referenceValue: variablesReference.ObjectValue, declared: variablesReference.Declared,
+                        expression: variablesReference.Expression);
                 }
                 else if (unwrappedDebugValue is ICorDebugObjectValue objectValue)
                 {
@@ -951,7 +957,7 @@ public partial class ManagedDebugger
                     else
                     {
                         await AddMembersAndStaticPseudoVariable(variablesReference.ObjectValue!, objectValue.ExactType, variablesReference.ThreadId, variablesReference.FrameStackDepth, result,
-                            declared: variablesReference.Declared);
+                            declared: variablesReference.Declared, owner: variablesReference.Expression);
                     }
                 }
                 else
@@ -968,7 +974,7 @@ public partial class ManagedDebugger
             {
                 ICorDebugObjectValue objectValue = variablesReference.ObjectValue!.UnwrapDebugValueToObject();
                 await AddMembersAndStaticPseudoVariable(variablesReference.ObjectValue!, objectValue.ExactType, variablesReference.ThreadId, variablesReference.FrameStackDepth, result,
-                    declared: variablesReference.Declared);
+                    declared: variablesReference.Declared, owner: variablesReference.Expression);
             }
             else if (variablesReference.ReferenceKind is StoredReferenceKind.EnumerableResults)
             {
@@ -986,7 +992,7 @@ public partial class ManagedDebugger
             {
                 ICorDebugArrayValue arrayValue = (ICorDebugArrayValue)variablesReference.ObjectValue!.UnwrapDebugValue();
                 await AddArrayElements(arrayValue, variablesReference.ThreadId, variablesReference.FrameStackDepth, result, variablesReference.ArrayIndices, variablesReference.ArrayStartOffset, variablesReference.ArrayCount, variablesReference.ObjectValue,
-                    variablesReference.Declared);
+                    variablesReference.Declared, variablesReference.Expression);
             }
         }
         catch (Exception ex)
@@ -1078,7 +1084,7 @@ public partial class ManagedDebugger
         }
         (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError) = await GetValueForCorDebugValueAsync(result.Value!, threadId, frameStackDepth, true);
         VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null;
-        int variablesReference = GetVariablesReference(result.Value!, friendlyTypeName, threadId, frameStackDepth, debuggerProxyInstance, named, result.Declared);
+        int variablesReference = GetVariablesReference(result.Value!, friendlyTypeName, threadId, frameStackDepth, debuggerProxyInstance, named, result.Declared, named);
         VariableInfo variableInfo = new VariableInfo
         {
             Name = null!,

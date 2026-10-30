@@ -183,12 +183,12 @@ public sealed class VariablesList : ListBox
         List<Control> items = node.IsQueryText ? [ListMenus.Item(OpenInEditor, "Enter", () => TextOpened?.Invoke(this, node)), new Separator()] : [];
         items.AddRange(
         [
-            ListMenus.Item("Set Value…", "F2", () => EditSelectedValue(), node.Expression is not null),
+            Reaching(ListMenus.Item("Set Value…", "F2", () => EditSelectedValue(), node.Expression is not null), node),
             ListMenus.Item("Copy Value", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, node.Value))),
             ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, node.Name))),
             new Separator(),
-            ListMenus.Item("Add to Watches", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, true)), node.Expression is not null && node.Role != VariableRole.Watch),
-            ListMenus.Item("Inspect", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, false)), node.Expression is not null),
+            Reaching(ListMenus.Item("Add to Watches", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, true)), node.Expression is not null && node.Role != VariableRole.Watch), node),
+            Reaching(ListMenus.Item("Inspect", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, false)), node.Expression is not null), node),
         ]);
         if (node.Role == VariableRole.Watch)
         {
@@ -205,6 +205,16 @@ public sealed class VariablesList : ListBox
             watch.AttachedToVisualTree += (_, _) => IdeErrors.Observe(Offer(watch, offer(node)));
         }
         return items;
+    }
+
+    /// <summary>An item that needs the row's expression, saying why it is greyed where none reaches the row's value.</summary>
+    private static MenuItem Reaching(MenuItem item, VariableNode node)
+    {
+        if (node.NoExpression is { } why)
+        {
+            ToolTip.SetTip(item, why);
+        }
+        return item;
     }
 
     /// <summary>Shows on the menu's item what the debugger said can be done with the row: held until then, so a picture

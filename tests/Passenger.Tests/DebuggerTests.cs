@@ -1359,6 +1359,63 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
+    /// <summary>A HashSet's element, a dictionary entry's Value and a list's explicit interface implementation, each added to
+    /// Watches from its row, evaluate there to the row's value; Raw View, a row the debugger adds, has Set Value, Add to
+    /// Watches and Inspect greyed, each saying why.</summary>
+    [AvaloniaFact]
+    public void A_hashset_element_a_dictionary_entrys_value_and_an_explicit_interface_member_added_to_watches_evaluate()
+    {
+        Write("Program.cs", "HashSet<int> set = [7, 9];\nDictionary<string, int> ages = new() { [\"Ada\"] = 36 };\nList<string> names = [\"Ada\", \"Grace\"];\n"
+            + "Console.WriteLine($\"rows {set.Count} {ages.Count} {names.Count}\");\n");
+        MainWindow window = Open();
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(3, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        WaitDebugging(window, () => Row(window, "names") is not null, "the stop before the line that writes the counts");
+
+        string[][] paths = [["set", "[0]"], ["ages", "[\"Ada\"]", "Value"], ["names", "Raw View", "System.Collections.Generic.ICollection<T>.IsReadOnly"]];
+        string[] values = ["7", "36", "false"];
+        foreach ((string[] path, string value) in paths.Zip(values))
+        {
+            VariableNode row = Opened(window, path);
+            Assert.True(row.Value == value, $"{string.Join(" > ", path)} reads {row.Value}, not {value}");
+            string expression = row.Expression ?? throw new InvalidOperationException($"{string.Join(" > ", path)} has no expression: {row.NoExpression}");
+            window.DebugWindow.VariablesList.SelectedItem = row;
+            Ui.ChooseFromMenu(window.DebugWindow.VariablesList, "Add to Watches");
+            Ui.WaitFor(() => window.BottomPanel.Debug.Tree.Rows.Any(r => r.Role == VariableRole.Watch && r.Name == expression), $"the watch of {expression}");
+            VariableNode watch = window.BottomPanel.Debug.Tree.Rows.First(r => r.Role == VariableRole.Watch && r.Name == expression);
+            Assert.True(watch.Value == value, $"{string.Join(" > ", path)} added to Watches as {expression}, which evaluates to {watch.Value}, not {value}");
+        }
+
+        VariableNode raw = Opened(window, "names", "Raw View");
+        window.DebugWindow.VariablesList.SelectedItem = raw;
+        ContextMenu menu = window.DebugWindow.VariablesList.ContextMenu ?? throw new InvalidOperationException("Raw View's row has no menu");
+        window.DebugWindow.VariablesList.RaiseEvent(new ContextRequestedEventArgs());
+        Ui.Settle();
+        MenuItem[] greyed = [.. menu.Items.OfType<MenuItem>().Where(item => item.Header is "Set Value…" or "Add to Watches" or "Inspect")];
+        menu.Close();
+        Ui.Settle();
+        Assert.True(greyed.Length == 3 && greyed.All(item => !item.IsEnabled && ToolTip.GetTip(item) is string why && why == raw.NoExpression && why.Length > 0),
+            $"Raw View's Set Value, Add to Watches and Inspect are {string.Join(", ", greyed.Select(item => $"{item.Header} {(item.IsEnabled ? "enabled" : "greyed")} saying {ToolTip.GetTip(item) ?? "nothing"}"))}, where each is to be greyed saying why");
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+    }
+
+    /// <summary>The row reached by opening the frame's value named first, then each row named after it under the one before.</summary>
+    private static VariableNode Opened(MainWindow window, params string[] path)
+    {
+        VariableNode row = Row(window, path[0]) ?? throw new InvalidOperationException($"The frame lists no {path[0]}");
+        foreach (string name in path.Skip(1))
+        {
+            Task opened = window.BottomPanel.Debug.Tree.Expand(row);
+            Ui.WaitFor(() => opened.IsCompleted, $"{row.Name}'s rows");
+            row = row.Children?.FirstOrDefault(c => c.Name == name)
+                ?? throw new InvalidOperationException($"{row.Name} lists {string.Join(", ", (row.Children ?? []).Select(c => c.Name))}, without {name}");
+        }
+        return row;
+    }
+
     /// <summary>The <paramref name="index"/>th row named <paramref name="name"/> under item, its rows read afresh.</summary>
     private static VariableNode Member(MainWindow window, string name, int index)
     {

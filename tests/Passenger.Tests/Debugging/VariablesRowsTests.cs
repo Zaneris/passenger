@@ -70,6 +70,47 @@ public class VariablesRowsTests(ITestOutputHelper testOutputHelper)
         static string Listed(List<DapVariable> rows) => string.Join(", ", rows.Select(v => $"{v.Name} = {v.Value}"));
     }
 
+    /// <summary>Each row's evaluate name is C# the evaluator takes, reading the row's own value: a HashSet's elements, a
+    /// dictionary's entry and its Key and Value, a list's element (by its index in the list, which Set Value writes) and the
+    /// members of its raw view, an explicit interface implementation's among them, and a tuple's item; Raw View, a row the
+    /// debugger adds, has none.</summary>
+    [Fact]
+    public async Task Each_rows_evaluate_name_reads_its_own_value_and_a_row_the_debugger_adds_has_none()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await Launch(host, "Console.WriteLine($\"rows {shelf[0]}");
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+        List<DapVariable> locals = await host.LocalsAsync(stop);
+
+        List<DapVariable> set = await Opened("set");
+        List<DapVariable> ages = await Opened("ages");
+        DapVariable entry = Assert.Single(ages, row => row.Name != "Raw View");
+        List<DapVariable> names = await Opened("names");
+        DapVariable raw = Assert.Single(names, row => row.Name == "Raw View");
+        List<DapVariable> listed = await host.VariablesAsync(raw.VariablesReference);
+        List<DapVariable> rows =
+        [
+            .. set.Where(row => row.Name != "Raw View"), entry, .. await host.VariablesAsync(entry.VariablesReference), names[0], .. listed.Where(row => row.VariablesReference == 0),
+            .. await Opened("pair"),
+        ];
+        Assert.Contains(listed, row => row.Name.Contains("ICollection<T>.IsReadOnly", StringComparison.Ordinal));
+        Assert.Equal("names[0]", names[0].EvaluateName);
+        List<string> wrong = [];
+        foreach (DapVariable row in rows)
+        {
+            EvaluateResponse? read = row.EvaluateName is { } expression ? await host.EvaluateAsync(frame, expression) : null;
+            if (read?.Result != row.Value)
+            {
+                wrong.Add($"{row.Name} = {row.Value} by {row.EvaluateName ?? "no expression"}: {read?.Result}");
+            }
+        }
+        Assert.True(wrong.Count == 0, $"Rows whose evaluate name does not read their value: {string.Join("; ", wrong)}");
+        Assert.True(raw.EvaluateName is null, $"Raw View, a row the debugger adds, is given the expression {raw.EvaluateName}");
+
+        async Task<List<DapVariable>> Opened(string local) => await host.VariablesAsync(Assert.Single(locals, v => v.Name == local).VariablesReference);
+    }
+
     /// <summary>PassengerCases launched on its rows case, stopping at the lines with this code on them.</summary>
     private static async Task Launch(DebugSession host, params string[] codes)
     {

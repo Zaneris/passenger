@@ -142,63 +142,63 @@ file static class TestExtensions
 
         List<DapVariable> expectedVariables =
         [
-            new() { VariablesReference =  0,  Name = "BoolField",                   EvaluateName = "BoolField",                   Value = "true",                                                      Type = "bool" },
-            new() { VariablesReference =  0,  Name = "ByteField",                   EvaluateName = "ByteField",                   Value = "1",                                                         Type = "byte" },
-            new() { VariablesReference =  0,  Name = "SByteField",                  EvaluateName = "SByteField",                  Value = "-1",                                                        Type = "sbyte" },
-            new() { VariablesReference =  0,  Name = "ShortField",                  EvaluateName = "ShortField",                  Value = "-2",                                                        Type = "short" },
-            new() { VariablesReference =  0,  Name = "UShortField",                 EvaluateName = "UShortField",                 Value = "2",                                                         Type = "ushort" },
-            new() { VariablesReference =  0,  Name = "IntField",                    EvaluateName = "IntField",                    Value = "123",                                                       Type = "int" },
-            new() { VariablesReference =  0,  Name = "UIntField",                   EvaluateName = "UIntField",                   Value = "123",                                                       Type = "uint" },
-            new() { VariablesReference =  0,  Name = "LongField",                   EvaluateName = "LongField",                   Value = "123456789",                                                 Type = "long" },
-            new() { VariablesReference =  0,  Name = "ULongField",                  EvaluateName = "ULongField",                  Value = "123456789",                                                 Type = "ulong" },
-            new() { VariablesReference =  0,  Name = "CharField",                   EvaluateName = "CharField",                   Value = "65 'A'",                                                    Type = "char" },
-            new() { VariablesReference =  0,  Name = "FloatField",                  EvaluateName = "FloatField",                  Value = "1.23",                                                      Type = "float" },
-            new() { VariablesReference =  0,  Name = "DoubleField",                 EvaluateName = "DoubleField",                 Value = "2.34",                                                      Type = "double" },
-            new() { VariablesReference =  0,  Name = "DecimalField",                EvaluateName = "DecimalField",                Value = "3.45",                                                      Type = "decimal" },
-            new() { VariablesReference =  0,  Name = "NullableIntField",            EvaluateName = "NullableIntField",            Value = "42",                                                        Type = "int?" },
-            new() { VariablesReference =  0,  Name = "NullableIntNullField",        EvaluateName = "NullableIntNullField",        Value = "null",                                                      Type = "int?" },
-            new() { VariablesReference =  0,  Name = "NullableBoolField",           EvaluateName = "NullableBoolField",           Value = "true",                                                      Type = "bool?" },
-            new() { VariablesReference =  0,  Name = "NullableBoolNullField",       EvaluateName = "NullableBoolNullField",       Value = "null",                                                      Type = "bool?" },
-            new() { VariablesReference = 19,  Name = "NullableGuidField",           EvaluateName = "NullableGuidField",           Value = expectedNullableGuidField,                                   Type = "System.Guid?" },
-            new() { VariablesReference = 20,  Name = "NullableEnumField",           EvaluateName = "NullableEnumField",           Value = "Friday",                                                    Type = "System.DayOfWeek?" },
-            new() { VariablesReference =  0,  Name = "NullableEnumNullField",       EvaluateName = "NullableEnumNullField",       Value = "null",                                                      Type = "System.DayOfWeek?" },
-            new() { VariablesReference =  0,  Name = "StringField",                 EvaluateName = "StringField",                 Value = "\"Hello\"",                                                 Type = "string" },
-            new() { VariablesReference =  0,  Name = "NullableStringField",         EvaluateName = "NullableStringField",         Value = "null",                                                      Type = "string" },
-            new() { VariablesReference = 21,  Name = "ObjectField",                 EvaluateName = "ObjectField",                 Value = "{object}",                                                  Type = "object" },
-            new() { VariablesReference =  0,  Name = "NullableObjectField",         EvaluateName = "NullableObjectField",         Value = "null",                                                      Type = "object" },
-            new() { VariablesReference = 22,  Name = "IntArrayField",               EvaluateName = "IntArrayField",               Value = "int[3]",                                                    Type = "int[]" },
-            new() { VariablesReference = 23,  Name = "NullableStringArrayField",    EvaluateName = "NullableStringArrayField",    Value = "string[3]",                                                 Type = "string[]" },
-            new() { VariablesReference = 24,  Name = "MultiDimArrayField",          EvaluateName = "MultiDimArrayField",          Value = "int[2, 5]",                                                 Type = "int[,]" },
-            new() { VariablesReference = 25,  Name = "JaggedArrayField",            EvaluateName = "JaggedArrayField",            Value = "int[2][]",                                                  Type = "int[][]" },
-            new() { VariablesReference = 26,  Name = "ListField",                   EvaluateName = "ListField",                   Value = "Count = 3",                                                 Type = "System.Collections.Generic.List<int>" },
-            new() { VariablesReference = 27,  Name = "DictionaryField",             EvaluateName = "DictionaryField",             Value = "Count = 2",                                                 Type = "System.Collections.Generic.Dictionary<string, int>" },
-            new() { VariablesReference = 28,  Name = "DateTimeField",               EvaluateName = "DateTimeField",               Value = expectedDateTimeField,                                       Type = "System.DateTime" },
-            new() { VariablesReference = 29,  Name = "DateOnlyField",               EvaluateName = "DateOnlyField",               Value = expectedDateOnlyField,                                       Type = "System.DateOnly" },
-            new() { VariablesReference = 30,  Name = "TimeOnlyField",               EvaluateName = "TimeOnlyField",               Value = expectedTimeOnlyField,                                       Type = "System.TimeOnly" },
-            new() { VariablesReference = 31,  Name = "TimeSpanField",               EvaluateName = "TimeSpanField",               Value = expectedTimeSpanField,                                       Type = "System.TimeSpan" },
-            new() { VariablesReference = 32,  Name = "GuidField",                   EvaluateName = "GuidField",                   Value = expectedGuidField,                                           Type = "System.Guid" },
-            new() { VariablesReference = 33,  Name = "EnumField",                   EvaluateName = "EnumField",                   Value = "Monday",                                                    Type = "System.DayOfWeek" },
-            new() { VariablesReference = 34,  Name = "StructField",                 EvaluateName = "StructField",                 Value = "{DebuggableConsoleApp.TestStruct}",                         Type = "DebuggableConsoleApp.TestStruct" },
-            new() { VariablesReference = 35,  Name = "ClassField",                  EvaluateName = "ClassField",                  Value = "{DebuggableConsoleApp.TestClass}",                          Type = "DebuggableConsoleApp.TestClass" },
-            new() { VariablesReference = 36,  Name = "RecordField",                 EvaluateName = "RecordField",                 Value = "TestRecord { Name = Alice, Age = 42 }",                     Type = "DebuggableConsoleApp.TestRecord" },
-            new() { VariablesReference = 37,  Name = "RecordStructField",           EvaluateName = "RecordStructField",           Value = "TestRecordStruct { Value = 7 }",                            Type = "DebuggableConsoleApp.TestRecordStruct" },
-            new() { VariablesReference = 38,  Name = "InterfaceField",              EvaluateName = "InterfaceField",              Value = "{DebuggableConsoleApp.TestClass}",                          Type = "DebuggableConsoleApp.TestClass" },
-            new() { VariablesReference = 39,  Name = "DelegateField",               EvaluateName = "DelegateField",               Value = "{System.Func<int, int>}",                                   Type = "System.Func<int, int>" },
-            new() { VariablesReference = 40,  Name = "TupleField",                  EvaluateName = "TupleField",                  Value = "(1, \"tuple\")",                                                Type = "System.Tuple<int, string>" },
-            new() { VariablesReference = 41,  Name = "ValueTupleField",             EvaluateName = "ValueTupleField",             Value = "(123, \"value tuple\")",                                        Type = "System.ValueTuple<int, string>" },
-            new() { VariablesReference = 42,  Name = "GenericField",                EvaluateName = "GenericField",                Value = "{DebuggableConsoleApp.GenericBox<string>}",                 Type = "DebuggableConsoleApp.GenericBox<string>" },
-            new() { VariablesReference =  0,  Name = "DynamicField",                EvaluateName = "DynamicField",                Value = "\"dynamic value\"",                                         Type = "string" },
-            new() { VariablesReference =  0,  Name = "ReadonlyField",               EvaluateName = "ReadonlyField",               Value = "\"readonly\"",                                              Type = "string" },
-            new() { VariablesReference =  0,  Name = "IntProperty",                 EvaluateName = "IntProperty",                 Value = "100",                                                       Type = "int" },
-            new() { VariablesReference =  0,  Name = "NullableStringProperty",      EvaluateName = "NullableStringProperty",      Value = "null",                                                      Type = "string" },
-            new() { VariablesReference = 43,  Name = "_genericTypeWithStaticField", EvaluateName = "_genericTypeWithStaticField", Value = "{DebuggableConsoleApp.GenericTypeWithStaticField<string>}", Type = "DebuggableConsoleApp.GenericTypeWithStaticField<string>" },
-            new() { VariablesReference =  0,  Name = "_stringFieldWithNewLine",     EvaluateName = "_stringFieldWithNewLine",     Value = """ "Test\nValue\\n\"quoted\"\r\t" """.Trim(),               Type = "string" },
-            new() { VariablesReference = 44,  Name = "ClassProperty",               EvaluateName = "ClassProperty",               Value = "{DebuggableConsoleApp.TestClass}",                          Type = "DebuggableConsoleApp.TestClass" },
-            new() { VariablesReference = 45,  Name = "RecordProperty",              EvaluateName = "RecordProperty",              Value = "TestRecord { Name = InitProperty, Age = 5 }",               Type = "DebuggableConsoleApp.TestRecord" },
-            new() { VariablesReference =  0,  Name = "ComputedProperty",            EvaluateName = "ComputedProperty",            Value = "246",                                                       Type = "int" },
+            new() { VariablesReference =  0,  Name = "BoolField",                   EvaluateName = "this.BoolField",                   Value = "true",                                                      Type = "bool" },
+            new() { VariablesReference =  0,  Name = "ByteField",                   EvaluateName = "this.ByteField",                   Value = "1",                                                         Type = "byte" },
+            new() { VariablesReference =  0,  Name = "SByteField",                  EvaluateName = "this.SByteField",                  Value = "-1",                                                        Type = "sbyte" },
+            new() { VariablesReference =  0,  Name = "ShortField",                  EvaluateName = "this.ShortField",                  Value = "-2",                                                        Type = "short" },
+            new() { VariablesReference =  0,  Name = "UShortField",                 EvaluateName = "this.UShortField",                 Value = "2",                                                         Type = "ushort" },
+            new() { VariablesReference =  0,  Name = "IntField",                    EvaluateName = "this.IntField",                    Value = "123",                                                       Type = "int" },
+            new() { VariablesReference =  0,  Name = "UIntField",                   EvaluateName = "this.UIntField",                   Value = "123",                                                       Type = "uint" },
+            new() { VariablesReference =  0,  Name = "LongField",                   EvaluateName = "this.LongField",                   Value = "123456789",                                                 Type = "long" },
+            new() { VariablesReference =  0,  Name = "ULongField",                  EvaluateName = "this.ULongField",                  Value = "123456789",                                                 Type = "ulong" },
+            new() { VariablesReference =  0,  Name = "CharField",                   EvaluateName = "this.CharField",                   Value = "65 'A'",                                                    Type = "char" },
+            new() { VariablesReference =  0,  Name = "FloatField",                  EvaluateName = "this.FloatField",                  Value = "1.23",                                                      Type = "float" },
+            new() { VariablesReference =  0,  Name = "DoubleField",                 EvaluateName = "this.DoubleField",                 Value = "2.34",                                                      Type = "double" },
+            new() { VariablesReference =  0,  Name = "DecimalField",                EvaluateName = "this.DecimalField",                Value = "3.45",                                                      Type = "decimal" },
+            new() { VariablesReference =  0,  Name = "NullableIntField",            EvaluateName = "this.NullableIntField",            Value = "42",                                                        Type = "int?" },
+            new() { VariablesReference =  0,  Name = "NullableIntNullField",        EvaluateName = "this.NullableIntNullField",        Value = "null",                                                      Type = "int?" },
+            new() { VariablesReference =  0,  Name = "NullableBoolField",           EvaluateName = "this.NullableBoolField",           Value = "true",                                                      Type = "bool?" },
+            new() { VariablesReference =  0,  Name = "NullableBoolNullField",       EvaluateName = "this.NullableBoolNullField",       Value = "null",                                                      Type = "bool?" },
+            new() { VariablesReference = 19,  Name = "NullableGuidField",           EvaluateName = "this.NullableGuidField",           Value = expectedNullableGuidField,                                   Type = "System.Guid?" },
+            new() { VariablesReference = 20,  Name = "NullableEnumField",           EvaluateName = "this.NullableEnumField",           Value = "Friday",                                                    Type = "System.DayOfWeek?" },
+            new() { VariablesReference =  0,  Name = "NullableEnumNullField",       EvaluateName = "this.NullableEnumNullField",       Value = "null",                                                      Type = "System.DayOfWeek?" },
+            new() { VariablesReference =  0,  Name = "StringField",                 EvaluateName = "this.StringField",                 Value = "\"Hello\"",                                                 Type = "string" },
+            new() { VariablesReference =  0,  Name = "NullableStringField",         EvaluateName = "this.NullableStringField",         Value = "null",                                                      Type = "string" },
+            new() { VariablesReference = 21,  Name = "ObjectField",                 EvaluateName = "this.ObjectField",                 Value = "{object}",                                                  Type = "object" },
+            new() { VariablesReference =  0,  Name = "NullableObjectField",         EvaluateName = "this.NullableObjectField",         Value = "null",                                                      Type = "object" },
+            new() { VariablesReference = 22,  Name = "IntArrayField",               EvaluateName = "this.IntArrayField",               Value = "int[3]",                                                    Type = "int[]" },
+            new() { VariablesReference = 23,  Name = "NullableStringArrayField",    EvaluateName = "this.NullableStringArrayField",    Value = "string[3]",                                                 Type = "string[]" },
+            new() { VariablesReference = 24,  Name = "MultiDimArrayField",          EvaluateName = "this.MultiDimArrayField",          Value = "int[2, 5]",                                                 Type = "int[,]" },
+            new() { VariablesReference = 25,  Name = "JaggedArrayField",            EvaluateName = "this.JaggedArrayField",            Value = "int[2][]",                                                  Type = "int[][]" },
+            new() { VariablesReference = 26,  Name = "ListField",                   EvaluateName = "this.ListField",                   Value = "Count = 3",                                                 Type = "System.Collections.Generic.List<int>" },
+            new() { VariablesReference = 27,  Name = "DictionaryField",             EvaluateName = "this.DictionaryField",             Value = "Count = 2",                                                 Type = "System.Collections.Generic.Dictionary<string, int>" },
+            new() { VariablesReference = 28,  Name = "DateTimeField",               EvaluateName = "this.DateTimeField",               Value = expectedDateTimeField,                                       Type = "System.DateTime" },
+            new() { VariablesReference = 29,  Name = "DateOnlyField",               EvaluateName = "this.DateOnlyField",               Value = expectedDateOnlyField,                                       Type = "System.DateOnly" },
+            new() { VariablesReference = 30,  Name = "TimeOnlyField",               EvaluateName = "this.TimeOnlyField",               Value = expectedTimeOnlyField,                                       Type = "System.TimeOnly" },
+            new() { VariablesReference = 31,  Name = "TimeSpanField",               EvaluateName = "this.TimeSpanField",               Value = expectedTimeSpanField,                                       Type = "System.TimeSpan" },
+            new() { VariablesReference = 32,  Name = "GuidField",                   EvaluateName = "this.GuidField",                   Value = expectedGuidField,                                           Type = "System.Guid" },
+            new() { VariablesReference = 33,  Name = "EnumField",                   EvaluateName = "this.EnumField",                   Value = "Monday",                                                    Type = "System.DayOfWeek" },
+            new() { VariablesReference = 34,  Name = "StructField",                 EvaluateName = "this.StructField",                 Value = "{DebuggableConsoleApp.TestStruct}",                         Type = "DebuggableConsoleApp.TestStruct" },
+            new() { VariablesReference = 35,  Name = "ClassField",                  EvaluateName = "this.ClassField",                  Value = "{DebuggableConsoleApp.TestClass}",                          Type = "DebuggableConsoleApp.TestClass" },
+            new() { VariablesReference = 36,  Name = "RecordField",                 EvaluateName = "this.RecordField",                 Value = "TestRecord { Name = Alice, Age = 42 }",                     Type = "DebuggableConsoleApp.TestRecord" },
+            new() { VariablesReference = 37,  Name = "RecordStructField",           EvaluateName = "this.RecordStructField",           Value = "TestRecordStruct { Value = 7 }",                            Type = "DebuggableConsoleApp.TestRecordStruct" },
+            new() { VariablesReference = 38,  Name = "InterfaceField",              EvaluateName = "this.InterfaceField",              Value = "{DebuggableConsoleApp.TestClass}",                          Type = "DebuggableConsoleApp.TestClass" },
+            new() { VariablesReference = 39,  Name = "DelegateField",               EvaluateName = "this.DelegateField",               Value = "{System.Func<int, int>}",                                   Type = "System.Func<int, int>" },
+            new() { VariablesReference = 40,  Name = "TupleField",                  EvaluateName = "this.TupleField",                  Value = "(1, \"tuple\")",                                                Type = "System.Tuple<int, string>" },
+            new() { VariablesReference = 41,  Name = "ValueTupleField",             EvaluateName = "this.ValueTupleField",             Value = "(123, \"value tuple\")",                                        Type = "System.ValueTuple<int, string>" },
+            new() { VariablesReference = 42,  Name = "GenericField",                EvaluateName = "this.GenericField",                Value = "{DebuggableConsoleApp.GenericBox<string>}",                 Type = "DebuggableConsoleApp.GenericBox<string>" },
+            new() { VariablesReference =  0,  Name = "DynamicField",                EvaluateName = "this.DynamicField",                Value = "\"dynamic value\"",                                         Type = "string" },
+            new() { VariablesReference =  0,  Name = "ReadonlyField",               EvaluateName = "this.ReadonlyField",               Value = "\"readonly\"",                                              Type = "string" },
+            new() { VariablesReference =  0,  Name = "IntProperty",                 EvaluateName = "this.IntProperty",                 Value = "100",                                                       Type = "int" },
+            new() { VariablesReference =  0,  Name = "NullableStringProperty",      EvaluateName = "this.NullableStringProperty",      Value = "null",                                                      Type = "string" },
+            new() { VariablesReference = 43,  Name = "_genericTypeWithStaticField", EvaluateName = "this._genericTypeWithStaticField", Value = "{DebuggableConsoleApp.GenericTypeWithStaticField<string>}", Type = "DebuggableConsoleApp.GenericTypeWithStaticField<string>" },
+            new() { VariablesReference =  0,  Name = "_stringFieldWithNewLine",     EvaluateName = "this._stringFieldWithNewLine",     Value = """ "Test\nValue\\n\"quoted\"\r\t" """.Trim(),               Type = "string" },
+            new() { VariablesReference = 44,  Name = "ClassProperty",               EvaluateName = "this.ClassProperty",               Value = "{DebuggableConsoleApp.TestClass}",                          Type = "DebuggableConsoleApp.TestClass" },
+            new() { VariablesReference = 45,  Name = "RecordProperty",              EvaluateName = "this.RecordProperty",              Value = "TestRecord { Name = InitProperty, Age = 5 }",               Type = "DebuggableConsoleApp.TestRecord" },
+            new() { VariablesReference =  0,  Name = "ComputedProperty",            EvaluateName = "this.ComputedProperty",            Value = "246",                                                       Type = "int" },
 			// TODO: Type should be int
-			new() { VariablesReference = 46,  Name = "ThrowingProperty",            EvaluateName = "ThrowingProperty",            Value = expectedThrowingPropertyValue,                               Type = "System.InvalidOperationException" },
-            new() { VariablesReference = 47,  Name = "Static members",              EvaluateName = "Static members",              Value = "",                                                          Type = "", PresentationHint = new DapPresentationHint("class") },
+			new() { VariablesReference = 46,  Name = "ThrowingProperty",            EvaluateName = "this.ThrowingProperty",            Value = expectedThrowingPropertyValue,                               Type = "System.InvalidOperationException" },
+            new() { VariablesReference = 47,  Name = "Static members",              Value = "",                                                          Type = "", PresentationHint = new DapPresentationHint("class") },
         ];
         List<DapVariable>? thisInstanceVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         Assert.Equal(expectedVariables.Count, thisInstanceVariables.Count);
@@ -213,8 +213,8 @@ file static class TestExtensions
     {
         List<DapVariable> expectedVariables =
         [
-            new() { VariablesReference =  53, Name = "[0, ...]",    EvaluateName = "[0, ...]",    Value = "",    Type = "", PresentationHint = _multiDimArrayRowPresentationHint },
-            new() { VariablesReference =  54, Name = "[1, ...]",    EvaluateName = "[1, ...]",    Value = "",    Type = "", PresentationHint = _multiDimArrayRowPresentationHint },
+            new() { VariablesReference =  53, Name = "[0, ...]",    Value = "",    Type = "", PresentationHint = _multiDimArrayRowPresentationHint },
+            new() { VariablesReference =  54, Name = "[1, ...]",    Value = "",    Type = "", PresentationHint = _multiDimArrayRowPresentationHint },
         ];
         List<DapVariable>? multiDimArrayVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         Assert.Equal(expectedVariables.Count, multiDimArrayVariables.Count);
@@ -222,11 +222,11 @@ file static class TestExtensions
 
         List<DapVariable> expectedVariables2 =
         [
-            new() { VariablesReference =  0, Name = "[0, 0]",    EvaluateName = "[0, 0]",    Value = "1",    Type = "int", PresentationHint = _arrayElementPresentationHint },
-            new() { VariablesReference =  0, Name = "[0, 1]",    EvaluateName = "[0, 1]",    Value = "2",    Type = "int", PresentationHint = _arrayElementPresentationHint },
-            new() { VariablesReference =  0, Name = "[0, 2]",    EvaluateName = "[0, 2]",    Value = "3",    Type = "int", PresentationHint = _arrayElementPresentationHint },
-            new() { VariablesReference =  0, Name = "[0, 3]",    EvaluateName = "[0, 3]",    Value = "4",    Type = "int", PresentationHint = _arrayElementPresentationHint },
-            new() { VariablesReference =  0, Name = "[0, 4]",    EvaluateName = "[0, 4]",    Value = "5",    Type = "int", PresentationHint = _arrayElementPresentationHint },
+            new() { VariablesReference =  0, Name = "[0, 0]",    EvaluateName = "this.MultiDimArrayField[0, 0]",    Value = "1",    Type = "int", PresentationHint = _arrayElementPresentationHint },
+            new() { VariablesReference =  0, Name = "[0, 1]",    EvaluateName = "this.MultiDimArrayField[0, 1]",    Value = "2",    Type = "int", PresentationHint = _arrayElementPresentationHint },
+            new() { VariablesReference =  0, Name = "[0, 2]",    EvaluateName = "this.MultiDimArrayField[0, 2]",    Value = "3",    Type = "int", PresentationHint = _arrayElementPresentationHint },
+            new() { VariablesReference =  0, Name = "[0, 3]",    EvaluateName = "this.MultiDimArrayField[0, 3]",    Value = "4",    Type = "int", PresentationHint = _arrayElementPresentationHint },
+            new() { VariablesReference =  0, Name = "[0, 4]",    EvaluateName = "this.MultiDimArrayField[0, 4]",    Value = "5",    Type = "int", PresentationHint = _arrayElementPresentationHint },
         ];
 
         List<DapVariable>? multiDimArrayRankVariables = await debugProtocolHost.VariablesAsync(multiDimArrayVariables[0].VariablesReference);
@@ -240,9 +240,9 @@ file static class TestExtensions
         int staticMembersVariablesReference = classVariables.Single().VariablesReference;
         List<DapVariable> expectedVariables =
         [
-            new() { VariablesReference =  0, Name = "IntValue",    EvaluateName = "IntValue",    Value = "4",    Type = "int" },
-            new() { VariablesReference =  0, Name = "Value",       EvaluateName = "Value",       Value = "null", Type = "string" },
-            new() { VariablesReference =  0, Name = "IntProperty", EvaluateName = "IntProperty", Value = "5",    Type = "int" },
+            new() { VariablesReference =  0, Name = "IntValue",    Value = "4",    Type = "int" },
+            new() { VariablesReference =  0, Name = "Value",       Value = "null", Type = "string" },
+            new() { VariablesReference =  0, Name = "IntProperty", Value = "5",    Type = "int" },
         ];
         List<DapVariable>? staticFieldsOnGenericType = await debugProtocolHost.VariablesAsync(staticMembersVariablesReference);
         Assert.Equal(expectedVariables.Count, staticFieldsOnGenericType.Count);
@@ -254,16 +254,16 @@ file static class TestExtensions
         List<DapVariable>? staticMemberVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         List<DapVariable> expectedVariables =
         [
-            new() { VariablesReference =  0, Name = "StaticField", EvaluateName = "StaticField", Value = "999", Type = "int" },
-            new() { VariablesReference = 49, Name = "StaticEnumerableField", EvaluateName = "StaticEnumerableField", Value = "Count = 4", Type = "System.Linq.Enumerable.RangeIterator<int>" },
-            new() { VariablesReference =  0, Name = "ConstField",  EvaluateName = "ConstField",  Value = "\"const\"", Type = "string" },
-            new() { VariablesReference =  0, Name = "ConstFieldNullString",  EvaluateName = "ConstFieldNullString",  Value = "null", Type = "string" },
-            new() { VariablesReference =  0, Name = "ConstFieldBool",  EvaluateName = "ConstFieldBool",  Value = "true", Type = "bool" },
-            new() { VariablesReference =  0, Name = "ConstFieldDecimal",  EvaluateName = "ConstFieldDecimal",  Value = "4.5", Type = "decimal" },
-            new() { VariablesReference =  0, Name = "ConstFieldChar",  EvaluateName = "ConstFieldChar",  Value = "68 'D'", Type = "char" },
-            new() { VariablesReference =  0, Name = "ConstFieldEnum",  EvaluateName = "ConstFieldEnum",  Value = "SecondValue", Type = "DebuggableConsoleApp.MyEnum" },
-            new() { VariablesReference =  0, Name = "ConstFieldFlagsEnum",  EvaluateName = "ConstFieldFlagsEnum",  Value = "FlagValue1 | FlagValue3", Type = "DebuggableConsoleApp.MyEnumWithFlags" },
-            new() { VariablesReference = 50, Name = "ConstFieldByteArraySpan",  EvaluateName = "ConstFieldByteArraySpan",  Value = "System.ReadOnlySpan<Byte>[4]", Type = "System.ReadOnlySpan<byte>" },
+            new() { VariablesReference =  0, Name = "StaticField", Value = "999", Type = "int" },
+            new() { VariablesReference = 49, Name = "StaticEnumerableField", Value = "Count = 4", Type = "System.Linq.Enumerable.RangeIterator<int>" },
+            new() { VariablesReference =  0, Name = "ConstField",  Value = "\"const\"", Type = "string" },
+            new() { VariablesReference =  0, Name = "ConstFieldNullString",  Value = "null", Type = "string" },
+            new() { VariablesReference =  0, Name = "ConstFieldBool",  Value = "true", Type = "bool" },
+            new() { VariablesReference =  0, Name = "ConstFieldDecimal",  Value = "4.5", Type = "decimal" },
+            new() { VariablesReference =  0, Name = "ConstFieldChar",  Value = "68 'D'", Type = "char" },
+            new() { VariablesReference =  0, Name = "ConstFieldEnum",  Value = "SecondValue", Type = "DebuggableConsoleApp.MyEnum" },
+            new() { VariablesReference =  0, Name = "ConstFieldFlagsEnum",  Value = "FlagValue1 | FlagValue3", Type = "DebuggableConsoleApp.MyEnumWithFlags" },
+            new() { VariablesReference = 50, Name = "ConstFieldByteArraySpan",  Value = "System.ReadOnlySpan<Byte>[4]", Type = "System.ReadOnlySpan<byte>" },
         ];
         Assert.Equal(expectedVariables.Count, staticMemberVariables.Count);
         staticMemberVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
@@ -276,18 +276,18 @@ file static class TestExtensions
         List<DapVariable>? enumerableMembers = await debugProtocolHost.VariablesAsync(variablesReference);
         List<DapVariable> expectedVariables =
         [
-            new() { VariablesReference = 51, Name = "Raw View", EvaluateName = "Raw View", Value = "", Type = "", PresentationHint = new DapPresentationHint("class") },
-            new() { VariablesReference = 52, Name = "Results", EvaluateName = "Results", Value = "Expanding will force enumeration of the object", Type = "", PresentationHint = new DapPresentationHint("class") },
+            new() { VariablesReference = 51, Name = "Raw View", Value = "", Type = "", PresentationHint = new DapPresentationHint("class") },
+            new() { VariablesReference = 52, Name = "Results", Value = "Expanding will force enumeration of the object", Type = "", PresentationHint = new DapPresentationHint("class") },
         ];
         Assert.Equal(expectedVariables.Count, enumerableMembers.Count);
         enumerableMembers.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
 
         List<DapVariable> expectedVariables2 =
         [
-            new() { VariablesReference =  0, Name = "[0]", EvaluateName = "[0]", Value = "1", Type = "int", PresentationHint = _arrayElementPresentationHint },
-            new() { VariablesReference =  0, Name = "[1]", EvaluateName = "[1]", Value = "2", Type = "int", PresentationHint = _arrayElementPresentationHint },
-            new() { VariablesReference =  0, Name = "[2]", EvaluateName = "[2]", Value = "3", Type = "int", PresentationHint = _arrayElementPresentationHint },
-            new() { VariablesReference =  0, Name = "[3]", EvaluateName = "[3]", Value = "4", Type = "int", PresentationHint = _arrayElementPresentationHint },
+            new() { VariablesReference =  0, Name = "[0]", Value = "1", Type = "int", PresentationHint = _arrayElementPresentationHint },
+            new() { VariablesReference =  0, Name = "[1]", Value = "2", Type = "int", PresentationHint = _arrayElementPresentationHint },
+            new() { VariablesReference =  0, Name = "[2]", Value = "3", Type = "int", PresentationHint = _arrayElementPresentationHint },
+            new() { VariablesReference =  0, Name = "[3]", Value = "4", Type = "int", PresentationHint = _arrayElementPresentationHint },
         ];
 
         List<DapVariable>? enumerableResultsMembers = await debugProtocolHost.VariablesAsync(enumerableMembers.Single(s => s.Name == "Results").VariablesReference);
@@ -299,18 +299,18 @@ file static class TestExtensions
     {
         List<DapVariable> expectedVariables =
         [
-            new() { VariablesReference = 55, Name = "NullAndEmptyStrings", EvaluateName = "NullAndEmptyStrings", Value = "(1, null, \"\", \"null\")", Type = "System.Tuple<int, string, string, string>" },
-            new() { VariablesReference = 56, Name = "EscapedString",       EvaluateName = "EscapedString",       Value = "(1, \"a\\n\\\"b\\\\c\")", Type = "System.ValueTuple<int, string>" },
-            new() { VariablesReference = 57, Name = "NestedTuple",         EvaluateName = "NestedTuple",         Value = "(1, (2, \"nested\"))", Type = "System.ValueTuple<int, System.ValueTuple<int, string>>" },
-            new() { VariablesReference = 58, Name = "LongValueTuple",      EvaluateName = "LongValueTuple",      Value = "(1, 2, 3, 4, 5, 6, 7, \"eight\", \"nine\")", Type = "System.ValueTuple<int, int, int, int, int, int, int, System.ValueTuple<string, string>>" },
-            new() { VariablesReference = 59, Name = "LongTuple",           EvaluateName = "LongTuple",           Value = "(1, 2, 3, 4, 5, 6, 7, \"eight\")", Type = "System.Tuple<int, int, int, int, int, int, int, System.Tuple<string>>" },
-            new() { VariablesReference = 60, Name = "EmptyTuple",          EvaluateName = "EmptyTuple",          Value = "()", Type = "System.ValueTuple" },
-            new() { VariablesReference = 61, Name = "Anonymous",           EvaluateName = "Anonymous",           Value = "{ Text = \"a\\n\\\"b\\\\c\", Empty = \"\", Missing = null, Nested = (1, \"nested\") }", Type = "<>f__AnonymousType1<string, string, string, System.ValueTuple<int, string>>" },
-            new() { VariablesReference = 62, Name = "FailedMember",        EvaluateName = "FailedMember",        Value = "(<error: The name 'DoesNotExist' does not exist in the current context>, 2)", Type = "System.Tuple<DebuggableConsoleApp.InvalidDebuggerDisplay, int>", PresentationHint = new DapPresentationHint(Attributes: ["failedEvaluation"]) },
-            new() { VariablesReference = 63, Name = "NullableTuple",       EvaluateName = "NullableTuple",       Value = "(4, \"nullable\")", Type = "System.ValueTuple<int, string>?" },
-            new() { VariablesReference = 0,  Name = "NullTuple",           EvaluateName = "NullTuple",           Value = "null", Type = "System.ValueTuple<int, string>?" },
-            new() { VariablesReference = 64, Name = "NullableDebuggerDisplay", EvaluateName = "NullableDebuggerDisplay", Value = "display: 5", Type = "DebuggableConsoleApp.NullableDebuggerDisplay?" },
-            new() { VariablesReference = 65, Name = "NullableToString",    EvaluateName = "NullableToString",    Value = "to-string: 6", Type = "DebuggableConsoleApp.NullableToString?" },
+            new() { VariablesReference = 55, Name = "NullAndEmptyStrings", EvaluateName = "localCompositeValues.NullAndEmptyStrings", Value = "(1, null, \"\", \"null\")", Type = "System.Tuple<int, string, string, string>" },
+            new() { VariablesReference = 56, Name = "EscapedString",       EvaluateName = "localCompositeValues.EscapedString",       Value = "(1, \"a\\n\\\"b\\\\c\")", Type = "System.ValueTuple<int, string>" },
+            new() { VariablesReference = 57, Name = "NestedTuple",         EvaluateName = "localCompositeValues.NestedTuple",         Value = "(1, (2, \"nested\"))", Type = "System.ValueTuple<int, System.ValueTuple<int, string>>" },
+            new() { VariablesReference = 58, Name = "LongValueTuple",      EvaluateName = "localCompositeValues.LongValueTuple",      Value = "(1, 2, 3, 4, 5, 6, 7, \"eight\", \"nine\")", Type = "System.ValueTuple<int, int, int, int, int, int, int, System.ValueTuple<string, string>>" },
+            new() { VariablesReference = 59, Name = "LongTuple",           EvaluateName = "localCompositeValues.LongTuple",           Value = "(1, 2, 3, 4, 5, 6, 7, \"eight\")", Type = "System.Tuple<int, int, int, int, int, int, int, System.Tuple<string>>" },
+            new() { VariablesReference = 60, Name = "EmptyTuple",          EvaluateName = "localCompositeValues.EmptyTuple",          Value = "()", Type = "System.ValueTuple" },
+            new() { VariablesReference = 61, Name = "Anonymous",           EvaluateName = "localCompositeValues.Anonymous",           Value = "{ Text = \"a\\n\\\"b\\\\c\", Empty = \"\", Missing = null, Nested = (1, \"nested\") }", Type = "<>f__AnonymousType1<string, string, string, System.ValueTuple<int, string>>" },
+            new() { VariablesReference = 62, Name = "FailedMember",        EvaluateName = "localCompositeValues.FailedMember",        Value = "(<error: The name 'DoesNotExist' does not exist in the current context>, 2)", Type = "System.Tuple<DebuggableConsoleApp.InvalidDebuggerDisplay, int>", PresentationHint = new DapPresentationHint(Attributes: ["failedEvaluation"]) },
+            new() { VariablesReference = 63, Name = "NullableTuple",       EvaluateName = "localCompositeValues.NullableTuple",       Value = "(4, \"nullable\")", Type = "System.ValueTuple<int, string>?" },
+            new() { VariablesReference = 0,  Name = "NullTuple",           EvaluateName = "localCompositeValues.NullTuple",           Value = "null", Type = "System.ValueTuple<int, string>?" },
+            new() { VariablesReference = 64, Name = "NullableDebuggerDisplay", EvaluateName = "localCompositeValues.NullableDebuggerDisplay", Value = "display: 5", Type = "DebuggableConsoleApp.NullableDebuggerDisplay?" },
+            new() { VariablesReference = 65, Name = "NullableToString",    EvaluateName = "localCompositeValues.NullableToString",    Value = "to-string: 6", Type = "DebuggableConsoleApp.NullableToString?" },
         ];
         List<DapVariable>? compositeVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         Assert.Equal(expectedVariables.Count, compositeVariables.Count);
