@@ -287,9 +287,15 @@ internal sealed class CorDebugLocation(ICorDebugValue value) : IDebuggeeLocation
     public void Write(CilValue source)
     {
         ICorDebugValue storage = GetStorageValue();
+        if (storage is ICorDebugReferenceValue slot && IsReference(storage.Type))
+        {
+            // An object holding a box is given another reference, never a new value in the box another may share.
+            WriteReference(slot, source);
+            return;
+        }
         ICorDebugValue destination = storage.UnwrapDebugValue();
 
-        // Value-typed storage, told by the destination: an enum local may come as a reference value.
+        // Value-typed storage, told by the destination.
         if (destination is ICorDebugGenericValue destinationGeneric && IsValueType(destinationGeneric.Type))
         {
             if (source.CorValue?.UnwrapDebugValue() is ICorDebugGenericValue sourceGeneric)
@@ -338,41 +344,52 @@ internal sealed class CorDebugLocation(ICorDebugValue value) : IDebuggeeLocation
             throw new NotSupportedException("The CIL value cannot be stored in this debuggee location");
         }
 
-        // A reference-typed slot is written itself, never its target (a string's is its data); null zeroes it.
         if (storage is ICorDebugReferenceValue destinationReference)
         {
-            if (source.IsNull)
-            {
-                destinationReference.Value = default;
-                return;
-            }
-            if (source.CorValue is ICorDebugReferenceValue sourceReference)
-            {
-                destinationReference.Value = sourceReference.Value;
-                return;
-            }
-            if (source.CorValue is ICorDebugHeapValue2 sourceHeap)
-            {
-                ICorDebugHandleValue handle = sourceHeap.CreateHandle(CorDebugHandleType.HANDLE_STRONG);
-                try
-                {
-                    destinationReference.Value = handle.Value;
-                }
-                finally
-                {
-                    handle.TryDispose();
-                }
-                return;
-            }
-            throw new NotSupportedException("Cannot store a non-reference CIL value in a reference debuggee location");
+            WriteReference(destinationReference, source);
+            return;
         }
 
         throw new NotSupportedException("The CIL value cannot be stored in this debuggee location");
     }
 
+    /// <summary>A reference-typed slot written itself, never its target (a string's data, an object's box); null zeroes it.</summary>
+    private static void WriteReference(ICorDebugReferenceValue destination, CilValue source)
+    {
+        if (source.IsNull)
+        {
+            destination.Value = default;
+            return;
+        }
+        if (source.CorValue is ICorDebugReferenceValue sourceReference)
+        {
+            destination.Value = sourceReference.Value;
+            return;
+        }
+        if (source.CorValue is ICorDebugHeapValue2 sourceHeap)
+        {
+            ICorDebugHandleValue handle = sourceHeap.CreateHandle(CorDebugHandleType.HANDLE_STRONG);
+            try
+            {
+                destination.Value = handle.Value;
+            }
+            finally
+            {
+                handle.TryDispose();
+            }
+            return;
+        }
+        throw new NotSupportedException("Cannot store a non-reference CIL value in a reference debuggee location");
+    }
+
     private ICorDebugValue GetStorageValue() => value is ICorDebugReferenceValue { Type: CorElementType.BYREF } byRef
         ? byRef.Dereference()
         : value;
+
+    /// <summary>Whether a slot's own type is a reference's (an object, an interface, ValueType, a string, an array), whatever
+    /// the value it refers to is.</summary>
+    private static bool IsReference(CorElementType elementType) => elementType is
+        CorElementType.CLASS or CorElementType.OBJECT or CorElementType.STRING or CorElementType.SZARRAY or CorElementType.ARRAY;
 
     private static bool IsValueType(CorElementType elementType) => elementType is
         CorElementType.VALUETYPE or

@@ -80,6 +80,11 @@ if (args is ["finally"])
 	Finally.Run();
 	return;
 }
+if (args is ["setting"])
+{
+	Setting.Run();
+	return;
+}
 if (args is ["named main"])
 {
 	// Main's thread named as an app may name its UI thread: the debugger still knows it for Main's.
@@ -274,6 +279,18 @@ internal static class Interpreter
 		Bumper.Work(new Bumped());
 		Console.WriteLine("interpreter");
 		Console.WriteLine($"interpreter read {myInt}, {myUInt}, {minusOne}, {wide}, {counter.Count} and {price}");
+	}
+}
+
+// What Set Value writes, into what it names: an object holding a box another local shares.
+internal static class Setting
+{
+	public static void Run()
+	{
+		object boxed = 42;
+		object shared = boxed;
+		Console.WriteLine("setting");
+		Console.WriteLine($"boxed {boxed ?? "null"}, shared {shared}, same {ReferenceEquals(boxed, shared)}");
 	}
 }
 

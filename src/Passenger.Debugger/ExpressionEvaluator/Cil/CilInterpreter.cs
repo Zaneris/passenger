@@ -986,7 +986,8 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                 0,
                 null,
                 throwOnException: true)) ?? throw new InvalidOperationException("Failed to create evaluation result value type");
-            new CorDebugLocation(typedResult).Write(value);
+            // What the new box holds is written: a write to the reference itself would replace it.
+            new CorDebugLocation(typedResult.UnwrapDebugValue()).Write(value);
             return typedResult;
         }
 
