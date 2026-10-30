@@ -521,6 +521,55 @@ public sealed class IdeErrorsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A request cancelled as its language server's connection goes is said to no one: the word of the
+    /// cancellation finds no server to tell, which is no error, and the request's caller alone hears how it ended. A
+    /// failure nothing observed shows once its task is collected.</summary>
+    [AvaloniaFact]
+    public void A_request_cancelled_as_its_language_server_ends_leaves_no_error_once_collected()
+    {
+        MainWindow window = OpenProgram();
+        Passenger.Lsp.RoslynSession session = window.CSharpService!.Session!;
+        int first = session.Server.ProcessId;
+        // Held to not answering here alone: on its own limits the IDE would end it first.
+        (session.Server.SlowRequest, session.Server.ResponseLimit) = (TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(2));
+        using CancellationTokenSource asking = new();
+        // Cancelled as the connection's end is heard, while the request still waits on its answer.
+        session.Server.Exited += (_, _) => asking.Cancel();
+        TaskCompletionSource written = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Passenger.Lsp.LanguageServer.Trace = (from, message) =>
+        {
+            if (from == first && message.StartsWith("-->", StringComparison.Ordinal)
+                && message.Contains($"\"{Passenger.Lsp.LspMethods.WorkspaceSymbol}\"", StringComparison.Ordinal))
+            {
+                written.TrySetResult();
+            }
+        };
+        Task<IReadOnlyList<Passenger.Lsp.SymbolInformation>> asked;
+        Processes.Suspend(first, "The language server");
+        try
+        {
+            asked = session.SymbolsAsync("Main", asking.Token);
+            // Pumped, not settled: the request is in flight until its server ends.
+            Ui.PumpUntil(() => written.Task.IsCompleted, "the request for symbols written to the server, which holds its answer");
+        }
+        finally
+        {
+            Passenger.Lsp.LanguageServer.Trace = null;
+            End(first);
+        }
+        Ui.PumpUntil(() => asked.IsCompleted, "the request to end with its server");
+        Assert.True(asked.IsCanceled, $"The request cancelled as its server ended came to {asked.Status}: {asked.Exception?.InnerException?.Message}");
+        Ui.WaitFor(() => window.CSharpService.Session is { IsLoaded: true } next && next.Server.ProcessId != first, "a new language server");
+
+        Ui.Hold(TimeSpan.FromSeconds(1), "a moment for the word of the cancellation, sent where nothing waits on it, to fail");
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        Ui.Settle();
+        Assert.True(IdeErrors.Errors.Count == 0, "A request cancelled as its language server ended left the IDE showing "
+            + string.Join(" | ", IdeErrors.Errors.Select(e => $"{e.Kind}: {e.Message}")));
+        window.Close();
+    }
+
     /// <summary>A server that ends as its start comes back to the window, before the window listens for its end, is
     /// started again as one that ends later is, never left loading.</summary>
     [AvaloniaFact]

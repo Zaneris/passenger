@@ -483,6 +483,7 @@ public sealed class LanguageServer : IAsyncDisposable
         ClientTarget client = new();
         // One at a time, in order: a progress report handled after its end would leave the load showing.
         JsonRpc rpc = new(handler) { SynchronizationContext = new Microsoft.VisualStudio.Threading.NonConcurrentSynchronizationContext(sticky: false) };
+        ToldCancellation.Use(rpc);
         rpc.AddLocalRpcTarget(client, new JsonRpcTargetOptions { UseSingleObjectParameterDeserialization = true });
         LanguageServer server2 = new(process, rpc, handler, client, log, errorsHeard, logFolder, options, configure, content);
         client.Owner = server2;
@@ -493,7 +494,7 @@ public sealed class LanguageServer : IAsyncDisposable
             string root = DocumentUris.FromPath(folder);
             InitializeParams initialize = new(Environment.ProcessId, root, [new WorkspaceFolder(root, Path.GetFileName(folder))], capabilities,
                 InitializationOptions: initializationOptions);
-            // Given up at once, not cancelled (whose $/cancelRequest can fail unobserved as the connection goes): it fails with the connection, unseen.
+            // Given up at once, not cancelled: a start given up ends the server, so it fails with the connection, unseen.
             Task<JsonElement> answer = rpc.InvokeWithParameterObjectAsync<JsonElement>(LspMethods.Initialize, initialize, CancellationToken.None);
             _ = answer.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             JsonElement result = await answer.WaitAsync(cancel).ConfigureAwait(false);

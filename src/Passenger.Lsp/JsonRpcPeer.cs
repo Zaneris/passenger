@@ -19,6 +19,7 @@ public sealed class JsonRpcPeer : IDisposable
         {
             SynchronizationContext = new Microsoft.VisualStudio.Threading.NonConcurrentSynchronizationContext(sticky: false),
         };
+        ToldCancellation.Use(rpc);
     }
 
     /// <summary>Handles the peer's notification of <paramref name="method"/>, its parameters read as one

@@ -12,6 +12,7 @@ public static class LspMethods
     public const string Shutdown = "shutdown";
     public const string Exit = "exit";
     public const string Progress = "$/progress";
+    public const string CancelRequest = "$/cancelRequest";
 
     public const string DidOpen = "textDocument/didOpen";
     public const string DidChange = "textDocument/didChange";
