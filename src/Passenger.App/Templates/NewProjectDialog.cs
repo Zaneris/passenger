@@ -31,6 +31,10 @@ public sealed record CreatedProjects(string? Solution, IReadOnlyList<string> Pro
 
     /// <summary>Why the restore of what was made failed, in dotnet's words; null when it restored or is left to the window.</summary>
     public string? Unrestored { get; init; }
+
+    /// <summary>The files dotnet new wrote outside the folder Create made (a test template's global.json at the solution's
+    /// folder), each with its text before, null for one it made.</summary>
+    public IReadOnlyList<(string Path, FileText? Before)> Outside { get; init; } = [];
 }
 
 /// <summary>How a new service runs, set up with it: as its own launch profiles say, in a container its Dockerfile or the
@@ -562,6 +566,7 @@ public sealed class NewProjectDialog : IdeWindow
             {
                 Central = central,
                 Unrestored = unrestored,
+                Outside = writes.Outside,
             };
             creating = null;
             Close(Created);
@@ -828,40 +833,69 @@ public sealed class NewProjectDialog : IdeWindow
 
     /// <summary>What a Create wrote under its folder, which one that failed or was stopped takes away alone: the folder it
     /// made, and what came while a step of its own ran (dotnet new, a restore), anything there before or come between its
-    /// steps (another program's) left, with the folders holding it. A step stopped counts as running until the removal, so
-    /// what it was writing as it was ended goes too. UI thread only; the disk read off it.</summary>
+    /// steps (another program's) left, with the folders holding it; and what dotnet new wrote above the folder
+    /// (<see cref="FilesAbove"/>), put back as it was. A step stopped counts as running until the removal, so what it was
+    /// writing as it was ended goes too. UI thread only; the disk read off it.</summary>
     private sealed class Writes(string root)
     {
         private readonly HashSet<string> made = new(PathNames.Comparer);
 
+        /// <summary>Each file dotnet new wrote above the folder, with its text before (null for one it made), first first.</summary>
+        private readonly List<(string Path, FileText? Before)> outside = [];
+
         /// <summary>What was there as the step running began, and where its writes go; null between steps.</summary>
-        private (HashSet<string> Before, string? Within)? running;
+        private (HashSet<string> Before, string? Within, FilesAbove? Above)? running;
 
         public void Made(string path) => made.Add(path);
 
+        /// <summary>The files dotnet new wrote above the folder, each with its text before, null for one it made.</summary>
+        public IReadOnlyList<(string Path, FileText? Before)> Outside => outside;
+
         /// <summary>Runs a step, what came under the folder meanwhile (under <paramref name="within"/> alone, when given)
-        /// taken as its writes.</summary>
+        /// taken as its writes; one writing the whole folder (dotnet new) has what it wrote above it taken too.</summary>
         public async Task<T> During<T>(Func<Task<T>> step, string? within = null)
         {
-            HashSet<string> before = await BackgroundWork.Run(() => Entries(root));
-            running = (before, within);
+            (HashSet<string> before, FilesAbove? above) = await BackgroundWork.Run(() => (Entries(root), within is null ? FilesAbove.Of(root) : null));
+            running = (before, within, above);
             T done = await step();
-            HashSet<string> after = await BackgroundWork.Run(() => Entries(root));
+            (HashSet<string> after, IReadOnlyList<(string Path, FileText? Before)> wrote) = await BackgroundWork.Run(() => (Entries(root), above?.Wrote() ?? []));
             made.UnionWith(after.Where(e => Its(e, before, within)));
+            Above(outside, wrote);
             running = null;
             return done;
         }
 
-        /// <summary>Takes away what was written, deepest first, a folder only once nothing is left in it.</summary>
+        /// <summary>Takes away what was written, deepest first, a folder only once nothing is left in it, and puts back what
+        /// dotnet new wrote above the folder.</summary>
         public Task RemoveAsync()
         {
             List<string> ours = [.. made];
-            (HashSet<string> Before, string? Within)? open = running;
+            List<(string Path, FileText? Before)> above = [.. outside];
+            (HashSet<string> Before, string? Within, FilesAbove? Above)? open = running;
             return BackgroundWork.Run(() =>
             {
                 if (open is { } step)
                 {
                     ours.AddRange(Entries(root).Where(e => Its(e, step.Before, step.Within)));
+                    Above(above, step.Above?.Wrote() ?? []);
+                }
+                foreach ((string path, FileText? before) in above)
+                {
+                    try
+                    {
+                        if (before is null)
+                        {
+                            File.Delete(path);
+                        }
+                        else
+                        {
+                            FileText.Save(path, before.Text, before.Encoding, before.HasBom, before.CrBreaks);
+                        }
+                    }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                    {
+                        IdeErrors.Write($"A new project that could not be made left {path} as dotnet new wrote it: {error.Message}");
+                    }
                 }
                 foreach (string entry in ours.Distinct(PathNames.Comparer).OrderByDescending(e => e.Length))
                 {
@@ -889,6 +923,10 @@ public sealed class NewProjectDialog : IdeWindow
 
         private static bool Its(string entry, HashSet<string> before, string? within) =>
             !before.Contains(entry) && (within is null || PathNames.Within(entry, within));
+
+        /// <summary>Files written above the folder added to those taken, a file written before keeping its first text.</summary>
+        private static void Above(List<(string Path, FileText? Before)> taken, IReadOnlyList<(string Path, FileText? Before)> wrote) =>
+            taken.AddRange(wrote.Where(w => !taken.Any(t => PathNames.Same(t.Path, w.Path))));
 
         /// <summary>Every file and folder under a folder by its path, links not entered; none when it is not there.</summary>
         private static HashSet<string> Entries(string folder)

@@ -134,10 +134,11 @@ public partial class MainWindow
     }
 
     /// <summary>Adds each path picked, then, once the solution's file has landed, reads the solution once: the last one
-    /// added, or null with none, the status bar saying what was added or why one was not. Projects go in the solution
-    /// filter open too; the files it writes are watched first by a command's recording, for its undo.</summary>
+    /// added, or null with none, the status bar saying what was added (and <paramref name="besides"/>, what else was done
+    /// with it) or why one was not. Projects go in the solution filter open too; the files it writes are watched first by a
+    /// command's recording, for its undo.</summary>
     private async Task<string?> AddEachAsync(IReadOnlyList<string> picked, Func<string, string, string?> add, Func<string, string> named,
-        CommandHistory.Recording? recording = null, bool projects = false)
+        CommandHistory.Recording? recording = null, bool projects = false, string? besides = null)
     {
         if (Solution is not { } solution || picked.Count == 0)
         {
@@ -179,7 +180,7 @@ public partial class MainWindow
         if (added.Count > 0)
         {
             ReloadSolution();
-            refused.Insert(0, $"Added {Together([.. added.Select(named)])} to {solution.Name}");
+            refused.Insert(0, $"Added {Together([.. added.Select(named)])} to {solution.Name}{(besides is null ? string.Empty : $"; {besides}")}");
         }
         status.Text = string.Join("; ", refused);
         return added.LastOrDefault();

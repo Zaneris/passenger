@@ -294,6 +294,79 @@ public sealed class NewServiceSetupTests : IDisposable
         }
     }
 
+    /// <summary>New Project of an MSTest project on the Testing Platform, whose template writes its runner into a global.json
+    /// at the solution's folder: a Create stopped once dotnet new has made it takes global.json away with the project; one
+    /// that ends names global.json, and one Undo takes it away with the project, the solution's folder left as it was.</summary>
+    [AvaloniaFact]
+    public void New_Project_of_MSTest_names_the_global_json_its_template_writes_and_Undo_or_a_stopped_Create_takes_it_away()
+    {
+        TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
+        TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
+        TestFolders.Write(place, "Shop.slnx", "<Solution>\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
+        // Restores take the run's own feed alone, so the project made never reaches nuget.org for its packages.
+        AvaloniaApp.UseFeed(place);
+        string root = PathNames.Canonical(place);
+        string global = Path.Combine(root, "global.json");
+        string checks = Path.Combine(root, "Checks");
+        Dictionary<string, byte[]> before = Top(root);
+        MainWindow window = Ui.OpenFolder(place, languageServer: false);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            NewProjectDialog dialog = MSTest(window);
+            Task held = dialog.HoldNextMade(release.Task);
+            Ui.Click(dialog.CreateButton, settle: false);
+            Ui.PumpUntil(() => held.IsCompleted || dialog.Problem is not null, "dotnet new to make Checks", TimeSpan.FromMinutes(5));
+            Assert.True(dialog.Problem is null, $"Checks was not made: {dialog.Problem}");
+            Assert.True(File.Exists(global), "The MSTest template on the Testing Platform wrote no global.json at the solution's folder");
+            dialog.Cancel();
+            Ui.Settle();
+            Assert.False(File.Exists(global) || Directory.Exists(checks), $"New Project stopped left {(File.Exists(global) ? "the global.json its template wrote" : "the project's folder")}");
+            Same(before, Top(root), "New Project stopped");
+
+            Created(MSTest(window), "the MSTest project");
+            SetUp(window);
+            Assert.True(File.Exists(global) && File.ReadAllText(global).Contains("Microsoft.Testing.Platform", StringComparison.Ordinal),
+                "The MSTest template on the Testing Platform wrote no runner into global.json at the solution's folder");
+            Assert.Contains("its template made global.json", window.Status, StringComparison.Ordinal);
+
+            List<string> asked = Answer(window);
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Undo);
+            Assert.Equal(["Undo"], asked);
+            Assert.False(Directory.Exists(checks), $"Undo left the new project's folder: {window.Status}");
+            Assert.False(File.Exists(global), $"Undo of New Project left the global.json its template wrote: {window.Status}");
+            Same(before, Top(root), "Undo of New Project");
+        }
+        finally
+        {
+            release.TrySetResult();
+            window.Close();
+        }
+
+        static Dictionary<string, byte[]> Top(string folder) => Directory.EnumerateFiles(folder).Where(f => !PathNames.IsSystemFile(Path.GetFileName(f)))
+            .ToDictionary(f => Path.GetFileName(f), File.ReadAllBytes, StringComparer.Ordinal);
+
+        static void Same(Dictionary<string, byte[]> was, Dictionary<string, byte[]> now, string what) =>
+            Assert.True(was.Count == now.Count && was.All(f => now.TryGetValue(f.Key, out byte[]? bytes) && bytes.AsSpan().SequenceEqual(f.Value)),
+                $"{what} left the solution's folder holding [{string.Join(", ", now.Keys.Order(StringComparer.Ordinal))}], where it held [{string.Join(", ", was.Keys.Order(StringComparer.Ordinal))}], or changed one");
+    }
+
+    /// <summary>New Project's dialog on MSTest, named Checks, on the Testing Platform.</summary>
+    private static NewProjectDialog MSTest(MainWindow window)
+    {
+        Ui.Run(window, AppActions.NewProject);
+        NewProjectDialog dialog = Opened(window);
+        Choose(dialog, "mstest");
+        dialog.ProjectName = "Checks";
+        dialog.Framework = TestProjects.Framework;
+        ComboBox runner = dialog.OptionEditor("Test runner") as ComboBox ?? throw new InvalidOperationException($"MSTest shows no Test runner: [{string.Join(", ", dialog.OptionLabels)}]");
+        runner.SelectedItem = "Microsoft.Testing.Platform";
+        Ui.Settle();
+        Assert.Contains("--test-runner Microsoft.Testing.Platform", dialog.Command, StringComparison.Ordinal);
+        return dialog;
+    }
+
     /// <summary>Undo of New Project refused once a file of the folder it made has changed, naming that file, the folder kept.</summary>
     [AvaloniaFact]
     public void Undo_of_New_Project_refuses_once_a_file_in_its_folder_has_changed_naming_it()

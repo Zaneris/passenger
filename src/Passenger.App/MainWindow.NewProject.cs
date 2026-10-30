@@ -83,26 +83,73 @@ public partial class MainWindow
         async Task<string?> AddMadeAsync(CreatedProjects made)
         {
             using CommandHistory.Recording recording = Editors.Commands.RecordWrites($"New Project {Path.GetFileNameWithoutExtension(made.Projects[0])}");
+            string? wrote = TemplateWrote(made, recording);
             string? unrestored = made.Central.Count > 0 ? await CentralizeAsync(made, recording) : made.Unrestored;
-            if (await AddEachAsync(made.Projects, (file, project) => SolutionEdits.AddProject(file, into, project), Path.GetFileNameWithoutExtension, recording, projects: true) is not { } last)
+            if (await AddEachAsync(made.Projects, (file, project) => SolutionEdits.AddProject(file, into, project), Path.GetFileNameWithoutExtension, recording,
+                projects: true, besides: wrote) is not { } last)
             {
                 return status.Text;
             }
             Reveal(into, last);
-            string? problem = made.Setup == ProjectSetup.None ? null : (await SetUpAsync(made.Projects[0], made.Setup, recording)).Problem;
+            string? problem = null;
+            if (made.Setup != ProjectSetup.None)
+            {
+                (problem, string said) = await SetUpAsync(made.Projects[0], made.Setup, recording);
+                if (wrote is not null)
+                {
+                    status.Say($"{said}; {wrote}", problem is null ? null : ProblemSeverity.Warning);
+                }
+            }
             if (problem is null && await UnlandedAsync(recording) is { } unlanded)
             {
                 problem = status.Text = $"{Path.GetFileNameWithoutExtension(made.Projects[0])} could not be set up: {unlanded.Message}";
             }
             if (problem is null && unrestored is not null)
             {
-                problem = status.Text = unrestored;
+                problem = unrestored;
+                status.Text = wrote is null ? unrestored : $"{unrestored}; {wrote}";
             }
             // What the template and the set-up made in the project's folder goes and comes back with the folder.
             recording.Leave(made.Folder);
             recording.Also(await MadeFolderAsync(made.Folder));
             return problem;
         }
+    }
+
+    /// <summary>What a new project's template wrote outside its folder (a test template's global.json) made part of New
+    /// Project's command, which its Undo takes back, as the status bar says it ("its template made global.json"); null for
+    /// nothing. A file open in the editor follows the disk as it does, its change no part of the command.</summary>
+    private string? TemplateWrote(CreatedProjects made, CommandHistory.Recording recording)
+    {
+        List<string> madeThere = [];
+        List<string> changed = [];
+        foreach ((string path, FileText? before) in made.Outside)
+        {
+            if (Editors.Documents.Any(d => PathNames.Same(d.Path, path)))
+            {
+                (before is null ? madeThere : changed).Add(PathNames.Shown(path, Folder));
+            }
+            else if (before is null)
+            {
+                recording.Made(path);
+                madeThere.Add(PathNames.Shown(path, Folder));
+            }
+            else if (File.Exists(path) && FileText.Load(path) is { } now)
+            {
+                recording.Wrote(path, TextSnapshot.From(before.Text), TextSnapshot.From(now.Text));
+                changed.Add(PathNames.Shown(path, Folder));
+            }
+        }
+        List<string> said = [];
+        if (madeThere.Count > 0)
+        {
+            said.Add($"made {Together(madeThere)}");
+        }
+        if (changed.Count > 0)
+        {
+            said.Add($"changed {Together(changed)}");
+        }
+        return said.Count == 0 ? null : $"its template {string.Join(" and ", said)}";
     }
 
     /// <summary>The projects New Project or New Solution made where packages are managed centrally put in that form (their
