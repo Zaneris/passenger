@@ -216,12 +216,12 @@ Projects in `src/`; `find_symbol` finds the rest:
 - `Passenger.Xaml`: Passenger's own XAML core (no Avalonia; WPF shares it; not Avalonia.Ide.CompletionEngine); a binding's
   path is read once (`BindingPath`, `XamlFile.Walk`) for the check, Go to Declaration, uses and completion.
 - `Passenger.Lsp`: the LSP client (StreamJsonRpc, whose types never leave the project; `JsonRpcPeer` for any other
-  JSON-RPC peer, the Testing Platform's test hosts), Roslyn's server downloaded per
-  platform (`RoslynServer.targets`), `LspDocument` (answers that grow with the solution decoded off the UI thread; never
-  a change between a "\r\n"'s halves), and the web servers under
-  `web/`, pinned in `WebServers/package.json` and its lock (to move a pin: edit it, `npm install --package-lock-only
-  --ignore-scripts`, update the notices' "Inside web/" table). `typescript` stays on 6.x: 7's package is native and
-  carries no `tsserver`, which typescript-language-server runs.
+  JSON-RPC peer, the Testing Platform's test hosts; both cancel through `ToldCancellation`), Roslyn's server downloaded
+  per platform (`RoslynServer.targets`), `LspDocument` (answers that grow with the solution decoded off the UI thread;
+  never a change between a "\r\n"'s halves), and the web servers under `web/`, pinned in `WebServers/package.json` and
+  its lock (to move a pin: edit it, `npm install --package-lock-only --ignore-scripts`, update the notices' "Inside
+  web/" table). `typescript` stays on 6.x: 7's package is native and carries no `tsserver`, which
+  typescript-language-server runs.
 - `Passenger.Roslyn.Extension`: Passenger's handlers inside Roslyn's server, compiled against its publicized assemblies
   (`src/Publicize.targets`). A handler reads the solution, never changes it.
 - `Passenger.Host`: MSBuild in a process of its own per SDK and global.json (`ProjectHosts`), over JSON lines, its
@@ -512,9 +512,9 @@ the container classes in one process), then the Alone classes in one. CI deals e
 report lane to four the same way, and `just test-times RUN` rewrites the times. Tests hold to no time budget (the
 owner's choice): each job's summary shows a class's seconds, and one taking far longer than its work needs is flagged as
 a bug, never held to a limit. The run sets its nice value to 0; a test needing an MSBuild node waits for
-`Processes.MSBuildNodesCounted` or skips saying why. The VMs run a filter on a commit: Windows on Arm,
-`~/Documents/passenger-vm/vm-test.sh NAME FILTER` (no Node.js; it can't see dot folders), and Ubuntu 26.04 ARM64,
-`vm-test-linux.sh NAME FILTER`.
+`Processes.MSBuildNodesCounted` (`UntilMSBuildKeepsNodesAsync`) or skips saying why. The VMs run a filter on a commit:
+Windows on Arm, `~/Documents/passenger-vm/vm-test.sh NAME FILTER` (no Node.js; it can't see dot folders), and Ubuntu
+26.04 ARM64, `vm-test-linux.sh NAME FILTER`.
 
 **Helpers.** Clicks: `Ui.Click` (a real press on a control shown, enabled and hit, shutting first the tooltips its
 pointer leaves, which open in the window headless as the window redraws under a pointer that never moved; `RightClick`,
