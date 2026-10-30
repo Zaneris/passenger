@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Passenger.Dap;
 using Passenger.Tests.Debugging.Helpers;
+using VariableNode = Passenger.App.Debugging.VariableNode;
 
 namespace Passenger.Tests.Debugging;
 
@@ -177,5 +178,41 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         Assert.Equal([.. Enumerable.Range(100000, 100).Select(row => $"[{row}, ...]")], rows.Select(row => row.Name));
         DapVariable element = Assert.Single(await host.VariablesAsync(rows[7].VariablesReference));
         Assert.Equal(("[100007, 0]", "0"), (element.Name, element.Value));
+    }
+
+    /// <summary>An element under a long multi-dimensional array's range and row is reached by an expression naming the array
+    /// itself, which Set Value writes through into the program; the range and the row, rows the debugger adds to show the
+    /// array, have none.</summary>
+    [Fact]
+    public async Task An_element_under_a_multi_dimensional_arrays_range_takes_a_value_set_through_the_array()
+    {
+        string setting = "Console.WriteLine(\"setting\");";
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["setting"])
+            .WaitForInitializedEvent();
+        await host.BreakpointsAsync([Debuggees.Line("PassengerCases", setting)], Debuggees.Source("PassengerCases", "Program.cs")).ConfigurationDoneAsync();
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        DapVariable grid = Assert.Single(await host.LocalsAsync(stop), v => v.Name == "grid");
+        DapVariable range = (await host.VariablesAsync(grid.VariablesReference))[1000];
+        DapVariable row = (await host.VariablesAsync(range.VariablesReference))[7];
+        DapVariable element = Assert.Single(await host.VariablesAsync(row.VariablesReference));
+        Assert.Equal(("[100000..100099, ...]", "[100007, ...]", "[100007, 0]"), (range.Name, row.Name, element.Name));
+
+        VariableNode rangeNode = VariableNode.From(range, 1, VariableNode.From(grid, 0));
+        VariableNode rowNode = VariableNode.From(row, 2, rangeNode);
+        VariableNode elementNode = VariableNode.From(element, 3, rowNode);
+        Assert.True((rangeNode.Expression, rowNode.Expression) == (null, null),
+            $"The range and the row the debugger adds are reached as {rangeNode.Expression} and {rowNode.Expression}, which C# cannot evaluate");
+        Assert.True(elementNode.Expression == "grid[100007, 0]",
+            $"[100007, 0] under its range and row is reached as {elementNode.Expression}, where Set Value, Add to Watches and Copy Expression take grid[100007, 0]");
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+        SetExpressionResponse set = await host.RequestAsync<SetExpressionResponse>(DapCommands.SetExpression, new SetExpressionArguments(elementNode.Expression!, "5", frame));
+        Assert.Equal("5", set.Value);
+
+        await host.ContinueAsync();
+        (string output, _) = await host.WaitForEnd();
+        Assert.True(output.Contains("grid 5", StringComparison.Ordinal), $"The program wrote {output}, where [100007, 0] set to 5 writes grid 5");
     }
 }

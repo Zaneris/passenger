@@ -754,8 +754,8 @@ public partial class ManagedDebugger
     /// <summary>An array's rows under <paramref name="indexPrefix"/>, the indices of its outer dimensions opened so far: a
     /// dimension over 100 long in ranges of 100 (<paramref name="startOffset"/> and <paramref name="count"/> one of them
     /// opened), an outer dimension's indices each opening to the next, the last's elements, declared as the element type of
-    /// <paramref name="declared"/> (the array's variable's, else the array's own). True when the rows open through the
-    /// array, which is then kept.</summary>
+    /// <paramref name="declared"/> (the array's variable's, else the array's own). A range and an outer index are virtual
+    /// rows, which no expression reaches. True when the rows open through the array, which is then kept.</summary>
     private async Task<bool> AddArrayElements(ICorDebugArrayValue arrayValue, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, uint[]? indexPrefix = null, uint? startOffset = null, uint? count = null, ICorDebugValue? referenceValue = null,
         DeclaredType? declared = null)
     {
@@ -781,7 +781,7 @@ public partial class ManagedDebugger
                     Name = name,
                     Value = "",
                     Type = "",
-                    PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Class },
+                    PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Virtual },
                     VariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.ArrayRange, referenceValue ?? arrayValue, threadId, stackDepth, null, indexPrefix, rangeStart, rangeCount, Declared: declared))
                 });
             }
@@ -799,7 +799,7 @@ public partial class ManagedDebugger
                     Name = name,
                     Value = "",
                     Type = "",
-                    PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Class },
+                    PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Virtual },
                     VariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.ArrayRange, referenceValue ?? arrayValue, threadId, stackDepth, null, indices, Declared: declared))
                 });
             }

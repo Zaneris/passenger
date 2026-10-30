@@ -13,9 +13,6 @@ public sealed class VariableNode(string name, string value, string? type, int re
     /// hold the window for seconds at every stop. Copy Value and Set Value take all of it.</summary>
     public const int Longest = 1000;
 
-    /// <summary>The names the debugger gives its ranges of elements, <see cref="IsRange"/>.</summary>
-    private static readonly System.Text.RegularExpressions.Regex RangeName = new(@"^\[(\d+, )*(\d+\.\.\d+|\.\.\.)\]$");
-
     private bool isExpanded;
     private bool isEditing;
 
@@ -36,7 +33,9 @@ public sealed class VariableNode(string name, string value, string? type, int re
     /// <summary>The exception the program stopped at, $exception, or the failed binding, $bindingError.</summary>
     public bool IsException => Depth == 0 && Role == VariableRole.Value && Name is "$exception" or BindingStop.Name;
 
-    /// <summary>A row the debugger adds among a value's members (an EF Core query's SQL), which no expression reaches.</summary>
+    /// <summary>A row the debugger adds to show a value (an array's elements a hundred at a time, a multi-dimensional
+    /// array's row, an EF Core query's SQL), which no expression reaches: the rows under it reach theirs from the row
+    /// above it.</summary>
     public bool IsVirtual { get; init; }
 
     /// <summary>The protocol's lazy row: its value is read only as it is opened, since reading it runs code in the program,
@@ -75,10 +74,6 @@ public sealed class VariableNode(string name, string value, string? type, int re
             {
                 return EvaluateName ?? Name;
             }
-            if (IsRange)
-            {
-                return null;
-            }
             string? owner = Parent.Reach;
             return owner is null ? null
                 : Name.StartsWith('*') ? $"*{Operand(owner)}"
@@ -99,19 +94,15 @@ public sealed class VariableNode(string name, string value, string? type, int re
             : $"({expression})";
 
     /// <summary>What the rows under this one reach their values from: its own expression, or for a row that only groups
-    /// others the one above it's (the raw view lists the members of the object above it, a range the elements of the array
-    /// above it, each by its whole index); null where no expression reaches them.</summary>
+    /// others the one above it's (the raw view lists the members of the object above it, a virtual row the elements of the
+    /// array above it, each by its whole index); null where no expression reaches them.</summary>
     private string? Reach => Name switch
     {
         "Static members" or "Results" => null,
         "Raw View" => Parent?.Reach,
-        _ when IsRange => Parent?.Reach,
+        _ when IsVirtual => Parent?.Reach,
         _ => Expression,
     };
-
-    /// <summary>One of the debugger's rows of an array's elements a hundred at a time ("[100..199]") or of a
-    /// multi-dimensional array's row ("[1, ...]").</summary>
-    private bool IsRange => Parent is not null && RangeName.IsMatch(Name);
 
     /// <summary>Its value is being typed over, in its row (Set Value, F2).</summary>
     public bool IsEditing

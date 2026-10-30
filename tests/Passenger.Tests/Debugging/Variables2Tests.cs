@@ -208,7 +208,7 @@ file static class TestExtensions
         await debugProtocolHost.AssertMultiDimArrayVariables(thisInstanceVariables.Single(s => s.Name == "MultiDimArrayField").VariablesReference);
     }
 
-    private static readonly DapPresentationHint _multiDimArrayRowPresentationHint = new("class");
+    private static readonly DapPresentationHint _multiDimArrayRowPresentationHint = new("virtual");
     private static async Task AssertMultiDimArrayVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =

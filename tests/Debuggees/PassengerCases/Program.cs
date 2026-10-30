@@ -314,12 +314,14 @@ internal static class Setting
 		int first = 1, second = 2;
 		int* p = &first;
 		int* q = &second;
+		int[,] grid = new int[200000, 1];
 		Console.WriteLine("setting");
 		Console.WriteLine($"boxed {boxed ?? "null"}, shared {shared}, same {ReferenceEquals(boxed, shared)}");
 		Console.WriteLine($"values {string.Join(" ", values)}, i {i}, ratios {ratios[0] * 10}, j {j}");
 		Console.WriteLine($"text {text.Length}");
 		Console.WriteLine($"ended {ended.Length}");
 		Console.WriteLine($"set pointers {first} {second} {p == null} {q == &second}");
+		Console.WriteLine($"grid {grid[100007, 0]}");
 	}
 }
 
