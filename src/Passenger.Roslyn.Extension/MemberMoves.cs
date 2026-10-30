@@ -76,6 +76,11 @@ internal static class MemberMoves
             {
                 return Changes.Refused(wrong);
             }
+            if (target.TypeKind != TypeKind.Interface && (makeAbstract || member.IsAbstract)
+                && await UnimplementedAsync(solution, member, type, target, makeAbstract, cancel).ConfigureAwait(false) is { } lacking)
+            {
+                return Changes.Refused(lacking);
+            }
             if (target.TypeKind == TypeKind.Interface)
             {
                 editors.AddMember(targetEditor, into, Interfaces.Declare(targetEditor.Generator, member));
@@ -85,9 +90,10 @@ internal static class MemberMoves
             {
                 needsAbstract = true;
                 editors.AddMember(targetEditor, into, Abstract(targetEditor.Generator, declared, member.IsOverride));
-                sourceEditor.ReplaceNode(declared, (current, generator) => generator.WithModifiers(current, generator.GetModifiers(current).WithIsAbstract(false).WithIsVirtual(false).WithIsOverride(true)));
+                sourceEditor.ReplaceNode(declared, (current, generator) => generator.WithModifiers(current, generator.GetModifiers(current).WithIsVirtual(false).WithIsOverride(true)));
                 continue;
             }
+            needsAbstract |= member.IsAbstract;
             SyntaxNode moved = member.DeclaredAccessibility == Accessibility.Private ? targetEditor.Generator.WithAccessibility(Alone(declared), Accessibility.Protected) : Alone(declared);
             if (replaced is not null)
             {
@@ -467,6 +473,28 @@ internal static class MemberMoves
     /// <summary>A type's own override of a member, where it declares one.</summary>
     private static ISymbol? OverrideIn(INamedTypeSymbol type, ISymbol member) =>
         type.GetMembers(member.Name).FirstOrDefault(m => Overridden(m) is { } over && SymbolEqualityComparer.Default.Equals(over.OriginalDefinition, member.OriginalDefinition));
+
+    /// <summary>Why a member declared abstract in the target class, kept abstract or abstract already, would leave classes
+    /// below it that are not abstract without it, naming each whose bases up to the target pass neither the class it comes
+    /// from nor one overriding what it overrides; null when none would.</summary>
+    private static async Task<string?> UnimplementedAsync(Solution solution, ISymbol member, INamedTypeSymbol type, INamedTypeSymbol target, bool keptAbstract,
+        CancellationToken cancel)
+    {
+        List<INamedTypeSymbol> overriding = [];
+        if (Overridden(member) is { } above)
+        {
+            overriding.AddRange((await SymbolFinder.FindOverridesAsync(above, solution, cancellationToken: cancel).ConfigureAwait(false)).Select(o => o.ContainingType));
+        }
+        IEnumerable<INamedTypeSymbol> below = await SymbolFinder.FindDerivedClassesAsync(target, solution, transitive: true, cancellationToken: cancel).ConfigureAwait(false);
+        string[] lacking = [.. below.Where(d => !d.IsAbstract && !Bases(d).Prepend(d).TakeWhile(b => !Same(b, target)).Any(b => Same(b, type) || overriding.Any(o => Same(o, b))))
+            .Select(d => $"'{d.Name}'").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+        if (lacking.Length == 0)
+        {
+            return null;
+        }
+        string names = lacking.Length == 1 ? lacking[0] : $"{string.Join(", ", lacking[..^1])} and {lacking[^1]}";
+        return $"{names} would not implement {Interfaces.Text(member)}, {(keptAbstract ? "kept abstract" : "abstract")} in '{target.Name}'";
+    }
 
     /// <summary>Why a member cannot be pulled up into a target; null when it can. The target or a class between already
     /// declaring it (but an abstract declaration the member overrides, which it replaces), or code that goes with it using

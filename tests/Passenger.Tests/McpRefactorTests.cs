@@ -537,6 +537,56 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "an override was pulled up kept abstract");
     }
 
+    /// <summary>Pull Members Up that would declare a member abstract in a class, kept abstract or abstract already, is refused
+    /// naming each class below it, not abstract, that would lack it, nothing changed; where none would, an abstract member
+    /// moved makes the class abstract, one kept abstract stays an abstract override below, and the project builds.</summary>
+    [Fact]
+    public async Task An_agent_pulling_up_a_member_abstract_where_a_class_beside_would_lack_it_finds_it_refused_naming_each()
+    {
+        await TakeFolderAsync();
+        const string Shape = "namespace Shop;\n\npublic abstract class Shape\n{\n}\n\npublic class Solid : Shape\n{\n}\n";
+        const string Square = "namespace Shop;\n\npublic class Square : Shape\n{\n    public double Area() => 4;\n}\n\npublic class Cube : Square\n{\n}\n";
+        const string Circle = "namespace Shop;\n\npublic class Circle : Shape\n{\n}\n\npublic abstract class Curve : Shape\n{\n}\n\npublic class Oval : Curve\n{\n}\n";
+        const string Polygon = "namespace Shop;\n\npublic abstract class Polygon : Shape\n{\n    public abstract double Perimeter();\n}\n\n"
+            + "public class Hexagon : Polygon\n{\n    public override double Perimeter() => 6;\n}\n";
+        const string Prism = "namespace Shop;\n\npublic abstract class Prism : Solid\n{\n    public abstract int Faces();\n\n    public abstract double Volume();\n}\n\n"
+            + "public class Box : Prism\n{\n    public override int Faces() => 6;\n\n    public override double Volume() => 8;\n}\n";
+        (string Name, string Text)[] files = [("Shape.cs", Shape), ("Square.cs", Square), ("Circle.cs", Circle), ("Polygon.cs", Polygon), ("Prism.cs", Prism)];
+        Shop(files);
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        foreach ((string file, string text, string at, object options, string said) in new (string, string, string, object, string)[]
+        {
+            ("Square.cs", Square, "class Squ", new { target = "Shape", members = new[] { "Area" }, @abstract = new[] { "Area" } },
+                "'Box', 'Circle', 'Hexagon', 'Oval' and 'Solid' would not implement Area(): double, kept abstract in 'Shape'"),
+            ("Polygon.cs", Polygon, "class Pol", new { target = "Shape", members = new[] { "Perimeter" } },
+                "'Box', 'Circle', 'Cube', 'Oval', 'Solid' and 'Square' would not implement Perimeter(): double, abstract in 'Shape'"),
+        })
+        {
+            CallToolResult refused = await Result(client, McpTools.Refactor, Place("pull_members_up", file, text, at, options));
+            Assert.True(refused.IsError == true && Text(refused).Contains(said, StringComparison.Ordinal), $"Pulling up from {file} answered: {Text(refused)}");
+            foreach ((string name, string written) in files)
+            {
+                Assert.True(File.ReadAllText(PathOf(name)) == written, $"Pulling up from {file}, refused, changed {name}:\n{File.ReadAllText(PathOf(name))}");
+            }
+        }
+
+        JsonElement moved = await Call(client, McpTools.Refactor, Place("pull_members_up", "Prism.cs", Prism, "class Pri", new { target = "Solid", members = new[] { "Faces" } }));
+        Assert.Equal(["Prism.cs changed", "Shape.cs changed"], Files(moved));
+        string prism = File.ReadAllText(PathOf("Prism.cs"));
+        JsonElement kept = await Call(client, McpTools.Refactor, Place("pull_members_up", "Prism.cs", prism, "class Pri",
+            new { target = "Solid", members = new[] { "Volume" }, @abstract = new[] { "Volume" } }));
+        Assert.Equal(["Prism.cs changed", "Shape.cs changed"], Files(kept));
+        string shape = File.ReadAllText(PathOf("Shape.cs"));
+        prism = File.ReadAllText(PathOf("Prism.cs"));
+        Assert.True(shape.Contains("public abstract class Solid : Shape\n{\n    public abstract int Faces();\n", StringComparison.Ordinal)
+            && shape.Contains("public abstract double Volume();", StringComparison.Ordinal),
+            $"Pulling Prism's abstract Faces and Volume up to the class Solid left Shape.cs so:\n{shape}");
+        Assert.True(prism.Contains("public abstract override double Volume();", StringComparison.Ordinal) && !prism.Contains("Faces();", StringComparison.Ordinal),
+            $"Pulling Prism's abstract Faces and Volume up to Solid left Prism.cs so:\n{prism}");
+        await Compiles(client, "abstract members were pulled up");
+    }
+
     /// <summary>A refactoring made a moment after Git changed or deleted files outside the IDE acts on the files as they are on
     /// disk: Push Members Down again right after a reset put its files back gives each class the member the reset took from
     /// it, and a rename right after a file using the member was deleted renames it everywhere else, the project building.</summary>
