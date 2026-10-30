@@ -1264,6 +1264,45 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"The variables set while the login shell's environment was read reached the git Passenger started: {string.Join(", ", gitHad.Where(v => v.Contains("ENVIRONMENT", StringComparison.Ordinal)))}");
     }
 
+    /// <summary>Started with no SHELL, as a service or a desktop entry may start it on Linux, Passenger reads its environment
+    /// from the login shell its terminal runs: the git it starts has what the profile set that the Agent Shell's shell
+    /// reads too.</summary>
+    [Fact]
+    public async Task With_no_SHELL_the_IDEs_environment_is_read_from_the_login_shell_its_terminal_runs()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("A Windows program gets the person's whole environment, and its terminal runs PowerShell");
+            return;
+        }
+        string home = TestFolders.Create("home-");
+        string repository = TestFolders.Create("mcp-login-shell-");
+        DeleteAtEnd(home);
+        DeleteAtEnd(repository);
+        await TestGit.RunAsync(repository, "init", "-q");
+        string tools = Path.Combine(home, "tools");
+        Directory.CreateDirectory(tools);
+        string seen = Path.Combine(home, "git-environment");
+        Executable(Path.Combine(tools, "git"), $"#!/bin/sh\nenv > \"{seen}\"\nexec {(await Programs.GitAsync())!} \"$@\"\n");
+        // Each login profile names itself: sh reads .profile, bash its own before it, zsh .zprofile.
+        foreach (string profile in (string[])[".profile", ".bash_profile", ".zprofile"])
+        {
+            File.WriteAllText(Path.Combine(home, profile), $"export PATH=\"{tools}:$PATH\"\nexport LOGIN_PROFILE={profile}\n");
+        }
+        Dictionary<string, string?> environment = Launchd(home);
+        environment["SHELL"] = null;
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false, environment: environment);
+        await Call(client, McpTools.VcsStatus);
+        string? read = File.Exists(seen) ? File.ReadAllLines(seen).FirstOrDefault(v => v.StartsWith("LOGIN_PROFILE=", StringComparison.Ordinal))?["LOGIN_PROFILE=".Length..] : null;
+        Assert.True(read is not null, "With no SHELL, Passenger never took a login shell's PATH, and ran a git other than the one its profile puts first");
+
+        string answer = (await Call(client, McpTools.TerminalRun, new() { ["command"] = "echo \"runs:$LOGIN_PROFILE\"" })).GetString()!;
+        string? runs = Regex.Match(answer, @"runs:(\.\w+)") is { Success: true } said ? said.Groups[1].Value : null;
+        Assert.True(runs == read,
+            $"With no SHELL, Passenger's environment was read through the login profile {read} and its terminal's shell read {runs ?? "none"}: "
+            + $"a PATH or variable set in one is not what the other finds. The terminal answered:\n{answer}");
+    }
+
     /// <summary>A script at <paramref name="path"/> that only its owner may change, as a shell or a tool on the PATH is.</summary>
     [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
     private static void Executable(string path, string script)

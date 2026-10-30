@@ -56,10 +56,19 @@ public static class ShellEnvironment
         }
     }
 
+    /// <summary>The person's login shell on macOS and Linux, which this environment is read from and the terminal runs.</summary>
+    public static string LoginShell() => LoginShell(Environment.GetEnvironmentVariable("SHELL"), File.Exists, OperatingSystem.IsMacOS());
+
+    /// <summary>The login shell where SHELL is <paramref name="named"/> and <paramref name="exists"/> says which files are
+    /// there: SHELL where it names a file, else zsh on macOS, else bash where it is installed, else sh.</summary>
+    internal static string LoginShell(string? named, Func<string, bool> exists, bool macOS) =>
+        named is { Length: > 0 } && exists(named) ? named
+            : macOS ? "/bin/zsh"
+            : exists("/bin/bash") ? "/bin/bash" : "/bin/sh";
+
     private static async Task ReadAsync(ManualResetEventSlim reading)
     {
-        string shell = Environment.GetEnvironmentVariable("SHELL") is { Length: > 0 } named && File.Exists(named) ? named
-            : OperatingSystem.IsMacOS() ? "/bin/zsh" : "/bin/sh";
+        string shell = LoginShell();
         string? file = null;
         string? errors = null;
         try

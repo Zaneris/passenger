@@ -58,21 +58,14 @@ public sealed class CredentialProviders
         {
             found.AddRange(Directory.EnumerateDirectories(folder).Select(d => Path.Combine(d, Path.GetFileName(d) + ".dll")).Where(File.Exists));
         }
-        foreach (string place in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        foreach (string program in Programs.AllOnPath("nuget-plugin-*"))
         {
-            if (!Directory.Exists(place))
+            bool runs = OperatingSystem.IsWindows()
+                ? program.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                : (File.GetUnixFileMode(program) & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
+            if (runs)
             {
-                continue;
-            }
-            foreach (string program in Directory.EnumerateFiles(place, "nuget-plugin-*"))
-            {
-                bool runs = OperatingSystem.IsWindows()
-                    ? program.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-                    : (File.GetUnixFileMode(program) & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
-                if (runs && !found.Contains(program, StringComparer.Ordinal))
-                {
-                    found.Add(program);
-                }
+                found.Add(program);
             }
         }
         return found;

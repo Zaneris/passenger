@@ -11,11 +11,41 @@ public static class Programs
     public static string? OnPath(string name)
     {
         ShellEnvironment.Ready();
-        return (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
-            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-            .Select(folder => Path.Combine(folder, name))
-            .FirstOrDefault(File.Exists);
+        return PathFolders().Select(folder => Path.Combine(folder, name)).FirstOrDefault(File.Exists);
     }
+
+    /// <summary>Every file on the PATH whose name matches <paramref name="pattern"/> (its * and ? as a folder's listing
+    /// takes them), the first folder's first, each once; a folder that cannot be listed is passed over.</summary>
+    public static IReadOnlyList<string> AllOnPath(string pattern)
+    {
+        ShellEnvironment.Ready();
+        List<string> found = [];
+        foreach (string folder in PathFolders())
+        {
+            if (!Directory.Exists(folder))
+            {
+                continue;
+            }
+            try
+            {
+                foreach (string file in Directory.EnumerateFiles(folder, pattern))
+                {
+                    if (!found.Contains(file, StringComparer.Ordinal))
+                    {
+                        found.Add(file);
+                    }
+                }
+            }
+            catch (Exception unlisted) when (unlisted is IOException or UnauthorizedAccessException)
+            {
+                // A folder this user may not list offers no program to find.
+            }
+        }
+        return found;
+    }
+
+    private static string[] PathFolders() =>
+        (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
 
     /// <summary>Node.js on the PATH; null when there is none.</summary>
     public static string? Node() => OnPath(OperatingSystem.IsWindows() ? "node.exe" : "node");

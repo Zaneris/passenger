@@ -89,15 +89,7 @@ public partial class ManagedDebugger
         {
             return self;
         }
-        foreach (string folder in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-        {
-            string candidate = Path.Combine(folder, program);
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-        return program;
+        return Core.Programs.OnPath(program) ?? program;
     }
 
     /// <summary>Starts the program held before its first instruction, on every system alike (<see cref="SuspendedLaunch"/>),

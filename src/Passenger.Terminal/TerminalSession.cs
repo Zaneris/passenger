@@ -345,26 +345,20 @@ public sealed class TerminalSession : IAsyncDisposable
     private static bool IsIdentifier(string name) =>
         name.Length > 0 && !char.IsAsciiDigit(name[0]) && name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_');
 
-    /// <summary>The user's shell as a login shell: $SHELL (zsh where unset on macOS, bash on Linux); PowerShell on
-    /// Windows, the newer one when it is installed, keeping its history in HISTFILE when that is set.</summary>
+    /// <summary>The user's shell: on macOS and Linux the login shell the IDE's environment is read from
+    /// (<see cref="ShellEnvironment.LoginShell()"/>), run as one; PowerShell on Windows, the newer one when it is
+    /// installed, keeping its history in HISTFILE when that is set.</summary>
     public static (string App, string[] Arguments) DefaultShell()
     {
         if (OperatingSystem.IsWindows())
         {
-            string? pwsh = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
-                .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-                .Select(folder => Path.Combine(folder, "pwsh.exe"))
-                .FirstOrDefault(File.Exists);
-            string powershell = pwsh ?? Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
+            string powershell = Programs.OnPath("pwsh.exe") ?? Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
             // PSReadLine reads no variable for its history, so it is told before the first prompt reads the person's own.
             return string.IsNullOrEmpty(Environment.GetEnvironmentVariable("HISTFILE"))
                 ? (powershell, ["-NoLogo"])
                 : (powershell, ["-NoLogo", "-NoExit", "-Command", "try { Set-PSReadLineOption -HistorySavePath $env:HISTFILE } catch { }"]);
         }
-        string shell = Environment.GetEnvironmentVariable("SHELL") is { Length: > 0 } own && File.Exists(own)
-            ? own
-            : OperatingSystem.IsMacOS() ? "/bin/zsh" : "/bin/bash";
-        return (shell, ["-l"]);
+        return (ShellEnvironment.LoginShell(), ["-l"]);
     }
 
     /// <summary>The shell has ended, as Porta.Pty tells or as its start found: told on the window's thread once.</summary>
