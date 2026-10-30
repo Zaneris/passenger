@@ -77,6 +77,21 @@ public sealed class TestGutter
     /// <summary>An open file's tests were read from a parse of its text as it stands.</summary>
     public event EventHandler<(OpenDocument Document, FileTests Tests)>? Read;
 
+    /// <summary>The test attributes a file's project derives from a framework's, which its methods are tests by too.</summary>
+    public Func<string, IReadOnlySet<string>>? OwnAttributes { get; set; }
+
+    /// <summary>Reads every open file's tests again: the attributes their projects derive changed.</summary>
+    public void ReadAgain()
+    {
+        UiThread.Check();
+        foreach (OpenDocument document in files.Keys.ToList())
+        {
+            if (document.Syntax?.Newest is { } now)
+            {
+                ReadParse(document, now);
+            }
+        }
+    }
 
     /// <summary>Lets go of a closed file.</summary>
     public void Forget(OpenDocument document)
@@ -119,7 +134,8 @@ public sealed class TestGutter
 
     private async Task ReadAsync(OpenDocument document, Declared file, int asked, ParsedText parsed)
     {
-        (FileTests tests, FilePlaces places) = await BackgroundWork.Run(() => (TestsAtCaret.Read(parsed), TestsAtCaret.Places(parsed)));
+        IReadOnlySet<string>? own = OwnAttributes?.Invoke(document.Path);
+        (FileTests tests, FilePlaces places) = await BackgroundWork.Run(() => (TestsAtCaret.Read(parsed, own), TestsAtCaret.Places(parsed)));
         // A later parse's read is under way, the text has moved on to one that will land, or the file was closed.
         if (asked != file.Asked || !ReferenceEquals(document.Text.Snapshot, parsed.Text) || !files.ContainsKey(document))
         {

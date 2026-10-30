@@ -38,6 +38,12 @@ public sealed class TestFinder
     /// (<see cref="CodeTests.Tests"/>, whose items a move of lines replaces in place) and where each file's begin in it.</summary>
     private readonly Dictionary<string, ToldTests> told = new(StringComparer.Ordinal);
 
+    /// <summary>The test attributes each test project's files derive from a framework's, by its path, which its files were
+    /// last read with.</summary>
+    private readonly Dictionary<string, IReadOnlySet<string>> own = new(StringComparer.Ordinal);
+
+    private static readonly IReadOnlySet<string> NoAttributes = new HashSet<string>(StringComparer.Ordinal);
+
     private IReadOnlyList<ProjectModel> every = [];
     private int asks;
     private int listings;
@@ -58,6 +64,16 @@ public sealed class TestFinder
     /// the same test on its line now, which the project's told tests now hold in their place. No <see cref="Changed"/>.</summary>
     public event EventHandler<(string Path, IReadOnlyDictionary<TestItem, TestItem> Moved)>? Moved;
 
+    /// <summary>A test project's files were found to derive other test attributes: open files are read again with them.</summary>
+    public event EventHandler? AttributesChanged;
+
+    /// <summary>The test attributes the project of a file derives from a framework's, its methods tests by them too.</summary>
+    public IReadOnlySet<string> AttributesOf(string path)
+    {
+        UiThread.Check();
+        return Owner(path) is { } project ? own.GetValueOrDefault(project.Path) ?? NoAttributes : NoAttributes;
+    }
+
     /// <summary>Whether a project holds tests: it says it is a test project or references a test adapter, or references
     /// xUnit, NUnit or MSTest itself.</summary>
     public static bool HoldsTests(ProjectModel project) =>
@@ -74,6 +90,7 @@ public sealed class TestFinder
             listed.Clear();
             told.Clear();
             readWith.Clear();
+            own.Clear();
         }
         every = projects;
         Projects = [.. projects.Where(HoldsTests)];
@@ -94,6 +111,7 @@ public sealed class TestFinder
         {
             told.Remove(gone);
             listed.Remove(gone);
+            own.Remove(gone);
         }
         Read(Projects, timed: true);
     }
@@ -181,8 +199,8 @@ public sealed class TestFinder
 
         async Task ReadAsync()
         {
-            (string Path, CSharpParseOptions Symbols)[] reads = [.. changed.Select(path => (path, CompilationSymbols.Of(every, path)))];
-            await BackgroundWork.Run(() => Parallel.ForEach(reads, read => ReadFile(read.Path, read.Symbols)));
+            (string Path, CSharpParseOptions Symbols, IReadOnlySet<string> Own)[] reads = [.. changed.Select(path => (path, CompilationSymbols.Of(every, path), AttributesOf(path)))];
+            await BackgroundWork.Run(() => Parallel.ForEach(reads, read => ReadFile(read.Path, read.Symbols, read.Own)));
             Tell([.. projects.Where(Projects.Contains)]);
         }
     }
@@ -212,6 +230,7 @@ public sealed class TestFinder
             mine[project.Path] = asked[project.Path] = ++asks;
         }
         IReadOnlyList<ProjectModel> others = every;
+        Dictionary<string, IReadOnlySet<string>> owns = projects.ToDictionary(p => p.Path, p => own.GetValueOrDefault(p.Path) ?? NoAttributes, StringComparer.Ordinal);
         long began = Stopwatch.GetTimestamp();
         listings++;
         return ReadAsync();
@@ -220,7 +239,7 @@ public sealed class TestFinder
         {
             try
             {
-                Dictionary<string, IReadOnlyList<string>> files = await BackgroundWork.Run(() => List(projects, others));
+                Dictionary<string, IReadOnlyList<string>> files = await BackgroundWork.Run(() => List(projects, others, owns));
                 List<ProjectModel> latest = [.. projects.Where(p => asked.GetValueOrDefault(p.Path) == mine[p.Path] && Projects.Contains(p))];
                 foreach (ProjectModel project in latest)
                 {
@@ -244,30 +263,33 @@ public sealed class TestFinder
 
     /// <summary>Each project's C# files, but those of build output, dependencies, hidden folders and projects inside it,
     /// each read once it has changed since it was last read. A worker's.</summary>
-    private Dictionary<string, IReadOnlyList<string>> List(IReadOnlyList<ProjectModel> projects, IReadOnlyList<ProjectModel> solution)
+    private Dictionary<string, IReadOnlyList<string>> List(IReadOnlyList<ProjectModel> projects, IReadOnlyList<ProjectModel> solution,
+        IReadOnlyDictionary<string, IReadOnlySet<string>> owns)
     {
         Dictionary<string, IReadOnlyList<string>> found = new(StringComparer.Ordinal);
-        List<(string Path, CSharpParseOptions Symbols)> all = [];
+        List<(string Path, CSharpParseOptions Symbols, IReadOnlySet<string> Own)> all = [];
         foreach (ProjectModel project in projects)
         {
             List<string> files = [.. FolderWalk.ProjectFiles(project, solution, ".cs")];
             found[project.Path] = files;
             CSharpParseOptions symbols = CompilationSymbols.Of(project);
-            all.AddRange(files.Select(file => (file, symbols)));
+            all.AddRange(files.Select(file => (file, symbols, owns[project.Path])));
         }
-        Parallel.ForEach(all, read => ReadFile(read.Path, read.Symbols));
+        Parallel.ForEach(all, read => ReadFile(read.Path, read.Symbols, read.Own));
         return found;
     }
 
-    /// <summary>Reads a closed file's tests with its project's symbols unless it has not changed since they were read; one
-    /// being written is read once the watcher says so again. A worker's.</summary>
-    private void ReadFile(string path, CSharpParseOptions symbols) => onDisk.Get(path, file => TestsAtCaret.Read(File.ReadAllText(file), symbols));
+    /// <summary>Reads a closed file's tests with its project's symbols and derived test attributes unless it has not changed
+    /// since they were read; one being written is read once the watcher says so again. A worker's.</summary>
+    private void ReadFile(string path, CSharpParseOptions symbols, IReadOnlySet<string> attributes) =>
+        onDisk.Get(path, file => TestsAtCaret.Read(File.ReadAllText(file), symbols, attributes));
 
     /// <summary>Tells the projects' tests as their files now read, open ones from their own parse, for those that changed
     /// (or all of them, once a listing has ended, which may have found none).</summary>
     private void Tell(IReadOnlyList<ProjectModel> projects, bool always = false)
     {
         bool changed = false;
+        List<ProjectModel> derived = [];
         foreach (ProjectModel project in projects)
         {
             Dictionary<string, FileTests> files = new(StringComparer.Ordinal);
@@ -289,6 +311,17 @@ public sealed class TestFinder
                 {
                     files[path] = typed;
                 }
+            }
+            // Files that derive other test attributes than they were read with are read again with them.
+            HashSet<string> attributes = [.. files.Values.SelectMany(f => f.Attributes)];
+            if (!attributes.SetEquals(own.GetValueOrDefault(project.Path) ?? NoAttributes))
+            {
+                own[project.Path] = attributes;
+                foreach (string path in listed.GetValueOrDefault(project.Path) ?? [])
+                {
+                    onDisk.Forget(path);
+                }
+                derived.Add(project);
             }
             if (told.TryGetValue(project.Path, out ToldTests was) && Same(was.Files, files))
             {
@@ -312,6 +345,11 @@ public sealed class TestFinder
         if (changed || always)
         {
             Changed?.Invoke(this, Projects.Where(p => told.ContainsKey(p.Path)).ToDictionary(p => p.Path, p => told[p.Path].Tests, StringComparer.Ordinal));
+        }
+        if (derived.Count > 0)
+        {
+            Read(derived, timed: false);
+            AttributesChanged?.Invoke(this, EventArgs.Empty);
         }
 
         static bool Same(Dictionary<string, FileTests> before, Dictionary<string, FileTests> now) =>

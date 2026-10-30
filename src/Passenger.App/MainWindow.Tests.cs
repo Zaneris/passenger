@@ -24,6 +24,7 @@ public partial class MainWindow
     {
         // The gutter reads each open file's tests from its parse; the tree takes the same read.
         testGutter.Read += (_, read) => session.Tests.Finder.OpenRead(read.Document.Path, read.Tests);
+        testGutter.OwnAttributes = path => session.Tests.Finder.AttributesOf(path);
         Editors.Opened += (_, document) => testGutter.Watch(document);
         Editors.Closed += (_, document) =>
         {
@@ -75,6 +76,14 @@ public partial class MainWindow
             }
         };
         Bottom.Tests.IsRunning = tests.IsBusy;
+        // The open files' tests are read again by the test attributes their projects derive, once those are known.
+        tests.Finder.AttributesChanged += (_, _) =>
+        {
+            if (session == next)
+            {
+                testGutter.ReadAgain();
+            }
+        };
         HashSet<DebugTab> testHosts = [];
         tests.BeginAspireTest = (project, debug, cancel) => next.Aspire.BeginTestAsync(project, debug, cancel);
         tests.LaunchUnderDebugger = start => LaunchTestHost(next, start, testHosts);

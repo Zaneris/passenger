@@ -355,6 +355,49 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>A test marked by a subclass of xUnit's Fact the project declares in another file, and an MSTest test marked
+    /// [STATestMethod], each have a run icon from their code before any build, and after a run the icon takes its result.</summary>
+    [AvaloniaFact]
+    public void Tests_of_an_attribute_the_project_derives_and_of_sta_test_method_have_run_icons_before_and_after_a_run()
+    {
+        string solution = NewFolder();
+        Write(solution, "Own.Tests/Own.Tests.csproj", TestProject(TestProjects.Framework));
+        Write(solution, "Own.Tests/MyFactAttribute.cs", "using Xunit;\n\nnamespace Own.Tests;\n\npublic sealed class MyFactAttribute : FactAttribute\n{\n}\n");
+        string own = Write(solution, "Own.Tests/OwnTests.cs",
+            "using Xunit;\n\nnamespace Own.Tests;\n\npublic class OwnTests\n{\n    [MyFact]\n    public void Via_its_own_attribute() { }\n}\n");
+        Write(solution, "Sta.Tests/Sta.Tests.csproj",
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n" +
+            "    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"MSTest.TestAdapter\" Version=\"3.10.0\" />\n" +
+            "    <PackageReference Include=\"MSTest.TestFramework\" Version=\"3.10.0\" />\n  </ItemGroup>\n</Project>\n");
+        string sta = Write(solution, "Sta.Tests/StaTests.cs",
+            "using Microsoft.VisualStudio.TestTools.UnitTesting;\n\nnamespace Sta.Tests;\n\n[TestClass]\npublic class StaTests\n{\n    [STATestMethod]\n    public void On_its_own_thread() { }\n}\n");
+        Write(solution, "Tests.slnx", "<Solution>\n  <Project Path=\"Own.Tests/Own.Tests.csproj\" />\n  <Project Path=\"Sta.Tests/Sta.Tests.csproj\" />\n</Solution>\n");
+        Restore.Run(Path.Combine(solution, "Tests.slnx"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        Assert.Equal(TestMarkKind.NotRun, MarkAt(own, "    public void Via_its_own_attribute() { }"));
+        Assert.Equal(TestMarkKind.NotRun, MarkAt(sta, "    public void On_its_own_thread() { }"));
+        Assert.False(window.IsBuilding, "Showing the run icons started a build");
+
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy, "the run of every test", TimeSpan.FromSeconds(180));
+        Assert.True(MarkAt(sta, "    public void On_its_own_thread() { }") is TestMarkKind.Passed or TestMarkKind.Failed,
+            $"The [STATestMethod] test's run icon took no result of the run, which said '{window.BottomPanel.Tests.Status}'");
+        Assert.Equal(TestMarkKind.Passed, MarkAt(own, "    public void Via_its_own_attribute() { }"));
+        window.Close();
+
+        // The kind of the run icon beside a line of a file, once it has one.
+        TestMarkKind MarkAt(string path, string line)
+        {
+            window.OpenFile(path);
+            Ui.Settle();
+            Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+            int at = Array.IndexOf(document.Text.Snapshot.ToString().Split('\n'), line);
+            Ui.WaitFor(() => document.TestMarks.Any(m => m.Line == at),
+                () => $"the run icon beside '{line.Trim()}' in {Path.GetFileName(path)}; it has icons on lines [{string.Join(", ", document.TestMarks.Select(m => m.Line))}]");
+            return document.TestMarks.First(m => m.Line == at).Kind;
+        }
+    }
+
     /// <summary>A run broken off by its test host's crash, a test calling Environment.Exit(3), says why in its tally, which
     /// an agent's tests_run answers with, in the Unit Tests window and on the status bar: the crash as VSTest tells it, and
     /// the test running then.</summary>

@@ -19,21 +19,24 @@ public sealed record DeclaredTest(string Type, string Method, int Line, IReadOnl
 }
 
 /// <summary>What a C# file declares for testing: the types that hold tests and the tests, with the lines their names
-/// are on, and the name of every method it declares, test or not, by which a test a runner found there and since
-/// removed is known to be gone.</summary>
+/// are on, the name of every method it declares, test or not, by which a test a runner found there and since removed is
+/// known to be gone, and the test attributes it declares (classes deriving from one, named as written, less "Attribute").</summary>
 public sealed record FileTests(IReadOnlyList<(string Type, int Line)> Types, IReadOnlyList<DeclaredTest> Tests, IReadOnlySet<string> Methods)
 {
     public static readonly FileTests None = new([], [], new HashSet<string>(StringComparer.Ordinal));
 
+    public IReadOnlySet<string> Attributes { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+
     /// <summary>Whether a later read says the same: typing inside a method's body changes nothing of it.</summary>
     public bool SameAs(FileTests other) =>
-        Types.SequenceEqual(other.Types) && Tests.Count == other.Tests.Count && Tests.Zip(other.Tests).All(p => p.First.SameAs(p.Second)) && Methods.SetEquals(other.Methods);
+        Types.SequenceEqual(other.Types) && Tests.Count == other.Tests.Count && Tests.Zip(other.Tests).All(p => p.First.SameAs(p.Second)) && Methods.SetEquals(other.Methods)
+        && Attributes.SetEquals(other.Attributes);
 
     /// <summary>Whether a later read says the same but for the lines the types and tests are on: lines put in or taken out
     /// above or among them, which move their rows rather than make the tree again.</summary>
     public bool OnlyMoved(FileTests other)
     {
-        if (Types.Count != other.Types.Count || Tests.Count != other.Tests.Count || !Methods.SetEquals(other.Methods))
+        if (Types.Count != other.Types.Count || Tests.Count != other.Tests.Count || !Methods.SetEquals(other.Methods) || !Attributes.SetEquals(other.Attributes))
         {
             return false;
         }
@@ -76,9 +79,12 @@ public sealed record FilePlaces(IReadOnlyList<DeclaredPlace> Types, IReadOnlyLis
 /// closed file's own; lines are the editor's.</summary>
 public static class TestsAtCaret
 {
+    /// <summary>The frameworks' own attributes that make a method a test, as written less "Attribute": xUnit's (and its
+    /// culture's, STA's, WPF's and Avalonia's), NUnit's and TUnit's, and MSTest's (its STA and UI threads' too).</summary>
     private static readonly HashSet<string> TestAttributes = new(StringComparer.Ordinal)
     {
-        "Fact", "Theory", "AvaloniaFact", "AvaloniaTheory", "Test", "TestCase", "TestCaseSource", "TestMethod", "DataTestMethod",
+        "Fact", "Theory", "CulturedFact", "CulturedTheory", "StaFact", "StaTheory", "WpfFact", "WpfTheory", "UIFact", "UITheory",
+        "AvaloniaFact", "AvaloniaTheory", "Test", "TestCase", "TestCaseSource", "TestMethod", "DataTestMethod", "STATestMethod", "UITestMethod",
     };
 
     /// <summary>The test the caret's line (from zero, the editor's line, which Roslyn may count as several) is in: its
@@ -101,7 +107,7 @@ public static class TestsAtCaret
         {
             return null;
         }
-        if (method is not null && (IsTest(method) || found?.Invoke(FullName(type), method.Identifier.ValueText) == true))
+        if (method is not null && (IsTest(method, NoneOwn) || found?.Invoke(FullName(type), method.Identifier.ValueText) == true))
         {
             return Place(syntax, FullName(type), method.Identifier.ValueText, method.Identifier, method);
         }
@@ -140,22 +146,31 @@ public static class TestsAtCaret
         return new DeclaredPlace(type, method, syntax.Text.GetLineFromOffset(name.SpanStart), lines.StartLinePosition.Line, lines.EndLinePosition.Line);
     }
 
-    /// <summary>Everything a file declares for testing, read without going into any member's body.</summary>
-    public static FileTests Read(ParsedText syntax)
+    private static readonly IReadOnlySet<string> NoneOwn = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>Everything a file declares for testing, read without going into any member's body: a test is a method
+    /// with a framework's test attribute, or one of <paramref name="own"/>, the attributes its project derives from them.</summary>
+    public static FileTests Read(ParsedText syntax, IReadOnlySet<string>? own = null)
     {
+        own ??= NoneOwn;
         List<(string, int)> types = [];
         List<DeclaredTest> tests = [];
         HashSet<string> methods = new(StringComparer.Ordinal);
+        HashSet<string> attributes = new(StringComparer.Ordinal);
         foreach (TypeDeclarationSyntax type in Types(syntax.Root))
         {
             string name = FullName(type);
             bool any = false;
             bool inherited = InheritedOnly(type);
+            if (type.BaseList?.Types.FirstOrDefault()?.Type is { } baseType && IsTestAttribute(Simple(baseType), own))
+            {
+                attributes.Add(Unsuffixed(type.Identifier.ValueText));
+            }
             IReadOnlyList<KeyValuePair<string, string>>? typeTraits = null;
             foreach (MethodDeclarationSyntax method in type.Members.OfType<MethodDeclarationSyntax>())
             {
                 methods.Add(method.Identifier.ValueText);
-                if (!IsTest(method))
+                if (!IsTest(method, own))
                 {
                     continue;
                 }
@@ -169,13 +184,13 @@ public static class TestsAtCaret
                 types.Add((name, syntax.Text.GetLineFromOffset(type.Identifier.SpanStart)));
             }
         }
-        return new FileTests(types, tests, methods);
+        return new FileTests(types, tests, methods) { Attributes = attributes };
     }
 
     /// <summary>A file not open in an editor, parsed on its own with its project's symbols (<see cref="CSharpParsing"/>),
     /// its documentation comments passed over: an open one's tests are read from its shared parse.</summary>
-    public static FileTests Read(string text, CSharpParseOptions options) =>
-        Read(new ParsedText(CSharpSyntaxTree.ParseText(text, options.WithDocumentationMode(DocumentationMode.None)), TextSnapshot.From(text)));
+    public static FileTests Read(string text, CSharpParseOptions options, IReadOnlySet<string>? own = null) =>
+        Read(new ParsedText(CSharpSyntaxTree.ParseText(text, options.WithDocumentationMode(DocumentationMode.None)), TextSnapshot.From(text)), own);
 
     /// <summary>Whether a test's full name (a theory's rows, NUnit's cases and fixtures' instances included) belongs to a
     /// type and method.</summary>
@@ -191,11 +206,14 @@ public static class TestsAtCaret
     private static IEnumerable<TypeDeclarationSyntax> Types(SyntaxNode root) =>
         root.DescendantNodes(n => n is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax or TypeDeclarationSyntax).OfType<TypeDeclarationSyntax>();
 
-    private static bool IsTest(MethodDeclarationSyntax method) => method.AttributeLists.SelectMany(l => l.Attributes).Any(a => TestAttributes.Contains(Name(a)));
+    private static bool IsTest(MethodDeclarationSyntax method, IReadOnlySet<string> own) =>
+        method.AttributeLists.SelectMany(l => l.Attributes).Any(a => IsTestAttribute(Name(a), own));
+
+    private static bool IsTestAttribute(string name, IReadOnlySet<string> own) => TestAttributes.Contains(name) || own.Contains(name);
 
     /// <summary>Whether a type or a type nested in it declares a test, found without going into any member's body.</summary>
     private static bool HoldsTests(TypeDeclarationSyntax type) =>
-        type.DescendantNodesAndSelf(n => n is TypeDeclarationSyntax).OfType<TypeDeclarationSyntax>().Any(t => t.Members.OfType<MethodDeclarationSyntax>().Any(IsTest));
+        type.DescendantNodesAndSelf(n => n is TypeDeclarationSyntax).OfType<TypeDeclarationSyntax>().Any(t => t.Members.OfType<MethodDeclarationSyntax>().Any(m => IsTest(m, NoneOwn)));
 
     /// <summary>An abstract or generic type, or one inside such a type: a runner runs its tests as a derived type's.</summary>
     private static bool InheritedOnly(TypeDeclarationSyntax type) =>
@@ -224,17 +242,18 @@ public static class TestsAtCaret
         return traits;
     }
 
-    private static string Name(AttributeSyntax attribute)
+    private static string Name(AttributeSyntax attribute) => Simple(attribute.Name);
+
+    /// <summary>A type's name as written, less its namespace, its type arguments and an "Attribute" at its end.</summary>
+    private static string Simple(TypeSyntax type) => Unsuffixed(type switch
     {
-        string name = attribute.Name switch
-        {
-            QualifiedNameSyntax qualified => qualified.Right.Identifier.ValueText,
-            AliasQualifiedNameSyntax alias => alias.Name.Identifier.ValueText,
-            SimpleNameSyntax simple => simple.Identifier.ValueText,
-            _ => attribute.Name.ToString(),
-        };
-        return name.EndsWith("Attribute", StringComparison.Ordinal) ? name[..^"Attribute".Length] : name;
-    }
+        QualifiedNameSyntax qualified => qualified.Right.Identifier.ValueText,
+        AliasQualifiedNameSyntax alias => alias.Name.Identifier.ValueText,
+        SimpleNameSyntax simple => simple.Identifier.ValueText,
+        _ => type.ToString(),
+    });
+
+    private static string Unsuffixed(string name) => name.EndsWith("Attribute", StringComparison.Ordinal) ? name[..^"Attribute".Length] : name;
 
     private static string FullName(TypeDeclarationSyntax type)
     {
