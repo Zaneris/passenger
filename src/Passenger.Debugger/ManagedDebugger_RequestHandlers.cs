@@ -911,7 +911,7 @@ public partial class ManagedDebugger
             else if (variablesReference.ReferenceKind is StoredReferenceKind.SyntheticAsyncScope)
             {
                 ICorDebugValue stateMachine = variablesReference.ObjectValue!;
-                await AddMembers(stateMachine, stateMachine.ExactType, variablesReference.ThreadId, variablesReference.FrameStackDepth, result);
+                await AddHeldVariables(stateMachine, stateMachine.ExactType, variablesReference.ThreadId, variablesReference.FrameStackDepth, result);
             }
             else if (variablesReference.ReferenceKind is StoredReferenceKind.StackVariable)
             {

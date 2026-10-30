@@ -60,10 +60,16 @@ public partial class ManagedDebugger
         }
     }
 
+    /// <summary>Whether a value is a closure the compiler made: a class a lambda's captures live in, or a struct a local
+    /// function's do, held in place or by reference.</summary>
     private static bool IsLambdaDisplayClass(ICorDebugValue value)
     {
         ICorDebugType type = value.ExactType;
-        if (type.Type is not CorElementType.CLASS)
+        if (type.Type is CorElementType.BYREF)
+        {
+            type = type.FirstTypeParameter;
+        }
+        if (type.Type is not (CorElementType.CLASS or CorElementType.VALUETYPE))
         {
             return false;
         }
@@ -73,14 +79,18 @@ public partial class ManagedDebugger
         return GeneratedNameParser.GetKind(typeName) is GeneratedNameKind.LambdaDisplayClass;
     }
 
-    /// Walks the compiler-generated closure chain starting at <paramref name="closureValue"/>,
-    /// calling AddMembers on each closure class. Parent closures are linked via a field of
-    /// kind <see cref="GeneratedNameKind.DisplayClassLocalOrField"/> (e.g. "&lt;&gt;8__1").
+    /// Walks the compiler-generated closure chain starting at <paramref name="closureValue"/> (a closure or a state
+    /// machine), listing each one's fields, the variables it holds, and none of its properties. Parent closures are linked
+    /// via a field of kind <see cref="GeneratedNameKind.DisplayClassLocalOrField"/> (e.g. "&lt;&gt;8__1").
     private async Task AddClosureChainMembers(ICorDebugValue closureValue, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result)
     {
+        if (closureValue.UnwrapDebugValueToObjectOrNull() is not { } objectValue)
+        {
+            return;
+        }
         // A captured variable's closure copy is the live one, in place of its own slot, which goes stale.
         List<VariableInfo> members = [];
-        await AddMembers(closureValue, closureValue.ExactType, threadId, stackDepth, members);
+        await AddHeldVariables(closureValue, objectValue.ExactType, threadId, stackDepth, members);
         foreach (VariableInfo member in members)
         {
             int existing = result.FindIndex(v => v.Name == member.Name);
@@ -94,7 +104,6 @@ public partial class ManagedDebugger
             }
         }
 
-        ICorDebugObjectValue objectValue = closureValue.UnwrapDebugValueToObject();
         IMetaDataImport metadataImport = objectValue.Class.Module.GetMetaDataInterface<IMetaDataImport>();
         IEnumerable<mdFieldDef> fields = metadataImport.EnumFields(objectValue.Class.Token);
         foreach (mdFieldDef field in fields)
@@ -107,6 +116,15 @@ public partial class ManagedDebugger
                 break; // only one parent link per closure class
             }
         }
+    }
+
+    /// <summary>The variables a closure or state machine holds: its instance fields, each a captured or hoisted variable
+    /// under its own name (the compiler's own fields passed over), never a property its interfaces give it.</summary>
+    private Task AddHeldVariables(ICorDebugValue holder, ICorDebugType holderType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result)
+    {
+        IMetaDataImport metadataImport = holderType.Class.Module.GetMetaDataInterface<IMetaDataImport>();
+        mdFieldDef[] fields = metadataImport.EnumFields(holderType.Class.Token).AsValueEnumerable().Where(field => !field.IsStatic(metadataImport)).ToArray();
+        return AddFields(fields, metadataImport, holderType, holder, result, threadId, stackDepth);
     }
 
     /// Returns classContainingHoistedLocalsValue if applicable
@@ -129,7 +147,7 @@ public partial class ManagedDebugger
         {
             string methodName = methodProps.szMethod;
             ICorDebugValue? implicitThisValue = arguments[0];
-            if (methodName is "MoveNext" || methodName.Contains(">b")) // async or lambda
+            if (methodName is "MoveNext" || GeneratedNameParser.GetKind(methodName) is GeneratedNameKind.LambdaMethod or GeneratedNameKind.LocalFunction)
             {
                 string containingClassName = metadataImport.GetTypeDefProps(corDebugFunction.Class.Token).szTypeDef;
                 GeneratedNameKind classGeneratedNameKind = GeneratedNameParser.GetKind(containingClassName);
@@ -163,6 +181,12 @@ public partial class ManagedDebugger
         ImmutableArray<DeclaredType?> declared = DeclaredParameters(module, corDebugFunction);
         foreach ((int index, ICorDebugValue? argumentCorDebugValue) in arguments.Skip(skipCount).Index())
         {
+            if (IsLambdaDisplayClass(argumentCorDebugValue))
+            {
+                // A local function's closure, passed by reference: the variables it holds, in its place.
+                await AddClosureChainMembers(argumentCorDebugValue, threadId, stackDepth, result);
+                continue;
+            }
             // Index 0 is the return value; a parameter without a row (emitted code) is named by its place.
             string? argumentName = metadataImport!.TryGetParamForMethodIndex(corDebugFunction.Token, checked((uint)(index + 1)), out mdParamDef paramDef) is Cor.S_OK
                 ? metadataImport.GetParamProps(paramDef).szName
