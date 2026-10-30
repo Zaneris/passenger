@@ -370,7 +370,8 @@ site-shots` retakes its images.
 - **The inspector** never touches `Dispatcher.UIThread` before the app makes it, never waits on Passenger, and readies its
   wire's types before the app's Main (System.Text.Json's lock against a thread the debugger stopped).
 - **MCP's tool list** is paid for by every agent session (45.6 KB, held under 62 KB by McpDebuggingTests): say each thing
-  once (shared parameters in `McpHost.Instructions`), and add no tool another covers. `save_all` stays a tool of its own:
+  once (shared parameters in `McpHost.Instructions`), and add no tool another covers; an answer that can run long goes
+  through `AgentAnswers` and says what it left out. `save_all` stays a tool of its own:
   never asked about on a person's window (#278). `debug_evaluate`, `debug_input` and `breakpoint_set` are `Destructive`
   and ask the person the first time; every question closes unanswered after 2 minutes; calls send progress every 10 s
   (OpenCode gives up after 60 s of silence).
