@@ -116,7 +116,7 @@ public partial class MainWindow
     /// includes) has the projects evaluated again, its directives being its project's.</summary>
     private (bool Made, bool Written) ProgramsChanged(IEnumerable<string> paths)
     {
-        if (session.Workspace is null)
+        if (session.Workspace is not { } workspace)
         {
             return (false, false);
         }
@@ -127,7 +127,7 @@ public partial class MainWindow
             bool known = projects.Any(p => p.IsProgram && PathNames.Same(p.Path, path));
             bool now = File.Exists(path)
                 && !projects.Any(p => p.IsProgram ? !PathNames.Same(p.Path, path) && p.Holds(path) : PathNames.Within(path, p.Folder))
-                && (WorkspaceModel.IsProgram(path, Passenger.Host.ProgramFiles.Head(path))
+                && (workspace.IsProgramFile(path)
                     || projects.Any(p => p.IsProgram && p.ProjectReferences.Contains(path, PathNames.Comparer)));
             if (known != now)
             {

@@ -149,6 +149,8 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
             return found;
         }
         HashSet<string> passed = new(projectFolders, PathNames.Comparer);
+        // C# files of no directive that begin with top-level statements, which are programs where the folder has no project.
+        List<string> plain = [];
         foreach ((string at, IReadOnlyList<string> files) in FolderWalk.Folders(folder, built: true, enters: f => !passed.Contains(f)).Take(FolderLimit))
         {
             List<string> projects = [.. files.Where(IsProject)];
@@ -162,12 +164,27 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
             }
             else if (!projectFolders.Any(p => PathNames.IsUnder(at, p)))
             {
-                found.AddRange(ProgramsAmong(files));
+                foreach (string file in files.Where(ProgramFiles.IsProgram))
+                {
+                    List<string> head = ProgramFiles.Head(file);
+                    if (IsProgram(file, head))
+                    {
+                        found.Add(file);
+                    }
+                    else if (solved is null && head.Count == 0 && plain.Count < ProjectLimit && ProgramFiles.BeginsWithStatement(file))
+                    {
+                        plain.Add(file);
+                    }
+                }
             }
             if (found.Count >= ProjectLimit)
             {
                 break;
             }
+        }
+        if (projectFolders.Count == 0)
+        {
+            found.AddRange(plain.Take(ProjectLimit - found.Count));
         }
         // A file a program includes, from any folder or by a wildcard, is that program's code, whatever its own head says.
         List<(string Program, List<string> Patterns)> including = [.. found.Where(ProgramFiles.IsProgram).Select(p => (p, Included(p).ToList()))];
@@ -238,12 +255,45 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
 
     /// <summary>Whether a C# file's head makes it a file-based program, as <c>dotnet run</c> runs it: a <c>#!</c> line or a
     /// <c>#:</c> directive, unless it is a single-file Aspire AppHost, which Aspire runs. A folder's walk takes one only
-    /// outside every project's folder, whose files are the project's.</summary>
+    /// outside every project's folder, whose files are the project's; in a folder with no project, a file of no directive
+    /// that begins with top-level statements is one too (<see cref="TakesPlainPrograms"/>).</summary>
     public static bool IsProgram(string path, IReadOnlyList<string> head) =>
         ProgramFiles.IsProgram(path) && head.Count > 0 && !head.Any(IsAspireSdk);
 
-    /// <summary>The C# files among one folder's whose heads make them programs.</summary>
-    private static IEnumerable<string> ProgramsAmong(IReadOnlyList<string> files) => files.Where(f => IsProgram(f, ProgramFiles.Head(f)));
+    /// <summary>Whether its C# files of no directive that begin with top-level statements are programs, as <c>dotnet run</c>
+    /// runs them: a folder opened with no solution or project in it, nor any found under it.</summary>
+    public bool TakesPlainPrograms => Solution is null && ProjectFile is null && Projects.All(p => p.IsProgram);
+
+    /// <summary>Whether a C# file is a program in this workspace by its text: its head makes it one, or it has none and
+    /// begins with top-level statements where the workspace takes such files (<see cref="TakesPlainPrograms"/>).</summary>
+    public bool IsProgramFile(string path)
+    {
+        List<string> head = ProgramFiles.Head(path);
+        return IsProgram(path, head) || head.Count == 0 && ProgramFiles.IsProgram(path) && TakesPlainPrograms && ProgramFiles.BeginsWithStatement(path);
+    }
+
+    /// <summary>Whether a C# file opened alone opens with its folder, a program of it: its head makes it one, or it has none
+    /// and begins with top-level statements in a folder holding no project or solution.</summary>
+    public static bool OpensAsProgram(string path)
+    {
+        List<string> head = ProgramFiles.Head(path);
+        if (IsProgram(path, head))
+        {
+            return true;
+        }
+        if (head.Count > 0 || !ProgramFiles.IsProgram(path) || !ProgramFiles.BeginsWithStatement(path))
+        {
+            return false;
+        }
+        try
+        {
+            return !Directory.EnumerateFiles(Path.GetDirectoryName(path)!).Any(f => IsProject(f) || IsSolution(f));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     private static bool IsAspireSdk(string directive) =>
         ProgramFiles.Parse(directive) is ("sdk", { } sdk) && sdk.Split('@')[0].Trim().Equals("Aspire.AppHost.Sdk", StringComparison.OrdinalIgnoreCase);

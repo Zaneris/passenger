@@ -397,6 +397,85 @@ public sealed class FileBasedProgramsTests : IDisposable
         }
     }
 
+    /// <summary>A C# file of no directive, only top-level statements (named with an accent and a space), opened alone in a
+    /// folder of no project, is a program as <c>dotnet run</c> takes it: its folder opens with its run configuration, the
+    /// language server warns of its unused variable and completes in it, Run prints its output and Debug stops at its
+    /// breakpoint.</summary>
+    [AvaloniaFact]
+    public void A_file_of_top_level_statements_alone_with_no_directive_is_a_program_that_completes_runs_and_debugs()
+    {
+        string plain = PathNames.Canonical(TestFolders.Create("plain-program-"));
+        try
+        {
+            TestFolders.Write(plain, "nuget.config", """
+                <configuration>
+                  <packageSources><clear /><add key="local" value="feed" /></packageSources>
+                </configuration>
+                """);
+            Directory.CreateDirectory(Path.Combine(plain, "feed"));
+            TestFolders.Write(plain, "Directory.Build.props", "<Project>\n  <PropertyGroup>\n    <UseArtifactsOutput>true</UseArtifactsOutput>\n  </PropertyGroup>\n</Project>\n");
+            // Native AOT, on for a program by default, would restore its compiler's packages, which the empty feed lacks.
+            TestFolders.Write(plain, "Directory.Build.targets", "<Project>\n  <PropertyGroup>\n    <PublishAot>false</PublishAot>\n  </PropertyGroup>\n</Project>\n");
+            string program = Path.Combine(plain, "héllo app.cs");
+            TestFolders.Write(plain, "héllo app.cs", """
+                int unused = 0;
+                var greeting = "Hello from a plain program";
+                Console.WriteLine(greeting);
+                Console.WriteLine(greeting.Length);
+
+                """);
+            Restore.Run(program);
+            MainWindow window = new() { Width = 1200, Height = 800 };
+            window.Show();
+            try
+            {
+                Assert.Null(window.Open(program));
+                Ui.WaitFor(() => window.Folder is { } open && PathNames.Same(open, plain) && window.EditorArea.Active?.Path is { } shown && PathNames.Same(shown, program),
+                    "héllo app.cs open in its folder's window");
+                Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "héllo app"), () => $"héllo app.cs to be a program with its configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))} ({window.Status})",
+                    TimeSpan.FromMinutes(2));
+                ProjectModel only = Assert.Single(window.Projects);
+                Assert.True(PathNames.Same(only.Path, program), $"The folder's one project is {only.Path}, not the program héllo app.cs");
+
+                WaitForWarning(window, program, "héllo app.cs");
+                Ui.PlaceAfter(window.EditorArea.CodeEditor, "Console.WriteLine(greeting.");
+                Ui.Run(window, AppActions.Complete);
+                Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Length") && window.Assist.CompletionLabels.Contains("ToUpper"),
+                    () => $"the server's completion of a string in héllo app.cs; it offers {string.Join(", ", window.Assist.CompletionLabels.Take(10))}");
+                Ui.Press(window, "ESCAPE");
+
+                Assert.True(window.SelectConfiguration("héllo app"));
+                Ui.Launched(window, window.RunAsync(), "héllo app.cs to build and run", TimeSpan.FromMinutes(2));
+                Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to finish", TimeSpan.FromMinutes(2));
+                Assert.Contains("Hello from a plain program\n26\n", Output(window), StringComparison.Ordinal);
+
+                int line = Array.FindIndex(File.ReadAllLines(program), l => l.Contains("greeting.Length", StringComparison.Ordinal));
+                window.Debugger.Breakpoints.Toggle(program, line);
+                Ui.Launched(window, window.DebugAsync(), "héllo app.cs to build and start under the debugger", TimeSpan.FromMinutes(2));
+                try
+                {
+                    Ui.WaitFor(() => window.Debugger.Session?.State is DebugState.Paused or DebugState.Ended && (window.Debugger.Stop is not null || window.Debugger.Session.State == DebugState.Ended),
+                        "the program to stop at its breakpoint", TimeSpan.FromMinutes(1));
+                    Assert.True(window.Debugger.Stop?.Top is { Source.Path: { } at } && PathNames.Same(at, program) && window.Debugger.Stop.Top.Line == line + 1,
+                        $"The program did not stop at line {line + 1} of héllo app.cs but at {window.Debugger.Stop?.Top?.Source?.Path}:{window.Debugger.Stop?.Top?.Line} ({window.Status})");
+                }
+                finally
+                {
+                    window.Perform(AppActions.Stop);
+                    Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+                }
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            TestFolders.Delete(plain);
+        }
+    }
+
     /// <summary>What a person gets of the program in a window open on its folder with app.cs shown.</summary>
     private void Holds(MainWindow window)
     {

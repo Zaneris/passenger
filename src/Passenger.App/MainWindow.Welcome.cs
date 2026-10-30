@@ -47,7 +47,7 @@ public partial class MainWindow
     public string? Open(string path, Action<MainWindow>? then = null)
     {
         string full = PathNames.Canonical(path);
-        if (File.Exists(full) && Folder is null && WorkspaceModel.IsProgram(full, Passenger.Host.ProgramFiles.Head(full)))
+        if (File.Exists(full) && Folder is null && WorkspaceModel.OpensAsProgram(full))
         {
             // Its folder makes it a project of its own, which runs and which the language server loads.
             welcome.Say(null);
