@@ -90,6 +90,11 @@ if (args is ["reckoning"])
 	Reckoning.Run();
 	return;
 }
+if (args is ["rows"])
+{
+	Rows.Run();
+	return;
+}
 if (args is ["linked"])
 {
 	Linking.Run();
@@ -411,6 +416,48 @@ internal class Valued<T>
 }
 
 internal sealed class Tagged<TTag, TValue> : Valued<TValue> { public TTag? Tag; }
+
+// The rows of a stop's values: a class with an indexer beside collections and a tuple, a local only a local function
+// captures, read in the frame declaring it and in the local function's, and an iterator's frame.
+internal static class Rows
+{
+	public static void Run()
+	{
+		Shelf shelf = new();
+		List<string> names = ["Ada", "Grace"];
+		HashSet<int> set = [7, 9];
+		Dictionary<string, int> ages = new() { ["Ada"] = 36 };
+		(int, string) pair = (1, "one");
+		Console.WriteLine($"rows {shelf[0]} {names.Count} {set.Count} {ages.Count} {pair}");
+		int captive = 5;
+		int Call(int x)
+		{
+			int called = x + captive;
+			return called;
+		}
+		Console.WriteLine($"called {Call(1)}");
+		foreach (int step in Steps(2))
+		{
+			Console.WriteLine($"stepped {step}");
+		}
+	}
+
+	private static IEnumerable<int> Steps(int count)
+	{
+		for (int taken = 0; taken < count; taken++)
+		{
+			yield return taken;
+		}
+	}
+}
+
+internal sealed class Shelf
+{
+	public static int Reads;
+	private readonly string[] _items = ["a", "b"];
+	public int Count => _items.Length;
+	public string this[int index] { get { Reads++; return _items[index]; } }
+}
 
 // What an evaluation reads and leaves as it was: a record struct and a tuple a with copies, a char joined to a string,
 // a box a pattern takes apart, read again each round, native integers wider than an int, and floats cast to integers

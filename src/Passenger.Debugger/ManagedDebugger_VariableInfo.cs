@@ -652,7 +652,7 @@ public partial class ManagedDebugger
         {
             (string szProperty, mdTypeDef pClass, CorPropertyAttr pdwPropFlags, nint ppvSig, int pbSig, CorElementType pdwCPlusTypeFlag, nint ppDefaultValue, int pcchDefaultValue, mdMethodDef pmdSetter, mdMethodDef pmdGetter, mdMethodDef rmdOtherMethod, int pcOtherMethod) propertyProps = metadataImport.GetPropertyProps(mdProperty);
             string? propertyName = propertyProps.szProperty;
-            if (propertyName is null)
+            if (propertyName is null || TakesParameters(propertyProps.ppvSig, propertyProps.pbSig))
             {
                 continue;
             }
@@ -745,6 +745,19 @@ public partial class ManagedDebugger
                 }
             });
         }
+    }
+
+    /// <summary>Whether a property's signature (<paramref name="length"/> bytes at <paramref name="signature"/>) has
+    /// parameters, as an indexer's has: no row shows one, its getter having nothing to be called with.</summary>
+    private static unsafe bool TakesParameters(nint signature, int length)
+    {
+        if (signature == 0 || length < 2)
+        {
+            return false;
+        }
+        BlobReader blob = new((byte*)signature, length);
+        blob.ReadSignatureHeader();
+        return blob.ReadCompressedInteger() > 0;
     }
 
     /// <summary>A RootHidden member that is an object, not an array: its children in its place, as they would show
