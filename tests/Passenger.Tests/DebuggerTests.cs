@@ -1302,6 +1302,34 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
+    /// <summary>The value under a pointer's row, what it points at, takes a value set in that row.</summary>
+    [AvaloniaFact]
+    public void A_value_set_on_what_a_pointer_points_at_is_the_one_the_program_goes_on_with()
+    {
+        Write("Sum.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>", "<AllowUnsafeBlocks>true</AllowUnsafeBlocks>"));
+        Write("Program.cs", "Pointing.Run();\n\nstatic class Pointing\n{\n    public static unsafe void Run()\n    {\n        int number = 42;\n"
+            + "        int* pointer = &number;\n        Console.WriteLine($\"pointed {*pointer} {number}\");\n    }\n}\n");
+        MainWindow window = Open();
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(8, 8));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        WaitDebugging(window, () => Row(window, "pointer") is not null, "the stop before the line that writes the number");
+
+        VariableNode pointer = Row(window, "pointer")!;
+        Task opened = window.BottomPanel.Debug.Tree.Expand(pointer);
+        Ui.WaitFor(() => opened.IsCompleted, "pointer's row");
+        VariableNode pointedAt = Assert.Single(pointer.Children ?? []);
+        Assert.Equal(("*pointer", "42"), (pointedAt.Name, pointedAt.Value));
+        SetInRow(window, pointedAt, "7");
+        Assert.True(window.Status?.StartsWith("Could not set", StringComparison.Ordinal) != true, $"Set Value was refused: {window.Status}");
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("pointed ", StringComparison.Ordinal),
+            "the program to write the number");
+        Assert.Contains("pointed 7 7", window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+    }
+
     /// <summary>Set Value as a person gives it: the row clicked, F2, the value typed and Enter, the variables shown again after.</summary>
     private static void SetInRow(MainWindow window, VariableNode row, string value)
     {

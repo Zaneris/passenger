@@ -56,8 +56,9 @@ public sealed class VariableNode(string name, string value, string? type, int re
     public bool IsQueryText => IsQuerySql && WasRead && Role != VariableRole.Error;
 
     /// <summary>The C# that reaches this value from the frame, for Set Value: a local's name, a member after its
-    /// object's expression (a hidden one's cast to the type declaring it), an element's index after its array's. Null for
-    /// a row no expression reaches (a scope, the static members, a result, a row the debugger adds).</summary>
+    /// object's expression (a hidden one's cast to the type declaring it), an element's index after its array's, what a
+    /// pointer points at after a star. Null for a row no expression reaches (a scope, the static members, a result, a row
+    /// the debugger adds).</summary>
     public string? Expression
     {
         get
@@ -80,14 +81,16 @@ public sealed class VariableNode(string name, string value, string? type, int re
             }
             string? owner = Parent.Reach;
             return owner is null ? null
+                : Name.StartsWith('*') ? $"*{Operand(owner)}"
                 : Name.StartsWith('[') ? $"{Operand(owner)}{Name}"
                 : DeclaringType is { } declaring ? $"(({declaring}){Operand(owner)}).{Name}"
                 : $"{Operand(owner)}.{Name}";
         }
     }
 
-    /// <summary>An expression as the operand of a member's dot, an index or a cast: in parentheses unless it is already a
-    /// primary expression (a name, the debugger's $exception, a member, an element, a call).</summary>
+    /// <summary>An expression as the operand of a member's dot, an index, a cast or a star: in parentheses unless it is
+    /// already a primary expression (a name, the debugger's $exception, a member, an element, a call), so *p's member is
+    /// (*p).x.</summary>
     private static string Operand(string expression) =>
         expression.StartsWith('$') && SyntaxFacts.IsValidIdentifier(expression[1..])
         || SyntaxFactory.ParseExpression(expression) is { ContainsDiagnostics: false } and (IdentifierNameSyntax or MemberAccessExpressionSyntax

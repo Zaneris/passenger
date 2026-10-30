@@ -308,8 +308,11 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
                     case ILOpCode.Stobj or >= ILOpCode.Stind_ref and <= ILOpCode.Stind_r8 or ILOpCode.Stind_i:
                     {
                         CilValue value = stack.Pop();
-                        ICilLocation address = stack.Pop().Location ?? throw new InvalidOperationException("stind requires a managed location");
-                        await StoreAsync(address, value, context, handles);
+                        CilValue address = stack.Pop();
+                        ICilLocation target = address.Target ?? throw (address.IsNull
+                            ? ThrownAsInTheProgram(new NullReferenceException())
+                            : (Exception)new InvalidOperationException("stind requires a managed location or a pointer"));
+                        await StoreAsync(target, value, context, handles);
                         break;
                     }
                     case ILOpCode.Cpobj:

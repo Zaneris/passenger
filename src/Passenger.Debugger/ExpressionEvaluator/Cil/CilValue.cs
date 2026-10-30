@@ -67,6 +67,11 @@ internal sealed class CilValue
         ? generic
         : null;
 
+    /// <summary>Where a store through the value writes: the managed location it is, or what a pointer points at; null for
+    /// any other value, a null pointer among them.</summary>
+    public ICilLocation? Target => Location
+        ?? (CorValue is ICorDebugReferenceValue { Type: CorElementType.PTR, IsNull: false } pointer ? new CorDebugLocation(pointer.Dereference()) : null);
+
     /// <summary>What a managed location holds, or what a pointer points at.</summary>
     public CilValue Dereference() => Location?.Read()
         ?? (CorValue is ICorDebugReferenceValue { Type: CorElementType.PTR, IsNull: false } pointer ? FromCorValue(pointer.Dereference()) : null)
