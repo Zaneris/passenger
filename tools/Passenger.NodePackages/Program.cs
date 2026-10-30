@@ -116,7 +116,11 @@ public static class Packages
         Timeout = TimeSpan.FromMinutes(5),
     };
 
-    public static async Task InstallAsync(Inputs inputs)
+    public static Task InstallAsync(Inputs inputs) => InstallAsync(inputs, Http.GetByteArrayAsync);
+
+    /// <summary>Puts the packages in place as <see cref="InstallAsync(Inputs)"/> does, each tarball not cached fetched by
+    /// <paramref name="download"/>.</summary>
+    public static async Task InstallAsync(Inputs inputs, Func<Uri, Task<byte[]>> download)
     {
         byte[] lockBytes = await File.ReadAllBytesAsync(inputs.Lock);
         IReadOnlyList<Locked> packages = Read(lockBytes, inputs.Lock);
@@ -141,7 +145,7 @@ public static class Packages
             await downloads.WaitAsync();
             try
             {
-                return await TarballAsync(package, inputs.Cache);
+                return await TarballAsync(package, inputs.Cache, download);
             }
             finally
             {
@@ -241,7 +245,7 @@ public static class Packages
     }
 
     /// <summary>The package's tarball in the cache, downloaded when it is not there or not the one the lock file names.</summary>
-    private static async Task<string> TarballAsync(Locked package, string cache)
+    private static async Task<string> TarballAsync(Locked package, string cache, Func<Uri, Task<byte[]>> download)
     {
         string path = Path.Combine(cache, package.CacheName);
         if (File.Exists(path) && Matches(await File.ReadAllBytesAsync(path), package.Sha512))
@@ -253,7 +257,7 @@ public static class Packages
         {
             try
             {
-                downloaded = await Http.GetByteArrayAsync(package.Tarball);
+                downloaded = await download(package.Tarball);
                 break;
             }
             catch (Exception error) when (error is HttpRequestException or TaskCanceledException && attempt < 3)
@@ -269,10 +273,35 @@ public static class Packages
         {
             throw new PackageException($"{package.Place} {package.Version} from {package.Tarball} is not the tarball the lock file pins: its sha512 differs");
         }
-        string partial = path + ".partial";
-        await File.WriteAllBytesAsync(partial, downloaded);
-        File.Move(partial, path, overwrite: true);
+        // A file of this download's own, so installs filling one cache at once never write or move each other's.
+        string partial = Path.Combine(cache, $"{Guid.NewGuid():N}.partial");
+        try
+        {
+            await File.WriteAllBytesAsync(partial, downloaded);
+            File.Move(partial, path, overwrite: true);
+        }
+        catch (Exception refused) when (refused is IOException or UnauthorizedAccessException && Cached(path, package.Sha512))
+        {
+            // Another install put the same tarball there first, which it may be unpacking still (Windows keeps it then).
+        }
+        finally
+        {
+            File.Delete(partial);
+        }
         return path;
+    }
+
+    /// <summary>Whether the cache holds the tarball the hash names at the path, read whole as it stands.</summary>
+    private static bool Cached(string path, byte[] sha512)
+    {
+        try
+        {
+            return Matches(File.ReadAllBytes(path), sha512);
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static bool Matches(byte[] tarball, byte[] sha512) => CryptographicOperations.FixedTimeEquals(SHA512.HashData(tarball), sha512);

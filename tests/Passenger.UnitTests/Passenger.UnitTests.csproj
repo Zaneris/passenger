@@ -25,6 +25,7 @@
     <ProjectReference Include="../../src/Passenger.Vcs/Passenger.Vcs.csproj" />
     <ProjectReference Include="../../src/Passenger.Workspace/Passenger.Workspace.csproj" />
     <ProjectReference Include="../../src/Passenger.Xaml/Passenger.Xaml.csproj" />
+    <ProjectReference Include="../../tools/Passenger.NodePackages/Passenger.NodePackages.csproj" />
   </ItemGroup>
 
   <!-- What the container runs read of Compose's and Docker's files, as text and paths alone, compiled in since their

@@ -375,6 +375,9 @@
           "Passenger.Text": "[0.2.2, )"
         }
       },
+      "passenger.nodepackages": {
+        "type": "Project"
+      },
       "passenger.packages": {
         "type": "Project",
         "dependencies": {
