@@ -41,9 +41,9 @@ public sealed class PopupHost
     /// <summary>The window of the IDE's the person last worked in: its keys, a click in it or its coming to the front.</summary>
     private TopLevel? worked;
 
-    /// <summary>The window a popup is over, what had the keys there as it opened and the list whose row that was, which
-    /// have them back as it closes.</summary>
-    private (TopLevel Window, Control? Had, ListBox? Rows)? over;
+    /// <summary>The window a popup is over, what had the keys there as it opened and, where that was a list's row, the row
+    /// with its item, which have them back as it closes.</summary>
+    private (TopLevel Window, Control? Had, RowWithKeys? Row)? over;
 
     /// <param name="overlay">The main window's layer over everything, and the host in it a popup goes in.</param>
     /// <param name="breakpoints">The open folder's breakpoints, which a breakpoint's popup dismissed keeps its edits in.</param>
@@ -81,7 +81,7 @@ public sealed class PopupHost
         if (!layer.IsVisible)
         {
             Control? had = TopLevel.GetTopLevel(layer)?.FocusManager?.GetFocusedElement() as Control;
-            over = TopLevel.GetTopLevel(layer) is { } window ? (window, had, had is null ? null : ItemsControl.ItemsControlFromItemContainer(had) as ListBox) : null;
+            over = TopLevel.GetTopLevel(layer) is { } window ? (window, had, RowWithKeys.Of(had)) : null;
         }
         shown = (layer, host);
         Thickness shadow = MakeRoom(popup, host);
@@ -186,9 +186,9 @@ public sealed class PopupHost
     {
         Layers.Layer.IsVisible = false;
         Layers.Host.Content = null;
-        (TopLevel Window, Control? Had, ListBox? Rows)? was = over;
+        (TopLevel Window, Control? Had, RowWithKeys? Row)? was = over;
         over = null;
-        if (was is { } back && GiveBack(back.Window, back.Had, back.Rows))
+        if (was is { } back && GiveBack(back.Window, back.Had, back.Row))
         {
             return;
         }
@@ -201,11 +201,12 @@ public sealed class PopupHost
     /// <summary>Whether a window shows the editors: the main window or an editor window.</summary>
     private bool ShowsEditors(TopLevel? window) => window is not null && (window == TopLevel.GetTopLevel(overlay) || editors.Windows.Any(w => w.Window == window));
 
-    /// <summary>Gives the keys back to what had them in a window, still shown there: a list whose row had them to its
-    /// chosen row, whose container the list may have made again meanwhile; false where nothing of it is left.</summary>
-    private static bool GiveBack(TopLevel window, Control? had, ListBox? rows)
+    /// <summary>Gives the keys back to what had them in a window, still shown there: a list's row to that row, or the row
+    /// of the item it showed, the list may have made again meanwhile (<see cref="ListKeys.Hold(RowWithKeys)"/>); false
+    /// where nothing of it is left.</summary>
+    private static bool GiveBack(TopLevel window, Control? had, RowWithKeys? row)
     {
-        if (rows is not null && Shown(rows) && ListKeys.Hold(rows))
+        if (row is not null && Shown(row.List) && ListKeys.Hold(row))
         {
             return true;
         }

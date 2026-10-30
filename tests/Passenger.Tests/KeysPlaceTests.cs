@@ -52,6 +52,49 @@ public sealed class KeysPlaceTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A Shift range chosen down the Explorer goes on from its end once the keys come back: Find Action closed by
+    /// Escape, and Escape to the editor then the Explorer's keys, give them to the row that had them, not the range's start,
+    /// so the next Shift+Down takes in one more row and Down chooses the row after the range.</summary>
+    [AvaloniaFact]
+    public void The_keys_given_back_to_the_Explorer_go_on_from_the_end_of_a_Shift_range()
+    {
+        string[] names = [.. "abcdefghijkl".Select(c => $"{c}.txt")];
+        foreach (string name in names)
+        {
+            TestFolders.Write(folder, name, $"{name}\n");
+        }
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile("l.txt");
+        Ui.Settle();
+        string text = window.EditorArea.Active!.Text.Snapshot.ToString();
+        foreach ((string way, Action leave, Action back) in new (string, Action, Action)[]
+        {
+            ("Find Action closed by Escape", () => Ui.Run(window, AppActions.FindAction), () => Ui.Press(window, "ESCAPE")),
+            ("Escape then the Explorer's keys", () => Ui.Press(window, "ESCAPE"), () => Ui.Run(window, AppActions.FocusExplorer)),
+        })
+        {
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.Single(r => r.Name == "c.txt"));
+            for (int i = 0; i < 4; i++)
+            {
+                Ui.Press(window, "shift DOWN");
+            }
+            Assert.Equal(names[2..7], Chosen(window));
+            leave();
+            Assert.False(RowHasKeys(window, window.ExplorerView.Tree.Rows.Single(r => r.Name == "g.txt")), $"{way}: the keys never left the Explorer");
+            back();
+            Assert.True(RowHasKeys(window, window.ExplorerView.Tree.Rows.Single(r => r.Name == "g.txt")),
+                $"{way} gave the keys to {Focused(window)}, not back to g.txt, the row that had them at the Shift range's end");
+            Ui.Press(window, "shift DOWN");
+            Assert.True(Chosen(window).SequenceEqual(names[2..8]), $"{way}, Shift+Down chose {string.Join(", ", Chosen(window))}, not c.txt to h.txt");
+            Ui.Press(window, "DOWN");
+            Assert.True(Chosen(window).SequenceEqual(["i.txt"]), $"{way}, Shift+Down then Down chose {string.Join(", ", Chosen(window))}, not i.txt");
+        }
+        Assert.Equal(text, window.EditorArea.Active!.Text.Snapshot.ToString());
+        window.Close();
+
+        static string[] Chosen(MainWindow window) => [.. window.ExplorerView.SelectedNodes.Select(n => n.Name).Order(StringComparer.Ordinal)];
+    }
+
     /// <summary>Each tool window's keys show it and give it the keys, its search or its list's chosen row first, so what
     /// is typed next goes to it rather than into the open file.</summary>
     [AvaloniaFact]

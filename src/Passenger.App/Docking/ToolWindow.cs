@@ -42,6 +42,9 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     /// <summary>What in its view last had the keys, which its action gives them back to.</summary>
     private Control? hadKeys;
 
+    /// <summary>The list's row that last had the keys, where <see cref="hadKeys"/> was one.</summary>
+    private RowWithKeys? hadRow;
+
     /// <summary>A tool window whose view is made already (the Explorer's, open at first).</summary>
     public ToolWindow(string id, string title, string icon, Control content, ToolAnchor anchor) : this(id, title, icon, () => content, anchor)
     {
@@ -78,10 +81,15 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     }
 
     private void FollowKeys(Control view) =>
-        view.AddHandler(InputElement.GotFocusEvent, (_, e) => hadKeys = e.Source as Control, RoutingStrategies.Bubble, handledEventsToo: true);
+        view.AddHandler(InputElement.GotFocusEvent, (_, e) =>
+        {
+            hadKeys = e.Source as Control;
+            hadRow = RowWithKeys.Of(hadKeys);
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
 
-    /// <summary>Gives its view the keys, as its action does once it shows: back to what in it had them last, still shown,
-    /// else to the first of its search boxes and lists (a list's chosen row, the first chosen where none is), else to the
+    /// <summary>Gives its view the keys, as its action does once it shows: back to what in it had them last, still shown (a
+    /// list's row, or its item's row, still chosen: <see cref="ListKeys.Hold(RowWithKeys)"/>), else to the first of its
+    /// search boxes and lists (a list's chosen row, the first chosen where none is), else to the
     /// first text it shows that takes them (a console), else to the view itself until they leave it, so what is typed next
     /// never goes to the file.</summary>
     internal void TakeKeys()
@@ -92,8 +100,7 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
             return;
         }
         view.UpdateLayout();
-        if (hadKeys is { } had && view.IsVisualAncestorOf(had) && had.IsEffectivelyVisible && had.IsEffectivelyEnabled
-            && (ItemsControl.ItemsControlFromItemContainer(had) is ListBox rows ? ListKeys.Hold(rows) : had.Focus()))
+        if (hadRow is { } row ? Shown(row.List) && ListKeys.Hold(row) : hadKeys is { } had && Shown(had) && had.Focus())
         {
             return;
         }
@@ -130,6 +137,8 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
             view.LostFocus -= LetGo;
             view.Focusable = false;
         }
+
+        bool Shown(Control control) => view.IsVisualAncestorOf(control) && control.IsEffectivelyVisible && control.IsEffectivelyEnabled;
     }
 
     /// <summary>Whether its view has been built: what only looks among the views made (which one holds the keys) passes

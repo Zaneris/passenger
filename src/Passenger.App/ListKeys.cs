@@ -11,15 +11,24 @@ namespace Passenger.App;
 public static class ListKeys
 {
     /// <summary>Gives a list's chosen row the keys, as a click on it does (the first chosen where none is and
-    /// <paramref name="chooseFirst"/> asks): a row out of sight has no container to take them until it is brought into
-    /// view. False where the list has no row chosen to give them to.</summary>
-    public static bool Hold(ListBox list, bool chooseFirst = false)
+    /// <paramref name="chooseFirst"/> asks): the row a Shift range runs from, else the first chosen. False where the list has
+    /// no row chosen to give them to.</summary>
+    public static bool Hold(ListBox list, bool chooseFirst = false) => Hold(list, null, chooseFirst);
+
+    /// <summary>Gives the keys back to the row of a list that had them, where it is still shown and chosen, else to the row
+    /// of the item it showed, where that is chosen, else as <see cref="Hold(ListBox, bool)"/> does: so the next key goes on
+    /// from where the person was, a Shift range's end rather than its start.</summary>
+    public static bool Hold(RowWithKeys had) => Hold(had.List, had, chooseFirst: false);
+
+    /// <summary>A row out of sight has no container to take the keys until it is brought into view.</summary>
+    private static bool Hold(ListBox list, RowWithKeys? had, bool chooseFirst)
     {
         if (list.SelectedIndex < 0 && chooseFirst && list.ItemCount > 0)
         {
             list.SelectedIndex = 0;
         }
-        int index = list.Selection.AnchorIndex >= 0 && list.Selection.IsSelected(list.Selection.AnchorIndex) ? list.Selection.AnchorIndex : list.SelectedIndex;
+        int index = Chosen(list, had?.Index) ?? Chosen(list, had?.Item is { } item ? list.ItemsView.IndexOf(item) : null)
+            ?? Chosen(list, list.Selection.AnchorIndex) ?? list.SelectedIndex;
         if (index < 0 || index >= list.ItemCount)
         {
             return false;
@@ -30,6 +39,8 @@ public static class ListKeys
             list.UpdateLayout();
         }
         return list.ContainerFromIndex(index)?.Focus() == true;
+
+        static int? Chosen(ListBox list, int? index) => index is int at && at >= 0 && at < list.ItemCount && list.Selection.IsSelected(at) ? at : null;
     }
 
     /// <summary>Moves the list's choice for a key pressed in its field, with no modifier held; true when the key was the
@@ -85,4 +96,16 @@ public static class ListKeys
         }
         return Math.Max(1, (int)Math.Floor(seen / row) - 1);
     }
+}
+
+/// <summary>A list's row as it had the keys: its container and the item it showed then, which the list may show in another
+/// container since (its rows made again, or scrolled out of sight and back).</summary>
+public sealed record RowWithKeys(ListBox List, Control Row, object? Item)
+{
+    /// <summary>The list's row <paramref name="had"/> is, with the item it shows now; null where it is no list's row.</summary>
+    public static RowWithKeys? Of(Control? had) =>
+        had is not null && ItemsControl.ItemsControlFromItemContainer(had) is ListBox list ? new(list, had, list.ItemFromContainer(had)) : null;
+
+    /// <summary>The row's index, where it is still shown and shows the same item; else null.</summary>
+    public int? Index => Row.IsEffectivelyVisible && List.IndexFromContainer(Row) is int at and >= 0 && Equals(List.ItemFromContainer(Row), Item) ? at : null;
 }
