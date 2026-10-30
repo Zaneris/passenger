@@ -516,7 +516,7 @@ public static class MSBuildCompletion
             foreach (string sub in Directory.EnumerateDirectories(folder))
             {
                 string name = Path.GetFileName(sub);
-                if (Stamps.Counts(name, folder: true))
+                if (Stamps.Counts(sub, folder: true))
                 {
                     items.Add(new MSBuildItem(name, MSBuildItemKind.Folder, name + separator, null, null, false, true) { SortText = "1" + name });
                 }
@@ -524,7 +524,7 @@ public static class MSBuildCompletion
             foreach (string file in Directory.EnumerateFiles(folder))
             {
                 string name = Path.GetFileName(file);
-                if (Stamps.Counts(name, folder: false) && wanted(file) && !Path.GetFullPath(file).Equals(Path.GetFullPath(context.Path), StringComparison.Ordinal))
+                if (Stamps.Counts(file, folder: false) && wanted(file) && !Path.GetFullPath(file).Equals(Path.GetFullPath(context.Path), StringComparison.Ordinal))
                 {
                     items.Add(new MSBuildItem(name, MSBuildItemKind.File, name) { SortText = "2" + name });
                 }

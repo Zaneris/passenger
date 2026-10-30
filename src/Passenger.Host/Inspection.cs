@@ -97,8 +97,7 @@ internal static class Inspection
             Project project = Evaluation.Load(asked.Project, collection, context, global, null);
             loaded.Add(project);
             string? framework = null;
-            if (project.GetPropertyValue("TargetFramework").Length == 0
-                && project.GetPropertyValue("TargetFrameworks").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) is [{ } first, ..])
+            if (Evaluation.FrameworksOf(project) is [{ } first, ..])
             {
                 cancel.ThrowIfCancellationRequested();
                 framework = first;

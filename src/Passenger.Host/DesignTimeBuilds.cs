@@ -202,16 +202,15 @@ internal static class DesignTimeBuilds
             loaded.Add(outer);
             // As the evaluation found them, not as the builds leave obj/.
             List<Stamp> looked = [.. Evaluation.LookedFor(path, outer)];
-            string single = outer.GetPropertyValue("TargetFramework");
-            string[] frameworks = outer.GetPropertyValue("TargetFrameworks").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            List<Project> each = single.Length > 0 || frameworks.Length == 0 ? [outer] : [.. frameworks.Distinct(StringComparer.OrdinalIgnoreCase).Select(f => Evaluation.Load(path, collection, context, global, f))];
+            IReadOnlyList<string> frameworks = Evaluation.FrameworksOf(outer);
+            List<Project> each = frameworks.Count == 0 ? [outer] : [.. frameworks.Select(f => Evaluation.Load(path, collection, context, global, f))];
             loaded.AddRange(each.Where(p => p != outer));
             FileGlobs[] globs = [.. outer.GetAllGlobs().Select(g => new FileGlobs([.. g.IncludeGlobs.Select(Full)], [.. g.Excludes.Select(Full)], [.. g.Removes.Select(Full)]))];
             List<RoslynProjectFileInfo> infos = [];
             List<BuildDiagnostic> said = [];
             // A restore arriving during a build must invalidate it, rather than look like an input it read.
             IReadOnlyList<Stamp> restored = [.. each
-                .Select(p => p.GetPropertyValue("ProjectAssetsFile") is { Length: > 0 } asset ? Path.GetFullPath(asset, p.DirectoryPath) : null)
+                .Select(p => p.GetPropertyValue(CarriedProperties.ProjectAssetsFile) is { Length: > 0 } asset ? Path.GetFullPath(asset, p.DirectoryPath) : null)
                 .OfType<string>()
                 .Distinct(PathNames.Comparer)
                 .Select(Stamps.File)];
@@ -298,15 +297,15 @@ internal static class DesignTimeBuilds
         {
             Language = language,
             FilePath = path,
-            OutputFilePath = Absolute(Property("TargetPath")),
+            OutputFilePath = Absolute(Property(CarriedProperties.TargetPath)),
             OutputRefFilePath = Absolute(Property("TargetRefPath")),
             GeneratedFilesOutputDirectory = Absolute(Property("CompilerGeneratedFilesOutputPath")),
             IntermediateOutputFilePath = Absolute(instance.GetItems("IntermediateAssembly").FirstOrDefault()?.EvaluatedInclude),
-            DefaultNamespace = Property("RootNamespace") ?? string.Empty,
-            TargetFramework = Property("TargetFramework"),
+            DefaultNamespace = Property(CarriedProperties.RootNamespace) ?? string.Empty,
+            TargetFramework = Property(MSBuildNames.TargetFramework),
             TargetFrameworkIdentifier = Property("TargetFrameworkIdentifier"),
             TargetFrameworkVersion = Property("TargetFrameworkVersion"),
-            ProjectAssetsFilePath = Property("ProjectAssetsFile"),
+            ProjectAssetsFilePath = Property(CarriedProperties.ProjectAssetsFile),
             CommandLineArgs = arguments,
             Documents = [.. instance.GetItems("Compile").Where(i => !Path.GetFileName(i.EvaluatedInclude).StartsWith("TemporaryGeneratedFile_", StringComparison.Ordinal)).Select(i => Document(i, directory))],
             AdditionalDocuments = [.. instance.GetItems("AdditionalFiles").Select(i => Document(i, directory))],

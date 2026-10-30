@@ -68,12 +68,10 @@ internal static class Evaluation
         try
         {
             outer = Load(path, collection, context, properties, null);
-            string single = outer.GetPropertyValue("TargetFramework");
-            List<string> frameworks = single.Length > 0
-                ? [single]
-                : [.. outer.GetPropertyValue("TargetFrameworks").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase)];
-            bool multi = single.Length == 0 && frameworks.Count > 0;
-            return (Read(path, [outer], frameworks, [null], file, folders) with { Complete = !multi }, frameworks);
+            IReadOnlyList<string> inner = FrameworksOf(outer);
+            string single = outer.GetPropertyValue(MSBuildNames.TargetFramework);
+            IReadOnlyList<string> frameworks = inner.Count > 0 ? inner : single.Length > 0 ? [single] : [];
+            return (Read(path, [outer], frameworks, [null], file, folders) with { Complete = inner.Count == 0 }, frameworks);
         }
         catch (Exception error) when (error is InvalidProjectFileException or IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException)
         {
@@ -129,7 +127,7 @@ internal static class Evaluation
         return new EvaluatedProject
         {
             Path = path,
-            AssemblyName = NonEmpty(first.GetPropertyValue("AssemblyName")),
+            AssemblyName = NonEmpty(first.GetPropertyValue(MSBuildNames.AssemblyName)),
             OutputType = NonEmpty(first.GetPropertyValue("OutputType")),
             TargetFrameworks = frameworks,
             IsTestProject = each.Any(p => p.GetPropertyValue("IsTestProject").Equals("true", StringComparison.OrdinalIgnoreCase)),
@@ -176,13 +174,19 @@ internal static class Evaluation
             .Select(Stamps.Folder)];
     }
 
+    /// <summary>The frameworks a multi-targeted project's outer evaluation names (its TargetFrameworks, each once, letter case
+    /// ignored), each evaluated on its own; none for an evaluation of one framework (TargetFramework set) or of none.</summary>
+    internal static IReadOnlyList<string> FrameworksOf(Project project) => project.GetPropertyValue(MSBuildNames.TargetFramework).Length > 0 ? []
+        : [.. project.GetPropertyValue(MSBuildNames.TargetFrameworks).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+
     /// <summary>One evaluation of a project, of one framework when <paramref name="framework"/> is given.</summary>
     internal static Project Load(string path, ProjectCollection collection, EvaluationContext context, IReadOnlyDictionary<string, string> properties, string? framework)
     {
         Dictionary<string, string> global = new(properties, StringComparer.OrdinalIgnoreCase);
         if (framework is not null)
         {
-            global["TargetFramework"] = framework;
+            global[MSBuildNames.TargetFramework] = framework;
         }
         return WindowsTargeting.Load(given => VirtualProjects.Load(path, new ProjectOptions
         {
@@ -218,7 +222,7 @@ internal static class Evaluation
     private static FrameworkDependencies Dependencies(Project project, string? framework)
     {
         Dictionary<string, string> central = new(StringComparer.OrdinalIgnoreCase);
-        if (project.GetPropertyValue("ManagePackageVersionsCentrally").Equals("true", StringComparison.OrdinalIgnoreCase))
+        if (project.GetPropertyValue(CarriedProperties.ManagePackageVersionsCentrally).Equals("true", StringComparison.OrdinalIgnoreCase))
         {
             foreach (ProjectItem version in project.GetItems("PackageVersion"))
             {
@@ -274,7 +278,7 @@ internal static class Evaluation
     internal static HashSet<string> OutsideRoots(Project project)
     {
         HashSet<string> roots = new(PathNames.Comparer);
-        foreach (string property in new[] { "NetCoreRoot", "NetCoreTargetingPackRoot", "MSBuildBinPath", "MSBuildExtensionsPath", "NuGetPackageRoot" })
+        foreach (string property in new[] { "NetCoreRoot", "NetCoreTargetingPackRoot", "MSBuildBinPath", "MSBuildExtensionsPath", CarriedProperties.NuGetPackageRoot })
         {
             Add(project.GetPropertyValue(property));
         }
@@ -350,6 +354,6 @@ internal static class Evaluation
     {
         string folder = Path.GetDirectoryName(path)!;
         return ProgramFiles.IsProgram(path) ? [Stamps.Folder(folder)]
-            : [.. PathNames.FoldersUnder(folder, sub => Stamps.Counts(Path.GetFileName(sub), folder: true)).Take(FolderLimit).AsParallel().AsOrdered().Select(Stamps.Folder)];
+            : [.. PathNames.FoldersUnder(folder, sub => Stamps.Counts(sub, folder: true)).Take(FolderLimit).AsParallel().AsOrdered().Select(Stamps.Folder)];
     }
 }

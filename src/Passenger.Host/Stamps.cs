@@ -9,12 +9,9 @@ namespace Passenger.Host;
 /// enters.</summary>
 public static class Stamps
 {
-    /// <summary>Names in a folder that say nothing of what a project holds: build output and dependencies.</summary>
-    private static readonly HashSet<string> Passed = new(StringComparer.OrdinalIgnoreCase) { "bin", "obj", "node_modules" };
-
-    /// <summary>Whether a folder's entry is one a wildcard may take in or enter: not build output, not a hidden folder, not
-    /// the system's own file (<see cref="PathNames.IsSystemFile"/>).</summary>
-    public static bool Counts(string name, bool folder) => !Passed.Contains(name) && !(folder && name.StartsWith('.')) && !PathNames.IsSystemFile(name);
+    /// <summary>Whether a folder's entry, by its path, is one a wildcard may take in or enter: a folder a project's wildcards
+    /// enter (<see cref="ProjectFolders.Enters"/>), any file but the system's own (<see cref="PathNames.IsSystemFile"/>).</summary>
+    public static bool Counts(string path, bool folder) => !PathNames.IsSystemFile(Path.GetFileName(path)) && (!folder || ProjectFolders.Enters(path));
 
     public static Stamp File(string path)
     {
@@ -46,7 +43,7 @@ public static class Stamps
             foreach (FileSystemInfo entry in new DirectoryInfo(path).EnumerateFileSystemInfos())
             {
                 bool folder = entry is DirectoryInfo;
-                if (Counts(entry.Name, folder))
+                if (Counts(entry.FullName, folder))
                 {
                     names.Add(folder ? entry.Name + "/" : entry.Name);
                 }

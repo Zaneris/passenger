@@ -16,7 +16,7 @@ namespace Passenger.Tests;
 public sealed partial class MSBuildNamesTests
 {
     /// <summary>The projects whose code talks to MSBuild.</summary>
-    private static readonly string[] Projects = ["Passenger.App", "Passenger.Workspace", "Passenger.Lsp", "Passenger.Core", "Passenger.Packages"];
+    private static readonly string[] Projects = ["Passenger.App", "Passenger.Workspace", "Passenger.Lsp", "Passenger.Core", "Passenger.Packages", "Passenger.Host"];
 
     /// <summary>Strings that are such a name for something other than MSBuild, by file.</summary>
     private static readonly (string File, string Text)[] Others =
@@ -37,7 +37,7 @@ public sealed partial class MSBuildNamesTests
             .Order(StringComparer.Ordinal))
         {
             string relative = Path.GetRelativePath(root, file).Replace('\\', '/');
-            if (relative is "src/Passenger.Core/MSBuildNames.cs" || relative.StartsWith("src/Passenger.App/MSBuild/", StringComparison.Ordinal)
+            if (relative.StartsWith("src/Passenger.App/MSBuild/", StringComparison.Ordinal)
                 || relative.Contains("/obj/", StringComparison.Ordinal) || relative.Contains("/bin/", StringComparison.Ordinal))
             {
                 continue;
@@ -51,7 +51,7 @@ public sealed partial class MSBuildNamesTests
                     InterpolatedStringExpressionSyntax interpolated => string.Concat(interpolated.Contents.Select(part => part is InterpolatedStringTextSyntax text ? text.TextToken.ValueText : "{}")),
                     _ => null,
                 };
-                if (written is not null && Names(written, names) is { } name && !Others.Contains((relative, name)))
+                if (written is not null && Names(written, names) is { } name && !Others.Contains((relative, name)) && !InHome(node))
                 {
                     found.Add($"{relative}:{node.GetLocation().GetLineSpan().StartLinePosition.Line + 1}: \"{written}\"");
                 }
@@ -61,6 +61,10 @@ public sealed partial class MSBuildNamesTests
             + $"for or a project is written can drift from what is read back, one copy changed and another not: name each through MSBuildNames or "
             + $"CarriedProperties:\n{string.Join("\n", found)}");
     }
+
+    /// <summary>Whether a string is a home's own, declaring its name there.</summary>
+    private static bool InHome(SyntaxNode node) =>
+        node.Ancestors().OfType<ClassDeclarationSyntax>().Any(type => type.Identifier.ValueText is nameof(MSBuildNames) or nameof(CarriedProperties));
 
     /// <summary>The name a string writes: one of more than a word whole ("TargetPath"; a word alone, "Configuration", is an
     /// ordinary one), or any after a switch (-p:, -property:, -getProperty:, -t:, -target:) or in a macro; else null.</summary>

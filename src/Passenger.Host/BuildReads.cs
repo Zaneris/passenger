@@ -30,7 +30,7 @@ internal static class BuildReads
     public static IReadOnlyList<BuildInputs> Run(InputsParams asked, CancellationToken cancel)
     {
         Dictionary<string, string> globals = new(asked.Properties, StringComparer.OrdinalIgnoreCase);
-        string? framework = globals.Remove("TargetFramework", out string? given) ? given : null;
+        string? framework = globals.Remove(MSBuildNames.TargetFramework, out string? given) ? given : null;
         using ProjectCollection collection = new(globals, loggers: null, ToolsetDefinitionLocations.Default);
         Evaluated evaluated = new(collection, EvaluationContext.Create(EvaluationContext.SharingPolicy.Shared), globals);
         try
@@ -85,7 +85,7 @@ internal static class BuildReads
                         return new BuildInputs { Unknown = why };
                     }
                     Take(walk);
-                    if (project.GetPropertyValue("TargetPath") is { Length: > 0 } target)
+                    if (project.GetPropertyValue(CarriedProperties.TargetPath) is { Length: > 0 } target)
                     {
                         referenced.Add(Path.GetFullPath(Separated(target), project.DirectoryPath));
                     }
@@ -191,12 +191,7 @@ internal static class BuildReads
         IReadOnlyDictionary<string, string> globals)
     {
         Project first = Evaluation.Load(path, collection, context, globals, framework);
-        if (framework is not null || first.GetPropertyValue("TargetFramework").Length > 0)
-        {
-            return [first];
-        }
-        return [first, .. first.GetPropertyValue("TargetFrameworks").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase).Select(each => Evaluation.Load(path, collection, context, globals, each))];
+        return framework is not null ? [first] : [first, .. Evaluation.FrameworksOf(first).Select(each => Evaluation.Load(path, collection, context, globals, each))];
     }
 
     /// <summary>What one evaluation says a build reads, added to <paramref name="reads"/> and its references to
@@ -233,12 +228,12 @@ internal static class BuildReads
         {
             reads.TryAdd(input.Path, input);
         }
-        string assets = PathOf(project, "ProjectAssetsFile");
+        string assets = PathOf(project, CarriedProperties.ProjectAssetsFile);
         Read(assets);
         restored.Add(assets);
         string extensions = PathOf(project, "MSBuildProjectExtensionsPath");
         string named = Path.GetFileName(project.FullPath);
-        restored.UnionWith([Path.Combine(extensions, named + ".nuget.g.props"), Path.Combine(extensions, named + ".nuget.g.targets"), PathOf(project, "NuGetLockFilePath")]);
+        restored.UnionWith([Path.Combine(extensions, named + ".nuget.g.props"), Path.Combine(extensions, named + ".nuget.g.targets"), PathOf(project, CarriedProperties.NuGetLockFilePath)]);
         foreach (string property in FileProperties)
         {
             Read(PathOf(project, property));

@@ -1,4 +1,5 @@
 using Microsoft.Build.Evaluation;
+using Passenger.Core;
 
 namespace Passenger.Host;
 
@@ -18,7 +19,7 @@ internal static class DefinedSymbols
     /// multi-targeted project's outer evaluation, which compiles nothing.</summary>
     public static FrameworkSymbols? Of(Project project)
     {
-        string framework = project.GetPropertyValue("TargetFramework");
+        string framework = project.GetPropertyValue(MSBuildNames.TargetFramework);
         if (framework.Length == 0)
         {
             return null;
@@ -56,7 +57,7 @@ internal static class DefinedSymbols
         {
             symbols.Add("NETCOREAPP");
         }
-        string platform = project.GetPropertyValue("TargetPlatformIdentifier");
+        string platform = project.GetPropertyValue(MSBuildNames.TargetPlatformIdentifier);
         if (modern && platform.Length > 0)
         {
             string upper = platform.ToUpperInvariant();
