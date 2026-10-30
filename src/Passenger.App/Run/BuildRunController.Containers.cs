@@ -74,7 +74,37 @@ public sealed partial class BuildRunController
         {
             return Refusals.SolutionClosed;
         }
-        return await StartContainersAsync(chosen, work, how);
+        try
+        {
+            return await StartContainersAsync(chosen, work, how);
+        }
+        finally
+        {
+            LetGoBuilt();
+        }
+    }
+
+    /// <summary>The edits followed since a container start's build saved the files, for each service it holds for Hot Reload
+    /// or the debugger, by its name: that service's attach takes them, and what none took is let go with the start.</summary>
+    private readonly Dictionary<string, BuiltEdits> builtEdits = new(StringComparer.Ordinal);
+
+    /// <summary>Begins anew, as a container start's build saves the files, the edits followed for each service it holds.</summary>
+    private void FollowBuilt(IEnumerable<(DotnetService Service, RunStart How)> holding)
+    {
+        LetGoBuilt();
+        foreach ((DotnetService service, RunStart how) in holding.Where(h => h.How != RunStart.Profile))
+        {
+            builtEdits[service.Service] = session.Debug.Building(how == RunStart.HotReload || session.Debug.HotReloadOn());
+        }
+    }
+
+    private void LetGoBuilt()
+    {
+        foreach (BuiltEdits edits in builtEdits.Values)
+        {
+            edits.Dispose();
+        }
+        builtEdits.Clear();
     }
 
     /// <summary>What every container start starts, so one ends another under way: the folder's one container run.</summary>
@@ -187,7 +217,7 @@ public sealed partial class BuildRunController
         if (plan.Builds.Count > 0)
         {
             work.Say($"Building {string.Join(", ", plan.Builds.Select(Path.GetFileNameWithoutExtension))}…");
-            BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping, work);
+            BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping, work, reading: () => FollowBuilt(holding));
             if (!built.Succeeded)
             {
                 return Checkpoint(work, chosen.Name) is { } stopped ? Said(stopped) : built.Message;

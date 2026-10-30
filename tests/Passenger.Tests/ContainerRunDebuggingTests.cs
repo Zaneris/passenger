@@ -1,4 +1,5 @@
 using System.Globalization;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Containers;
@@ -195,6 +196,51 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         }
         finally
         {
+            Docker.Stopped(window, project, "Stop to take every container down");
+        }
+        Ui.WaitFor(() => window.Debugger.Running.Count == 0, "the Hot Reload sessions to end with Stop");
+        window.Close();
+    }
+
+    /// <summary>An edit typed while Run with Hot Reload brings its services up, held after their build and before they are
+    /// attached to, is one Apply Hot Reload Changes applies once they run: web then answers as the edited code does.</summary>
+    [AvaloniaFact]
+    public void An_edit_made_while_Run_with_Hot_Reload_brings_its_services_up_is_applied_once_they_run()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string folder, string project) = Shop("held");
+        MainWindow window = ContainerRunsTests.Open(folder, languageServer: true);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to load the projects ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        TaskCompletionSource edited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
+            Task held = window.Builds.HoldNextUp(edited.Task);
+            Task<string?> running = window.Builds.RunAsync(hotReload: true);
+            Ui.PumpUntil(() => held.IsCompleted || running.IsCompleted, "Run with Hot Reload to build and come to its up", TimeSpan.FromMinutes(5));
+            Assert.False(running.IsCompleted, $"Run with Hot Reload ended before its up: {(running.IsCompleted ? running.Result : null)}");
+            // Not settled: the start holds the window's background work until its services are up.
+            window.OpenFile(Path.Combine(folder, "Web", "Message.cs"));
+            Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            editor.Select(new Passenger.Text.TextRange(editor.Document.Snapshot.ToString().IndexOf("web 1", StringComparison.Ordinal), "web 1".Length));
+            window.KeyTextInput("web 2");
+            Assert.Contains("\"web 2\"", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+
+            edited.SetResult();
+            string? refused = Ui.Await(running, "the services to come up with Hot Reload", TimeSpan.FromMinutes(5));
+            Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
+            Ui.WaitFor(() => window.Debugger.Running.Count == 2, "web and api to be attached to for Hot Reload");
+            int port = ContainerRunsTests.Published(project, "web");
+            Assert.Equal("web 1", Ui.Await(Get(port), "web's answer as it was built", TimeSpan.FromMinutes(1)));
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Assert.True(window.Debugger.LastApplied?.Result == HotReloadResult.Applied,
+                $"The edit made while the services came up was not applied: {window.Debugger.LastApplied?.Said}");
+            Assert.Equal("web 2", Ui.Await(Get(port), "web's answer after Apply", TimeSpan.FromMinutes(1)));
+        }
+        finally
+        {
+            edited.TrySetResult();
             Docker.Stopped(window, project, "Stop to take every container down");
         }
         Ui.WaitFor(() => window.Debugger.Running.Count == 0, "the Hot Reload sessions to end with Stop");

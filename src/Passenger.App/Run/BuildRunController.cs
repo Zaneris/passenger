@@ -707,7 +707,8 @@ public sealed partial class BuildRunController
     /// <summary>A configuration's plan with its build before launch done: the plan to start, or why there is none, the folder
     /// left or Stop meanwhile among the reasons; <c>Unresolved</c> when the problem is the plan's own (what the configuration
     /// runs could not be worked out), which a start shows where it shows its own state.</summary>
-    public async Task<(LaunchPlan? Plan, string? Problem, bool Unresolved)> PrepareAsync(RunConfiguration chosen, string? arguments, Working work, bool build = true)
+    public async Task<(LaunchPlan? Plan, string? Problem, bool Unresolved)> PrepareAsync(RunConfiguration chosen, string? arguments, Working work, bool build = true,
+        Action? reading = null)
     {
         (LaunchPlan? plan, string? problem) = await ResolvePlanAsync(chosen, arguments, work.Stopping);
         if (Checkpoint(work, chosen.Name) is { } stopped)
@@ -718,7 +719,7 @@ public sealed partial class BuildRunController
         {
             return (null, problem, true);
         }
-        if (build && plan.Build is { } step && await BuildForAsync(step, work) is { Succeeded: false } unbuilt)
+        if (build && plan.Build is { } step && await BuildForAsync(step, work, reading) is { Succeeded: false } unbuilt)
         {
             return (null, Checkpoint(work, chosen.Name) ?? unbuilt.Message, false);
         }
@@ -738,8 +739,9 @@ public sealed partial class BuildRunController
     public Task<BuildOutcome> BuildForAsync(BuildStep step, CancellationToken stopping) => BuildForAsync([step.Project], stopping, null, step.Framework, step.Output);
 
     /// <summary>A start's build of what it starts, as <see cref="BuildForAsync(BuildStep, CancellationToken)"/>, saying in its
-    /// work when it waits for a build under way.</summary>
-    public Task<BuildOutcome> BuildForAsync(BuildStep step, Working work) => BuildForAsync([step.Project], work.Stopping, work, step.Framework, step.Output);
+    /// work when it waits for a build under way; <paramref name="reading"/> is told as it saves the files its build reads.</summary>
+    public Task<BuildOutcome> BuildForAsync(BuildStep step, Working work, Action? reading = null) =>
+        BuildForAsync([step.Project], work.Stopping, work, step.Framework, step.Output, reading);
 
     /// <summary>What a start says of a project it did not build: nothing its build reads changed since its last.</summary>
     public static string UpToDateSaid(string project) => $"{project} is up to date: nothing its build reads has changed since it was built, so it was not built again";
@@ -750,8 +752,10 @@ public sealed partial class BuildRunController
 
     /// <summary>A start's build of its projects (<see cref="BuildForAsync(BuildStep, CancellationToken)"/>), several side by
     /// side in one dotnet build (<see cref="TogetherBuild"/>), after any build under way: none is built when the last build
-    /// here of each stands, and all are when one does not, what each build left then kept for its next start's check.</summary>
-    private async Task<BuildOutcome> BuildForAsync(IReadOnlyList<string> projects, CancellationToken stopping, Working? work, string? framework = null, string? output = null)
+    /// here of each stands, and all are when one does not, what each build left then kept for its next start's check.
+    /// <paramref name="reading"/> is told just before each save of the files, which the build then reads as saved.</summary>
+    private async Task<BuildOutcome> BuildForAsync(IReadOnlyList<string> projects, CancellationToken stopping, Working? work, string? framework = null, string? output = null,
+        Action? reading = null)
     {
         UiThread.Check();
         List<UpToDate.Check> checks = [];
@@ -777,6 +781,8 @@ public sealed partial class BuildRunController
                 }
                 continue;
             }
+            // In the save's own turn of the window's thread: an edit made after it is not the build's.
+            reading?.Invoke();
             if (await parts.Editors.SaveAllLandedAsync(work, stopping) is { } unsaved)
             {
                 return stopping.IsCancellationRequested ? new BuildOutcome(BuildStatus.Stopped, "Build stopped") : new BuildOutcome(BuildStatus.NotStarted, unsaved);
@@ -1536,14 +1542,56 @@ public sealed partial class BuildRunController
         {
             return left;
         }
-        (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, arguments, work);
-        if (plan is null)
+        // The edits made since its build saved the files, followed for its session (Hot Reload's, its built lines).
+        BuiltEdits? edits = null;
+        try
         {
-            return problem;
+            (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, arguments, work, reading: () =>
+            {
+                edits?.Dispose();
+                edits = session.Debug.Building(session.Debug.HotReloadOn());
+            });
+            return plan is null ? problem : await LaunchDebuggedAsync(chosen, plan, work, edits);
         }
+        finally
+        {
+            edits?.Dispose();
+        }
+    }
+
+    /// <summary>The next Debug's launch held by a test once its build has ended (<see cref="HoldNextLaunch"/>): what it waits
+    /// for, and done once it waits.</summary>
+    private (Task Until, TaskCompletionSource Holding)? launchHeld;
+
+    /// <summary>Holds the next Debug's launch, once its build has ended, until <paramref name="until"/> ends, for a test of
+    /// what goes on between them. Done once it is held.</summary>
+    public Task HoldNextLaunch(Task until)
+    {
+        TaskCompletionSource holding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        launchHeld = (until, holding);
+        return holding.Task;
+    }
+
+    /// <summary>Launches a built plan under the debugger, its session taking the <paramref name="edits"/> followed since its
+    /// build; null once its session is open, else why not.</summary>
+    private async Task<string?> LaunchDebuggedAsync(RunConfiguration chosen, LaunchPlan plan, Working work, BuiltEdits? edits)
+    {
         if (plan.WhyNot("debug") is { } why)
         {
             return why;
+        }
+        if (launchHeld is { } hold)
+        {
+            launchHeld = null;
+            hold.Holding.TrySetResult();
+            try
+            {
+                await hold.Until.WaitAsync(work.Stopping);
+            }
+            catch (OperationCanceledException)
+            {
+                return Canceled(work, chosen.Name);
+            }
         }
         work.Say($"Starting {chosen.Name} under the debugger…");
         parts.Dock.Show(ToolWindowIds.Debug);
@@ -1553,7 +1601,7 @@ public sealed partial class BuildRunController
         DebugController debug = session.Debug;
         // An Avalonia or WPF app is launched with the Live Visual Tree's inspector, held by its tab, ending with this debugging.
         (LaunchPlan launched, LiveApp? inspected) = session.Inspected(plan);
-        Task<string?> starting = debug.StartAsync(launched, app: inspected);
+        Task<string?> starting = debug.StartAsync(launched, app: inspected, edits: edits);
         // Its tab, chosen as the start began, has the console its failed bindings are written to.
         WatchBindings(inspected, debug.Chosen?.Console);
         string? refused = await starting;

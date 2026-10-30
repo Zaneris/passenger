@@ -1,4 +1,5 @@
 using Passenger.App.Containers;
+using Passenger.App.Debugging;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 
@@ -134,9 +135,11 @@ public sealed partial class BuildRunController
         else
         {
             run.Debugged.Add(name);
+            // Its start's, followed since its build saved the files: its session takes them, else they end here.
+            using BuiltEdits? edits = builtEdits.Remove(service.Name, out BuiltEdits? built) ? built : null;
             refused = purpose == RunStart.HotReload
-                ? await session.Debug.AttachForHotReloadAsync(program.Id, name, (line, error) => run.Say(service, line, error), program.Place, stop)
-                : await session.Debug.AttachAsync(program.Id, name, hotReload: program.HotReload, place: program.Place, group: run.Group, app: program.App);
+                ? await session.Debug.AttachForHotReloadAsync(program.Id, name, (line, error) => run.Say(service, line, error), program.Place, stop, edits)
+                : await session.Debug.AttachAsync(program.Id, name, hotReload: program.HotReload, place: program.Place, group: run.Group, app: program.App, edits: edits);
             if (refused is null)
             {
                 DebugTab? tab = purpose == RunStart.HotReload ? null : session.Debug.Tabs.LastOrDefault(t => t.Name == name && t.IsLive);

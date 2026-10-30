@@ -271,6 +271,21 @@ public sealed class DebugController : IDisposable
     /// <summary>The chosen session's Hot Reload, while it has one.</summary>
     public HotReload? HotReload => chosen is { HotReload: { } reload, IsLive: true, Session: not null } ? reload : null;
 
+    /// <summary>The edits followed for programs built and not yet debugged (<see cref="Building"/>).</summary>
+    private readonly List<BuiltEdits> building = [];
+
+    /// <summary>Begins following the edits made from now for a program whose build reads the files now: its built lines, and
+    /// with <paramref name="hotReload"/> its Hot Reload, which the launch or attach given them takes, so an edit made while
+    /// the program is built, brought up or attached to is one Apply Changes applies. Let go if no session takes them.</summary>
+    public BuiltEdits Building(bool hotReload)
+    {
+        UiThread.Check();
+        BuiltLines lines = new(path => CSharp.ServerPlaces.TextOf(editors, path));
+        BuiltEdits edits = new(lines, hotReload ? new HotReload(lines, Server, editors) : null, done => building.Remove(done));
+        building.Add(edits);
+        return edits;
+    }
+
     private HotReload? hotReload => chosen?.HotReload;
 
     /// <summary>What the last Apply Changes came to, until the next.</summary>
@@ -487,17 +502,18 @@ public sealed class DebugController : IDisposable
     /// debugged; the plan's last session, still debugged, is stopped first. With <paramref name="elsewhere"/> the program
     /// runs on another machine (<see cref="DebugSession.Elsewhere"/>). Null once the session is open (the program may have
     /// ended already), else why it could not.</summary>
-    public Task<string?> StartAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, LiveApp? app = null)
-        => StartInTabAsync(plan, elsewhere, place, app: app);
+    public Task<string?> StartAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, LiveApp? app = null, BuiltEdits? edits = null)
+        => StartInTabAsync(plan, elsewhere, place, app: app, edits: edits);
 
-    private Task<string?> StartInTabAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, DebugTab? tab = null, LiveApp? app = null)
+    private Task<string?> StartInTabAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, DebugTab? tab = null, LiveApp? app = null,
+        BuiltEdits? edits = null)
     {
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? inTerminal = !elsewhere && place is null && plan.Console == Run.ConsoleKind.Terminal && RunInTerminal is { } run
             ? arguments => run(plan.Name, arguments)
             : null;
         bool hotReloadOn = HotReloadOn();
         return OpenAsync((built, log, output, starting) => DebugSession.LaunchAsync(plan, Breakpoints, built, log, output, inTerminal, ColumnOf, hotReloadOn, starting, elsewhere, place),
-            plan.Name, launched: true, inTerminal: inTerminal is not null, hotReloadOn: hotReloadOn, tab: tab, app: app, plan: plan);
+            plan.Name, launched: true, inTerminal: inTerminal is not null, hotReloadOn: hotReloadOn, tab: tab, app: app, plan: plan, edits: edits);
     }
 
     /// <summary>The column (from one) a line (from zero) asks the debugger for, in the file's text (an open file's as it is
@@ -538,11 +554,11 @@ public sealed class DebugController : IDisposable
     /// <paramref name="elsewhere"/> runs it on another machine, <paramref name="place"/> the adapter where it is, and an
     /// inspected <paramref name="app"/> is held by its tab. Null once the session is open, else why it could not.</summary>
     public Task<string?> AttachAsync(int processId, string name, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null, string? group = null,
-        LiveApp? app = null)
+        LiveApp? app = null, BuiltEdits? edits = null)
     {
         bool hotReloadOn = hotReload && HotReloadOn();
         return OpenAsync((built, log, output, starting) => DebugSession.AttachAsync(processId, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn, elsewhere, place), name,
-            launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app);
+            launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits);
     }
 
     /// <summary>Launches another program in a native tab, with hooks installed before its adapter starts.</summary>
@@ -633,10 +649,10 @@ public sealed class DebugController : IDisposable
     /// what is typed into. The tab is chosen, and its session <see cref="Session"/> from its first moment, so Stop is there
     /// as soon as a session begins: its start waits for the program's runtime as long as that takes. A start that failed
     /// leaves its tab ended, with no session. Tabs of one <paramref name="group"/> (a container run's services) take Hot
-    /// Reload's changes together; an inspected <paramref name="app"/> is held by its tab.</summary>
+    /// Reload's changes together; its tab holds an inspected <paramref name="app"/> and given <paramref name="edits"/>.</summary>
     private async Task<string?> OpenAsync(Func<BuiltLines, Action<string>, Action<OutputEvent>, Action<DebugSession>, Task<DebugSession>> open, string name, bool launched,
         bool inTerminal = false, bool hotReloadOn = false, AdapterPlace? place = null, string? group = null, DebugTab? tab = null, LiveApp? app = null,
-        Run.LaunchPlan? plan = null)
+        Run.LaunchPlan? plan = null, BuiltEdits? edits = null)
     {
         UiThread.Check();
         // A start that comes after its folder was left would open in the next folder's Debug window, which is not its own.
@@ -665,10 +681,16 @@ public sealed class DebugController : IDisposable
         tab.Group = group ?? tab.Group;
         tab.App = app ?? tab.App;
         tab.Plan = plan;
-        BuiltLines built = new(path => CSharp.ServerPlaces.TextOf(editors, path));
+        // Followed since the build read the files where it began there, else from now: an edit made since is one Apply takes.
+        BuiltEdits own = edits ?? Building(hotReloadOn);
+        BuiltLines built = own.Lines;
+        HotReload? reload = hotReloadOn ? own.Reload ?? new HotReload(built, Server, editors) : null;
+        if (reload is null)
+        {
+            own.Reload?.End();
+        }
+        own.Take();
         tab.Lines = built;
-        // Made with the built lines: an edit made while the debugger starts the program is one Apply Changes takes.
-        HotReload? reload = hotReloadOn ? new HotReload(built, Server, editors) : null;
         tab.HotReload = reload;
         await FollowClosedLambdasAsync();
         await ChooseAsync(tab);
@@ -851,14 +873,18 @@ public sealed class DebugController : IDisposable
     /// start with DOTNET_MODIFIABLE_ASSEMBLIES=debug: the attach lets it go. What its applies come to is said by
     /// <paramref name="says"/>, where its output is. Null once attached, else why not.</summary>
     public async Task<string?> AttachForHotReloadAsync(int processId, string name, Action<string, bool> says, AdapterPlace? place = null,
-        CancellationToken cancellation = default)
+        CancellationToken cancellation = default, BuiltEdits? edits = null)
     {
         UiThread.Check();
         if (disposed)
         {
+            edits?.Dispose();
             return $"Could not attach to {name} for Hot Reload: its folder was closed";
         }
-        BuiltLines built = new(path => CSharp.ServerPlaces.TextOf(editors, path));
+        // Followed since the build read the files where it began there, else from now: an edit made meanwhile is one Apply takes.
+        using BuiltEdits own = edits ?? Building(hotReload: true);
+        BuiltLines built = own.Lines;
+        HotReload tracked = own.Reload ?? new HotReload(built, Server, editors);
         DebugSession? attaching = null;
         try
         {
@@ -877,7 +903,9 @@ public sealed class DebugController : IDisposable
             {
                 throw new OperationCanceledException("The workspace ended during Hot Reload attach");
             }
-            RunningReload reload = new(name, session, new HotReload(built, Server, editors, session), says);
+            RunningReload reload = new(name, session, tracked, says);
+            tracked.Opened(session);
+            own.Take();
             running.Add(reload);
             session.StateChanged += (_, _) =>
             {
@@ -1469,6 +1497,14 @@ public sealed class DebugController : IDisposable
                 if (code && tab is { HotReload: { } reload, IsLive: true })
                 {
                     reload.Edited(document.Path, change.Before);
+                }
+            }
+            foreach (BuiltEdits pending in building)
+            {
+                pending.Lines.Follow(document.Path, change);
+                if (code)
+                {
+                    pending.Reload?.Edited(document.Path, change.Before);
                 }
             }
             foreach (RunningReload run in code ? running : [])

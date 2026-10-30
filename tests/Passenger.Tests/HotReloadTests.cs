@@ -143,6 +143,41 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
         }
     }
 
+    /// <summary>An edit typed after Debug's build has saved the files, its launch held from beginning meanwhile, is one Apply
+    /// Hot Reload Changes applies once the program runs: the program then greets as the edited code does.</summary>
+    [AvaloniaFact]
+    public void An_edit_made_between_the_build_and_the_launch_is_applied_once_the_program_runs()
+    {
+        MainWindow window = Open();
+        TaskCompletionSource edited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Task held = window.Builds.HoldNextLaunch(edited.Task);
+            // Not settled: the start holds the window's background work until its launch has begun.
+            Assert.True(window.Perform(AppActions.Debug), $"Debug did not start: {Ui.Said(window)}");
+            Ui.PumpUntil(() => held.IsCompleted, "Debug's build to end and its launch to be held", TimeSpan.FromMinutes(3));
+            window.OpenFile(GreeterPath);
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            editor.Select(new TextRange(editor.Document.Snapshot.ToString().IndexOf("Hello", StringComparison.Ordinal), "Hello".Length));
+            window.KeyTextInput("Howdy");
+            Assert.Contains("Howdy {i}", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+
+            edited.SetResult();
+            Ui.WaitFor(() => Output(window).Contains("Hello 2", StringComparison.Ordinal), $"the program to greet as it was built ({Output(window)})");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            HotReloadOutcome applied = Applied(window);
+            Assert.True(applied.Result == HotReloadResult.Applied, $"The edit made between the build and the launch was not applied: {applied.Said}");
+            Assert.Contains(GreeterPath, applied.Files);
+            Ui.WaitFor(() => Output(window).Contains("Howdy", StringComparison.Ordinal), $"the program to greet as the edited code does ({Output(window)})");
+        }
+        finally
+        {
+            edited.TrySetResult();
+            End(window);
+        }
+    }
+
     /// <summary>With Hot Reload on save, a saved edit reaches the debugged program with no Apply; a breakpoint on the line the
     /// edit added then stops it there, its new local in Variables and the evaluator compiling against the method as the update
     /// made it.</summary>
