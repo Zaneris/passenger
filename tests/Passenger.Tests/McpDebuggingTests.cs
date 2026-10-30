@@ -142,6 +142,35 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             $"symbol_info on a project file's property did not say its value and where it was set: {framework}");
     }
 
+    /// <summary>A local a million characters long is shown to an agent as its first few thousand, saying its length and the
+    /// debug_evaluate that reads on, so each stop's answer stays one an agent's client takes; that read gives the next part
+    /// whole.</summary>
+    [Fact]
+    public async Task An_agents_stops_beside_a_million_character_local_answer_its_first_characters_and_its_length()
+    {
+        await TakeFolderAsync();
+        Write("Program.cs", "string big = new string('x', 1_000_000) + \"end\";\nint step = 0;\nstep++;\nstep++;\nConsole.WriteLine(big.Length + step);\n");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 3 });
+        foreach ((string tool, string at) in new[] { (McpTools.DebugStart, "Program.cs:3:"), (McpTools.DebugStep, "Program.cs:4:") })
+        {
+            JsonElement stop = await Call(client, tool);
+            string answer = stop.GetRawText();
+            Assert.True(answer.Length < 20_000, $"{tool} beside a local of a million characters answered {answer.Length:N0} characters, more than an agent's client may take");
+            Assert.StartsWith(at, stop.GetProperty("location").GetString(), StringComparison.Ordinal);
+            JsonElement big = stop.GetProperty("locals").EnumerateArray().Single(l => l.GetProperty("name").GetString() == "big");
+            Assert.True(big.TryGetProperty("cut", out JsonElement cut)
+                && cut.GetString() == "1,000,003 characters, the first 3,998 shown: debug_evaluate big.Substring(3998, 3998) reads on",
+                $"{tool} did not say the local's length and how to read on: {big}");
+            Assert.Equal($"\"{new string('x', 3998)}…", big.GetProperty("value").GetString());
+        }
+        JsonElement next = await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "big.Substring(3998, 3998)" });
+        Assert.True(next.GetProperty("value").GetString() == $"\"{new string('x', 3998)}\"" && !next.TryGetProperty("cut", out _),
+            $"The read a cut offered did not give the next part whole: {next.GetRawText()[..Math.Min(200, next.GetRawText().Length)]}");
+        Assert.Equal("\"xxend\"", (await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "big.Substring(999_998)" })).GetProperty("value").GetString());
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>A debugged test run an agent goes on with from its stop answers, as its test host ends, with the tally and
     /// failures tests_run gives; its stop answers that it is paused there, never an earlier run's tally.</summary>
     [Fact]

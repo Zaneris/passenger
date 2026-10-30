@@ -1724,17 +1724,26 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             SetExpressionResponse set = await paused.SetExpressionAsync(expression, value, chosen.Id);
             await Session.Debug.RefreshAsync();
-            return new VariableInfo(expression, set.Value, set.Type, set.VariablesReference);
+            return Variable(expression, set.Value, set.Type, set.VariablesReference, expression);
         }
         EvaluateResponse result = await paused.EvaluateAsync(expression, chosen.Id, "repl");
-        return new VariableInfo(expression, result.Result, result.Type, result.VariablesReference);
+        return Variable(expression, result.Result, result.Type, result.VariablesReference, expression);
     });
 
     private Task<IReadOnlyList<VariableInfo>> DebugVariables(int reference, string? session, CancellationToken cancel) => OnUi(cancel, async () =>
     {
         DebugSession paused = await Paused(session);
-        return (IReadOnlyList<VariableInfo>)[.. (await Session.Debug.MembersAsync(paused, reference)).Select(v => new VariableInfo(v.Name, v.Value, v.Type, v.VariablesReference))];
+        return (IReadOnlyList<VariableInfo>)[.. (await Session.Debug.MembersAsync(paused, reference))
+            .Select(v => Variable(v.Name, v.Value, v.Type, v.VariablesReference, v.EvaluateName is { } named && named != v.Name ? named : null))];
     });
+
+    /// <summary>A variable as a debug answer gives it, its value cut where it runs long (<see cref="AgentAnswers.Value"/>),
+    /// read on by debug_evaluate of <paramref name="expression"/> where one names it at the stopped frame.</summary>
+    private static VariableInfo Variable(string name, string value, string? type, int reference, string? expression)
+    {
+        (string shown, string? cut) = AgentAnswers.Value(value, expression);
+        return new VariableInfo(name, shown, type, reference) { Cut = cut };
+    }
 
     /// <summary>output's debug: the last lines the debugged program has written, its Debug tab's console or a terminal
     /// configuration's tab, scrollback and screen.</summary>
@@ -1963,13 +1972,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         List<VariableInfo> locals = [];
         if (shown && debugger.BindingStop is { } failed)
         {
-            locals.Add(new VariableInfo(BindingStop.Name, failed.Value, failed.Type, failed.Reference));
+            locals.Add(Variable(BindingStop.Name, failed.Value, failed.Type, failed.Reference, null));
         }
         if (top is not null)
         {
             foreach (DapScope scope in await session.ScopesAsync(top.Id))
             {
-                locals.AddRange((await session.VariablesAsync(scope.VariablesReference)).Select(v => new VariableInfo(v.Name, v.Value, v.Type, v.VariablesReference)));
+                locals.AddRange((await session.VariablesAsync(scope.VariablesReference)).Select(v => Variable(v.Name, v.Value, v.Type, v.VariablesReference, v.EvaluateName ?? v.Name)));
             }
         }
         string? exception = null;
@@ -2601,7 +2610,11 @@ public sealed record BreakpointInfo(string? Path, int? Line, bool Enabled, strin
     string? Message, string? Exception = null, IReadOnlyList<string>? Scenarios = null, string? Data = null, string? Attribute = null, string? Property = null,
     bool? BindingErrors = null, string? Control = null, int? Column = null);
 
-public sealed record VariableInfo(string Name, string Value, string? Type, int Reference);
+public sealed record VariableInfo(string Name, string Value, string? Type, int Reference)
+{
+    /// <summary>Where the value runs past what an answer shows: its length and how debug_evaluate reads on.</summary>
+    public string? Cut { get; init; }
+}
 
 /// <summary>A .NET program the debugger can attach to, as Attach to Process lists it, its command line's secrets masked.</summary>
 public sealed record ProcessInfo(int ProcessId, string Executable, string Program, string User, string CommandLine, string? Container = null);
