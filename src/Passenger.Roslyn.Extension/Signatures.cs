@@ -639,11 +639,11 @@ internal static class Signatures
         }
     }
 
-    /// <summary>What a call passes in the new signature: for each place, the argument it already passes for that
-    /// parameter (by its index in the call, several for a params array or collection spread out) with the keyword its
-    /// passing now takes, or the value a new parameter is given; every argument after a parameter left to its default is
-    /// named. No plan for a call whose arguments do not all bind, which is left as it is, and named where the calls change;
-    /// nor for one passing an argument the parameter can no longer take as it is passed now, said why.</summary>
+    /// <summary>What a call passes in the new signature: for each place, the argument it already passes for that parameter
+    /// (by its index in the call, several for a params array or collection spread out) with the keyword its passing now
+    /// takes, or a new parameter's value; named after a parameter left to its default, or all named in the order written
+    /// where the new one would run them otherwise (<see cref="RunsOtherwise"/>). No plan for a call whose arguments do not
+    /// all bind, nor for one passing an argument the parameter can no longer take as it is passed now, said why.</summary>
     private static (List<Passed>? Plan, string? Unpassed) Plan(SemanticModel model, SyntaxNode call, IMethodSymbol method, SignatureChange change, CancellationToken cancel)
     {
         if (ArgumentsOf(call) is not { } list || model.GetOperation(call, cancel) is not { } operation)
@@ -688,6 +688,7 @@ internal static class Signatures
         }
         List<Passed> plan = [];
         bool named = false;
+        bool spreads = false;
         foreach (ParameterChange parameter in change.Parameters)
         {
             if (reduced && parameter.From == 0)
@@ -703,6 +704,7 @@ internal static class Signatures
                     continue;
                 }
                 bool spread = passed.Length > 1 || method.Parameters[parameter.From].IsParams;
+                spreads |= spread;
                 RefKind passing = RefKindNamed(parameter.Modifier);
                 string? keyword = null;
                 if (!spread && method.Parameters[parameter.From].RefKind != passing)
@@ -716,24 +718,69 @@ internal static class Signatures
                 }
                 foreach (int index in passed)
                 {
-                    plan.Add(new Passed(index, null, named && !spread ? parameter.Name : null, keyword));
+                    plan.Add(new Passed(index, null, named && !spread ? parameter.Name : null, parameter.Name, keyword));
                 }
             }
             else if (parameter.CallValue.Trim().Length > 0)
             {
-                plan.Add(new Passed(-1, parameter.CallValue.Trim(), named ? parameter.Name : null));
+                plan.Add(new Passed(-1, parameter.CallValue.Trim(), named ? parameter.Name : null, parameter.Name));
             }
             else
             {
                 named = true;
             }
         }
+        // A params argument cannot be named, nor follow the others named out of place.
+        if (!spreads && RunsOtherwise(model, list, plan, cancel))
+        {
+            plan = [.. plan.Where(p => p.Index >= 0).OrderBy(p => p.Index).Concat(plan.Where(p => p.Index < 0)).Select(p => p with { Name = p.Parameter })];
+        }
         return (plan, null);
     }
 
-    /// <summary>One argument of a call in the new signature: the one at an index of the call as it was, or a new value;
-    /// named when it must be, and given the keyword its passing takes where that changed (empty for none).</summary>
-    private sealed record Passed(int Index, string? Value, string? Name, string? Keyword = null);
+    /// <summary>One argument of a call in the new signature: the one at an index of the call as it was, or a new value,
+    /// for the parameter named <paramref name="Parameter"/>; named when it must be, and given the keyword its passing takes
+    /// where that changed (empty for none).</summary>
+    private sealed record Passed(int Index, string? Value, string? Name, string Parameter, string? Keyword = null);
+
+    /// <summary>Whether a plan runs a call's arguments in another order where that can change what they do: one that may
+    /// change state (<see cref="Acts"/>) moved past another that is no constant.</summary>
+    private static bool RunsOtherwise(SemanticModel model, BaseArgumentListSyntax list, List<Passed> plan, CancellationToken cancel)
+    {
+        int[] kept = [.. plan.Where(p => p.Index >= 0).Select(p => p.Index)];
+        for (int i = 0; i < kept.Length; i++)
+        {
+            for (int j = i + 1; j < kept.Length; j++)
+            {
+                if (kept[i] < kept[j])
+                {
+                    continue;
+                }
+                ExpressionSyntax first = list.Arguments[kept[j]].Expression;
+                ExpressionSyntax second = list.Arguments[kept[i]].Expression;
+                if (Acts(first) && !Inert(model, second, cancel) || Acts(second) && !Inert(model, first, cancel))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Whether evaluating an expression may change state: it calls, makes an object, assigns, increments or
+    /// decrements, awaits or throws, outside the lambdas it holds, which run only when called.</summary>
+    private static bool Acts(ExpressionSyntax expression) =>
+        expression.DescendantNodesAndSelf(node => node is not (AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)).Any(node =>
+            node is InvocationExpressionSyntax or BaseObjectCreationExpressionSyntax or AssignmentExpressionSyntax or AwaitExpressionSyntax
+                or ThrowExpressionSyntax or QueryExpressionSyntax
+            || node.IsKind(SyntaxKind.PreIncrementExpression) || node.IsKind(SyntaxKind.PreDecrementExpression)
+            || node.IsKind(SyntaxKind.PostIncrementExpression) || node.IsKind(SyntaxKind.PostDecrementExpression));
+
+    /// <summary>Whether an expression gives the same whatever runs before it: a constant, a default, a lambda, a typeof
+    /// or this.</summary>
+    private static bool Inert(SemanticModel model, ExpressionSyntax expression, CancellationToken cancel) =>
+        expression is AnonymousFunctionExpressionSyntax or TypeOfExpressionSyntax or DefaultExpressionSyntax or ThisExpressionSyntax or LiteralExpressionSyntax
+        || model.GetConstantValue(expression, cancel).HasValue;
 
     /// <summary>How a parameter of a modifier is passed.</summary>
     private static RefKind RefKindNamed(string modifier) => RefKindOf(modifier) switch

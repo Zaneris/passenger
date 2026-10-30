@@ -360,6 +360,33 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
             byRef.GetProperty("notApplied").EnumerateArray().Select(n => n.GetString()));
     }
 
+    /// <summary>Change Signature swapping two parameters of a method called with a call for each, and with plain values:
+    /// the calls keep the order they run in, each named, so Open still runs before Read; the plain values move with their
+    /// parameters.</summary>
+    [Fact]
+    public async Task An_agent_swapping_two_parameters_keeps_the_order_the_calls_passed_to_them_run_in()
+    {
+        await TakeFolderAsync();
+        const string Pipe = "namespace Shop;\n\npublic static class Pipe\n{\n    public static string Copy(string from, string to) => from + to;\n\n"
+            + "    public static string Open() => \"open\";\n\n    public static string Read() => \"read\";\n}\n";
+        const string Copying = "namespace Shop;\n\npublic static class Copying\n{\n    public static string Run() => Pipe.Copy(Pipe.Open(), Pipe.Read()) + Pipe.Copy(\"a\", \"b\");\n}\n";
+        Shop(("Pipe.cs", Pipe), ("Copying.cs", Copying));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        JsonElement swapped = await Call(client, McpTools.Refactor, Place("change_signature", "Pipe.cs", Pipe, "string Cop", new
+        {
+            parameters = new object[] { new { from = "to" }, new { from = "from" } },
+        }));
+        Assert.Equal(["Copying.cs changed", "Pipe.cs changed"], Files(swapped));
+        Assert.Empty(swapped.GetProperty("notApplied").EnumerateArray());
+        Assert.Contains("Copy(string to, string from)", File.ReadAllText(PathOf("Pipe.cs")), StringComparison.Ordinal);
+        string copying = File.ReadAllText(PathOf("Copying.cs"));
+        Assert.True(copying == Copying.Replace("Pipe.Copy(Pipe.Open(), Pipe.Read()) + Pipe.Copy(\"a\", \"b\")",
+            "Pipe.Copy(from: Pipe.Open(), to: Pipe.Read()) + Pipe.Copy(\"b\", \"a\")", StringComparison.Ordinal),
+            $"Swapping Copy's parameters ran Read before Open, or moved the plain values otherwise:\n{copying}");
+        await Compiles(client, "Copy's parameters were swapped");
+    }
+
     [Fact]
     public async Task An_agent_that_writes_a_new_class_and_its_caller_and_at_once_renames_it_or_asks_its_usages_has_the_caller_counted()
     {
