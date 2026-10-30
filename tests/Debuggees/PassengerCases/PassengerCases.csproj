@@ -12,6 +12,8 @@
 
 	<ItemGroup>
 		<ProjectReference Include="../PassengerCasesProxies/PassengerCasesProxies.csproj" />
+		<!-- A library the program loads into load contexts of its own. -->
+		<ProjectReference Include="../LinkedLibrary/LinkedLibrary.csproj" />
 	</ItemGroup>
 
 </Project>

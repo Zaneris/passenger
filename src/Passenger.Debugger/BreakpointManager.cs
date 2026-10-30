@@ -27,7 +27,9 @@ public class BreakpointManager
         public bool IsFunctionBreakpoint => FunctionName is not null;
         public string? Message { get; set; }
         public ModuleMetadataReader.ResolvedBreakpoint? ResolvedBreakpointFromPdb { get; set; }
-        public CORDB_ADDRESS? ModuleBaseAddress { get; set; }
+
+        /// <summary>The module a line breakpoint is bound in.</summary>
+        public ModuleInfo? Module { get; set; }
 
         /// <summary>Conditional expression to evaluate when breakpoint is hit</summary>
         public string? Condition { get; set; }
@@ -60,7 +62,6 @@ public class BreakpointManager
     /// modules over one image, and code runs in either.</summary>
     public record FunctionBreakpointBinding(
         ICorDebugFunctionBreakpoint CorBreakpoint,
-        CORDB_ADDRESS ModuleBaseAddress,
         int MethodToken,
         ModuleMetadataReader.ResolvedBreakpoint Source,
         ModuleInfo Module);

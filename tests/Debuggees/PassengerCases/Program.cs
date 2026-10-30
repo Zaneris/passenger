@@ -90,6 +90,11 @@ if (args is ["reckoning"])
 	Reckoning.Run();
 	return;
 }
+if (args is ["contexts"])
+{
+	Contexts.Run();
+	return;
+}
 if (args is ["named main"])
 {
 	// Main's thread named as an app may name its UI thread: the debugger still knows it for Main's.
@@ -750,6 +755,25 @@ internal static class Finally
 		Console.WriteLine("a finally next"); // stop before an evaluation spins or sleeps in a finally block
 		freer.Join();
 		Console.WriteLine($"let out, {Turns} turns"); // stop once the evaluation has been let out
+	}
+}
+
+// LinkedLibrary loaded into two load contexts of its own, one image and two modules, each context's code called in turn.
+internal static class Contexts
+{
+	public static void Run()
+	{
+		string path = Path.Combine(AppContext.BaseDirectory, "LinkedLibrary.dll");
+		MethodInfo[] twices = new MethodInfo[2];
+		for (int i = 0; i < twices.Length; i++)
+		{
+			System.Runtime.Loader.AssemblyLoadContext context = new($"context {i + 1}");
+			twices[i] = context.LoadFromAssemblyPath(path).GetType("LinkedLibrary.Entry")!.GetMethod("Twice")!;
+		}
+		Console.WriteLine("contexts loaded");
+		int first = (int)twices[0].Invoke(null, [10])!;
+		int second = (int)twices[1].Invoke(null, [11])!;
+		Console.WriteLine($"contexts {first} {second}");
 	}
 }
 

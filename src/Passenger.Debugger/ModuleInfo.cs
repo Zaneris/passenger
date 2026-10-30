@@ -28,9 +28,8 @@ public class ModuleInfo : IDisposable
     public ModuleMetadataReader MetadataReader { get; private set; }
     public bool SymbolsFromDecompiled { get; set; }
 
-    /// <summary>
-    /// Base address of the module in memory, which keys it; one emitted as the program runs has none, and a key of its own.
-    /// </summary>
+    /// <summary>Base address of the module's image in memory, which another module of the same image shares (the assembly
+    /// loaded into another load context); one emitted as the program runs has none, and a key of its own.</summary>
     public CORDB_ADDRESS BaseAddress { get; }
     public bool IsUserCode { get; }
 

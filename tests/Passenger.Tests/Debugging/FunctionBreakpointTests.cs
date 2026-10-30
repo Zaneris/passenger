@@ -225,6 +225,32 @@ public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
         topFrame2.ShouldBeAtSourceLocation("OverloadedMethodsClass.cs", "public static void OverloadedMethod(int intParam, MyClass? myClass)", 2, 3);
     }
 
+    /// <summary>One library loaded into two load contexts is two modules over one image at one address: a function
+    /// breakpoint set once both have loaded stops in the code each context runs, the first context's call first.</summary>
+    [Fact]
+    public async Task A_function_breakpoint_stops_in_a_library_loaded_into_each_of_two_load_contexts()
+    {
+        int loaded = Debuggees.Line("PassengerCases", "Console.WriteLine(\"contexts loaded\");");
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["contexts"])
+            .WaitForInitializedEvent();
+        await host.BreakpointsAsync(loaded, Debuggees.Source("PassengerCases", "Program.cs")).ConfigurationDoneAsync();
+        Assert.Equal(loaded, (await host.WaitForStoppedEvent()).ReadStopInfo().line);
+
+        SetBreakpointsResponse set = await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints,
+            new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("LinkedLibrary.Entry.Twice")]));
+        Assert.True(set.Breakpoints.Single().Verified, $"The function breakpoint did not bind: {set.Breakpoints.Single().Message}");
+        foreach ((string context, string value) in new[] { ("first", "10"), ("second", "11") })
+        {
+            StoppedEvent stop = await host.ContinueAsync().WaitForStoppedEvent();
+            string given = Assert.Single(await host.LocalsAsync(stop), v => v.Name == "value").Value;
+            Assert.True(given == value, $"The {context} load context's call of Twice, given {value}, was to stop, but the stop was in the call given {given}: "
+                + "the breakpoint was bound in one context's module alone");
+        }
+    }
+
     /// <summary>The line of a method's opening brace in a file of DebuggableConsoleApp, where a function breakpoint stops.</summary>
     internal static int Opened(string file, string declaration) => Debuggees.Line("DebuggableConsoleApp", file, declaration) + 1;
 }

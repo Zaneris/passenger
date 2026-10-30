@@ -389,7 +389,7 @@ public partial class ManagedDebugger
         {
             if (!breakpoint.IsFunctionBreakpoint)
             {
-                if (breakpoint.ModuleBaseAddress == module.BaseAddress)
+                if (ReferenceEquals(breakpoint.Module, module))
                 {
                     breakpoint.Request = null;
                 }

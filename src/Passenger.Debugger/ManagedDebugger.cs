@@ -34,7 +34,9 @@ public partial class ManagedDebugger
     private int? _mainThreadId;
     /// <summary>The operating system's thread the launched program was started on, which runs its Main, where it can be told.</summary>
     private int? _initialThreadId;
-    private readonly Dictionary<CORDB_ADDRESS, ModuleInfo> _modules = new();
+    /// <summary>The loaded modules, each by the runtime's own object for it, never by its base address: one assembly loaded
+    /// into two load contexts is two modules over one image, at one address, with code of its own in each.</summary>
+    private readonly Dictionary<ICorDebugModule, ModuleInfo> _modules = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<COR_TYPEID> _initializedStaticTypes = [];
     private ICorDebugFunction? _suppressFinalizeFunction;
     /// <summary>
@@ -57,7 +59,7 @@ public partial class ManagedDebugger
     private bool _justMyCode;
     private bool _stopAtEntry;
     private EntryBreakpoint? _entryBreakpoint;
-    private sealed record EntryBreakpoint(ICorDebugFunctionBreakpoint CorBreakpoint, CORDB_ADDRESS ModuleBaseAddress, int MethodToken, int IlOffset);
+    private sealed record EntryBreakpoint(ICorDebugFunctionBreakpoint CorBreakpoint, ModuleInfo Module, int MethodToken, int IlOffset);
 
     // The active exception filters and optional type conditions supplied by the DAP client.
     private IReadOnlyList<ExceptionBreakpointRequest> _exceptionBreakpoints = [];
@@ -839,7 +841,7 @@ public partial class ManagedDebugger
             ICorDebugFunction function = targetModule.Module.GetFunctionFromToken(resolved.MethodToken);
             ICorDebugCode ilCode = function.ILCode;
 
-            ICorDebugFunctionBreakpoint corBreakpoint = TryGetEntryBreakpoint(targetModule.BaseAddress, resolved.MethodToken, resolved.BindOffset)
+            ICorDebugFunctionBreakpoint corBreakpoint = TryGetEntryBreakpoint(targetModule, resolved.MethodToken, resolved.BindOffset)
                 ?? ilCode.CreateBreakpoint(resolved.BindOffset);
             if (corBreakpoint != _entryBreakpoint?.CorBreakpoint)
             {
@@ -853,7 +855,7 @@ public partial class ManagedDebugger
             bp.EndLine = resolved.EndLine;
             bp.EndColumn = resolved.EndColumn;
             bp.ResolvedBreakpointFromPdb = resolved;
-            bp.ModuleBaseAddress = targetModule.BaseAddress;
+            bp.Module = targetModule;
             bp.Message = null;
 
             _logger?.Invoke($"Breakpoint bound at {bp.FilePath}:{bp.Line} -> resolved to line {resolved.StartLine}, IL offset {resolved.ILOffset}"
@@ -905,14 +907,14 @@ public partial class ManagedDebugger
                     continue;
                 }
                 ICorDebugFunction function = module.Module.GetFunctionFromToken(resolved.MethodToken);
-                ICorDebugFunctionBreakpoint corBreakpoint = TryGetEntryBreakpoint(module.BaseAddress, resolved.MethodToken, resolved.Source.ILOffset)
+                ICorDebugFunctionBreakpoint corBreakpoint = TryGetEntryBreakpoint(module, resolved.MethodToken, resolved.Source.ILOffset)
                     ?? function.ILCode.CreateBreakpoint(resolved.Source.ILOffset);
                 if (corBreakpoint != _entryBreakpoint?.CorBreakpoint)
                 {
                     corBreakpoint.Activate(true);
                 }
 
-                bp.FunctionBindings.Add(new BreakpointManager.FunctionBreakpointBinding(corBreakpoint, module.BaseAddress, resolved.MethodToken, resolved.Source, module));
+                bp.FunctionBindings.Add(new BreakpointManager.FunctionBreakpointBinding(corBreakpoint, resolved.MethodToken, resolved.Source, module));
                 bp.Verified = true;
                 bp.Message = null;
             }
@@ -947,9 +949,9 @@ public partial class ManagedDebugger
         }
     }
 
-    private ICorDebugFunctionBreakpoint? TryGetEntryBreakpoint(CORDB_ADDRESS moduleBaseAddress, int methodToken, int ilOffset)
+    private ICorDebugFunctionBreakpoint? TryGetEntryBreakpoint(ModuleInfo module, int methodToken, int ilOffset)
     {
-        return _entryBreakpoint is { } entry && entry.ModuleBaseAddress == moduleBaseAddress &&
+        return _entryBreakpoint is { } entry && ReferenceEquals(entry.Module, module) &&
             entry.MethodToken == methodToken && entry.IlOffset == ilOffset
             ? entry.CorBreakpoint
             : null;
@@ -1003,21 +1005,23 @@ public partial class ManagedDebugger
     /// <summary>Keys of modules emitted as the program runs, which have no image and so all have base address 0.</summary>
     private ulong _lastEmittedModuleKey = ulong.MaxValue;
 
-    /// <summary>The module tracked for one the runtime names, null if the debugger could not read it: by its base address,
-    /// or, for one emitted as the program runs, by itself, its metadata read again if the runtime has added to it.</summary>
+    /// <summary>The module tracked for one the runtime names, null if the debugger could not read it: by the runtime's object
+    /// for it, else by its base address, or, for one emitted as the program runs, by its metadata's id; an emitted one's
+    /// metadata read again if the runtime has added to it.</summary>
     internal ModuleInfo? FindModule(ICorDebugModule module, bool reread = true)
     {
-        CORDB_ADDRESS address = module.BaseAddress;
-        if (address.Value != 0)
+        if (!_modules.TryGetValue(module, out ModuleInfo? found))
         {
-            return _modules.GetValueOrDefault(address);
-        }
-        List<ModuleInfo> emitted = [.. _modules.Values.Where(info => info.IsDynamic)];
-        ModuleInfo? found = emitted.Find(info => ReferenceEquals(info.Module, module));
-        if (found is null && emitted.Count > 0 && module.TryGetMetaDataInterface(out IMetaDataImport? metadata) is Cor.S_OK && metadata is not null)
-        {
-            Guid mvid = metadata.ScopeProps.pmvid;
-            found = emitted.Find(info => info.MetadataReader.Mvid == mvid);
+            CORDB_ADDRESS address = module.BaseAddress;
+            if (address.Value != 0)
+            {
+                return _modules.Values.FirstOrDefault(info => !info.IsDynamic && info.BaseAddress == address);
+            }
+            if (_modules.Values.Any(info => info.IsDynamic) && module.TryGetMetaDataInterface(out IMetaDataImport? metadata) is Cor.S_OK && metadata is not null)
+            {
+                Guid mvid = metadata.ScopeProps.pmvid;
+                found = _modules.Values.FirstOrDefault(info => info.IsDynamic && info.MetadataReader.Mvid == mvid);
+            }
         }
         if (reread && found is { Stale: true } && ReadEmittedMetadata(found.Module) is { } current)
         {

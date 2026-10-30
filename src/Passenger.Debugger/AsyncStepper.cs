@@ -62,12 +62,12 @@ internal sealed partial class AsyncStepper
     /// is a class (a Debug build's), read with nothing run in the program, else the id its builder gives a debugger.</summary>
     private sealed record RunId(ICorDebugHandleValue Handle, bool IsStateMachine);
 
-    private readonly Dictionary<CORDB_ADDRESS, ModuleInfo> _modules;
+    private readonly Dictionary<ICorDebugModule, ModuleInfo> _modules;
     // Every call comes under the engine's lock (a request or a runtime event at a time), so the stepper needs no lock of its own.
     private AsyncStep? _currentAsyncStep;
     private AsyncBreakpoint? _notifyDebuggerBreakpoint;
 
-    public AsyncStepper(Dictionary<CORDB_ADDRESS, ModuleInfo> modules, ManagedDebugger debugger)
+    public AsyncStepper(Dictionary<ICorDebugModule, ModuleInfo> modules, ManagedDebugger debugger)
     {
         _modules = modules;
         _debugger = debugger;

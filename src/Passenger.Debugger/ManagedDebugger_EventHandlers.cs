@@ -127,7 +127,7 @@ public partial class ManagedDebugger
         }
 
         ModuleInfo moduleInfo = new ModuleInfo(corModule, modulePath, metadataReader, isUserCode, emitted ? new CORDB_ADDRESS(_lastEmittedModuleKey--) : null);
-        _modules[moduleInfo.BaseAddress] = moduleInfo;
+        _modules[corModule] = moduleInfo;
         if (!emitted)
         {
             EnableEditAndContinue(corModule, moduleInfo);
@@ -190,10 +190,9 @@ public partial class ManagedDebugger
             Continue(clearVariables: false);
             return;
         }
-        CORDB_ADDRESS baseAddress = moduleInfo.BaseAddress;
-        _modules.Remove(baseAddress);
+        _modules.Remove(moduleInfo.Module);
 
-        _logger?.Invoke($"Module unloaded: {moduleInfo.ModulePath} from 0x{(long)baseAddress:X}");
+        _logger?.Invoke($"Module unloaded: {moduleInfo.ModulePath} from 0x{(long)moduleInfo.BaseAddress:X}");
         moduleInfo.Dispose();
         ModuleSet_Version++;
 
@@ -201,7 +200,7 @@ public partial class ManagedDebugger
         {
             if (breakpoint.IsFunctionBreakpoint)
             {
-                int removedBindingCount = breakpoint.FunctionBindings.RemoveAll(binding => binding.ModuleBaseAddress == baseAddress);
+                int removedBindingCount = breakpoint.FunctionBindings.RemoveAll(binding => ReferenceEquals(binding.Module, moduleInfo));
                 if (removedBindingCount is 0 || breakpoint.FunctionBindings.Count > 0)
                 {
                     continue;
@@ -213,14 +212,14 @@ public partial class ManagedDebugger
                 continue;
             }
 
-            if (breakpoint.ModuleBaseAddress != baseAddress)
+            if (!ReferenceEquals(breakpoint.Module, moduleInfo))
             {
                 continue;
             }
 
             breakpoint.CorBreakpoint = null;
             breakpoint.ResolvedBreakpointFromPdb = null;
-            breakpoint.ModuleBaseAddress = null;
+            breakpoint.Module = null;
             breakpoint.Verified = false;
             breakpoint.Message = "The breakpoint will not currently be hit. No symbols have been loaded for this document.";
             TryBindBreakpoint(breakpoint);
@@ -431,7 +430,7 @@ public partial class ManagedDebugger
             ICorDebugFunction function = moduleInfo.Module.GetFunctionFromToken(entryPoint.MethodToken);
             ICorDebugFunctionBreakpoint corBreakpoint = function.ILCode.CreateBreakpoint(entryPoint.ILOffset);
             corBreakpoint.Activate(true);
-            _entryBreakpoint = new EntryBreakpoint(corBreakpoint, moduleInfo.BaseAddress, entryPoint.MethodToken, entryPoint.ILOffset);
+            _entryBreakpoint = new EntryBreakpoint(corBreakpoint, moduleInfo, entryPoint.MethodToken, entryPoint.ILOffset);
             _logger?.Invoke($"Entry breakpoint bound in {moduleInfo.ModuleName} at method 0x{entryPoint.MethodToken:X}, IL offset {entryPoint.ILOffset}");
         }
         catch (Exception ex) when (Failures.OfRuntime(ex))
