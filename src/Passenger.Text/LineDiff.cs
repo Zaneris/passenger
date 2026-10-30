@@ -144,6 +144,80 @@ public static class LineDiff
         return text.ToString();
     }
 
+    /// <summary>How the lines two texts have alike (those no hunk takes in) changed their separators, in words ("Line
+    /// separators changed: 3 lines from LF to CRLF; LF added at the end"), which a comparison of their lines alone never
+    /// sees; null where none did.</summary>
+    public static string? SeparatorChanges(string before, string after)
+    {
+        string[] a = Lines(before);
+        string[] b = Lines(after);
+        return SeparatorChanges(Hunks(a, b), a.Length, b.Length, Separators(before, a.Length), Separators(after, b.Length));
+    }
+
+    /// <summary><see cref="SeparatorChanges(string, string)"/> over each side's lines' separators as their texts end them:
+    /// "LF", "CRLF", or empty for a last line that ends with none.</summary>
+    public static string? SeparatorChanges(IReadOnlyList<DiffHunk> hunks, int beforeLines, int afterLines, Func<int, string> before, Func<int, string> after)
+    {
+        List<(string From, string To, int Lines)> changed = [];
+        void Pair(int line, int other)
+        {
+            (string from, string to) = (before(line), after(other));
+            if (from == to)
+            {
+                return;
+            }
+            int at = changed.FindIndex(c => c.From == from && c.To == to);
+            if (at < 0)
+            {
+                changed.Add((from, to, 1));
+            }
+            else
+            {
+                changed[at] = (from, to, changed[at].Lines + 1);
+            }
+        }
+        int i = 0;
+        int j = 0;
+        foreach (DiffHunk hunk in hunks)
+        {
+            for (; i < hunk.OldStart && j < hunk.NewStart; i++, j++)
+            {
+                Pair(i, j);
+            }
+            i = hunk.OldStart + hunk.OldCount;
+            j = hunk.NewStart + hunk.NewCount;
+        }
+        for (; i < beforeLines && j < afterLines; i++, j++)
+        {
+            Pair(i, j);
+        }
+        if (changed.Count == 0)
+        {
+            return null;
+        }
+        // Only a text's last line ends with no separator.
+        return "Line separators changed: " + string.Join("; ", changed.Select(c => (c.From, c.To) switch
+        {
+            ("", _) => $"{c.To} added at the end",
+            (_, "") => $"{c.From} removed from the end",
+            _ => $"{c.Lines} {(c.Lines == 1 ? "line" : "lines")} from {c.From} to {c.To}",
+        }));
+    }
+
+    /// <summary>Each of a text's <see cref="Lines"/>' separator, as <see cref="SeparatorChanges(IReadOnlyList{DiffHunk}, int, int, Func{int, string}, Func{int, string})"/> takes them.</summary>
+    private static Func<int, string> Separators(string text, int lines)
+    {
+        string[] separators = new string[lines];
+        int start = 0;
+        for (int i = 0; i < lines; i++)
+        {
+            int feed = text.IndexOf('\n', start);
+            separators[i] = feed < 0 ? string.Empty : feed > start && text[feed - 1] == '\r' ? "CRLF" : "LF";
+            start = feed + 1;
+        }
+        return line => separators[line];
+    }
+
     /// <summary>The lines each with its own ending, so that together they are the text exactly.</summary>
     private static string[] WholeLines(string text)
     {

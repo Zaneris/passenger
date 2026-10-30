@@ -28,7 +28,10 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private DiffHighlighting highlighting;
     private int comparing;
     private int wording;
+    private int separating;
     private bool following;
+    private string? separators;
+    private string? note;
 
     /// <param name="diff">The last commit's text (empty for a file it does not have) compared with the file's.</param>
     /// <param name="mine">The file's text now: the open file's document, or a copy when it is not open.</param>
@@ -207,14 +210,51 @@ public sealed class DiffView : DockPanel, IOwnKeys
             : h.NewCount == 0 ? new ChangeMark(h.OldStart, h.OldCount, ChangeMarkKind.Deleted)
             : new ChangeMark(h.OldStart, h.OldCount, ChangeMarkKind.Modified))]);
         Right.SetChangeMarks(off ? [] : diff.Marks);
-        count.Text = off ? "Differences highlighting is off" : Hunks.Count switch
+        Count();
+        bands.InvalidateVisual();
+        IdeErrors.Observe(ShowWordsAsync(diff));
+        IdeErrors.Observe(ShowSeparatorsAsync(diff));
+    }
+
+    /// <summary>What else differs than the lines, which the count says after theirs: the file's mode, as its change
+    /// says it.</summary>
+    public string? Note
+    {
+        get => note;
+        set
+        {
+            note = value;
+            Count();
+        }
+    }
+
+    /// <summary>What the bar says of the differences: how many, then what differs besides the lines, alone where the
+    /// lines do not.</summary>
+    public string Said => count.Text ?? string.Empty;
+
+    private void Count()
+    {
+        string lines = highlighting == DiffHighlighting.None ? "Differences highlighting is off" : Hunks.Count switch
         {
             0 => "No differences",
             1 => "1 difference",
             _ => $"{Hunks.Count} differences",
         };
-        bands.InvalidateVisual();
-        IdeErrors.Observe(ShowWordsAsync(diff));
+        string[] besides = [.. new[] { separators, note }.OfType<string>()];
+        count.Text = besides.Length == 0 ? lines : string.Join("; ", Hunks.Count == 0 && highlighting != DiffHighlighting.None ? besides : [lines, .. besides]);
+    }
+
+    /// <summary>Says how the lines alike on both sides changed their separators, worked out off the window's thread; a
+    /// newer comparison's answer wins.</summary>
+    private async Task ShowSeparatorsAsync(FileDiff diff)
+    {
+        int generation = ++separating;
+        string? changed = await BackgroundWork.Run(() => diff.SeparatorChanges());
+        if (generation == separating)
+        {
+            separators = changed;
+            Count();
+        }
     }
 
     /// <summary>Marks the words that differ inside the changed lines, worked out off the window's thread; a newer

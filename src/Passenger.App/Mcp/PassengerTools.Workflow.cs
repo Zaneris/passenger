@@ -80,15 +80,23 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException(Session.Vcs.NoRepository);
         }
+        // Git's own words for a change of mode come first, as its diff says it.
+        string? mode = Session.Vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, full))?.Mode?.Unified;
         if (await Session.Vcs.BinaryChangeAsync(full) is { } binary)
         {
-            return binary.Unified(name);
+            return Joined(mode, binary.Same ? null : binary.Unified(name));
         }
         string head = await Session.Vcs.HeadTextAsync(full) ?? string.Empty;
         Passenger.App.Editors.OpenTexts texts = Editors.Texts();
         // Reading and comparing a large file would hold the person's window: the thread pool does both.
-        string diff = await BackgroundWork.Run(() => LineDiff.Unified(head, texts.Text(full) ?? string.Empty, name), cancel);
-        return diff.Length == 0 ? "No changes" : diff;
+        (string diff, string? separators) = await BackgroundWork.Run(() =>
+        {
+            string mine = texts.Text(full) ?? string.Empty;
+            return (LineDiff.Unified(head, mine, name), LineDiff.SeparatorChanges(head, mine));
+        }, cancel);
+        return Joined(mode, separators, diff.Length == 0 ? null : diff);
+
+        static string Joined(params string?[] parts) => parts.OfType<string>().ToArray() is { Length: > 0 } said ? string.Join('\n', said) : "No changes";
     });
 
     [McpServerTool(Name = McpTools.VcsCommit, Title = "Commit", Destructive = true), Description(

@@ -60,6 +60,31 @@ public sealed class FileDiff
     private static FileDiff Compare(string head, string[] headLines, int[] headStarts, TextSnapshot text) =>
         new(head, headLines, headStarts, text, LineDiff.Hunks(headLines, LineDiff.Lines(text.ToString())));
 
+    /// <summary>How the lines alike on both sides changed their separators, in words, which the hunks never show (a file
+    /// turned from LF to CRLF); null where none did.</summary>
+    public string? SeparatorChanges()
+    {
+        TextSnapshot text = Text;
+        int lines = text.Length == 0 ? 0 : text.LineCount - (text[text.Length - 1] == '\n' ? 1 : 0);
+        return LineDiff.SeparatorChanges(Hunks, headLines.Length, lines, HeadSeparator, line => text.GetLine(line).BreakLength switch
+        {
+            0 => string.Empty,
+            1 => "LF",
+            _ => "CRLF",
+        });
+    }
+
+    /// <summary>A line of the last commit's text's separator: "LF", "CRLF", or empty for a last line that ends with none.</summary>
+    private string HeadSeparator(int line)
+    {
+        if (line + 1 >= headStarts.Length)
+        {
+            return string.Empty;
+        }
+        int feed = headStarts[line + 1] - 1;
+        return feed > headStarts[line] && Head[feed - 1] == '\r' ? "CRLF" : "LF";
+    }
+
     /// <summary>Where each line of a text starts, as a document of it numbers them.</summary>
     private static int[] Starts(string text)
     {

@@ -19,9 +19,10 @@ public enum ChangeKind
     Conflicted,
 }
 
-/// <summary>A changed file of the working tree: its path (absolute), how it changed, where it came from if renamed, and
-/// what changed in it where it is a submodule.</summary>
-public sealed record FileChange(string Path, ChangeKind Kind, string? From = null, SubmoduleChange Submodule = SubmoduleChange.None)
+/// <summary>A changed file of the working tree: its path (absolute), how it changed, where it came from if renamed, what
+/// changed in it where it is a submodule, and its mode where that changed since the last commit.</summary>
+public sealed record FileChange(string Path, ChangeKind Kind, string? From = null, SubmoduleChange Submodule = SubmoduleChange.None,
+    ModeChange? Mode = null)
 {
     public string Name => System.IO.Path.GetFileName(Path);
 
@@ -38,6 +39,22 @@ public sealed record FileChange(string Path, ChangeKind Kind, string? From = nul
         (true, true) => "modified and untracked files",
         (true, false) => "modified files",
         _ => "untracked files",
+    };
+}
+
+/// <summary>A file's mode in the last commit and in the working tree, as git writes them (100644, 100755 executable,
+/// 120000 a symbolic link).</summary>
+public sealed record ModeChange(string Before, string After)
+{
+    /// <summary>The change as git's diff says it.</summary>
+    public string Unified => $"old mode {Before}\nnew mode {After}";
+
+    /// <summary>The change in a person's words.</summary>
+    public string Said => (Before, After) switch
+    {
+        ("100644", "100755") => "File mode changed from 100644 to 100755: now executable",
+        ("100755", "100644") => "File mode changed from 100755 to 100644: no longer executable",
+        _ => $"File mode changed from {Before} to {After}",
     };
 }
 
@@ -316,12 +333,12 @@ public sealed class Git
                 case '1':
                     // "1 XY sub mH mI mW hH hI path"
                     string[] ordinary = entry.Split(' ', 9);
-                    changes.Add(new FileChange(Full(ordinary[8]), Kind(ordinary[1]), Submodule: Submodule(ordinary[1], ordinary[2])));
+                    changes.Add(new FileChange(Full(ordinary[8]), Kind(ordinary[1]), Submodule: Submodule(ordinary[1], ordinary[2]), Mode: Mode(ordinary[3], ordinary[5])));
                     break;
                 case '2':
                     // "2 XY sub mH mI mW hH hI Xscore path", then the path it came from as its own entry.
                     string[] renamed = entry.Split(' ', 10);
-                    changes.Add(new FileChange(Full(renamed[9]), ChangeKind.Renamed, Full(entries[++i])));
+                    changes.Add(new FileChange(Full(renamed[9]), ChangeKind.Renamed, Full(entries[++i]), Mode: Mode(renamed[3], renamed[5])));
                     break;
                 case 'u':
                     // "u XY sub m1 m2 m3 mW h1 h2 h3 path": a stage git has no version at has the mode 000000.
@@ -362,6 +379,9 @@ public sealed class Git
             : SubmoduleChange.None;
 
         static bool Staged(string mode) => mode.Any(c => c != '0');
+
+        // A side's 000000 is a file added or deleted, not a mode changed.
+        static ModeChange? Mode(string head, string worktree) => head != worktree && Staged(head) && Staged(worktree) ? new ModeChange(head, worktree) : null;
     }
 
     /// <summary>Whether each blob a conflict's stages name is binary, by the blob's hash, which names those bytes for good.</summary>

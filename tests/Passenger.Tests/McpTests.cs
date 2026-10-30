@@ -552,6 +552,31 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("No changes", (await Call(client, McpTools.VcsStatus, asked)).GetString());
     }
 
+    /// <summary>vcs_status with the path of a file whose only change is its line separators says which changed on how many
+    /// lines, and of one whose only change is its mode (where git keeps modes) says the mode as git's diff does, where each
+    /// answered no changes.</summary>
+    [Fact]
+    public async Task An_agents_diff_of_a_file_changed_only_in_its_line_separators_or_its_mode_says_what_changed()
+    {
+        string repository = TestFolders.Create("mcp-separators-");
+        DeleteAtEnd(repository);
+        File.WriteAllText(Path.Combine(repository, "lines.txt"), "one\ntwo\nthree\n");
+        File.WriteAllText(Path.Combine(repository, "run.sh"), "echo run\n");
+        await TestGit.InitAsync(repository);
+        File.WriteAllText(Path.Combine(repository, "lines.txt"), "one\r\ntwo\r\nthree\r\n");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(Path.Combine(repository, "run.sh"), File.GetUnixFileMode(Path.Combine(repository, "run.sh")) | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+        }
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        Assert.Equal("Line separators changed: 3 lines from LF to CRLF", (await Call(client, McpTools.VcsStatus, new() { ["path"] = "lines.txt" })).GetString());
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Equal("old mode 100644\nnew mode 100755", (await Call(client, McpTools.VcsStatus, new() { ["path"] = "run.sh" })).GetString());
+        }
+    }
+
     /// <summary>vcs_status with the path of a file git mv renamed, one line of it changed since, answers that one line, as
     /// the file was where the last commit has it.</summary>
     [Fact]

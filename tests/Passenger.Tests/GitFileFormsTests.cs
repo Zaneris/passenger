@@ -90,5 +90,38 @@ public sealed class GitFileFormsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file whose only change is its line separators, and (where git keeps modes) one whose only change is its
+    /// mode, each listed as modified: Show Diff says which separators changed on how many lines, and the mode's change,
+    /// where it said no differences.</summary>
+    [AvaloniaFact]
+    public void Show_diff_of_a_file_changed_only_in_its_line_separators_or_its_mode_says_what_changed()
+    {
+        File.WriteAllText(Path.Combine(folder, "lines.txt"), "one\ntwo\nthree\n");
+        File.WriteAllText(Path.Combine(folder, "run.sh"), "echo run\n");
+        Git("add", "-A");
+        Git("commit", "-q", "-m", "Lines and a script");
+        File.WriteAllText(Path.Combine(folder, "lines.txt"), "one\r\ntwo\r\nthree\r\n");
+        bool modes = !OperatingSystem.IsWindows();
+        if (modes)
+        {
+            File.SetUnixFileMode(Path.Combine(folder, "run.sh"), File.GetUnixFileMode(Path.Combine(folder, "run.sh")) | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+        }
+
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.Landed(() => window.Vcs.Changes.Count == (modes ? 2 : 1), "lines.txt and run.sh listed as changed");
+        DiffWindow lines = Ui.Landed(window.ShowDiffAsync(Changed(window, "lines.txt")), "Show Diff on lines.txt")!;
+        Ui.Landed(() => lines.View.Said == "Line separators changed: 3 lines from LF to CRLF", $"Show Diff saying lines.txt's separators changed, where it says \"{lines.View.Said}\"");
+        lines.Close();
+        if (modes)
+        {
+            DiffWindow script = Ui.Landed(window.ShowDiffAsync(Changed(window, "run.sh")), "Show Diff on run.sh")!;
+            Ui.Landed(() => script.View.Said == "File mode changed from 100644 to 100755: now executable", $"Show Diff saying run.sh's mode changed, where it says \"{script.View.Said}\"");
+            script.Close();
+        }
+        window.Close();
+    }
+
+    private static string Changed(MainWindow window, string name) => window.Vcs.Changes.Single(c => c.Name == name).Path;
+
     private string Git(params string[] arguments) => TestGit.Run(folder, arguments);
 }

@@ -328,7 +328,8 @@ public partial class MainWindow
 
     /// <summary>Show Diff: the last commit's text beside the file's, in a window over this one. The right side is the
     /// open file's own text when it is open, so an edit or a change put back there is the file's, in the file's colours as
-    /// they change. A binary file has no lines to compare: the status bar says how it differs.</summary>
+    /// they change; a change of the file's mode is said over them. A binary file has no lines to compare: the status bar
+    /// says how it differs.</summary>
     public async Task<DiffWindow?> ShowDiffAsync(string path)
     {
         if (session.Vcs.Repository is null)
@@ -336,9 +337,10 @@ public partial class MainWindow
             status.Text = session.Vcs.NoRepository;
             return null;
         }
+        ModeChange? mode = session.Vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, path))?.Mode;
         if (await session.Vcs.BinaryChangeAsync(path) is { } binary)
         {
-            status.Text = binary.Said(Path.GetFileName(path));
+            status.Text = mode is null ? binary.Said(Path.GetFileName(path)) : $"{binary.Said(Path.GetFileName(path))}; {mode.Said}";
             return null;
         }
         OpenDocument? open = Editors.Find(path) is { HoldsText: true } held ? held : null;
@@ -350,7 +352,9 @@ public partial class MainWindow
             TextSnapshot text = mine.Snapshot;
             diff = await BackgroundWork.Run(() => FileDiff.Compare(head, text));
         }
-        return OpenLocalDiff(path, open, mine, diff, "HEAD");
+        DiffWindow window = OpenLocalDiff(path, open, mine, diff, "HEAD");
+        window.View.Note = mode?.Said;
+        return window;
     }
 
     /// <summary>A version's text (the last commit's, a branch's, a revision's), or another file's (Compare With, named by
