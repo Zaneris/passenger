@@ -78,6 +78,23 @@ public sealed class JsonSchemaTests
             + $"lower-case keys is not, where the file has {Said(marked)}");
     }
 
+    /// <summary>Node.js resolves an export or import condition of any name that is no subpath and no array index, a digit
+    /// or a dot in it too, so package.json marks none of them.</summary>
+    [AvaloniaFact]
+    public void Package_json_takes_export_and_import_conditions_with_digits_and_dots_as_node_resolves_them()
+    {
+        List<(string Text, string Message)> marked = Marked("package.json", """
+            {
+              "name": "conditions",
+              "private": "yes",
+              "exports": { "node20": "./a.js", "foo.bar": "./b.js" },
+              "imports": { "#lib": { "deno.land": "./deno.js", "node20": "./a.js", "default": "./b.js" } }
+            }
+
+            """, "\"yes\"");
+        Assert.True(marked.Count == 0, $"Conditions Node.js resolves are marked as wrong, where the file has {Said(marked)}");
+    }
+
     /// <summary>The file written alone in a folder of its own and opened with no C# server, read once its server has checked
     /// it against its schema: what it marks, as the text marked and the message, but the one value the test gives it of the
     /// wrong type, <paramref name="wrong"/>, whose mark says the check is in.</summary>
