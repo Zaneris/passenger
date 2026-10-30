@@ -691,11 +691,11 @@ public sealed class NewProjectDialog : IdeWindow
         {
             return $"{template.Name} comes with {pack.Id}, which is not installed: Install it first";
         }
-        if (target is null && NameProblem(SolutionName, "Solution") is { } solution)
+        if (target is null && ProjectNames.Problem(SolutionName, "Solution", namesCode: false) is { } solution)
         {
             return solution;
         }
-        if (!template.IsSolution && NameProblem(ProjectName, "Project") is { } project)
+        if (!template.IsSolution && ProjectNames.Problem(ProjectName, "Project", namesCode: Variant().Language is not ("F#" or "VB")) is { } project)
         {
             return project;
         }
@@ -739,12 +739,6 @@ public sealed class NewProjectDialog : IdeWindow
         }
         return null;
     }
-
-    /// <summary>Why a solution or project name cannot be one: none, or characters no file name takes.</summary>
-    private static string? NameProblem(string name, string what) =>
-        name.Length == 0 ? $"{what} name cannot be empty"
-        : name is "." or ".." || name.IndexOfAny([.. Path.GetInvalidFileNameChars(), '/', '\\', ':', '*', '?', '"', '<', '>', '|']) >= 0 ? $"{what} name contains invalid characters"
-        : null;
 
     /// <summary>dotnet new's arguments for the project: its template by short name, name and folder (none in the line the
     /// dialog shows), language, framework, and each option enabled and changed from its default.</summary>

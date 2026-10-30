@@ -107,6 +107,12 @@
     <Compile Include="../../src/Passenger.App/Run/PublishOptions.cs" Link="App/PublishOptions.cs" />
   </ItemGroup>
 
+  <!-- Whether a new solution's or project's name can be one, from the name alone, compiled in since its project is the
+       app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Templates/ProjectNames.cs" Link="App/ProjectNames.cs" />
+  </ItemGroup>
+
   <!-- How a build's lines name its problems, from their text alone, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Run/Building.cs" Link="App/Building.cs" />
