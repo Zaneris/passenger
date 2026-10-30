@@ -359,6 +359,26 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
+    /// <summary>In a Markdown file's C# block, a raw string opened with six quotes holding a run of five ends at six: the
+    /// line after the five is the string's, and the line after the string's end is code.</summary>
+    [AvaloniaFact]
+    public void A_markdown_csharp_blocks_raw_string_of_six_quotes_ends_at_six_not_at_five()
+    {
+        MainWindow window = Window();
+        try
+        {
+            CodeEditor editor = Open(window, "RAW.md", "# Raw\n\n```csharp\nstring text = \"\"\"\"\"\"\n    five quotes \"\"\"\"\" and on\n    \"\"\"\"\"\";\nreturn text;\n```\n");
+            TokenKind? inside = KindOf(editor, "and on");
+            Assert.True(inside == TokenKind.String, $"The six-quote raw string's text after five quotes is coloured {inside?.ToString() ?? "in several kinds"}: the string ended at five");
+            TokenKind? after = KindOf(editor, "return");
+            Assert.True(after == TokenKind.Keyword, $"The line after the raw string is coloured {after?.ToString() ?? "in several kinds"}: the string ran on past its six quotes");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A shared tokenizer's scratch buffers must not become a document's saved state or colours. Leave
     /// a comment open in one file, then edit both files before comparing their colours with fresh passes.</summary>
     [AvaloniaFact]

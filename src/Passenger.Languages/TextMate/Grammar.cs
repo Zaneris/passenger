@@ -84,6 +84,10 @@ internal sealed class Grammar
             {
                 HeredocsEndAlone(node);
             }
+            else if (name == "source.cs")
+            {
+                RawStringsEndAsOpened(node);
+            }
             LoadedGrammar grammar = GrammarLoader.Load(Encoding.UTF8.GetBytes(node.ToJsonString()).AsSpan());
             registry.Add(grammar);
             foreach (string dependency in grammar.Info.Dependencies)
@@ -145,6 +149,25 @@ internal sealed class Grammar
             if (rule["end"]?.GetValue<string>() is { } end)
             {
                 rule["end"] = end.Replace(@"(?=\s|;|&|$)", "$", StringComparison.Ordinal);
+            }
+        }
+    }
+
+    /// <summary>A C# raw string opened with five or more quotes (three or more after three dollars) ends at a run of as
+    /// many quotes as it opened with, as C# ends one, never at a shorter run inside it.</summary>
+    private static void RawStringsEndAsOpened(JsonNode grammar)
+    {
+        if (grammar["repository"] is not JsonObject repository)
+        {
+            return;
+        }
+        foreach (JsonObject rule in repository.Select(entry => entry.Value).OfType<JsonObject>())
+        {
+            if (rule["begin"]?.GetValue<string>() is { } begin && rule["end"]?.GetValue<string>() is { Length: > 1 } end
+                && end[^1] == '+' && end[..^1].All(c => c == '"') && begin.EndsWith(end, StringComparison.Ordinal))
+            {
+                rule["begin"] = $"{begin[..^end.Length]}({end})";
+                rule["end"] = @"\1";
             }
         }
     }
