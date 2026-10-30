@@ -335,6 +335,30 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
+    /// <summary>A quoted heredoc ends only at a line that is its delimiter alone, as bash ends one: a line of the body that
+    /// starts with the delimiter and goes on (<c>END suffix</c>) is the heredoc's string, as are the lines after it up to
+    /// the bare <c>END</c>, and with <c>&lt;&lt;-</c> up to the delimiter after tabs alone.</summary>
+    [AvaloniaFact]
+    public void A_shell_heredoc_runs_past_a_line_that_starts_with_its_delimiter_and_goes_on()
+    {
+        MainWindow window = Window();
+        try
+        {
+            CodeEditor editor = Open(window, "notes.sh",
+                "cat <<'END'\nfirst line\nEND suffix\nstill the heredoc\nEND\ncat <<-'TABBED'\n\tTABBED too\n\tstill tabbed\n\tTABBED\nfor name in a b; do\n    echo \"$name\"\ndone\n");
+            foreach (string body in (string[])["END suffix", "still the heredoc", "TABBED too", "still tabbed"])
+            {
+                TokenKind? kind = KindOf(editor, body);
+                Assert.True(kind == TokenKind.String, $"The heredoc's line '{body}' is coloured {kind?.ToString() ?? "in several kinds"}: the heredoc ended before its bare delimiter, its text coloured as commands");
+            }
+            Assert.Equal(TokenKind.Keyword, KindOf(editor, "for"));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A shared tokenizer's scratch buffers must not become a document's saved state or colours. Leave
     /// a comment open in one file, then edit both files before comparing their colours with fresh passes.</summary>
     [AvaloniaFact]

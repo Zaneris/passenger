@@ -80,6 +80,10 @@ internal sealed class Grammar
             {
                 KeysAreKeys(node);
             }
+            else if (name == "source.shell")
+            {
+                HeredocsEndAlone(node);
+            }
             LoadedGrammar grammar = GrammarLoader.Load(Encoding.UTF8.GetBytes(node.ToJsonString()).AsSpan());
             registry.Add(grammar);
             foreach (string dependency in grammar.Info.Dependencies)
@@ -124,6 +128,23 @@ internal sealed class Grammar
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// <summary>A heredoc ends only at a line that is its delimiter alone (after tabs for <c>&lt;&lt;-</c>), as bash ends
+    /// one: never at a line that starts with the delimiter and goes on (<c>END suffix</c>).</summary>
+    private static void HeredocsEndAlone(JsonNode grammar)
+    {
+        if (grammar["repository"]?["heredoc"]?["patterns"] is not JsonArray rules)
+        {
+            return;
+        }
+        foreach (JsonObject rule in rules.OfType<JsonObject>())
+        {
+            if (rule["end"]?.GetValue<string>() is { } end)
+            {
+                rule["end"] = end.Replace(@"(?=\s|;|&|$)", "$", StringComparison.Ordinal);
             }
         }
     }
