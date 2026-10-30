@@ -501,19 +501,20 @@ public sealed class DebugController : IDisposable
     }
 
     /// <summary>The column (from one) a line (from zero) asks the debugger for, in the file's text (an open file's as it is
-    /// now, else as saved): in Avalonia XAML, its attribute's or its line's first name's; in C#, a lambda's body's for a
-    /// breakpoint inside it (<paramref name="lambda"/>, from zero), else where the line's code begins, so a lambda written
-    /// after a statement's start is not taken for its line; none elsewhere, or on a blank line.</summary>
-    private int? ColumnOf(string path, int line, string? attribute, int? lambda)
+    /// now, else as saved): in Avalonia XAML, its attribute's (the one at <paramref name="place"/>, from zero) or its line's
+    /// first name's; in C#, a lambda's body's for a breakpoint inside it (at <paramref name="place"/>), else where the line's
+    /// code begins, so a lambda written after a statement's start is not taken for its line; none elsewhere, or on a blank
+    /// line.</summary>
+    private int? ColumnOf(string path, int line, string? attribute, int? place)
     {
-        if (lambda is int column)
+        bool xaml = XamlBreakpoints.Compiled(path);
+        if (!xaml && place is int column)
         {
             // Where the lambda's body begins now, should an edit at its start have left the breakpoint's place beside it.
             return (editors.Find(path)?.Syntax?.Current is { } parsed && LambdaBreakpoints.Of(parsed, line, column) is { } inside
                 ? inside.Body - parsed.Text.GetLineStart(line)
                 : column) + 1;
         }
-        bool xaml = XamlBreakpoints.Compiled(path);
         if (!xaml && Languages.Language.ForPath(path) != Languages.Language.CSharp)
         {
             return null;
@@ -524,7 +525,7 @@ public sealed class DebugController : IDisposable
         }
         if (xaml)
         {
-            return XamlBreakpoints.Column(text, line, attribute);
+            return XamlBreakpoints.Column(text, line, attribute, place);
         }
         LineSpan span = text.GetLine(line);
         int code = TextNavigation.IndentEnd(text, span);
@@ -1200,7 +1201,7 @@ public sealed class DebugController : IDisposable
             // On an Avalonia XAML attribute, the attribute's own: it stops as that property is set.
             if (AttributeAtCaret(c) is { } attribute)
             {
-                d.Breakpoints.ToggleAttribute(c.File!.Path, c.Caret.Line, attribute);
+                d.Breakpoints.ToggleAttribute(c.File!.Path, attribute.At.Line, attribute.Name, attribute.At.Column);
             }
             // In a C# lambda written after its line's statement begins, the lambda's own: it stops each time the lambda runs.
             else if (LambdaAtCaret(c) is { } lambda)
@@ -1259,8 +1260,9 @@ public sealed class DebugController : IDisposable
 
     private const string NothingDebugged = "Nothing is being debugged";
 
-    /// <summary>The Avalonia XAML attribute the caret is on, whose own breakpoint Toggle Breakpoint sets; null elsewhere.</summary>
-    public static string? AttributeAtCaret(ActionContext context) =>
+    /// <summary>The Avalonia XAML attribute the caret is on, whose own breakpoint Toggle Breakpoint sets, with where its name
+    /// begins; null elsewhere.</summary>
+    public static (string Name, TextPosition At)? AttributeAtCaret(ActionContext context) =>
         context.File is { } file && XamlBreakpoints.Compiled(file.Path)
             ? XamlBreakpoints.AttributeAt(file.Text.Snapshot, file.Text.Snapshot.GetOffset(context.Caret))
             : null;
@@ -2388,7 +2390,7 @@ public sealed class DebugController : IDisposable
             _ => LineMarkKind.Breakpoint,
         }, Conditional: b.Condition is not null || b.HitCondition is not null, Tracepoint: !b.Suspend, Muted: muted,
             // An attribute's or a lambda's breakpoint tints the attribute or the lambda; nothing once it is edited away.
-            Range: b.Attribute is { } attribute ? XamlBreakpoints.AttributeRange(text, b.Line, attribute) ?? new TextRange(0, 0)
+            Range: b.Attribute is { } attribute ? XamlBreakpoints.AttributeRange(text, b.Line, attribute, b.AttributeColumn) ?? new TextRange(0, 0)
                 : b.Column is int column ? (parsed is not null && LambdaBreakpoints.Of(parsed, b.Line, column) is { } lambda ? LambdaBreakpoints.Tinted(text, lambda) : new TextRange(0, 0))
                 : null))];
         if (executionPoint is { } point && point.Path == document.Path)

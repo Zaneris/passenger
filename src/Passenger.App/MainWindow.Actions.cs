@@ -306,19 +306,20 @@ public partial class MainWindow
         Add(A.StopAll, "Stop All", "Run", context => IdeErrors.Observe(buildRun.StopAllAsync()), _ => buildRun.WhyNotStop(), ("Run", 0, 7));
         Add(A.EditBreakpoint, "Edit Breakpoint…", "Debug", c =>
         {
-            int line = c.Caret.Line;
-            string? attribute = Debugging.DebugController.AttributeAtCaret(c);
+            (string Name, Passenger.Text.TextPosition At)? attribute = Debugging.DebugController.AttributeAtCaret(c);
+            int line = attribute?.At.Line ?? c.Caret.Line;
             Debugging.LambdaBreakpoints.Lambda? lambda = attribute is null ? Debugging.DebugController.LambdaAtCaret(c) : null;
             IReadOnlyList<Debugging.LineBreakpoint> here = session.Debug.Breakpoints.In(c.File!.Path);
             Debugging.LineBreakpoint? own = lambda is not null ? session.Debug.OnLambda(c.File, lambda.Value)
-                : here.FirstOrDefault(b => b.Line == line && b.Attribute == attribute && b.Column is null);
+                : attribute is { } on ? session.Debug.Breakpoints.OnAttribute(c.File.Path, line, on.Name, on.At.Column)
+                : here.FirstOrDefault(b => b.Line == line && b.Attribute is null && b.Column is null);
             // In a lambda, its own, set if it has none: the line's is edited from outside the lambda.
             if ((own ?? (lambda is null ? here.FirstOrDefault(b => b.Line == line) : null)) is not { } editing)
             {
                 // Edit Breakpoint on a line with none sets one to edit: on an XAML attribute or in a lambda, its own.
-                if (attribute is not null)
+                if (attribute is { } named)
                 {
-                    session.Debug.Breakpoints.ToggleAttribute(c.File.Path, line, attribute);
+                    session.Debug.Breakpoints.ToggleAttribute(c.File.Path, line, named.Name, named.At.Column);
                 }
                 else if (lambda is { } inside)
                 {
@@ -329,7 +330,8 @@ public partial class MainWindow
                     session.Debug.Breakpoints.Toggle(c.File.Path, line);
                 }
                 editing = lambda is not null ? session.Debug.OnLambda(c.File, lambda.Value)!
-                    : session.Debug.Breakpoints.In(c.File.Path).First(b => b.Line == line && b.Attribute == attribute);
+                    : attribute is { } set ? session.Debug.Breakpoints.OnAttribute(c.File.Path, line, set.Name, set.At.Column)!
+                    : session.Debug.Breakpoints.In(c.File.Path).First(b => b.Line == line && b.Attribute is null);
             }
             ShowBreakpointPopup(editing);
         }, Refusals.NeedsFile, ("Run", 2, 2));

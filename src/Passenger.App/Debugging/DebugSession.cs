@@ -39,9 +39,9 @@ public sealed class DebugSession
     private readonly BreakpointStore breakpoints;
     private readonly BuiltLines lines;
 
-    /// <summary>The column (from one) a line (from zero) of a file asks for, a XAML attribute's (by its name), a C# lambda's
-    /// (by its column from zero) or the line's own: in XAML (<see cref="XamlBreakpoints.Column"/>), at the lambda's body and
-    /// where C#'s code begins; null for the whole line.</summary>
+    /// <summary>The column (from one) a line (from zero) of a file asks for, a XAML attribute's (by its name and the column
+    /// from zero its name began at), a C# lambda's (by its column from zero) or the line's own: in XAML
+    /// (<see cref="XamlBreakpoints.Column"/>), at the lambda's body and where C#'s code begins; null for the whole line.</summary>
     private readonly Func<string, int, string?, int?, int?> columns;
     private readonly Dictionary<string, string> sent = new(StringComparer.Ordinal);
 
@@ -887,7 +887,7 @@ public sealed class DebugSession
 
     /// <summary>A breakpoint as the debugger is asked for it (<see cref="Asked"/>).</summary>
     private DapSourceBreakpoint Request(string path, LineBreakpoint breakpoint) =>
-        Asked(path, breakpoint.Line, breakpoint.Attribute, breakpoint.Column) with
+        Asked(path, breakpoint.Line, breakpoint.Attribute, breakpoint.Column ?? breakpoint.AttributeColumn) with
         {
             Condition = breakpoint.Condition,
             HitCondition = breakpoint.HitCondition,
@@ -895,12 +895,12 @@ public sealed class DebugSession
             Suspend = breakpoint.Suspend,
         };
 
-    /// <summary>A line (from zero) of a file, or a lambda's column (from zero) on it, as the debugger is asked for it: at its
-    /// built line, and at its column there (<see cref="columns"/>), both as the compiler counted them (a lone '\r' before the
-    /// column begins another line in XAML).</summary>
-    private DapSourceBreakpoint Asked(string path, int line, string? attribute, int? lambda = null)
+    /// <summary>A line (from zero) of a file, or a lambda's or an attribute's column (from zero) on it, as the debugger is
+    /// asked for it: at its built line, and at its column there (<see cref="columns"/>), both as the compiler counted them
+    /// (a lone '\r' before the column begins another line in XAML).</summary>
+    private DapSourceBreakpoint Asked(string path, int line, string? attribute, int? place = null)
     {
-        int? column = columns(path, line, attribute, lambda);
+        int? column = columns(path, line, attribute, place);
         TextPosition at = lines.ToBuilt(path, line, column is int named ? named - 1 : 0);
         return new DapSourceBreakpoint(at.Line + 1, column is null ? null : at.Column + 1);
     }
@@ -964,7 +964,7 @@ public sealed class DebugSession
     /// <summary>What a file's breakpoints ask of the debugger, at their built lines, to tell a change worth sending.</summary>
     private string Signature(string path) => breakpoints.Muted ? "muted" :
         Signatures.Of([.. breakpoints.In(path).Where(b => b.Enabled).Select(b => Signatures.Of(
-            lines.IsBuilt(path, b.Line) ? $"{lines.ToBuilt(path, b.Line)}" : $"new {b.Line}", b.Attribute, b.Column, b.Condition, b.HitCondition, b.LogMessage, b.Suspend))]);
+            lines.IsBuilt(path, b.Line) ? $"{lines.ToBuilt(path, b.Line)}" : $"new {b.Line}", b.Attribute, b.Column ?? b.AttributeColumn, b.Condition, b.HitCondition, b.LogMessage, b.Suspend))]);
 
     /// <summary>The exception breakpoints that are on, as the protocol's exception options; none while muted, so no exception
     /// stops the program, not even one left unhandled.</summary>

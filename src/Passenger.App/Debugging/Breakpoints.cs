@@ -61,8 +61,8 @@ public abstract class Breakpoint
 }
 
 /// <summary>A line breakpoint (lines from zero), carried with its file's text while it is open; in Avalonia XAML, on one
-/// attribute of the line when it names one (<see cref="XamlBreakpoints"/>); in C#, inside a lambda written on the line
-/// when it has a column (<see cref="LambdaBreakpoints"/>).</summary>
+/// attribute of the line when it names one, at the column its name begins (<see cref="XamlBreakpoints"/>); in C#, inside
+/// a lambda written on the line when it has a column (<see cref="LambdaBreakpoints"/>).</summary>
 public sealed class LineBreakpoint(string path, int line, string? attribute = null, int? column = null) : Breakpoint
 {
     public string Path { get; internal set; } = path;
@@ -75,8 +75,12 @@ public sealed class LineBreakpoint(string path, int line, string? attribute = nu
     public string? Attribute { get; } = attribute;
 
     /// <summary>The column (from zero) of the C# lambda's body it stops inside, carried with the text around it; null for its
-    /// whole line.</summary>
-    public int? Column => At.Column;
+    /// whole line and for a XAML attribute's.</summary>
+    public int? Column => Attribute is null ? At.Column : null;
+
+    /// <summary>The column (from zero) its XAML attribute's name begins at, carried with the text around it, which tells two
+    /// attributes of one name on the line apart; null for none, and for one kept without it, on the first of its name.</summary>
+    public int? AttributeColumn => Attribute is null ? null : At.Column;
 
     /// <summary>Whether it is on part of its line: an attribute or a lambda.</summary>
     public bool OnPart => Attribute is not null || Column is not null;
@@ -193,8 +197,8 @@ public sealed record BreakpointsState : IStateDocument<BreakpointsState>
     };
 }
 
-/// <summary>A breakpoint as kept: its file, its line from zero (and XAML attribute, or C# lambda's column from zero) and
-/// what it does, but nothing a debugger said of it.</summary>
+/// <summary>A breakpoint as kept: its file, its line from zero (and XAML attribute with the column its name begins at, or C#
+/// lambda's column, from zero) and what it does, but nothing a debugger said of it.</summary>
 public sealed record KeptBreakpoint(string Path, int Line)
 {
     public string? Attribute { get; init; }
@@ -292,7 +296,7 @@ public sealed class BreakpointStore
         Breakpoints = [.. All.Select(b => new KeptBreakpoint(b.Path, b.Line)
         {
             Attribute = b.Attribute,
-            Column = b.Column,
+            Column = b.At.Column,
             Enabled = b.Enabled,
             Suspend = b.Suspend,
             Condition = b.Condition,
@@ -329,9 +333,9 @@ public sealed class BreakpointStore
         foreach (IGrouping<string, KeptBreakpoint> file in kept.Breakpoints.GroupBy(b => b.Path))
         {
             List<LineBreakpoint> list = For(file.Key);
-            foreach (KeptBreakpoint breakpoint in file.Where(b => list.All(there => there.Line != b.Line || there.Attribute != b.Attribute || there.Column != b.Column)))
+            foreach (KeptBreakpoint breakpoint in file.Where(b => list.All(there => there.Line != b.Line || there.Attribute != b.Attribute || there.At.Column != b.Column)))
             {
-                list.Add(Anchored(new LineBreakpoint(breakpoint.Path, breakpoint.Line, breakpoint.Attribute, breakpoint.Attribute is null ? breakpoint.Column : null)
+                list.Add(Anchored(new LineBreakpoint(breakpoint.Path, breakpoint.Line, breakpoint.Attribute, breakpoint.Column)
                 {
                     Enabled = breakpoint.Enabled,
                     Suspend = breakpoint.Suspend,
@@ -545,22 +549,34 @@ public sealed class BreakpointStore
         Changed?.Invoke(this, path);
     }
 
-    /// <summary>Sets a breakpoint on a XAML attribute of a line, or removes the one there; the line's own and its other
-    /// attributes' stay.</summary>
-    public void ToggleAttribute(string path, int line, string attribute)
+    /// <summary>Sets a breakpoint on the XAML attribute whose name begins at a column (from zero) of a line, or removes the
+    /// one there; the line's own and its other attributes' stay.</summary>
+    public void ToggleAttribute(string path, int line, string attribute, int column)
     {
         List<LineBreakpoint> list = For(path);
-        if (list.FirstOrDefault(b => b.Line == line && b.Attribute == attribute) is { } existing)
+        if (OnAttribute(path, line, attribute, column) is { } existing)
         {
             list.Remove(existing);
             existing.At.Detach();
         }
         else
         {
-            list.Add(Anchored(new LineBreakpoint(path, line, attribute)));
+            list.Add(Anchored(new LineBreakpoint(path, line, attribute, column)));
             Sort(list);
         }
         Changed?.Invoke(this, path);
+    }
+
+    /// <summary>The breakpoint on the XAML attribute whose name begins at a column (from zero) of a line: each one's attribute
+    /// found by its column in the file's text while it is open (<see cref="XamlBreakpoints.AttributeRange"/>), as it is
+    /// drawn and sent, else by its column alone.</summary>
+    public LineBreakpoint? OnAttribute(string path, int line, string attribute, int column)
+    {
+        TextSnapshot? text = open.TryGetValue(path, out TextDocument? document) ? document.Snapshot : null;
+        return In(path).FirstOrDefault(b => b.Line == line && b.Attribute == attribute && PlaceOf(b) == column);
+
+        int? PlaceOf(LineBreakpoint b) => text is null ? b.AttributeColumn
+            : XamlBreakpoints.AttributeRange(text, line, attribute, b.AttributeColumn) is { } range ? range.Start - text.GetLineStart(line) : null;
     }
 
     /// <summary>The breakpoint on a line, on a XAML attribute of it or at a C# lambda's column (from zero) on it, set if there
@@ -611,7 +627,7 @@ public sealed class BreakpointStore
     private static void Sort(List<LineBreakpoint> list) =>
         list.Sort((a, b) => a.Line != b.Line ? a.Line.CompareTo(b.Line)
             : a.OnPart != b.OnPart ? a.OnPart.CompareTo(b.OnPart)
-            : (a.Column ?? -1).CompareTo(b.Column ?? -1));
+            : (a.At.Column ?? -1).CompareTo(b.At.Column ?? -1));
 
     /// <summary>Turns a line's breakpoint off or back on, keeping it; sets one if there is none.</summary>
     public void ToggleEnabled(string path, int line)
@@ -841,7 +857,7 @@ public sealed class BreakpointStore
         }
         if (moved)
         {
-            List<LineBreakpoint> unique = [.. list.GroupBy(b => (b.Line, b.Attribute, b.Column)).Select(g => g.First())];
+            List<LineBreakpoint> unique = [.. list.GroupBy(b => (b.Line, b.Attribute, b.At.Column)).Select(g => g.First())];
             Unanchor(list.Except(unique));
             Sort(unique);
             list.Clear();

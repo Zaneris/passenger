@@ -103,6 +103,36 @@ public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisp
         window.Close();
     }
 
+    /// <summary>Two buttons written on one line each set Content: Toggle Breakpoint on the second's is drawn on the second's,
+    /// and the program stops where that Content is set, at its column, the first's never taking the breakpoint.</summary>
+    [AvaloniaFact]
+    public void A_breakpoint_on_the_second_of_two_same_named_attributes_on_a_line_is_drawn_and_stops_on_the_second()
+    {
+        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("<Button x:Name=\"Delete\" Content=\"Delete\" />",
+            "<Button x:Name=\"Delete\" Content=\"Delete\" /><Button x:Name=\"Undo\" Content=\"Undo\" />", StringComparison.Ordinal));
+        MainWindow window = Opened();
+        Assert.Null(window.OpenFile(Xaml));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        int line = Line(Xaml, "Content=\"Undo\"");
+        int second = Column(Xaml, line, "Content=\"Undo\"");
+        editor.GoTo(new TextPosition(line, second + 3));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        Assert.Equal([$"MainWindow.axaml:{line + 1} Content"], window.Debugger.Breakpoints.In(Xaml).Select(b => b.Location));
+        TextSnapshot text = editor.Document.Snapshot;
+        LineMark drawn = Assert.Single(editor.LineMarks, m => m.Line == line);
+        Assert.True(drawn.Range is { } range && text.GetText(range.Start, range.Length) == "Content=\"Undo\"",
+            $"The breakpoint on Undo's Content was drawn on {(drawn.Range is { } on ? text.GetText(on.Start, on.Length) : "its whole line")}");
+
+        Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
+        DebugStop stop = Stopped(window, "the stop where Undo's Content is set");
+        AssertAt(stop, Xaml, line, second);
+
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");
+        window.Close();
+    }
+
     /// <summary>At a stop shown at its breakpoint rather than where the thread is (the window's Width, which XamlIl gives no
     /// code of its own), Set Next Statement back to the window's element shows the stop there, where it went, and the
     /// program then makes the window's XAML again from its start, stopping at the Width again.</summary>
