@@ -1389,7 +1389,7 @@ public sealed class VcsController : IDisposable
 
     /// <summary>Where a file is in the last commit: where the status found it renamed from, else where it was before every
     /// move made here since the folder opened (or where that was renamed from, until the status reads those moves).</summary>
-    private string Origin(string path)
+    public string Origin(string path)
     {
         if (renamed.TryGetValue(path, out string? from))
         {

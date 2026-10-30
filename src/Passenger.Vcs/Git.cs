@@ -87,8 +87,9 @@ public sealed record CommitInfo(string Hash, IReadOnlyList<string> Parents, stri
 }
 
 /// <summary>What Show History is of: a file, followed through its renames; a folder; or a file's lines, from 0 as the last
-/// commit numbers them (Show History for Selection).</summary>
-public sealed record HistoryScope(string Path, bool IsFolder = false, int FirstLine = -1, int LastLine = -1)
+/// commit numbers them (Show History for Selection). <see cref="From"/> is where the last commit has a file renamed or
+/// moved since, not committed yet, whose history is read from there.</summary>
+public sealed record HistoryScope(string Path, bool IsFolder = false, int FirstLine = -1, int LastLine = -1, string? From = null)
 {
     public bool IsLines => FirstLine >= 0;
 }
@@ -867,7 +868,7 @@ public sealed class Git
     /// too. Empty where git has none: a file it does not track, lines past the end of the last commit's.</summary>
     public async Task<IReadOnlyList<HistoryCommit>> HistoryAsync(HistoryScope scope, int most = 2000)
     {
-        string relative = Relative(scope.Path);
+        string relative = Relative(scope.From ?? scope.Path);
         string count = $"--max-count={most}";
         if (scope.IsLines)
         {

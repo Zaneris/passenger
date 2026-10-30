@@ -776,6 +776,27 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"vcs_status of Bar.txt, git mv'd from Foo.txt with one line changed, answered:\n{diff}");
     }
 
+    /// <summary>vcs_log of a file git mv renamed and not committed yet lists its commits, and those of its lines, from where
+    /// the last commit has it.</summary>
+    [Fact]
+    public async Task An_agents_history_of_a_file_git_mv_renamed_lists_its_commits_from_where_the_last_commit_has_it()
+    {
+        string repository = TestFolders.Create("mcp-renamed-log-");
+        DeleteAtEnd(repository);
+        File.WriteAllText(Path.Combine(repository, "Foo.txt"), "line 1\nline 2\nline 3\n");
+        await TestGit.InitAsync(repository);
+        File.WriteAllText(Path.Combine(repository, "Foo.txt"), "line 1\nline 2, second\nline 3\n");
+        await TestGit.RunAsync(repository, "commit", "-q", "-am", "Second");
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        await TestGit.RunAsync(repository, "mv", "Foo.txt", "Bar.txt");
+        JsonElement log = await Call(client, McpTools.VcsLog, new() { ["path"] = "Bar.txt" });
+        string[] subjects = [.. log.EnumerateArray().Select(c => c.GetProperty("subject").GetString()!)];
+        Assert.True(subjects.SequenceEqual(["Second", "First"]), $"vcs_log of Bar.txt, git mv'd from Foo.txt and not committed, listed [{string.Join(", ", subjects)}]: {log.GetRawText()}");
+        JsonElement lines = await Call(client, McpTools.VcsLog, new() { ["path"] = "Bar.txt", ["startLine"] = 2, ["endLine"] = 2 });
+        Assert.Equal(["Second", "First"], lines.EnumerateArray().Select(c => c.GetProperty("subject").GetString()));
+    }
+
     /// <summary>A repository git refuses as another user's (as on a FAT or network drive) is said to be refused, in git's
     /// words naming safe.directory, by vcs_status and the window's status bar, never as no repository; Passenger sets no
     /// safe.directory itself, and once the person's configuration names it the next read takes the repository.</summary>

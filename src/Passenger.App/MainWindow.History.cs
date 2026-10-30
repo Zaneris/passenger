@@ -130,11 +130,14 @@ public partial class MainWindow
         {
             throw new InvalidOperationException($"{Path.GetFileName(path)} is not in the Git repository");
         }
+        bool folder = Directory.Exists(path);
+        // A file renamed or moved since the last commit has its history where that commit has it.
+        string? from = !folder && session.Vcs.Origin(path) is { } origin && !PathNames.Same(origin, path) ? origin : null;
         if (lines is not { } chosen)
         {
-            return new HistoryScope(path, IsFolder: Directory.Exists(path));
+            return new HistoryScope(path, IsFolder: folder, From: from);
         }
-        if (Directory.Exists(path))
+        if (folder)
         {
             throw new InvalidOperationException("Show History for Selection needs a file, not a folder");
         }
@@ -151,7 +154,7 @@ public partial class MainWindow
         {
             throw new InvalidOperationException("The lines chosen are not committed yet");
         }
-        return new HistoryScope(path, FirstLine: range.First, LastLine: range.Last);
+        return new HistoryScope(path, FirstLine: range.First, LastLine: range.Last, From: from);
     }
 
     /// <summary>Compare with Branch or Tag: the branches and tags to choose from, the current branch first; the one chosen
@@ -178,7 +181,7 @@ public partial class MainWindow
         {
             if (chosen?.Value is GitRef named)
             {
-                IdeErrors.Observe(CompareWithAsync(path, named.FullName, named.Name, path));
+                IdeErrors.Observe(CompareWithAsync(path, named.FullName, named.Name, path, session.Vcs.Origin(PathNames.Canonical(path))));
             }
         });
         return popup;
@@ -207,8 +210,9 @@ public partial class MainWindow
     }
 
     /// <summary>A version of a file beside the file as it is now: <paramref name="revision"/>'s text of it at
-    /// <paramref name="then"/> (where it was in that version), the right side the open file's own text when it is open.</summary>
-    public async Task<DiffWindow?> CompareWithAsync(string path, string revision, string version, string then)
+    /// <paramref name="then"/> (where it was in that version), else at <paramref name="origin"/> (where the last commit has a
+    /// file renamed since), the right side the open file's own text when it is open.</summary>
+    public async Task<DiffWindow?> CompareWithAsync(string path, string revision, string version, string then, string? origin = null)
     {
         if (session.Vcs.Repository is null)
         {
@@ -216,6 +220,11 @@ public partial class MainWindow
             return null;
         }
         FileVersion? was = await session.Vcs.VersionAsync(revision, then, path);
+        if (was is null && origin is not null && !PathNames.Same(origin, then))
+        {
+            was = await session.Vcs.VersionAsync(revision, origin, path);
+            then = origin;
+        }
         if (was?.Text is not { } theirs)
         {
             status.Text = was is null ? $"{Path.GetFileName(then)} is not in {version}" : $"{Path.GetFileName(then)} is binary in {version}, so it has no lines to compare";

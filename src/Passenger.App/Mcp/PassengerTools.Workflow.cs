@@ -147,6 +147,8 @@ public sealed partial class PassengerTools
         {
             return (IReadOnlyList<VcsCommit>)[.. (await repository.LogAsync(most)).Select(c => Commit(c, null))];
         }
+        // Read now, so a rename made a moment ago is followed to where the last commit has the file.
+        await Session.Vcs.RefreshAsync();
         HistoryScope scope = await window.HistoryScopeAsync(Resolve(path), lines);
         return [.. (await repository.HistoryAsync(scope, most)).Select(h => Commit(h.Commit, h.Changes))];
 

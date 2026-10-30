@@ -207,6 +207,56 @@ public sealed class HistoryTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file renamed in the IDE and not committed yet has its history where the last commit has it: Show History
+    /// lists its commits, Show History for Selection those of its lines, and Compare with Branch finds it on a branch
+    /// under the name it had.</summary>
+    [AvaloniaFact]
+    public void A_file_renamed_and_not_committed_yet_has_its_history_line_history_and_branches_where_the_last_commit_has_it()
+    {
+        Write("Shop.cs", Shop);
+        TestGit.Init(folder);
+        string longer = Shop.Replace("int count", "long count", StringComparison.Ordinal);
+        Write("Shop.cs", longer);
+        Git("commit", "-q", "-am", "Long count");
+        Git("switch", "-q", "-c", "side");
+        string side = longer.Replace("count++", "count += 3", StringComparison.Ordinal);
+        Write("Shop.cs", side);
+        Git("commit", "-q", "-am", "Thrice");
+        Git("switch", "-q", "main");
+        MainWindow window = Open("Shop.cs");
+        Assert.Null(Ui.Await(window.RenameAsync(Full("Shop.cs"), "Store.cs"), "the rename"));
+        Ui.Settle();
+        Assert.Equal(Full("Store.cs"), window.EditorArea.Active?.Path);
+        Ui.Landed(() => window.Vcs.Changes.Any(c => c.Kind == ChangeKind.Renamed && c.Path == Full("Store.cs")), "the rename in Git's status");
+
+        Ui.ChooseFromEditorMenu(window, "Git", "Show History");
+        GitLogView history = window.GitWindow.Shown;
+        Ui.Settle();
+        Assert.True(history.Rows.Select(r => r.Commit.Subject).SequenceEqual(["Long count", "First"]),
+            $"Show History of Store.cs, renamed from Shop.cs and not committed, listed [{string.Join(", ", history.Rows.Select(r => r.Commit.Subject))}]");
+        Assert.Equal(["Log", "Store.cs"], window.GitWindow.Titles);
+        Assert.Equal((Full("Shop.cs"), ChangeKind.Modified), Change(history, "Long count"));
+
+        window.EditorArea.CodeEditor.Focus();
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(2, 4));
+        Ui.ChooseFromEditorMenu(window, "Git", "Show History for Selection…");
+        GitLogView lines = window.GitWindow.Shown;
+        Ui.Landed(() => lines.Rows.Count > 0, $"the commits that changed line 3 of the renamed file, where the status bar says \"{window.Status}\"");
+        Assert.Equal(["Long count", "First"], lines.Rows.Select(r => r.Commit.Subject));
+
+        window.EditorArea.CodeEditor.Focus();
+        Assert.True(window.Perform(AppActions.CompareWithBranch), window.Status);
+        Ui.Settle();
+        window.KeyTextInput("side");
+        Ui.Settle();
+        Ui.Press(window, "ENTER");
+        Ui.Landed(() => window.OwnedWindows.OfType<DiffWindow>().Any(), $"the diff against side, where the status bar says \"{window.Status}\"");
+        DiffWindow diff = window.OwnedWindows.OfType<DiffWindow>().Single();
+        Assert.Equal(side, diff.View.Left.Document.Snapshot.ToString());
+        diff.Close();
+        window.Close();
+    }
+
     private MainWindow Open(string? file)
     {
         MainWindow window = Ui.OpenFolder(folder);
