@@ -95,6 +95,38 @@ public static class UiFrames
             .ThenBy(t => t.Name, StringComparer.Ordinal)];
     }
 
+    /// <summary>Frames in order, each with the compositor's first drawing after it and every drawing that adjoins the one
+    /// before (every window's, which a tick of the render loop draws together, one beginning as the last ended) before
+    /// the next frame: later drawings with no frame between (an animation, the FPS overlay's counter) are the
+    /// compositor's alone. A drawing is when it began and how long it took, in milliseconds.</summary>
+    internal static IReadOnlyList<UiFrame> Composited(IEnumerable<UiFrame> frames, IEnumerable<(double At, double Ms)> drawings)
+    {
+        List<UiFrame> ordered = [.. frames.OrderBy(f => f.StartMs)];
+        List<(double At, double Ms)> composited = [.. drawings.OrderBy(d => d.At)];
+        int next = 0;
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            UiFrame frame = ordered[i];
+            double before = i + 1 < ordered.Count ? ordered[i + 1].StartMs : double.MaxValue;
+            while (next < composited.Count && composited[next].At < frame.EndMs - 1)
+            {
+                next++;
+            }
+            double drawn = 0;
+            double? tick = null;
+            while (next < composited.Count && composited[next].At < before && (tick is not { } latest || composited[next].At <= latest))
+            {
+                // The same tick while each drawing begins by the time the latest so far has ended.
+                double ended = composited[next].At + composited[next].Ms + SameTick;
+                tick = Math.Max(tick ?? ended, ended);
+                drawn += composited[next].Ms;
+                next++;
+            }
+            ordered[i] = frame with { CompositeMs = drawn };
+        }
+        return ordered;
+    }
+
     /// <summary>Gathers the inspector's events from a trace as it is read, in order.</summary>
     internal sealed class Reader
     {
@@ -144,35 +176,8 @@ public static class UiFrames
             return true;
         }
 
-        /// <summary>The frames in order, each with the compositor's first drawing after it (every window's, which a tick of
-        /// the render loop draws together) before the next frame: later drawings with no frame between (an animation, the
-        /// FPS overlay's counter) are the compositor's alone.</summary>
-        public IReadOnlyList<UiFrame> Frames()
-        {
-            List<UiFrame> ordered = [.. frames.OrderBy(f => f.StartMs)];
-            composited.Sort((a, b) => a.At.CompareTo(b.At));
-            int next = 0;
-            for (int i = 0; i < ordered.Count; i++)
-            {
-                UiFrame frame = ordered[i];
-                double before = i + 1 < ordered.Count ? ordered[i + 1].StartMs : double.MaxValue;
-                while (next < composited.Count && composited[next].At < frame.EndMs - 1)
-                {
-                    next++;
-                }
-                double drawn = 0;
-                double tick = double.MaxValue;
-                while (next < composited.Count && composited[next].At < before && composited[next].At <= tick)
-                {
-                    // The same tick: one window's drawing begins as the one before it ends.
-                    tick = Math.Min(tick, composited[next].At + composited[next].Ms + SameTick);
-                    drawn += composited[next].Ms;
-                    next++;
-                }
-                ordered[i] = frame with { CompositeMs = drawn };
-            }
-            return ordered;
-        }
+        /// <summary>The frames in order, each with the compositor's drawings after it (<see cref="Composited"/>).</summary>
+        public IReadOnlyList<UiFrame> Frames() => Composited(frames, composited);
 
         private static string? Text(TraceEvent data, string name) => data.PayloadByName(name) as string is { Length: > 0 } text ? text : null;
 
