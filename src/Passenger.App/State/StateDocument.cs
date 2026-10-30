@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -304,6 +305,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
             }
             try
             {
+                using FileStream held = StateFile.Hold(Path);
                 if (OnDisk() is not { } disk)
                 {
                     return true;
@@ -444,6 +446,30 @@ internal static class StateFile
 
     /// <summary>The one lock for a file in this process, however many documents (windows) keep it.</summary>
     public static object Lock(string path) => Locks.GetOrAdd(path, _ => new object());
+
+    /// <summary>How long a write waits for another Passenger on the same state to let go of the file (<see cref="Hold"/>).</summary>
+    private static readonly TimeSpan HeldFor = TimeSpan.FromSeconds(5);
+
+    /// <summary>A file held against every other Passenger on the same state while this one reads, merges and replaces it, so
+    /// each merge starts from the other's write: a lock file beside it, open sharing nothing, waited for up to
+    /// <see cref="HeldFor"/>, past which the refusal is thrown as a write's failure.</summary>
+    public static FileStream Hold(string path)
+    {
+        string held = path + ".lock";
+        Directory.CreateDirectory(Path.GetDirectoryName(held)!);
+        long began = Stopwatch.GetTimestamp();
+        while (true)
+        {
+            try
+            {
+                return new FileStream(held, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException) when (Stopwatch.GetElapsedTime(began) < HeldFor)
+            {
+                Thread.Sleep(5);
+            }
+        }
+    }
 
     public static void Log(string line) => IdeErrors.Write($"State: {line}");
 
