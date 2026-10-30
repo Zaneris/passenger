@@ -338,6 +338,64 @@ public sealed class VcsTests : IDisposable
         }
     }
 
+    /// <summary>In a linked worktree, whose Git folder is under the main one's, a commit and a branch switched from outside
+    /// the window (a terminal, an agent) are followed: the change bar and the Explorer's colour go, the Commit window empties
+    /// and the branch widget names the new branch.</summary>
+    [AvaloniaFact]
+    public void A_commit_and_a_branch_switch_from_outside_a_linked_worktree_are_followed_by_the_bars_colours_commit_list_and_branch()
+    {
+        string worktrees = TestFolders.Create("git-worktree-");
+        try
+        {
+            string tree = Path.Combine(worktrees, "feature");
+            Git("worktree", "add", "-q", "-b", "feature", tree);
+            FollowsGitFromOutside(PathNames.Canonical(tree), "Shop.cs", "feature");
+        }
+        finally
+        {
+            TestFolders.Delete(worktrees);
+        }
+    }
+
+    /// <summary>In a folder opened below the repository's top, whose Git folder is outside it, a commit and a branch switched
+    /// from outside the window are followed as they are at the top.</summary>
+    [AvaloniaFact]
+    public void A_commit_and_a_branch_switch_from_outside_a_folder_opened_below_the_repositorys_top_are_followed_by_the_bars_colours_commit_list_and_branch()
+    {
+        TestFolders.Write(folder, "src/Shop.cs", Original);
+        Git("add", "-A");
+        Git("commit", "-q", "-m", "Shop in src");
+        FollowsGitFromOutside(PathNames.Canonical(Path.Combine(folder, "src")), "Shop.cs", "main");
+    }
+
+    /// <summary>Opens a folder, changes a file there and saves it, then commits it and switches to a new branch with git run
+    /// in the folder, as from a terminal, waiting for the window to follow each.</summary>
+    private static void FollowsGitFromOutside(string opened, string name, string branch)
+    {
+        MainWindow window = Ui.OpenFolder(opened, languageServer: false);
+        window.OpenFile(Path.Combine(opened, name));
+        Ui.Settle();
+        Ui.Landed(() => window.Vcs.Branch == branch, $"the branch {branch}");
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(2, 4));
+        window.KeyTextInput("long ");
+        window.Perform(AppActions.Save);
+        window.Perform(AppActions.Commit);
+        CommitView commit = window.CommitView;
+        Ui.Landed(() => Marks(window).Count > 0 && commit.Rows.OfType<CommitRow>().Any(r => r.Change.Name == name), $"{name}'s change bar and its row in the Commit window");
+        Passenger.App.Explorer.ExplorerNode row = window.ExplorerView.Tree.Rows.First(r => r.Name == name);
+        Assert.Equal(ChangeKind.Modified, row.Change);
+        TextBlock widget = window.FindControl<TextBlock>("BranchName")!;
+        Assert.Equal(branch, widget.Text);
+
+        TestGit.Run(opened, "commit", "-q", "-am", "Committed from outside");
+        Ui.WaitFor(() => Marks(window).Count == 0 && !commit.Rows.OfType<CommitRow>().Any() && row.Change is null,
+            () => $"After a commit from outside the window still shows {Marks(window).Count} change bars, the Commit window lists "
+                + $"[{string.Join(", ", commit.Rows.OfType<CommitRow>().Select(r => r.Change.Name))}] and the Explorer colours {name} as {row.Change?.ToString() ?? "unchanged"}");
+        TestGit.Run(opened, "switch", "-q", "-c", "switched");
+        Ui.WaitFor(() => widget.Text == "switched", () => $"After a branch switched from outside the branch widget still says {widget.Text}");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Rollback_lines_puts_the_change_under_the_caret_back_as_the_last_commit_has_it()
     {

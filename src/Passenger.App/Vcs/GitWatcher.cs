@@ -1,0 +1,56 @@
+using Passenger.App.Workspace;
+using Passenger.Core;
+using Passenger.Workspace;
+
+namespace Passenger.App.Vcs;
+
+/// <summary>A Git folder outside the open folder watched for Git's own state moving: a linked worktree's or a submodule's,
+/// the repository's above a folder opened below its top, and the common folder of a worktree's refs. A change to HEAD, the
+/// index or the refs is handed over on the UI thread, whatever made it (a terminal's commit, a branch switched by an
+/// agent); what else Git writes there (its objects and logs) is passed over, and only the folder itself and its refs are
+/// kept.</summary>
+public sealed class GitWatcher : WatchedTree
+{
+    private bool moved;
+
+    public GitWatcher(string folder, FolderWatching watching)
+        : base(folder, watching, watching.EachFolder) => Begin();
+
+    protected override string Shown => $"The watcher of Git's folder {Top}";
+
+    /// <summary>Raised on the UI thread when HEAD, the index or the refs changed.</summary>
+    public event EventHandler? Moved;
+
+    protected override bool Kept(string path)
+    {
+        ReadOnlySpan<char> parts = PathNames.Below(path, Top);
+        return parts.IsEmpty ? path == Top : First(parts).SequenceEqual("refs");
+    }
+
+    protected override Notice Noticed(string path, bool created) =>
+        First(PathNames.Below(path, Top)) is "HEAD" or "index" or "refs" or "packed-refs" ? new Notice(Takes: true, Counts: false, Canonical: null) : default;
+
+    protected override void Take(string path, bool created, Notice notice) => moved = true;
+
+    protected override FolderChanges? Gathered(bool lost, bool overflowed)
+    {
+        bool any = moved || lost || overflowed;
+        moved = false;
+        return any ? new FolderChanges(new HashSet<string>(), Structure: false, Projects: false, Git: true) : null;
+    }
+
+    protected override void Hand(FolderChanges changes) => UiThread.Post(() =>
+    {
+        if (!IsDisposed)
+        {
+            Moved?.Invoke(this, EventArgs.Empty);
+        }
+    });
+
+    /// <summary>A path's first name.</summary>
+    private static ReadOnlySpan<char> First(ReadOnlySpan<char> parts)
+    {
+        int at = parts.IndexOfAny(PathNames.Separators);
+        return at < 0 ? parts : parts[..at];
+    }
+}

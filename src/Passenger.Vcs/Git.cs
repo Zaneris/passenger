@@ -470,6 +470,12 @@ public sealed class Git
             : string.Join('\n', written.Split('\n').Where(l => !l.StartsWith('#'))).Trim() is { Length: > 0 } kept ? kept : null;
     }
 
+    /// <summary>The folder Git keeps what every working tree of the repository shares in (its refs, its objects): a linked
+    /// worktree's Git folder names it in its commondir file, and any other's is its Git folder itself.</summary>
+    public string CommonDir => commonDir ??= Read("commondir") is { Length: > 0 } common ? PathNames.Canonical(System.IO.Path.GetFullPath(common, GitDir)) : GitDir;
+
+    private string? commonDir;
+
     /// <summary>A file of git's own folder, trimmed, or null when there is none.</summary>
     private string? Read(string name)
     {

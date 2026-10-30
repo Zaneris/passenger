@@ -3,6 +3,7 @@ using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Vcs;
+using Passenger.Workspace;
 
 namespace Passenger.App.Vcs;
 
@@ -119,9 +120,16 @@ public sealed class VcsController : IDisposable
     /// <summary>The refs' hash and HEAD's commit as the history was last read.</summary>
     private (UInt128 Refs, string? Head)? knownHistory;
 
-    /// <summary>Whether the folder watcher hears Git's own state move: the open folder is the working tree's top and Git's
-    /// folder its .git, so files changed alone leave the history unread.</summary>
+    /// <summary>Whether Git's own state moving is heard, by the folder watcher where Git's folder is the open folder's .git
+    /// and by <see cref="gitWatchers"/> where it is elsewhere, so files changed alone leave the history unread.</summary>
     private bool historyHeard;
+
+    /// <summary>Git's folders outside the open folder (a linked worktree's and its common folder, a submodule's, the
+    /// repository's above a folder opened below its top), watched for Git's own state moving.</summary>
+    private readonly List<GitWatcher> gitWatchers = [];
+
+    /// <summary>How Git's folders outside the open folder are watched: the session's way.</summary>
+    public FolderWatching Watching { get; set; } = FolderWatching.Platform;
 
     /// <summary>What happened, for the status bar: what is under way (a push), and each operation's outcome in the words
     /// it returns them in (a commit made, a push refused and git's reason).</summary>
@@ -191,12 +199,46 @@ public sealed class VcsController : IDisposable
         Refused = found.Refused;
         GitMissing = found.Missing;
         refusedIn = found.Refused is null ? null : folder;
-        historyHeard = git is not null && PathNames.Same(git.GitDir, Path.Join(folder, ".git"));
+        WatchGit(folder);
+        historyHeard = git is not null;
         heads.Clear();
         textsOf = null;
         textsRead = false;
         moves.Clear();
         renamed = new(PathNames.Comparer);
+    }
+
+    /// <summary>Watches Git's folders the folder watcher does not: Git's folder and its common folder, wherever they are but
+    /// the open folder's .git.</summary>
+    private void WatchGit(string folder)
+    {
+        Unwatch();
+        if (git is not { } repository)
+        {
+            return;
+        }
+        string own = Path.Join(folder, ".git");
+        foreach (string state in new[] { repository.GitDir, repository.CommonDir }.Distinct(PathNames.Comparer).Where(d => !PathNames.Same(d, own)))
+        {
+            GitWatcher watcher = new(state, Watching);
+            watcher.Moved += (_, _) =>
+            {
+                if (git == repository)
+                {
+                    IdeErrors.Observe(FolderChangedAsync(gitMoved: true));
+                }
+            };
+            gitWatchers.Add(watcher);
+        }
+    }
+
+    private void Unwatch()
+    {
+        foreach (GitWatcher watcher in gitWatchers)
+        {
+            watcher.Dispose();
+        }
+        gitWatchers.Clear();
     }
 
     /// <summary>The folder closed: the window is in no working tree, as with a folder outside one, until another opens;
@@ -205,6 +247,7 @@ public sealed class VcsController : IDisposable
     {
         UiThread.Check();
         opened++;
+        Unwatch();
         git = null;
         Refused = null;
         GitMissing = false;
@@ -223,6 +266,7 @@ public sealed class VcsController : IDisposable
     {
         UiThread.Check();
         opened++;
+        Unwatch();
         foreach (OpenDocument document in documents.Keys.ToList())
         {
             Detach(document);
