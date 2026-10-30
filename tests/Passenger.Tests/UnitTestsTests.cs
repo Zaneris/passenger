@@ -553,6 +553,42 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
             .Where(e => e is { Kind: Passenger.App.History.HistoryKind.Label, System: true }).Select(e => e.Name ?? string.Empty)];
     }
 
+    /// <summary>A theory's passing data row run alone leaves its method failed by the row that failed before, whose result
+    /// the method keeps; and Rerun Failed then runs that row.</summary>
+    [AvaloniaFact]
+    public void A_passing_data_row_run_alone_leaves_its_method_failed_by_another_row_and_rerun_failed_runs_that_row()
+    {
+        Write("EvenTests.cs",
+            "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class EvenTests\n{\n    [Theory]\n    [InlineData(1)]\n    [InlineData(2)]\n" +
+            "    public void Even(int value) => Assert.Equal(0, value % 2);\n}\n");
+        MainWindow window = Open();
+        ListBox tree = Tree(window);
+        Ui.WaitFor(() => Method(window, "Even") is not null, "the theory in the Unit Tests window");
+        Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [Method(window, "Even")!]), "the run of the theory", TimeSpan.FromSeconds(120));
+        Assert.Equal([("Even(value: 1)", TestState.Failed), ("Even(value: 2)", TestState.Passed)], Method(window, "Even")!.Children.Select(r => (r.Name, r.State)));
+        TestOutcome odd = Row("Even(value: 1)").Results.Single();
+        TestOutcome even = Row("Even(value: 2)").Results.Single();
+
+        window.Tests.Tree.Reveal(Row("Even(value: 2)"));
+        tree.SelectedItem = Row("Even(value: 2)");
+        Ui.ChooseFromMenu(tree, "Run");
+        Ui.WaitFor(() => !window.Tests.IsBusy && Row("Even(value: 2)").Results.SingleOrDefault() is { } fresh && fresh != even,
+            () => $"the run of the passing row alone: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(120));
+        Assert.StartsWith("Tests passed: 1, failed: 0 of 1", window.BottomPanel.Tests.Status, StringComparison.Ordinal);
+        TestNode method = Method(window, "Even")!;
+        Assert.True(method.State == TestState.Failed, $"Running its passing row alone left the theory {method.State}, though its other row failed:\n{method.Details}");
+        Assert.Same(odd, Row("Even(value: 1)").Results.Single());
+        Assert.Contains("Even(value: 1): Failed", method.Details, StringComparison.Ordinal);
+
+        Assert.True(window.Perform(AppActions.RerunFailedTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy && Row("Even(value: 1)").Results.SingleOrDefault() is { } fresh && fresh != odd,
+            () => $"Rerun Failed to run the row that failed: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(120));
+        Assert.Equal(TestState.Failed, Method(window, "Even")!.State);
+        window.Close();
+
+        TestNode Row(string name) => Method(window, "Even")!.Children.Single(r => r.Name == name);
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Typing_in_one_file_among_many_open_reads_and_marks_that_files_tests_and_no_others()

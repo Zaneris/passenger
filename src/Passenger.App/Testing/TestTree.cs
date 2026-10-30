@@ -201,14 +201,29 @@ public sealed class TestNode : Observable, ITreeRow
     /// <summary>Where the code or a runner says it is: the code's, which follows typing, over the last build's.</summary>
     private TestItem? Located => FromCode ?? Item ?? Items.FirstOrDefault(i => i.Path is not null);
 
-    /// <summary>A method or row about to run: its results go, and it is running until as many outcomes as it runs
-    /// tests have come.</summary>
-    internal void Begin(int tests)
+    /// <summary>A method or row about to run: its results go, and it is running until as many outcomes as it runs tests
+    /// have come. A method run in part, <paramref name="running"/> naming the tests it runs (some of its data rows), keeps
+    /// its results of its other tests.</summary>
+    internal void Begin(int tests, IReadOnlySet<string>? running = null)
     {
-        results.Clear();
+        if (running is null)
+        {
+            results.Clear();
+        }
+        else
+        {
+            HashSet<string> its = [.. Items.Select(i => i.Key)];
+            results.RemoveAll(r => r.Test.Key is var key && (running.Contains(key) || !its.Contains(key)));
+        }
         Array.Clear(counts);
-        AddTicks(-ticks);
-        expected = tests;
+        long kept = 0;
+        foreach (TestOutcome result in results)
+        {
+            counts[(int)result.State]++;
+            kept += result.Duration.Ticks;
+        }
+        AddTicks(kept - ticks);
+        expected = results.Count + tests;
         State = TestState.Running;
         Raise(nameof(Details));
     }
@@ -222,12 +237,15 @@ public sealed class TestNode : Observable, ITreeRow
         Raise(nameof(Details));
     }
 
-    /// <summary>A method or row still running when its run ended was never run: it goes back to not run.</summary>
+    /// <summary>A method or row still running when its run ended was never run, as is a test of a method's that told
+    /// nothing: it goes back to not run, unless what did come says otherwise.</summary>
     internal void End()
     {
         if (State == TestState.Running)
         {
-            State = Combine(counts, running: false);
+            int[] ended = [.. counts];
+            ended[(int)TestState.NotRun] += Math.Max(0, expected - results.Count);
+            State = Combine(ended, running: false);
         }
     }
 
@@ -529,24 +547,29 @@ public sealed class TestTree
     /// <summary>The row a test is shown by: its data row's, else its method's (the first, when it is under two groups).</summary>
     public TestNode? Node(TestItem test) => byKey.TryGetValue(test.Key, out List<TestNode>? nodes) ? nodes[0] : null;
 
-    /// <summary>The tests about to run go to running, each method waiting for as many outcomes as it runs tests; the
-    /// rows a method's last run made wait to be made again.</summary>
+    /// <summary>The tests about to run go to running, each method waiting for as many outcomes as it runs tests and
+    /// keeping its results of the data rows the run leaves out; the rows a method's last run made wait to be made again.</summary>
     public void Begin(IReadOnlyList<TestItem> tests)
     {
-        Dictionary<TestNode, int> methods = new(ReferenceEqualityComparer.Instance);
+        Dictionary<TestNode, HashSet<string>> methods = new(ReferenceEqualityComparer.Instance);
         List<TestNode> rows = [];
         foreach (TestItem test in tests)
         {
-            foreach (TestNode node in byKey.GetValueOrDefault(test.Key) ?? [])
+            string key = test.Key;
+            foreach (TestNode node in byKey.GetValueOrDefault(key) ?? [])
             {
                 TestNode method = node.Kind == TestNodeKind.Row ? node.Parent! : node;
-                methods[method] = methods.GetValueOrDefault(method) + 1;
+                if (!methods.TryGetValue(method, out HashSet<string>? keys))
+                {
+                    methods[method] = keys = new(StringComparer.Ordinal);
+                }
+                keys.Add(key);
                 rows.AddRange(node.Kind == TestNodeKind.Row ? [node] : node.Children.Where(c => c.Item is null));
             }
         }
-        foreach ((TestNode method, int count) in methods)
+        foreach ((TestNode method, HashSet<string> keys) in methods)
         {
-            method.Begin(count);
+            method.Begin(keys.Count, keys.Count < method.Items.Count ? keys : null);
         }
         foreach (TestNode row in rows)
         {
