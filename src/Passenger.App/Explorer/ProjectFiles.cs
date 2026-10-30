@@ -21,6 +21,9 @@ internal sealed class ProjectFiles
     private readonly Dictionary<string, List<(string Name, string Path)>> files;
     private readonly Dictionary<string, HashSet<string>> folders;
 
+    /// <summary>Where each file the project holds shows, by its path: the place's folders and its name there.</summary>
+    private readonly Dictionary<string, (string Folder, string Name)> places = new(PathNames.Comparer);
+
     public ProjectFiles(ProjectModel project)
     {
         root = project.Folder;
@@ -50,6 +53,7 @@ internal sealed class ProjectFiles
                 files[folder] = held = [];
             }
             held.Add((name, item.Path));
+            places.TryAdd(item.Path, (folder, name));
         }
     }
 
@@ -84,17 +88,12 @@ internal sealed class ProjectFiles
 
     /// <summary>Where a file of the project shows in it, the folders down to it separated by '/'; null for a file the
     /// project does not hold.</summary>
-    public string? LogicalOf(string path)
-    {
-        foreach ((string folder, List<(string Name, string Path)> held) in files)
-        {
-            if (held.FirstOrDefault(f => PathNames.Same(f.Path, path)) is { Name: { } name })
-            {
-                return folder.Length == 0 ? name : $"{folder}/{name}";
-            }
-        }
-        return null;
-    }
+    public string? LogicalOf(string path) =>
+        places.TryGetValue(path, out (string Folder, string Name) place) ? place.Folder.Length == 0 ? place.Name : $"{place.Folder}/{place.Name}" : null;
+
+    /// <summary>The place a file of the project shows at, the folders down to it separated by '/' ("" at the project's top),
+    /// as <see cref="FilesIn"/> takes it; null for a file the project does not hold.</summary>
+    public string? PlaceOf(string path) => places.TryGetValue(path, out (string Folder, string Name) place) ? place.Folder : null;
 
     /// <summary>A place in the project as a path on disk, whether or not a folder is there.</summary>
     public string PathOf(string relative) => relative.Length == 0 ? root : Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));

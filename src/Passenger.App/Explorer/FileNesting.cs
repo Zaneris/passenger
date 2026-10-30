@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Passenger.Core;
+using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App.Explorer;
@@ -183,31 +184,71 @@ public static partial class FileNesting
     public static IReadOnlyList<string> DependentsOf(string path, ProjectModel? project, bool byName) =>
         DependentsOf([(path, project)], byName).GetValueOrDefault(path) ?? [];
 
-    /// <summary>The files shown under each of several (each with its project), by the path given: each folder they are in
-    /// listed and nested once, so files chosen together in a folder of thousands cost the folder once, not once each.</summary>
+    /// <summary>The files the Solution view shows under each of several (each with its project), by the path given, those in
+    /// its own folder on disk: an evaluated project's from the files it holds where the file shows (none under one it does
+    /// not hold, none it removes or hides), until then its folder's on disk. Each place is read and nested once, so files
+    /// chosen together in a folder of thousands cost the folder once, not once each.</summary>
     public static IReadOnlyDictionary<string, IReadOnlyList<string>> DependentsOf(IReadOnlyCollection<(string Path, ProjectModel? Project)> files, bool byName)
     {
         Dictionary<string, IReadOnlyList<string>> found = new(StringComparer.Ordinal);
-        foreach (IGrouping<(string Folder, ProjectModel? Project), (string Path, ProjectModel? Project)> together in files
-            .Where(f => Path.GetDirectoryName(f.Path) is not null && File.Exists(f.Path))
-            .GroupBy(f => (Path.GetDirectoryName(f.Path)!, f.Project)))
+        Dictionary<string, ProjectFiles> held = new(StringComparer.Ordinal);
+        Dictionary<(string Place, string? Project), (ProjectModel? Project, List<string> Chosen)> places = [];
+        foreach ((string path, ProjectModel? project) in files)
         {
-            List<string> listed;
-            try
-            {
-                listed = [.. Directory.EnumerateFiles(together.Key.Folder).Select(PathNames.Canonical)];
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            if (Path.GetDirectoryName(path) is not { } folder || !File.Exists(path))
             {
                 continue;
             }
-            ILookup<string, string> under = Parents(listed, together.Key.Project, byName).ToLookup(p => p.Value, p => p.Key, StringComparer.Ordinal);
-            foreach ((string path, _) in together)
+            string? place = folder;
+            if (project is { IsEvaluated: true })
             {
-                found[path] = [.. under[PathNames.Canonical(path)].Order(StringComparer.OrdinalIgnoreCase)];
+                if (!held.TryGetValue(project.Path, out ProjectFiles? shown))
+                {
+                    held[project.Path] = shown = new ProjectFiles(project);
+                }
+                place = shown.PlaceOf(path);
+            }
+            if (place is null)
+            {
+                found[path] = [];
+                continue;
+            }
+            if (!places.TryGetValue((place, project?.Path), out (ProjectModel? Project, List<string> Chosen) together))
+            {
+                places[(place, project?.Path)] = together = (project, []);
+            }
+            together.Chosen.Add(path);
+        }
+        foreach (((string place, string? owner), (ProjectModel? project, List<string> chosen)) in places)
+        {
+            if ((owner is not null && held.TryGetValue(owner, out ProjectFiles? shown) ? Shown(shown, place) : OnDisk(place)) is not { } listed)
+            {
+                continue;
+            }
+            ILookup<string, string> under = Parents(listed, project, byName).ToLookup(p => p.Value, p => p.Key, PathNames.Comparer);
+            foreach (string path in chosen)
+            {
+                string folder = Path.GetDirectoryName(path)!;
+                found[path] = [.. under[PathNames.Canonical(path)].Where(d => PathNames.Same(Path.GetDirectoryName(d)!, folder)).Order(StringComparer.OrdinalIgnoreCase)];
             }
         }
         return found;
+
+        static List<string> Shown(ProjectFiles shown, string place) => [.. shown.FilesIn(place).Where(f => !FileText.IsSaving(f.Name)).Select(f => f.Path)];
+
+        static List<string>? OnDisk(string folder)
+        {
+            try
+            {
+                return [.. Directory.EnumerateFiles(folder)
+                    .Where(f => !FileText.IsSaving(Path.GetFileName(f)) && !PathNames.IsSystemFile(Path.GetFileName(f)))
+                    .Select(PathNames.Canonical)];
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
     }
 
     /// <summary>A dependent's name once its parent is renamed: the part named after the parent (its name without its

@@ -204,6 +204,32 @@ public sealed class FileNestingTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file named after another but removed from the project is shown under nothing, so a rename of the file it
+    /// would nest under leaves it where it is: only the dependents the Solution view shows go with their parent.</summary>
+    [AvaloniaFact]
+    public void A_rename_leaves_where_it_is_a_file_named_after_it_that_the_project_removes()
+    {
+        Write("Shop/Shop.csproj", Project.Replace("  <ItemGroup>\n", "  <ItemGroup>\n    <Compile Remove=\"Forms/Form1.Designer.cs\" />\n", StringComparison.Ordinal));
+        MainWindow window = Open();
+        Ui.WaitFor(() => window.ProjectOf(At("Forms/Form1.cs")) is { IsEvaluated: true }, "the project evaluated", TimeSpan.FromMinutes(1));
+        Ui.WaitFor(() => !Shows(window, At("Forms/Form1.Designer.cs")), "Form1.Designer.cs, which the project removes, to leave the Solution view");
+        Assert.Equal(At("Forms/Form1.cs"), Holder(window, At("Forms/Form1.resx")).Path);
+
+        Choose(window, At("Forms/Form1.cs"));
+        Ui.Run(window, AppActions.Rename);
+        NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+        if (popup.Option is { IsChecked: true } renameType)
+        {
+            Ui.Click(renameType);
+        }
+        popup.Text = string.Empty;
+        window.KeyTextInput("Form2.cs");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => !window.IsPopupOpen, $"the rename to finish: {popup.Problem}");
+        Assert.Equal(["Form1.Designer.cs", "Form2.cs", "Form2.resx"], Directory.GetFiles(At("Forms")).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+        window.Close();
+    }
+
     /// <summary>A window on the folder, with no C# language server: nesting, renames and moves ask nothing of C#, and the
     /// project is never restored for one.</summary>
     private MainWindow Open() => Ui.OpenFolder(folder, languageServer: false);
