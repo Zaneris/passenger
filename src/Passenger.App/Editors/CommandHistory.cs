@@ -909,6 +909,7 @@ public sealed class CommandHistory
         // Whether it has said it writes a file since the open files were last taken.
         private bool writes = true;
         private bool ended;
+        private bool takenBack;
 
         internal Recording(CommandHistory history, EditorArea editors, string name, bool ownWrites)
         {
@@ -1124,6 +1125,62 @@ public sealed class CommandHistory
         /// for it however few files it changed.</summary>
         public void Also(Part part) => parts.Add(part);
 
+        /// <summary>Takes back all the command has done once it is refused partway, so none of it stays and no Undo is kept:
+        /// what it queued is never written, its moves go back, the open files take back their steps, the files not open it
+        /// wrote, made or deleted are put as they were off the window's thread, and its parts are put back. Why it was
+        /// <paramref name="refused"/>, with what could not be put back (a file changed since).</summary>
+        public async Task<string> TakenBackAsync(string refused)
+        {
+            if (takenBack)
+            {
+                return refused;
+            }
+            takenBack = true;
+            queued.Clear();
+            Unname();
+            if (ownWrites)
+            {
+                TakeOpen();
+            }
+            List<TextChange> texts = ownWrites ? [.. wrote.Values] : Steps();
+            List<string> left = [];
+            if (MoveBack().Refused is { } unmoved)
+            {
+                left.Add(unmoved);
+            }
+            foreach (TextChange text in texts)
+            {
+                if (!editors.Documents.Contains(text.Document!) || text.Document!.Text.NextUndo != text.Step)
+                {
+                    left.Add($"{text.Document!.Name} has been changed since");
+                    continue;
+                }
+                editors.Step(text.Document, redo: false);
+            }
+            List<(string At, TextSnapshot? Before, TextSnapshot? After)> files = [.. closed.Select(c => (Now(c.Key), c.Value.Before, c.Value.After))];
+            List<Deletion> deleted = [.. deletions.Select(d => d with { Path = Now(d.Path) })];
+            closed.Clear();
+            madeAt.Clear();
+            deletions.Clear();
+            if (files.Count + deleted.Count > 0)
+            {
+                left.AddRange(await history.InTurnAsync(name, [.. files.Select(f => f.At), .. deleted.Select(d => d.Path)], wrote => PutBack(files, deleted, wrote)));
+            }
+            foreach (OpenDocument made in editors.Documents.Where(d => files.Any(f => f.Before is null && PathNames.Same(f.At, d.Path)) && !File.Exists(d.Path)).ToList())
+            {
+                editors.CloseDeleted(made);
+            }
+            foreach (Part part in Enumerable.Reverse(parts))
+            {
+                if (await part.Put(false) is { } unput)
+                {
+                    left.Add(unput);
+                }
+            }
+            parts.Clear();
+            return left.Count == 0 ? refused : $"{refused}; what it had done could not all be put back: {string.Join("; ", left)}";
+        }
+
         /// <summary>Ends the recording, keeping the command when it is one. Changes it queued and never wrote (a command
         /// stopped on a refusal after them) are made first, in turn, off the window's thread, as <see cref="WriteAsync"/>
         /// makes them, the command still being made until they are; a file the disk refuses there goes to the IDE's log.</summary>
@@ -1170,10 +1227,14 @@ public sealed class CommandHistory
             }
         }
 
-        /// <summary>Keeps the command when it is one.</summary>
+        /// <summary>Keeps the command when it is one, and not taken back.</summary>
         private void Finish()
         {
             Unname();
+            if (takenBack)
+            {
+                return;
+            }
             Command made = new(name, [], [.. moves]);
             if (ownWrites)
             {
@@ -1271,6 +1332,70 @@ public sealed class CommandHistory
                 }
             }
             return (made, null);
+        }
+
+        /// <summary>Puts files not open as they were before a command taken back, on the calling thread, <paramref name="wrote"/>
+        /// told of each: one it wrote given its text before while it holds the text written (any, for one only watched), one
+        /// it made deleted and one it deleted written back. Why each that could not be was not.</summary>
+        private static List<string> PutBack(IReadOnlyList<(string At, TextSnapshot? Before, TextSnapshot? After)> files, IReadOnlyList<Deletion> deleted,
+            Action<string> wrote)
+        {
+            List<string> left = [];
+            foreach ((string at, TextSnapshot? before, TextSnapshot? after) in files)
+            {
+                string name = Path.GetFileName(at);
+                try
+                {
+                    if (!File.Exists(at))
+                    {
+                        if (before is not null)
+                        {
+                            left.Add($"{name} is no longer there");
+                        }
+                        continue;
+                    }
+                    if (before is null)
+                    {
+                        File.Delete(at);
+                        wrote(at);
+                        continue;
+                    }
+                    if (FileText.Load(at) is not { } now || now.Text == before.ToString())
+                    {
+                        continue;
+                    }
+                    if (after is not null && now.Text != after.ToString())
+                    {
+                        left.Add($"{name} has been changed since");
+                        continue;
+                    }
+                    FileText.Save(at, before.ToString(), now.Encoding, now.HasBom, now.CrBreaks);
+                    wrote(at);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    left.Add($"{name} could not be put back: {error.Message}");
+                }
+            }
+            foreach (Deletion gone in deleted)
+            {
+                string name = Path.GetFileName(gone.Path);
+                try
+                {
+                    if (File.Exists(gone.Path) || Directory.Exists(gone.Path))
+                    {
+                        left.Add($"{name} is already there");
+                        continue;
+                    }
+                    FileText.Restore(gone.Path, gone.Bytes);
+                    wrote(gone.Path);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    left.Add($"{name} could not be written back: {error.Message}");
+                }
+            }
+            return left;
         }
 
         /// <summary>Each open file the command changed: its text before and now, and the undo step that made it now.</summary>

@@ -184,7 +184,8 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>Runs a refactoring's change of files beyond the open ones within its command's recording, which writes the
     /// files not open it changes (<see cref="CommandHistory.Recording.WriteAsync"/>); the window follows it once they are
     /// written: what it made, moved or deleted among <paramref name="paths"/>, which the Explorer and Git then show, and the
-    /// projects and XAML that read a text it changed. Throws <see cref="WorkspaceEditFailed"/> for a file the disk refused.</summary>
+    /// projects and XAML that read a text it changed. Throws <see cref="WorkspaceEditFailed"/> for a file the disk refused,
+    /// once all the command did is taken back.</summary>
     public async Task ChangeFilesAsync(IReadOnlyCollection<string> paths, CommandHistory.Recording recording, Action change)
     {
         if (FilesChanging is { } following)
@@ -193,7 +194,7 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
             return;
         }
         change();
-        WorkspaceEdits.Written(await recording.WriteAsync());
+        await WorkspaceEdits.WrittenAsync(recording, await recording.WriteAsync());
     }
 
     /// <summary>A page to open in the browser: an ESLint rule's, an image's registry page.</summary>

@@ -601,7 +601,8 @@ public partial class MainWindow
 
     /// <summary>As <see cref="Following{T}"/>, a change made within a command's recording, followed only once the recording
     /// has written the files not open it changes (<see cref="CommandHistory.Recording.WriteAsync"/>), so what reads them
-    /// then reads them as the change left them. Throws <see cref="WorkspaceEditFailed"/> naming a file the disk refused.</summary>
+    /// then reads them as the change left them. Throws <see cref="WorkspaceEditFailed"/> naming a file the disk refused, once
+    /// all the command did is taken back.</summary>
     private async Task FollowingAsync(IReadOnlyCollection<string> paths, CommandHistory.Recording recording, Action change)
     {
         Dictionary<string, bool> stood = Standing(paths);
@@ -620,7 +621,7 @@ public partial class MainWindow
             refused = await recording.WriteAsync();
             Followed(stood, moved, paths);
         }
-        WorkspaceEdits.Written(refused);
+        await WorkspaceEdits.WrittenAsync(recording, refused);
     }
 
     /// <summary>Whether each file and folder along the paths stands, up to the open folder: what a change made or took away

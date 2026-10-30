@@ -20,8 +20,8 @@ internal static class ServerCommands
     /// <summary>The change made, under <paramref name="title"/> in Undo and said as <paramref name="what"/>: the action's
     /// <paramref name="edit"/>, answered for the open files as <paramref name="asked"/> followed them, then the command, which
     /// <paramref name="run"/> sends. What it came to: the files it changed and those left as edited meanwhile, what to say
-    /// (that it changed nothing, or is done after a file landed late), why not, and where the server asked a name it wrote
-    /// be renamed. A refusal for files the server had yet to read is told its command's <paramref name="patience"/>.</summary>
+    /// (that it changed nothing, or is done after a file landed late), why not (all of it taken back), and where the server
+    /// asked a name it wrote be renamed. A refusal for files the server had yet to read is told its command's <paramref name="patience"/>.</summary>
     public static async Task<RefactorOutcome> RunAsync(EditorArea editors, string title, string what, JsonElement? edit, Func<CommandRun, Task> run,
         Asked? asked, Patience? patience, Action<string>? waiting)
     {
@@ -99,7 +99,7 @@ internal static class ServerCommands
         }
         if (refused is not null && files.Count == 0)
         {
-            return RefactorOutcome.Refused($"{what} was not applied: {refused}");
+            return RefactorOutcome.Refused($"{what} was not applied: {await recording.TakenBackAsync(refused)}");
         }
         List<RefactoredFile> shown = [.. files.Where(f => !(editors.Find(f.Path) is { } open && dropped.Contains(open.Name)))
             .Select(f => created.Contains(f.Path) ? f with { Change = "created", Lines = [] } : f).DistinctBy(f => (f.Path, f.Change))];

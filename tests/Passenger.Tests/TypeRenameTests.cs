@@ -414,6 +414,55 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         }
     }
 
+    /// <summary>A rename refused partway, a closed file gone as its writes reach it, takes back all it did: the open files
+    /// as they were with nothing left unsaved, the closed files it had written put back, and no command left for Undo.</summary>
+    [AvaloniaFact]
+    public void A_rename_refused_partway_by_a_closed_file_gone_takes_back_every_change_and_leaves_nothing_unsaved()
+    {
+        IReadOnlyList<string> uses = WriteTally(4);
+        Dictionary<string, string> before = uses.ToDictionary(u => u, File.ReadAllText);
+        MainWindow window = Open(Path.GetFileName(uses[0]));
+        window.OpenFile(Path.Combine(folder, "Tally.cs"));
+        Ui.Settle();
+        string tally = Text(window);
+        OpenDocument use = window.EditorArea.Find(uses[0]) ?? throw new Xunit.Sdk.XunitException("Use0.cs is not open");
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Task held = window.EditorArea.Commands.HoldNextWrite(release.Task);
+            OpenRenameBox(window, "int Ma", "More");
+            Ui.Press(window, "ENTER", settle: false);
+            Ui.PumpUntil(() => held.IsCompleted, "the rename's writes of its closed files to be held");
+            Assert.True(Text(window).Contains("int More(int value)", StringComparison.Ordinal) && use.Text.Snapshot.ToString().Contains("Tally.More(", StringComparison.Ordinal),
+                "The rename was not made in the open files before its closed files were written");
+            // The closed file the rename writes last goes, so those before it are written and the write is refused there.
+            IReadOnlyList<string> writing = window.EditorArea.Commands.PathsWriting();
+            string gone = writing[^1];
+            File.Delete(gone);
+            release.SetResult();
+            Ui.WaitFor(() => window.Status?.StartsWith("Rename failed: ", StringComparison.Ordinal) == true, () => $"the rename to be refused; the status says '{window.Status}'");
+
+            Assert.StartsWith($"Rename failed: {Path.GetFileName(gone)} could not be written: ", window.Status, StringComparison.Ordinal);
+            Assert.DoesNotContain("could not all be put back", window.Status, StringComparison.Ordinal);
+            Assert.True(Text(window) == tally, $"Tally.cs kept the rename refused:\n{Text(window)}");
+            Assert.True(use.Text.Snapshot.ToString() == before[uses[0]], $"Use0.cs kept the rename refused:\n{use.Text.Snapshot}");
+            Assert.True(window.EditorArea.Documents.All(d => !d.IsModified),
+                $"The rename refused left {string.Join(", ", window.EditorArea.Documents.Where(d => d.IsModified).Select(d => d.Name))} changed and unsaved");
+            Assert.False(File.Exists(gone), $"{Path.GetFileName(gone)} came back");
+            foreach (string written in writing.Take(writing.Count - 1))
+            {
+                Assert.True(File.ReadAllText(written) == before[written], $"{Path.GetFileName(written)} kept the rename refused: {File.ReadAllText(written)}");
+                Assert.True(File.GetLastWriteTimeUtc(written) > DateTime.UtcNow - TimeSpan.FromSeconds(30), $"{Path.GetFileName(written)} was never written, so the rename was refused before it began");
+            }
+            Assert.True(window.EditorArea.Commands.ToUndo(null) is null, "The rename refused left a command for Undo to take back");
+        }
+        finally
+        {
+            release.TrySetResult();
+            window.Close();
+        }
+    }
+
     /// <summary>Rename of a class whose file the disk will not rename (held open by another program on Windows, its folder
     /// read-only elsewhere) is refused before anything changes, naming the file: no file's code renamed, none written, no
     /// command left for Undo; asked again once the file is let go, it renames the code and the file.</summary>

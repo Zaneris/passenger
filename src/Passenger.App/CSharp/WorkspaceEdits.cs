@@ -176,7 +176,8 @@ public static class WorkspaceEdits
     /// <summary>Writes a command's files not open and waits within its recording for those still landing
     /// (<see cref="CommandHistory.Recording.LandedAsync"/>: a file never written is left out of its Undo),
     /// <paramref name="waiting"/> told meanwhile which; one the disk refuses, or that never lands, throws
-    /// <see cref="WorkspaceEditFailed"/>. Whether any was landing.</summary>
+    /// <see cref="WorkspaceEditFailed"/> once all the command did is taken back (<see cref="CommandHistory.Recording.TakenBackAsync"/>).
+    /// Whether any was landing.</summary>
     public static async Task<bool> LandedAsync(CommandHistory.Recording recording, Action<string>? waiting)
     {
         bool landing = false;
@@ -186,18 +187,18 @@ public static class WorkspaceEdits
                 waiting?.Invoke(said);
             }) is [(string path, Exception refused), ..])
         {
-            throw new WorkspaceEditFailed(Unwritten(path, refused));
+            throw new WorkspaceEditFailed(await recording.TakenBackAsync(Unwritten(path, refused)));
         }
         return landing;
     }
 
     /// <summary>Throws <see cref="WorkspaceEditFailed"/> naming the file a command's writes stopped at, when the disk refused
-    /// one (<see cref="CommandHistory.Recording.WriteAsync"/>).</summary>
-    public static void Written((string Path, Exception Refused)? refused)
+    /// one (<see cref="CommandHistory.Recording.WriteAsync"/>), once all the command did is taken back.</summary>
+    public static async Task WrittenAsync(CommandHistory.Recording recording, (string Path, Exception Refused)? refused)
     {
         if (refused is (string path, Exception error))
         {
-            throw new WorkspaceEditFailed(Unwritten(path, error));
+            throw new WorkspaceEditFailed(await recording.TakenBackAsync(Unwritten(path, error)));
         }
     }
 

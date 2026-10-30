@@ -214,7 +214,8 @@ internal sealed class MSBuildAssist : LanguageAssist
 
     /// <summary>A package id chosen for an item's Include: a reference that names no version takes the feed's latest;
     /// under central package management the reference takes none and Directory.Packages.props a PackageVersion for it
-    /// (unless it has one), both one command undone together, said once Directory.Packages.props, when not open, has landed.</summary>
+    /// (unless it has one), both one command undone together, said once Directory.Packages.props, when not open, has landed;
+    /// both taken back where the disk refuses it.</summary>
     private async Task CommitPackageAsync(MSBuildDocument msbuild, PackageChoice package, TextRange replaced)
     {
         XmlTree tree = msbuild.Tree;
@@ -257,7 +258,7 @@ internal sealed class MSBuildAssist : LanguageAssist
         }
         if (await recording.LandedAsync(context.Say) is [(string unwritten, Exception why), ..])
         {
-            context.Say($"{package.Id}'s version could not be added to {Path.GetFileName(props)}: {WorkspaceEdits.Unwritten(unwritten, why)}");
+            context.Say($"{package.Id}'s version could not be added to {Path.GetFileName(props)}: {await recording.TakenBackAsync(WorkspaceEdits.Unwritten(unwritten, why))}");
             return;
         }
         context.Say(dropped.Count > 0 ? $"{Path.GetFileName(props)} was edited meanwhile: add {package.Id}'s version there"

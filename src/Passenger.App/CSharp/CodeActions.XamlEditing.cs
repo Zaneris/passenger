@@ -150,7 +150,7 @@ internal sealed partial class CodeActions
 
     /// <summary><see cref="ChangeFilesAsync"/> as one command, answered once the files not open it wrote have landed, the
     /// status bar saying meanwhile which another program holds (<see cref="CommandHistory.Recording.LandedAsync"/>).
-    /// Null once made; else why not.</summary>
+    /// Null once made; else why not, all it did taken back where a file was refused.</summary>
     internal async Task<string?> ApplyFileChangesAsync(string name, IReadOnlyList<XamlFileChange> changes)
     {
         using CommandHistory.Recording recording = context.Editors.Commands.Record(name);
@@ -158,7 +158,7 @@ internal sealed partial class CodeActions
         {
             return refused;
         }
-        return await recording.LandedAsync(context.Say) is [(string path, Exception why), ..] ? WorkspaceEdits.Unwritten(path, why) : null;
+        return await recording.LandedAsync(context.Say) is [(string path, Exception why), ..] ? await recording.TakenBackAsync(WorkspaceEdits.Unwritten(path, why)) : null;
     }
 
     /// <summary>The refactorings offered at the caret of a XAML file (Refactor This, and after the fixes in Show
