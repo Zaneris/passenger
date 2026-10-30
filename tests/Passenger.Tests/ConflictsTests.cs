@@ -377,6 +377,51 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A rebase stopped on a conflict, resolved, is still said in the Commit window, whose Commit refuses to commit
+    /// beside it on its detached head, naming Continue Rebase, and whose Continue Rebase goes on with it.</summary>
+    [AvaloniaFact]
+    public void A_rebase_whose_conflict_is_resolved_is_said_in_the_commit_window_whose_commit_never_goes_beside_it()
+    {
+        Git("switch", "-q", "-c", "feature");
+        Write("Shop.cs", Shop.Replace("int count", "short count", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Short");
+        Write("Notes.md", "notes\n");
+        Git("add", "Notes.md");
+        Git("commit", "-q", "-m", "Notes");
+        Git("switch", "-q", "main");
+        Write("Shop.cs", Shop.Replace("int count", "long count", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Long");
+        Git("switch", "-q", "feature");
+        Conflicting("rebase", "main");
+
+        MainWindow window = Open();
+        CommitView commit = window.CommitView;
+        window.Perform(AppActions.Commit);
+        Ui.Landed(() => commit.UnderWay?.StartsWith("Rebasing feature onto main", StringComparison.Ordinal) == true, "the rebase said in the Commit window");
+        Assert.True(window.Perform(AppActions.ResolveConflicts), window.Status);
+        Ui.Settle();
+        ConflictsDialog dialog = Assert.IsType<ConflictsDialog>(window.Frontmost);
+        window.Confirm = (_, _, _) => Task.FromResult(false);
+        dialog.Chosen = [dialog.Rows.Single()];
+        Press(dialog, "Accept Yours");
+        Ui.Landed(() => window.ConflictsWindow is null && window.Vcs.Conflicts.Count == 0, "the conflict resolved and the dialog closed");
+        Assert.True(commit.UnderWay?.StartsWith("Rebasing feature onto main", StringComparison.Ordinal) == true,
+            $"Once its conflict was resolved the Commit window said \"{commit.UnderWay}\" of the rebase still in progress");
+
+        string head = Git("rev-parse", "HEAD").Trim();
+        commit.Message = "A commit of my own";
+        string refused = CommitRefused(window);
+        Assert.Contains("Continue Rebase", refused, StringComparison.Ordinal);
+        Assert.Equal(head, Git("rev-parse", "HEAD").Trim());
+        Assert.Equal(MergeOperation.Rebase, window.Vcs.Merge.Operation);
+
+        Press(window, "Continue Rebase");
+        Ui.Landed(() => window.Status == "Rebase successful", "the rebase's end");
+        Assert.Equal(["Notes", "Short", "Long", "First"], Git("log", "--format=%s").Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        Assert.Null(commit.UnderWay);
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void An_unstash_that_conflicts_opens_the_conflicts_dialog_on_the_stash_and_accept_theirs_takes_the_stashed_change()

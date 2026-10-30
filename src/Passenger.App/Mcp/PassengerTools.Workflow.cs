@@ -22,7 +22,8 @@ public sealed partial class PassengerTools
         "The branch and the files changed since the last commit (modified, added, deleted, renamed, unversioned, conflicted). " +
         "While a merge, rebase, unstash or cherry-pick is stopped for conflicts, conflicts says what is under way, which " +
         "branches yours and theirs are (in a rebase yours is the branch being rebased) and whether each side modified or " +
-        "deleted each file in conflict; vcs_resolve resolves them. With path, that file's changes since the last commit as a " +
+        "deleted each file in conflict; vcs_resolve resolves them. underWay names a merge, rebase, cherry-pick or revert still " +
+        "in progress, its conflicts resolved or not. With path, that file's changes since the last commit as a " +
         "unified diff: the editor's text when it is open (unsaved changes included), else the file on disk.")]
     public async Task<object> VcsStatus(string? path = null, CancellationToken cancel = default) =>
         path is null ? await VcsChanges(cancel) : await VcsDiff(path, cancel);
@@ -39,7 +40,7 @@ public sealed partial class PassengerTools
         ConflictSides sides = vcs.Sides;
         VcsConflicts? conflicts = vcs.Conflicts.Count == 0 ? null : new VcsConflicts(sides.Description, sides.Yours, sides.Theirs,
             [.. vcs.Conflicts.Select(c => new VcsConflict(Relative(c.Path), sides.YoursHas(c) ? "modified" : "deleted", sides.TheirsHas(c) ? "modified" : "deleted"))]);
-        return new VcsStatus(vcs.Branch, [.. vcs.Changes.Select(c => new VcsChange(Relative(c.Path), c.Kind.ToString().ToLowerInvariant(), c.From is { } from ? Relative(from) : null, c.Uncommittable))], conflicts);
+        return new VcsStatus(vcs.Branch, [.. vcs.Changes.Select(c => new VcsChange(Relative(c.Path), c.Kind.ToString().ToLowerInvariant(), c.From is { } from ? Relative(from) : null, c.Uncommittable))], conflicts, vcs.Merge.UnderWay);
     });
 
     [McpServerTool(Name = McpTools.VcsResolve, Title = "Resolve a conflict", Destructive = true), Description(
@@ -556,7 +557,8 @@ public sealed partial class PassengerTools
     }
 }
 
-public sealed record VcsStatus(string? Branch, IReadOnlyList<VcsChange> Changes, VcsConflicts? Conflicts = null);
+/// <summary>The branch, the changed files, what stopped for conflicts and what is under way, conflicts or none.</summary>
+public sealed record VcsStatus(string? Branch, IReadOnlyList<VcsChange> Changes, VcsConflicts? Conflicts = null, string? UnderWay = null);
 
 /// <summary>What stopped for conflicts, the branches yours and theirs are, and the files in conflict.</summary>
 public sealed record VcsConflicts(string Operation, string? Yours, string? Theirs, IReadOnlyList<VcsConflict> Files);

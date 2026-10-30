@@ -573,6 +573,11 @@ public sealed class VcsController : IDisposable
         {
             return new CommitResult(Report(false, "Resolve conflicts in order to commit"), null, null);
         }
+        // A commit of its own would go beside the rebase's on its detached head, the rebase left in progress.
+        if (Merge.Operation is MergeOperation.Rebase)
+        {
+            return new CommitResult(Report(false, $"{Merge.UnderWay}: Continue Rebase commits what is resolved and goes on, or Abort Rebase ends it"), null, null);
+        }
         // A merge's commit finishes it even when it changed no file (every conflict resolved as HEAD had it).
         bool merging = Merge.CommitsWhole && !amend;
         if (chosen.Count == 0 && !amend && !merging)

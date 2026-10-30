@@ -21,6 +21,16 @@ public sealed record MergeState(MergeOperation Operation, string Ours, string? T
     /// <summary>Whether a commit finishes the operation, which git makes only of the whole index.</summary>
     public bool CommitsWhole => Operation is MergeOperation.Merge or MergeOperation.CherryPick or MergeOperation.Revert;
 
+    /// <summary>What is under way in a person's words, its conflicts resolved or not; null with nothing under way.</summary>
+    public string? UnderWay => Operation switch
+    {
+        MergeOperation.Merge => $"Merging {Theirs} into {Ours}",
+        MergeOperation.Rebase => Commit is null ? $"Rebasing {Theirs} onto {Ours}" : $"Rebasing {Theirs} onto {Ours}, stopped at {Commit}",
+        MergeOperation.CherryPick => $"Cherry-picking {Commit}",
+        MergeOperation.Revert => $"Reverting {Commit}",
+        _ => null,
+    };
+
     /// <summary>The words the Conflicts dialog and the merge window use for the sides.
     /// <paramref name="stash"/> names the stash an unstash with conflicts applied, which git keeps no record of.</summary>
     public ConflictSides Sides(string? stash) => Operation switch

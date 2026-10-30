@@ -72,6 +72,10 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private readonly Button commit;
     private readonly Button commitAndPush;
     private readonly TextBlock placeholder;
+    private readonly StackPanel underWay;
+    private readonly TextBlock underWayText;
+    private readonly Button continueRebase;
+    private readonly Button abort;
     private string? beforeAmend;
 
     /// <summary>The merge's message the box was given, taken away again if the merge ends some other way.</summary>
@@ -140,6 +144,21 @@ public sealed class CommitView : DockPanel, IOwnKeys
         };
         placeholder = new TextBlock { Classes = { "emptyText" } };
 
+        // What git is in the middle of, said over Amend until it ends: its conflicts resolved, a commit here would go beside it.
+        underWayText = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        continueRebase = new Button { Classes = { "link" }, Content = "Continue Rebase" };
+        continueRebase.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.ContinueRebase);
+        abort = new Button { Classes = { "link" } };
+        abort.Click += (_, _) =>
+        {
+            if (AbortOf(vcs.Merge.Operation) is { } action)
+            {
+                ActionRequested?.Invoke(this, action.Id);
+            }
+        };
+        StackPanel links = new() { Orientation = Orientation.Horizontal, Spacing = 12, Children = { continueRebase, abort } };
+        underWay = new StackPanel { Margin = new Thickness(10, 6, 10, 0), Spacing = 2, IsVisible = false, Children = { underWayText, links } };
+
         amend = new CheckBox { Content = "Amend", Margin = new Thickness(10, 4, 0, 0) };
         amend.IsCheckedChanged += (_, _) => IdeErrors.Observe(AmendChangedAsync());
         message = new TextBox
@@ -178,7 +197,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         {
             [DockProperty] = Dock.Bottom,
             BorderThickness = new Thickness(0, 1, 0, 0),
-            Child = new StackPanel { Children = { amend, message, buttons } },
+            Child = new StackPanel { Children = { underWay, amend, message, buttons } },
         };
         bottom.Bind(Border.BorderBrushProperty, bottom.GetResourceObservable(TokenKeys.Divider));
 
@@ -394,6 +413,10 @@ public sealed class CommitView : DockPanel, IOwnKeys
         }
         placeholder.Text = vcs.Repository is null ? vcs.NoRepository : "No changes";
         placeholder.IsVisible = rows.Count == 0;
+        underWay.IsVisible = vcs.Merge.UnderWay is not null;
+        underWayText.Text = vcs.Merge.UnderWay;
+        continueRebase.IsVisible = vcs.Merge.Operation is MergeOperation.Rebase;
+        abort.Content = AbortOf(vcs.Merge.Operation)?.Title;
         // A merge under way gives the commit that finishes it the message git wrote for it, until it ends.
         string? merging = vcs.Merge.CommitsWhole ? vcs.Merge.Message : null;
         if (merging is not null && Message.Trim().Length == 0 && merging != prefilled)
@@ -485,6 +508,19 @@ public sealed class CommitView : DockPanel, IOwnKeys
     }
 
     private const string MergeConflicts = "Merge Conflicts";
+
+    /// <summary>What git is in the middle of as the Commit window says it; null with nothing under way.</summary>
+    public string? UnderWay => underWay.IsVisible ? underWayText.Text : null;
+
+    /// <summary>The Abort action of what is under way, by its id and title; null with nothing to abort.</summary>
+    private static (string Id, string Title)? AbortOf(MergeOperation operation) => operation switch
+    {
+        MergeOperation.Rebase => (AppActions.AbortRebase, "Abort Rebase"),
+        MergeOperation.Merge => (AppActions.AbortMerge, "Abort Merge"),
+        MergeOperation.CherryPick => (AppActions.AbortCherryPick, "Abort Cherry-Pick"),
+        MergeOperation.Revert => (AppActions.AbortRevert, "Abort Revert"),
+        _ => null,
+    };
 
     /// <summary>A row for whichever group or file the list hands its container: a group's box, name and count (Merge
     /// Conflicts' with its Resolve link and no box), or a file's box and line (a conflicted file's with no box: it is

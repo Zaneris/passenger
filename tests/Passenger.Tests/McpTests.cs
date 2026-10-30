@@ -623,6 +623,47 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>A rebase stopped on a conflict that the agent resolves is still said by vcs_status, and vcs_commit refuses to
+    /// commit beside it, naming Continue Rebase and Abort Rebase: no commit of the agent's takes the place of the rebase's
+    /// on its detached head, and the rebase is still in progress.</summary>
+    [Fact]
+    public async Task A_rebase_whose_conflict_is_resolved_is_still_said_and_an_agents_commit_never_goes_beside_it()
+    {
+        string repository = TestFolders.Create("mcp-rebase-");
+        DeleteAtEnd(repository);
+        string notes = Path.Combine(repository, "Notes.txt");
+        File.WriteAllText(notes, "one\ntwo\nthree\n");
+        await TestGit.InitAsync(repository);
+        await TestGit.RunAsync(repository, "switch", "-q", "-c", "feature");
+        File.WriteAllText(notes, "one\nTWO\nthree\n");
+        await TestGit.RunAsync(repository, "commit", "-q", "-am", "Two in capitals");
+        File.WriteAllText(Path.Combine(repository, "Later.txt"), "later\n");
+        await TestGit.RunAsync(repository, "add", "Later.txt");
+        await TestGit.RunAsync(repository, "commit", "-q", "-m", "Later");
+        await TestGit.RunAsync(repository, "switch", "-q", "main");
+        File.WriteAllText(notes, "one\nII\nthree\n");
+        await TestGit.RunAsync(repository, "commit", "-q", "-am", "Two in Roman");
+        await TestGit.RunAsync(repository, "switch", "-q", "feature");
+        ChildResult rebasing = await ChildProcesses.RunAsync(ChildProcesses.Command("git", ["rebase", "main"], repository), limit: TimeSpan.FromMinutes(1), cancel: Cancel);
+        Assert.False(rebasing.Succeeded, $"The rebase was to stop for its conflict: {rebasing.Output}");
+
+        await using McpClient client = await Start(["--mcp", repository]);
+        JsonElement stopped = await Call(client, McpTools.VcsStatus);
+        Assert.StartsWith("Rebasing feature onto main", stopped.GetProperty("underWay").GetString(), StringComparison.Ordinal);
+        Assert.Equal("Notes.txt resolved; no conflicts are left", (await Call(client, McpTools.VcsResolve, new() { ["path"] = "Notes.txt", ["take"] = "yours" })).GetString());
+        JsonElement resolved = await Call(client, McpTools.VcsStatus);
+        string? underWay = resolved.TryGetProperty("underWay", out JsonElement said) ? said.GetString() : null;
+        Assert.True(underWay?.StartsWith("Rebasing feature onto main", StringComparison.Ordinal) == true,
+            $"Once its conflict was resolved vcs_status said nothing of the rebase still in progress: {resolved.GetRawText()}");
+
+        string head = (await TestGit.RunAsync(repository, "rev-parse", "HEAD")).Trim();
+        CallToolResult commit = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Agent's commit" });
+        Assert.True(commit.IsError == true, $"vcs_commit made a commit of its own in the middle of a rebase: {Text(commit)}");
+        Assert.Contains("Continue Rebase", Text(commit), StringComparison.Ordinal);
+        Assert.Equal(head, (await TestGit.RunAsync(repository, "rev-parse", "HEAD")).Trim());
+        Assert.True(Directory.Exists(Path.Combine(repository, ".git", "rebase-merge")), "The rebase is no longer in progress after vcs_commit was refused");
+    }
+
     /// <summary>An agent's amend with no paths changes the last commit's message alone: a rename and a change staged in the
     /// index (as the IDE's own rename and another program's git add leave them) go into no commit and stay changes.</summary>
     [Fact]
