@@ -72,7 +72,7 @@ public static class LaunchSettingsEdits
     private static string? LaunchUrl(LaunchProfile profile, string url)
     {
         string? root = profile.RunsInContainer ? Containers.ContainerConfigurations.ServiceUrl
-            : profile.ApplicationUrl?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+            : profile.BrowserRoot;
         if (root is not null && (url == root || url == root.TrimEnd('/') + "/"))
         {
             return string.Empty;

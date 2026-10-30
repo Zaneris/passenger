@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Passenger.Workspace;
 
 namespace Passenger.App.Run;
@@ -11,7 +12,7 @@ namespace Passenger.App.Run;
 /// Visual Studio's container properties: its ports, whether it serves HTTPS, its <c>docker run</c> words and env files),
 /// and a Docker Compose project's (<see cref="DockerComposeCommand"/>, with its services' actions); every other kind is
 /// read too, and says why it does not run here.</summary>
-public sealed record LaunchProfile(
+public sealed partial record LaunchProfile(
     string Name,
     string? Command,
     string? ExecutablePath,
@@ -258,15 +259,15 @@ public sealed record LaunchProfile(
     }
 
     /// <summary>Where the browser opens when the profile asks for one: its launch URL, relative to its first application
-    /// URL unless absolute; empty with neither.</summary>
+    /// URL unless absolute; empty with neither. A host the program listens on everywhere is opened as this machine's.</summary>
     public string BrowserUrl()
     {
-        string? root = ApplicationUrl?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+        string? root = BrowserRoot;
         if (string.IsNullOrWhiteSpace(LaunchUrl))
         {
             return root ?? string.Empty;
         }
-        if (Uri.TryCreate(LaunchUrl, UriKind.Absolute, out Uri? absolute) && absolute.Scheme is "http" or "https")
+        if (Uri.TryCreate(Local(LaunchUrl), UriKind.Absolute, out Uri? absolute) && absolute.Scheme is "http" or "https")
         {
             return absolute.ToString();
         }
@@ -274,6 +275,18 @@ public sealed record LaunchProfile(
             ? joined.ToString()
             : LaunchUrl;
     }
+
+    /// <summary>The first application URL as a browser opens it (a wildcard host as this machine's), which a relative launch
+    /// URL is from; null with none.</summary>
+    public string? BrowserRoot =>
+        ApplicationUrl?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() is { } first ? Local(first) : null;
+
+    /// <summary>A URL with the host a server listens on everywhere (<c>*</c>, <c>+</c>, <c>0.0.0.0</c>, <c>[::]</c>), which no
+    /// browser opens, as <c>localhost</c>, its scheme, port and path kept.</summary>
+    private static string Local(string url) => WildcardHost().Replace(url, "${scheme}://localhost", 1);
+
+    [GeneratedRegex(@"^(?<scheme>https?)://(?:\*|\+|0\.0\.0\.0|\[::\])(?=[:/?#]|$)", RegexOptions.IgnoreCase)]
+    private static partial Regex WildcardHost();
 }
 
 /// <summary>A command line as one string, split the way .NET splits one into a program's arguments on
