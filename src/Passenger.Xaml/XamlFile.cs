@@ -100,12 +100,14 @@ public sealed class XamlFile
     public string Text => Tree.Text;
 
     /// <summary>The type the root names in <c>x:Class</c>, its code-behind's.</summary>
-    public string? ClassName => Tree.Root?.Attribute("x:Class")?.Value;
+    public string? ClassName => ClassAttribute(Tree)?.Value;
 
     public ClrType? ClassType => ClassName is { } name ? Types.Find(name) : null;
 
     /// <summary>The URI a prefix means at an element (the empty prefix, the default namespace).</summary>
-    public string? UriOf(XmlElement? scope, string prefix)
+    public string? UriOf(XmlElement? scope, string prefix) => DeclaredUri(scope, prefix);
+
+    private static string? DeclaredUri(XmlElement? scope, string prefix)
     {
         string name = prefix.Length == 0 ? "xmlns" : "xmlns:" + prefix;
         for (XmlElement? at = scope; at is not null; at = at.Parent)
@@ -871,7 +873,11 @@ public sealed class XamlFile
         element.Attributes.FirstOrDefault(a => a.LocalName == "Name" && a.Prefix.Length > 0 && KindOf(UriOf(element, a.Prefix)) == XamlNamespaceKind.Language)
         ?? (element.IsPropertyElement ? null : element.Attribute("Name"));
 
-    /// <summary>The directive attribute of XAML's language with a name on an element (<c>x:Key</c>).</summary>
-    public XmlAttribute? Directive(XmlElement element, string name) =>
-        element.Attributes.FirstOrDefault(a => a.LocalName == name && a.Prefix.Length > 0 && KindOf(UriOf(element, a.Prefix)) == XamlNamespaceKind.Language);
+    /// <summary>The directive attribute of XAML's language with a name on an element (<c>x:Key</c>), by the namespace its
+    /// prefix is declared for, whatever the prefix.</summary>
+    public static XmlAttribute? Directive(XmlElement element, string name) =>
+        element.Attributes.FirstOrDefault(a => a.LocalName == name && a.Prefix.Length > 0 && DeclaredUri(element, a.Prefix) == XamlDialect.XamlUri);
+
+    /// <summary>The root's <c>x:Class</c> attribute, its prefix whatever the file declares XAML's language with.</summary>
+    public static XmlAttribute? ClassAttribute(XmlTree tree) => tree.Root is { } root ? Directive(root, "Class") : null;
 }

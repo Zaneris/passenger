@@ -1,4 +1,5 @@
 using Passenger.Text;
+using Passenger.Xaml;
 using Passenger.Xaml.Syntax;
 
 namespace Passenger.App.LiveTree;
@@ -27,7 +28,7 @@ public static class XamlBindings
             {
                 continue;
             }
-            string? root = element == tree.Root ? element.Attribute("x:Class")?.Value : null;
+            string? root = element == tree.Root ? XamlFile.ClassAttribute(tree)?.Value : null;
             int line = text.GetLineFromOffset(element.NameStart);
             int column = element.NameStart - text.GetLineStart(line);
             foreach (XmlAttribute attribute in element.Attributes)

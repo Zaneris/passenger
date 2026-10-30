@@ -138,7 +138,7 @@ public static class TypeRename
     /// one a request was made for): its last part; null when the root names another class.</summary>
     public static (string Path, LspTextEdit Edit)? ClassEdit(string path, TextSnapshot? text, string fullName, string name)
     {
-        if (text is null || XmlTree.Parse(text.ToString()).Root?.Attribute("x:Class") is not { IsValueClosed: true } declared
+        if (text is null || Passenger.Xaml.XamlFile.ClassAttribute(XmlTree.Parse(text.ToString())) is not { IsValueClosed: true } declared
             || declared.Value != fullName || declared.RawValue != declared.Value)
         {
             return null;
@@ -228,7 +228,7 @@ public static class TypeRename
 
     /// <summary>The class a XAML file's <c>x:Class</c> names, in its text as it is now; null for none.</summary>
     private static string? ClassOf(EditorArea editors, string path) =>
-        editors.TextOf(path) is { } text && XmlTree.Parse(text.ToString()).Root?.Attribute("x:Class") is { IsValueClosed: true } declared ? declared.Value : null;
+        editors.TextOf(path) is { } text && Passenger.Xaml.XamlFile.ClassAttribute(XmlTree.Parse(text.ToString())) is { IsValueClosed: true } declared ? declared.Value : null;
 
     /// <summary>Whether a file is named after a type: a C# file whose name up to its first dot is the type's.</summary>
     public static bool IsNamedAfter(string path, string type) => IsCSharp(path) && Stem(path) == type;

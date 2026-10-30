@@ -275,7 +275,8 @@ public sealed partial class PassengerTools
         void Write(XmlElement element, int depth)
         {
             text.Append(' ', depth * 2).Append(element.Name);
-            foreach (XmlAttribute attribute in element.Attributes.Where(a => a.Name is "x:Class" or "x:Name" or "Name" or "x:Key" or "Selector" or "TargetType" or "x:DataType"))
+            foreach (XmlAttribute attribute in element.Attributes.Where(a => a.Name is "Name" or "Selector" or "TargetType"
+                || (a.LocalName is "Class" or "Name" or "Key" or "DataType" && XamlFile.Directive(element, a.LocalName) == a)))
             {
                 text.Append(' ').Append(attribute.Name).Append("=\"").Append(attribute.Value).Append('"');
             }
