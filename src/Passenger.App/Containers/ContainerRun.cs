@@ -138,6 +138,7 @@ public static class ContainerPlans
         Dictionary<string, string> fixedProjects = new(configuration.ServiceProjects, StringComparer.Ordinal);
         IReadOnlyDictionary<string, string> properties = new Dictionary<string, string>();
         ProjectModel? single = null;
+        IReadOnlyList<string> uncarried = [];
         ContainerMode mode = configuration.Mode;
         IReadOnlyList<string>? publish = null;
         if (configuration.Kind == RunKind.Compose)
@@ -176,7 +177,8 @@ public static class ContainerPlans
             string service = DockerFiles.ServiceName(single.Name.Split(' ')[0]);
             fixedProjects[service] = single.Path;
             string composed = Path.Combine(state, $"{file}.compose.yaml");
-            WriteJson(composed, SingleService(configuration, single, properties, service, workspace, mode, LaunchPlan.FrameworkOf(configuration.Framework, single)));
+            (JsonObject written, uncarried) = SingleService(configuration, single, properties, service, workspace, mode, LaunchPlan.FrameworkOf(configuration.Framework, single));
+            WriteJson(composed, written);
             files = [composed];
             runsIn = single.Folder;
         }
@@ -246,6 +248,10 @@ public static class ContainerPlans
         List<string> backing = [.. model.Services.Select(s => s.Name).Where(s => !dotnetNames.Contains(s))];
         List<string> watched = [.. model.Services.Where(s => s.Watches && !dotnetNames.Contains(s.Name) && (start.Count == 0 || start.Contains(s.Name))).Select(s => s.Name)];
         List<string> notes = [.. dotnet.Where(d => !d.Starts && touched.Contains(d.Service)).Select(d => ContainerPlan.DependedOn(d.Service))];
+        if (uncarried.Count > 0)
+        {
+            notes.Add($"{configuration.Name} runs without {string.Join(", ", uncarried)} of its docker run arguments, which its container's compose service has no place for");
+        }
         EngineState engineState = await engine.StateAsync(cancel: cancel);
         string? owner = OperatingSystem.IsLinux() ? DotnetProcesses.UserAndGroup : null;
         // As deployed, the image's own user could not read what is kept for the person alone (RunsAs).
@@ -417,8 +423,8 @@ public static class ContainerPlans
     /// project's Dockerfile and context (the project's DockerfileFile and DockerfileContext, else the configuration's, else
     /// the Dockerfile beside it and the solution's folder) given the nuget.configs it mounts as build secrets
     /// (<see cref="DockerFiles.NuGetSecrets"/>), or the SDK's base image, with the configuration's environment and
-    /// <c>docker run</c> words (ports, env files, volumes, variables).</summary>
-    private static JsonObject SingleService(RunConfiguration configuration, ProjectModel project, IReadOnlyDictionary<string, string> properties, string name,
+    /// <c>docker run</c> words (<see cref="DockerRunWords"/>), with those words it has no place for.</summary>
+    private static (JsonObject Composed, IReadOnlyList<string> Uncarried) SingleService(RunConfiguration configuration, ProjectModel project, IReadOnlyDictionary<string, string> properties, string name,
         WorkspaceModel workspace, ContainerMode mode, string? framework)
     {
         JsonObject service = [];
@@ -480,65 +486,14 @@ public static class ContainerPlans
                 exposed.Add(8080);
             }
         }
-        JsonArray ports = [];
-        JsonArray envFiles = [];
-        JsonArray volumes = [];
         JsonObject environment = [];
         foreach ((string key, string value) in configuration.Environment)
         {
             environment[key] = value;
         }
-        List<string> run = [.. CommandLine.Split($"{properties.GetValueOrDefault("DockerfileRunArguments")} {configuration.RunArguments}")];
-        for (int i = 0; i < run.Count; i++)
-        {
-            string word = run[i];
-            string? Next() => i + 1 < run.Count ? run[++i] : null;
-            switch (word)
-            {
-                case "-p" or "--publish":
-                    if (Next() is { } port)
-                    {
-                        ports.Add(port);
-                    }
-                    break;
-                case "-P" or "--publish-all":
-                    foreach (int each in exposed.Distinct())
-                    {
-                        ports.Add(each.ToString(CultureInfo.InvariantCulture));
-                    }
-                    break;
-                case "-e" or "--env":
-                    if (Next()?.Split('=', 2) is [{ Length: > 0 } key, var value])
-                    {
-                        environment[key] = value;
-                    }
-                    break;
-                case "--env-file":
-                    if (Next() is { } env)
-                    {
-                        envFiles.Add(Path.GetFullPath(Path.Combine(project.Folder, env)));
-                    }
-                    break;
-                case "-v" or "--volume":
-                    if (Next() is { } volume)
-                    {
-                        volumes.Add(volume);
-                    }
-                    break;
-            }
-        }
-        if (ports.Count > 0)
-        {
-            service["ports"] = ports;
-        }
-        if (envFiles.Count > 0)
-        {
-            service["env_file"] = envFiles;
-        }
-        if (volumes.Count > 0)
-        {
-            service["volumes"] = volumes;
-        }
+        DockerRunWords run = DockerRunWords.Read([.. CommandLine.Split($"{properties.GetValueOrDefault("DockerfileRunArguments")} {configuration.RunArguments}")],
+            exposed, project.Folder);
+        run.SetOn(service, environment);
         if (environment.Count > 0)
         {
             service["environment"] = environment;
@@ -548,7 +503,7 @@ public static class ContainerPlans
         {
             composed["secrets"] = secrets;
         }
-        return composed;
+        return (composed, run.Uncarried);
     }
 
     /// <summary>The image tag of the .NET a project runs for (10.0 of net10.0): the framework given, else its newest, else 10.0.</summary>
