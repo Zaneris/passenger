@@ -183,30 +183,47 @@ public sealed class TestGutter
         List<(int Line, TestNode Method)> found = byFile.GetValueOrDefault(document.Path) ?? [];
         List<TestMark> marks = new(file.Tests.Types.Count + file.Tests.Tests.Count);
         IReadOnlySet<string>? projects = null;
-        foreach (DeclaredPlace place in (IEnumerable<DeclaredPlace>)[.. file.Places.Types, .. file.Places.Methods])
+        foreach (DeclaredPlace place in file.Places.Types)
         {
-            string name = place.Method is null ? place.Type.Replace('+', '.') : $"{place.Type.Replace('+', '.')}.{place.Method}";
-            HashSet<TestNode> methods = new(ReferenceEqualityComparer.Instance);
-            if ((place.Method is null ? byType : byMethod).TryGetValue(name, out HashSet<TestNode>? named))
+            Mark(place);
+        }
+        foreach (DeclaredPlace place in file.Places.Methods)
+        {
+            Mark(place);
+        }
+        if (!marks.SequenceEqual(document.TestMarks))
+        {
+            document.TestMarks = marks;
+        }
+
+        // A place no test is known by costs nothing: a parse of a file of thousands of methods colours them on every key.
+        void Mark(DeclaredPlace place)
+        {
+            HashSet<TestNode>? methods = null;
+            Dictionary<string, HashSet<TestNode>> index = place.Method is null ? byType : byMethod;
+            if (index.Count > 0 && index.TryGetValue(place.Method is null ? place.Type.Replace('+', '.') : $"{place.Type.Replace('+', '.')}.{place.Method}",
+                out HashSet<TestNode>? named))
             {
                 projects ??= ProjectsOf?.Invoke(document.Path) ?? NoProjects;
                 foreach (TestNode each in named)
                 {
                     if (TestFinder.IsOf(each, projects))
                     {
-                        methods.Add(each);
+                        (methods ??= new(ReferenceEqualityComparer.Instance)).Add(each);
                     }
                 }
             }
-            methods.UnionWith(found.Where(f => place.Holds(f.Line)).Select(f => f.Method));
-            if (methods.Count > 0 || testLines.Contains(place.Line))
+            foreach ((int line, TestNode method) in found)
+            {
+                if (place.Holds(line))
+                {
+                    (methods ??= new(ReferenceEqualityComparer.Instance)).Add(method);
+                }
+            }
+            if (methods is not null || testLines.Contains(place.Line))
             {
                 marks.Add(new TestMark(place.Line, MarkOf(methods)));
             }
-        }
-        if (!marks.SequenceEqual(document.TestMarks))
-        {
-            document.TestMarks = marks;
         }
     }
 
