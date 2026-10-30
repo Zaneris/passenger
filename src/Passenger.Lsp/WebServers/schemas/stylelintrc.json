@@ -253,8 +253,7 @@
             "type": ["integer", "object"],
             "anyOf": [
               {
-                "type": "integer",
-                "enum": [{}]
+                "type": "integer"
               },
               {
                 "$ref": "#/definitions/coreRule"

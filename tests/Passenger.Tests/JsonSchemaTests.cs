@@ -161,6 +161,27 @@ public sealed class JsonSchemaTests
         }
     }
 
+    /// <summary>stylelint runs a rule that takes a number written with its options, [2, { "severity": "warning" }], so a
+    /// stylelint configuration in package.json marks none of them.</summary>
+    [AvaloniaFact]
+    public void Package_jsons_stylelint_takes_a_numeric_rule_with_its_options_as_stylelint_runs_it()
+    {
+        List<(string Text, string Message)> marked = Marked("package.json", """
+            {
+              "name": "styles",
+              "private": "yes",
+              "stylelint": {
+                "rules": {
+                  "number-max-precision": [2, { "severity": "warning" }],
+                  "max-nesting-depth": [3, { "message": "Nested too deep" }]
+                }
+              }
+            }
+
+            """, "\"yes\"");
+        Assert.True(marked.Count == 0, $"Rules stylelint runs are marked as wrong, where the file has {Said(marked)}");
+    }
+
     /// <summary>The file written alone in a folder of its own and opened with no C# server, read once its server has checked
     /// it against its schema: what it marks, as the text marked and the message, but the one value the test gives it of the
     /// wrong type, <paramref name="wrong"/>, whose mark says the check is in.</summary>
