@@ -190,6 +190,7 @@ Projects in `src/`; `find_symbol` finds the rest:
   a large process tens of ms), `Dotnet`/`Programs`/`ShellEnvironment` (tools found as the login shell would,
   `ShellEnvironment.LoginShell` the environment's and the terminal's, every PATH search `Programs.OnPath`/`AllOnPath`;
   the installation's folder is `Dotnet.Root`, from the host's real path, never the folder of `Dotnet.Host()`),
+  `Dotnet.CliHome` (the CLI's home, after the login shell), `OutboundHttp` (every request Passenger makes of a host),
   `PathNames`, `AtomicFile`, `FolderMoves` (a folder moved whole, across volumes too), `SocketFolders` (every Unix
   socket), `InFlight`, `BackgroundWork`, `DotnetProcesses.Runs` (whether a process runs: never `HasExited`, which on
   Windows reads one this user may not open as ended), `EnvironmentValues.Milliseconds` (every PASSENGER_*_MS),
@@ -324,7 +325,7 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **The rest.** `Packages` (every package change's one path, its files the project, its lock file and
   Directory.Packages.props, one command of Undo, put back when it fails; credentials only to their feed's host),
   `Workspace` (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`; a version
-  written where packages are managed centrally goes through `CentralPackages`), `Templates` (every `dotnet new` through
+  written where packages are managed centrally goes through `CentralPackages` (the file, `PropsOf`)), `Templates` (every `dotnet new` through
   `ProjectTemplates`, what it writes above the new folder part of its command, `FilesAbove`; a new service's container
   or Aspire set-up after Create through Add's own actions, `MainWindow.ServiceSetup`), `Updates` (only an installed copy
   updates itself; What's New from `docs/release-notes/X.Y.Z.md`).
