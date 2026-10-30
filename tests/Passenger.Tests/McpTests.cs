@@ -121,6 +121,49 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("Sums.Tests.SumTests.Two_and_two_make_five", failed.GetProperty("test").GetString());
     }
 
+    /// <summary>A VSTest test that reads its standard input reads its end at once, never the agent's requests, which are
+    /// Passenger's standard input: its run passes, and the agent's next call is answered.</summary>
+    [Fact]
+    public async Task An_agents_test_that_reads_standard_input_reads_its_end_and_the_agents_next_call_is_answered()
+    {
+        string tests = PathNames.Canonical(TestFolders.Create("mcp-stdin-tests-"));
+        DeleteAtEnd(tests);
+        await TestFolders.PrepareAsync(async () =>
+        {
+            File.WriteAllText(Path.Combine(tests, "Input.Tests.csproj"),
+                $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
+                "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
+                "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+            // A read that waits is ended by the test's own limit, so a run that reads the agent's pipe fails rather than hangs.
+            File.WriteAllText(Path.Combine(tests, "InputTests.cs"), """
+                using System;
+                using System.Threading.Tasks;
+                using Xunit;
+
+                namespace Input.Tests;
+
+                public class InputTests
+                {
+                    [Fact]
+                    public void Reads_no_input()
+                    {
+                        Task<string> read = Task.Run(() => Console.In.ReadLine());
+                        Assert.True(read.Wait(TimeSpan.FromSeconds(20)), "Reading standard input waited for input that never came");
+                        Assert.True(read.Result is null, $"Standard input gave: {read.Result}");
+                    }
+                }
+
+                """);
+            await Restore.RunAsync(tests);
+        }, tests);
+        await using McpClient client = await Start(["--mcp", tests], languageServer: false);
+        JsonElement run = await Call(client, McpTools.TestsRun, new() { ["filter"] = "Reads_no_input" });
+        Assert.True(run.GetProperty("summary").GetString()!.StartsWith("Tests passed: 1, failed: 0 of 1", StringComparison.Ordinal),
+            $"A test reading its standard input did not read its end at once: {run}");
+        JsonElement passed = Assert.Single((await Call(client, McpTools.TestsList, new() { ["filter"] = "Reads_no_input" })).EnumerateArray());
+        Assert.Equal("passed", passed.GetProperty("state").GetString());
+    }
+
     /// <summary>An agent's own Passenger opens its folder as it starts, while its window is still being built: the first C#
     /// answer comes from the language server started then, which loaded the projects as the project host evaluated and built
     /// them then, and the window, once built, takes all of it up. Of what its opening asked of the built window before (an

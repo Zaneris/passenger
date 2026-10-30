@@ -51,6 +51,8 @@ internal static class Program
         }
 
         Options = options;
+        // Before anything starts, so nothing started reads it; a relay keeps its own, which the updated app it becomes reads.
+        Stream? input = options.Mcp == McpMode.Attach ? null : StandardInput.Take();
         Core.ShellEnvironment.Load();
         if (options.Mcp != McpMode.Attach && options.Screenshot is null)
         {
@@ -62,12 +64,13 @@ internal static class Program
             case McpMode.Attach:
                 return Mcp.McpHost.Attach(options.AttachTo, options.Folder);
             case McpMode.Stdio:
-                return Mcp.McpHost.RunStdio(options);
+                return Mcp.McpHost.RunStdio(options, input!);
         }
         if (options.Headless)
         {
-            return Mcp.McpHost.RunHeadless(options);
+            return Mcp.McpHost.RunHeadless(options, input!);
         }
+        input?.Dispose();
         if (options.Screenshot is { } screenshot)
         {
             return Apart(() => Screenshot.Run(options, screenshot));

@@ -223,13 +223,12 @@ public static partial class McpHost
         }
     }
 
-    /// <summary><c>--mcp</c>: the IDE with no window, its tools on standard input and output until the agent closes them
-    /// or the system asks it to end. Its server answers before the IDE is up (initialize and the tools' list need none of
+    /// <summary><c>--mcp</c>: the IDE with no window, its tools on the standard input given (<see cref="StandardInput.Take"/>)
+    /// and output until the agent closes them or the system asks it to end. Its server answers before the IDE is up (initialize and the tools' list need none of
     /// it), so an agent asking as it connects finds the tools at once; each call waits for the IDE.</summary>
-    public static int RunStdio(LaunchOptions launch)
+    public static int RunStdio(LaunchOptions launch, Stream input)
     {
         IsHeadless = true;
-        Stream input = Console.OpenStandardInput();
         Stream output = Console.OpenStandardOutput();
         // Standard output is the protocol's alone, and standard error the agent may never read: the console goes to the log.
         IdeLog.TakeConsole();
@@ -283,11 +282,10 @@ public static partial class McpHost
 
     /// <summary><c>--headless [PATH]</c>: a person's window on the headless platform, which <c>--mcp-attach</c> starts
     /// in place of the installed app under <see cref="McpProxy.StartVariable"/>: it listens for agents and asks before
-    /// letting them in, as any window does, until its input ends.</summary>
-    public static int RunHeadless(LaunchOptions launch)
+    /// letting them in, as any window does, until the input given ends (<see cref="StandardInput.Take"/>).</summary>
+    public static int RunHeadless(LaunchOptions launch, Stream input)
     {
         IsHeadless = true;
-        Stream input = Console.OpenStandardInput();
         // Its starter reads nothing of its output or error: the console goes to the log.
         IdeLog.TakeConsole();
         AppBuilder.Configure<App>()
