@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -76,6 +77,19 @@ public partial class ManagedDebugger
             below++;
         }
         return below;
+    }
+
+    /// <summary>A value's expression as its own type, which an element's index and a debugger view's constructor take: cast
+    /// to that type where its variable is declared as another (object, an interface); as it is where the declared type is
+    /// not known or the value's type has no name C# takes.</summary>
+    private string? AsOwnType(string? expression, DeclaredType? declared, ICorDebugType own)
+    {
+        if (declared?.Name is not { } name || own.Type is CorElementType.CLASS or CorElementType.VALUETYPE && DefinitionName(own) == name)
+        {
+            return expression;
+        }
+        string type = GetCorDebugTypeFriendlyName(own);
+        return SyntaxFactory.ParseTypeName(type).ContainsDiagnostics ? expression : RowExpressions.As(expression, type);
     }
 
     /// <summary>Where a value's variable is declared as an interface its type implements: how many of the type and its base

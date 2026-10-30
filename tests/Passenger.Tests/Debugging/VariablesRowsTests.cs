@@ -111,6 +111,50 @@ public class VariablesRowsTests(ITestOutputHelper testOutputHelper)
         async Task<List<DapVariable>> Opened(string local) => await host.VariablesAsync(Assert.Single(locals, v => v.Name == local).VariablesReference);
     }
 
+    /// <summary>Each row reads its own value by its evaluate name where its owner is held as another type, is named by a
+    /// keyword or is static: a boxed List's and array's elements, an IEnumerable-held HashSet's and List's, a local @class, a
+    /// field holder.@event, and a type's static members (Shelf.Reads, Keyworded.@static).</summary>
+    [Fact]
+    public async Task Rows_held_as_another_type_named_by_a_keyword_or_static_read_their_own_value_by_their_evaluate_name()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await Launch(host, "Console.WriteLine($\"rows {shelf[0]}");
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+        List<DapVariable> locals = await host.LocalsAsync(stop);
+
+        List<DapVariable> holder = await Opened("holder");
+        List<DapVariable> rows =
+        [
+            .. Elements(await Opened("boxedList")), .. Elements(await Opened("boxedArray")), .. Elements(await Opened("setAsEnumerable")),
+            .. Elements(await Opened("listAsEnumerable")), Assert.Single(locals, v => v.Name == "class"), Assert.Single(holder, row => row.Name == "event"),
+            .. await StaticsOf(holder), .. await StaticsOf(await Opened("shelf")),
+        ];
+        string[] named = [.. rows.Select(row => $"{row.Name}: {row.EvaluateName}")];
+        Assert.True(rows.Count == 8, $"The rows are {string.Join("; ", named)}, where four elements, class, event, static and Reads are to be listed");
+        Assert.Contains("class: @class", named);
+        Assert.Contains("event: holder.@event", named);
+        Assert.Contains("static: Keyworded.@static", named);
+        Assert.Contains("Reads: Shelf.Reads", named);
+        List<string> wrong = [];
+        foreach (DapVariable row in rows)
+        {
+            EvaluateResponse? read = row.EvaluateName is { } expression ? await host.EvaluateAsync(frame, expression) : null;
+            if (read?.Result != row.Value)
+            {
+                wrong.Add($"{row.Name} = {row.Value} by {row.EvaluateName ?? "no expression"}: {read?.Result}");
+            }
+        }
+        Assert.True(wrong.Count == 0, $"Rows whose evaluate name does not read their value, so Set Value, Add to Watches and Inspect fail on them: {string.Join("; ", wrong)}");
+
+        async Task<List<DapVariable>> Opened(string local) => await host.VariablesAsync(Assert.Single(locals, v => v.Name == local).VariablesReference);
+
+        static IEnumerable<DapVariable> Elements(List<DapVariable> rows) => rows.Where(row => row.Name.StartsWith('['));
+
+        async Task<List<DapVariable>> StaticsOf(List<DapVariable> members) =>
+            await host.VariablesAsync(Assert.Single(members, row => row.Name == "Static members").VariablesReference);
+    }
+
     /// <summary>The rows a debugger view shows a collection by, a HashSet's elements and a dictionary's entry with its Key
     /// and Value, say they are read-only, being the view's copies; a list's elements, reached by their index in it, and the
     /// members of a HashSet's raw view, its own, do not.</summary>

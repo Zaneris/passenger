@@ -922,8 +922,10 @@ public partial class ManagedDebugger
                     // The view's rows are reached through a view made over the value, but a list's elements by their index in it.
                     ICorDebugObjectValue objectValue = variablesReference.DebuggerProxyInstance.UnwrapDebugValueToObject();
                     string? expression = variablesReference.Expression;
-                    string? viewed = RowExpressions.Viewed(expression, GetCorDebugTypeFriendlyName(objectValue.ExactType));
-                    string? listed = expression is not null && variablesReference.ObjectValue!.UnwrapDebugValueToObjectOrNull() is { } viewedValue && IsList(viewedValue.ExactType) ? expression : null;
+                    ICorDebugObjectValue? viewedValue = variablesReference.ObjectValue!.UnwrapDebugValueToObjectOrNull();
+                    string? own = viewedValue is null ? expression : AsOwnType(expression, variablesReference.Declared, viewedValue.ExactType);
+                    string? viewed = RowExpressions.Viewed(own, GetCorDebugTypeFriendlyName(objectValue.ExactType));
+                    string? listed = own is not null && viewedValue is not null && IsList(viewedValue.ExactType) ? own : null;
                     await AddMembersAndStaticPseudoVariable(variablesReference.DebuggerProxyInstance, objectValue.ExactType, variablesReference.ThreadId, variablesReference.FrameStackDepth, result, false,
                         owner: viewed, listed: listed);
                     if (listed is null || variablesReference.Copied)
@@ -949,7 +951,7 @@ public partial class ManagedDebugger
                 if (unwrappedDebugValue is ICorDebugArrayValue arrayValue)
                 {
                     await AddArrayElements(arrayValue, variablesReference.ThreadId, variablesReference.FrameStackDepth, result, referenceValue: variablesReference.ObjectValue, declared: variablesReference.Declared,
-                        expression: variablesReference.Expression);
+                        expression: AsOwnType(variablesReference.Expression, variablesReference.Declared, arrayValue.ExactType));
                 }
                 else if (unwrappedDebugValue is ICorDebugObjectValue objectValue)
                 {

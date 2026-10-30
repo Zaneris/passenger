@@ -16,6 +16,34 @@ public class RowExpressionsTests
     public void A_member_follows_its_owner_as_an_operand_cast_where_only_a_cast_reaches_it(string owner, string member, string? declaring, string expected) =>
         Assert.Equal(expected, RowExpressions.Member(owner, member, declaring));
 
+    [Theory]
+    [InlineData("holder", "event", "holder.@event")]
+    [InlineData("Shelf", "Reads", "Shelf.Reads")]
+    [InlineData("Typed<int>", "Count", "Typed<int>.Count")]
+    [InlineData("Outer.Inner<string>", "static", "Outer.Inner<string>.@static")]
+    public void A_member_named_by_a_keyword_takes_an_at_and_a_types_static_member_follows_the_type(string owner, string member, string expected) =>
+        Assert.Equal(expected, RowExpressions.Member(owner, member));
+
+    [Fact]
+    public void A_name_that_is_a_keyword_takes_an_at_and_no_other_does()
+    {
+        Assert.Equal("@class", RowExpressions.Name("class"));
+        Assert.Equal("@this", RowExpressions.Name("this"));
+        Assert.Equal("var", RowExpressions.Name("var"));
+        Assert.Equal("count", RowExpressions.Name("count"));
+    }
+
+    [Fact]
+    public void A_value_cast_to_its_own_type_reaches_its_elements_and_its_view()
+    {
+        string? boxed = RowExpressions.As("boxedList", "System.Collections.Generic.List<string>");
+        Assert.Equal("((System.Collections.Generic.List<string>)boxedList)[0]", RowExpressions.Element(boxed, [0u]));
+        Assert.Equal("new System.Collections.Generic.ICollectionDebugView<string>((System.Collections.Generic.HashSet<string>)held)",
+            RowExpressions.Viewed(RowExpressions.As("held", "System.Collections.Generic.HashSet<string>"), "System.Collections.Generic.ICollectionDebugView<string>"));
+        Assert.Equal("(string[])(a ?? b)", RowExpressions.As("a ?? b", "string[]"));
+        Assert.Null(RowExpressions.As(null, "string[]"));
+    }
+
     [Fact]
     public void An_element_a_pointed_at_value_and_an_enums_number_are_reached_from_their_owner()
     {

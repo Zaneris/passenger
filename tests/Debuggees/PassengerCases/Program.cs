@@ -418,8 +418,9 @@ internal class Valued<T>
 
 internal sealed class Tagged<TTag, TValue> : Valued<TValue> { public TTag? Tag; }
 
-// The rows of a stop's values: a class with an indexer beside collections, a tuple and a nullable struct, a local only a
-// local function captures, read in the frame declaring it and in the local function's, and an iterator's frame.
+// The rows of a stop's values: a class with an indexer beside collections, a tuple and a nullable struct, collections held
+// as object or an interface, names that are keywords, a local only a local function captures, read in the frame declaring
+// it and in the local function's, and an iterator's frame.
 internal static class Rows
 {
 	public static void Run()
@@ -430,7 +431,14 @@ internal static class Rows
 		Dictionary<string, int> ages = new() { ["Ada"] = 36 };
 		(int, string) pair = (1, "one");
 		Spot? place = new Spot(3, 4);
+		object boxedList = new List<string> { "boxed" };
+		object boxedArray = new[] { "arrayed" };
+		IEnumerable<string> setAsEnumerable = new HashSet<string> { "held" };
+		IEnumerable<string> listAsEnumerable = new List<string> { "listed" };
+		string @class = "keyword";
+		Keyworded holder = new("happened");
 		Console.WriteLine($"rows {shelf[0]} {names.Count} {set.Count} {ages.Count} {pair} {place?.X}");
+		Console.WriteLine($"held {boxedList} {boxedArray} {string.Join(",", setAsEnumerable)} {string.Join(",", listAsEnumerable)} {@class} {holder.@event}");
 		int captive = 5;
 		int Call(int x)
 		{
@@ -451,6 +459,12 @@ internal static class Rows
 			yield return taken;
 		}
 	}
+}
+
+internal sealed class Keyworded(string happened)
+{
+	public static int @static = 4;
+	public string @event = happened;
 }
 
 internal sealed class Shelf

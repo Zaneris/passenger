@@ -63,9 +63,9 @@ public class VariablesTests(ITestOutputHelper testOutputHelper)
 
         List<DapVariable> expectedEnumStaticMemberVariables =
         [
-            new() { Name = "FirstValue", Value = "FirstValue", Type = "DebuggableConsoleApp.MyEnum" },
-            new() { Name = "SecondValue", Value = "SecondValue", Type = "DebuggableConsoleApp.MyEnum" },
-            new() { Name = "ThirdValue", Value = "ThirdValue", Type = "DebuggableConsoleApp.MyEnum" },
+            new() { Name = "FirstValue", EvaluateName = "DebuggableConsoleApp.MyEnum.FirstValue", Value = "FirstValue", Type = "DebuggableConsoleApp.MyEnum" },
+            new() { Name = "SecondValue", EvaluateName = "DebuggableConsoleApp.MyEnum.SecondValue", Value = "SecondValue", Type = "DebuggableConsoleApp.MyEnum" },
+            new() { Name = "ThirdValue", EvaluateName = "DebuggableConsoleApp.MyEnum.ThirdValue", Value = "ThirdValue", Type = "DebuggableConsoleApp.MyEnum" },
         ];
 
         List<DapVariable>? enumStaticVariables = await debugProtocolHost.VariablesAsync(enumNestedVariables.Single(s => s.Name == "Static members").VariablesReference);
@@ -137,16 +137,16 @@ file static class TestExtensions
         string expectedDateTime = new DateTime(2026, 6, 13, 7, 18, 38).ToString();
         List<DapVariable> expectedVariables =
         [
-            new() { Name = "_counter", Value = "1", Type = "int" },
-            new() { Name = "IntStaticProperty", Value = "10", Type = "int" },
-            new() { Name = "StaticClassProperty", Value = "{DebuggableConsoleApp.MyClass2}", Type = "DebuggableConsoleApp.MyClass2", VariablesReference = 25 },
-            new() { Name = "_staticClassField", Value = "{DebuggableConsoleApp.MyClass2}", Type = "DebuggableConsoleApp.MyClass2", VariablesReference = 20 },
-            new() { Name = "_staticIntList", Value = "Count = 4", Type = "System.Collections.Generic.List<int>", VariablesReference = 21 },
-            new() { Name = "_fieldDictionary", Value = "Count = 0", Type = "System.Collections.Generic.Dictionary<DebuggableConsoleApp.MyClass2, DebuggableConsoleApp.MyClass>", VariablesReference = 22 },
-            new() { Name = "_utcNow", Value = expectedDateTime, Type = "System.DateTime", VariablesReference = 23 },
-            new() { Name = "_nullableUtcNow", Value = expectedDateTime, Type = "System.DateTime?", VariablesReference = 24 },
-            new() { Name = "_instanceStaticField", Value = "6", Type = "int" },
-            new() { Name = "StaticFieldFromBase", Value = "168", Type = "int" },
+            new() { Name = "_counter", EvaluateName = "DebuggableConsoleApp.MyClass._counter", Value = "1", Type = "int" },
+            new() { Name = "IntStaticProperty", EvaluateName = "DebuggableConsoleApp.MyClass.IntStaticProperty", Value = "10", Type = "int" },
+            new() { Name = "StaticClassProperty", EvaluateName = "DebuggableConsoleApp.MyClass.StaticClassProperty", Value = "{DebuggableConsoleApp.MyClass2}", Type = "DebuggableConsoleApp.MyClass2", VariablesReference = 25 },
+            new() { Name = "_staticClassField", EvaluateName = "DebuggableConsoleApp.MyClass._staticClassField", Value = "{DebuggableConsoleApp.MyClass2}", Type = "DebuggableConsoleApp.MyClass2", VariablesReference = 20 },
+            new() { Name = "_staticIntList", EvaluateName = "DebuggableConsoleApp.MyClass._staticIntList", Value = "Count = 4", Type = "System.Collections.Generic.List<int>", VariablesReference = 21 },
+            new() { Name = "_fieldDictionary", EvaluateName = "DebuggableConsoleApp.MyClass._fieldDictionary", Value = "Count = 0", Type = "System.Collections.Generic.Dictionary<DebuggableConsoleApp.MyClass2, DebuggableConsoleApp.MyClass>", VariablesReference = 22 },
+            new() { Name = "_utcNow", EvaluateName = "DebuggableConsoleApp.MyClass._utcNow", Value = expectedDateTime, Type = "System.DateTime", VariablesReference = 23 },
+            new() { Name = "_nullableUtcNow", EvaluateName = "DebuggableConsoleApp.MyClass._nullableUtcNow", Value = expectedDateTime, Type = "System.DateTime?", VariablesReference = 24 },
+            new() { Name = "_instanceStaticField", EvaluateName = "DebuggableConsoleApp.MyClass._instanceStaticField", Value = "6", Type = "int" },
+            new() { Name = "StaticFieldFromBase", EvaluateName = "DebuggableConsoleApp.MyClassBase.StaticFieldFromBase", Value = "168", Type = "int" },
         ];
         List<DapVariable>? instanceThisStaticVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         instanceThisStaticVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);

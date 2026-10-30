@@ -43,6 +43,7 @@ public partial class ManagedDebugger
                 await AddClosureChainMembers(localVariableCorDebugValue, threadId, stackDepth, result);
                 continue;
             }
+            string expression = RowExpressions.Name(localVariableName);
             await WithFailureHandling(result, localVariableName, async () =>
             {
                 (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError) = await GetValueForCorDebugValueAsync(localVariableCorDebugValue, threadId, stackDepth, true);
@@ -50,12 +51,12 @@ public partial class ManagedDebugger
                 result.Add(new VariableInfo
                 {
                     Name = localVariableName,
-                    EvaluateName = localVariableName,
+                    EvaluateName = expression,
                     Value = value,
                     Type = friendlyTypeName,
                     PresentationHint = variablePresentationHint,
                     VariablesReference = GetVariablesReference(localVariableCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, localVariableName,
-                        index < declared.Length ? declared[index] : null, localVariableName)
+                        index < declared.Length ? declared[index] : null, expression)
                 });
             });
         }
@@ -127,7 +128,7 @@ public partial class ManagedDebugger
         mdFieldDef[] fields = metadataImport.EnumFields(holderType.Class.Token).AsValueEnumerable().Where(field => !field.IsStatic(metadataImport)).ToArray();
         int first = result.Count;
         await AddFields(fields, metadataImport, holderType, holder, result, threadId, stackDepth);
-        Express(result, first, row => row.Member);
+        Express(result, first, row => RowExpressions.Name(row.Member!));
     }
 
     /// Returns classContainingHoistedLocalsValue if applicable
@@ -200,6 +201,7 @@ public partial class ManagedDebugger
             {
                 continue;
             }
+            string? expression = parameterName is null ? null : RowExpressions.Name(parameterName);
 
             await WithFailureHandling(result, argumentName, async () =>
             {
@@ -208,12 +210,12 @@ public partial class ManagedDebugger
                 result.Add(new VariableInfo
                 {
                     Name = argumentName,
-                    EvaluateName = parameterName,
+                    EvaluateName = expression,
                     Value = value,
                     Type = friendlyTypeName,
                     PresentationHint = variablePresentationHint,
                     VariablesReference = GetVariablesReference(argumentCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, argumentName,
-                        index < declared.Length ? declared[index] : null, parameterName)
+                        index < declared.Length ? declared[index] : null, expression)
                 });
             });
         }
@@ -556,6 +558,8 @@ public partial class ManagedDebugger
         }
     }
 
+    /// <summary>The static members of a type and of its base types, each reached through the type declaring it
+    /// (Shelf.Reads), but an interface's static member a type implements explicitly, which no expression names.</summary>
     private async Task AddStaticMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result)
     {
         ICorDebugClass corDebugClass = corDebugType.Class;
@@ -565,9 +569,13 @@ public partial class ManagedDebugger
         mdFieldDef[] staticFieldDefs = metadataImport.EnumFields(mdTypeDef).AsValueEnumerable().Where(s => s.IsStatic(metadataImport)).ToArray();
         mdProperty[] staticProperties = metadataImport.EnumProperties(mdTypeDef).AsValueEnumerable().Where(s => s.IsStatic(metadataImport)).ToArray();
 
-        await AddFields(staticFieldDefs, metadataImport, corDebugType, corDebugValue, result, threadId, stackDepth);
+        int first = result.Count;
+        string declaring = GetCorDebugTypeFriendlyName(corDebugType);
+        string? owner = SyntaxFactory.ParseTypeName(declaring).ContainsDiagnostics ? null : declaring;
+        await AddFields(staticFieldDefs, metadataImport, corDebugType, corDebugValue, result, threadId, stackDepth, owner);
         // The reference itself, not unwrapped: the getters are called on it.
-        await AddProperties(staticProperties, metadataImport, corDebugType, threadId, stackDepth, corDebugValue, result);
+        await AddProperties(staticProperties, metadataImport, corDebugType, threadId, stackDepth, corDebugValue, result, owner);
+        Express(result, first, row => row.Interface is null ? RowExpressions.Member(owner, row.Member!) : null);
 
         ICorDebugType? baseType = corDebugType.Base;
         if (baseType is null)

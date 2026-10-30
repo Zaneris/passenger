@@ -240,9 +240,9 @@ file static class TestExtensions
         int staticMembersVariablesReference = classVariables.Single().VariablesReference;
         List<DapVariable> expectedVariables =
         [
-            new() { VariablesReference =  0, Name = "IntValue",    Value = "4",    Type = "int" },
-            new() { VariablesReference =  0, Name = "Value",       Value = "null", Type = "string" },
-            new() { VariablesReference =  0, Name = "IntProperty", Value = "5",    Type = "int" },
+            new() { VariablesReference =  0, Name = "IntValue",    EvaluateName = "DebuggableConsoleApp.GenericTypeWithStaticField<string>.IntValue", Value = "4",    Type = "int" },
+            new() { VariablesReference =  0, Name = "Value",       EvaluateName = "DebuggableConsoleApp.GenericTypeWithStaticField<string>.Value", Value = "null", Type = "string" },
+            new() { VariablesReference =  0, Name = "IntProperty", EvaluateName = "DebuggableConsoleApp.GenericTypeWithStaticField<string>.IntProperty", Value = "5",    Type = "int" },
         ];
         List<DapVariable>? staticFieldsOnGenericType = await debugProtocolHost.VariablesAsync(staticMembersVariablesReference);
         Assert.Equal(expectedVariables.Count, staticFieldsOnGenericType.Count);
@@ -254,16 +254,16 @@ file static class TestExtensions
         List<DapVariable>? staticMemberVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         List<DapVariable> expectedVariables =
         [
-            new() { VariablesReference =  0, Name = "StaticField", Value = "999", Type = "int" },
-            new() { VariablesReference = 49, Name = "StaticEnumerableField", Value = "Count = 4", Type = "System.Linq.Enumerable.RangeIterator<int>" },
-            new() { VariablesReference =  0, Name = "ConstField",  Value = "\"const\"", Type = "string" },
-            new() { VariablesReference =  0, Name = "ConstFieldNullString",  Value = "null", Type = "string" },
-            new() { VariablesReference =  0, Name = "ConstFieldBool",  Value = "true", Type = "bool" },
-            new() { VariablesReference =  0, Name = "ConstFieldDecimal",  Value = "4.5", Type = "decimal" },
-            new() { VariablesReference =  0, Name = "ConstFieldChar",  Value = "68 'D'", Type = "char" },
-            new() { VariablesReference =  0, Name = "ConstFieldEnum",  Value = "SecondValue", Type = "DebuggableConsoleApp.MyEnum" },
-            new() { VariablesReference =  0, Name = "ConstFieldFlagsEnum",  Value = "FlagValue1 | FlagValue3", Type = "DebuggableConsoleApp.MyEnumWithFlags" },
-            new() { VariablesReference = 50, Name = "ConstFieldByteArraySpan",  Value = "System.ReadOnlySpan<Byte>[4]", Type = "System.ReadOnlySpan<byte>" },
+            new() { VariablesReference =  0, Name = "StaticField", EvaluateName = "DebuggableConsoleApp.VariablesClass.StaticField", Value = "999", Type = "int" },
+            new() { VariablesReference = 49, Name = "StaticEnumerableField", EvaluateName = "DebuggableConsoleApp.VariablesClass.StaticEnumerableField", Value = "Count = 4", Type = "System.Linq.Enumerable.RangeIterator<int>" },
+            new() { VariablesReference =  0, Name = "ConstField",  EvaluateName = "DebuggableConsoleApp.VariablesClass.ConstField", Value = "\"const\"", Type = "string" },
+            new() { VariablesReference =  0, Name = "ConstFieldNullString",  EvaluateName = "DebuggableConsoleApp.VariablesClass.ConstFieldNullString", Value = "null", Type = "string" },
+            new() { VariablesReference =  0, Name = "ConstFieldBool",  EvaluateName = "DebuggableConsoleApp.VariablesClass.ConstFieldBool", Value = "true", Type = "bool" },
+            new() { VariablesReference =  0, Name = "ConstFieldDecimal",  EvaluateName = "DebuggableConsoleApp.VariablesClass.ConstFieldDecimal", Value = "4.5", Type = "decimal" },
+            new() { VariablesReference =  0, Name = "ConstFieldChar",  EvaluateName = "DebuggableConsoleApp.VariablesClass.ConstFieldChar", Value = "68 'D'", Type = "char" },
+            new() { VariablesReference =  0, Name = "ConstFieldEnum",  EvaluateName = "DebuggableConsoleApp.VariablesClass.ConstFieldEnum", Value = "SecondValue", Type = "DebuggableConsoleApp.MyEnum" },
+            new() { VariablesReference =  0, Name = "ConstFieldFlagsEnum",  EvaluateName = "DebuggableConsoleApp.VariablesClass.ConstFieldFlagsEnum", Value = "FlagValue1 | FlagValue3", Type = "DebuggableConsoleApp.MyEnumWithFlags" },
+            new() { VariablesReference = 50, Name = "ConstFieldByteArraySpan",  EvaluateName = "DebuggableConsoleApp.VariablesClass.ConstFieldByteArraySpan", Value = "System.ReadOnlySpan<Byte>[4]", Type = "System.ReadOnlySpan<byte>" },
         ];
         Assert.Equal(expectedVariables.Count, staticMemberVariables.Count);
         staticMemberVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
