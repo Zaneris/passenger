@@ -111,6 +111,7 @@ public sealed class TerminalSession : IAsyncDisposable
         {
             // A shell keeps an inherited PWD naming its folder through a link, and a build there by it undoes the IDE's.
             environment.TryAdd("PWD", cwd);
+            (app, args) = Unsetting([.. environment.Where(v => v.Value.Length == 0).Select(v => v.Key)], app, args);
         }
         PtyOptions options = new()
         {
@@ -252,6 +253,25 @@ public sealed class TerminalSession : IAsyncDisposable
             readDone.Wait(Waits.Of(EndingLimit));
         }
         connection.Dispose();
+    }
+
+    /// <summary>A program run on macOS or Linux with these variables taken out of what it inherits: its pseudo-terminal
+    /// starts it from the process's own environment, setting over it only what has a value, so env unsets them before it
+    /// runs the program. A program whose name holds '=', which env would take for a variable, is run by sh's exec.</summary>
+    public static (string App, string[] Arguments) Unsetting(IReadOnlyList<string> variables, string app, string[] arguments)
+    {
+        // No environment holds a name with '=' in it, and env refuses to unset one.
+        string[] names = [.. variables.Where(name => name.Length > 0 && !name.Contains('=', StringComparison.Ordinal))];
+        if (names.Length == 0)
+        {
+            return (app, arguments);
+        }
+        List<string> words = [.. names.SelectMany(name => (string[])["-u", name]), "--"];
+        if (app.Contains('=', StringComparison.Ordinal))
+        {
+            words.AddRange(["/bin/sh", "-c", "exec \"$0\" \"$@\""]);
+        }
+        return ("/usr/bin/env", [.. words, app, .. arguments]);
     }
 
     /// <summary>The user's shell as a login shell: $SHELL (zsh where unset on macOS, bash on Linux); PowerShell on

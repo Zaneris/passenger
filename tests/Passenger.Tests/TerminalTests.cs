@@ -746,6 +746,59 @@ public sealed class TerminalTests
         window.Close();
     }
 
+    /// <summary>A variable a run in the terminal takes away never reaches its program, though Passenger's environment holds
+    /// it as a parent's variables are held, in the process's own: a git hook's, which every run is started without, and one
+    /// the run configuration gives no value. What the configuration sets reaches it.</summary>
+    [AvaloniaFact]
+    public void A_variable_a_run_in_the_terminal_takes_away_never_reaches_its_program()
+    {
+        string folder = TestFolders.Create("terminal-unset-");
+        // GIT_PREFIX: of a git hook's variables, the one git itself never reads, should anything else started meanwhile get it.
+        string[] takenAway = ["GIT_PREFIX", "PASSENGER_RUN_TAKEN_AWAY"];
+        try
+        {
+            foreach (string variable in takenAway)
+            {
+                OwnEnvironment.Set(variable, "inherited");
+            }
+            string project = TestFolders.Write(folder, "Listed/Listed.csproj", TestProjects.Console());
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            // Only these variables listed, so nothing else of the machine's environment reaches the screen.
+            window.SetConfigurations([new RunConfiguration
+            {
+                Name = "Variables",
+                Project = PathNames.Canonical(project),
+                Program = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh",
+                Arguments = OperatingSystem.IsWindows()
+                    ? "/c \"set GIT_PREFIX& set PASSENGER_RUN_& echo listed-932\""
+                    : "-c \"env | grep -e '^GIT_PREFIX=' -e '^PASSENGER_RUN_'; echo listed-932\"",
+                WorkingDirectory = folder,
+                Environment = { [takenAway[1]] = string.Empty, ["PASSENGER_RUN_GIVEN"] = "given" },
+                BuildBeforeLaunch = false,
+                Console = ConsoleKind.Terminal,
+            }], "Variables");
+            Ui.Launched(window, window.RunAsync(), "the run to start", TimeSpan.FromMinutes(1));
+            TerminalSession program = Assert.IsType<TerminalRun>(window.RunInTerminal).Session;
+            WaitForLine(program, "listed-932", "the program's environment listed");
+            List<string> listed = Lines(program.Screen);
+            Assert.True(listed.Contains("PASSENGER_RUN_GIVEN=given"), $"The program's environment was not listed:\n{Screen(program)}");
+            foreach (string variable in takenAway)
+            {
+                Assert.False(listed.Any(line => line.StartsWith(variable + "=", StringComparison.Ordinal)),
+                    $"{variable}, which the run takes away, reached the program it runs in the terminal:\n{Screen(program)}");
+            }
+            window.Close();
+        }
+        finally
+        {
+            foreach (string variable in takenAway)
+            {
+                OwnEnvironment.Set(variable, null);
+            }
+            TestFolders.Delete(folder);
+        }
+    }
+
     /// <summary>The terminal's links: an address is a link a click opens (a drag from it selects instead) and so does
     /// Cmd+click (Ctrl+click elsewhere), wrapped across rows or not; a file's path is text until Cmd or Ctrl is held over
     /// it, and Cmd+click opens it at its line.</summary>
