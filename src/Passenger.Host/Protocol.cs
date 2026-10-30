@@ -393,7 +393,8 @@ public sealed record BuildInputs
     /// and the repository's HEAD.</summary>
     public IReadOnlyList<Stamp> Reads { get; init; } = [];
 
-    /// <summary>The project's output folder, and the file its build lists what it wrote in (FileListAbsolute.txt).</summary>
+    /// <summary>The project's output folder, and the file its build lists what it wrote in (FileListAbsolute.txt); null for
+    /// a build that names none, a multi-targeted project's of no one framework.</summary>
     public string? Output { get; init; }
 
     public string? Written { get; init; }

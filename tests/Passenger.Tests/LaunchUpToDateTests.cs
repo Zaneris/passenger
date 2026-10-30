@@ -184,6 +184,37 @@ public sealed class LaunchUpToDateTests
         }
     }
 
+    /// <summary>Build Solution of a solution whose app targets two frameworks raises no IDE error, and Run right after it
+    /// starts no dotnet build of the app, the Build window saying it is up to date, and runs its first framework's build.</summary>
+    [AvaloniaFact]
+    public void A_run_of_a_multi_targeted_app_right_after_build_solution_starts_no_build_and_the_build_raises_no_IDE_error()
+    {
+        string folder = WriteSolution(appFrameworks: $"{TestProjects.Framework};net11.0");
+        List<string> builds = [];
+        EventHandler<ChildStart> started = Counting(builds);
+        List<string> errors = [];
+        EventHandler<IdeError> raised = (_, error) => errors.Add($"{error.Kind}: {error.Message}");
+        ChildProcesses.Started += started;
+        IdeErrors.Raised += raised;
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "App"), "App's run configuration");
+            Assert.True(window.SelectConfiguration("App"));
+            Built(window, AppActions.Build, succeeds: true, "Build Solution");
+            Ui.Settle();
+            Assert.True(errors.Count == 0, $"Build Solution of a multi-targeted app raised IDE errors: {string.Join("; ", errors)}");
+            Ran(window, builds, built: false, "hello-1 lib-1", "a run of the multi-targeted app right after Build Solution");
+            Assert.True(errors.Count == 0, $"The run after Build Solution raised IDE errors: {string.Join("; ", errors)}");
+        }
+        finally
+        {
+            ChildProcesses.Started -= started;
+            IdeErrors.Raised -= raised;
+            window.Close();
+        }
+    }
+
     /// <summary>A Build that fails leaves no project it built up to date: Run right after Build Selected Projects of App
     /// starts no build, but after Build Solution fails in Tool, which App does not reference, Run builds App first.</summary>
     [AvaloniaFact]
@@ -214,13 +245,15 @@ public sealed class LaunchUpToDateTests
     }
 
     /// <summary>A solution of a console app, App, that says its C# constant and the word of the library it references, Lib;
-    /// and another console app, Tool, that references neither; restored.</summary>
-    internal static string WriteSolution()
+    /// and another console app, Tool, that references neither; restored. App targets the frameworks given, if any.</summary>
+    internal static string WriteSolution(string? appFrameworks = null)
     {
         string folder = TestFolders.Create("uptodate-built-");
         TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library());
         TestFolders.Write(folder, "Lib/Greeting.cs", "namespace Lib;\n\npublic static class Greeting\n{\n    public static string Name => \"lib-1\";\n}\n");
-        TestFolders.Write(folder, "App/App.csproj", TestProjects.Console().With("  <ItemGroup>\n    <ProjectReference Include=\"../Lib/Lib.csproj\" />\n  </ItemGroup>\n"));
+        string app = TestProjects.Console().With("  <ItemGroup>\n    <ProjectReference Include=\"../Lib/Lib.csproj\" />\n  </ItemGroup>\n");
+        TestFolders.Write(folder, "App/App.csproj", appFrameworks is null ? app
+            : app.Replace($"<TargetFramework>{TestProjects.Framework}</TargetFramework>", $"<TargetFrameworks>{appFrameworks}</TargetFrameworks>", StringComparison.Ordinal));
         TestFolders.Write(folder, "App/Program.cs",
             "System.Console.WriteLine($\"said: {Words.Hello} {Lib.Greeting.Name}\");\n\nstatic class Words\n{\n    public const string Hello = \"hello-1\";\n}\n");
         TestFolders.Write(folder, "Tool/Tool.csproj", TestProjects.Console());

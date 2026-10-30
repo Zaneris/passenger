@@ -445,28 +445,41 @@ public sealed partial class BuildRunController
         }
     }
 
-    /// <summary>A check of what a person's build reads, made before its dotnet step, and whether that step built the
-    /// solution, which must then show it built the project where a launch's build of it would (<see cref="Shows"/>).</summary>
-    private sealed record Checked(UpToDate.Check Check, bool InSolution);
+    /// <summary>A check of what a person's build reads, made before its dotnet step, and whether that step must show it built
+    /// the project where a launch's build of it would (<see cref="Shows"/>): one of a solution's projects, or one framework
+    /// of a project the step built for all its frameworks.</summary>
+    private sealed record Checked(UpToDate.Check Check, bool MustShow);
 
     /// <summary>Checks what a person's build of a target reads, as a launch's build would be checked (<see cref="UpToDate"/>):
     /// a project or program built as a launch builds it, or each of the solution's projects a launch would build with the
-    /// global properties the solution's build gives it. Any other target, or a project its host cannot say, is not checked.</summary>
+    /// global properties the solution's build gives it; a runnable project of several frameworks built for none is checked
+    /// as a launch builds each of them. Any other target, or a project its host cannot say, is not checked.</summary>
     private async Task CheckBeforeAsync(string target, bool windows, List<Checked> checks, CancellationToken stop)
     {
-        List<(BuildStep Step, bool InSolution)> steps = session.Projects.Any(p => PathNames.Same(p.Path, target))
-            ? [(new BuildStep(target, buildFramework, buildOutput), false)]
+        List<(BuildStep Step, bool MustShow)> steps = session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, target)) is { } project
+            ? buildFramework is null && buildOutput is null && Launched(project) is { } frameworks
+                ? [.. frameworks.Select(framework => (new BuildStep(target, framework), true))]
+                : [(new BuildStep(target, buildFramework, buildOutput), false)]
             : session.Workspace?.Solution is { } solution && PathNames.Same(solution.Path, target)
-                ? [.. session.Projects.Where(p => !p.IsProgram && WindowsTargeting([p.Path]) == windows).Select(p => (new BuildStep(p.Path, null), true))]
+                ? [.. session.Projects.Where(p => !p.IsProgram && WindowsTargeting([p.Path]) == windows)
+                    .SelectMany(p => Launched(p) is { } frameworks ? frameworks.Select(framework => new BuildStep(p.Path, framework)) : [new BuildStep(p.Path, null)])
+                    .Select(step => (step, true))]
                 : [];
         if (steps.Count == 0 || session.Folder is not { } folder || session.IsEnded)
         {
             return;
         }
-        IReadOnlyList<UpToDate.Check?> found = await BackgroundWork.Run(() => UpToDate.CheckAsync([.. steps.Select(step => step.Step)],
-            [.. steps.Select(step => BuildOutput.Arguments(step.Step.Project, BuildKind.Build, step.Step.Framework, windows, step.Step.Output))], windows, folder, stop));
-        checks.AddRange(found.Zip(steps).Where(each => each.First is not null).Select(each => new Checked(each.First!, each.Second.InSolution)));
+        // The host is asked of one framework at a time, each framework's projects side by side.
+        List<List<(BuildStep Step, bool MustShow)>> asked = [.. steps.GroupBy(step => step.Step.Framework).Select(group => group.ToList())];
+        IReadOnlyList<UpToDate.Check?>[] found = await BackgroundWork.Run(() => Task.WhenAll(asked.Select(group => UpToDate.CheckAsync([.. group.Select(step => step.Step)],
+            [.. group.Select(step => BuildOutput.Arguments(step.Step.Project, BuildKind.Build, step.Step.Framework, windows, step.Step.Output))], windows, folder, stop))));
+        checks.AddRange(found.Zip(asked).SelectMany(each => each.First.Zip(each.Second)).Where(each => each.First is not null)
+            .Select(each => new Checked(each.First!, each.Second.MustShow)));
     }
+
+    /// <summary>The frameworks a launch builds a project of several for, one at a time; null for a project of one, or one
+    /// nothing launches.</summary>
+    private static IReadOnlyList<string>? Launched(ProjectModel project) => project.IsRunnable && project.TargetFrameworks.Count > 1 ? project.TargetFrameworks : null;
 
     /// <summary>Keeps what a person's build that succeeded checked (<see cref="UpToDate.BuiltAsync"/>), each of the solution's
     /// projects only where the build showed it built it as a launch's build would, the rest let go; then ends the build, so
@@ -484,7 +497,7 @@ public sealed partial class BuildRunController
                 List<UpToDate.Check> kept = [];
                 foreach (Checked each in checks)
                 {
-                    if (!each.InSolution || Shows(each.Check, assemblies))
+                    if (!each.MustShow || Shows(each.Check, assemblies))
                     {
                         kept.Add(each.Check);
                     }
@@ -508,7 +521,7 @@ public sealed partial class BuildRunController
     private static bool Shows(UpToDate.Check check, List<(string Project, string Path)> assemblies)
     {
         string name = Path.GetFileNameWithoutExtension(check.Project);
-        return check.Inputs.Output is { } output && PathNames.Canonical(Path.TrimEndingDirectorySeparator(output)) is var folder
+        return check.Inputs.Output is { Length: > 0 } output && PathNames.Canonical(Path.TrimEndingDirectorySeparator(output)) is var folder
             && assemblies.Any(each => each.Project.Equals(name, StringComparison.OrdinalIgnoreCase) && Path.GetDirectoryName(each.Path) is { } at && PathNames.Same(at, folder))
             && check.Inputs.Referenced.All(reference => PathNames.Canonical(reference) is var path && assemblies.Any(each => PathNames.Same(each.Path, path)));
     }

@@ -59,18 +59,21 @@ internal static class BuildReads
         string? written = null;
         try
         {
-            foreach ((Project project, Walk walk) in evaluated.Of(asked, framework, reads))
+            List<(Project Project, Walk Walk)> evaluations = evaluated.Of(asked, framework, reads);
+            foreach ((Project project, Walk walk) in evaluations)
             {
                 if (walk.Why is { } why)
                 {
                     return new BuildInputs { Unknown = why };
                 }
                 Take(walk);
-                if (output is null)
-                {
-                    output = PathOf(project, "OutDir");
-                    written = Path.Combine(PathOf(project, "IntermediateOutputPath"), project.GetPropertyValue("CleanFile"));
-                }
+            }
+            // A multi-targeted project built for no one framework (its outer evaluation and each framework's) has no one folder.
+            if (evaluations is [(Project built, _)] && PathOf(built, "OutDir") is { Length: > 0 } folder
+                && PathOf(built, "IntermediateOutputPath") is { Length: > 0 } intermediate && built.GetPropertyValue("CleanFile") is { Length: > 0 } list)
+            {
+                output = folder;
+                written = Path.Combine(intermediate, list);
             }
             while (references.TryDequeue(out string? reference))
             {

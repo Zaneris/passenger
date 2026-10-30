@@ -82,7 +82,7 @@ public static class UpToDate
     public static async Task BuiltAsync(Check check, CancellationToken cancel)
     {
         Builds.TryRemove(check.Key, out _);
-        if (check.Inputs is not { Unknown: null, Output: { } output, Written: { } written } || !File.Exists(written))
+        if (check.Inputs is not { Unknown: null, Output: { Length: > 0 } output, Written: { Length: > 0 } written } || !File.Exists(written))
         {
             return;
         }
