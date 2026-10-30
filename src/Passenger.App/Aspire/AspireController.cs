@@ -245,11 +245,12 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             .Select(candidate => Path.GetFileNameWithoutExtension(candidate.Project))]);
     }
 
-    /// <summary>Starts an Aspire configuration's AppHosts, each built first as it says, and once each is connected to answers
-    /// null, else why not. <paramref name="https"/> is how its HTTPS is served, as the start worked out before: over HTTP, the
-    /// AppHosts' own addresses and the services they start serve HTTP for this run.</summary>
+    /// <summary>Starts an Aspire configuration's AppHosts, each built first as it says (<paramref name="build"/> told what to do
+    /// as the build saves the files), and once each is connected to answers null, else why not. <paramref name="https"/> is
+    /// how its HTTPS is served, as the start worked out before: over HTTP, the AppHosts' own addresses and the services they
+    /// start serve HTTP for this run.</summary>
     public async Task<string?> StartAsync(RunConfiguration configuration, RunStart mode,
-        Func<BuildStep, Task<BuildOutcome>> build, CancellationToken cancellation = default, HttpsChoice? https = null)
+        Func<BuildStep, Action?, Task<BuildOutcome>> build, CancellationToken cancellation = default, HttpsChoice? https = null)
     {
         UiThread.Check();
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -346,32 +347,45 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     }
 
     private async Task<AspireAppRun> StartAppAsync(RunConfiguration configuration, RunStart mode, string group,
-        Func<BuildStep, Task<BuildOutcome>> build, CancellationToken cancellation, (string AppHost, string Name)? profileTarget, HttpsChoice https,
+        Func<BuildStep, Action?, Task<BuildOutcome>> build, CancellationToken cancellation, (string AppHost, string Name)? profileTarget, HttpsChoice https,
         IReadOnlyList<string> said)
     {
-        IReadOnlyList<ProjectModel> projects = workspace.Projects;
-        BuiltInputs.Listing began = await BackgroundWork.Run(() => BuiltInputs.Listed(configuration.Project, projects));
-        LaunchPlan plan = await ResolveAppHostAsync(configuration, build, cancellation);
-        if (plan.Build is { } step && await build(step) is { Succeeded: false } failed)
+        // Followed from the save of the AppHost's build, which builds the services it starts: each start's session copies them.
+        BuiltEdits? followed = null;
+        AspireAppRun app;
+        LaunchPlan plan;
+        try
         {
-            throw new LaunchException(failed.Message);
+            IReadOnlyList<ProjectModel> projects = workspace.Projects;
+            BuiltInputs.Listing began = await BackgroundWork.Run(() => BuiltInputs.Listed(configuration.Project, projects));
+            plan = await ResolveAppHostAsync(configuration, BuildAsync, cancellation);
+            if (plan.Build is { } step && await BuildAsync(step) is { Succeeded: false } failed)
+            {
+                throw new LaunchException(failed.Message);
+            }
+            cancellation.ThrowIfCancellationRequested();
+            if (workspace.IsEnded || disposed)
+            {
+                throw new LaunchException(Refusals.SolutionClosed);
+            }
+            if (plan.WhyNot("run") is { } why)
+            {
+                throw new LaunchException(why);
+            }
+            app = new(configuration, mode, group)
+            {
+                ProfileTarget = profileTarget,
+                BuildBegan = began,
+                OverHttp = https.OverHttp is not null,
+                Restarting = (run, starts, build, cancel) => (RestartCommand ?? throw new InvalidOperationException("Aspire resource restart is unavailable"))(run, starts, build, cancel),
+                Built = followed,
+            };
+            followed = null;
         }
-        cancellation.ThrowIfCancellationRequested();
-        if (workspace.IsEnded || disposed)
+        finally
         {
-            throw new LaunchException(Refusals.SolutionClosed);
+            followed?.Dispose();
         }
-        if (plan.WhyNot("run") is { } why)
-        {
-            throw new LaunchException(why);
-        }
-        AspireAppRun app = new(configuration, mode, group)
-        {
-            ProfileTarget = profileTarget,
-            BuildBegan = began,
-            OverHttp = https.OverHttp is not null,
-            Restarting = (run, starts, build, cancel) => (RestartCommand ?? throw new InvalidOperationException("Aspire resource restart is unavailable"))(run, starts, build, cancel),
-        };
         if (https.OverHttp is { } note)
         {
             app.Notes.Add(note);
@@ -467,6 +481,12 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             await StopAppAsync(app);
             throw;
         }
+
+        Task<BuildOutcome> BuildAsync(BuildStep step) => build(step, () =>
+        {
+            followed?.Dispose();
+            followed = workspace.Debug.Kept();
+        });
     }
 
     /// <summary>The run's resources followed from its connection until it stops, whatever the window shows: each container
@@ -1120,6 +1140,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             }
             app.Console.SetRunning(false);
             app.Runner.Dispose();
+            app.LetGoBuilt();
             apps.Remove(app);
             app.Stopped.TrySetResult();
             Changed?.Invoke(this, EventArgs.Empty);
@@ -1141,6 +1162,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         foreach (AspireAppRun app in owned)
         {
             app.Stopping = true;
+            app.LetGoBuilt();
         }
         lifetime.Cancel();
         List<(AspireAppRun App, AspireResourceRun[] Resources, Task Debuggers)> captured = [];
@@ -1306,6 +1328,51 @@ public sealed class AspireAppRun : ServiceRun
 
     /// <summary>The inputs of the build each service project was built by again for a restart as it began, by project.</summary>
     internal Dictionary<string, BuiltInputs.Listing> Rebuilt { get; } = new(PathNames.Comparer);
+
+    /// <summary>The edits followed since the AppHost's build saved the files, the build its services start from, until it stops.</summary>
+    internal BuiltEdits? Built { get; set; }
+
+    /// <summary>The edits followed since each service project was built again for a restart, by project, kept in place of
+    /// <see cref="Built"/> for its starts.</summary>
+    private readonly Dictionary<string, BuiltEdits> rebuiltEdits = new(PathNames.Comparer);
+
+    /// <summary>Each service project's build output as the first start of it since its build had it, by project.</summary>
+    private readonly Dictionary<string, string> builtStamps = new(PathNames.Comparer);
+
+    /// <summary>A service project is built again for a restart: its starts from now take the edits followed since its save,
+    /// which a run stopped meanwhile lets go at once.</summary>
+    internal void Rebuilding(string project, BuiltEdits edits)
+    {
+        if (Stopping)
+        {
+            edits.Dispose();
+            return;
+        }
+        if (rebuiltEdits.Remove(project, out BuiltEdits? before))
+        {
+            before.Dispose();
+        }
+        rebuiltEdits[project] = edits;
+        builtStamps.Remove(project);
+    }
+
+    /// <summary>The edits since its project's last build here, its AppHost's or a restart's; none for a start whose output is
+    /// not the first start's since then, which runs a build made elsewhere since (another's) that they do not follow.</summary>
+    public override BuiltEdits? KeptFor(IRunService service) =>
+        service is AspireResourceRun start && (rebuiltEdits.GetValueOrDefault(start.Project) ?? Built) is { } kept
+            && (builtStamps.TryAdd(start.Project, start.BuiltStamp) || builtStamps[start.Project] == start.BuiltStamp) ? kept : null;
+
+    /// <summary>Lets go of the edits it follows, as it stops.</summary>
+    internal void LetGoBuilt()
+    {
+        Built?.Dispose();
+        Built = null;
+        foreach (BuiltEdits edits in rebuiltEdits.Values)
+        {
+            edits.Dispose();
+        }
+        rebuiltEdits.Clear();
+    }
     internal TaskCompletionSource<string?> ProfileStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>DCP's request to start the service Profile records, by its name; the profile's time limit counts from it.</summary>

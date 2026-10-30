@@ -301,6 +301,26 @@ public sealed class DebugController : IDisposable
         return Followed(carried, hotReload ? reload?.Carried(carried) ?? new HotReload(carried, Server, editors) : null);
     }
 
+    /// <summary>Begins following the edits made from now for every program a build reading the files now builds, started
+    /// later as asked (an AppHost's services): each session attached to one takes its own copy (<see cref="Copied"/>), none
+    /// of Roslyn's begun meanwhile. Let go once none of its programs is left to start.</summary>
+    public BuiltEdits Kept()
+    {
+        UiThread.Check();
+        BuiltLines lines = new(path => CSharp.ServerPlaces.TextOf(editors, path));
+        return Followed(lines, HotReload.Kept(lines, Server, editors));
+    }
+
+    /// <summary>The edits <paramref name="kept"/> for a build's programs, for one of them: its built lines and Hot Reload's
+    /// texts from before the edits, every edit since the build one to apply, followed apart from now on. Let go if no
+    /// session takes them.</summary>
+    public BuiltEdits Copied(BuiltEdits kept)
+    {
+        UiThread.Check();
+        BuiltLines lines = kept.Lines.FromBuild();
+        return Followed(lines, kept.Reload?.Carried(lines));
+    }
+
     private BuiltEdits Followed(BuiltLines lines, HotReload? reload)
     {
         BuiltEdits edits = new(lines, reload, done => building.Remove(done));

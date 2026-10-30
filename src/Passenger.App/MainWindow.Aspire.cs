@@ -535,7 +535,9 @@ public partial class MainWindow
         {
             IReadOnlyList<Passenger.Workspace.ProjectModel> projects = current.Projects;
             app.Rebuilt[start.Project] = await BackgroundWork.Run(() => BuiltInputs.Listed(start.Project, projects));
-            if (await buildRun.BuildForAsync(new BuildStep(start.Project, start.Plan.Framework), cancel) is { Succeeded: false } failed)
+            // Its starts from now run this build: their sessions follow the edits from its save.
+            if (await buildRun.BuildForAsync(new BuildStep(start.Project, start.Plan.Framework), cancel, () => app.Rebuilding(start.Project, current.Debug.Kept()))
+                is { Succeeded: false } failed)
             {
                 throw new InvalidOperationException(failed.Message);
             }

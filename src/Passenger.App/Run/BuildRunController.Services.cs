@@ -135,8 +135,8 @@ public sealed partial class BuildRunController
         else
         {
             run.Debugged.Add(name);
-            // Its start's, followed since its build saved the files: its session takes them, else they end here.
-            using BuiltEdits? edits = builtEdits.Remove(service.Name, out BuiltEdits? built) ? built : null;
+            // Followed since its build saved the files, or a copy of those its run keeps: its session takes them, else they end here.
+            using BuiltEdits? edits = builtEdits.Remove(service.Name, out BuiltEdits? built) ? built : run.KeptFor(service) is { } kept ? session.Debug.Copied(kept) : null;
             refused = purpose == RunStart.HotReload
                 ? await session.Debug.AttachForHotReloadAsync(program.Id, name, (line, error) => run.Say(service, line, error), program.Place, stop, edits)
                 : await session.Debug.AttachAsync(program.Id, name, hotReload: program.HotReload, place: program.Place, group: run.Group, app: program.App, edits: edits);

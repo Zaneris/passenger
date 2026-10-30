@@ -314,6 +314,11 @@ public abstract class ServiceRun
     /// so the files are saved just before it and its next sessions follow the edits from that save.</summary>
     public virtual bool BuildsAsItRestarts => false;
 
+    /// <summary>The edits followed since the build a start of the service runs saved the files, kept for every start of it
+    /// (an AppHost's services, started as asked), each session attached to one taking its own copy; null where its kind
+    /// keeps none.</summary>
+    public virtual BuiltEdits? KeptFor(IRunService service) => null;
+
     /// <summary>Whether a failure of a service's action is one its kind says (an engine's refusal, a file it could not
     /// write), said as the action's failure rather than reported as Passenger's.</summary>
     public abstract bool Refused(Exception failure);

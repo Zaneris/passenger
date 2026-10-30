@@ -734,9 +734,10 @@ public sealed partial class BuildRunController
 
     /// <summary>A start's build of what it starts, in the Build window, which comes forward only as Settings says for a build
     /// Run, Debug or Profile begins: stopped as the start is (<paramref name="stopping"/>), as Stop stops a build. What is
-    /// open is saved first; a project whose last build here stands (<see cref="UpToDate"/>) is not built again, the Build
-    /// window and the status bar saying so.</summary>
-    public Task<BuildOutcome> BuildForAsync(BuildStep step, CancellationToken stopping) => BuildForAsync([step.Project], stopping, null, step.Framework, step.Output);
+    /// open is saved first, <paramref name="reading"/> told just before; a project whose last build here stands
+    /// (<see cref="UpToDate"/>) is not built again, the Build window and the status bar saying so.</summary>
+    public Task<BuildOutcome> BuildForAsync(BuildStep step, CancellationToken stopping, Action? reading = null) =>
+        BuildForAsync([step.Project], stopping, null, step.Framework, step.Output, reading);
 
     /// <summary>A start's build of what it starts, as <see cref="BuildForAsync(BuildStep, CancellationToken)"/>, saying in its
     /// work when it waits for a build under way; <paramref name="reading"/> is told as it saves the files its build reads.</summary>
@@ -1326,7 +1327,7 @@ public sealed partial class BuildRunController
                     return Said(asked);
                 }
                 parts.Dock.Show(ToolWindowIds.Aspire);
-                string? problem = await session.Aspire.StartAsync(configuration, mode, step => BuildForAsync(step, work), work.Stopping, https);
+                string? problem = await session.Aspire.StartAsync(configuration, mode, (step, reading) => BuildForAsync(step, work, reading), work.Stopping, https);
                 if (problem is not null)
                 {
                     return Said(problem);

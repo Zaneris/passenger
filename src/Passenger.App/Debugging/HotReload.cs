@@ -114,6 +114,14 @@ public sealed class HotReload
         this.editors = editors;
     }
 
+    /// <summary>Whether it only keeps the edits for the programs of a build still to start (<see cref="Kept"/>), beginning no
+    /// session of Roslyn's.</summary>
+    private bool keeps;
+
+    /// <summary>The edits made since a build kept for each program of it still to start, whose own Hot Reload is
+    /// <see cref="Carried"/> from it: each file's text from before its first edit, the edits counted, nothing applied.</summary>
+    public static HotReload Kept(BuiltLines lines, Func<RoslynSession?> server, EditorArea editors) => new(lines, server, editors) { keeps = true };
+
     /// <summary>The program's session is open: Apply Changes takes the edits to it from now.</summary>
     public void Opened(DebugSession session) => debug = session;
 
@@ -140,7 +148,8 @@ public sealed class HotReload
     /// <summary>The apply is over: its update's text is no longer kept apart in the built lines.</summary>
     internal void Over() => lines.Unmark();
 
-    /// <summary>A C# file edited while the program runs: its text before its first edit is kept, and Roslyn's session begins.</summary>
+    /// <summary>A C# file edited while the program runs: its text before its first edit is kept, and Roslyn's session begins
+    /// (none for edits only kept).</summary>
     public void Edited(string path, TextSnapshot before)
     {
         UiThread.Check();
@@ -149,7 +158,10 @@ public sealed class HotReload
         {
             originals[path] = before.ToString();
         }
-        starting ??= StartAsync();
+        if (!keeps)
+        {
+            starting ??= StartAsync();
+        }
     }
 
     /// <summary>Why Apply Changes cannot run now, or null when it can.</summary>
