@@ -38,7 +38,7 @@ public static class TestApp
 /// never writes to the person's own state, log or history, an agent of theirs never attaches to a test's window, and a
 /// person's commit signing or hooks never reach a test's commit. The folder goes when the run ends; one a run that was
 /// killed left goes when the next begins.</summary>
-public sealed class TestRun : IAsyncDisposable
+public sealed partial class TestRun : IAsyncDisposable
 {
     internal const string Prefix = "passenger-run-";
 
@@ -150,6 +150,11 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable("npm_config_update_notifier", "false");
         Environment.SetEnvironmentVariable("npm_config_audit", "false");
         Environment.SetEnvironmentVariable("npm_config_fund", "false");
+        // Nor the person's colour choices: what a test runs writes in colour on a terminal alone, as with none of them set.
+        foreach (string colour in (string[])["NO_COLOR", "FORCE_COLOR", "CLICOLOR_FORCE", "DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION"])
+        {
+            Unset(colour);
+        }
         // Nor the person's application data, where a Testing Platform app writes its first-run sentinel unless opted out.
         Environment.SetEnvironmentVariable("TESTINGPLATFORM_TELEMETRY_OPTOUT", "1");
         // Nor Avalonia's build telemetry, whose collector a build starts lingers in the project's folder for half a minute.
@@ -172,6 +177,20 @@ public sealed class TestRun : IAsyncDisposable
         // A run stopped before its end (Ctrl+C) leaves nothing either, but what is held, which the next run's start removes.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => End(waiting: false);
     }
+
+    /// <summary>Takes a variable out of the run's environment, on macOS and Linux out of the process's own as well: a
+    /// terminal's program starts from that, given only what was set over it.</summary>
+    private static void Unset(string variable)
+    {
+        Environment.SetEnvironmentVariable(variable, null);
+        if (!OperatingSystem.IsWindows() && UnsetEnv(variable) != 0)
+        {
+            throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastPInvokeError(), $"{variable} could not be taken out of the run's environment");
+        }
+    }
+
+    [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "unsetenv", SetLastError = true, StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf8)]
+    private static partial int UnsetEnv(string name);
 
     /// <summary>On macOS and Linux, NuGet's home for the run, which NuGet takes from DOTNET_CLI_HOME: its user nuget.config,
     /// its credential providers and its HTTP cache are the run's, so no test reads the person's feeds or credentials or writes
