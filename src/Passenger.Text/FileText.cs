@@ -246,10 +246,16 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
         string? unheld = Unheld(encoding, text);
         FileText written = unheld is null ? new FileText(text, encoding, bom, crBreaks) : new FileText(text, new UTF8Encoding(false), false, crBreaks);
         Writing?.Invoke(path);
-        byte[] preamble = written.HasBom ? Preamble(written.Encoding) : [];
-        byte[] body = written.Encoding.GetBytes(crBreaks ? LineEndings.In(text, "\r") : text);
-        Write(path, preamble, body, written.Encoding, makeFolder);
+        Write(path, Encoded(text, written.Encoding, written.HasBom, crBreaks), written.Encoding, makeFolder);
         return (written, unheld is null ? null : $"{Path.GetFileName(path)} was saved as UTF-8: {FileEncoding.Of(encoding, bom).Name} cannot hold '{unheld}'");
+    }
+
+    /// <summary>A text's bytes as a save writes them: in the encoding, after its BOM when it has one, a CR file's breaks
+    /// as '\r'.</summary>
+    public static byte[] Encoded(string text, Encoding encoding, bool bom, bool crBreaks = false)
+    {
+        byte[] body = encoding.GetBytes(crBreaks ? LineEndings.In(text, "\r") : text);
+        return bom ? [.. Preamble(encoding), .. body] : body;
     }
 
     /// <summary>Writes a file's bytes as they were, as a save writes: Local History's revert of a file not open, or of one
@@ -257,7 +263,7 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     public static void Restore(string path, byte[] bytes)
     {
         Writing?.Invoke(path);
-        Write(path, [], bytes, null, makeFolder: true);
+        Write(path, bytes, null, makeFolder: true);
     }
 
     /// <summary>Whether a file (through a symlink, its target) is there and marked read-only, as Perforce and TFVC mark a
@@ -287,7 +293,7 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
         new FileInfo(path).LinkTarget is not null ? File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName ?? path : path;
 
     /// <param name="encoding">What the text was written in; null for bytes put back as a file had them.</param>
-    private static void Write(string path, byte[] preamble, byte[] body, Encoding? encoding, bool makeFolder)
+    private static void Write(string path, byte[] bytes, Encoding? encoding, bool makeFolder)
     {
         bool there = File.Exists(path) || new FileInfo(path).LinkTarget is not null;
         string target = there ? File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName ?? path : path;
@@ -305,7 +311,6 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
             // A move over it would replace it on macOS and Linux, where only its folder's permissions are asked.
             throw new ReadOnlyFileException(path);
         }
-        byte[] bytes = preamble.Length == 0 ? body : [.. preamble, .. body];
         UnixFileMode? mode = !OperatingSystem.IsWindows() && File.Exists(target) ? File.GetUnixFileMode(target) : null;
         target = Path.GetFullPath(target);
         lock (Landing)

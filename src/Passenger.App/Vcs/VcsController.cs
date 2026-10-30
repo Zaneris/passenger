@@ -30,10 +30,10 @@ public sealed class VcsController : IDisposable
 
     private readonly Dictionary<OpenDocument, Tracked> documents = [];
 
-    /// <summary>Files' texts in the commit <see cref="textsOf"/> (null before the first commit), which a read sets once
+    /// <summary>Files' bytes in the commit <see cref="textsOf"/> (null before the first commit), which a read sets once
     /// it has found HEAD since the folder opened (<see cref="textsRead"/>). They are kept until HEAD names another, so a
     /// refresh that finds it where it was reads none of them again.</summary>
-    private readonly Dictionary<string, Task<string?>> heads = [];
+    private readonly Dictionary<string, HeadBytes> heads = [];
     private string? textsOf;
     private bool textsRead;
     private readonly List<(string From, string To)> moves = [];
@@ -405,10 +405,10 @@ public sealed class VcsController : IDisposable
             if (paths.Length > 0)
             {
                 HeadReads++;
-                Task<IReadOnlyDictionary<string, string?>> texts = repository.TextsAtAsync(head, [.. paths.SelectMany(p => new[] { p, Origin(p) })]);
+                Task<IReadOnlyDictionary<string, byte[]?>> read = repository.BytesAtAsync(head, [.. paths.SelectMany(p => new[] { p, Origin(p) })]);
                 foreach (string path in paths)
                 {
-                    heads[path] = TextOfAsync(texts, path, Origin(path));
+                    heads[path] = new HeadBytes(BytesOfAsync(read, path, Origin(path)));
                 }
             }
         }
@@ -417,9 +417,9 @@ public sealed class VcsController : IDisposable
             IdeErrors.Observe(MarkAsync(document));
         }
 
-        static async Task<string?> TextOfAsync(Task<IReadOnlyDictionary<string, string?>> texts, string path, string origin)
+        static async Task<byte[]?> BytesOfAsync(Task<IReadOnlyDictionary<string, byte[]?>> bytes, string path, string origin)
         {
-            IReadOnlyDictionary<string, string?> read = await texts;
+            IReadOnlyDictionary<string, byte[]?> read = await bytes;
             return read.GetValueOrDefault(path) ?? read.GetValueOrDefault(origin);
         }
     }
@@ -516,7 +516,7 @@ public sealed class VcsController : IDisposable
         }
         int blaming = ++tracked.Blaming;
         TextSnapshot text = document.Text.Snapshot;
-        IReadOnlyList<BlameLine>? lines = git is { } repository ? await repository.BlameAsync(document.Path, text.ToString()) : null;
+        IReadOnlyList<BlameLine>? lines = git is { } repository ? await repository.BlameAsync(document.Path, await StoredAsync(document, text)) : null;
         if (blaming != tracked.Blaming)
         {
             return true;
@@ -533,6 +533,16 @@ public sealed class VcsController : IDisposable
         tracked.Blame = lines;
         document.GutterAnnotations = Labels(lines);
         return true;
+    }
+
+    /// <summary>A file's text as its save would write it (its encoding, byte order mark and CR breaks), off the window's
+    /// thread.</summary>
+    private static Task<byte[]> StoredAsync(OpenDocument document, TextSnapshot text)
+    {
+        System.Text.Encoding encoding = document.Encoding;
+        bool bom = document.HasBom;
+        bool cr = document.Separator == LineSeparator.CR;
+        return BackgroundWork.Run(() => FileText.Encoded(text.ToString(), encoding, bom, cr));
     }
 
     /// <summary>Each commit's block named at its first line; a change not committed yet says so.</summary>
@@ -1080,7 +1090,7 @@ public sealed class VcsController : IDisposable
         ConflictSides sides = Sides;
         System.Text.Encoding? encoding = InConflict(path)?.Encoding;
         (byte[]? common, byte[]? ours, byte[]? theirs) = await repository.StagesAsync(path);
-        string Read(byte[]? bytes) => bytes is null ? string.Empty : FileText.FromBytes(bytes, encoding, () => EditorConfig.For(path).Charset)?.Text ?? string.Empty;
+        string Read(byte[]? bytes) => bytes is null ? string.Empty : FileVersion.Read(bytes, encoding, path).Text ?? string.Empty;
         return new MergeTexts(path, Read(common), Read(sides.Swapped ? theirs : ours), Read(sides.Swapped ? ours : theirs), sides);
     }
 
@@ -1167,28 +1177,59 @@ public sealed class VcsController : IDisposable
         return SwitchAsync(repository => repository.ContinueRebaseAsync(), "Rebase successful", "Git rebase", "Rebase stopped due to conflicts");
     }
 
-    /// <summary>A file's text as the last commit has it, or null when it has none (new, or outside the tree). A file
-    /// opened since HEAD last moved is read on its own, in the commit the others were read in.</summary>
-    public Task<string?> HeadTextAsync(string path)
+    /// <summary>A file's text as the last commit has it, or null when it has none (new, or outside the tree) or it is
+    /// binary there (<see cref="HeadAsync"/>).</summary>
+    public async Task<string?> HeadTextAsync(string path) => (await HeadAsync(path))?.Text;
+
+    /// <summary>A file as the last commit has it, read as checking it out would write it and in the open file's encoding,
+    /// or null when it has none (new, or outside the tree). A file opened since HEAD last moved is read on its own, in the
+    /// commit the others were read in; its text is the same string until HEAD moves or the open file's encoding
+    /// changes.</summary>
+    public Task<FileVersion?> HeadAsync(string path)
     {
         UiThread.Check();
         if (git is not { } repository || !repository.IsInside(path) || (textsRead && textsOf is null))
         {
-            return Task.FromResult<string?>(null);
+            return Task.FromResult<FileVersion?>(null);
         }
-        if (!heads.TryGetValue(path, out Task<string?>? head))
+        if (!heads.TryGetValue(path, out HeadBytes? head))
         {
             HeadReads++;
             string revision = textsOf ?? "HEAD";
             string origin = Origin(path);
-            head = origin == path ? repository.TextAtAsync(revision, path) : TextOrOriginAsync(repository, revision, path, origin);
+            head = new HeadBytes(origin == path ? repository.BytesAtAsync(revision, path) : BytesOrOriginAsync(repository, revision, path, origin));
             heads[path] = head;
         }
-        return head;
+        System.Text.Encoding? encoding = EncodingOf(path);
+        if (head.Read is not { } read || read.In?.CodePage != encoding?.CodePage)
+        {
+            head.Read = read = (encoding, ReadAsync(head.Bytes, encoding, path));
+        }
+        return read.Version;
 
-        static async Task<string?> TextOrOriginAsync(Git repository, string revision, string path, string origin) =>
-            await repository.TextAtAsync(revision, path) ?? await repository.TextAtAsync(revision, origin);
+        static async Task<byte[]?> BytesOrOriginAsync(Git repository, string revision, string path, string origin) =>
+            await repository.BytesAtAsync(revision, path) ?? await repository.BytesAtAsync(revision, origin);
     }
+
+    /// <summary>A file as a revision has it, read in the open file's encoding, or null when the revision has no such
+    /// file.</summary>
+    public async Task<FileVersion?> VersionAsync(string revision, string path, string readAs)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return null;
+        }
+        System.Text.Encoding? encoding = EncodingOf(readAs);
+        return await ReadAsync(repository.BytesAtAsync(revision, path), encoding, readAs);
+    }
+
+    /// <summary>The encoding the open file at a path is read in, or null when none holds its text.</summary>
+    private System.Text.Encoding? EncodingOf(string path) =>
+        documents.Keys.FirstOrDefault(d => d.HoldsText && PathNames.Same(d.Path, path))?.Encoding;
+
+    private static async Task<FileVersion?> ReadAsync(Task<byte[]?> bytes, System.Text.Encoding? encoding, string path) =>
+        await bytes is { } read ? await BackgroundWork.Run(() => FileVersion.Read(read, encoding, path)) : null;
 
     /// <summary>A file or folder moved here (a rename, a code fix): until a commit has its files at their new paths,
     /// their change bars, diff and rollback compare with what the last commit has where they were. What the index has of
@@ -1358,6 +1399,13 @@ public sealed class VcsController : IDisposable
 
     /// <summary>The newest comparison of a file, running or done, and the texts it is between.</summary>
     private sealed record Compared(string Head, TextSnapshot Text, Task<FileDiff> Diff);
+
+    /// <summary>A file's bytes in the last commit, and those bytes read in the encoding last asked for.</summary>
+    private sealed class HeadBytes(Task<byte[]?> bytes)
+    {
+        public Task<byte[]?> Bytes { get; } = bytes;
+        public (System.Text.Encoding? In, Task<FileVersion?> Version)? Read { get; set; }
+    }
 }
 
 /// <summary>A conflicted file's versions as the merge window shows them: the one both sides came from, yours (left) and

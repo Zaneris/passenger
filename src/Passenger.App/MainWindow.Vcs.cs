@@ -392,13 +392,13 @@ public partial class MainWindow
     /// <summary>What a commit did to a file: its first parent's text beside its own, both read-only.</summary>
     public async Task<DiffWindow?> ShowCommitDiffAsync(CommitInfo commit, FileChange file)
     {
-        if (session.Vcs.Repository is not { } repository)
+        if (session.Vcs.Repository is null)
         {
             return null;
         }
         string? parent = commit.Parents.Count > 0 ? commit.Parents[0] : null;
-        string before = parent is null || file.Kind is ChangeKind.Added ? string.Empty : await repository.TextAtAsync(parent, file.From ?? file.Path) ?? string.Empty;
-        string after = file.Kind is ChangeKind.Deleted ? string.Empty : await repository.TextAtAsync(commit.Hash, file.Path) ?? string.Empty;
+        string before = parent is null || file.Kind is ChangeKind.Added ? string.Empty : (await session.Vcs.VersionAsync(parent, file.From ?? file.Path, file.Path))?.Text ?? string.Empty;
+        string after = file.Kind is ChangeKind.Deleted ? string.Empty : (await session.Vcs.VersionAsync(commit.Hash, file.Path, file.Path))?.Text ?? string.Empty;
         string leftTitle = parent is null ? "Before the first commit" : parent[..Math.Min(8, parent.Length)];
         TextDocument mine = new(after);
         TextSnapshot text = mine.Snapshot;

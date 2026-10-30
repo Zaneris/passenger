@@ -210,14 +210,15 @@ public partial class MainWindow
     /// <paramref name="then"/> (where it was in that version), the right side the open file's own text when it is open.</summary>
     public async Task<DiffWindow?> CompareWithAsync(string path, string revision, string version, string then)
     {
-        if (session.Vcs.Repository is not { } repository)
+        if (session.Vcs.Repository is null)
         {
             status.Text = session.Vcs.NoRepository;
             return null;
         }
-        if (await repository.TextAtAsync(revision, then) is not { } theirs)
+        FileVersion? was = await session.Vcs.VersionAsync(revision, then, path);
+        if (was?.Text is not { } theirs)
         {
-            status.Text = $"{Path.GetFileName(then)} is not in {version}";
+            status.Text = was is null ? $"{Path.GetFileName(then)} is not in {version}" : $"{Path.GetFileName(then)} is binary in {version}, so it has no lines to compare";
             return null;
         }
         OpenDocument? open = Editors.Find(path) is { HoldsText: true } held ? held : null;

@@ -959,12 +959,13 @@ public sealed class Git
         return files.Succeeded ? NameStatus(files.Output) : [];
     }
 
-    /// <summary>Git blame for a file, line by line, over the text given (the editor's, unsaved changes and all), so a
-    /// line typed since is one not committed yet; null for a file Git does not track.</summary>
-    public async Task<IReadOnlyList<BlameLine>?> BlameAsync(string path, string text)
+    /// <summary>Git blame for a file, line by line, over the bytes given (the editor's text, unsaved changes and all, in
+    /// the file's encoding as a save would write it), so a line typed since is one not committed yet; null for a file Git
+    /// does not track. Git takes them through the file's clean filter, as it would the file on disk.</summary>
+    public async Task<IReadOnlyList<BlameLine>?> BlameAsync(string path, byte[] contents)
     {
-        GitResult blame = await RunAsync(Root, ["blame", "--porcelain", "--contents", "-", "--", Relative(path)], text);
-        if (!blame.Succeeded)
+        (int code, byte[] output) = await ExchangeAsync(Root, ["blame", "--porcelain", "--contents", "-", "--", Relative(path)], contents);
+        if (code != 0)
         {
             return null;
         }
@@ -972,7 +973,8 @@ public sealed class Git
         List<BlameLine> lines = [];
         string? hash = null;
         (string Author, long Time, string Summary) reading = (string.Empty, 0, string.Empty);
-        foreach (string line in blame.Output.Split('\n'))
+        // A line's own text (after its tab) is in the file's encoding, and passed over; git's own fields are UTF-8.
+        foreach (string line in Encoding.UTF8.GetString(output).Split('\n'))
         {
             if (line.StartsWith('\t'))
             {
@@ -1012,68 +1014,110 @@ public sealed class Git
         return lines;
     }
 
-    /// <summary>A file's text at a revision (a hash, a branch, HEAD), or null when it had no such file.</summary>
-    public async Task<string?> TextAtAsync(string revision, string path)
-    {
-        // Its 128 for a file the revision lacks (untracked, ignored, new) is its answer, asked of every such file opened.
-        GitResult show = await RunAsync(Root, ["show", "--end-of-options", $"{revision}:{Relative(path)}"], answers: [NotThere]);
-        return show.Succeeded ? show.Output : null;
-    }
+    /// <summary>A file's bytes at a revision (a hash, a branch, HEAD), as <see cref="BytesAtAsync(string, IReadOnlyList{string})"/>
+    /// reads them; null when it had no such file.</summary>
+    public async Task<byte[]?> BytesAtAsync(string revision, string path) => (await BytesAtAsync(revision, [path]))[path];
 
-    /// <summary>Files' texts at a revision, read by one git however many there are (cat-file's batch), each null where
-    /// the revision has no such file, as <see cref="TextAtAsync"/> would read them one by one.</summary>
-    public async Task<IReadOnlyDictionary<string, string?>> TextsAtAsync(string revision, IReadOnlyList<string> paths)
+    /// <summary>Files' bytes at a revision as checking each out would write it (its filters and line breaks: smudged by
+    /// LFS or git-crypt, CRLF under core.autocrlf), or as git keeps it where a filter cannot run here (git-lfs not
+    /// installed); each null where the revision has no such file. Two gits read them however many there are.</summary>
+    public async Task<IReadOnlyDictionary<string, byte[]?>> BytesAtAsync(string revision, IReadOnlyList<string> paths)
     {
-        Dictionary<string, string?> texts = [];
-        List<string> batched = [];
+        Dictionary<string, byte[]?> read = [];
+        List<(string Path, string Name)> batched = [];
         foreach (string path in paths.Distinct())
         {
+            string name = Relative(path);
             if (!IsInside(path))
             {
                 // A path outside the tree ends the whole batch ("outside repository").
-                texts[path] = null;
+                read[path] = null;
             }
-            else if (path.Contains('\n') || path.Contains('\r'))
+            else if (name.AsSpan().IndexOfAny('\n', '\r') >= 0)
             {
                 // The batch takes a name per line.
-                texts[path] = await TextAtAsync(revision, path);
+                read[path] = await FilteredAsync($"{revision}:{name}", null);
             }
             else
             {
-                batched.Add(path);
+                batched.Add((path, name));
             }
         }
         if (batched.Count == 0)
         {
-            return texts;
+            return read;
         }
-        byte[] output = await OutputAsync(Root, ["cat-file", "--batch"], string.Concat(batched.Select(p => $"{revision}:{Relative(p)}\n")));
-        int at = 0;
-        foreach (string path in batched)
+        // Each blob by its name first: a filtered batch takes an object and a path, parted at the first space.
+        (_, byte[] checks) = await ExchangeAsync(Root, ["cat-file", "--batch-check"], Encoding.UTF8.GetBytes(string.Concat(batched.Select(b => $"{revision}:{b.Name}\n"))));
+        string[] found = Encoding.UTF8.GetString(checks).Split('\n');
+        List<(string Path, string Name, string Blob)> blobs = [];
+        for (int i = 0; i < batched.Count; i++)
         {
-            texts[path] = null;
-            int end = Array.IndexOf(output, (byte)'\n', at);
-            if (end < 0)
+            // "<object> blob <size>", or "<name> missing" (a submodule's commit is no file's bytes).
+            string[] header = i < found.Length ? found[i].Split(' ') : [];
+            read[batched[i].Path] = null;
+            if (header is [{ } blob, "blob", _] && blob.All(char.IsAsciiHexDigit))
             {
-                continue;
-            }
-            // "<object> <type> <size>", the object's bytes and a line break; or "<name> missing".
-            string[] header = Encoding.UTF8.GetString(output, at, end - at).Split(' ');
-            at = end + 1;
-            if (header.Length == 3 && header[0].All(char.IsAsciiHexDigit) && int.TryParse(header[2], System.Globalization.CultureInfo.InvariantCulture, out int size)
-                && size <= output.Length - at)
-            {
-                if (header[1] == "blob")
-                {
-                    // Read as RunAsync reads git's output: UTF-8, a byte order mark taken as the file's.
-                    using StreamReader reader = new(new MemoryStream(output, at, size, writable: false), Encoding.UTF8);
-                    texts[path] = reader.ReadToEnd();
-                }
-                at += size + 1;
+                blobs.Add((batched[i].Path, batched[i].Name, blob));
             }
         }
-        return texts;
+        await FilterAsync(blobs, read);
+        return read;
     }
+
+    /// <summary>Blobs' bytes as checking each out at its path would write them, by one git: its answer for each object
+    /// gives the size it has in git rather than the size filtered, so each is followed by an object no repository has,
+    /// named at random, whose "missing" ends it. One the batch did not give (a required filter that failed ends it) is
+    /// read on its own.</summary>
+    private async Task FilterAsync(List<(string Path, string Name, string Blob)> blobs, Dictionary<string, byte[]?> read)
+    {
+        List<(string Path, string Name, string Blob, string End)> asked = [];
+        StringBuilder input = new();
+        foreach ((string path, string name, string blob) in blobs)
+        {
+            // The path is what follows the first run of spaces, so one that begins with a space is read on its own.
+            if (name.Length > 0 && !char.IsWhiteSpace(name[0]))
+            {
+                string end = $"x{Guid.NewGuid():N}";
+                asked.Add((path, name, blob, end));
+                input.Append(System.Globalization.CultureInfo.InvariantCulture, $"{blob} {name}\n{end} -\n");
+            }
+        }
+        (_, byte[] output) = asked.Count == 0 ? (0, []) : await ExchangeAsync(Root, ["cat-file", "--batch", "--filters"], Encoding.UTF8.GetBytes(input.ToString()));
+        int at = 0;
+        HashSet<string> given = new(StringComparer.Ordinal);
+        foreach ((string path, _, string blob, string end) in asked)
+        {
+            // "<object> blob <size>", the filtered bytes and a line break, then "<end> missing".
+            int line = Array.IndexOf(output, (byte)'\n', at);
+            if (line < 0 || !output.AsSpan(at, line - at).StartsWith(Encoding.ASCII.GetBytes($"{blob} blob ")))
+            {
+                break;
+            }
+            byte[] ending = Encoding.ASCII.GetBytes($"\n{end} missing\n");
+            int ends = output.AsSpan(line + 1).IndexOf(ending);
+            if (ends < 0)
+            {
+                break;
+            }
+            read[path] = output.AsSpan(line + 1, ends).ToArray();
+            given.Add(path);
+            at = line + 1 + ends + ending.Length;
+        }
+        foreach ((string path, string name, string blob) in blobs)
+        {
+            if (!given.Contains(path))
+            {
+                read[path] = await FilteredAsync(blob, name);
+            }
+        }
+    }
+
+    /// <summary>One object's bytes as checking it out at its path would write them (the path in the name, or given), else
+    /// as git keeps them where its filter fails; null where there is no such object.</summary>
+    private async Task<byte[]?> FilteredAsync(string name, string? path) =>
+        await BytesAsync(Root, ["cat-file", "--filters", .. path is null ? Array.Empty<string>() : [$"--path={path}"], name])
+            ?? await BytesAsync(Root, ["cat-file", "blob", name]);
 
     /// <summary>Whether a path is in the working tree, where git has a last commit's text for it.</summary>
     public bool IsInside(string path) => PathNames.Within(path, Root);
@@ -1526,16 +1570,16 @@ public sealed class Git
         }
     }
 
-    /// <summary>What git writes, as bytes, for output that counts its lengths in them (cat-file's objects); nothing when
-    /// git is not there or fails to start.</summary>
-    private static async Task<byte[]> OutputAsync(string folder, IReadOnlyList<string> arguments, string input)
+    /// <summary>What git writes, as bytes, given <paramref name="input"/> as bytes, and how it exited: for output that
+    /// counts its lengths in bytes (cat-file's objects) and input in a file's own encoding (blame's contents); 127 and
+    /// nothing when git is not there or fails to start.</summary>
+    private static async Task<(int Code, byte[] Output)> ExchangeAsync(string folder, IReadOnlyList<string> arguments, byte[] input)
     {
         using IDisposable held = BackgroundWork.Scope();
         if (await StartAsync(folder, arguments) is not { } start)
         {
-            return [];
+            return (Absent, []);
         }
-        // Its input stays open for the names written to it.
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
@@ -1545,16 +1589,23 @@ public sealed class Git
             using MemoryStream output = new();
             Task copied = process.StandardOutput.BaseStream.CopyToAsync(output);
             Task<string> error = process.StandardError.ReadToEndAsync();
-            await process.StandardInput.WriteAsync(input);
-            process.StandardInput.Close();
+            try
+            {
+                await process.StandardInput.BaseStream.WriteAsync(input);
+                process.StandardInput.Close();
+            }
+            catch (IOException)
+            {
+                // It ended before reading all it was given: its exit says how it went.
+            }
             await process.WaitForExitAsync();
             await copied;
             await error;
-            return output.ToArray();
+            return (process.ExitCode, output.ToArray());
         }
         catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or IOException)
         {
-            return [];
+            return (Absent, []);
         }
     }
 
