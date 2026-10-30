@@ -2079,6 +2079,35 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>Find Usages' keys put the keys on its results, the first usage chosen, so Down goes on to the next usage
+    /// and Enter opens it, where the keys stayed in the editor and Down moved its caret.</summary>
+    [AvaloniaFact]
+    public void Find_usages_gives_its_results_the_keys_so_Down_and_Enter_open_the_next_usage()
+    {
+        MainWindow window = project.Open("Loop.cs");
+        FindView find = window.Find;
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int tot");
+        Ui.Run(window, AppActions.FindUsages);
+        Ui.WaitFor(() => find.Rows.Count(r => r.Usage is not null) == 3, "the usages in the Find window");
+        Avalonia.Controls.ListBox list = find.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single();
+        Assert.True(window.FocusManager?.GetFocusedElement() is Avalonia.Visual focused && list.IsVisualAncestorOf(focused),
+            $"Find Usages left the keys on {window.FocusManager?.GetFocusedElement()?.GetType().Name}, not its results");
+        List<FindRow> uses = [.. find.Rows.Where(r => r.Usage is not null)];
+        Assert.Same(uses[0], find.Selected);
+        List<FindRow> rows = [.. find.Rows];
+        for (int at = rows.IndexOf(uses[0]); at < rows.IndexOf(uses[1]); at++)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Assert.Same(uses[1], find.Selected);
+        Ui.Press(window, "ENTER");
+        Usage second = uses[1].Usage!;
+        Assert.True(window.EditorArea.CodeEditor.CaretPosition == new TextPosition(second.Line, second.Column) && window.EditorArea.CodeEditor.IsFocused,
+            $"Down and Enter in Find Usages' results left the caret at {window.EditorArea.CodeEditor.CaretPosition}, not at the second usage {second.Line}:{second.Column}");
+        Assert.Equal(File.ReadAllText(project.PathOf("Loop.cs")), window.EditorArea.Active!.Text.Snapshot.ToString());
+        window.Close();
+    }
+
     /// <summary>The Find and Hierarchy windows' rows have the menu every list of results has: Go to (F4) and Copy.</summary>
     [AvaloniaFact]
     public void A_usages_and_a_callers_menu_goes_to_it_and_copies_its_path()

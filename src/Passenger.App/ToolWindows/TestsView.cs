@@ -455,7 +455,8 @@ public sealed class TestsView : DockPanel
         menu.Open(groupBy);
     }
 
-    /// <summary>The search's keys: Down or Enter goes to the tree, Escape empties the search, then goes there.</summary>
+    /// <summary>The search's keys: Down or Enter goes to the tree, Escape empties the search, then goes there, or with no
+    /// test there is left to the window (to the editor).</summary>
     private void OnSearchKey(object? sender, KeyEventArgs e)
     {
         switch (e.Key)
@@ -470,8 +471,7 @@ public sealed class TestsView : DockPanel
                     tree.SelectedIndex = 0;
                 }
                 Control? row = tree.SelectedItem is { } chosen ? tree.ContainerFromItem(chosen) : null;
-                (row ?? tree).Focus();
-                e.Handled = true;
+                e.Handled = (row ?? tree).Focus() || e.Key != Key.Escape;
                 break;
         }
     }

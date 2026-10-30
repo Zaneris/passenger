@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
 
@@ -85,6 +86,22 @@ internal sealed class ToolPane : DockPanel
         Children.Add(body);
         Classes.Add("toolPane");
         IsVisible = false;
+        AddHandler(KeyDownEvent, OnKeyDown);
+    }
+
+    /// <summary>Focus Editor's keys (Escape) that nothing in the window took for its own (a search's words, a rename, a
+    /// menu) give the editor the keys, the window left shown.</summary>
+    private void OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Handled || Window is not { } window || host.Actions is not { } actions || !AppActions.Presses(AppActions.FocusEditor, e))
+        {
+            return;
+        }
+        ActionContext context = actions.Context().In(window);
+        if (actions.WhyNot(AppActions.FocusEditor, context) is null)
+        {
+            e.Handled = host.Request?.Invoke(AppActions.FocusEditor, context) == true;
+        }
     }
 
     /// <summary>Styled as a DockPanel of its own class (Shell.axaml's toolPane), its look the theme's.</summary>

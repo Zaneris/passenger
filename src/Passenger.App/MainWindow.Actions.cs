@@ -186,7 +186,12 @@ public partial class MainWindow
         actions.Add(new IdeAction(A.HideToolWindow, "Hide Active Tool Window", "Tool Windows", _ => HideToolWindow()) { Menus = [new("View", 3, 2)], FromTerminal = true });
         actions.Add(new IdeAction(A.ExpandAll, "Expand All", "Tool Windows", c => c.ToolWindow!.ExpandAll!()) { WhyNot = c => NoTree(c, c.ToolWindow?.ExpandAll, "open") });
         actions.Add(new IdeAction(A.CollapseAll, "Collapse All", "Tool Windows", c => c.ToolWindow!.CollapseAll!()) { WhyNot = c => NoTree(c, c.ToolWindow?.CollapseAll, "close") });
-        Add(A.FocusEditor, "Focus Editor", "IDE", _ => FocusEditor(), Refusals.NeedsFile);
+        // Pressed in a tool window by the editor's Escape (KeysIn), where nothing of the window's own takes that key.
+        actions.Add(new IdeAction(A.FocusEditor, "Focus Editor", "IDE", _ => FocusEditor())
+        {
+            WhyNot = Refusals.NeedsFile,
+            KeysOf = () => AppActions.KeysIn(A.FocusEditor) is var keys && keys != A.FocusEditor ? keys : null,
+        });
         Add(A.ToggleSolutionAnalysis, "Toggle Solution-Wide Analysis", "IDE", _ => ToggleSolutionAnalysis(),
             _ => session.CSharp is null ? Refusals.NoCSharp : null, ("Code", 4, 0));
         Add(A.RestartCSharpServer, "Restart C# Language Server", "IDE", _ =>

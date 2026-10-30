@@ -211,6 +211,15 @@ public sealed class DockHost : Grid
         LayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>Shows a window in its place, as <see cref="Show"/> does, and gives it the keys (<see cref="ToolWindow.TakeKeys"/>).</summary>
+    public void Activate([IdentifierOf(typeof(ToolWindowIds))] string id)
+    {
+        Show(id);
+        // A view just put in its place joins the window as the window is laid out.
+        UpdateLayout();
+        this[id].TakeKeys();
+    }
+
     public void Hide([IdentifierOf(typeof(ToolWindowIds))] string id)
     {
         if (this[id] is { IsShown: true } window)

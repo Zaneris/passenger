@@ -1,5 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 
 namespace Passenger.App.Docking;
 
@@ -35,10 +39,14 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     private Control? content;
     private Control? headerTools;
 
+    /// <summary>What in its view last had the keys, which its action gives them back to.</summary>
+    private Control? hadKeys;
+
     /// <summary>A tool window whose view is made already (the Explorer's, open at first).</summary>
     public ToolWindow(string id, string title, string icon, Control content, ToolAnchor anchor) : this(id, title, icon, () => content, anchor)
     {
         this.content = content;
+        FollowKeys(content);
     }
 
     [IdentifierOf(typeof(ToolWindowIds))]
@@ -62,9 +70,65 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
             if (content is null)
             {
                 content = build();
+                FollowKeys(content);
                 Built?.Invoke(this, EventArgs.Empty);
             }
             return content;
+        }
+    }
+
+    private void FollowKeys(Control view) =>
+        view.AddHandler(InputElement.GotFocusEvent, (_, e) => hadKeys = e.Source as Control, RoutingStrategies.Bubble, handledEventsToo: true);
+
+    /// <summary>Gives its view the keys, as its action does once it shows: back to what in it had them last, still shown,
+    /// else to the first of its search boxes and lists (a list's chosen row, the first chosen where none is), else to the
+    /// first text it shows that takes them (a console), else to the view itself until they leave it, so what is typed next
+    /// never goes to the file.</summary>
+    internal void TakeKeys()
+    {
+        Control view = Content;
+        if (TopLevel.GetTopLevel(view) is null)
+        {
+            return;
+        }
+        view.UpdateLayout();
+        if (hadKeys is { } had && view.IsVisualAncestorOf(had) && had.IsEffectivelyVisible && had.IsEffectivelyEnabled
+            && (ItemsControl.ItemsControlFromItemContainer(had) is ListBox rows ? ListKeys.Hold(rows) : had.Focus()))
+        {
+            return;
+        }
+        List<Control> shown = [.. view.GetVisualDescendants().OfType<Control>().Where(c => c.IsEffectivelyVisible && c.IsEffectivelyEnabled)];
+        foreach (Control each in shown)
+        {
+            switch (each)
+            {
+                case TextBox { IsReadOnly: false, Focusable: true } search when search.Focus():
+                    return;
+                case ListBox { ItemCount: > 0 } list when ListKeys.Hold(list, chooseFirst: true):
+                    return;
+            }
+        }
+        if (shown.FirstOrDefault(c => c.Focusable && c is not (Button or ComboBox or Thumb)) is { } text && text.Focus())
+        {
+            return;
+        }
+        if (view.Focusable)
+        {
+            view.Focus();
+            return;
+        }
+        // Focusable only while it holds them, so a press on its toolbar never takes them from the editor.
+        view.Focusable = true;
+        view.LostFocus += LetGo;
+        if (!view.Focus())
+        {
+            LetGo(view, new RoutedEventArgs());
+        }
+
+        void LetGo(object? sender, RoutedEventArgs e)
+        {
+            view.LostFocus -= LetGo;
+            view.Focusable = false;
         }
     }
 
@@ -99,8 +163,8 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     /// <summary>Where the menus list its action, besides View's Tool Windows.</summary>
     public IReadOnlyList<MenuPlace> Menus { get; init; } = [];
 
-    /// <summary>What its action does in place of showing it (the Explorer's gives its rows the keys, the terminal's
-    /// leaves it again from inside).</summary>
+    /// <summary>What its action does in place of showing it with the keys (<see cref="TakeKeys"/>): the terminal's leaves
+    /// it again from inside.</summary>
     public Action? Activate { get; init; }
 
     /// <summary>What is chosen in it (its rows), for actions that run on them while it has the keys.</summary>
@@ -117,7 +181,7 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
 
     /// <summary>The action that shows it, as the dock adds it.</summary>
     internal IdeAction? ShowAction(DockHost dock) => Action is { } id
-        ? new IdeAction(id, ActionTitle ?? Title, "Tool Windows", _ => (Activate ?? (() => dock.Show(Id)))()) { Menus = Menus, FromTerminal = true }
+        ? new IdeAction(id, ActionTitle ?? Title, "Tool Windows", _ => (Activate ?? (() => dock.Activate(Id)))()) { Menus = Menus, FromTerminal = true }
         : null;
 
     public ToolAnchor Anchor

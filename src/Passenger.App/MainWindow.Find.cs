@@ -86,6 +86,9 @@ public partial class MainWindow
         }
         Find.Show(title, usages, note);
         ShowToolWindow(ToolWindowIds.Find);
+        // The usages take the keys, once a window just shown has laid out rows to take them.
+        Dock.UpdateLayout();
+        Find.FocusRows();
         status.Text = $"{title}: {usages.Count} found{(note is null ? string.Empty : $"; {char.ToLowerInvariant(note[0])}{note[1..]}")}";
     }
 }

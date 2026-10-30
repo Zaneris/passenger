@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
@@ -6,7 +7,8 @@ using Passenger.App.Explorer;
 
 namespace Passenger.Tests;
 
-/// <summary>The keys go where the person is: a popup closing gives them back to what had them as it opened.</summary>
+/// <summary>The keys go where the person is: a popup closing gives them back to what had them as it opened, a tool
+/// window's keys give it the keys, and Escape in one gives them back to the editor.</summary>
 public sealed class KeysPlaceTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("keys-place-");
@@ -47,6 +49,75 @@ public sealed class KeysPlaceTests : IDisposable
         }
         window.Close();
     }
+
+    /// <summary>Each tool window's keys show it and give it the keys, its search or its list's chosen row first, so what
+    /// is typed next goes to it rather than into the open file.</summary>
+    [AvaloniaFact]
+    public void Each_tool_windows_keys_show_it_with_the_keys_inside_it()
+    {
+        TestFolders.Write(folder, "Notes.txt", "one\ntwo\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile("Notes.txt");
+        Ui.Settle();
+        List<string> outside = [];
+        foreach (Passenger.App.Docking.ToolWindow tool in window.DockHost.Windows.Where(w => w.Action is not null).ToList())
+        {
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Settle();
+            if (AppActions.Keymap().ShortcutsFor(tool.Action!).Count > 0)
+            {
+                Ui.Run(window, tool.Action!);
+            }
+            else
+            {
+                Assert.True(window.Perform(tool.Action!), $"{tool.Title}'s action did not run");
+                Ui.Settle();
+            }
+            TopLevel shownIn = TopLevel.GetTopLevel(tool.Content) ?? window;
+            object? focused = shownIn.FocusManager?.GetFocusedElement();
+            if (!tool.IsShown || focused is not Visual inside || (inside != tool.Content && !tool.Content.IsVisualAncestorOf(inside)))
+            {
+                outside.Add($"{tool.Title} ({(tool.IsShown ? "shown" : "not shown")}, the keys on {Describe(focused)})");
+            }
+        }
+        Assert.True(outside.Count == 0, $"These tool windows' keys left the keys outside them, so what is typed next goes elsewhere: {string.Join("; ", outside)}");
+        Assert.Equal("one\ntwo\n", window.EditorArea.Active!.Text.Snapshot.ToString());
+        window.Close();
+    }
+
+    /// <summary>Escape in a tool window with nothing of its own to cancel gives the editor the keys, the window still shown;
+    /// a search with words in it takes Escape for itself first.</summary>
+    [AvaloniaFact]
+    public void Escape_in_a_tool_window_gives_the_editor_the_keys_with_the_window_still_shown()
+    {
+        TestFolders.Write(folder, "Notes.txt", "one\ntwo\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile("Notes.txt");
+        Ui.Settle();
+        Ui.Run(window, AppActions.FocusExplorer);
+        Assert.True(RowHasKeys(window, window.ExplorerView.Selected!), $"The Explorer's action left the keys on {Focused(window)}");
+        Ui.Press(window, "ESCAPE");
+        Assert.True(window.EditorArea.CodeEditor.IsFocused, $"Escape in the Explorer left the keys on {Focused(window)}, not the editor");
+        Assert.True(window.DockHost.IsShown(ToolWindowIds.Explorer), "Escape in the Explorer hid it, where only Shift+Escape hides a tool window");
+
+        Ui.Run(window, AppActions.ShowTests);
+        TextBox search = Assert.IsType<TextBox>(window.FocusManager?.GetFocusedElement());
+        search.Text = "Sums";
+        Ui.Press(window, "ESCAPE");
+        Assert.True(search.Text == string.Empty && search.IsFocused, "Escape in the Unit Tests' search with words in it did not empty it first, keeping the keys");
+        Ui.Press(window, "ESCAPE");
+        Assert.True(window.EditorArea.CodeEditor.IsFocused, $"Escape in the Unit Tests' empty search with no test to go to left the keys on {Focused(window)}, not the editor");
+        Assert.True(window.DockHost.IsShown(ToolWindowIds.Tests), "Escape in the Unit Tests window hid it");
+        window.Close();
+    }
+
+    private static string Describe(object? focused) => focused switch
+    {
+        null => "nothing",
+        Control { Name: { Length: > 0 } name } control => $"{control.GetType().Name} {name}",
+        Control control => $"{control.GetType().Name} in {control.FindAncestorOfType<ListBox>()?.GetType().Name ?? control.GetVisualParent()?.GetType().Name}",
+        _ => focused.GetType().Name,
+    };
 
     /// <summary>Whether the Explorer's container of a row has the keys.</summary>
     private static bool RowHasKeys(MainWindow window, ExplorerNode row)

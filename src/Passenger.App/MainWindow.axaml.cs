@@ -562,11 +562,16 @@ public partial class MainWindow : Window
         FocusEditor();
     }
 
-    /// <summary>Focus Editor: the file shown has the keys again, the tool windows left as they are.</summary>
+    /// <summary>Focus Editor: the file shown has the keys again, its window brought to the front from a tool window
+    /// floating in one of its own, the tool windows left as they are.</summary>
     private void FocusEditor()
     {
         if (Editors.Active is not null)
         {
+            if (TopLevel.GetTopLevel(Editors.CodeEditor) is Window { IsActive: false } shown)
+            {
+                shown.Activate();
+            }
             Editors.CodeEditor.Focus();
         }
     }
@@ -582,11 +587,6 @@ public partial class MainWindow : Window
             Chosen = () => Explorer.SelectedNodes,
             // Opening every row would read every folder on disk, build output and packages too: it closes them alone.
             CollapseAll = Explorer.Tree.CollapseAll,
-            Activate = () =>
-            {
-                Dock.Show(ToolWindowIds.Explorer);
-                Explorer.FocusRows();
-            },
             OpenAtFirst = true,
         });
         // Shown however it is (its action, its stripe button, a layout), it asks for the file shown then itself.
