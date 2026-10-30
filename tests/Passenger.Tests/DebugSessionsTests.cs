@@ -320,6 +320,94 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
         }
     }
 
+    /// <summary>A program attached to whose code Hot Reload changed, which its runtime then lets no debugger go of: Close
+    /// Solution and the window's close each ask first, saying leaving would stop it rather than leave it frozen, Cancel
+    /// keeping it debugged and the folder open, and an agent's Close Solution is refused saying so; then Stop and Close
+    /// ends the program and closes the solution, where the debugger let it go before, held by the runtime for good.</summary>
+    [AvaloniaFact]
+    public void Leaving_a_program_Hot_Reload_changed_asks_first_and_stops_it_rather_than_leave_it_frozen()
+    {
+        MainWindow window = pair.Open(Counter);
+        Process? program = null;
+        try
+        {
+            window.Build(Passenger.App.Run.BuildKind.Build);
+            Ui.WaitFor(() => !window.IsBuilding, "the build");
+            string built = Path.Combine(pair.Folder, "First", "bin", "Debug", TestProjects.Framework, OperatingSystem.IsWindows() ? "First.exe" : "First");
+            Assert.True(File.Exists(built), $"The build made no {built}: {Ui.Said(window)}");
+            window.Debugger.Breakpoints.Toggle(Counter, Pair.Next);
+            ProcessStartInfo start = ChildProcesses.Command(built, []);
+            start.Environment["DOTNET_DefaultDiagnosticPortSuspend"] = "1";
+            start.Environment["DOTNET_MODIFIABLE_ASSEMBLIES"] = "debug";
+            start.RedirectStandardOutput = true;
+            program = ChildProcesses.Start(start);
+            Assert.Null(Ui.Await(window.Debugger.AttachAsync(program.Id, "First", hotReload: true), "the debugger to attach"));
+            Ui.WaitFor(() => window.Debugger.Session is { State: DebugState.Paused } && window.Debugger.Stop is not null, "First to stop in Counter.Next");
+            DebugSession first = window.Debugger.Session!;
+            window.OpenFile(Counter);
+            Typing.Replace(window, "value + 1", "value + 2");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Assert.True(window.Debugger.LastApplied?.Result == HotReloadResult.Applied, $"The edit was not applied: {window.Debugger.LastApplied?.Said}");
+            Assert.True(window.Debugger.HotReloadChanged(first), "The debugger did not take First for a program Hot Reload changed");
+
+            CloseSolution(window);
+            ChoiceDialog asked = AskedToStop(window);
+            Assert.Contains("Hot Reload changed the code of First, after which its runtime lets no debugger go, so closing the solution would stop it rather than leave it frozen",
+                Said(asked), StringComparison.Ordinal);
+            Ui.ClickButton(asked, "Cancel");
+            Assert.Equal(PathNames.Canonical(pair.Folder), window.Folder);
+            Assert.Equal(DebugState.Paused, first.State);
+            Assert.False(program.HasExited, "Cancel ended First");
+            Assert.Equal("Hot Reload changed the code of First, after which its runtime lets no debugger go, so closing the solution would stop it rather than "
+                + "leave it frozen; stop it first to go on (session First)", window.Actions.RunForAgent(AppActions.CloseSolution));
+            Assert.Equal(PathNames.Canonical(pair.Folder), window.Folder);
+            Assert.Empty(window.OwnedWindows.OfType<ChoiceDialog>());
+
+            window.Close();
+            asked = AskedToStop(window);
+            Assert.Contains("closing the window would stop it rather than leave it frozen", Said(asked), StringComparison.Ordinal);
+            Ui.ClickButton(asked, "Cancel");
+            Assert.True(window.IsVisible, "Cancel closed the window, letting First go");
+            Assert.Equal(DebugState.Paused, first.State);
+
+            CloseSolution(window);
+            Ui.ClickButton(AskedToStop(window), "Stop and Close");
+            Ui.WaitFor(() => window.Folder is null, "the solution to close once First has stopped");
+            Assert.Equal(DebugState.Ended, first.State);
+            Assert.True(program.WaitForExit(TimeSpan.FromSeconds(30).Scaled()), "First runs on after Stop and Close, held by a debugger that let it go");
+        }
+        finally
+        {
+            window.Close();
+            if (program is not null)
+            {
+                Processes.Kill(program.Id);
+                program.Dispose();
+            }
+        }
+    }
+
+    /// <summary>File, Close Solution, as a person chooses it.</summary>
+    private static void CloseSolution(MainWindow window)
+    {
+        NativeMenuItem close = Ui.Submenu(window.MenuBar, "File").Items.OfType<NativeMenuItem>().Single(i => i.Header == "Close Solution");
+        Assert.True(close.IsEnabled, "File > Close Solution cannot run with a solution open");
+        close.Command!.Execute(null);
+        Ui.Settle();
+    }
+
+    /// <summary>The question leaving the folder asks of a program Hot Reload changed, held to the dialogs' rules.</summary>
+    private static ChoiceDialog AskedToStop(MainWindow window)
+    {
+        Ui.WaitFor(() => window.OwnedWindows.OfType<ChoiceDialog>().Any(), "the window to ask whether to stop the program Hot Reload changed");
+        ChoiceDialog asked = DialogButtonsTests.Check(window.OwnedWindows.OfType<ChoiceDialog>().Single());
+        Assert.Equal("Program Changed by Hot Reload", asked.Title);
+        return asked;
+    }
+
+    /// <summary>What a question says, its paragraphs joined.</summary>
+    private static string Said(Window asked) => string.Join('\n', asked.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).OfType<string>());
+
     /// <summary>Hot Reload's apply is its own program's whichever tab the window shows: one resumed with an edit made while it
     /// was paused takes the edit and goes on, its console saying what the apply came to, though another program's stop takes
     /// the window while the edit is applied; the other stays paused where it was.</summary>

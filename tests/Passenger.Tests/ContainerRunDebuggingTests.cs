@@ -16,10 +16,10 @@ namespace Passenger.Tests;
 /// docker exec), each stopping at a breakpoint in Main and in a request, stepped and evaluated, its tab's console its
 /// container's log, and the Containers window's Restart, Stop and Remove going through the run; Hot Reload applied to a
 /// paused service; Run with Hot Reload applying an edit through the debugger and restarting a service for one it cannot
-/// apply; Detach, Attach and Run Service without Debugger of a service Hot Reload changed; the gutter's Debug of one
-/// service; and images mode stopping through the path map. Each skips, saying why, where no Linux engine runs; the tools
-/// are published for the engine's processor where a dev build finds them, and what the runs make carries the run's
-/// labels.</summary>
+/// apply; Detach, Attach and Run Service without Debugger of a service Hot Reload changed, and Attach of one debugged
+/// already; the gutter's Debug of one service; and images mode stopping through the path map. Each skips, saying why,
+/// where no Linux engine runs; the tools are published for the engine's processor where a dev build finds them, and what
+/// the runs make carries the run's labels.</summary>
 [Collection(Alone.Name)]
 public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools tools) : IClassFixture<ContainerRunDebuggingTests.Tools>
 {
@@ -542,6 +542,47 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             Docker.Stopped(window, project, "Stop to take every container down");
         }
         Ui.WaitFor(() => !window.Debugger.IsDebugging && window.Debugger.Running.Count == 0, "the sessions to end with Stop");
+        window.Close();
+    }
+
+    /// <summary>Under Debug, Attach to web, which its Debug tab debugs already, with api's tab chosen and the Debug window
+    /// hidden: web's tab is chosen and the window shown, its session the same and running, its container never restarted
+    /// and answering, where Attach ended that session with Stop before, its program with it.</summary>
+    [AvaloniaFact]
+    public void Attach_to_a_service_its_Debug_tab_debugs_shows_that_tab_and_never_stops_it()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string folder, string project) = Shop("again");
+        MainWindow window = ContainerRunsTests.Open(folder);
+        try
+        {
+            Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
+            Debugged(window, "web and api to come up under the debugger");
+            DebugTab web = Tab(window, "web");
+            DebugTab api = Tab(window, "api");
+            Ui.WaitFor(() => web.Session is { State: DebugState.Running } && api.Session is { State: DebugState.Running }, "web and api to run under the debugger");
+            DebugSession debugged = web.Session!;
+            string started = ContainerRunsTests.Started(project, "web");
+            Chosen(window, api);
+            window.DockHost.Hide(ToolWindowIds.Debug);
+
+            string? attached = Ui.Await(window.Builds.AttachServiceAsync("web"), "Attach to web, which its tab debugs", TimeSpan.FromMinutes(1));
+            Assert.True(attached is null, $"Attach to web was refused: {attached}\n{ContainerRunsTests.Run(window)}");
+            Assert.Equal("web of Compose: compose.yaml is debugged already, in the Debug tab shown", window.Status);
+            Assert.Same(web, window.Debugger.Chosen);
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Debug), "Attach left the Debug window hidden");
+            Assert.Same(debugged, web.Session);
+            Assert.Equal(DebugState.Running, debugged.State);
+            Assert.Equal("running", ContainerRunsTests.States(project)["web"]);
+            Assert.Equal(started, ContainerRunsTests.Started(project, "web"));
+            Assert.Equal("web 1", Ui.Await(Get(ContainerRunsTests.Published(project, "web")), "web's answer, debugged still", TimeSpan.FromMinutes(1)));
+            Assert.True(api.IsLive, "Attach to web ended api's session");
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take every container down");
+        }
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "both sessions to end with the run");
         window.Close();
     }
 

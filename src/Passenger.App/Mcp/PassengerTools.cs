@@ -54,6 +54,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (Directory.Exists(full) || (File.Exists(full) && WorkspaceModel.Opens(full) && line is null))
         {
             string opening = Directory.Exists(full) ? PathNames.Canonical(full) : Path.GetDirectoryName(PathNames.Canonical(full))!;
+            if (Session.Folder is { } left && !PathNames.Same(left, opening) && window.WhyNotLeave($"opening {full}") is { } held)
+            {
+                throw new InvalidOperationException(held);
+            }
             // The person's folder is theirs: an agent on their window replaces it only with their leave.
             if (connection is { Attached: true } && !window.AgentsUnattended && Session.Folder is { } open && !PathNames.Same(open, opening))
             {

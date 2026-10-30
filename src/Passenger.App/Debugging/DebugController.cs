@@ -326,6 +326,10 @@ public sealed class DebugController : IDisposable
     public bool HotReloadChanged(DebugSession session) =>
         view.Sessions.Any(t => t.Session == session && t.HotReload is { Updated: true }) || running.Any(r => r.Session == session && r.Reload.Updated);
 
+    /// <summary>The live tabs of programs the debugger attached to whose code Hot Reload has changed, which the folder's end
+    /// and the IDE's close stop rather than let go (<see cref="HotReloadChanged"/>).</summary>
+    public IEnumerable<DebugTab> AttachedChanged => view.Sessions.Where(t => t.IsLive && t.Session is { Attached: true } attached && HotReloadChanged(attached));
+
     /// <summary>Why a program Hot Reload changed is not let go (Detach, its tab's close): its runtime would hold it for good.</summary>
     public static string LetsNoDebuggerGo(string name) =>
         $"{name} cannot be let go: Hot Reload changed its code, after which its runtime lets no debugger go; restart it to run it without the debugger";
@@ -1262,9 +1266,10 @@ public sealed class DebugController : IDisposable
     }
 
     /// <summary>Ends a tab's program as another session takes its place, or its tab closes, or the folder is left: one the
-    /// debugger attached to is let go, running on, as Detach does; one it started stops, as Stop stops it.</summary>
+    /// debugger attached to is let go, running on, as Detach does, unless Hot Reload changed it, whose runtime would then
+    /// hold it for good; that one, and one it started, stop, as Stop stops them.</summary>
     private Task EndAsync(DebugTab tab) =>
-        tab.Session is { Attached: true, State: DebugState.Running or DebugState.Paused } attached ? attached.DetachAsync() : StopAsync(tab);
+        tab.Session is { Attached: true, State: DebugState.Running or DebugState.Paused } attached && !HotReloadChanged(attached) ? attached.DetachAsync() : StopAsync(tab);
 
     /// <summary>Detach: the debugger lets go of the program it attached to, which runs on. Null once it has, else why it
     /// could not (nothing attached to).</summary>
@@ -1307,7 +1312,8 @@ public sealed class DebugController : IDisposable
     /// <summary>Why what needs the debugger's hold of the program cannot run while it starts (Stop can).</summary>
     private const string StillStarting = "The debugger is still taking hold of the program";
 
-    /// <summary>Ends every session's program and adapter as the IDE closes (<see cref="DebugSession.CloseAsync"/>).</summary>
+    /// <summary>Ends every session's program and adapter as the IDE closes (<see cref="DebugSession.CloseAsync"/>): one Hot
+    /// Reload changed ends, though attached to, as its runtime would hold it for good once let go.</summary>
     public Task CloseAsync()
     {
         UiThread.Check();
@@ -1316,11 +1322,13 @@ public sealed class DebugController : IDisposable
         {
             tab.OpeningStopped = true;
         }
-        return Task.WhenAll([.. view.Sessions.Select(t => t.Session?.CloseAsync() ?? Task.CompletedTask), .. running.Select(r => r.Session.CloseAsync())]);
+        return Task.WhenAll([.. view.Sessions.Select(t => t.Session is { } session ? session.CloseAsync(letGo: !HotReloadChanged(session)) : Task.CompletedTask),
+            .. running.Select(r => r.Session.CloseAsync(letGo: !r.Reload.Updated))]);
     }
 
     /// <summary>Its folder left with the window open: each program the debugger started is stopped, as Stop stops it, and
-    /// each it attached to let go, running on, as the window's close lets it go.</summary>
+    /// each it attached to let go, running on, as the window's close lets it go, but for one Hot Reload changed, which is
+    /// stopped (<see cref="EndAsync"/>).</summary>
     public Task LeaveAsync()
     {
         UiThread.Check();

@@ -89,10 +89,10 @@ public partial class MainWindow
     };
 
     /// <summary>Opens a folder, or a solution (.sln, .slnx) or C# project (.csproj) over its folder, as the workspace (a
-    /// person's choice through <see cref="Open"/>). The workspace already open is only read again, its server and files
-    /// kept; another folder's session is left first, the new one made once what it ran has ended. Done once the folder is
-    /// open or a later open took its place. <paramref name="opener"/>, the agent whose own open it is, stays let in;
-    /// <paramref name="opened"/> runs once the folder's session has begun (or been read again), never for one given up.</summary>
+    /// person's choice through <see cref="Open"/>): the one open only read again, its server and files kept; another's
+    /// session left first (the person asked first where that stops a program Hot Reload changed), the new one made once
+    /// what it ran has ended. Done once open, given up or taken over by a later open. <paramref name="opener"/>, the agent
+    /// whose open it is, stays let in; <paramref name="opened"/> runs once the session has begun or been read again.</summary>
     public Task OpenFolder(string path, Mcp.AgentConnection? opener = null, Action? opened = null)
     {
         UiThread.Check();
@@ -108,6 +108,11 @@ public partial class MainWindow
         // Another folder's files are its own: this one's are kept with it and close, saved.
         if (session.Folder is not null)
         {
+            // An agent's open is refused first (WhyNotLeave), and nobody is at an agent's own IDE to ask.
+            if (opener is null && !AgentsOwn && HeldByLeaving() is { Count: > 0 } held)
+            {
+                return OpenHeldAsync(held, path, opening, opened);
+            }
             if (!LeaveFolder())
             {
                 return Task.CompletedTask;

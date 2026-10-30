@@ -357,16 +357,22 @@ public sealed partial class BuildRunController
     public Task<string?> AttachServiceAsync(string name) => AttachServiceAsync(Containers, name);
 
     /// <summary>Attach to one .NET service of a run as it runs, no restart: its startup has run already, which is said
-    /// (Debug restarts it held to stop there). Run with Hot Reload's quiet session of it debugs it where Hot Reload changed
-    /// it (<see cref="DebugQuietAsync"/>), else is let go first, the program never stopped. A restart attaches to it again.
-    /// One the run left unstarted has no program to reach, which is said. The start given, else the service of that name.
-    /// Null once attached, else why not.</summary>
+    /// (Debug restarts it held to stop there). One a Debug tab debugs already has that tab shown, its session kept. Run
+    /// with Hot Reload's quiet session of it debugs it where Hot Reload changed it (<see cref="DebugQuietAsync"/>), else is
+    /// let go first, the program never stopped. A restart attaches again; one the run left unstarted has nothing to reach,
+    /// said. The start given, else the service of that name. Null once attached, else why not.</summary>
     public Task<string?> AttachServiceAsync(ServiceRun? run, string name, IRunService? start = null) => OnServiceAsync(run, name, AppActions.ServiceAttach,
         $"Attaching the debugger to {name}…", async (run, service, work) =>
     {
         if (run.WhyNot(AppActions.ServiceAttach, service) is { } unreached)
         {
             return Said(unreached);
+        }
+        if (run.SessionOf(session.Debug, service) is { } debugged && session.Debug.TabOf(debugged) is { IsLive: true } tab)
+        {
+            parts.Dock.Show(ToolWindowIds.Debug);
+            await session.Debug.ChooseAsync(tab);
+            return Done(null, $"{run.ReplicaOf(service) ?? name} of {run.Name} is debugged already, in the Debug tab shown");
         }
         DebugSession? quiet = run.QuietOf(session.Debug, service);
         if (quiet is not null && session.Debug.HotReloadChanged(quiet))

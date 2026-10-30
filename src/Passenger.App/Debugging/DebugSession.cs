@@ -549,12 +549,13 @@ public sealed class DebugSession
 
     /// <summary>Ends the program and the adapter as the IDE closes, on a worker thread, so the process can wait for it
     /// once the window's loop has stopped; the session's state, which nothing will show, is left as it is. A program
-    /// attached to is let go of instead, as Detach does: it ran before the IDE did, and runs on after it.</summary>
-    public Task CloseAsync()
+    /// attached to is let go of instead, as Detach does: it ran before the IDE did, and runs on after it; unless
+    /// <paramref name="letGo"/> is false, as when Hot Reload changed it and its runtime would hold it for good.</summary>
+    public Task CloseAsync(bool letGo = true)
     {
         UiThread.Check();
         return State == DebugState.Ended ? Task.CompletedTask
-            : Attached ? EndProcessesAsync(ClosingLetGo + TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1.5), terminate: false, letGoWithin: ClosingLetGo)
+            : Attached && letGo ? EndProcessesAsync(ClosingLetGo + TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1.5), terminate: false, letGoWithin: ClosingLetGo)
             : EndProcessesAsync(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
     }
 

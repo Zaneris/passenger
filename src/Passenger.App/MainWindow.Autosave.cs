@@ -64,7 +64,8 @@ public partial class MainWindow
     /// <summary>Saves before anything else hears of the close, so the language server and the rest go only once the
     /// edits are on disk; a file that cannot be written keeps the window open, its edits with it, and asks whether to make
     /// it writable or close without it (<see cref="CloseUnsavedAsync"/>). A save still landing holds the close until it
-    /// has (<see cref="CloseLandedAsync"/>).</summary>
+    /// has (<see cref="CloseLandedAsync"/>), and a program Hot Reload changed that it would stop is asked about (<see
+    /// cref="CloseHeldAsync"/>).</summary>
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         // Passenger's quit (File, Exit; Restart to Update) and the system's (the application menu's Quit) keep each solution.
@@ -79,6 +80,13 @@ public partial class MainWindow
         {
             e.Cancel = true;
             IdeErrors.Observe(CloseLandedAsync(landing, quit));
+            return;
+        }
+        // Nobody is at an agent's own IDE to ask, nor does the system's shutdown wait for an answer: its close stops them unasked.
+        if (!AgentsOwn && e.CloseReason != WindowCloseReason.OSShutdown && HeldByLeaving() is { Count: > 0 } held)
+        {
+            e.Cancel = true;
+            IdeErrors.Observe(CloseHeldAsync(held, quit));
             return;
         }
         quitting = quit;

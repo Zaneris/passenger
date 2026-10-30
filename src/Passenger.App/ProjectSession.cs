@@ -1100,10 +1100,10 @@ public sealed class ProjectSession : IAsyncDisposable
         CSharpChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Leaves the folder while its window stays: everything it runs ends (a program the debugger attached to is
-    /// let go, running on, as the window's close lets it go), and the task finishes once each end has landed (a stopped
-    /// build's outcome, a killed program's exit, said in the window's views before another folder takes them) and the
-    /// session has let go of the window's views, or <see cref="MainWindow.EndLimit"/> after, each late one named in the
+    /// <summary>Leaves the folder while its window stays: everything it runs ends (one the debugger attached to let go as the
+    /// window's close lets it go, <see cref="DebugController.LeaveAsync"/>), and the task finishes once each end has landed
+    /// (a stopped build's outcome, a killed program's exit, said in the window's views before another folder takes them) and
+    /// the session has let go of the window's views, or <see cref="MainWindow.EndLimit"/> after, each late one named in the
     /// log. What else ends with it (the folder's terminals, the window's) is waited for alike.</summary>
     public Task LeaveAsync(params (string What, Task Ending)[] with)
     {

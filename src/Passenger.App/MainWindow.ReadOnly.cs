@@ -15,8 +15,9 @@ public partial class MainWindow
 
     private bool askingWritable;
 
-    /// <summary>Whether the window, closed, holds its close until the person says what to do with changes it could not save,
-    /// or until its saves still landing have landed, then closing or not itself (a quit it held carries on or is given up).</summary>
+    /// <summary>Whether the window, closed, holds its close until the person says what to do with changes it could not save
+    /// or with programs its close would stop, or until its saves still landing have landed, then closing or not itself (a
+    /// quit it held carries on or is given up).</summary>
     internal bool ClosesLater { get; private set; }
 
     private void AddReadOnly() => Editors.Opened += (_, document) =>
