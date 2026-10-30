@@ -239,7 +239,26 @@ public sealed record DocumentSymbolParams(TextDocumentIdentifier TextDocument);
 public sealed record FoldingRangeParams(TextDocumentIdentifier TextDocument);
 
 /// <summary>A symbol found by name across the workspace.</summary>
-public sealed record SymbolInformation(string Name, SymbolKind Kind, LspLocation Location, string? ContainerName = null);
+public sealed record SymbolInformation(string Name, SymbolKind Kind, LspLocation Location, string? ContainerName = null)
+{
+    /// <summary>The type it is in, from Roslyn's container ("in Type (project P (tfm))") without the project, which its place
+    /// says; null for a type's own ("project P (tfm)").</summary>
+    [JsonIgnore]
+    public string? Owner
+    {
+        get
+        {
+            if (ContainerName is not { } container)
+            {
+                return null;
+            }
+            int project = container.LastIndexOf(" (project ", StringComparison.Ordinal);
+            string within = project >= 0 ? container[..project] : container.StartsWith("project ", StringComparison.Ordinal) ? string.Empty : container;
+            within = within.StartsWith("in ", StringComparison.Ordinal) ? within[3..] : within;
+            return within.Length == 0 ? null : within;
+        }
+    }
+}
 
 /// <summary>A symbol in a document's outline, its members as children. Range is the whole
 /// declaration; SelectionRange is its name.</summary>

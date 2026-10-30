@@ -274,6 +274,66 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         }
     }
 
+    /// <summary>Go to Source on a hot spot that is a constructor, of a program built with no PDB, finds it by its name
+    /// through the language server: Busy..ctor(Int32) opens at Busy's constructor.</summary>
+    [AvaloniaFact]
+    public void Go_to_Source_opens_a_constructor_of_a_program_with_no_PDB_by_its_name()
+    {
+        string project = Project("Builder", """
+            using System.Runtime.CompilerServices;
+
+            public static class Program
+            {
+                public static void Main()
+                {
+                    DateTime until = DateTime.UtcNow.AddSeconds(3);
+                    while (DateTime.UtcNow < until)
+                    {
+                        GC.KeepAlive(new Busy(4_000_000));
+                    }
+                }
+            }
+
+            public sealed class Busy
+            {
+                public long Sum { get; }
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                public Busy(int count)
+                {
+                    for (int i = 0; i < count; i++) { Sum += i % 7; }
+                }
+            }
+            """, "<PropertyGroup>\n    <DebugType>none</DebugType>\n  </PropertyGroup>");
+        string program = PathNames.Canonical(Path.Combine(project, "Program.cs"));
+        int constructor = Array.FindIndex(File.ReadAllLines(program), l => l.Contains("public Busy(int count)", StringComparison.Ordinal));
+        MainWindow window = Ui.OpenFolder(project);
+        try
+        {
+            Ui.Launched(window, window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => window.ProfilerView.Snapshot is not null, "the program's end to show its snapshot", TimeSpan.FromMinutes(2));
+            Assert.True(Directory.GetFiles(project, "Builder.pdb", SearchOption.AllDirectories).Length == 0, "The program was built with a PDB, which Go to Source would open it by");
+            Ui.WaitFor(() => window.CSharpService?.Session is { IsLoaded: true }, "the language server to load the program", TimeSpan.FromMinutes(2));
+            Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
+            view.ShowPage(Passenger.App.Profiling.ProfilerPage.HotSpots);
+            Ui.Settle();
+            HotSpot spot = view.Snapshot!.HotSpots.FirstOrDefault(h => h.Name.StartsWith("Busy..ctor(", StringComparison.Ordinal))
+                ?? throw new Xunit.Sdk.XunitException($"No hot spot is Busy's constructor: {string.Join(", ", view.Snapshot.HotSpots.Take(12).Select(h => h.Name))}");
+            Avalonia.Controls.ListBox spots = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.ListBox>()
+                .Single(l => ReferenceEquals(l.ItemsSource, view.Snapshot.HotSpots));
+            window.OpenFile(Path.Combine(project, "Builder.csproj"));
+            Ui.DoubleClick(Ui.Row(spots, spot));
+            Ui.WaitFor(() => window.EditorArea.Active?.Path is { } open && PathNames.Same(open, program),
+                () => $"Go to Source on {spot.Name} to open Program.cs, where {window.EditorArea.Active?.Path} is open ({window.Status})", TimeSpan.FromSeconds(30));
+            Assert.True(window.EditorArea.CodeEditor.CaretPosition.Line == constructor,
+                $"Go to Source on {spot.Name} opened line {window.EditorArea.CodeEditor.CaretPosition.Line + 1}, not its constructor's, {constructor + 1}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Opening a profile costs a stack what keeping it takes, not a name made again for each frame: from a thousand
     /// stacks about seventy frames deep to ten thousand, under 12 KB a stack more (on every thread, the least of three). Over
     /// the larger, a drag's pointer move across the timeline costs the UI thread no more 2,400 wide than 800 wide, and under

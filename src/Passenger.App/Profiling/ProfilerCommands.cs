@@ -1134,21 +1134,19 @@ public sealed class ProfilerCommands
     /// generic type's by its name without its arguments; one of no type of the open code's is not looked for elsewhere.</summary>
     private async Task OpenByNameAsync(string method)
     {
-        string bare = WithoutArguments(method.Split('(')[0]);
-        int dot = bare.LastIndexOf('.');
-        if (dot <= 0 || Session.CSharp?.Session is not { IsLoaded: true } server)
+        if (FrameName.Of(method) is not { } split || Session.CSharp?.Session is not { IsLoaded: true } server)
         {
             parts.Say($"{method} is not in the open code");
             return;
         }
-        string name = bare[(dot + 1)..];
-        string[] nesting = bare[..dot].Split('+');
+        string name = split.Method;
+        string[] nesting = split.Type.Split('+');
         // The compiler's own types (<>c, <CrunchAsync>d__0) are named for nothing written: the type is the one holding them.
         string written = nesting.LastOrDefault(t => !t.StartsWith('<')) ?? nesting[0];
         string typeName = written[(written.LastIndexOf('.') + 1)..].Split('`')[0];
         string generated = nesting[^1].StartsWith('<') && name == "MoveNext" ? nesting[^1] : name;
         // Roslyn names a constructor by its type, and a lambda's or a state machine's method is the one that holds it.
-        string query = name is ".ctor" ? typeName : generated.Split('>')[0].TrimStart('<').Split('|')[0];
+        string query = split.IsConstructor ? typeName : generated.Split('>')[0].TrimStart('<').Split('|')[0];
         IReadOnlyList<Lsp.SymbolInformation> found;
         try
         {
@@ -1159,7 +1157,7 @@ public sealed class ProfilerCommands
             parts.Say($"{method} could not be looked for: {failed.Reason}");
             return;
         }
-        if (found.FirstOrDefault(s => s.Name.StartsWith(query, StringComparison.Ordinal) && InType(s.ContainerName, typeName))?.Location is not { } location)
+        if (found.FirstOrDefault(s => s.Name.StartsWith(query, StringComparison.Ordinal) && InType(s.Owner, typeName))?.Location is not { } location)
         {
             parts.Say($"{method} is not in the open code");
             return;
@@ -1167,30 +1165,12 @@ public sealed class ProfilerCommands
         parts.NavigateToServer(Lsp.DocumentUris.ToPath(location.Uri), location.Range.Start);
     }
 
-    /// <summary>Whether a symbol Roslyn lists is in a type of this name, its container named with the type's namespace or
-    /// outer types, and with its type parameters (Box&lt;T&gt;).</summary>
-    private static bool InType(string? container, string type)
+    /// <summary>Whether a symbol Roslyn lists is in a type of this name, its owner (<see cref="Lsp.SymbolInformation.Owner"/>)
+    /// named with the type's namespace or outer types, and with its type parameters (Box&lt;T&gt;).</summary>
+    private static bool InType(string? owner, string type)
     {
-        string named = container is { } c && c.IndexOf('<', StringComparison.Ordinal) is int angle and >= 0 ? c[..angle] : container ?? string.Empty;
+        string named = owner is { } c && c.IndexOf('<', StringComparison.Ordinal) is int angle and >= 0 ? c[..angle] : owner ?? string.Empty;
         return named == type || named.EndsWith($".{type}", StringComparison.Ordinal);
-    }
-
-    /// <summary>A frame's name without the generic arguments the runtime writes into it ([System.__Canon]), dots of their own
-    /// and all.</summary>
-    private static string WithoutArguments(string frame)
-    {
-        System.Text.StringBuilder kept = new(frame.Length);
-        int depth = 0;
-        foreach (char c in frame)
-        {
-            depth += c == '[' ? 1 : 0;
-            if (depth == 0)
-            {
-                kept.Append(c);
-            }
-            depth -= c == ']' && depth > 0 ? 1 : 0;
-        }
-        return kept.ToString();
     }
 }
 

@@ -720,7 +720,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             .Take(Math.Max(0, limit - indexers.Count))];
         IReadOnlyList<Place> places = await Places([.. kept.Select(s => s.Location)], cancel);
         return (IReadOnlyList<SymbolFound>)[.. indexers,
-            .. kept.Select((s, i) => new SymbolFound(s.Name, SymbolKinds.Name(s.Kind), ContainerOf(s.ContainerName), places[i].Path, places[i].Line, places[i].Column))];
+            .. kept.Select((s, i) => new SymbolFound(s.Name, SymbolKinds.Name(s.Kind), s.Owner, places[i].Path, places[i].Line, places[i].Column))];
 
         static SymbolFound Found(NamedPlace n) => new(n.Name, n.Kind, n.Container, n.Path, n.Line, n.Column) { Id = n.Id };
     });
@@ -733,20 +733,6 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         : name.StartsWith(query, StringComparison.OrdinalIgnoreCase) ? 2
         : name.Contains(query, StringComparison.OrdinalIgnoreCase) ? 3
         : 4;
-
-    /// <summary>The type a symbol Go to Symbol found is in, as an exact find names it: its "in Type (project P (tfm))" without
-    /// the project, which its path says, and none for a type's own "project P (tfm)".</summary>
-    private static string? ContainerOf(string? container)
-    {
-        if (container is null)
-        {
-            return null;
-        }
-        int project = container.LastIndexOf(" (project ", StringComparison.Ordinal);
-        string within = project >= 0 ? container[..project] : container.StartsWith("project ", StringComparison.Ordinal) ? string.Empty : container;
-        within = within.StartsWith("in ", StringComparison.Ordinal) ? within[3..] : within;
-        return within.Length == 0 ? null : within;
-    }
 
     /// <summary>What a code tool asks about: a place an agent gave, or the one C# symbol it named (<see cref="NamedAsync"/>).</summary>
     private sealed record CodePlace(string Path, int Line, int Column);
