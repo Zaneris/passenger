@@ -323,6 +323,78 @@ public sealed class TerminalTests
         }
     }
 
+    /// <summary>The variables of a tmux pane or screen window Passenger was started in, held as a parent's are, in the
+    /// process's own environment, reach no shell of its Terminal nor a program a run starts there, which would take itself
+    /// for that pane (its tmux commands acting on the person's own session); what the run configuration gives one of them
+    /// reaches its program.</summary>
+    [AvaloniaFact]
+    public void A_tmux_or_screen_Passenger_was_started_in_reaches_no_shell_or_run_in_its_terminal()
+    {
+        string folder = TestFolders.Create("terminal-outer-");
+        Dictionary<string, string> outer = new()
+        {
+            ["TMUX"] = "/tmp/tmux-501/default,4242,0",
+            ["TMUX_PANE"] = "%3",
+            ["STY"] = "4242.ttys001.host",
+            ["WINDOW"] = "0",
+        };
+        try
+        {
+            foreach ((string variable, string value) in outer)
+            {
+                OwnEnvironment.Set(variable, value);
+            }
+            string project = TestFolders.Write(folder, "Listed/Listed.csproj", TestProjects.Console());
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            TerminalSession shell = OpenTerminal(window, OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh");
+            // Only these variables listed, so nothing else of the machine's environment reaches the screen.
+            Run(window, OperatingSystem.IsWindows()
+                ? "set TMUX& set STY& set WINDOW& set TERM_PROGRAM& echo listed-933"
+                : "env | grep -e '^TMUX' -e '^STY=' -e '^WINDOW=' -e '^TERM_PROGRAM='; echo listed-933");
+            WaitForLine(shell, "listed-933", "the shell's environment listed");
+            List<string> listed = Lines(shell.Screen);
+            Assert.True(listed.Contains("TERM_PROGRAM=Passenger"), $"The shell's environment was not listed:\n{Screen(shell)}");
+            foreach (string variable in outer.Keys)
+            {
+                Assert.False(listed.Any(line => line.StartsWith(variable + "=", StringComparison.Ordinal)),
+                    $"{variable}, the outer tmux's or screen's, reached the Terminal's shell, which takes itself for its pane:\n{Screen(shell)}");
+            }
+
+            window.SetConfigurations([new RunConfiguration
+            {
+                Name = "Outer",
+                Project = PathNames.Canonical(project),
+                Program = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh",
+                Arguments = OperatingSystem.IsWindows()
+                    ? "/c \"set TMUX& set STY& set WINDOW& echo run-933\""
+                    : "-c \"env | grep -e '^TMUX' -e '^STY=' -e '^WINDOW='; echo run-933\"",
+                WorkingDirectory = folder,
+                Environment = { ["WINDOW"] = "given" },
+                BuildBeforeLaunch = false,
+                Console = ConsoleKind.Terminal,
+            }], "Outer");
+            Ui.Launched(window, window.RunAsync(), "the run to start", TimeSpan.FromMinutes(1));
+            TerminalSession program = Assert.IsType<TerminalRun>(window.RunInTerminal).Session;
+            WaitForLine(program, "run-933", "the program's environment listed");
+            listed = Lines(program.Screen);
+            Assert.True(listed.Contains("WINDOW=given"), $"What the run configuration gives WINDOW did not reach its program:\n{Screen(program)}");
+            foreach (string variable in outer.Keys)
+            {
+                Assert.False(listed.Any(line => line.StartsWith(variable + "=", StringComparison.Ordinal) && line != "WINDOW=given"),
+                    $"{variable}, the outer tmux's or screen's, reached a program run in the Terminal:\n{Screen(program)}");
+            }
+            window.Close();
+        }
+        finally
+        {
+            foreach (string variable in outer.Keys)
+            {
+                OwnEnvironment.Set(variable, null);
+            }
+            TestFolders.Delete(folder);
+        }
+    }
+
     [AvaloniaFact]
     public void A_decomposed_accent_shows_on_its_letter_in_one_cell_and_copies_with_it()
     {
@@ -1008,12 +1080,18 @@ public sealed class TerminalTests
     internal static (MainWindow Window, TerminalSession Shell) Open(string folder, string shell, params string[] arguments)
     {
         MainWindow window = Ui.OpenFolder(folder);
+        return (window, OpenTerminal(window, shell, arguments));
+    }
+
+    /// <summary>The window's Terminal open on a shell of the test's, the keys going to it.</summary>
+    private static TerminalSession OpenTerminal(MainWindow window, string shell, params string[] arguments)
+    {
         window.TerminalPanel.Shell = (shell, arguments);
         Ui.Run(window, AppActions.ShowTerminal);
         Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true }, "the shell to start");
         Ui.WaitFor(() => window.TerminalPanel.View.IsFocused, "the keys to go to the terminal");
         Ui.WaitFor(() => window.TerminalPanel.Active!.Screen.CursorColumn > 0, "the shell's prompt");
-        return (window, window.TerminalPanel.Active!);
+        return window.TerminalPanel.Active!;
     }
 
     /// <summary>The terminal's Paste: Cmd+V on the Mac, Ctrl+Shift+V elsewhere.</summary>

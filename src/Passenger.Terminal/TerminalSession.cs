@@ -64,6 +64,10 @@ public sealed class TerminalSession : IAsyncDisposable
     /// same.</summary>
     private static readonly TimeSpan EndingLimit = TimeSpan.FromSeconds(2);
 
+    /// <summary>What describes the terminal Passenger itself was started in: a tmux pane (whose tmux commands would act on
+    /// the person's own session), a screen window, an X terminal's window, its terminal description and its size.</summary>
+    private static readonly string[] OuterTerminal = ["TMUX", "TMUX_PANE", "STY", "WINDOW", "WINDOWID", "TERMCAP", "COLUMNS", "LINES"];
+
     public TerminalSession(int columns = 80, int rows = 24)
     {
         Screen = new TerminalScreen(columns, rows);
@@ -90,7 +94,7 @@ public sealed class TerminalSession : IAsyncDisposable
 
     /// <summary>Starts the shell in a folder. <paramref name="shell"/> names one other than the user's own, or a program
     /// to run in the terminal in place of a shell; <paramref name="variables"/> are set over the IDE's environment, an
-    /// empty value taking one away.</summary>
+    /// empty value taking one away, and the outer terminal's are taken out (<see cref="WithoutOuterTerminal"/>).</summary>
     public async Task StartAsync(string folder, string? shell = null, IReadOnlyList<string>? arguments = null, IReadOnlyDictionary<string, string>? variables = null)
     {
         (string app, string[] args) = shell is null ? DefaultShell() : (shell, [.. arguments ?? []]);
@@ -106,6 +110,7 @@ public sealed class TerminalSession : IAsyncDisposable
         {
             environment["LANG"] = "en_US.UTF-8";
         }
+        WithoutOuterTerminal(environment, Environment.GetEnvironmentVariable);
         string cwd = Directory.Exists(folder) ? folder : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (!OperatingSystem.IsWindows())
         {
@@ -253,6 +258,20 @@ public sealed class TerminalSession : IAsyncDisposable
             readDone.Wait(Waits.Of(EndingLimit));
         }
         connection.Dispose();
+    }
+
+    /// <summary>Takes out of a program's environment the variables of the terminal Passenger was started in, which the
+    /// program is not in (<see cref="OuterTerminal"/>): each one Passenger inherited, unless the caller gives it a value
+    /// of its own, since a run hands over the inherited value with the rest of its environment.</summary>
+    public static void WithoutOuterTerminal(Dictionary<string, string> environment, Func<string, string?> inherited)
+    {
+        foreach (string variable in OuterTerminal)
+        {
+            if (inherited(variable) is { } outer && (!environment.TryGetValue(variable, out string? given) || given == outer))
+            {
+                environment[variable] = string.Empty;
+            }
+        }
     }
 
     /// <summary>A program run on macOS or Linux with these variables taken out of what it inherits: its pseudo-terminal
