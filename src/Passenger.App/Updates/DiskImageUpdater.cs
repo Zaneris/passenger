@@ -64,7 +64,7 @@ public sealed partial class DiskImageUpdater : Updater
             return null;
         }
         string parent = Path.GetDirectoryName(bundle)!;
-        if (Access(parent, Writable) != 0 || Access(bundle, Writable) != 0)
+        if (Libc.Access(parent, Libc.MayWrite) != 0 || Libc.Access(bundle, Libc.MayWrite) != 0)
         {
             why = $"this user cannot replace {bundle}: its folder is read-only (a disk image) or another user's";
             return null;
@@ -242,7 +242,7 @@ public sealed partial class DiskImageUpdater : Updater
         {
             using (running)
             {
-                if (running.Id != Environment.ProcessId && ExecutableOf(running.Id) is { } path && PathNames.Same(path, executable))
+                if (running.Id != Environment.ProcessId && Libc.ExecutableOf(running.Id) is { } path && PathNames.Same(path, executable))
                 {
                     here.Add(running.Id);
                 }
@@ -437,13 +437,6 @@ public sealed partial class DiskImageUpdater : Updater
     /// <summary>The two bundles trade places; 0, or the error.</summary>
     private static int Swap(string from, string to) => RenameEx(from, to, RenameSwap) == 0 ? 0 : Marshal.GetLastPInvokeError();
 
-    private static string? ExecutableOf(int process)
-    {
-        byte[] path = new byte[4096];
-        int length = ProcessPath(process, path, (uint)path.Length);
-        return length > 0 ? System.Text.Encoding.UTF8.GetString(path, 0, length) : null;
-    }
-
     private const uint RenameSwap = 0x2;
 
     /// <summary>EXDEV: the two are on different volumes.</summary>
@@ -452,16 +445,8 @@ public sealed partial class DiskImageUpdater : Updater
     /// <summary>ENOTSUP: the volume cannot swap two folders (HFS+), or not across volumes.</summary>
     private const int NotSupported = 45;
 
-    private const int Writable = 2;
-
     [LibraryImport("libc", EntryPoint = "renamex_np", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
     private static partial int RenameEx(string from, string to, uint flags);
-
-    [LibraryImport("libc", EntryPoint = "access", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
-    private static partial int Access(string path, int mode);
-
-    [LibraryImport("libc", EntryPoint = "proc_pidpath")]
-    private static partial int ProcessPath(int process, [Out] byte[] buffer, uint size);
 
     [GeneratedRegex(@"^TeamIdentifier=(.+)$", RegexOptions.Multiline)]
     private static partial Regex Team();

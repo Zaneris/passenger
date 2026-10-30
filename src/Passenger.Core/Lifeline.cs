@@ -159,7 +159,7 @@ internal static partial class Lifeline
         {
             if (Groups.Contains(group))
             {
-                Signal(-group, SigKill);
+                Libc.Signal(-group, SigKill);
             }
         }
     }
@@ -170,7 +170,7 @@ internal static partial class Lifeline
         {
             foreach (int group in Groups.ToList())
             {
-                if (Signal(-group, 0) != 0 && Marshal.GetLastPInvokeError() == NoSuchProcess)
+                if (Libc.Signal(-group, 0) != 0 && Marshal.GetLastPInvokeError() == NoSuchProcess)
                 {
                     Groups.Remove(group);
                     Tell($"-{group}");
@@ -236,9 +236,6 @@ internal static partial class Lifeline
         }
         return watchdog;
     }
-
-    [LibraryImport("libc", EntryPoint = "kill", SetLastError = true)]
-    private static partial int Signal(int process, int signal);
 
     [LibraryImport("kernel32.dll", EntryPoint = "CreateJobObjectW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     private static partial SafeFileHandle CreateJobObject(IntPtr security, string? name);

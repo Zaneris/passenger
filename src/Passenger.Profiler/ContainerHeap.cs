@@ -63,7 +63,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
             {
                 // Its answer is never read now: the tools go, which ends the read, and the next snapshot starts them again.
                 End(running);
-                _ = reading.ContinueWith(static ended => ended.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+                UnawaitedWork.Dismiss(reading);
                 throw new ProfilingException(stopped is TimeoutException
                     ? $"Passenger's tools in {place.Where} took no memory snapshot in {Limit.TotalMinutes:0} minutes, and were ended"
                     : $"The memory snapshot of the program in {place.Where} was stopped, and Passenger's tools there ended", stopped);

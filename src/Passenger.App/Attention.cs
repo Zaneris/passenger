@@ -10,9 +10,7 @@ namespace Passenger.App;
 /// app ask for none, and the headless platform has nothing to mark. UI thread only (AppKit's main thread on macOS).</summary>
 internal static partial class Attention
 {
-    private const string ObjC = "/usr/lib/libobjc.A.dylib";
     private const string User32 = "user32.dll";
-    private const string X11 = "libX11.so.6";
 
     /// <summary>NSRequestUserAttentionType's NSCriticalRequest: until the app is active, not one bounce.</summary>
     private const long Critical = 0;
@@ -46,13 +44,13 @@ internal static partial class Attention
 
     private static IDisposable Bounce()
     {
-        nint app = Send(Class("NSApplication"), Selector("sharedApplication"));
+        nint app = MacObjC.Send(MacObjC.Class("NSApplication"), MacObjC.Selector("sharedApplication"));
         if (app == 0)
         {
             return Nothing.Instance;
         }
-        nint request = Send(app, Selector("requestUserAttention:"), (nint)Critical);
-        return new Taken(() => Send(app, Selector("cancelUserAttentionRequest:"), request));
+        nint request = MacObjC.Send(app, MacObjC.Selector("requestUserAttention:"), (nint)Critical);
+        return new Taken(() => MacObjC.Send(app, MacObjC.Selector("cancelUserAttentionRequest:"), request));
     }
 
     private static IDisposable Flash(nint window)
@@ -74,7 +72,7 @@ internal static partial class Attention
 
     private static unsafe bool SetUrgency(nint window, bool urgent)
     {
-        nint display = OpenDisplay(0);
+        nint display = Xlib.OpenDisplay(0);
         if (display == 0)
         {
             return false;
@@ -82,34 +80,22 @@ internal static partial class Attention
         try
         {
             // XWMHints begins with its flags, a C long; the rest is kept as the window has it.
-            long* hints = (long*)GetWMHints(display, window);
+            long* hints = (long*)Xlib.GetWMHints(display, window);
             if (hints is null)
             {
                 return false;
             }
             *hints = urgent ? *hints | Urgency : *hints & ~Urgency;
-            SetWMHints(display, window, (nint)hints);
-            Free((nint)hints);
-            Flush(display);
+            Xlib.SetWMHints(display, window, (nint)hints);
+            Xlib.Free((nint)hints);
+            Xlib.Flush(display);
             return true;
         }
         finally
         {
-            CloseDisplay(display);
+            Xlib.CloseDisplay(display);
         }
     }
-
-    [LibraryImport(ObjC, EntryPoint = "objc_getClass", StringMarshalling = StringMarshalling.Utf8)]
-    private static partial nint Class(string name);
-
-    [LibraryImport(ObjC, EntryPoint = "sel_registerName", StringMarshalling = StringMarshalling.Utf8)]
-    private static partial nint Selector(string name);
-
-    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")]
-    private static partial nint Send(nint receiver, nint selector);
-
-    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")]
-    private static partial nint Send(nint receiver, nint selector, nint argument);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct FlashInfo
@@ -124,24 +110,6 @@ internal static partial class Attention
     [LibraryImport(User32, EntryPoint = "FlashWindowEx")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool FlashWindowEx(in FlashInfo info);
-
-    [LibraryImport(X11, EntryPoint = "XOpenDisplay")]
-    private static partial nint OpenDisplay(nint name);
-
-    [LibraryImport(X11, EntryPoint = "XCloseDisplay")]
-    private static partial int CloseDisplay(nint display);
-
-    [LibraryImport(X11, EntryPoint = "XGetWMHints")]
-    private static partial nint GetWMHints(nint display, nint window);
-
-    [LibraryImport(X11, EntryPoint = "XSetWMHints")]
-    private static partial int SetWMHints(nint display, nint window, nint hints);
-
-    [LibraryImport(X11, EntryPoint = "XFree")]
-    private static partial int Free(nint data);
-
-    [LibraryImport(X11, EntryPoint = "XFlush")]
-    private static partial int Flush(nint display);
 
     /// <summary>A request taken back once, when disposed.</summary>
     private sealed class Taken(Action takeBack) : IDisposable

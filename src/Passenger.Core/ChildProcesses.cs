@@ -284,12 +284,12 @@ public static class ChildProcesses
         {
             GiveUp(process, cancel);
             // The kill ends the reads at their pipes' end; their ends are nobody's to report.
-            Forget(read);
+            UnawaitedWork.Dismiss(read);
             cancel.ThrowIfCancellationRequested();
             return false;
         }
         // What a job out of the kill's reach still holds (on Windows, which ends a tree, one whose parent has gone) is let go.
-        Forget(read);
+        UnawaitedWork.Dismiss(read);
         return true;
     }
 
@@ -335,13 +335,13 @@ public static class ChildProcesses
         catch (OperationCanceledException) when (ending.IsCancellationRequested)
         {
             GiveUp(process, cancel);
-            Forget(read);
+            UnawaitedWork.Dismiss(read);
             process.Dispose();
             ending.Dispose();
             cancel.ThrowIfCancellationRequested();
             throw new TimeoutException($"{Shown(start)} had not answered after {limit.GetValueOrDefault().TotalSeconds:0} s");
         }
-        Forget(read);
+        UnawaitedWork.Dismiss(read);
         using (process)
         using (ending)
         {
@@ -367,7 +367,7 @@ public static class ChildProcesses
             {
                 GiveUp(process, cancel);
             }
-            Forget(read);
+            UnawaitedWork.Dismiss(read);
         }
     }
 
@@ -700,9 +700,6 @@ public static class ChildProcesses
             // Disposed by its owner as it ended: there is no exit code to tell.
         }
     }
-
-    private static void Forget(Task task) =>
-        _ = task.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 }
 
 /// <summary>A child that wrote more than its caller reads of it, ended for it.</summary>

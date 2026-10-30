@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Passenger.App.Run;
 using Passenger.Core;
@@ -171,18 +170,12 @@ internal sealed partial class RestoreReports
 /// <summary>The folder a project's load or restore error blames that this user cannot write
 /// (<see cref="UnwritableFolders"/>), asked of the system by the folder's mode on macOS and Linux, on the server's thread;
 /// Windows, whose folders' read-only mark keeps no one from writing, is not asked.</summary>
-internal static partial class FolderAccess
+internal static class FolderAccess
 {
-    /// <summary>access's question whether the caller may write.</summary>
-    private const int MayWrite = 2;
-
     /// <summary>The folder a project's error blames, canonical, or null for none; a folder under the open one counts as the
     /// project's own.</summary>
     public static string? Unwritable(ProjectLoadProblem problem, string? folder) =>
-        !OperatingSystem.IsWindows() && UnwritableFolders.Of(problem.Message, problem.Project, folder, Directory.Exists, at => Access(at, MayWrite) == 0) is { } found
+        !OperatingSystem.IsWindows() && UnwritableFolders.Of(problem.Message, problem.Project, folder, Directory.Exists, at => Libc.Access(at, Libc.MayWrite) == 0) is { } found
             ? PathNames.Canonical(found)
             : null;
-
-    [LibraryImport("libc", EntryPoint = "access", StringMarshalling = StringMarshalling.Utf8)]
-    private static partial int Access(string path, int mode);
 }

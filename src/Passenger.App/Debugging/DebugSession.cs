@@ -842,7 +842,7 @@ public sealed class DebugSession
         SetState(DebugState.Running);
         // Sent with the request, never awaited before it: the adapter takes the two in turn, ahead of the stop's reads.
         Task placed = before?.Invoke() ?? Task.CompletedTask;
-        _ = placed.ContinueWith(static failed => failed.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        UnawaitedWork.Dismiss(placed);
         try
         {
             await connection.RequestAsync(command, arguments?.Invoke(thread) ?? new ThreadArguments(thread));
@@ -973,7 +973,7 @@ public sealed class DebugSession
         {
             UiThread.Check();
             breakpointsSending.RemoveAll(t => t.IsCompleted);
-            return Task.WhenAll(breakpointsSending.Append(functionsAnswered).Select(t => t.ContinueWith(_ => { }, TaskScheduler.Default)));
+            return Task.WhenAll(breakpointsSending.Append(functionsAnswered).Select(UnawaitedWork.Ended));
         }
     }
 

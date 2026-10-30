@@ -337,9 +337,7 @@ public static partial class DotnetProcesses
         }
         uint uid = *(uint*)(info + BsdUidOffset);
         IReadOnlyList<string> arguments = MacArguments(id);
-        byte* path = stackalloc byte[4096];
-        int length = ProcPidPath(id, path, 4096);
-        string name = length > 0 ? Path.GetFileName(Encoding.UTF8.GetString(path, length))
+        string name = Libc.ExecutableOf(id) is { } path ? Path.GetFileName(path)
             : arguments.Count > 0 ? Path.GetFileName(arguments[0])
             : id.ToString(CultureInfo.InvariantCulture);
         return new DotnetProcess(id, name, Joined(arguments), UserName(uid), uid == GetEffectiveUserId());
@@ -550,9 +548,6 @@ public static partial class DotnetProcesses
 
     [LibraryImport("libc", EntryPoint = "proc_pidinfo")]
     private static unsafe partial int ProcPidInfo(int pid, int flavor, ulong argument, byte* buffer, int size);
-
-    [LibraryImport("libc", EntryPoint = "proc_pidpath")]
-    private static unsafe partial int ProcPidPath(int pid, byte* buffer, uint size);
 
     [LibraryImport("libc", EntryPoint = "sysctl")]
     private static unsafe partial int SysCtl(int* name, uint length, byte* old, nuint* oldLength, byte* value, nuint valueLength);

@@ -755,10 +755,8 @@ public partial class MainWindow
 }
 
 /// <summary>The platform's Trash (the Recycle Bin on Windows), where a deleted file can still be found.</summary>
-public static partial class Trash
+public static class Trash
 {
-    private const string ObjC = "/usr/lib/libobjc.A.dylib";
-
     /// <summary>A folder to use as the Trash instead of the platform's. The process's, as the system's Trash is every
     /// window's.</summary>
     public static string? Folder { get; set; }
@@ -810,21 +808,23 @@ public static partial class Trash
     {
         _ = Foundation.Value;
         // Its own pool, so what the calls autorelease goes now on any thread, with or without AppKit's run loop.
-        nint pool = Send(Class("NSAutoreleasePool"), Selector("new"));
+        nint pool = MacObjC.Send(MacObjC.Class("NSAutoreleasePool"), MacObjC.Selector("new"));
         try
         {
-            nint url = Send(Class("NSURL"), Selector("fileURLWithPath:"), Send(Class("NSString"), Selector("stringWithUTF8String:"), path));
-            nint manager = Send(Class("NSFileManager"), Selector("defaultManager"));
+            nint named = MacObjC.Send(MacObjC.Class("NSString"), MacObjC.Selector("stringWithUTF8String:"), path);
+            nint url = MacObjC.Send(MacObjC.Class("NSURL"), MacObjC.Selector("fileURLWithPath:"), named);
+            nint manager = MacObjC.Send(MacObjC.Class("NSFileManager"), MacObjC.Selector("defaultManager"));
             nint error = 0;
-            if (!Send(manager, Selector("trashItemAtURL:resultingItemURL:error:"), url, 0, ref error))
+            if (!MacObjC.Send(manager, MacObjC.Selector("trashItemAtURL:resultingItemURL:error:"), url, 0, ref error))
             {
-                string? said = error == 0 ? null : Marshal.PtrToStringUTF8(Send(Send(error, Selector("localizedDescription")), Selector("UTF8String")));
+                string? said = error == 0 ? null
+                    : Marshal.PtrToStringUTF8(MacObjC.Send(MacObjC.Send(error, MacObjC.Selector("localizedDescription")), MacObjC.Selector("UTF8String")));
                 throw new IOException(said ?? $"The Trash refused {Path.GetFileName(path)}");
             }
         }
         finally
         {
-            Send(pool, Selector("drain"));
+            MacObjC.Send(pool, MacObjC.Selector("drain"));
         }
     }
 
@@ -886,24 +886,4 @@ public static partial class Trash
             File.Move(path, target);
         }
     }
-
-    [LibraryImport(ObjC, EntryPoint = "objc_getClass", StringMarshalling = StringMarshalling.Utf8)]
-    private static partial nint Class(string name);
-
-    [LibraryImport(ObjC, EntryPoint = "sel_registerName", StringMarshalling = StringMarshalling.Utf8)]
-    private static partial nint Selector(string name);
-
-    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")]
-    private static partial nint Send(nint receiver, nint selector);
-
-    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")]
-    private static partial nint Send(nint receiver, nint selector, nint argument);
-
-    [LibraryImport(ObjC, EntryPoint = "objc_msgSend", StringMarshalling = StringMarshalling.Utf8)]
-    private static partial nint Send(nint receiver, nint selector, string argument);
-
-    /// <summary>A message answering a BOOL, its last argument where an NSError is put (left as it was if none is).</summary>
-    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")]
-    [return: MarshalAs(UnmanagedType.U1)]
-    private static partial bool Send(nint receiver, nint selector, nint argument, nint second, ref nint error);
 }

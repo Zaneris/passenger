@@ -338,7 +338,7 @@ internal sealed class AspireContainerOwnership
             if (after is not null)
             {
                 // An orchestrator that outlived its AppHost could make one again of a container taken from under a live one.
-                await after.ContinueWith(_ => { }, TaskScheduler.Default).ConfigureAwait(false);
+                await after.Ended().ConfigureAwait(false);
             }
             foreach (IGrouping<ContainerEngine, Made> on in recorded.GroupBy(container => container.Engine))
             {

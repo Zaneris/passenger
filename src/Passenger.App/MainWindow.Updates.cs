@@ -373,7 +373,7 @@ public partial class MainWindow
         {
             if (stopping is not null)
             {
-                await stopping.ContinueWith(_ => { }, TaskScheduler.Default);
+                await stopping.Ended();
             }
             await updater.DiscardAsync();
         }));

@@ -307,8 +307,7 @@ public static class ContainerTools
         }
         using (process)
         {
-            _ = process.StandardError.ReadToEndAsync(CancellationToken.None).ContinueWith(read => read.Exception, CancellationToken.None,
-                TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+            UnawaitedWork.Dismiss(process.StandardError.ReadToEndAsync(CancellationToken.None));
             using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(cancel);
             limit.CancelAfter(ContainerEngine.AskLimit);
             try

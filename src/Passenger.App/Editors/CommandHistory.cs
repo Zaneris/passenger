@@ -107,7 +107,7 @@ public sealed class CommandHistory
             return write(path => UiThread.Post(() => Wrote(turn, path)));
         });
         turn.Work = work;
-        written = work.ContinueWith(static _ => { }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        written = work.Ended();
         return EndedAsync(work, turn);
     }
 

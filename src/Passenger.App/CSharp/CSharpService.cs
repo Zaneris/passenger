@@ -618,7 +618,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                     if (!pull.IsCompleted)
                     {
                         // Left as the analysis ended: its end is nobody's to hear.
-                        _ = pull.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                        UnawaitedWork.Dismiss(pull);
                     }
                 }
                 // What a pull sent before it answered or failed is the server's word as much as its answer.

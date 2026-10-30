@@ -1221,8 +1221,7 @@ public sealed class DebugController : IDisposable
     private readonly HashSet<DebugSession> stoppedStarting = [];
 
     /// <summary>Input for the program, which a session that has ended, or an adapter gone, may never take: its end says so.</summary>
-    private static void Send(Task sending) =>
-        _ = sending.ContinueWith(static sent => sent.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+    private static void Send(Task sending) => UnawaitedWork.Dismiss(sending);
 
     /// <summary>Stop: the chosen program ends, or, with none chosen that is debugged, every one does (Stop All).</summary>
     public Task StopAsync()

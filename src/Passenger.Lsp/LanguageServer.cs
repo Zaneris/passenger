@@ -496,7 +496,7 @@ public sealed class LanguageServer : IAsyncDisposable
                 InitializationOptions: initializationOptions);
             // Given up at once, not cancelled: a start given up ends the server, so it fails with the connection, unseen.
             Task<JsonElement> answer = rpc.InvokeWithParameterObjectAsync<JsonElement>(LspMethods.Initialize, initialize, CancellationToken.None);
-            _ = answer.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            UnawaitedWork.Dismiss(answer);
             JsonElement result = await answer.WaitAsync(cancel).ConfigureAwait(false);
             server2.Capabilities = result.GetProperty("capabilities");
             if (server2.Capabilities.TryGetProperty("semanticTokensProvider", out JsonElement tokens) && tokens.TryGetProperty("legend", out JsonElement legend))
@@ -704,7 +704,7 @@ public sealed class LanguageServer : IAsyncDisposable
             }
             catch (OperationCanceledException) when (cancel.IsCancellationRequested)
             {
-                _ = answer.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                UnawaitedWork.Dismiss(answer);
                 throw;
             }
         }
@@ -899,7 +899,7 @@ public sealed class LanguageServer : IAsyncDisposable
                 using CancellationTokenSource limit = new(TimeSpan.FromSeconds(3));
                 // Given up at its limit, not cancelled: a cancelled request waits for the server's word, which a hung one never gives.
                 Task<object?> answer = rpc.InvokeWithCancellationAsync<object?>(LspMethods.Shutdown, [], CancellationToken.None);
-                _ = answer.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                UnawaitedWork.Dismiss(answer);
                 await answer.WaitAsync(limit.Token).ConfigureAwait(false);
                 await rpc.NotifyAsync(LspMethods.Exit).ConfigureAwait(false);
             }

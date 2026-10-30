@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Microsoft.Win32.SafeHandles;
+using Passenger.Core;
 
 namespace Passenger.Text;
 
@@ -13,7 +14,6 @@ public static partial class Unmovable
     private const uint BackupSemantics = 0x02000000;
     private const int SharingViolation = 32;
     private const int AccessDenied = 5;
-    private const int WriteAndSearch = 2 | 1;
     private const int PermissionDenied = 13;
     private const int ReadOnlyVolume = 30;
 
@@ -33,7 +33,7 @@ public static partial class Unmovable
             } : null;
         }
         string folder = Path.GetDirectoryName(path)!;
-        return Access(folder, WriteAndSearch) == 0 ? null : Marshal.GetLastPInvokeError() switch
+        return Libc.Access(folder, Libc.MayWrite | Libc.MaySearch) == 0 ? null : Marshal.GetLastPInvokeError() switch
         {
             PermissionDenied or ReadOnlyVolume => $"{name} cannot be renamed, as its folder {Path.GetFileName(folder)} may not be written in",
             _ => null,
@@ -43,8 +43,4 @@ public static partial class Unmovable
     [SupportedOSPlatform("windows")]
     [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     private static partial SafeFileHandle CreateFile(string name, uint access, FileShare share, IntPtr security, FileMode mode, uint flags, IntPtr template);
-
-    [UnsupportedOSPlatform("windows")]
-    [LibraryImport("libc", EntryPoint = "access", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
-    private static partial int Access(string path, int mode);
 }

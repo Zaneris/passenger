@@ -678,8 +678,7 @@ public sealed class ContainerEngine
             events = process;
         }
         // Its errors are read through, so a CLI that says much never stops on a full pipe; a read the end cut short is no fault.
-        _ = process.StandardError.ReadToEndAsync(CancellationToken.None).ContinueWith(read => read.Exception, CancellationToken.None,
-            TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        UnawaitedWork.Dismiss(process.StandardError.ReadToEndAsync(CancellationToken.None));
         try
         {
             while (await process.StandardOutput.ReadLineAsync() is { } line)

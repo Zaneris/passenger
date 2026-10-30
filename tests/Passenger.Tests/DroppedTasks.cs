@@ -8,7 +8,8 @@ namespace Passenger.Tests;
 /// <summary>Where a built assembly lets go of a task a call returned: the IL pops it (a discard, a call as a statement, a
 /// lambda for a delegate that returns nothing) or stores it in a lambda's parameter named _, placed by the PDB. Read
 /// from the IL, which knows each call's type, as the source alone does not. Not counted: an awaited result (the task
-/// Task.WhenAny finished with), and what a static Observe(Task) lets go of, the observers being where others' tasks go.</summary>
+/// Task.WhenAny finished with), and what a static Observe(Task) or Dismiss(Task) lets go of, these being where others'
+/// tasks go.</summary>
 internal static class DroppedTasks
 {
     public static IReadOnlyList<(string File, int Line)> In(string assembly)
@@ -22,7 +23,7 @@ internal static class DroppedTasks
         foreach (MethodDefinitionHandle handle in metadata.MethodDefinitions)
         {
             MethodDefinition method = metadata.GetMethodDefinition(handle);
-            if (method.RelativeVirtualAddress == 0 || metadata.GetString(method.Name) == "Observe" && signatures.TakesOnlyATask(method))
+            if (method.RelativeVirtualAddress == 0 || metadata.GetString(method.Name) is "Observe" or "Dismiss" && signatures.TakesOnlyATask(method))
             {
                 continue;
             }
@@ -82,7 +83,7 @@ internal static class DroppedTasks
     {
         private static readonly TypeName Other = new("?", []);
 
-        /// <summary>A static method whose one parameter is a Task: an observer's shape.</summary>
+        /// <summary>A static method whose one parameter is a Task: an observer's or a dismisser's shape.</summary>
         public bool TakesOnlyATask(MethodDefinition method)
         {
             MethodSignature<TypeName> signature = method.DecodeSignature(this, null);

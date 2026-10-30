@@ -477,7 +477,7 @@ public sealed class TestingPlatformRunner : ITestRunner
         {
             using CancellationTokenSource giveUp = CancellationTokenSource.CreateLinkedTokenSource(cancel);
             Task<TcpClient> accepting = listener.AcceptTcpClientAsync(giveUp.Token).AsTask();
-            _ = accepting.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            UnawaitedWork.Dismiss(accepting);
             long began = Stopwatch.GetTimestamp();
             try
             {

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
@@ -95,6 +94,7 @@ public sealed class LocalHistory
     private readonly Dictionary<string, int> writing = new(PathNames.Comparer);
     private readonly Queue<Action> jobs = new();
     private readonly string log;
+    /// <summary>What the history's lock file is named after (<see cref="Hold"/>), so it is changes.lock beside the log.</summary>
     private readonly string held;
     private readonly string blobs;
     private readonly string stateFolder;
@@ -118,7 +118,7 @@ public sealed class LocalHistory
         Keeping = keeping;
         Root = Path.Combine(State.ProjectState.FolderOf(stateFolder, folder), "localHistory");
         log = Path.Combine(Root, "changes.log");
-        held = Path.Combine(Root, "changes.lock");
+        held = Path.Combine(Root, "changes");
         blobs = Path.Combine(Root, "blobs");
         lastSet = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000;
         // Read first: what is recorded from now on follows what was kept.
@@ -1158,27 +1158,19 @@ public sealed class LocalHistory
     private string BlobPath(string hash) => Path.Combine(blobs, hash[..2], hash[2..]);
 
     /// <summary>The history held against every other Passenger keeping it in the same state (an agent's, over --mcp) while
-    /// this one changes it: the log appended to or written again, content taken up again or deleted. A lock file open
-    /// sharing nothing, waited for on the queue (never the UI thread) up to <see cref="HeldFor"/>; null when not had.</summary>
+    /// this one changes it: the log appended to or written again, content taken up again or deleted. Its lock file
+    /// (<see cref="State.StateFile.Hold"/>), waited for on the queue (never the UI thread) up to <see cref="HeldFor"/>; null when
+    /// not had.</summary>
     private FileStream? Hold()
     {
-        Directory.CreateDirectory(Root);
-        long began = Stopwatch.GetTimestamp();
-        while (true)
+        try
         {
-            try
-            {
-                return new FileStream(held, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            }
-            catch (IOException) when (Stopwatch.GetElapsedTime(began) < HeldFor)
-            {
-                Thread.Sleep(10);
-            }
-            catch (IOException refused)
-            {
-                IdeErrors.Write($"Local History of {Folder}: another Passenger on the same state held {held} past {HeldFor.TotalSeconds:0} s: {refused.Message}");
-                return null;
-            }
+            return State.StateFile.Hold(held, HeldFor);
+        }
+        catch (IOException refused)
+        {
+            IdeErrors.Write($"Local History of {Folder}: another Passenger on the same state held {held}.lock past {HeldFor.TotalSeconds:0} s: {refused.Message}");
+            return null;
         }
     }
 

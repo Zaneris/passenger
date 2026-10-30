@@ -45,7 +45,6 @@ public static class FileManager
             start.Arguments = $"/select,\"{path}\"";
         }
         // Explorer answers 1 when it has handed the request to the running shell.
-        _ = ChildProcesses.RunAsync(start, limit: TimeSpan.FromSeconds(30), answers: OperatingSystem.IsWindows() ? [1] : null)
-            .ContinueWith(ran => ran.Exception, TaskScheduler.Default);
+        UnawaitedWork.Dismiss(ChildProcesses.RunAsync(start, limit: TimeSpan.FromSeconds(30), answers: OperatingSystem.IsWindows() ? [1] : null));
     }
 }

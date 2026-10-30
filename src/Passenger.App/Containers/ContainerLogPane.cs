@@ -196,7 +196,7 @@ public sealed class ContainerLogPane : DockPanel
             // Off the UI thread from here on, whose dispatcher may end first.
             await process.WaitForExitAsync().ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
             IDisposable held = BackgroundWork.Scope();
-            Task ended = read.ContinueWith(_ => { }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            Task ended = read.Ended();
             if (!await ChildProcesses.OutputEndsAsync(process, ended).ConfigureAwait(false))
             {
                 letGo.Cancel();

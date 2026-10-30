@@ -87,7 +87,7 @@ public sealed class DiscordPresence(DiscordIpc ipc, Action<string> log)
         await ending.CancelAsync().ConfigureAwait(false);
         if (running is not null)
         {
-            await running.ContinueWith(_ => { }, TaskScheduler.Default).ConfigureAwait(false);
+            await running.Ended().ConfigureAwait(false);
         }
     }
 

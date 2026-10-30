@@ -101,11 +101,11 @@ public static partial class IdeLog
             return;
         }
         // Kept apart from what the process starts: an agent's relay says why it ends there (GivenError).
-        if (KeepEnd(StandardError) is var kept and >= 0 && Descriptors.CloseOnExec(kept))
+        if (Core.Libc.Duplicate(StandardError) is var kept and >= 0 && Descriptors.CloseOnExec(kept))
         {
             given = kept;
         }
-        if (Duplicate(ends[1], StandardError) < 0)
+        if (Core.Libc.DuplicateTo(ends[1], StandardError) < 0)
         {
             CloseEnd(ends[0]);
             CloseEnd(ends[1]);
@@ -142,7 +142,7 @@ public static partial class IdeLog
         const int StandardError = 2;
         if (given >= 0)
         {
-            Duplicate(given, StandardError);
+            Core.Libc.DuplicateTo(given, StandardError);
         }
     }
 
@@ -150,14 +150,8 @@ public static partial class IdeLog
     public static Stream GivenError() =>
         given >= 0 ? new FileStream(new Microsoft.Win32.SafeHandles.SafeFileHandle(given, ownsHandle: false), FileAccess.Write, 1) : Console.OpenStandardError();
 
-    [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "dup", SetLastError = true)]
-    private static partial int KeepEnd(int end);
-
     [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "pipe", SetLastError = true)]
     private static unsafe partial int Pipe(int* ends);
-
-    [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "dup2", SetLastError = true)]
-    private static partial int Duplicate(int from, int to);
 
     [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
     private static partial int CloseEnd(int end);

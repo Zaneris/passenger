@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Runtime.InteropServices;
 using Passenger.Core;
 using Velopack.Locators;
 
@@ -10,7 +9,7 @@ namespace Passenger.App.Updates;
 /// the background, checks it against the SHA-256 the release gives (and the app's signature on macOS), and installs it
 /// as Passenger ends, starting the new version when the person chose Restart to Update. Only a copy that Passenger's
 /// installer (Windows) or disk image (macOS) put in place has one.</summary>
-public abstract partial class Updater
+public abstract class Updater
 {
     /// <summary>Where this copy is installed, for the log.</summary>
     public abstract string Installed { get; }
@@ -170,7 +169,7 @@ public abstract partial class Updater
         List<OtherCopy> told = [];
         foreach (OtherCopy relay in others.Where(other => other.Relay))
         {
-            if (Order(relay) && Signal(relay.ProcessId, Terminate) == 0)
+            if (Order(relay) && Libc.Signal(relay.ProcessId, Terminate) == 0)
             {
                 told.Add(relay);
             }
@@ -181,13 +180,13 @@ public abstract partial class Updater
         foreach (OtherCopy relay in told)
         {
             TimeSpan left = limit - waited.Elapsed;
-            if (SpinWait.SpinUntil(() => Mcp.McpProxy.LetGo(relay.ProcessId) || Signal(relay.ProcessId, 0) != 0, left > TimeSpan.Zero ? left : TimeSpan.Zero)
+            if (SpinWait.SpinUntil(() => Mcp.McpProxy.LetGo(relay.ProcessId) || Libc.Signal(relay.ProcessId, 0) != 0, left > TimeSpan.Zero ? left : TimeSpan.Zero)
                 && Mcp.McpProxy.LetGo(relay.ProcessId))
             {
                 IdeErrors.Write($"Updates: the agent's relay on {relay.Folder} (process {relay.ProcessId}) let go of the app to install Passenger {version}, "
                     + "and starts again from it as its agent's session");
             }
-            else if (Signal(relay.ProcessId, 0) == 0)
+            else if (Libc.Signal(relay.ProcessId, 0) == 0)
             {
                 Mcp.McpProxy.Unordered(relay.ProcessId);
                 holding.Add(relay);
@@ -234,7 +233,7 @@ public abstract partial class Updater
             }
             try
             {
-                if (OperatingSystem.IsWindows() || Signal(relay.ProcessId, Terminate) != 0)
+                if (OperatingSystem.IsWindows() || Libc.Signal(relay.ProcessId, Terminate) != 0)
                 {
                     process.Kill();
                 }
@@ -274,9 +273,6 @@ public abstract partial class Updater
 
     /// <summary>SIGTERM, as macOS and Linux number it.</summary>
     private const int Terminate = 15;
-
-    [LibraryImport("libc", EntryPoint = "kill", SetLastError = true)]
-    private static partial int Signal(int process, int signal);
 
     /// <summary>The updater of the running copy, or null with why it cannot update itself: not in a disk image's app
     /// bundle or an installer's folder, or where it cannot replace itself.</summary>

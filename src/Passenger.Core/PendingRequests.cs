@@ -62,8 +62,7 @@ public sealed class PendingRequests<TAsked, TAnswer>
     public void Forget(int id, Task<TAnswer> answer, CancellationToken cancelled = default)
     {
         Take(id)?.Answer.TrySetCanceled(cancelled);
-        _ = answer.ContinueWith(static done => _ = done.Exception, CancellationToken.None,
-            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        UnawaitedWork.Dismiss(answer);
     }
 
     /// <summary>The peer has ended: every request waiting fails, as does each asked from now on (with the first end's

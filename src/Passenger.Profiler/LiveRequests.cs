@@ -233,7 +233,7 @@ public sealed class LiveRequests : IAsyncDisposable
     {
         await stop();
         source.StopProcessing();
-        await Ended.WaitAsync(TimeSpan.FromSeconds(5)).ContinueWith(_ => { }, TaskScheduler.Default);
+        await Ended.WaitAsync(TimeSpan.FromSeconds(5)).Ended();
         source.Dispose();
     }
 }

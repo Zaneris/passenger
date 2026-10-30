@@ -301,7 +301,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         // Off the UI thread from here on, whose dispatcher may end first: a program still running holds nothing.
         await started.WaitForExitAsync().ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         // However its reads end, a failed one included, they are over.
-        Task read = outputs.ContinueWith(_ => { }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        Task read = outputs.Ended();
         if (!await ChildProcesses.OutputEndsAsync(started, read).ConfigureAwait(false))
         {
             letGo.Cancel();

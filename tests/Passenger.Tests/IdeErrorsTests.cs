@@ -227,14 +227,13 @@ public sealed class IdeErrorsTests : IDisposable
     }
 
     /// <summary>Every place src's code lets go of a task it started (DroppedTasks): a discard, a call as a statement, a
-    /// lambda for a delegate that returns nothing. Passed over: a continuation whose lambda only reads the task's
-    /// Exception, which marks a fault seen and cannot fault itself, and a project not built, the container tools
-    /// (only the solution's build and the release make them).</summary>
+    /// lambda for a delegate that returns nothing, a continuation that only marks a fault seen among them (that is
+    /// UnawaitedWork.Dismiss's). Passed over: a project not built, the container tools (only the solution's build and the
+    /// release make them).</summary>
     [Gate]
     [AvaloniaFact]
     public void Nothing_in_src_leaves_a_fault_in_the_work_it_starts_for_the_garbage_collector_to_find()
     {
-        Regex onlySeen = new(@"\.ContinueWith\(\s*(static\s+)?(\w+)\s*=>\s*(_ = )?\2\.Exception\s*[,)]");
         string root = Passenger.Tests.Debugging.Helpers.Debuggees.Root;
         List<string> found = [];
         List<string> read = [];
@@ -250,17 +249,12 @@ public sealed class IdeErrorsTests : IDisposable
             read.Add(name);
             foreach ((string file, int line) in DroppedTasks.In(assembly))
             {
-                string[] lines = File.ReadAllLines(file);
-                string statement = string.Join(' ', lines.Skip(line - 1).Take(3).Select(l => l.Trim()));
-                if (!onlySeen.IsMatch(statement))
-                {
-                    found.Add($"{Path.GetRelativePath(root, file).Replace('\\', '/')}:{line}: {lines[line - 1].Trim()}");
-                }
+                found.Add($"{Path.GetRelativePath(root, file).Replace('\\', '/')}:{line}: {File.ReadAllLines(file)[line - 1].Trim()}");
             }
         }
         Assert.Contains("Passenger.App", read);
         Assert.True(found.Count == 0, $"Work whose task is let go reports its fault only once the task is collected, which may be never; "
-            + $"give it to IdeErrors.Observe (Core.UnawaitedWork.Observe below the app):\n{string.Join('\n', found.Order(StringComparer.Ordinal))}");
+            + $"give it to IdeErrors.Observe (Core.UnawaitedWork.Observe below the app), or to UnawaitedWork.Dismiss where its fault is no one's to hear:\n{string.Join('\n', found.Order(StringComparer.Ordinal))}");
     }
 
     [Gate]

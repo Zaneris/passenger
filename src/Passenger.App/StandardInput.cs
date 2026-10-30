@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
+using Passenger.Core;
 
 namespace Passenger.App;
 
@@ -32,14 +33,14 @@ internal static partial class StandardInput
     private static SafeFileHandle? TakeOnUnix()
     {
         // The console's own stream reads descriptor 0 whatever it is now, so the input is read through a copy.
-        int kept = Copy(0);
+        int kept = Libc.Duplicate(0);
         SafeFileHandle? given = kept >= 0 ? new SafeFileHandle(kept, ownsHandle: true) : null;
         if (kept >= 0)
         {
             Descriptors.CloseOnExec(kept);
         }
         using SafeFileHandle none = File.OpenHandle("/dev/null", FileMode.Open, FileAccess.Read);
-        if (Duplicate((int)none.DangerousGetHandle(), 0) != 0)
+        if (Libc.DuplicateTo((int)none.DangerousGetHandle(), 0) != 0)
         {
             Unmade();
         }
@@ -69,12 +70,6 @@ internal static partial class StandardInput
 
     private static void Unmade() =>
         IdeErrors.Write($"The standard input could not be made the null device (error {Marshal.GetLastPInvokeError()}): a program started may read what was given there");
-
-    [LibraryImport("libc", EntryPoint = "dup", SetLastError = true)]
-    private static partial int Copy(int descriptor);
-
-    [LibraryImport("libc", EntryPoint = "dup2", SetLastError = true)]
-    private static partial int Duplicate(int from, int to);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial nint GetStdHandle(int which);

@@ -33,7 +33,7 @@ public sealed class JsonRpcPeer : IDisposable
     {
         rpc.StartListening();
         // A peer ending on Windows resets its connection, faulting the conversation's end, which the requests waiting hear of.
-        _ = rpc.Completion.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        Core.UnawaitedWork.Dismiss(rpc.Completion);
     }
 
     /// <summary>Asks the peer and waits for its answer, read as <typeparamref name="T"/>. Canceled, it stops waiting at
@@ -43,7 +43,7 @@ public sealed class JsonRpcPeer : IDisposable
         using CancellationTokenSource asking = new();
         using CancellationTokenRegistration stop = tellCanceled ? cancel.Register(asking.Cancel) : default;
         Task<T?> answer = rpc.InvokeWithParameterObjectAsync<T?>(method, parameters, asking.Token);
-        _ = answer.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        Core.UnawaitedWork.Dismiss(answer);
         try
         {
             return await answer.WaitAsync(cancel);

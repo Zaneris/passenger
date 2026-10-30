@@ -161,7 +161,7 @@ public sealed class CredentialProviders
             {
                 ChildProcesses.Kill(process);
             }
-            await Task.WhenAll(reading, draining).WaitAsync(TimeSpan.FromSeconds(5)).ContinueWith(_ => { }, TaskScheduler.Default);
+            await Task.WhenAll(reading, draining).WaitAsync(TimeSpan.FromSeconds(5)).Ended();
             writing.Dispose();
         }
 
