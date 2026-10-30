@@ -89,6 +89,7 @@ public sealed partial class PassengerTools
             return Joined(mode, binary.Same ? null : binary.Unified(name));
         }
         string head = await Session.Vcs.HeadTextAsync(full) ?? string.Empty;
+        string? encoding = await Session.Vcs.EncodingChangeAsync(full);
         Passenger.App.Editors.OpenTexts texts = Editors.Texts();
         // Reading and comparing a large file would hold the person's window: the thread pool does both.
         (string diff, string? separators) = await BackgroundWork.Run(() =>
@@ -96,7 +97,7 @@ public sealed partial class PassengerTools
             string mine = texts.Text(full) ?? string.Empty;
             return (LineDiff.Unified(head, mine, name), LineDiff.SeparatorChanges(head, mine));
         }, cancel);
-        return Joined(mode, separators, diff.Length == 0 ? null : diff);
+        return Joined(mode, encoding, separators, diff.Length == 0 ? null : diff);
 
         static string Joined(params string?[] parts) => parts.OfType<string>().ToArray() is { Length: > 0 } said ? string.Join('\n', said) : "No changes";
     });

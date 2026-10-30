@@ -547,6 +547,14 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     public bool IsStoredAs(Encoding encoding, bool bom) =>
         (bom == HasBom && encoding.CodePage == Encoding.CodePage) || Bytes(encoding, bom).AsSpan().SequenceEqual(Bytes(Encoding, HasBom));
 
+    /// <summary>How the file stored as <paramref name="encoding"/>, with a BOM or without, differs from how this text is
+    /// stored, in words: "Byte order mark added" or "removed", or "Encoding changed from UTF-8 to UTF-16 LE"; null where
+    /// both store these characters as the same bytes.</summary>
+    public string? StoredChange(Encoding encoding, bool bom) =>
+        IsStoredAs(encoding, bom) ? null
+        : encoding.CodePage == Encoding.CodePage ? (bom ? "Byte order mark added" : "Byte order mark removed")
+        : $"Encoding changed from {EncodingName} to {FileEncoding.Of(encoding, bom).Name}";
+
     private byte[] Bytes(Encoding encoding, bool bom) => [.. bom ? Preamble(encoding) : [], .. encoding.GetBytes(Text)];
 }
 

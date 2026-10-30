@@ -216,8 +216,8 @@ public sealed class DiffView : DockPanel, IOwnKeys
         IdeErrors.Observe(ShowSeparatorsAsync(diff));
     }
 
-    /// <summary>What else differs than the lines, which the count says after theirs: the file's mode, as its change
-    /// says it.</summary>
+    /// <summary>What else differs than the lines, which the count says after theirs: the file's encoding or byte order
+    /// mark and its mode, as their changes say them.</summary>
     public string? Note
     {
         get => note;

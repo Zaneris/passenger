@@ -146,6 +146,32 @@ public sealed class GitFileFormsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A file whose only change is a UTF-8 byte order mark added, and one saved again as UTF-16, each listed as
+    /// modified: Show Diff and an agent's vcs_status with its path say the mark added and the encoding changed, where
+    /// each said no differences, so neither change is committed unseen.</summary>
+    [AvaloniaFact]
+    public void Show_diff_and_vcs_status_of_a_file_changed_only_in_its_byte_order_mark_or_its_encoding_say_what_changed()
+    {
+        File.WriteAllText(Path.Combine(folder, "Marked.cs"), "class Marked\n{\n}\n", new System.Text.UTF8Encoding(false));
+        File.WriteAllText(Path.Combine(folder, "notes.txt"), "Notes: café\n", new System.Text.UTF8Encoding(false));
+        Git("add", "-A");
+        Git("commit", "-q", "-m", "Marked and notes");
+        File.WriteAllText(Path.Combine(folder, "Marked.cs"), "class Marked\n{\n}\n", new System.Text.UTF8Encoding(true));
+        File.WriteAllText(Path.Combine(folder, "notes.txt"), "Notes: café\n", System.Text.Encoding.Unicode);
+
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.Landed(() => window.Vcs.Changes.Count == 2, "Marked.cs and notes.txt listed as changed");
+        Passenger.App.Mcp.PassengerTools agent = new(window);
+        foreach ((string name, string said) in new[] { ("Marked.cs", "Byte order mark added"), ("notes.txt", "Encoding changed from UTF-8 to UTF-16 LE") })
+        {
+            DiffWindow diff = Ui.Landed(window.ShowDiffAsync(Changed(window, name)), $"Show Diff on {name}")!;
+            Ui.Landed(() => diff.View.Said == said, $"Show Diff saying \"{said}\" of {name}, where it says \"{diff.View.Said}\"");
+            diff.Close();
+            Assert.Equal(said, Ui.Await(agent.VcsStatus(name), $"vcs_status of {name}"));
+        }
+        window.Close();
+    }
+
     private static string Changed(MainWindow window, string name) => window.Vcs.Changes.Single(c => c.Name == name).Path;
 
     private string Git(params string[] arguments) => TestGit.Run(folder, arguments);

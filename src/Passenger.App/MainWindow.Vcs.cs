@@ -402,8 +402,8 @@ public partial class MainWindow
 
     /// <summary>Show Diff: the last commit's text beside the file's, in a window over this one. The right side is the
     /// open file's own text when it is open, so an edit or a change put back there is the file's, in the file's colours as
-    /// they change; a change of the file's mode is said over them. A binary file has no lines to compare: the status bar
-    /// says how it differs.</summary>
+    /// they change; a change of the file's encoding, byte order mark or mode is said over them. A binary file has no
+    /// lines to compare: the status bar says how it differs.</summary>
     public async Task<DiffWindow?> ShowDiffAsync(string path)
     {
         if (session.Vcs.Repository is null)
@@ -418,6 +418,7 @@ public partial class MainWindow
             return null;
         }
         OpenDocument? open = Editors.Find(path) is { HoldsText: true } held ? held : null;
+        Task<string?> encoding = session.Vcs.EncodingChangeAsync(path);
         TextDocument mine = open?.Text ?? new TextDocument(EditorArea.ReadText(path) ?? string.Empty);
         // An open file's differences are its change bars' own when they are of its text now.
         if (open is null || await session.Vcs.DiffAsync(open) is not { } diff)
@@ -426,8 +427,9 @@ public partial class MainWindow
             TextSnapshot text = mine.Snapshot;
             diff = await BackgroundWork.Run(() => FileDiff.Compare(head, text));
         }
+        string[] besides = [.. new[] { await encoding, mode?.Said }.OfType<string>()];
         DiffWindow window = OpenLocalDiff(path, open, mine, diff, "HEAD");
-        window.View.Note = mode?.Said;
+        window.View.Note = besides.Length == 0 ? null : string.Join("; ", besides);
         return window;
     }
 

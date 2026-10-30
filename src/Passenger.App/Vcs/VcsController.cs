@@ -1409,6 +1409,23 @@ public sealed class VcsController : IDisposable
         return new BinaryChange(before?.Length, now?.Length, before is not null && now is not null && before.AsSpan().SequenceEqual(now));
     }
 
+    /// <summary>How a file's encoding or byte order mark differs from the last commit's, in words
+    /// (<see cref="FileText.StoredChange"/>): the open file's as its save would write it, else the file's on disk; null
+    /// where both are stored alike, or either is missing or binary.</summary>
+    public async Task<string?> EncodingChangeAsync(string path)
+    {
+        UiThread.Check();
+        Task<FileVersion?> version = HeadAsync(path);
+        OpenDocument? open = Holding(path);
+        (System.Text.Encoding Encoding, bool Bom)? now = open is not null ? (open.Encoding, open.HasBom)
+            : await BackgroundWork.Run(() => File.Exists(path) && FileText.Load(path) is { } disk ? (disk.Encoding, disk.HasBom) : ((System.Text.Encoding, bool)?)null);
+        if (await version is not { Stored: { } head } || now is not { } stored)
+        {
+            return null;
+        }
+        return await BackgroundWork.Run(() => head.StoredChange(stored.Encoding, stored.Bom));
+    }
+
     /// <summary>A file as a revision has it, read in the open file's encoding, or null when the revision has no such
     /// file.</summary>
     public async Task<FileVersion?> VersionAsync(string revision, string path, string readAs)
@@ -1423,8 +1440,10 @@ public sealed class VcsController : IDisposable
     }
 
     /// <summary>The encoding the open file at a path is read in, or null when none holds its text.</summary>
-    private System.Text.Encoding? EncodingOf(string path) =>
-        documents.Keys.FirstOrDefault(d => d.HoldsText && PathNames.Same(d.Path, path))?.Encoding;
+    private System.Text.Encoding? EncodingOf(string path) => Holding(path)?.Encoding;
+
+    /// <summary>The open file that holds the text of a path, or null.</summary>
+    private OpenDocument? Holding(string path) => documents.Keys.FirstOrDefault(d => d.HoldsText && PathNames.Same(d.Path, path));
 
     private static async Task<FileVersion?> ReadAsync(Task<byte[]?> bytes, System.Text.Encoding? encoding, string path) =>
         await bytes is { } read ? await BackgroundWork.Run(() => FileVersion.Read(read, encoding, path)) : null;
