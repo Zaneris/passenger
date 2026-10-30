@@ -1201,6 +1201,47 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>The run's Rerun after a service's code changed attaches the debugger again to every replica attached to as it
+    /// ran, in turn, whichever refuses: of three replicas attached to, the second's next start ends at once, so the debugger
+    /// cannot reach it, which Rerun says, and the third is attached to again all the same.</summary>
+    [AvaloniaFact]
+    public void Rerun_attaches_again_to_each_service_attached_as_it_ran_after_one_attach_is_refused()
+    {
+        project.Reset();
+        project.BuildApi();
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        string[] instances = ["aaaaaaaa", "bbbbbbbb", "cccccccc"];
+        StandInReplicas replicas = new(project, backend, window, instances);
+        try
+        {
+            Dictionary<string, int> first = replicas.Start(instances);
+            foreach (string instance in instances)
+            {
+                replicas.Choose(instance);
+                FindAction(window, "Attach to Service");
+                Ui.WaitFor(() => replicas.Of(instance) is [{ DebugTab.IsLive: true }], () => $"Attach to replica {instance} as it runs ({window.Status})", TimeSpan.FromMinutes(2));
+            }
+
+            // Its next start runs itself as the child it would start, which ends at once.
+            replicas.Arguments[instances[1]] = ["child"];
+            File.AppendAllText(project.PathOf($"{StandInAppHost.Api}/Program.cs"), "// Changed for Rerun.\n");
+            // The run's own Rerun, which the window's routes to Debug while a session is live.
+            string? reran = Ui.Await(window.Builds.RerunAsync(), "Rerun of the replicas, whose code changed", TimeSpan.FromMinutes(3));
+            Assert.True(replicas.Of(instances[2]) is [{ ProcessId: int restarted, DebugTab.IsLive: true }] && restarted != first[instances[2]],
+                $"After the second replica's attach was refused, Rerun restarted the third without the debugger ({window.Status})");
+            Assert.True(replicas.Of(instances[0]) is [{ ProcessId: int before, DebugTab.IsLive: true }] && before != first[instances[0]],
+                $"Rerun did not attach again to the first replica, restarted ({window.Status})");
+            Assert.True(reran?.Contains("apiservice", StringComparison.Ordinal) == true, $"Rerun did not say the second replica's attach was refused: {reran ?? "nothing"}");
+        }
+        finally
+        {
+            window.Close();
+            replicas.Dispose();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>Profile, Debug, Run without Debugger and Attach of one replica of a service its AppHost runs as two, chosen in
     /// the Aspire window, each act on that replica's own program, never the start of the service's name that came last:
     /// Profile records it, Debug restarts it held and attaches to it, its hold that replica's alone, so the other's restart
@@ -1420,11 +1461,15 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
                 }
                 if (command.CommandName is "resource-start" or "resource-restart")
                 {
-                    starts.Enqueue(Waiting.Apart(() => project.StartApiAsync("apiservice", environment: Told(instance), subscribe: false)));
+                    string[]? given = Arguments.GetValueOrDefault(instance);
+                    starts.Enqueue(Waiting.Apart(() => project.StartApiAsync("apiservice", environment: Told(instance), subscribe: false, arguments: given)));
                 }
             };
             return programs;
         }
+
+        /// <summary>The arguments a replica's next starts are given, by its instance (none where it has none).</summary>
+        public System.Collections.Concurrent.ConcurrentDictionary<string, string[]> Arguments { get; } = new(StringComparer.Ordinal);
 
         /// <summary>What DCP tells a replica's start of its instance.</summary>
         private static Dictionary<string, string> Told(string instance) => new() { ["OTEL_RESOURCE_ATTRIBUTES"] = $"service.instance.id={instance}" };

@@ -168,9 +168,11 @@ public sealed partial class BuildRunController
             List<string> notes = [];
             (IRunService Service, string? Refused)[] attached = held.Count == 0 ? [] : await AttachEachAsync(run, held, Task.CompletedTask, notes, work, work.Stopping);
             string? unattached = attached.Select(a => a.Refused).FirstOrDefault(r => r is not null);
+            // Each attached to in turn, whatever one before it refused: the first refusal is the one said.
             foreach (IRunService again in running)
             {
-                unattached ??= await AttachAsync(run, again, Task.CompletedTask, notes, work.Stopping, RunStart.Debug);
+                string? refused = await AttachAsync(run, again, Task.CompletedTask, notes, work.Stopping, RunStart.Debug);
+                unattached ??= refused;
             }
             // Restarted held, a service no debugger reached would wait for good: it is made again unheld, its hold let go.
             if (attached.Where(a => a.Refused is not null).Select(a => a.Service).ToList() is { Count: > 0 } stuck)
