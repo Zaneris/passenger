@@ -300,6 +300,32 @@ public sealed partial class FileTests : IDisposable
         Assert.Equal("public class One { }\n", File.ReadAllText(path));
     }
 
+    /// <summary>A tab closed while its save waits for a file another program holds closes at once; once the save gives up,
+    /// the file comes back in a tab with its edits, unsaved, rather than lost in no tab and no file.</summary>
+    [AvaloniaFact]
+    public void A_tab_closed_while_its_save_waits_for_a_held_file_comes_back_with_its_edits_when_the_save_never_lands()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
+        string path = Path.Combine(folder, "One.cs");
+        File.WriteAllText(path, "class One { }\n");
+        MainWindow window = Open();
+        Edit(window, "One.cs", "public ");
+        using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Ui.Run(window, AppActions.CloseTab, settle: false);
+            Ui.PumpUntil(() => window.EditorArea.Active is null, "the tab to close as its save waits for the held file", TimeSpan.FromSeconds(10));
+            Ui.PumpUntil(() => window.EditorArea.Active is { Name: "One.cs" }, "One.cs back in a tab once its save gave up");
+        }
+        Passenger.App.Workspace.OpenDocument back = window.EditorArea.Active!;
+        Assert.True(back.IsModified, "One.cs came back with its edits taken as saved, though its save never landed");
+        Assert.Equal("public class One { }\n", back.Text.Snapshot.ToString());
+        Assert.StartsWith("One.cs could not be saved: ", window.Status, StringComparison.Ordinal);
+        Assert.Equal("class One { }\n", File.ReadAllText(path));
+        window.Close();
+        Ui.WaitFor(() => !window.IsVisible, () => $"the window to close, saving the file let go: {window.Status}");
+        Assert.Equal("public class One { }\n", File.ReadAllText(path));
+    }
+
     /// <summary>The text of bytes Local History kept, by their hash.</summary>
     private static string? Kept(Passenger.App.History.LocalHistory history, string? hash) =>
         hash is not null && history.Content(hash) is { } bytes ? Encoding.UTF8.GetString(bytes) : null;

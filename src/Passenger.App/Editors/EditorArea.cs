@@ -330,7 +330,11 @@ public sealed partial class EditorArea : UserControl
         {
             held.Remove(document);
         }
-        if (!held.ContainsKey(document))
+        if (!forGood && document.Landing is { IsCompleted: false } landing)
+        {
+            IdeErrors.Observe(KeptUntilLandedAsync(document, landing, Hold(document)));
+        }
+        else if (!held.ContainsKey(document))
         {
             documents.Remove(document);
             Closed?.Invoke(this, document);
@@ -339,6 +343,31 @@ public sealed partial class EditorArea : UserControl
         Collapse();
         ActiveChanged?.Invoke(this, EventArgs.Empty);
         return true;
+    }
+
+    /// <summary>A file closed while its save is still on its way to the disk stays open with no tab, held, until the save
+    /// lands, then closes; one that never lands comes back in a tab, its edits unsaved again, saying why once it is shown.</summary>
+    private async Task KeptUntilLandedAsync(OpenDocument document, Task<bool> landing, IDisposable hold)
+    {
+        string? why = null;
+        EventHandler<string> failed = (_, said) => why = said;
+        document.WriteFailed += failed;
+        try
+        {
+            if (!await landing && documents.Contains(document) && !HasTab(document))
+            {
+                Activate(document);
+                if (why is not null)
+                {
+                    SaveFailed?.Invoke(this, why);
+                }
+            }
+        }
+        finally
+        {
+            document.WriteFailed -= failed;
+            hold.Dispose();
+        }
     }
 
     private void LetGo(OpenDocument document)
