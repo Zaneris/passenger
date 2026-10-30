@@ -76,8 +76,8 @@ public sealed partial class SuspendedLaunch : IDisposable
         SafeFileHandle input = new(Check(Dup(0), "dup"), ownsHandle: true);
         SafeFileHandle output = new(Check(Dup(1), "dup"), ownsHandle: true);
         using SafeFileHandle nothing = File.OpenHandle("/dev/null", FileMode.Open, FileAccess.Read);
-        Check(Dup2((int)nothing.DangerousGetHandle(), 0), "dup2");
-        Check(Dup2(2, 1), "dup2");
+        Check(Libc.DuplicateTo((int)nothing.DangerousGetHandle(), 0), "dup2");
+        Check(Libc.DuplicateTo(2, 1), "dup2");
         return (new FileStream(input, FileAccess.Read, 1), new FileStream(output, FileAccess.Write, 1));
     }
 
@@ -124,9 +124,9 @@ public sealed partial class SuspendedLaunch : IDisposable
                 int savedErr = Check(Dup(2), "dup");
                 try
                 {
-                    Check(Dup2(childIn, 0), "dup2");
-                    Check(Dup2(childOut, 1), "dup2");
-                    Check(Dup2(childErr, 2), "dup2");
+                    Check(Libc.DuplicateTo(childIn, 0), "dup2");
+                    Check(Libc.DuplicateTo(childOut, 1), "dup2");
+                    Check(Libc.DuplicateTo(childErr, 2), "dup2");
                     // dbgshim splits the command line back by Windows' rules on every system.
                     int hr = DbgShim.CreateProcessForLaunch(WindowsCommandLine.Of(arguments.Prepend(program)), true, environmentBlock, folder, out uint pid, out resume);
                     Marshal.ThrowExceptionForHR(hr);
@@ -134,9 +134,9 @@ public sealed partial class SuspendedLaunch : IDisposable
                 }
                 finally
                 {
-                    Dup2(savedIn, 0);
-                    Dup2(savedOut, 1);
-                    Dup2(savedErr, 2);
+                    Libc.DuplicateTo(savedIn, 0);
+                    Libc.DuplicateTo(savedOut, 1);
+                    Libc.DuplicateTo(savedErr, 2);
                     Close(savedIn);
                     Close(savedOut);
                     Close(savedErr);
@@ -376,7 +376,7 @@ public sealed partial class SuspendedLaunch : IDisposable
     {
         if (process is null)
         {
-            _ = SignalProcess(ProcessId, SigKill);
+            _ = Libc.Signal(ProcessId, SigKill);
             return;
         }
         try
@@ -426,12 +426,6 @@ public sealed partial class SuspendedLaunch : IDisposable
 
     [LibraryImport("libSystem.Native", EntryPoint = "SystemNative_Pipe", SetLastError = true)]
     private static partial int SystemNativePipe(ref int ends, int flags);
-
-    [LibraryImport("libc", EntryPoint = "kill", SetLastError = true)]
-    private static partial int SignalProcess(int processId, int signal);
-
-    [LibraryImport("libc", EntryPoint = "dup2", SetLastError = true)]
-    private static partial int Dup2(int from, int to);
 
     [LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
     private static partial int Close(int descriptor);
