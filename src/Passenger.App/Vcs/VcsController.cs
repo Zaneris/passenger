@@ -619,8 +619,8 @@ public sealed class VcsController : IDisposable
         {
             return new CommitResult(Report(false, "Resolve conflicts in order to commit"), null, null);
         }
-        // A commit of its own would go beside the rebase's on its detached head, the rebase left in progress.
-        if (Merge.Operation is MergeOperation.Rebase)
+        // Stopped for conflicts, a commit of its own would go beside the rebase's; a step that stops it (an edit) asks for one.
+        if (Merge.Operation is MergeOperation.Rebase && Merge.Stop is null)
         {
             return new CommitResult(Report(false, $"{Merge.UnderWay}: Continue Rebase commits what is resolved and goes on, or Abort Rebase ends it"), null, null);
         }

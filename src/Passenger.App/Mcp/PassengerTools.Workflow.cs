@@ -23,8 +23,9 @@ public sealed partial class PassengerTools
         "While a merge, rebase, unstash or cherry-pick is stopped for conflicts, conflicts says what is under way, which " +
         "branches yours and theirs are (in a rebase yours is the branch being rebased) and whether each side modified or " +
         "deleted each file in conflict; vcs_resolve resolves them. underWay names a merge, rebase, cherry-pick or revert still " +
-        "in progress, its conflicts resolved or not. With path, that file's changes since the last commit as a " +
-        "unified diff: the editor's text when it is open (unsaved changes included), else the file on disk.")]
+        "in progress, its conflicts resolved or not, or a rebase stopped at an edit, break or exec, where vcs_commit commits " +
+        "and amends. With path, that file's changes since the last commit as a unified diff: the editor's text when it is " +
+        "open (unsaved changes included), else the file on disk.")]
     public async Task<object> VcsStatus(string? path = null, CancellationToken cancel = default) =>
         path is null ? await VcsChanges(cancel) : await VcsDiff(path, cancel);
 

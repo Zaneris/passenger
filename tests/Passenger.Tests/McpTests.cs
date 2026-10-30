@@ -664,6 +664,45 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(Directory.Exists(Path.Combine(repository, ".git", "rebase-merge")), "The rebase is no longer in progress after vcs_commit was refused");
     }
 
+    /// <summary>An interactive rebase stopped at an edit step is said by vcs_status as stopped to edit that commit, and there
+    /// vcs_commit amends it as git asks: Continue Rebase then replays the rest onto the amended commit, which the branch's
+    /// history keeps with the agent's change and message.</summary>
+    [Fact]
+    public async Task At_an_interactive_rebases_edit_stop_an_agent_amends_the_commit_and_the_rebase_goes_on_with_it()
+    {
+        string repository = TestFolders.Create("mcp-rebase-edit-");
+        DeleteAtEnd(repository);
+        string notes = Path.Combine(repository, "Notes.txt");
+        File.WriteAllText(notes, "one\n");
+        await TestGit.InitAsync(repository);
+        File.WriteAllText(notes, "one\ntwo\n");
+        await TestGit.RunAsync(repository, "commit", "-q", "-am", "Two");
+        File.WriteAllText(Path.Combine(repository, "Later.txt"), "later\n");
+        await TestGit.RunAsync(repository, "add", "Later.txt");
+        await TestGit.RunAsync(repository, "commit", "-q", "-m", "Later");
+        ProcessStartInfo editing = ChildProcesses.Command("git", ["rebase", "-i", "HEAD~2"], repository);
+        // The list's first step, Two's pick, made an edit, as a person's editor would.
+        editing.Environment["GIT_SEQUENCE_EDITOR"] = "sed -i.bak -e 1s/^pick/edit/";
+        ChildResult rebasing = await ChildProcesses.RunAsync(editing, limit: TimeSpan.FromMinutes(1), cancel: Cancel);
+        Assert.True(File.Exists(Path.Combine(repository, ".git", "rebase-merge", "amend")), $"The rebase was to stop to edit Two: {rebasing.Error}{rebasing.Output}");
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        JsonElement stopped = await Call(client, McpTools.VcsStatus);
+        string? underWay = stopped.TryGetProperty("underWay", out JsonElement said) ? said.GetString() : null;
+        Assert.True(underWay?.StartsWith("Rebasing main onto ", StringComparison.Ordinal) == true && underWay.Contains(", stopped to edit ", StringComparison.Ordinal),
+            $"vcs_status did not say the rebase stopped to edit Two: {stopped.GetRawText()}");
+        File.WriteAllText(notes, "one\nTWO\n");
+        CallToolResult amend = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Two in capitals", ["amend"] = true });
+        Assert.True(amend.IsError != true, $"vcs_commit refused to amend the commit an interactive rebase stopped to edit: {Text(amend)}");
+        Assert.Equal($"Ran {AppActions.ContinueRebase}", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ContinueRebase })).GetString());
+        Assert.True(await Waiting.UntilAsync(() => !Directory.Exists(Path.Combine(repository, ".git", "rebase-merge")), TimeSpan.FromMinutes(1), Cancel),
+            $"Continue Rebase did not finish the rebase after the amend: {(await Call(client, McpTools.VcsStatus)).GetRawText()}");
+
+        Assert.Equal("main", (await TestGit.RunAsync(repository, "rev-parse", "--abbrev-ref", "HEAD")).Trim());
+        Assert.Equal("Later\nTwo in capitals\nFirst", (await TestGit.RunAsync(repository, "log", "--format=%s")).Trim().ReplaceLineEndings("\n"));
+        Assert.Equal("one\nTWO\n", (await TestGit.RunAsync(repository, "show", "HEAD~1:Notes.txt")).ReplaceLineEndings("\n"));
+    }
+
     /// <summary>An agent's amend with no paths changes the last commit's message alone: a rename and a change staged in the
     /// index (as the IDE's own rename and another program's git add leave them) go into no commit and stay changes.</summary>
     [Fact]

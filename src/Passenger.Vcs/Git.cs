@@ -438,8 +438,8 @@ public sealed class Git
     }
 
     /// <summary>What the tree is in the middle of (a merge, a rebase, a cherry-pick or a revert stopped for its
-    /// conflicts), read from git's own files, and the names its two sides go by. <paramref name="branch"/> and
-    /// <paramref name="head"/> are the status's, ours outside a rebase.</summary>
+    /// conflicts, or a rebase at a step of its list that stops it), read from git's own files, and the names its two
+    /// sides go by. <paramref name="branch"/> and <paramref name="head"/> are the status's, ours outside a rebase.</summary>
     public async Task<MergeState> MergeStateAsync(string? branch, string? head)
     {
         string? message = Read("MERGE_MSG");
@@ -457,7 +457,9 @@ public sealed class Git
             string theirs = rebased.StartsWith("refs/heads/", StringComparison.Ordinal) ? rebased[11..] : "detached HEAD";
             string? onto = Read(System.IO.Path.Combine(folder, "onto"));
             string? applying = Read("REBASE_HEAD") ?? Read(System.IO.Path.Combine(folder, "stopped-sha"));
-            return new MergeState(MergeOperation.Rebase, onto is null ? ours : await NameAsync(onto), theirs, Short(applying), null);
+            // A pick stopped for conflicts leaves its message in MERGE_MSG, which an edit, a break or an exec never writes.
+            RebaseStop? stop = message is null && folder == "rebase-merge" ? RebaseStop.Of(Read(System.IO.Path.Combine(folder, "done"))) : null;
+            return new MergeState(MergeOperation.Rebase, onto is null ? ours : await NameAsync(onto), theirs, Short(applying), null, stop);
         }
         if (Read("CHERRY_PICK_HEAD") is { } picked)
         {

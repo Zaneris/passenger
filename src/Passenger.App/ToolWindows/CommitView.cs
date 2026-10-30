@@ -144,7 +144,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         };
         placeholder = new TextBlock { Classes = { "emptyText" } };
 
-        // What git is in the middle of, said over Amend until it ends: its conflicts resolved, a commit here would go beside it.
+        // What git is in the middle of, said over Amend until it ends, its conflicts resolved or a rebase stopped at an edit.
         underWayText = new TextBlock { TextWrapping = TextWrapping.Wrap };
         continueRebase = new Button { Classes = { "link" }, Content = "Continue Rebase" };
         continueRebase.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.ContinueRebase);
