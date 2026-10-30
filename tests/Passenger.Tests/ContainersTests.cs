@@ -565,8 +565,11 @@ public sealed class ContainersTests
         }
     }
 
+    /// <summary>The Files tab copies a container's file only into Passenger's cache, never a huge one, and as the person's
+    /// alone: the cache's folders 0700 and the copy 0600 whatever the umask, as a secret's file may be one; a file opened
+    /// again shows its new text.</summary>
     [AvaloniaFact]
-    public void A_container_can_never_have_its_files_tab_write_outside_passengers_cache_nor_copy_a_huge_file_and_a_file_opened_again_shows_its_new_text()
+    public void A_container_can_never_have_its_files_tab_write_outside_passengers_cache_nor_copy_a_huge_file_and_its_copies_are_the_persons_alone()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The escape is written as a path of this machine's from its root, which a Windows path is not");
@@ -598,6 +601,17 @@ public sealed class ContainersTests
         Ui.WaitFor(() => window.EditorArea.Active?.Path.EndsWith("note.txt", StringComparison.Ordinal) == true, "note.txt open in the editor");
         Passenger.App.Workspace.OpenDocument note = window.EditorArea.Active!;
         Assert.Equal("first\n", note.Text.Snapshot.ToString());
+        Assert.True(PathNames.IsUnder(note.Path, PathNames.Canonical(cache)), $"note.txt's copy {note.Path} is not under the cache {cache}");
+        if (!OperatingSystem.IsWindows())
+        {
+            const UnixFileMode Folder = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+            for (string? at = Path.GetDirectoryName(note.Path); at is not null && PathNames.Within(at, PathNames.Canonical(cache)); at = Path.GetDirectoryName(at))
+            {
+                Assert.True(File.GetUnixFileMode(at) == Folder, $"The cache's folder {at} is {File.GetUnixFileMode(at)}, so another user may enter it");
+            }
+            Assert.True(File.GetUnixFileMode(note.Path) == (UnixFileMode.UserRead | UnixFileMode.UserWrite),
+                $"note.txt's copy is {File.GetUnixFileMode(note.Path)}, so another user may read a container's secret the person looked at");
+        }
         Docker.Run("exec", name, "sh", "-c", "echo second > /note.txt");
         _ = view.Files.ActivateAsync(view.Files.Entries.First(f => f.Path == "/note.txt"));
         Ui.WaitFor(() => note.Text.Snapshot.ToString() == "second\n", $"note.txt's new text in its tab, not {note.Text.Snapshot}");

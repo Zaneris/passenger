@@ -898,8 +898,9 @@ public sealed class ComposeModelException(string name, string said) : LaunchExce
 }
 
 /// <summary>The state's files that only the person may read on macOS and Linux (the development certificate's copy and its
-/// password, a run's override and single service's compose file, which name them and the configuration's environment), so
-/// from the moment each is made: a folder made 0700, a file 0600 as it is created, never set so after its text is in.</summary>
+/// password, a run's override and single service's compose file, which name them and the configuration's environment, a
+/// file copied out of a container), so from the moment each is made: a folder made 0700, a file 0600 as it is created,
+/// never set so after its text is in.</summary>
 internal static class OwnFiles
 {
     private const UnixFileMode OwnersFile = UnixFileMode.UserRead | UnixFileMode.UserWrite;
@@ -922,6 +923,17 @@ internal static class OwnFiles
     /// <summary>Writes a file only the person reads, whole (<see cref="AtomicFile"/>): one there before is replaced, never
     /// written into, since it would keep the mode it had.</summary>
     public static void Write(string path, string text) => AtomicFile.Write(path, System.Text.Encoding.UTF8.GetBytes(text), OwnersFile);
+
+    /// <summary>A new file only the person reads, opened to be written (one there already refused).</summary>
+    public static FileStream Create(string path)
+    {
+        FileStreamOptions options = new() { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
+        if (!OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = OwnersFile;
+        }
+        return new FileStream(path, options);
+    }
 
     /// <summary>A file another program wrote in such a folder, made only the person's to read too.</summary>
     public static void Keep(string path)

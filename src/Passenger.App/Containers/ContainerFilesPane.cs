@@ -230,7 +230,8 @@ public sealed class ContainerFilesPane : DockPanel
 
     /// <summary>Copies a file out of the container into <paramref name="copy"/>: the tar <c>docker cp</c> writes read as it
     /// comes, a file over <see cref="Largest"/> refused at its header with the copy ended there, and the file written beside
-    /// its place, then renamed over it, only once its folder is found under <paramref name="cache"/> with no link leading out.
+    /// its place, then renamed over it, only once its folder is found under <paramref name="cache"/> with no link leading out;
+    /// the folders and the copy only the person's (<see cref="OwnFiles"/>).
     /// Null once copied, else why not.</summary>
     private static async Task<string?> CopyAsync(ContainerEngine docker, string id, string path, string copy, string cache)
     {
@@ -301,7 +302,14 @@ public sealed class ContainerFilesPane : DockPanel
             return $"{path} is larger than 16 MB";
         }
         string folder = System.IO.Path.GetDirectoryName(copy)!;
-        Directory.CreateDirectory(folder);
+        // Only the person may enter the cache and the folders to the copy, which may be a secret's.
+        string at = System.IO.Path.GetFullPath(cache);
+        OwnFiles.Folder(at);
+        foreach (string name in System.IO.Path.GetRelativePath(at, folder).Split(System.IO.Path.DirectorySeparatorChar))
+        {
+            at = System.IO.Path.Combine(at, name);
+            OwnFiles.Folder(at);
+        }
         // Only Passenger writes there; a link that would lead the copy out of the cache is refused all the same.
         if (!PathNames.IsUnder(PathNames.Canonical(folder), PathNames.Canonical(cache)))
         {
@@ -311,7 +319,7 @@ public sealed class ContainerFilesPane : DockPanel
         try
         {
             // The state's own copy, never a workspace file: FileText's writes are for what a person edits.
-            await using (FileStream written = new(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            await using (FileStream written = OwnFiles.Create(partial))
             {
                 if (entry.DataStream is { } data)
                 {
