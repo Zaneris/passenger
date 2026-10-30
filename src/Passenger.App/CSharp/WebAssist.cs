@@ -1,10 +1,10 @@
-using System.Text;
 using System.Text.RegularExpressions;
 using Passenger.App.Web;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Text;
+using Passenger.Workspace;
 using Passenger.Xaml.Features;
 
 namespace Passenger.App.CSharp;
@@ -290,54 +290,20 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
     }
 
     /// <summary>Rename's edits for a JSON property, in order: its name, quoted, and in a package.json's scripts every
-    /// <c>npm run</c> of a script renamed with it.</summary>
+    /// <c>npm run</c> of a script renamed with it, plain or quoted, the new name quoted where the shell needs it
+    /// (<see cref="NpmScripts.Renamed"/>).</summary>
     internal static IReadOnlyList<TextEdit> JsonRenameEdits(List<DocumentSymbol> path, TextRange key, ServerLines lines, string name, bool packageJson)
     {
-        string written = JsonStringContent(name);
-        List<TextEdit> edits = [new TextEdit(key.Start, key.Length, $"\"{written}\"")];
+        List<TextEdit> edits = [new TextEdit(key.Start, key.Length, $"\"{NpmScripts.StringContent(name)}\"")];
         if (packageJson && path is [{ Name: "scripts" } scripts, _])
         {
             TextRange within = TextRange.FromBounds(lines.OffsetOf(scripts.Range.Start), lines.OffsetOf(scripts.Range.End));
-            string text = lines.Text.GetText(within);
-            foreach (Match run in Runs(path[^1].Name).Matches(text))
+            foreach ((int start, int length, string run) in NpmScripts.Renamed(lines.Text.GetText(within), path[^1].Name, name))
             {
-                Group script = run.Groups["script"];
-                edits.Add(new TextEdit(within.Start + script.Index, script.Length, written));
+                edits.Add(new TextEdit(within.Start + start, length, run));
             }
         }
         return [.. edits.OrderBy(e => e.Start)];
-    }
-
-    /// <summary>Text as a JSON string holds it, read as typed: only what JSON must escape is (a quote, a backslash, a control
-    /// character), where a serializer's encoder escapes every letter outside ASCII and <c>+</c>, <c>&lt;</c> and the like.</summary>
-    private static string JsonStringContent(string text)
-    {
-        StringBuilder written = new(text.Length);
-        foreach (char c in text)
-        {
-            switch (c)
-            {
-                case '"' or '\\':
-                    written.Append('\\').Append(c);
-                    break;
-                case '\n':
-                    written.Append("\\n");
-                    break;
-                case '\r':
-                    written.Append("\\r");
-                    break;
-                case '\t':
-                    written.Append("\\t");
-                    break;
-                case < ' ':
-                    written.Append($"\\u{(int)c:x4}");
-                    break;
-                default:
-                    written.Append(c);
-                    break;
-            }
-        }
-        return written.ToString();
     }
 
     /// <summary>The image a Dockerfile's FROM names where an offset is on it, with its registry page; null elsewhere.</summary>
@@ -388,9 +354,6 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         }
         return null;
     }
-
-    /// <summary>A script run by its name from another: npm's, Yarn's and pnpm's run.</summary>
-    private static Regex Runs(string script) => new($@"\b(?:npm|yarn|pnpm)\s+run(?:-script)?\s+(?<script>{Regex.Escape(script)})(?=$|[\s""&;|])");
 
     [GeneratedRegex(@"\b(?:npm|yarn|pnpm)\s+run(?:-script)?\s+(?<script>[\w:.\-]+)")]
     private static partial Regex AnyRun();
