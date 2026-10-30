@@ -53,6 +53,38 @@ public class CreateFromUsageTests
     }
 
     [Theory]
+    [InlineData("Shop", "@event", "Shop.event", "using:Shop", "vm:event")]
+    [InlineData("Shop.@class", "Order", "Shop.class.Order", "using:Shop.class", "vm:Order")]
+    public void A_property_a_binding_lacks_is_made_in_its_type_where_the_type_or_its_namespace_is_named_with_an_escaped_keyword(
+        string space, string declared, string fullName, string uri, string dataType)
+    {
+        string models = $$"""
+            namespace {{space}}
+            {
+                public class {{declared}}
+                {
+                    public string Title { get; set; }
+                }
+            }
+
+            """;
+        string window = $"""
+            <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="{uri}" x:DataType="{dataType}">
+                <TextBlock Text="{"{"}Binding Subtitle{"}"}" />
+            </Window>
+            """;
+        XamlFile file = XamlFiles.Read("MainWindow.axaml", window, AvaloniaDialect.Instance, ("Models.cs", models));
+        ClrType owner = Assert.IsType<ClrType>(file.Types.Find(fullName));
+        XmlAttribute text = file.Tree.Elements.Single(e => e.LocalName == "TextBlock").Attribute("Text")!;
+        XamlFix? fix = CreateFromUsage.Property(file, owner, "Subtitle", text, last: true);
+        Assert.True(fix is not null, $"Create property for a binding of {fullName}, declared as {declared} in {space}, offered nothing, so the binding still finds nothing");
+        string made = XamlFiles.Applied(models, fix.Edits(models));
+        Assert.True(made.Contains("public object Subtitle { get; set; }", StringComparison.Ordinal),
+            $"Create property for a binding of {fullName} did not make it in {declared}'s class:\n{made}");
+    }
+
+    [Theory]
     [InlineData("class", "@class")]
     [InlineData("event", "@event")]
     [InlineData("Upper", "Upper")]

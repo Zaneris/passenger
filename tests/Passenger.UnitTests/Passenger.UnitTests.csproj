@@ -60,6 +60,12 @@
     <Compile Include="../../src/Passenger.App/Debugging/Signatures.cs" Link="App/Signatures.cs" />
   </ItemGroup>
 
+  <!-- Where a breakpoint in Avalonia XAML stops, read from the file's markup alone, compiled in since its project is the
+       app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Debugging/XamlBreakpoints.cs" Link="App/XamlBreakpoints.cs" />
+  </ItemGroup>
+
   <!-- How a CSV's records and a workbook's cells are read, from their text and zip alone, compiled in since their
        project is the app's. -->
   <ItemGroup>

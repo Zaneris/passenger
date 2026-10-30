@@ -32,9 +32,10 @@ public sealed record FolderChanges(IReadOnlySet<string> Paths, bool Structure, b
 
 /// <summary>Watches a folder for what other programs change in it (a terminal's <c>git pull</c>, an agent's edits,
 /// <c>dotnet new</c>), handing the changes over on the UI thread. Build output, dependencies and Git's folder are passed
-/// over, except Git's HEAD, index and refs and a restore's assets; where each folder is watched on its own (Linux), they
-/// are never watched at all but for Git's and each obj itself, and a folder made later is watched as it appears, what was
-/// written in it before then taken as made with it. A burst's lost changes are found as <see cref="WatchedTree"/> finds them.</summary>
+/// over, except Git's HEAD, index and refs (<see cref="Vcs.GitWatcher.Moves"/>) and a restore's assets; where each folder
+/// is watched on its own (Linux), they are never watched at all but for Git's and each obj itself, and a folder made later
+/// is watched as it appears, what was written in it before then taken as made with it. A burst's lost changes are found as
+/// <see cref="WatchedTree"/> finds them.</summary>
 public sealed class FolderWatcher : WatchedTree
 {
     /// <summary>How long after a save its file's events are taken for the save's own.</summary>
@@ -105,8 +106,8 @@ public sealed class FolderWatcher : WatchedTree
     }
 
     /// <summary>Whether a folder is watched where each is watched on its own: the open folder and the kept folders under
-    /// it, of Git's store only its top and refs, whose files say a commit or checkout happened, and of build output only
-    /// the folders a restore writes its assets in (<see cref="HoldsRestores"/>).</summary>
+    /// it, of Git's store only its top and the folders of its refs, whose files say a commit or checkout happened, and of
+    /// build output only the folders a restore writes its assets in (<see cref="HoldsRestores"/>).</summary>
     protected override bool Kept(string path)
     {
         ReadOnlySpan<char> parts = PathNames.Below(path, folder);
@@ -115,7 +116,7 @@ public sealed class FolderWatcher : WatchedTree
             return path == folder;
         }
         ReadOnlySpan<char> first = First(parts, out ReadOnlySpan<char> rest);
-        return first.SequenceEqual(".git") ? First(parts, out _).Length == parts.Length || First(rest, out _).SequenceEqual("refs")
+        return first.SequenceEqual(".git") ? First(parts, out _).Length == parts.Length || Vcs.GitWatcher.HoldsRefs(First(rest, out _))
             : !IgnoredFolders.AnyIn(folder, parts) || HoldsRestores(parts);
     }
 
@@ -176,7 +177,7 @@ public sealed class FolderWatcher : WatchedTree
         bool inGit = First(parts, out ReadOnlySpan<char> rest).SequenceEqual(".git");
         if (inGit)
         {
-            return First(rest, out _) is "HEAD" or "index" or "refs" or "packed-refs" ? new Notice(Takes: true, Counts: false, Canonical: null) : default;
+            return Vcs.GitWatcher.Moves(First(rest, out _)) ? new Notice(Takes: true, Counts: false, Canonical: null) : default;
         }
         if (IsRestore(parts))
         {

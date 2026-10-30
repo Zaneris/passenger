@@ -1,4 +1,6 @@
 using Passenger.Text;
+using Passenger.Xaml;
+using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Syntax;
 
 namespace Passenger.App.Debugging;
@@ -87,8 +89,13 @@ public static class XamlBreakpoints
     }
 
     /// <summary>Whether an attribute sets something as its element is made: not a namespace, nor a directive read only by
-    /// the compiler or the designer.</summary>
+    /// the compiler or the designer, each known by the namespace its prefix is declared for, whatever the prefix.</summary>
     private static bool Sets(XmlAttribute attribute) =>
-        attribute.Name != "xmlns" && attribute.Prefix is not ("xmlns" or "d" or "mc")
-        && !(attribute.Prefix == "x" && attribute.LocalName is "Class" or "DataType" or "CompileBindings" or "ClassModifier" or "FieldModifier" or "Key" or "Shared");
+        attribute.Name != "xmlns" && attribute.Prefix != "xmlns"
+        && (attribute.Prefix.Length == 0 || XamlFile.DeclaredUri(attribute.Owner, attribute.Prefix) switch
+        {
+            XamlDialect.DesignerUri or XamlDialect.CompatibilityUri => false,
+            XamlDialect.XamlUri => attribute.LocalName is not ("Class" or "DataType" or "CompileBindings" or "ClassModifier" or "FieldModifier" or "Key" or "Shared"),
+            _ => true,
+        });
 }

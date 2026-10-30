@@ -368,6 +368,36 @@ public sealed class VcsTests : IDisposable
         FollowsGitFromOutside(PathNames.Canonical(Path.Combine(folder, "src")), "Shop.cs", "main");
     }
 
+    /// <summary>In a reftable repository (Git 2.45's, whose refs are kept in tables, never in HEAD or refs' files), a commit
+    /// and a branch switched from outside the window are followed, at the repository's top as below it, where its Git folder
+    /// is outside the folder opened.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_commit_and_a_branch_switch_from_outside_a_reftable_repository_are_followed_by_the_bars_colours_commit_list_and_branch(bool below)
+    {
+        string repository = TestFolders.Create("git-reftable-");
+        try
+        {
+            TestFolders.Write(repository, below ? "src/Shop.cs" : "Shop.cs", Original);
+            Passenger.Core.ChildResult made = Ui.AwaitPumped(Waiting.Apart(() => Passenger.Core.ChildProcesses.RunAsync(
+                Passenger.Core.ChildProcesses.Command("git", ["init", "-q", "-b", "main", "--ref-format=reftable"], repository), limit: TimeSpan.FromMinutes(1).Scaled())),
+                "git to make a reftable repository", TimeSpan.FromMinutes(1).Scaled() + TestFolders.Spare);
+            Assert.SkipUnless(made.Succeeded, $"The git here makes no reftable repository (Git 2.45 and later do): {made.Error}{made.Output}");
+            TestGit.Run(repository, "config", "user.email", "tests@passenger.invalid");
+            TestGit.Run(repository, "config", "user.name", "Passenger Tests");
+            TestGit.Run(repository, "config", "core.autocrlf", "false");
+            TestGit.Run(repository, "add", "-A");
+            TestGit.Run(repository, "commit", "-q", "-m", "First");
+            string top = PathNames.Canonical(repository);
+            FollowsGitFromOutside(below ? Path.Combine(top, "src") : top, "Shop.cs", "main");
+        }
+        finally
+        {
+            TestFolders.Delete(repository);
+        }
+    }
+
     /// <summary>Opens a folder, changes a file there and saves it, then commits it and switches to a new branch with git run
     /// in the folder, as from a terminal, waiting for the window to follow each.</summary>
     private static void FollowsGitFromOutside(string opened, string name, string branch)

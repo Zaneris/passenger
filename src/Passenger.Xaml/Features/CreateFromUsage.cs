@@ -274,7 +274,7 @@ public static class CreateFromUsage
     }
 
     /// <summary>The full name a declared type has in metadata, as <see cref="ClrType.FullName"/> gives it: its namespaces,
-    /// and the types it is nested in each before a <c>+</c>, each name with its arity.</summary>
+    /// and the types it is nested in each before a <c>+</c>, each name with its arity and without an <c>@</c> that escapes it.</summary>
     private static string FullName(BaseTypeDeclarationSyntax type)
     {
         string name = MetadataName(type);
@@ -286,15 +286,23 @@ public static class CreateFromUsage
             }
             else if (at is BaseNamespaceDeclarationSyntax space)
             {
-                string written = space.Name.ToString();
-                name = $"{(written.StartsWith("global::", StringComparison.Ordinal) ? written["global::".Length..] : written)}.{name}";
+                name = $"{Dotted(space.Name)}.{name}";
             }
         }
         return name;
     }
 
     private static string MetadataName(BaseTypeDeclarationSyntax type) =>
-        type is TypeDeclarationSyntax { TypeParameterList.Parameters.Count: > 0 and int arity } ? $"{type.Identifier.Text}`{arity}" : type.Identifier.Text;
+        type is TypeDeclarationSyntax { TypeParameterList.Parameters.Count: > 0 and int arity } ? $"{type.Identifier.ValueText}`{arity}" : type.Identifier.ValueText;
+
+    /// <summary>A namespace's name as metadata has it, each part without an <c>@</c> that escapes it, a <c>global::</c> left out.</summary>
+    private static string Dotted(NameSyntax name) => name switch
+    {
+        QualifiedNameSyntax qualified => $"{Dotted(qualified.Left)}.{qualified.Right.Identifier.ValueText}",
+        AliasQualifiedNameSyntax alias => alias.Name.Identifier.ValueText,
+        SimpleNameSyntax simple => simple.Identifier.ValueText,
+        _ => name.ToString(),
+    };
 
     /// <summary>The using directives a file lacks of those a member needs, after its last one (or at its top).</summary>
     private static TextEdit? Usings(SyntaxNode root, IReadOnlyList<string> needed, string own)
