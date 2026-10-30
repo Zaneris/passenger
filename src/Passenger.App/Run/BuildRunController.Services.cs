@@ -189,10 +189,6 @@ public sealed partial class BuildRunController
             {
                 return failed;
             }
-            foreach (IRunService restarted in services)
-            {
-                session.Debug.Restarted(run.SessionName(restarted));
-            }
             List<string> notes = [];
             (IRunService Service, string? Refused)[] attached = held.Count == 0 ? [] : await AttachEachAsync(run, held, Task.CompletedTask, notes, work, work.Stopping);
             string? unattached = attached.Select(a => a.Refused).FirstOrDefault(r => r is not null);
@@ -235,6 +231,12 @@ public sealed partial class BuildRunController
     private List<(IRunService Service, bool HotReload)> Reattached(ServiceRun run, IEnumerable<IRunService> services) => run.AttachesItsStarts ? []
         : [.. services.Where(s => run.HeldFor(s) is RunStart.Debug or RunStart.HotReload || run.HeldFor(s) is null && run.AttachedRunning.Contains(run.KeyOf(s)))
             .Select(s => (s, run.HeldFor(s) == RunStart.HotReload || session.Debug.HotReloadOn()))];
+
+    /// <summary>The run and its .NET service a session debugs or runs with Hot Reload, or null where it is none of a run's.</summary>
+    public (ServiceRun Run, IRunService Service)? ServiceDebuggedBy(DebugSession debugged) =>
+        session.ServiceRuns.Where(run => !run.IsStopped)
+            .SelectMany(run => run.Services.Where(s => run.SessionOf(session.Debug, s) == debugged || run.QuietOf(session.Debug, s) == debugged).Select(s => (run, s)))
+            .FirstOrDefault() is ({ } of, { } service) ? (of, service) : null;
 
     /// <summary>A .NET service of the container run under way, by its name, or why there is none to act on.</summary>
     public (IRunService? Service, string? WhyNot) ServiceOfRun(string? name) => Containers is { } run && IsRunning ? ServiceOf(run, name)
@@ -355,14 +357,25 @@ public sealed partial class BuildRunController
     public Task<string?> AttachServiceAsync(string name) => AttachServiceAsync(Containers, name);
 
     /// <summary>Attach to one .NET service of a run as it runs, no restart: its startup has run already, which is said
-    /// (Debug restarts it held to stop there). A restart attaches to it again. One the run left unstarted has no program to
-    /// reach, which is said. The start given, else the service of that name. Null once attached, else why not.</summary>
+    /// (Debug restarts it held to stop there). Run with Hot Reload's quiet session of it debugs it where Hot Reload changed
+    /// it (<see cref="DebugQuietAsync"/>), else is let go first, the program never stopped. A restart attaches to it again.
+    /// One the run left unstarted has no program to reach, which is said. The start given, else the service of that name.
+    /// Null once attached, else why not.</summary>
     public Task<string?> AttachServiceAsync(ServiceRun? run, string name, IRunService? start = null) => OnServiceAsync(run, name, AppActions.ServiceAttach,
         $"Attaching the debugger to {name}…", async (run, service, work) =>
     {
         if (run.WhyNot(AppActions.ServiceAttach, service) is { } unreached)
         {
             return Said(unreached);
+        }
+        DebugSession? quiet = run.QuietOf(session.Debug, service);
+        if (quiet is not null && session.Debug.HotReloadChanged(quiet))
+        {
+            return await DebugQuietAsync(run, service, quiet, work);
+        }
+        if (quiet is not null)
+        {
+            await session.Debug.DetachAsync(quiet);
         }
         await EndSessionsAsync(run, [service]);
         run.AttachedRunning.Add(run.KeyOf(service));
@@ -378,19 +391,48 @@ public sealed partial class BuildRunController
             + (notes.Count > 0 ? $" ({string.Join("; ", notes)})" : string.Empty));
     }, start);
 
+    /// <summary>Attach to a service whose program Hot Reload changed under its quiet session, which its runtime keeps as its
+    /// one debugger: that session debugs it in a Debug tab, the program running on. Null once it does, else why not.</summary>
+    private async Task<string?> DebugQuietAsync(ServiceRun run, IRunService service, DebugSession quiet, Working work)
+    {
+        ServiceProgram? program;
+        try
+        {
+            program = await run.ProgramAsync(service, Task.CompletedTask, work.Stopping);
+        }
+        catch (ServiceUnreachedException failed)
+        {
+            return Said($"Could not debug {service.Name}: {failed.Message}");
+        }
+        if (program is null || run.IsStopped || session.IsEnded)
+        {
+            return Said($"{service.Name} of {run.Name} is not running");
+        }
+        parts.Dock.Show(ToolWindowIds.Debug);
+        if (await session.Debug.DebugQuietAsync(quiet, run.Group, program.App) is { } refused)
+        {
+            return Said(refused);
+        }
+        run.AttachedRunning.Add(run.KeyOf(service));
+        run.Attached(service, program, session.Debug.TabOf(quiet), quiet);
+        return Done(null, $"Debugging {service.Name} of {run.Name} as it runs by its Hot Reload session, as Hot Reload changed its code: its startup has run already, "
+            + "which Debug catches by restarting it held");
+    }
+
     /// <summary>Run without debugger of one .NET service of the container run under way (<see cref="RunServiceAsync(ServiceRun, string, IRunService)"/>).</summary>
     public Task<string?> RunServiceAsync(string name) => RunServiceAsync(Containers, name);
 
-    /// <summary>Run without debugger of one .NET service of a run, kept as Debug's choice is: its session let go (detached,
-    /// not restarted), the program running on as it is, held at its start, its next restart making it anew unheld; or, where
-    /// its kind restarts it so (<see cref="ServiceRun.RestartsToRunWithoutDebugger"/>), restarted unheld at once, only when it
-    /// is held or debugged. One running unheld with nothing debugging it is left as it is, said; one the run left unstarted
-    /// is started now, unheld. The start given, else the service of that name. Null once done, else why not.</summary>
+    /// <summary>Run without debugger of one .NET service of a run, kept as Debug's choice is: its session let go, the program
+    /// running on, its next restart making it anew unheld; or, where its kind restarts it so (<see cref="ServiceRun.RestartsToRunWithoutDebugger"/>)
+    /// or Hot Reload changed its program, restarted unheld at once, only when it is held or debugged. One running unheld with
+    /// nothing debugging it is left as it is, said; one the run left unstarted is started now, unheld. The start given, else
+    /// the service of that name. Null once done, else why not.</summary>
     public Task<string?> RunServiceAsync(ServiceRun? run, string name, IRunService? start = null) => OnServiceAsync(run, name, AppActions.ServiceRun,
         $"Running {name} without the debugger…", async (run, service, work) =>
     {
         bool held = run.HeldFor(service) is not null;
         bool debugged = run.Debugged.Contains(run.SessionName(service)) && run.SessionOf(session.Debug, service) is { State: not Debugging.DebugState.Ended };
+        bool changed = run.HotReloadChanged(session.Debug, service);
         Choose(run, name, debug: false);
         run.AttachedRunning.Remove(run.KeyOf(service));
         await run.HoldAsync(service, null, work.Stopping);
@@ -403,10 +445,12 @@ public sealed partial class BuildRunController
         {
             return Done(null, $"{said} of {run.Name} already runs without the debugger: nothing restarted{NextRun(run, service, debug: false)}");
         }
-        if (run.RestartsToRunWithoutDebugger)
+        // A program Hot Reload changed is restarted: its runtime, which lets no debugger go then, would hold it for good.
+        if (run.RestartsToRunWithoutDebugger || changed)
         {
             return Done(await RestartServicesAsync(run, [service], work, "to run without the debugger"),
-                $"{said} of {run.Name} restarted without the debugger{NextRun(run, service, debug: false)}");
+                $"{said} of {run.Name} restarted without the debugger{(changed && !run.RestartsToRunWithoutDebugger ? ", as its runtime lets no debugger go once Hot Reload has changed its code" : string.Empty)}"
+                + NextRun(run, service, debug: false));
         }
         await session.Debug.DetachAsync(run.SessionName(service));
         return Done(null, $"{name} of {run.Name} runs on without the debugger, not restarted; its next restart starts it unheld");

@@ -28,14 +28,15 @@ public partial class MainWindow
     public bool Perform(string action) => actions!.Run(action) is null;
 
     /// <summary>Runs an action a person asked for (its keys, a menu item, Find Action, a tool window's button), in the
-    /// context made as they asked: one that cannot run here says why in the status bar.</summary>
+    /// context made as they asked: one that cannot run here says why in the status bar, with the way on where there is one
+    /// (<see cref="RefusalPlace"/>).</summary>
     private bool Request(string action, ActionContext? context = null)
     {
         if (actions!.Run(action, context ?? actions.Context()) is not { } why)
         {
             return true;
         }
-        status.Text = why;
+        Say(why, RefusalPlace(action));
         return false;
     }
 

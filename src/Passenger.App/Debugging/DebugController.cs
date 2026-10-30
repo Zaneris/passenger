@@ -321,46 +321,14 @@ public sealed class DebugController : IDisposable
         return Followed(lines, kept.Reload?.Carried(lines));
     }
 
-    /// <summary>The programs Hot Reload changed that their sessions let go to run on (Detach, or another session taking their
-    /// place), by where they run (a container, else this machine) and their process, with the session that changed them.</summary>
-    private readonly Dictionary<(string? Where, int Process), string> letGoChanged = [];
+    /// <summary>Whether Hot Reload has changed the code of a session's program (debugged in a tab, or run quietly with it):
+    /// its runtime then lets no debugger go, Detach leaving it held for good, nor takes another.</summary>
+    public bool HotReloadChanged(DebugSession session) =>
+        view.Sessions.Any(t => t.Session == session && t.HotReload is { Updated: true }) || running.Any(r => r.Session == session && r.Reload.Updated);
 
-    /// <summary>A session has ended: a program Hot Reload changed that it let go running is remembered, one that ended forgotten.</summary>
-    private void Ended(DebugSession session, HotReload? reload, string name)
-    {
-        if (session.ProcessStarted is not { IsCompletedSuccessfully: true } started)
-        {
-            return;
-        }
-        (string? Where, int Process) program = (session.Place?.Where, started.Result);
-        if (session.Detached && reload is { Updated: true })
-        {
-            letGoChanged[program] = name;
-        }
-        else if (!session.Detached)
-        {
-            letGoChanged.Remove(program);
-        }
-    }
-
-    /// <summary>The name of the session that had Hot Reload change a program it then let go running (where
-    /// <paramref name="place"/> says, else on this machine), or null: its runtime, which lets no debugger go once the code
-    /// has changed, takes none again.</summary>
-    public string? ChangedBy(int processId, AdapterPlace? place) => letGoChanged.GetValueOrDefault((place?.Where, processId));
-
-    /// <summary>The programs of a name (a run's service) have been started again: none runs changes Hot Reload made before.</summary>
-    public void Restarted(string name)
-    {
-        foreach ((string? Where, int Process) program in letGoChanged.Where(p => p.Value == name).Select(p => p.Key).ToList())
-        {
-            letGoChanged.Remove(program);
-        }
-    }
-
-    /// <summary>Why a program Hot Reload changed under a session that let it go is not attached to (<see cref="ChangedBy"/>).</summary>
-    public static string TakesNoDebugger(string name) =>
-        $"{name} was not attached to: Hot Reload changed its code while an earlier session debugged it, after which its runtime "
-        + "takes no debugger again; restart it to debug it";
+    /// <summary>Why a program Hot Reload changed is not let go (Detach, its tab's close): its runtime would hold it for good.</summary>
+    public static string LetsNoDebuggerGo(string name) =>
+        $"{name} cannot be let go: Hot Reload changed its code, after which its runtime lets no debugger go; restart it to run it without the debugger";
 
     private BuiltEdits Followed(BuiltLines lines, HotReload? reload)
     {
@@ -639,11 +607,6 @@ public sealed class DebugController : IDisposable
     public Task<string?> AttachAsync(int processId, string name, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null, string? group = null,
         LiveApp? app = null, BuiltEdits? edits = null)
     {
-        if (ChangedBy(processId, place) is not null)
-        {
-            edits?.Dispose();
-            return Task.FromResult<string?>(TakesNoDebugger(name));
-        }
         bool hotReloadOn = hotReload && HotReloadOn();
         return OpenAsync((built, log, output, starting) => DebugSession.AttachAsync(processId, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn, elsewhere, place), name,
             launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits);
@@ -755,6 +718,11 @@ public sealed class DebugController : IDisposable
         // A program debugged again takes its last session's place, which is let go first.
         if (tab is null && view.Sessions.FirstOrDefault(t => t.Name == name && t.IsLive) is { } again)
         {
+            if (again.Session is { Attached: true } held && HotReloadChanged(held))
+            {
+                edits?.Dispose();
+                return LetsNoDebuggerGo(name);
+            }
             await EndAsync(again);
             if (disposed)
             {
@@ -969,11 +937,6 @@ public sealed class DebugController : IDisposable
             edits?.Dispose();
             return $"Could not attach to {name} for Hot Reload: its folder was closed";
         }
-        if (ChangedBy(processId, place) is not null)
-        {
-            edits?.Dispose();
-            return TakesNoDebugger(name);
-        }
         // Followed since the build read the files where it began there, else from now: an edit made meanwhile is one Apply takes.
         using BuiltEdits own = edits ?? Building(hotReload: true);
         BuiltLines built = own.Lines;
@@ -1004,13 +967,12 @@ public sealed class DebugController : IDisposable
             {
                 if (session.State == DebugState.Ended && running.Remove(reload))
                 {
-                    Ended(session, reload.Reload, name);
                     reload.Reload.End();
                     StateChanged?.Invoke(this, EventArgs.Empty);
                 }
-                else if (session.State == DebugState.Paused)
+                else if (session.State == DebugState.Paused && running.Contains(reload))
                 {
-                    // Never shown: a Debugger.Break in its code goes on as a run would.
+                    // Never shown while quiet: a Debugger.Break in its code goes on as a run would.
                     Send(session.ContinueAsync());
                 }
             };
@@ -1033,6 +995,46 @@ public sealed class DebugController : IDisposable
             }
             throw;
         }
+    }
+
+    /// <summary>Debugs a program run with Hot Reload (<see cref="Running"/>) as it runs by its own quiet session, which a
+    /// program Hot Reload changed must keep (its runtime takes no other debugger and lets this one go never): the session
+    /// in a Debug tab of its own, of <paramref name="group"/> and holding <paramref name="app"/>, the breakpoints sent, its
+    /// Hot Reload and built lines kept, its console the program's output where its place follows it. Null once it debugs,
+    /// else why not.</summary>
+    public async Task<string?> DebugQuietAsync(DebugSession quiet, string? group = null, LiveApp? app = null)
+    {
+        UiThread.Check();
+        if (running.FirstOrDefault(r => r.Session == quiet) is not { } reload || quiet.State == DebugState.Ended)
+        {
+            return $"{quiet.Program} is not run with Hot Reload";
+        }
+        if (disposed || ending)
+        {
+            return "The workspace is ending";
+        }
+        running.Remove(reload);
+        DebugTab tab = Place(reload.Name);
+        tab.Group = group;
+        tab.App = app;
+        tab.Lines = reload.Lines;
+        tab.HotReload = reload.Reload;
+        tab.Session = quiet;
+        quiet.StateChanged += (_, _) => IdeErrors.Observe(OnStateChanged(tab));
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        if (quiet.Place?.Output is { } follow)
+        {
+            await FollowAsync(follow, tab.Console, tab);
+        }
+        else
+        {
+            tab.Console.Append($"{AttachedConsole}\n");
+        }
+        await quiet.DebugAsync();
+        await ChooseAsync(tab);
+        Message?.Invoke(this, $"Debugging {reload.Name}");
+        await OnStateChanged(tab);
+        return null;
     }
 
     /// <summary>A restart of the programs run with Hot Reload whose edits it could not apply, made as <paramref name="restart"/>
@@ -1163,6 +1165,11 @@ public sealed class DebugController : IDisposable
     private async Task CloseTabAsync(DebugTab tab)
     {
         UiThread.Check();
+        if (tab.IsLive && tab.Session is { Attached: true } attached && HotReloadChanged(attached))
+        {
+            Message?.Invoke(this, LetsNoDebuggerGo(tab.Name));
+            return;
+        }
         if (tab.IsLive)
         {
             await EndAsync(tab);
@@ -1289,10 +1296,12 @@ public sealed class DebugController : IDisposable
     /// its session (its input and output are the adapter's).</summary>
     private string? WhyNotDetach() => NotLive() ?? WhyNotDetach(Session);
 
-    /// <summary>Why one session's program cannot be let go now: it has ended, the debugger started it, or it still starts.</summary>
-    private static string? WhyNotDetach(DebugSession? session) => session is not { State: not DebugState.Ended } ? NothingDebugged
+    /// <summary>Why one session's program cannot be let go now: it has ended, the debugger started it, it still starts, or
+    /// Hot Reload changed it (<see cref="LetsNoDebuggerGo"/>).</summary>
+    private string? WhyNotDetach(DebugSession? session) => session is not { State: not DebugState.Ended } ? NothingDebugged
         : !session.Attached ? "The debugger started this program: Stop ends it, and Detach lets go only of a program attached to"
         : session.State == DebugState.Starting ? StillStarting
+        : HotReloadChanged(session) ? LetsNoDebuggerGo(TabOf(session)?.Name ?? running.FirstOrDefault(r => r.Session == session)?.Name ?? session.Program)
         : null;
 
     /// <summary>Why what needs the debugger's hold of the program cannot run while it starts (Stop can).</summary>
@@ -1841,7 +1850,6 @@ public sealed class DebugController : IDisposable
             tab.Console.Sink.End(ConsoleStream.System);
             StopFollowing(tab);
             tab.HasEnded = true;
-            Ended(session, tab.HotReload, tab.Name);
             tab.HotReload?.End();
             tab.Lines = null;
         }

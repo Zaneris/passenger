@@ -9,7 +9,8 @@ namespace Passenger.App;
 /// the download page of a .NET SDK the folder wants, a solution that does not read where it stops, a build's problems in
 /// Problems' Build, Hot Reload's edits in its tab, a binding error stopped at in Bindings, a test run in Unit Tests, an
 /// internal error in IDE Internal Errors, a state file set aside in the file manager, the log where the words say it
-/// says why, and a language server left stopped started again. A click on the words, or Enter on them, goes there.</summary>
+/// says why, a language server left stopped started again, and a run's service Detach cannot let go restarted. A click on
+/// the words, or Enter on them, goes there.</summary>
 public partial class MainWindow
 {
     /// <summary>Where a click on the status bar's words goes now, null when nowhere.</summary>
@@ -60,6 +61,14 @@ public partial class MainWindow
 
     /// <summary>Restart C# Language Server, run as its menu item runs it.</summary>
     private StatusPlace RestartCSharpPlace => StartAgainPlace(() => Request(AppActions.RestartCSharpServer));
+
+    /// <summary>The way on from an action's refusal, or null: Detach of a run's service Hot Reload changed, which its runtime
+    /// lets no debugger go of, restarts it without the debugger (Run Service without Debugger).</summary>
+    private StatusPlace? RefusalPlace(string action) =>
+        action == AppActions.Detach && session.Debug.Session is { } debugged && session.Debug.HotReloadChanged(debugged)
+        && buildRun.ServiceDebuggedBy(debugged) is ({ } run, { } service)
+            ? new StatusPlace($"restart {service.Name} without the debugger", () => IdeErrors.Observe(buildRun.RunServiceAsync(run, service.Name, service)))
+            : null;
 
     /// <summary>A language server left stopped, started again as <paramref name="again"/> starts it.</summary>
     private static StatusPlace StartAgainPlace(Action again) => new("start it again", again);

@@ -1472,7 +1472,8 @@ public sealed class AspireAppRun : ServiceRun
         service is AspireResourceRun start ? start.DebugTab?.Session ?? start.Debugged : base.SessionOf(debug, service);
 
     /// <summary>A start's own session, never another start's of the same name: in its tab, stopped; quiet (for Hot Reload),
-    /// let go; closed as the folder ends.</summary>
+    /// let go, or stopped where Hot Reload changed its program, which its runtime would then hold for good (what ends a
+    /// session ends or restarts the program next); closed as the folder ends.</summary>
     protected override Task EndSessionAsync(DebugController debug, IRunService service, bool closing)
     {
         if (service is not AspireResourceRun start)
@@ -1483,8 +1484,13 @@ public sealed class AspireAppRun : ServiceRun
         return own is not { State: not DebugState.Ended } ? Task.CompletedTask
             : closing ? own.CloseAsync()
             : start.DebugTab is { } tab ? debug.StopAsync(tab)
+            : debug.HotReloadChanged(own) ? own.StopAsync()
             : debug.DetachAsync(own);
     }
+
+    /// <summary>A start's own quiet session, never another start's of the same name.</summary>
+    public override DebugSession? QuietOf(DebugController debug, IRunService service) =>
+        service is AspireResourceRun start ? debug.Running.FirstOrDefault(r => r.Session == start.Debugged)?.Session : base.QuietOf(debug, service);
 
     /// <summary>Nothing to write: a service's next start reads its hold.</summary>
     protected override Task HoldsChangedAsync(CancellationToken cancel) => Task.CompletedTask;

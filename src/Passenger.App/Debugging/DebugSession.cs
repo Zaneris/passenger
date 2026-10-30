@@ -192,10 +192,14 @@ public sealed class DebugSession
             UiThread.Post(() => OnEvent(name, copy));
         };
         Quiet = quiet;
-        if (quiet)
+        if (!quiet)
         {
-            return;
+            JoinBreakpoints();
         }
+    }
+
+    private void JoinBreakpoints()
+    {
         breakpoints.Join(this);
         breakpoints.Changed += OnBreakpointsChanged;
         breakpoints.ExceptionsChanged += OnExceptionsChanged;
@@ -205,8 +209,24 @@ public sealed class DebugSession
     }
 
     /// <summary>Attached for Hot Reload alone (a container run's service under Run with Hot Reload): no breakpoint is sent,
-    /// no exception stops it, and the breakpoints never hear of it.</summary>
-    public bool Quiet { get; }
+    /// no exception stops it, and the breakpoints never hear of it, until it debugs (<see cref="DebugAsync"/>).</summary>
+    public bool Quiet { get; private set; }
+
+    /// <summary>A quiet session made one that debugs its program as it runs (Attach to a service it runs with Hot Reload):
+    /// the breakpoints joined and sent, and the exceptions they stop at; done once the debugger has them.</summary>
+    public Task DebugAsync()
+    {
+        UiThread.Check();
+        if (!Quiet || State == DebugState.Ended || disconnected is not null)
+        {
+            return Task.CompletedTask;
+        }
+        Quiet = false;
+        JoinBreakpoints();
+        Task sending = SendChangedAsync();
+        Sending(sending);
+        return sending;
+    }
 
     public event EventHandler? StateChanged;
 

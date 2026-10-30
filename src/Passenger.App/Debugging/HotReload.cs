@@ -141,7 +141,7 @@ public sealed class HotReload
     /// <summary>Whether the files have been edited since the launch or since the edits the last update was made of.</summary>
     public bool Changed => edits != settled;
 
-    /// <summary>Whether the program has taken an update from it.</summary>
+    /// <summary>Whether the program has taken an update from it, even one it took only in part.</summary>
     public bool Updated { get; private set; }
 
     /// <summary>A restart for the edits Roslyn last read was declined: they are not applied, or asked about, again until the
@@ -336,6 +336,8 @@ public sealed class HotReload
             await TellAsync(roslyn, HotReloadHandlers.Discard, session);
             return new HotReloadOutcome(HotReloadResult.Failed, $"The debugger could not apply the changes: {failed.Reason}") { Problems = problems, Took = took.Elapsed };
         }
+        // A module the runtime took has changed the program, whatever it made of the rest.
+        Updated |= applied.Modules.Any(m => m.Applied);
         if (applied.Modules.FirstOrDefault(m => !m.Applied) is { } refused)
         {
             await TellAsync(roslyn, HotReloadHandlers.Discard, session);

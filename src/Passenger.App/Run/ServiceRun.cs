@@ -267,6 +267,15 @@ public abstract class ServiceRun
     /// keeps each start's own (an Aspire service's, whose replicas share a name).</summary>
     public virtual DebugSession? SessionOf(DebugController debug, IRunService service) => debug.SessionNamed(SessionName(service));
 
+    /// <summary>The quiet session running a service with Hot Reload from here (Run with Hot Reload's), else null: by its
+    /// session's name, unless its kind keeps each start's own.</summary>
+    public virtual DebugSession? QuietOf(DebugController debug, IRunService service) => debug.Running.FirstOrDefault(r => r.Name == SessionName(service))?.Session;
+
+    /// <summary>Whether Hot Reload has changed the program of a service, debugged or run quietly with it from here, which its
+    /// runtime then lets no debugger go of (<see cref="DebugController.HotReloadChanged"/>).</summary>
+    public bool HotReloadChanged(DebugController debug, IRunService service) =>
+        ((DebugSession?[])[SessionOf(debug, service), QuietOf(debug, service)]).Any(s => s is { State: not DebugState.Ended } && debug.HotReloadChanged(s));
+
     /// <summary>Whether each start of a held service is attached to by its kind as it starts, once (an Aspire service, whose
     /// start DCP asks for): a restart waits for that attach rather than attaching again.</summary>
     public virtual bool AttachesItsStarts => false;

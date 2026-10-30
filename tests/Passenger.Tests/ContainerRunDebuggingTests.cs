@@ -1,6 +1,7 @@
 using System.Globalization;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Containers;
 using Passenger.App.Debugging;
@@ -15,9 +16,10 @@ namespace Passenger.Tests;
 /// docker exec), each stopping at a breakpoint in Main and in a request, stepped and evaluated, its tab's console its
 /// container's log, and the Containers window's Restart, Stop and Remove going through the run; Hot Reload applied to a
 /// paused service; Run with Hot Reload applying an edit through the debugger and restarting a service for one it cannot
-/// apply; the gutter's Debug of one service; and images mode stopping through the path map. Each skips, saying why, where
-/// no Linux engine runs; the tools are published for the engine's processor where a dev build finds them, and what the runs
-/// make carries the run's labels.</summary>
+/// apply; Detach, Attach and Run Service without Debugger of a service Hot Reload changed; the gutter's Debug of one
+/// service; and images mode stopping through the path map. Each skips, saying why, where no Linux engine runs; the tools
+/// are published for the engine's processor where a dev build finds them, and what the runs make carries the run's
+/// labels.</summary>
 [Collection(Alone.Name)]
 public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools tools) : IClassFixture<ContainerRunDebuggingTests.Tools>
 {
@@ -429,16 +431,18 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         window.Close();
     }
 
-    /// <summary>Under Debug, an edit applied to web, then Run Service without Debugger letting web go: its runtime, which lets
-    /// no debugger go once Hot Reload has changed its code, takes none again, so Attach to web refuses at once saying why
-    /// rather than wait out the runtime's refusal.</summary>
+    /// <summary>Under Debug, an edit applied to web, whose runtime lets no debugger go once Hot Reload has changed its code:
+    /// the Debug window's Detach is refused saying why, web answering with the edit still, and the status bar's way on, Run
+    /// Service without Debugger, restarts web, which answers as built and takes the debugger again.</summary>
     [AvaloniaFact]
-    public void Attach_to_a_service_Hot_Reload_changed_under_a_session_that_let_it_go_refuses_at_once_saying_why()
+    public void Detach_of_a_service_Hot_Reload_changed_is_refused_saying_why_and_Run_Service_without_Debugger_restarts_it()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop("changed");
         MainWindow window = ContainerRunsTests.Open(folder, languageServer: true);
         Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to load the projects ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
         try
         {
             Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
@@ -450,21 +454,94 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             window.OpenFile(Path.Combine(folder, "Web", "Message.cs"));
             Ui.Settle();
             Typing.Replace(window, "\"web 1\"", "\"web 2\"");
-            Applied(window, "The edit before web was let go");
+            Applied(window, "The edit before Detach");
             Assert.Equal("web 2", Ui.Await(Get(port), "web's answer after Apply", TimeSpan.FromMinutes(1)));
-            string? letGo = Ui.Await(window.Builds.RunServiceAsync("web"), "Run Service without Debugger to let web go", TimeSpan.FromMinutes(2));
-            Assert.True(letGo is null, $"Run Service without Debugger was refused: {letGo}");
-            Ui.WaitFor(() => !web.IsLive, "web's session to end");
 
-            Assert.Equal(DebugController.TakesNoDebugger("web"), Ui.Await(window.Builds.AttachServiceAsync("web"), "Attach to web as it runs", TimeSpan.FromSeconds(5)));
-            Assert.Equal(DebugController.TakesNoDebugger("web"), window.Status);
+            Chosen(window, web);
+            window.ShowToolWindow(ToolWindowIds.Debug);
+            Ui.Settle();
+            Ui.Click(window.DebugWindow.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => ActionTips.ActionOf(b) == AppActions.Detach));
+            Assert.Equal(DebugController.LetsNoDebuggerGo("web"), window.Status);
+            Assert.Equal("restart web without the debugger", window.StatusPlace?.Name);
+            Assert.True(web.IsLive, "Detach, refused, ended web's session");
+            Assert.Equal("web 2", Ui.Await(Get(port), "web's answer after Detach was refused, which a held program never gives", TimeSpan.FromMinutes(1)));
+
+            Ui.Click(window.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => b.Name == "StatusMessage"), settle: false);
+            Ui.WaitFor(() => window.Actions.Work.Of(AppActions.ServiceRun) is null && !web.IsLive, "Run Service without Debugger to restart web", TimeSpan.FromMinutes(3));
+            Assert.Contains("web of Compose: compose.yaml restarted without the debugger, as its runtime lets no debugger go once Hot Reload has changed its code", said);
+            port = ContainerRunsTests.Published(project, "web");
+            Assert.Equal("web 1", Ui.Await(Get(port), "web's answer as built, restarted without the debugger", TimeSpan.FromMinutes(1)));
             Assert.DoesNotContain(window.Debugger.Tabs, t => t.Name == "web" && t.IsLive);
+
+            string? attached = Ui.Await(window.Builds.AttachServiceAsync("web"), "Attach to web, restarted", TimeSpan.FromMinutes(2));
+            Assert.True(attached is null, $"Attach to web, restarted without the changes, was refused: {attached}");
+            Assert.Contains(window.Debugger.Tabs, t => t.Name == "web" && t.IsLive);
         }
         finally
         {
             Docker.Stopped(window, project, "Stop to take every container down");
         }
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the sessions to end with Stop");
+        window.Close();
+    }
+
+    /// <summary>Under Run with Hot Reload, an edit applied to web: Attach to web debugs it by its Hot Reload session, which its
+    /// runtime keeps as its one debugger once its code has changed, its container running on and a request stopping at a
+    /// breakpoint in the edited code; Attach to api, which no edit changed, lets its Hot Reload session go and attaches
+    /// anew; and Run Service without Debugger restarts web, which then answers as built.</summary>
+    [AvaloniaFact]
+    public void Attach_under_Run_with_Hot_Reload_debugs_by_its_session_never_stopping_the_service_and_Run_Service_without_Debugger_restarts_it()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string folder, string project) = Shop("quiet");
+        MainWindow window = ContainerRunsTests.Open(folder, languageServer: true);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to load the projects ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        try
+        {
+            Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
+            HotReloadRun(window);
+            int port = ContainerRunsTests.Published(project, "web");
+            window.OpenFile(Path.Combine(folder, "Web", "Message.cs"));
+            Ui.Settle();
+            Typing.Replace(window, "\"web 1\"", "\"web 2\"");
+            Applied(window, "The edit before Attach");
+            Assert.Equal("web 2", Ui.Await(Get(port), "web's answer after Apply", TimeSpan.FromMinutes(1)));
+
+            window.Debugger.Breakpoints.Toggle(Source(folder, "Web"), InRequest);
+            string? attached = Ui.Await(window.Builds.AttachServiceAsync("web"), "Attach to web under Run with Hot Reload", TimeSpan.FromMinutes(2));
+            Assert.True(attached is null, $"Attach to web was refused: {attached}\n{ContainerRunsTests.Run(window)}");
+            DebugTab web = Tab(window, "web");
+            Assert.True(web.IsLive, "web's session ended with Attach");
+            Assert.Equal("api", Assert.Single(window.Debugger.Running).Name);
+            Assert.Equal("running", ContainerRunsTests.States(project)["web"]);
+            Task<string> answer = Get(port);
+            StoppedAt(window, web, Source(folder, "Web"), InRequest, "web's request to stop in its handler");
+            Assert.Equal("\"web 2\"", Evaluate(web.Session!, "Message.Text"));
+            Resume(window, web);
+            Assert.Equal("web 2", Ui.Await(answer, "web's answer, debugged by its Hot Reload session", TimeSpan.FromMinutes(1)));
+            window.Debugger.Breakpoints.Toggle(Source(folder, "Web"), InRequest);
+
+            attached = Ui.Await(window.Builds.AttachServiceAsync("api"), "Attach to api under Run with Hot Reload", TimeSpan.FromMinutes(2));
+            Assert.True(attached is null, $"Attach to api was refused: {attached}\n{ContainerRunsTests.Run(window)}");
+            DebugTab api = Tab(window, "api");
+            Ui.WaitFor(() => api.Session is { State: DebugState.Running }, "api to run under the debugger");
+            Assert.Empty(window.Debugger.Running);
+            Assert.Equal("running", ContainerRunsTests.States(project)["api"]);
+            Assert.Equal("api 1", Ui.Await(Get(ContainerRunsTests.Published(project, "api")), "api's answer, attached to", TimeSpan.FromMinutes(1)));
+
+            string? restarted = Ui.Await(window.Builds.RunServiceAsync("web"), "Run Service without Debugger to restart web", TimeSpan.FromMinutes(3));
+            Assert.True(restarted is null, $"Run Service without Debugger was refused: {restarted}\n{ContainerRunsTests.Run(window)}");
+            Assert.Contains("restarted without the debugger", window.Status, StringComparison.Ordinal);
+            Ui.WaitFor(() => !web.IsLive, "web's session to end with its restart");
+            port = ContainerRunsTests.Published(project, "web");
+            Assert.Equal("web 1", Ui.Await(Get(port), "web's answer as built, restarted without the debugger", TimeSpan.FromMinutes(1)));
+            Assert.True(api.IsLive, "Run Service without Debugger of web ended api's session");
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take every container down");
+        }
+        Ui.WaitFor(() => !window.Debugger.IsDebugging && window.Debugger.Running.Count == 0, "the sessions to end with Stop");
         window.Close();
     }
 
