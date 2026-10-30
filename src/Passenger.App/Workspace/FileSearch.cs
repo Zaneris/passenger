@@ -94,10 +94,10 @@ public static class FileSearch
     }
 
     /// <summary>The matches in the files of a place (every file the index has, or those a scope and a mask leave), file
-    /// by file in the index's order, at most <see cref="MostMatches"/>; a regex has <see cref="TextSearch.Apart"/> in each,
+    /// by file in the index's order, at most <paramref name="most"/>; a regex has <see cref="TextSearch.Apart"/> in each,
     /// and the files it ran too long in are named.</summary>
     public static Task<FilesFound> FindAsync(string root, IReadOnlyList<string> files, SearchPlace place, SearchQuery query,
-        Editors.OpenTexts open, CancellationToken cancellation) => BackgroundWork.Run(() =>
+        Editors.OpenTexts open, CancellationToken cancellation, int most = MostMatches) => BackgroundWork.Run(() =>
     {
         List<SearchMatch> found = [];
         List<string> stopped = [];
@@ -122,7 +122,7 @@ public static class FileSearch
             SearchResult searched;
             if (shown is not null)
             {
-                searched = TextSearch.FindAll(shown, pattern, MostMatches - found.Count);
+                searched = TextSearch.FindAll(shown, pattern, most - found.Count);
                 foreach (TextRange match in searched.Matches)
                 {
                     TextPosition at = shown.GetPosition(match.Start);
@@ -132,7 +132,7 @@ public static class FileSearch
             }
             else if (Read(path) is { } text)
             {
-                searched = TextSearch.FindAll(text, pattern, MostMatches - found.Count);
+                searched = TextSearch.FindAll(text, pattern, most - found.Count);
                 AddMatches(found, path, text, searched.Matches);
             }
             else
@@ -147,7 +147,7 @@ public static class FileSearch
             {
                 outside.Add(path);
             }
-            if (found.Count >= MostMatches)
+            if (found.Count >= most)
             {
                 break;
             }

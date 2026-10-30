@@ -118,6 +118,39 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>1,100 matches, ten to a file: the list stops at 1,000, so ten files' matches are past it, for the popup's
+    /// Replace All and an agent's replace_in_files alike.</summary>
+    [AvaloniaFact]
+    public void Replace_all_past_the_lists_thousand_matches_replaces_every_match_in_the_scope_and_says_how_many()
+    {
+        TestFolders.WriteAll(folder, Enumerable.Range(0, 110).Select(file =>
+            ($"Tally{file:000}.txt", string.Concat(Enumerable.Range(0, 10).Select(i => $"tally {i} of {file}\n")))));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.WaitFor(() => window.FileIndex.Count >= 112 && !window.FileIndex.IsWalking, "the folder's files indexed");
+        FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
+        Search(popup, "tally");
+        Assert.Equal(FileSearch.MostMatches, popup.Matches.Count);
+
+        List<string> asked = [];
+        window.Confirm = (_, question, _) =>
+        {
+            asked.Add(question);
+            return Task.FromResult(true);
+        };
+        popup.Replacement = "sum";
+        popup.RequestReplace();
+        Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
+        string[] left = [.. Directory.GetFiles(folder, "Tally*.txt").Where(f => File.ReadAllText(f).Contains("tally", StringComparison.Ordinal)).Select(Path.GetFileName).Order(StringComparer.Ordinal)!];
+        Assert.True(left.Length == 0, $"Replace All left the matches past the list's 1,000 in {string.Join(", ", left)}");
+        Assert.Equal("Replaced 1100 matches in 110 files", window.Status);
+        Assert.StartsWith("Replace 1100 matches in 110 files with 'sum'?", Assert.Single(asked), StringComparison.Ordinal);
+
+        Task<string> replacing = new Passenger.App.Mcp.PassengerTools(window).ReplaceInFiles("sum", "tally", mask: "*.txt");
+        Assert.StartsWith("Replaced 1100 matches in 110 files: ", Ui.Await(replacing, "replace_in_files' answer"), StringComparison.Ordinal);
+        Assert.DoesNotContain(Directory.GetFiles(folder, "Tally*.txt"), f => File.ReadAllText(f).Contains("sum", StringComparison.Ordinal));
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_UTF_16_file_is_found_and_replaced_in_as_the_editor_reads_it_and_a_binary_file_is_still_passed_over()
     {

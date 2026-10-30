@@ -208,15 +208,11 @@ public sealed partial class PassengerTools
         (SearchQuery query, SearchScope chosen) = Search(text, matchCase, wholeWords, regex, scope, project, directory, recursive, mask);
         // Looked at every 50 ms: an index cleared as its folder closes, or another folder's, says nothing to this wait.
         await Until(() => !Session.Index.IsWalking, IndexLimit, cancel);
-        FilesFound searched = await window.FindInFilesAsync(query, chosen, cancel);
+        FilesFound searched = await window.FindInFilesAsync(query, chosen, cancel, int.MaxValue);
         IReadOnlyList<SearchMatch> found = searched.Matches;
         if (found.Count == 0)
         {
             return searched.StoppedIn(Relative) is { } stopped ? $"Nothing was replaced: {stopped}" : "Nothing matches, so nothing was replaced";
-        }
-        if (found.Count >= FileSearch.MostMatches)
-        {
-            throw new InvalidOperationException($"More than {FileSearch.MostMatches - 1} matches: narrow the scope or the mask, as Replace in Files lists no more");
         }
         List<string> files = [.. searched.Replaceable.Select(m => m.Path).Distinct()];
         FilesReplaced done = await window.ReplaceInFilesAsync(query, replacement, searched);

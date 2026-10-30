@@ -28,7 +28,7 @@ public partial class MainWindow
             return null;
         }
         Navigation.FindChoices choices = new(on ?? KeptScope(), Projects, session.FindScope.RecentDirectories, ScopeNames(), findSettings.RecentFileMasks);
-        Navigation.FindInFilesPopup popup = new(SearchFiles, Editors.TextOf, path => Editors.ParseOptions(path), replace, navigator.SelectedWord(), choices, settings.Ligatures);
+        Navigation.FindInFilesPopup popup = new((query, scope, cancellation) => SearchFiles(query, scope, cancellation, FileSearch.MostMatches), Editors.TextOf, path => Editors.ParseOptions(path), replace, navigator.SelectedWord(), choices, settings.Ligatures);
         popup.ScopeChanged += (_, scope) => KeepFindScope(scope, closing: false);
         // However it closes: a match chosen, Escape, a click outside.
         popup.DetachedFromVisualTree += (_, _) => KeepFindScope(popup.Scope, closing: true);
@@ -177,22 +177,30 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The popup's Replace All, once confirmed: the matches it lists replaced, but in a file a regex ran too long
-    /// in, said in the status bar, and the popup's search run again over what is left.</summary>
+    /// <summary>The popup's Replace All, once confirmed: every match in its scope replaced, those past the list's limit
+    /// found first, but in a file it leaves (<see cref="FilesFound.Unreplaceable"/>), said in the status bar, and the
+    /// popup's search run again over what is left.</summary>
     private async Task ReplaceAllAsync(Navigation.FindInFilesPopup popup, (SearchQuery Query, string Replacement, FilesFound Found) asked)
     {
-        string? left = FilesReplaced.Listed(asked.Found.Unreplaceable, Path.GetFileName);
-        if (asked.Found.Replaceable.Count == 0)
+        FilesFound found = asked.Found;
+        if (found.Matches.Count >= FileSearch.MostMatches)
+        {
+            SearchScope scope = popup.Scope;
+            status.Text = "Finding every match to replace…";
+            found = await SearchFiles(asked.Query, scope, CancellationToken.None, int.MaxValue);
+        }
+        string? left = FilesReplaced.Listed(found.Unreplaceable, Path.GetFileName);
+        if (found.Replaceable.Count == 0)
         {
             status.Text = $"Nothing replaced; not replaced: {left}";
             return;
         }
-        string what = FilesReplaced.Count(asked.Found.Replaceable);
+        string what = FilesReplaced.Count(found.Replaceable);
         string leaving = left is null ? string.Empty : $" Not replaced: {left}.";
         if (await Confirm("Replace in Files", $"Replace {what} with '{asked.Replacement}'? A closed file is written; one Undo takes back every file's change.{leaving}", "Replace All"))
         {
-            FilesReplaced done = await ReplaceInFilesAsync(asked.Query, asked.Replacement, asked.Found);
-            IReadOnlyList<SearchMatch> replaced = done.Replaced(asked.Found.Matches);
+            FilesReplaced done = await ReplaceInFilesAsync(asked.Query, asked.Replacement, found);
+            IReadOnlyList<SearchMatch> replaced = done.Replaced(found.Matches);
             string? refused = done.NotReplaced(Path.GetFileName);
             status.Text = string.Join("; ", [replaced.Count > 0 ? $"Replaced {FilesReplaced.Count(replaced)}" : "Nothing replaced", .. done.Converted, .. refused is null ? [] : new[] { refused }]);
             await popup.SearchAsync();
@@ -324,12 +332,13 @@ public partial class MainWindow
         return popup;
     }
 
-    /// <summary>Find in Files for an agent: a query's matches in a scope under its mask, as the popup searches them.</summary>
-    public Task<FilesFound> FindInFilesAsync(SearchQuery query, SearchScope scope, CancellationToken cancellation) =>
-        SearchFiles(query, scope, cancellation);
+    /// <summary>Find in Files for an agent: a query's matches in a scope under its mask, as the popup searches them, at most
+    /// <paramref name="most"/>.</summary>
+    public Task<FilesFound> FindInFilesAsync(SearchQuery query, SearchScope scope, CancellationToken cancellation, int most = FileSearch.MostMatches) =>
+        SearchFiles(query, scope, cancellation, most);
 
-    private Task<FilesFound> SearchFiles(SearchQuery query, SearchScope scope, CancellationToken cancellation)
+    private Task<FilesFound> SearchFiles(SearchQuery query, SearchScope scope, CancellationToken cancellation, int most)
     {
-        return FileSearch.FindAsync(session.Index.Root ?? Folder!, session.Index.Files, Place(scope), query, Editors.Texts(), cancellation);
+        return FileSearch.FindAsync(session.Index.Root ?? Folder!, session.Index.Files, Place(scope), query, Editors.Texts(), cancellation, most);
     }
 }
