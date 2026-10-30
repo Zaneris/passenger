@@ -173,11 +173,11 @@ public partial class MainWindow
         string name = chosen.Method ?? chosen.Type[(chosen.Type.LastIndexOfAny(['.', '+']) + 1)..];
         MenuFlyout menu = new();
         MenuItem run = new() { Header = $"Run '{name}'" };
-        run.Click += (_, _) => RunTestsAt(chosen.Type, chosen.Method, debug: false);
+        run.Click += (_, _) => RunTestsAt(chosen, document.Path, debug: false);
         MenuItem debugIt = new() { Header = $"Debug '{name}'" };
-        debugIt.Click += (_, _) => RunTestsAt(chosen.Type, chosen.Method, debug: true);
+        debugIt.Click += (_, _) => RunTestsAt(chosen, document.Path, debug: true);
         MenuItem untilFailure = new() { Header = $"Run '{name}' Until Failure" };
-        untilFailure.Click += (_, _) => RunTestsAt(chosen.Type, chosen.Method, debug: false, untilFailure: true);
+        untilFailure.Click += (_, _) => RunTestsAt(chosen, document.Path, debug: false, untilFailure: true);
         menu.Items.Add(run);
         menu.Items.Add(debugIt);
         menu.Items.Add(untilFailure);
@@ -209,9 +209,9 @@ public partial class MainWindow
             RunTests(() => session.Tests.RunAsync(Folder!, chosen, debug));
             return;
         }
-        if (TestAtCaret(context) is { } test)
+        if (TestAtCaret(context) is { } test && context.File is { } file)
         {
-            RunTestsAt(test.Type, test.Method, debug, untilFailure);
+            RunTestsAt(test, file.Path, debug, untilFailure);
         }
     }
 
@@ -236,9 +236,11 @@ public partial class MainWindow
     }
 
     /// <summary>Runs (or debugs) a test method, or every test of a type, as the tree has them once the run's build has
-    /// ended and its tests are found: a test only a runner finds (an attribute of the project's own) runs with them.</summary>
-    private void RunTestsAt(string type, string? method, bool debug, bool untilFailure = false)
+    /// ended and its tests are found: a test only a runner finds (an attribute of the project's own) runs with them, and a
+    /// base type's tests as every derived type's, which the runner says are on its lines of the file.</summary>
+    private void RunTestsAt(Testing.DeclaredPlace place, string path, bool debug, bool untilFailure = false)
     {
+        (string type, string? method) = (place.Type, place.Method);
         if (Folder is null)
         {
             return;
@@ -260,7 +262,8 @@ public partial class MainWindow
             return stopped;
         });
 
-        bool Matches(Testing.TestNode test) => test.FullName is { } name && Testing.TestsAtCaret.Matches(name, type, method);
+        bool Matches(Testing.TestNode test) => (test.FullName is { } name && Testing.TestsAtCaret.Matches(name, type, method))
+            || test.Items.Any(item => item is { Path: { } at, Line: > 0 } && PathNames.Same(at, path) && place.Holds(item.Line));
     }
 
     /// <summary>A test host a runner would start, started under the debugger as a plan of its own (the runner built it, and

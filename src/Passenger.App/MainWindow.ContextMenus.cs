@@ -65,9 +65,9 @@ public partial class MainWindow
         {
             string name = test.Method ?? test.Type[(test.Type.LastIndexOfAny(['.', '+']) + 1)..];
             items.Add(new Separator());
-            items.Add(Command($"Run '{name}'", () => RunTestsAt(test.Type, test.Method, debug: false)));
-            items.Add(Command($"Debug '{name}'", () => RunTestsAt(test.Type, test.Method, debug: true)));
-            items.Add(Command($"Run '{name}' Until Failure", () => RunTestsAt(test.Type, test.Method, debug: false, untilFailure: true)));
+            items.Add(Command($"Run '{name}'", () => RunTestsAt(test, active.Path, debug: false)));
+            items.Add(Command($"Debug '{name}'", () => RunTestsAt(test, active.Path, debug: true)));
+            items.Add(Command($"Run '{name}' Until Failure", () => RunTestsAt(test, active.Path, debug: false, untilFailure: true)));
         }
         Add(separator);
         if (session.Debug.Session is { State: DebugState.Paused })

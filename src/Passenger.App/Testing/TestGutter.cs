@@ -5,9 +5,10 @@ using Passenger.Languages.CSharp;
 
 namespace Passenger.App.Testing;
 
-/// <summary>The run icons beside the tests and test classes each open C# file declares,
-/// coloured by how each last ran. A file's tests are read off the UI thread from its own parse as each lands, none made
-/// for them, so typing in one file reads no other; the Unit Tests window's tree takes the same read (<see cref="Read"/>).
+/// <summary>The run icons beside the tests and test classes each open C# file declares, and beside the methods and types
+/// a runner found tests of (by their names, or a base type's by the file and line it gave them), coloured by how each last
+/// ran. A file's tests are read off the UI thread from its own parse as each lands, none made for them, so typing in one
+/// file reads no other; the Unit Tests window's tree takes the same read (<see cref="Read"/>).
 /// The icons follow the Unit Tests window at once when tests are found or a run begins or ends, and at most every 150 ms
 /// while its results come in (a pause would never come in a long run); with no test known, and none known before, there
 /// is nothing to follow.</summary>
@@ -25,6 +26,9 @@ public sealed class TestGutter
     /// <summary>The tree's methods by their full names (nested types' '+' as '.'), and by every type they are under.</summary>
     private readonly Dictionary<string, HashSet<TestNode>> byMethod = [];
     private readonly Dictionary<string, HashSet<TestNode>> byType = [];
+
+    /// <summary>The tree's methods by the file a runner found them in, each with the lines it gave their tests.</summary>
+    private readonly Dictionary<string, List<(int Line, TestNode Method)>> byFile = new(PathNames.Comparer);
     private IReadOnlyList<TestNode>? indexed;
     private bool colouredWithTests;
 
@@ -73,6 +77,7 @@ public sealed class TestGutter
     /// <summary>An open file's tests were read from a parse of its text as it stands.</summary>
     public event EventHandler<(OpenDocument Document, FileTests Tests)>? Read;
 
+
     /// <summary>Lets go of a closed file.</summary>
     public void Forget(OpenDocument document)
     {
@@ -83,29 +88,15 @@ public sealed class TestGutter
     /// <summary>How many times a file's tests have been read from its syntax, for a test to count.</summary>
     public int Reads(OpenDocument document) => files.TryGetValue(document, out Declared? file) ? file.Reads : 0;
 
-    /// <summary>The test method, else the test class, whose icon is on a line, as the file was last read.</summary>
-    public (string Type, string? Method)? At(OpenDocument document, int line)
+    /// <summary>The test method, else the test class, whose icon is on a line, as the file was last read and marked.</summary>
+    public DeclaredPlace? At(OpenDocument document, int line)
     {
         UiThread.Check();
-        if (!files.TryGetValue(document, out Declared? file))
+        if (!files.TryGetValue(document, out Declared? file) || !document.TestMarks.Any(m => m.Line == line))
         {
             return null;
         }
-        foreach (DeclaredTest test in file.Tests.Tests)
-        {
-            if (test.Line == line)
-            {
-                return (test.Type, test.Method);
-            }
-        }
-        foreach ((string type, int at) in file.Tests.Types)
-        {
-            if (at == line)
-            {
-                return (type, null);
-            }
-        }
-        return null;
+        return file.Places.Methods.FirstOrDefault(m => m.Line == line) ?? file.Places.Types.FirstOrDefault(t => t.Line == line);
     }
 
     /// <summary>Whether the Unit Tests window knows a test of a type, or the test a method is: one its code declares, or one
@@ -128,7 +119,7 @@ public sealed class TestGutter
 
     private async Task ReadAsync(OpenDocument document, Declared file, int asked, ParsedText parsed)
     {
-        FileTests tests = await BackgroundWork.Run(() => TestsAtCaret.Read(parsed));
+        (FileTests tests, FilePlaces places) = await BackgroundWork.Run(() => (TestsAtCaret.Read(parsed), TestsAtCaret.Places(parsed)));
         // A later parse's read is under way, the text has moved on to one that will land, or the file was closed.
         if (asked != file.Asked || !ReferenceEquals(document.Text.Snapshot, parsed.Text) || !files.ContainsKey(document))
         {
@@ -136,6 +127,7 @@ public sealed class TestGutter
         }
         file.Reads++;
         file.Tests = tests;
+        file.Places = places;
         Read?.Invoke(this, (document, tests));
         Index();
         Colour(document, file);
@@ -156,20 +148,28 @@ public sealed class TestGutter
         }
     }
 
+    /// <summary>A mark beside each type and method the file declares a test of, or a runner found tests of: by the type's or
+    /// method's name, or by the file and line the runner gave them (a base type's tests, run as each derived type's).</summary>
     private void Colour(OpenDocument document, Declared file)
     {
         if (document.Syntax is null)
         {
             file.Tests = FileTests.None;
+            file.Places = FilePlaces.None;
         }
+        HashSet<int> testLines = [.. file.Tests.Tests.Select(t => t.Line), .. file.Tests.Types.Select(t => t.Line)];
+        List<(int Line, TestNode Method)> found = byFile.GetValueOrDefault(document.Path) ?? [];
         List<TestMark> marks = new(file.Tests.Types.Count + file.Tests.Tests.Count);
-        foreach ((string type, int line) in file.Tests.Types)
+        foreach (DeclaredPlace place in (IEnumerable<DeclaredPlace>)[.. file.Places.Types, .. file.Places.Methods])
         {
-            marks.Add(new TestMark(line, MarkOf(byType.GetValueOrDefault(type.Replace('+', '.')))));
-        }
-        foreach (DeclaredTest test in file.Tests.Tests)
-        {
-            marks.Add(new TestMark(test.Line, MarkOf(byMethod.GetValueOrDefault($"{test.Type.Replace('+', '.')}.{test.Method}"))));
+            string name = place.Method is null ? place.Type.Replace('+', '.') : $"{place.Type.Replace('+', '.')}.{place.Method}";
+            HashSet<TestNode> methods = new(ReferenceEqualityComparer.Instance);
+            methods.UnionWith((place.Method is null ? byType : byMethod).GetValueOrDefault(name) ?? []);
+            methods.UnionWith(found.Where(f => place.Holds(f.Line)).Select(f => f.Method));
+            if (methods.Count > 0 || testLines.Contains(place.Line))
+            {
+                marks.Add(new TestMark(place.Line, MarkOf(methods)));
+            }
         }
         if (!marks.SequenceEqual(document.TestMarks))
         {
@@ -188,8 +188,20 @@ public sealed class TestGutter
         indexed = tree.Methods;
         byMethod.Clear();
         byType.Clear();
+        byFile.Clear();
         foreach (TestNode method in tree.Methods)
         {
+            foreach (TestItem item in method.Items)
+            {
+                if (item is { Path: { } path, Line: > 0 })
+                {
+                    if (!byFile.TryGetValue(path, out List<(int Line, TestNode Method)>? its))
+                    {
+                        byFile[path] = its = [];
+                    }
+                    its.Add((item.Line, method));
+                }
+            }
             if (method.FullName?.Replace('+', '.') is not { } name)
             {
                 continue;
@@ -224,5 +236,6 @@ public sealed class TestGutter
         public int Asked { get; set; }
         public int Reads { get; set; }
         public FileTests Tests { get; set; } = FileTests.None;
+        public FilePlaces Places { get; set; } = FilePlaces.None;
     }
 }

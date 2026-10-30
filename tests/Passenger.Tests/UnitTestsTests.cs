@@ -327,6 +327,34 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>Run Unit Tests at the caret on an abstract base class's test runs it as each class deriving from it, found by
+    /// the file and line the runner gives them, and the base's run icon takes their result.</summary>
+    [AvaloniaFact]
+    public void A_base_classs_test_run_at_the_caret_runs_as_each_derived_class_and_its_icon_takes_their_result()
+    {
+        string file = Write("InheritedTests.cs",
+            "using Xunit;\n\nnamespace Sums.Tests;\n\npublic abstract class BaseChecks\n{\n    [Fact]\n    public void Shared()\n    {\n        Assert.True(GetType().Name.StartsWith(\"Concrete\"));\n    }\n}\n\n" +
+            "public class ConcreteA : BaseChecks\n{\n}\n\npublic class ConcreteB : BaseChecks\n{\n}\n");
+        MainWindow window = Open();
+        window.OpenFile(file);
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+        int shared = Text(editor).Split('\n').ToList().IndexOf("    public void Shared()");
+        Ui.WaitFor(() => document.TestMarks.Any(m => m.Line == shared), "the base class's test's run icon");
+        Ui.PlaceAfter(editor, "void Sha");
+        Ui.Run(window, AppActions.RunTests);
+        Ui.WaitFor(() => !window.Tests.IsBusy, () => $"the base class's test's run: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(180));
+        List<TestNode> derived = [.. window.Tests.Tree.Methods.Where(m => m.Name == "Shared")];
+        Assert.True(derived.Select(m => m.FullName).Order(StringComparer.Ordinal).SequenceEqual(["Sums.Tests.ConcreteA.Shared", "Sums.Tests.ConcreteB.Shared"])
+            && derived.All(m => m.State == TestState.Passed),
+            $"Run at the base class's test said '{window.BottomPanel.Tests.Status}', leaving [{string.Join(", ", derived.Select(m => $"{m.FullName}: {m.State}"))}]");
+        Assert.StartsWith("Tests passed: 2, failed: 0 of 2", window.BottomPanel.Tests.Status, StringComparison.Ordinal);
+        Ui.WaitFor(() => document.TestMarks.Contains(new TestMark(shared, TestMarkKind.Passed)),
+            () => $"the base class's test's run icon to take its derived tests' result; the file's icons are [{string.Join(", ", document.TestMarks)}]");
+        window.Close();
+    }
+
     /// <summary>A run broken off by its test host's crash, a test calling Environment.Exit(3), says why in its tally, which
     /// an agent's tests_run answers with, in the Unit Tests window and on the status bar: the crash as VSTest tells it, and
     /// the test running then.</summary>

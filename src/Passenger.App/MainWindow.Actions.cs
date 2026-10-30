@@ -386,10 +386,10 @@ public partial class MainWindow
     private static IReadOnlyList<Testing.TestNode>? ChosenTests(ActionContext context) =>
         context.ToolWindow?.Id == ToolWindowIds.Tests && context.Row is IReadOnlyList<Testing.TestNode> { Count: > 0 } chosen ? chosen : null;
 
-    private (string Type, string? Method)? TestAtCaret(ActionContext context) => context.File is { } file ? TestAt(file, context.Caret.Line) : null;
+    private Testing.DeclaredPlace? TestAtCaret(ActionContext context) => context.File is { } file ? TestAt(file, context.Caret.Line) : null;
 
     /// <summary>The test a file's line is in, as its code declares it or a runner found it; null where there is none.</summary>
-    private (string Type, string? Method)? TestAt(OpenDocument file, int line) =>
+    private Testing.DeclaredPlace? TestAt(OpenDocument file, int line) =>
         file.Syntax is { } syntax ? Testing.TestsAtCaret.At(syntax.Current, line, testGutter.Knows) : null;
 
     /// <summary>Adds one of the window's actions, listed in one place of the menus if given.</summary>

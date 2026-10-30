@@ -55,6 +55,21 @@ public sealed record FileTests(IReadOnlyList<(string Type, int Line)> Types, IRe
     }
 }
 
+/// <summary>A type or a method a file declares: its type's full name (nested types after a '+'), the method's name (null
+/// for the type), the editor's line (from zero) its name is on, and the lines it spans from its attributes to its end as
+/// the compiler counts them (from zero), where a runner says the tests it declares are.</summary>
+public sealed record DeclaredPlace(string Type, string? Method, int Line, int First, int Last)
+{
+    /// <summary>Whether a line a runner gives a test (from one, as the compiler counts) is inside it.</summary>
+    public bool Holds(int line) => line - 1 >= First && line - 1 <= Last;
+}
+
+/// <summary>Every type and method a file declares, with where each is (<see cref="DeclaredPlace"/>), outer types first.</summary>
+public sealed record FilePlaces(IReadOnlyList<DeclaredPlace> Types, IReadOnlyList<DeclaredPlace> Methods)
+{
+    public static readonly FilePlaces None = new([], []);
+}
+
 /// <summary>What Run Tests runs from the editor: the test method the caret is in, else every test of the
 /// class it is in, found from the file's own syntax so it needs no build to know where it is; and the tests a file
 /// declares, for the gutter's marks and the Unit Tests window's tree. The syntax is an open file's shared parse, or a
@@ -67,10 +82,10 @@ public static class TestsAtCaret
     };
 
     /// <summary>The test the caret's line (from zero, the editor's line, which Roslyn may count as several) is in: its
-    /// test method, else the nearest type around it holding tests, its own or its nested types' (its full name, nested
-    /// types after a '+'; the method null). A test is one by its attributes or one a runner found there
-    /// (<paramref name="found"/>, given a type and a method or null); null where there is none.</summary>
-    public static (string Type, string? Method)? At(ParsedText syntax, int line, Func<string, string?, bool>? found = null)
+    /// test method, else the nearest type around it holding tests, its own or its nested types' (the method null). A test
+    /// is one by its attributes or one a runner found there (<paramref name="found"/>, given a type and a method or null);
+    /// null where there is none.</summary>
+    public static DeclaredPlace? At(ParsedText syntax, int line, Func<string, string?, bool>? found = null)
     {
         TextSnapshot text = syntax.Text;
         if (line < 0 || line >= text.LineCount)
@@ -88,17 +103,41 @@ public static class TestsAtCaret
         }
         if (method is not null && (IsTest(method) || found?.Invoke(FullName(type), method.Identifier.ValueText) == true))
         {
-            return (FullName(type), method.Identifier.ValueText);
+            return Place(syntax, FullName(type), method.Identifier.ValueText, method.Identifier, method);
         }
         foreach (TypeDeclarationSyntax around in type.AncestorsAndSelf().OfType<TypeDeclarationSyntax>())
         {
             string name = FullName(around);
             if (HoldsTests(around) || found?.Invoke(name, null) == true)
             {
-                return (name, null);
+                return Place(syntax, name, null, around.Identifier, around);
             }
         }
         return null;
+    }
+
+    /// <summary>Every type and method a file declares and where, read without going into any member's body.</summary>
+    public static FilePlaces Places(ParsedText syntax)
+    {
+        List<DeclaredPlace> types = [];
+        List<DeclaredPlace> methods = [];
+        foreach (TypeDeclarationSyntax type in Types(syntax.Root))
+        {
+            string name = FullName(type);
+            types.Add(Place(syntax, name, null, type.Identifier, type));
+            foreach (MethodDeclarationSyntax method in type.Members.OfType<MethodDeclarationSyntax>())
+            {
+                methods.Add(Place(syntax, name, method.Identifier.ValueText, method.Identifier, method));
+            }
+        }
+        return new FilePlaces(types, methods);
+    }
+
+    /// <summary>A declaration's place: its name's editor line, and its lines as the compiler counts them.</summary>
+    private static DeclaredPlace Place(ParsedText syntax, string type, string? method, SyntaxToken name, SyntaxNode declaration)
+    {
+        FileLinePositionSpan lines = declaration.SyntaxTree.GetLineSpan(declaration.Span);
+        return new DeclaredPlace(type, method, syntax.Text.GetLineFromOffset(name.SpanStart), lines.StartLinePosition.Line, lines.EndLinePosition.Line);
     }
 
     /// <summary>Everything a file declares for testing, read without going into any member's body.</summary>
