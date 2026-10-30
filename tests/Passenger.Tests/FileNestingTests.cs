@@ -7,6 +7,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.App.Vcs;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 
@@ -152,6 +153,54 @@ public sealed class FileNestingTests : IDisposable
         Assert.Empty(Directory.GetFiles(At("Forms")));
         Assert.Equal(["Form1.Designer.cs", "Form1.cs", "Form1.resx"], Directory.GetFiles(At("Archive")).Select(Path.GetFileName).Order(StringComparer.Ordinal));
         Assert.Equal(At("Archive/Form1.cs"), Holder(window, At("Archive/Form1.resx")).Path);
+        window.Close();
+    }
+
+    /// <summary>A rename whose nested file cannot move (open with an edit its now read-only file refuses to save before the
+    /// move) moves none: the file moved before it is taken back, so both stay as they were, the project and the Solution
+    /// view unchanged and no command left for Undo, and the box says why.</summary>
+    [AvaloniaFact]
+    public void A_rename_whose_nested_file_cannot_move_moves_none_and_leaves_the_project_as_it_was()
+    {
+        string code = At("Components/Counter.razor.cs");
+        MainWindow window = Open();
+        window.Autosaves = false;
+        window.OpenFile(code);
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        Ui.PlaceAfter(editor, "private int count;");
+        window.KeyTextInput(" // clicks");
+        Ui.Settle();
+        OpenDocument open = window.EditorArea.Active!;
+        Assert.True(open.IsModified, "The code-behind's edit was saved before its file was made read-only");
+        File.SetAttributes(code, FileAttributes.ReadOnly);
+        try
+        {
+            Choose(window, At("Components/Counter.razor"));
+            Ui.Run(window, AppActions.Rename);
+            NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+            if (popup.Option is { IsChecked: true } renameType)
+            {
+                Ui.Click(renameType);
+            }
+            popup.Text = string.Empty;
+            window.KeyTextInput("Clicker.razor");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => popup.Problem is { Length: > 0 }, $"the rename to be refused: {window.Status}");
+            Assert.Equal(["Counter.razor", "Counter.razor.cs", "Counter.razor.css"], Directory.GetFiles(At("Components")).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+            Assert.Equal(Project, File.ReadAllText(At("Shop.csproj")));
+            Assert.True(popup.Problem!.EndsWith("so nothing was renamed", StringComparison.Ordinal), $"The refused rename did not say nothing was renamed: {popup.Problem}");
+            Assert.Equal(code, open.Path);
+            Assert.True(window.EditorArea.Commands.ToUndo(null) is null, "The refused rename was kept as a command, which Undo would take back");
+            Ui.Press(window, "ESCAPE");
+            Assert.Equal(At("Components/Counter.razor"), Holder(window, code).Path);
+        }
+        finally
+        {
+            File.SetAttributes(code, FileAttributes.Normal);
+        }
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => !open.IsModified, "the code-behind's edit saved once its file is writable again");
         window.Close();
     }
 

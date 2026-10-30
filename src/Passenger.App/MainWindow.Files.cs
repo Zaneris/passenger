@@ -366,9 +366,10 @@ public partial class MainWindow
     }
 
     /// <summary>Renames a file or folder in place, and the files nested under a file with it (Counter.razor.cs going
-    /// with Counter.razor). Its open files keep their tabs, splits and undo, saved first, its bookmarks and breakpoints
-    /// go with it, and what names it follows (projects' items, the solution, references to a project). Undo in the
-    /// Solution view renames it all back, once what it wrote of the files that follow it has landed.</summary>
+    /// with Counter.razor), all or none: one that cannot move stops it, those moved before it taken back. Its open files
+    /// keep their tabs, splits and undo, saved first, its bookmarks and breakpoints go with it, and what names it follows
+    /// (projects' items, the solution, references to a project). Undo in the Solution view renames it all back, once what
+    /// it wrote of the files that follow it has landed.</summary>
     public async Task<string?> RenameAsync(string path, string name)
     {
         if (Invalid(name) is { } problem)
@@ -385,6 +386,10 @@ public partial class MainWindow
         {
             return $"{Path.GetFileName(taken.To)} is already there";
         }
+        if (moves.Select(m => m.From).Where(File.Exists).Select(Unmovable.Why).FirstOrDefault(why => why is not null) is { } held)
+        {
+            return $"{held}: nothing was renamed";
+        }
         using CommandHistory.Recording recording = Editors.Commands.Record($"Rename {Path.GetFileName(path)} to {name}");
         string? failed = Following([.. moves.SelectMany(m => new[] { m.From, m.To })], () =>
         {
@@ -392,7 +397,15 @@ public partial class MainWindow
             {
                 if (recording.Move(from, to) is { } refused)
                 {
-                    return refused;
+                    string why = $"{Path.GetFileName(from)} could not be renamed: {refused}";
+                    (IReadOnlyList<(string From, string To)> kept, string? stuck) = recording.MoveBack();
+                    if (stuck is null)
+                    {
+                        return $"{why}, so nothing was renamed";
+                    }
+                    // Those that could not go back stay renamed, with what names them following them.
+                    string? unnamed = FollowMoved(kept, recording);
+                    return $"{why}; {stuck}{(unnamed is null ? string.Empty : $"; {unnamed}")}";
                 }
             }
             if (FollowMoved([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], recording) is { } unfollowed)

@@ -950,6 +950,22 @@ public sealed class CommandHistory
             return failed;
         }
 
+        /// <summary>Moves back what it has moved, the last first, each move it takes back leaving the command: the moves still
+        /// made once one could not go back, with why (none when all are back).</summary>
+        public (IReadOnlyList<(string From, string To)> Kept, string? Refused) MoveBack()
+        {
+            while (moves.Count > 0)
+            {
+                (string from, string to) = moves[^1];
+                if (editors.MoveFile(to, from) is { } refused)
+                {
+                    return ([.. moves], $"{Path.GetFileName(to)} could not go back to {Path.GetFileName(from)}: {refused}");
+                }
+                moves.RemoveAt(moves.Count - 1);
+            }
+            return ([], null);
+        }
+
         /// <summary>A file the command deleted (one a rename moves another over), at its path now, with the bytes it held,
         /// which its Undo writes back: no text of it is kept besides.</summary>
         public void Deleted(string path, byte[] bytes)
