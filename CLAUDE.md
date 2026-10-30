@@ -83,7 +83,8 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   none outlives the IDE (`Lifeline`), each given its folder as the disk names it, PWD too; a child's lines are heard
   through `ChildProcesses.Hear`, never Process's `Begin*ReadLine` (banned: its disposal faults a read under it). Started
   elsewhere: the terminal's shell (Porta.Pty), vstest.console, Velopack's Update.exe and an agent's `--mcp-attach`
-  Passenger (`StartApart`); a program run in the terminal is `Adopt`ed.
+  Passenger (`StartApart`); a program run in the terminal is `Adopt`ed. Passenger's own standard input is taken at its
+  start (`StandardInput`, fd 0 then the null device), so nothing it starts reads it.
 - **No secret on a command line** (any process can read it): give it through the environment, or don't make it. Secrets
   everywhere (Details, logs, consoles, hints, agents' answers, `ChildProcesses.Shown`'s echoes) are masked by one rule,
   `ContainerSecrets`.
@@ -147,8 +148,9 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   holds), written off the window's thread by `Recording.WriteAsync`, the window following once they are written
   (`AssistContext.ChangeFilesAsync`, `MainWindow.FollowingAsync`); Undo and Redo put closed files back off it
   (`CommandHistory.BlockedAsync`, `PutAsync`), a command's `Part` saying why it could not be put and one the disk may
-  refuse going `First`. A file shown read-only refuses every change to its text (`TextDocument.IsReadOnly`, set only by
-  `OpenDocument`), and an action on it greys with `Refusals.ReadOnly`.
+  refuse going `First`; one refused partway takes back what it did (`CommandHistory.TakenBackAsync`), and a file a
+  command deletes is kept for Undo (`Recording.Deleted`). A file shown read-only refuses every change to its text
+  (`TextDocument.IsReadOnly`, set only by `OpenDocument`), and an action on it greys with `Refusals.ReadOnly`.
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
   `workspaces/<name>-<hash>/`, held by each window with the folder open (`StateStore.Hold`/`LetGo`); a failed write is
