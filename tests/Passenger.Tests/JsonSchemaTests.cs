@@ -182,6 +182,27 @@ public sealed class JsonSchemaTests
         Assert.True(marked.Count == 0, $"Rules stylelint runs are marked as wrong, where the file has {Said(marked)}");
     }
 
+    /// <summary>stylelint applies an override whose files is one glob as it does one whose files is a list, so a stylelint
+    /// configuration in package.json marks neither.</summary>
+    [AvaloniaFact]
+    public void Package_jsons_stylelint_takes_an_overrides_files_as_one_glob_as_stylelint_applies_it()
+    {
+        List<(string Text, string Message)> marked = Marked("package.json", """
+            {
+              "name": "styles",
+              "private": "yes",
+              "stylelint": {
+                "overrides": [
+                  { "files": "**/*.css", "rules": {} },
+                  { "files": ["**/*.scss"], "rules": {} }
+                ]
+              }
+            }
+
+            """, "\"yes\"");
+        Assert.True(marked.Count == 0, $"Overrides stylelint applies are marked as wrong, where the file has {Said(marked)}");
+    }
+
     /// <summary>The file written alone in a folder of its own and opened with no C# server, read once its server has checked
     /// it against its schema: what it marks, as the text marked and the message, but the one value the test gives it of the
     /// wrong type, <paramref name="wrong"/>, whose mark says the check is in.</summary>

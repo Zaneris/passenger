@@ -3599,7 +3599,7 @@
         "type": "object",
         "properties": {
           "files": {
-            "type": "array",
+            "type": ["string", "array"],
             "items": {
               "type": "string"
             }

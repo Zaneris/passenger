@@ -899,7 +899,7 @@ Passenger's changes, each where a schema refused what the tool it describes take
 - `package.json`: an export or import condition is any name but one starting with a dot or an array index, where it
   took no digit or dot.
 - `stylelintrc.json`: a rule that takes a number takes it first in its array form, where the number had to be one of an
-  enum holding only `{}`.
+  enum holding only `{}`; an override's `files` is one glob or a list of them, where it had to be a list.
 - `tsconfig.json`, `jsconfig.json`: a compiler option's named value is taken in any case, as TypeScript reads it
   (`jsx`, `moduleResolution`, `newLine`, `moduleDetection`, `importsNotUsedAsValues`, `fallbackPolling`,
   `watchDirectory`, `watchFile`), each enum beside a pattern of its values that ignores case.
