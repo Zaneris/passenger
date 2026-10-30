@@ -178,6 +178,36 @@ public sealed class TerminalPanel : DockPanel
         return session;
     }
 
+    /// <summary>The name of the tab agents' commands run in.</summary>
+    public const string AgentShellName = "Agent Shell";
+
+    /// <summary>The shell agents' commands run in (terminal_run), in a tab of its own, never a person's: null until the first
+    /// is started (<see cref="AgentShellAsync"/>), and again once its shell has ended.</summary>
+    public TerminalSession? AgentShell => tabs.FirstOrDefault(t => t.Name == AgentShellName && t.Run is null)?.Session;
+
+    /// <summary>Starts the shell agents' commands run in, in the open folder, in a tab of its own, shown with the keys only
+    /// where <paramref name="show"/> says (an agent's own IDE), else shown only while no tab is, the keys left where they are.</summary>
+    public async Task<TerminalSession> AgentShellAsync(bool show)
+    {
+        TerminalSession session = new(view.Session?.Screen.Columns ?? 120, view.Session?.Screen.Rows ?? 30);
+        TerminalTab tab = new(session, AgentShellName);
+        tabs.Add(tab);
+        if (show || ActiveTab is null)
+        {
+            Show(tab, focus: show);
+        }
+        session.Exited += (_, _) => Close(tab);
+        try
+        {
+            await session.StartAsync(folder(), Shell?.App, Shell?.Arguments);
+        }
+        catch (Exception failed) when (failed is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            session.Screen.Feed($"Passenger could not start a shell: {failed.Message}\r\n");
+        }
+        return session;
+    }
+
     /// <summary>Ends every shell, and every program with all it started, as the IDE closes.</summary>
     public Task CloseAllAsync()
     {
@@ -191,14 +221,17 @@ public sealed class TerminalPanel : DockPanel
         return Task.WhenAll(closing.Select(tab => tab.Session.DisposeAsync().AsTask()));
     }
 
-    private void Show(TerminalTab tab)
+    private void Show(TerminalTab tab, bool focus = true)
     {
         foreach (TerminalTab each in tabs)
         {
             each.IsActive = each == tab;
         }
         view.Session = tab.Session;
-        FocusView();
+        if (focus)
+        {
+            FocusView();
+        }
     }
 
     /// <summary>The keys to the shell, once the view is laid out (a control not yet arranged cannot take the focus).</summary>

@@ -674,6 +674,42 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         await using McpClient client = await Start(["--mcp-attach"], workingDirectory);
         return (await Call(client, McpTools.Workspace)).GetProperty("folder").GetString();
     }), $"an agent attaching from {workingDirectory}");
+
+    /// <summary>An agent's terminal command runs in a shell of the agents' own, its Agent Shell tab, while the person's tab
+    /// runs cat: what cat reads is left untouched, the person's tab stays the one shown, and the agent hears what its
+    /// command printed. Before, the command was typed into whatever the shown tab ran.</summary>
+    [AvaloniaFact]
+    public void An_agents_terminal_command_runs_in_a_shell_of_its_own_and_never_reaches_the_persons_program()
+    {
+        MainWindow window = AgentsWindow(Folder, languageServer: false);
+        window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
+        Ui.Run(window, AppActions.ShowTerminal);
+        Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true }, "the person's shell to start");
+        Terminal.TerminalSession persons = window.TerminalPanel.Active!;
+        Ui.WaitFor(() => window.TerminalPanel.View.IsFocused, "the keys to go to the person's terminal");
+        string reading = OperatingSystem.IsWindows() ? "more" : "cat";
+        window.KeyTextInput(reading);
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => TerminalTests.Screen(persons).Contains(reading, StringComparison.Ordinal), $"{reading} typed in the person's terminal");
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Task<JsonElement> running = Waiting.Apart(() => Call(client, McpTools.TerminalRun, new() { ["command"] = "echo agent-shell", ["waitSeconds"] = 5 }));
+            Press(Question(window, "the question for the agent's terminal command"), "Allow");
+            string answer = Await(running, "the agent's terminal command").GetString()!;
+            Assert.Contains("agent-shell", answer, StringComparison.Ordinal);
+            Ui.Settle();
+            Assert.DoesNotContain("agent-shell", TerminalTests.Screen(persons), StringComparison.Ordinal);
+            Assert.Equal("Local", window.TerminalPanel.ActiveTab?.Name);
+            Assert.True(window.TerminalPanel.AgentShell is { } own && own != persons && TerminalTests.Screen(own).Contains("agent-shell", StringComparison.Ordinal),
+                $"The agent's command did not run in the Agent Shell tab: {string.Join(", ", window.TerminalPanel.Tabs.Select(t => t.Name))}");
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
 }
 
 /// <summary>McpWindowTests' agents on the person's window where one debugs through the window (a program in the terminal,

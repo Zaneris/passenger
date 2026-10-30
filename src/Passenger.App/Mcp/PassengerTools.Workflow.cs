@@ -502,12 +502,12 @@ public sealed partial class PassengerTools
     // The terminal
 
     [McpServerTool(Name = McpTools.TerminalRun, Title = "Run in the terminal", Destructive = true), Description(
-        "Types a command into the IDE's Terminal window (opened if need be) and presses Enter, as the person would, then " +
-        "waits until the shell prompts again or the output has been quiet for 2 s, and returns what it printed. While the tab " +
-        "runs a terminal configuration's program, the line goes to it.")]
+        "Types a command into a shell of the agents' own in the IDE's Terminal window (its Agent Shell tab, started if need be) " +
+        "and presses Enter, then waits until the shell prompts again or the output has been quiet for 2 s, and returns what " +
+        "it printed. While Run's program runs in a tab (a terminal configuration's), the line goes to it.")]
     public Task<string> TerminalRun(string command, int waitSeconds = 15, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
-        TerminalSession shell = await Terminal(cancel);
+        TerminalSession shell = Session.RunProgram is global::Passenger.App.Run.TerminalRun { IsRunning: true } program ? program.Session : await Terminal(cancel);
         TerminalScreen screen = shell.Screen;
         // By its number, which stays the line's own as the scrollback's oldest drop past its limit.
         long before = screen.ScreenTop + screen.CursorRow;
@@ -544,14 +544,18 @@ public sealed partial class PassengerTools
         return string.Join('\n', lines).TrimEnd();
     });
 
+    /// <summary>The shell of the agents' own (<see cref="ToolWindows.TerminalPanel.AgentShell"/>), started at its first
+    /// prompt where it was not running: shown with the keys in an agent's own IDE, behind the person's tab beside them.</summary>
     private async Task<TerminalSession> Terminal(CancellationToken cancel)
     {
-        if (window.TerminalPanel.Active is { IsRunning: true } running)
+        if (window.TerminalPanel.AgentShell is { IsRunning: true } running)
         {
             return running;
         }
+        // The tab first, so a window opened for it starts no shell of its own.
+        Task<TerminalSession> starting = window.TerminalPanel.AgentShellAsync(show: !Beside);
         window.ShowToolWindow(ToolWindowIds.Terminal);
-        TerminalSession shell = window.TerminalPanel.Active is { IsRunning: true } started ? started : await window.TerminalPanel.NewSessionAsync();
+        TerminalSession shell = await starting;
         // Its first prompt before anything is typed: output alone is not it, since ConPTY clears the screen before the shell starts.
         DateTime limit = DateTime.UtcNow.AddSeconds(20);
         DateTime changed = DateTime.UtcNow;
