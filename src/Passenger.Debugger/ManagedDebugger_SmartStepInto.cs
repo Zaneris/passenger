@@ -19,7 +19,7 @@ public sealed record StepInTargetInfo(int Id, string Label, int? Line, int? Colu
 /// included. The calls are read from the method's IL between the statement's sequence points, and matched by name, in
 /// order, to the invocations, object creations and lambdas of the statement's source, which give each its place on the
 /// line. The step is a step over the statement with a breakpoint at the chosen method's first line (an async method's
-/// state machine's): it stops there when the method is entered from the statement (a lambda's, from whatever the
+/// state machine's): it stops there when the method is entered from the chosen call (a lambda's, from whatever the
 /// statement called), and ends at the next line as a step over would when it never is.</summary>
 public partial class ManagedDebugger
 {
@@ -33,22 +33,16 @@ public partial class ManagedDebugger
     }
 
     /// <summary>A target as the engine keeps it until the program runs on: the method a step into it first stops in (an async
-    /// method's MoveNext) and at what IL offset, how it is entered, how many earlier calls of the same method on the
-    /// statement to pass, and the thread, frame and IL of the statement it is called from.</summary>
-    private sealed record StepInPlan(ModuleInfo Module, int MethodToken, int EntryOffset, EntryKind Kind, int Skip, int ThreadId, StackRange Frame, int Start, int End);
+    /// method's MoveNext) and at what IL offset, how it is entered, the IL offset of a call's own instruction in the
+    /// statement, and the thread, frame and IL of the statement it is called from.</summary>
+    private sealed record StepInPlan(ModuleInfo Module, int MethodToken, int EntryOffset, EntryKind Kind, int CallOffset, int ThreadId, StackRange Frame, int Start, int End);
 
     private readonly Dictionary<int, StepInPlan> _stepInTargets = [];
 
     private int _nextStepInTarget = 1;
 
-    /// <summary>A Smart Step Into under way: its target, the breakpoint at the target's first line, and the calls of the same
-    /// method still to pass.</summary>
-    private sealed class SmartStep(StepInPlan plan, ICorDebugFunctionBreakpoint breakpoint)
-    {
-        public StepInPlan Plan { get; } = plan;
-        public ICorDebugFunctionBreakpoint Breakpoint { get; } = breakpoint;
-        public int Skips { get; set; } = plan.Skip;
-    }
+    /// <summary>A Smart Step Into under way: its target, and the breakpoint at the target's first line.</summary>
+    private sealed record SmartStep(StepInPlan Plan, ICorDebugFunctionBreakpoint Breakpoint);
 
     private SmartStep? _smartStep;
 
@@ -131,7 +125,6 @@ public partial class ManagedDebugger
         Visit(CSharpSyntaxTree.ParseText(text, parsing).GetRoot());
 
         List<(StepInPlan, string, LinePositionSpan?)> targets = [];
-        Dictionary<(ModuleInfo, int), int> seen = [];
         HashSet<int> usedDelegates = [];
         int next = 0;
         foreach (SyntaxNode node in nodes)
@@ -140,7 +133,7 @@ public partial class ManagedDebugger
             {
                 if (calls.FirstOrDefault(call => call.Kind == ModuleMetadataReader.CallKind.Delegate && !usedDelegates.Contains(call.Offset)
                         && BodyIsWithin(module, call.Token, lambda.Span, text)) is { Token: not 0 } made
-                    && Plan(module, made.Token, EntryKind.Delegate, 0, threadId, range, start, end) is { } lambdaPlan)
+                    && Plan(module, made.Token, EntryKind.Delegate, made.Offset, threadId, range, start, end) is { } lambdaPlan)
                 {
                     usedDelegates.Add(made.Offset);
                     targets.Add((lambdaPlan, Shortened(lambda.ToString()), text.Lines.GetLinePositionSpan(LambdaHead(lambda))));
@@ -167,24 +160,19 @@ public partial class ManagedDebugger
                     continue;
                 }
                 next = k + 1;
-                if (ResolveCalledMethod(module, call.Token) is { } method)
+                if (Plan(module, call.Token, EntryKind.Call, call.Offset, threadId, range, start, end) is { } plan)
                 {
-                    int skip = seen.TryGetValue(method, out int before) ? before : 0;
-                    seen[method] = skip + 1;
-                    if (Plan(module, call.Token, EntryKind.Call, skip, threadId, range, start, end) is { } plan)
-                    {
-                        targets.Add((plan, Label(called), text.Lines.GetLinePositionSpan(place)));
-                    }
+                    targets.Add((plan, Label(called), text.Lines.GetLinePositionSpan(place)));
                 }
                 break;
             }
         }
         return targets;
 
-        // The statement's calls in post-order, a lambda after the call it is handed to; none in a lambda's body.
+        // The calls as emitted: post-order, a lambda after the call it is handed to, a conditional's alternative first.
         void Visit(SyntaxNode node)
         {
-            foreach (SyntaxNode child in node.ChildNodes())
+            foreach (SyntaxNode child in node is ConditionalExpressionSyntax conditional ? [conditional.Condition, conditional.WhenFalse, conditional.WhenTrue] : node.ChildNodes())
             {
                 if (!child.Span.OverlapsWith(statement))
                 {
@@ -228,16 +216,13 @@ public partial class ManagedDebugger
     private List<(StepInPlan, string, LinePositionSpan?)> FromCalls(ModuleInfo module, List<ModuleMetadataReader.CallSite> calls, ThreadId threadId, StackRange range, int start, int end)
     {
         List<(StepInPlan, string, LinePositionSpan?)> targets = [];
-        Dictionary<(ModuleInfo, int), int> seen = [];
         foreach (ModuleMetadataReader.CallSite call in calls.Where(call => call.Kind != ModuleMetadataReader.CallKind.Delegate))
         {
-            if (module.MetadataReader.DescribeCall(call.Token) is not { } called || IsCompilersOwn(called) || ResolveCalledMethod(module, call.Token) is not { } method)
+            if (module.MetadataReader.DescribeCall(call.Token) is not { } called || IsCompilersOwn(called))
             {
                 continue;
             }
-            int skip = seen.TryGetValue(method, out int before) ? before : 0;
-            seen[method] = skip + 1;
-            if (Plan(module, call.Token, EntryKind.Call, skip, threadId, range, start, end) is { } plan)
+            if (Plan(module, call.Token, EntryKind.Call, call.Offset, threadId, range, start, end) is { } plan)
             {
                 targets.Add((plan, Label(called), null));
             }
@@ -247,7 +232,7 @@ public partial class ManagedDebugger
 
     /// <summary>Where a step into a call's method first stops, when it is one a step can stop in: the user's (Just My Code),
     /// with lines, an async or iterator method's state machine's first line rather than its own.</summary>
-    private StepInPlan? Plan(ModuleInfo module, int token, EntryKind kind, int skip, ThreadId threadId, StackRange range, int start, int end)
+    private StepInPlan? Plan(ModuleInfo module, int token, EntryKind kind, int callOffset, ThreadId threadId, StackRange range, int start, int end)
     {
         if (ResolveCalledMethod(module, token) is not var (target, method))
         {
@@ -265,7 +250,7 @@ public partial class ManagedDebugger
             return null;
         }
         return reader.VisibleSequencePoints(entered) is [var first, ..]
-            ? new StepInPlan(target, entered, first.Offset, kind, skip, threadId.Value, range, start, end)
+            ? new StepInPlan(target, entered, first.Offset, kind, callOffset, threadId.Value, range, start, end)
             : null;
     }
 
@@ -510,8 +495,9 @@ public partial class ManagedDebugger
     }
 
     /// <summary>Whether a hit of a Smart Step Into's breakpoint is its target entered from the statement: on the thread
-    /// that steps, with the statement's frame below; a call's target with no frame of the user's between (an async
-    /// method's start is not), so a call of the same method from another the statement called is passed.</summary>
+    /// that steps, with the statement's frame below; a call's target from the chosen call itself, the statement's frame in
+    /// that call's instruction, with no frame of the user's between (an async method's start is not), so another call of
+    /// the same method, from the statement or from another method it called, is passed.</summary>
     private bool EnteredFromStatement(ICorDebugThread thread, StepInPlan plan)
     {
         if (thread.Id != plan.ThreadId)
@@ -528,7 +514,7 @@ public partial class ManagedDebugger
             }
             if (RangeOf(frame) == plan.Frame)
             {
-                return true;
+                return plan.Kind != EntryKind.Call || InCallAt(frame, plan.CallOffset);
             }
             if (plan.Kind == EntryKind.Call && frame is ICorDebugILFrame between && FindModule(between.Function.Module) is { IsUserCode: true } module
                 && module.MetadataReader.VisibleSequencePoints(between.Function.Token).Count > 0)
@@ -539,11 +525,11 @@ public partial class ManagedDebugger
         return false;
     }
 
-    /// <summary>A hit of the Smart Step Into's breakpoint: the stop, in the target, once it is entered from the statement
-    /// and the calls before the chosen one have passed; else the program goes on.</summary>
+    /// <summary>A hit of the Smart Step Into's breakpoint: the stop, in the target, once it is entered from the chosen
+    /// call; else the program goes on.</summary>
     private void TakeSmartStepEntry(ICorDebugThread thread, SmartStep smart)
     {
-        if (!EnteredFromStatement(thread, smart.Plan) || smart.Skips-- > 0)
+        if (!EnteredFromStatement(thread, smart.Plan))
         {
             Continue(clearVariables: true);
             return;
@@ -557,6 +543,19 @@ public partial class ManagedDebugger
         {
             ReportStop(thread.Id, StopReasons.Step);
         }
+    }
+
+    /// <summary>Whether a caller's frame is in the call at an IL offset. A caller's IP names the IL its call's instruction
+    /// is compiled in, from the IL after the call before it: the call is the first one from there.</summary>
+    private bool InCallAt(ICorDebugFrame frame, int callOffset)
+    {
+        if (frame is not ICorDebugILFrame caller || FindModule(caller.Function.Module) is not { } module)
+        {
+            return false;
+        }
+        int ip = caller.IP.pnOffset;
+        return module.MetadataReader.CallSites(caller.Function.Token, ip, callOffset + 1, ModuleMetadataReader.VersionOf(caller))
+            .FirstOrDefault(call => call.Kind != ModuleMetadataReader.CallKind.Delegate) is { } first && first.Offset == callOffset;
     }
 
     private void EndSmartStep()

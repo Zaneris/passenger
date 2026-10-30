@@ -6,6 +6,7 @@ Awaits.RunAsync().GetAwaiter().GetResult();
 Returns.Run();
 Throws.Run();
 Queries.Run();
+Chooses.Run();
 
 internal static class Calls
 {
@@ -110,3 +111,21 @@ internal static class Queries
 }
 
 internal readonly record struct Spot(int X, int Y);
+
+internal static class Chooses
+{
+    public static void Run()
+    {
+        for (int round = 0; round < 2; round++)
+        {
+            bool ok = false;
+            int chosen = ok ? Pick(1) : Pick(2);
+            Console.WriteLine($"chosen {chosen}");
+        }
+    }
+
+    private static int Pick(int value)
+    {
+        return value * 10;
+    }
+}
