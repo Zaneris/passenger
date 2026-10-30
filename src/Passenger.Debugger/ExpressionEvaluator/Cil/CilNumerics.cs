@@ -146,21 +146,27 @@ internal static class CilNumerics
         };
     }
 
-    /// <summary>Whether a conditional branch that compares two operands (beq to blt.un, short forms included) is taken.</summary>
-    public static bool Branch(ILOpCode op, CilValue left, CilValue right) => op switch
+    /// <summary>Whether a conditional branch that compares two operands (beq to blt.un, short forms included) is taken. On
+    /// floats bge and ble are the complements of the unordered compares, and bge.un and ble.un of the ordered ones
+    /// (ECMA-335 III.3.6 to III.3.9), so a NaN fails x &gt;= y and passes bge.un.</summary>
+    public static bool Branch(ILOpCode op, CilValue left, CilValue right)
     {
-        ILOpCode.Beq or ILOpCode.Beq_s => Compare(ILOpCode.Ceq, left, right),
-        ILOpCode.Bne_un or ILOpCode.Bne_un_s => !Compare(ILOpCode.Ceq, left, right),
-        ILOpCode.Bgt or ILOpCode.Bgt_s => Compare(ILOpCode.Cgt, left, right),
-        ILOpCode.Bgt_un or ILOpCode.Bgt_un_s => Compare(ILOpCode.Cgt_un, left, right),
-        ILOpCode.Blt or ILOpCode.Blt_s => Compare(ILOpCode.Clt, left, right),
-        ILOpCode.Blt_un or ILOpCode.Blt_un_s => Compare(ILOpCode.Clt_un, left, right),
-        ILOpCode.Bge or ILOpCode.Bge_s => !Compare(ILOpCode.Clt, left, right),
-        ILOpCode.Bge_un or ILOpCode.Bge_un_s => !Compare(ILOpCode.Clt_un, left, right),
-        ILOpCode.Ble or ILOpCode.Ble_s => !Compare(ILOpCode.Cgt, left, right),
-        ILOpCode.Ble_un or ILOpCode.Ble_un_s => !Compare(ILOpCode.Cgt_un, left, right),
-        _ => throw new NotSupportedException($"Conditional branch '{op}' is not supported")
-    };
+        bool floats = left.Value is float or double || right.Value is float or double;
+        return op switch
+        {
+            ILOpCode.Beq or ILOpCode.Beq_s => Compare(ILOpCode.Ceq, left, right),
+            ILOpCode.Bne_un or ILOpCode.Bne_un_s => !Compare(ILOpCode.Ceq, left, right),
+            ILOpCode.Bgt or ILOpCode.Bgt_s => Compare(ILOpCode.Cgt, left, right),
+            ILOpCode.Bgt_un or ILOpCode.Bgt_un_s => Compare(ILOpCode.Cgt_un, left, right),
+            ILOpCode.Blt or ILOpCode.Blt_s => Compare(ILOpCode.Clt, left, right),
+            ILOpCode.Blt_un or ILOpCode.Blt_un_s => Compare(ILOpCode.Clt_un, left, right),
+            ILOpCode.Bge or ILOpCode.Bge_s => !Compare(floats ? ILOpCode.Clt_un : ILOpCode.Clt, left, right),
+            ILOpCode.Bge_un or ILOpCode.Bge_un_s => !Compare(floats ? ILOpCode.Clt : ILOpCode.Clt_un, left, right),
+            ILOpCode.Ble or ILOpCode.Ble_s => !Compare(floats ? ILOpCode.Cgt_un : ILOpCode.Cgt, left, right),
+            ILOpCode.Ble_un or ILOpCode.Ble_un_s => !Compare(floats ? ILOpCode.Cgt : ILOpCode.Cgt_un, left, right),
+            _ => throw new NotSupportedException($"Conditional branch '{op}' is not supported")
+        };
+    }
 
     /// <summary>A conv instruction, as the program's runtime runs it. A checked one (conv.ovf) reads an integer source as
     /// signed, and one ending .un as unsigned, each as wide as it is on the stack; a floating-point source is its value
