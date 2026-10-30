@@ -22,11 +22,11 @@ public sealed partial class BuildRunController
         UiThread.Check();
         if (session.Folder is not { } folder || session.IsEnded)
         {
-            return Refused("Nothing to publish: no folder is open");
+            return Refused(Refusals.NoFolderTo("publish"));
         }
         if (IsBuilding)
         {
-            return Refused("Another build is running");
+            return Refused(Refusals.Building);
         }
         if (session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, request.Project)) is not { } project)
         {

@@ -55,6 +55,20 @@ public static class Refusals
     public static string NothingTo(string verb, MissingSdk? missing, string? folder) =>
         missing is null ? $"Nothing to {verb}: no executable project" : NoSdk(missing, folder);
 
+    /// <summary>A build, publish or run (the <paramref name="verb"/>) asked for with no folder open, or once its folder has
+    /// closed.</summary>
+    public static string NoFolderTo(string verb) => $"Nothing to {verb}: no folder is open";
+
+    /// <summary>A build or publish asked for while another of the window's runs: one builds at a time.</summary>
+    public const string Building = "Another build is running";
+
+    /// <summary>An AppHost the folder's session no longer runs, asked of by an agent's call or an Aspire tool: it stopped,
+    /// or the folder was left.</summary>
+    public const string AppHostNotOwned = "The AppHost is no longer owned by the workspace";
+
+    /// <summary>An AppHost's folder left, or the AppHost stopped or started again, while what was asked of it waited.</summary>
+    public const string AppHostChanged = "The workspace or owned AppHost changed";
+
     /// <summary>Why a file shown has no outline for Structure and File Structure: they list what its language server
     /// outlines, and none has it open.</summary>
     public static string NoOutline(string file) => $"{file} has no outline: no language server has it open";

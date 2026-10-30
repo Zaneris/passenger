@@ -132,6 +132,10 @@ public sealed partial class AspireController(ProjectSession workspace, string st
 
     public AspireAppRun? FindApp(string appHost) => apps.FirstOrDefault(app => PathNames.Same(app.Configuration.Project, appHost));
 
+    /// <summary>The run of the AppHost at <paramref name="appHost"/>, which throws, saying so (<see cref="Refusals.AppHostNotOwned"/>),
+    /// where the folder's session runs none.</summary>
+    public AspireAppRun OwnedApp(string appHost) => FindApp(appHost) ?? throw new InvalidOperationException(Refusals.AppHostNotOwned);
+
     public AspireResourceRun? FindService(AspireSelection selection)
     {
         if (FindApp(selection.AppHostPath) is not { } app || selection.Resource.Source is not { } source || !Path.IsPathFullyQualified(source))
@@ -190,10 +194,10 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     public void SetDebugMode(AspireSelection selection, bool debugging)
     {
         UiThread.Check();
-        AspireAppRun app = FindApp(selection.AppHostPath) ?? throw new InvalidOperationException("The selected AppHost is not owned by this workspace");
+        AspireAppRun app = OwnedApp(selection.AppHostPath);
         if (disposed || workspace.IsEnded || lifetime.IsCancellationRequested || app.Stopping || app.Lifetime.IsCancellationRequested)
         {
-            throw new InvalidOperationException("The workspace or owned AppHost changed");
+            throw new InvalidOperationException(Refusals.AppHostChanged);
         }
         if (FindService(selection) is { } service)
         {

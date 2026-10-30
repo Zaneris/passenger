@@ -344,7 +344,7 @@ public static class WorkspaceEdits
             {
                 case "create" when overwrite && FileText.IsReadOnly(resource.Path):
                 case "rename" when taken && overwrite && FileText.IsReadOnly(resource.To!):
-                    return $"{Path.GetFileName(resource.To ?? resource.Path)} is read-only";
+                    return Refusals.ReadOnly(Path.GetFileName(resource.To ?? resource.Path));
                 case "create" when Exists(resource.Path) && !overwrite && !ignored:
                 case "rename" when taken && !ignored && (!overwrite || Directory.Exists(resource.To)):
                     return $"{Path.GetFileName(resource.To ?? resource.Path)} is already there";

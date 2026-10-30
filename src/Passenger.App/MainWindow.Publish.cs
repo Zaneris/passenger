@@ -114,7 +114,7 @@ public partial class MainWindow
                 PublishProfiles.EvaluateAsync(open, model.Path, PublishProfiles.Globals(workspace, model, profile, configuration, framework, runtime), cancel),
             choice => SaveProfileAsync(choice, shown!))
         {
-            Busy = () => IsBuilding ? "Another build is running: publish once it has ended" : null,
+            Busy = () => IsBuilding ? $"{Refusals.Building}: publish once it has ended" : null,
         };
         PublishDialog = dialog;
         LastPublish = null;

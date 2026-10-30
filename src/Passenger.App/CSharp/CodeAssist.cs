@@ -352,7 +352,7 @@ public sealed class CodeAssist
         // A file Prettier formats (Run on 'Reformat Code' action) needs no language server.
         registry.Add(new IdeAction(AppActions.Reformat, "Reformat Code", "Code", context => IdeErrors.Observe(actions.Reformat()))
         {
-            WhyNot = context => web.PrettierReformats(context.File) ? (context.Editor.IsReadOnly ? "The file is read-only" : null) : WhyNot(context, server: true, markup: true),
+            WhyNot = context => context.File is { } file && web.PrettierReformats(file) ? (context.Editor.IsReadOnly ? Refusals.ReadOnly(file.Name) : null) : WhyNot(context, server: true, markup: true),
             Menus = [new("Code", 1, 0)],
         });
         web.AddLintingActions(registry);
@@ -419,7 +419,7 @@ public sealed class CodeAssist
     private string? WhyNotXaml(ActionContext action) =>
         action.File is null ? Refusals.NoFile
         : context.XamlOf(action.File) is not { } markup || (markup.Loaded.IsCompleted && !markup.IsLoaded) ? "The file is not XAML of an Avalonia or WPF project"
-        : action.Editor.IsReadOnly ? "The file is read-only"
+        : action.Editor.IsReadOnly ? Refusals.ReadOnly(action.File.Name)
         : null;
 
     /// <summary>Why an action cannot run: no file; for one that asks the server, none for the file (a source generator's
@@ -428,11 +428,11 @@ public sealed class CodeAssist
     /// answer those they say they do.</summary>
     private string? WhyNot(ActionContext action, bool server, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false) =>
         action.File is null ? Refusals.NoFile
-        : markup && XamlService.IsXaml(action.File.Path) ? (action.Editor.IsReadOnly ? "The file is read-only" : null)
+        : markup && XamlService.IsXaml(action.File.Path) ? (action.Editor.IsReadOnly ? Refusals.ReadOnly(action.File.Name) : null)
         : xaml && context.XamlOf(action.File) is { } markupFile && (markupFile.IsLoaded || !markupFile.Loaded.IsCompleted) ? null
         : msbuild && context.MSBuildOf(action.File) is not null ? null
         : syntax && action.File.Syntax is null ? "The file is not C#"
-        : syntax && action.Editor.IsReadOnly ? "The file is read-only"
+        : syntax && action.Editor.IsReadOnly ? Refusals.ReadOnly(action.File.Name)
         : !server || context.Current is not null ? null
         : context.CSharp is null ? Refusals.NoCSharp
         : GeneratedCode.IsCopy(action.File.Path) ? Refusals.Generated(action.File.Name)

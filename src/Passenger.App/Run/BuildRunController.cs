@@ -304,7 +304,7 @@ public sealed partial class BuildRunController
         UiThread.Check();
         if (session.Folder is null || IsBuilding || session.IsEnded)
         {
-            BuildOutcome refused = new(BuildStatus.Refused, session.Folder is null || session.IsEnded ? "Nothing to build: no folder is open" : "Another build is running");
+            BuildOutcome refused = new(BuildStatus.Refused, session.Folder is null || session.IsEnded ? Refusals.NoFolderTo("build") : Refusals.Building);
             work?.Dispose();
             parts.Say(refused.Message);
             then?.Invoke(refused);
@@ -384,7 +384,7 @@ public sealed partial class BuildRunController
         }
         else if (session.IsEnded)
         {
-            FinishBuild(new BuildOutcome(BuildStatus.NotStarted, "Nothing to build: no folder is open"));
+            FinishBuild(new BuildOutcome(BuildStatus.NotStarted, Refusals.NoFolderTo("build")));
         }
         else
         {

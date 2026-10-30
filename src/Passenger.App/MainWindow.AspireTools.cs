@@ -108,8 +108,7 @@ public partial class MainWindow
         {
             throw new InvalidOperationException(problem);
         }
-        AspireAppRun app = current.Aspire.FindApp(configuration.Project)
-            ?? throw new InvalidOperationException("The AppHost is no longer owned by the workspace");
+        AspireAppRun app = current.Aspire.OwnedApp(configuration.Project);
         try
         {
             AspireResourceRun service = await WaitForAspireToolServiceAsync(current, app, matches[0].Name, matches[0].Project, cancel);
@@ -221,8 +220,7 @@ public partial class MainWindow
     internal async Task<string?> RunAspireToolResourceAsync(AspireSelection selection, string action, CancellationToken cancel)
     {
         ProjectSession current = session;
-        AspireAppRun app = current.Aspire.FindApp(selection.AppHostPath)
-            ?? throw new InvalidOperationException("The AppHost is no longer owned by this workspace");
+        AspireAppRun app = current.Aspire.OwnedApp(selection.AppHostPath);
         CheckAspireToolTarget(current, app);
         AspireSelection fresh = await ReadAspireSelectionAsync(selection.AppHostPath, selection.Resource.Name, cancel);
         CheckAspireToolTarget(current, app);
@@ -284,7 +282,7 @@ public partial class MainWindow
     {
         if (session != current || current.IsEnded || app.Stopping || current.Aspire.FindApp(app.Configuration.Project) != app)
         {
-            throw new InvalidOperationException("The workspace or owned AppHost changed");
+            throw new InvalidOperationException(Refusals.AppHostChanged);
         }
     }
 

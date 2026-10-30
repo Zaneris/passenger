@@ -39,8 +39,7 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException("The selected AppHost is running but does not expose that resource; workspace lists targets");
         }
-        AspireAppRun app = current.Aspire.FindApp(chosen.Project)
-            ?? throw new InvalidOperationException("The AppHost is no longer owned by the workspace");
+        AspireAppRun app = current.Aspire.OwnedApp(chosen.Project);
         selected = await window.FollowAspireAsync(current, app, _ => window.ResolveOwnedAspireResourceAsync(resource, chosen, cancel, allowMissing: true),
             Waits.Of(TimeSpan.FromSeconds(60)), "The AppHost started but the requested resource was not reported within 60 seconds", cancel);
         CheckWorkspace();
@@ -69,8 +68,7 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException(WithBuildErrors(problem, built.Ended));
         }
         DateTime until = DateTime.UtcNow.AddSeconds(Math.Clamp(waitSeconds, 1, 120));
-        AspireAppRun app = current.Aspire.FindApp(selection.AppHostPath)
-            ?? throw new InvalidOperationException("The AppHost is no longer owned by the workspace");
+        AspireAppRun app = current.Aspire.OwnedApp(selection.AppHostPath);
         DebugSession debugged;
         try
         {
@@ -124,8 +122,7 @@ public sealed partial class PassengerTools
     private async Task<RunResult> AspireResourceUpAsync(AspireSelection target, int waitSeconds, CancellationToken cancel)
     {
         ProjectSession current = Session;
-        AspireAppRun app = current.Aspire.FindApp(target.AppHostPath)
-            ?? throw new InvalidOperationException("The AppHost is no longer owned by the workspace");
+        AspireAppRun app = current.Aspire.OwnedApp(target.AppHostPath);
         string name = target.Resource.Name;
         AgentCall.Say($"Waiting up to {Math.Max(0, waitSeconds)} s for {name} to be up");
         IReadOnlyList<AspireResource> resources;
@@ -140,7 +137,7 @@ public sealed partial class PassengerTools
         }
         if (Session != current || current.IsEnded || current.Aspire.FindApp(target.AppHostPath) != app)
         {
-            throw new InvalidOperationException("The workspace or owned AppHost changed");
+            throw new InvalidOperationException(Refusals.AppHostChanged);
         }
         AspireResource? resource = resources.FirstOrDefault(resource => resource.Name == name);
         AspireResourceRun? service = app.Services.Where(run => ((IRunService)run).Name == name).MaxBy(run => run.Sequence);
@@ -190,7 +187,7 @@ public sealed partial class PassengerTools
             }
             if (Session != current || current.IsEnded || current.Aspire.FindApp(app.Configuration.Project) != app || app.Stopping)
             {
-                throw new InvalidOperationException("The workspace or owned AppHost changed");
+                throw new InvalidOperationException(Refusals.AppHostChanged);
             }
             apps.Add(new AspireOwnedAppInfo(app.Configuration.Project, app.ProcessId ?? 0, state, app.Group,
                 [.. resources.Select(resource => ResourceInfoOf(app, resource))]) { How = Words(app.How) });
