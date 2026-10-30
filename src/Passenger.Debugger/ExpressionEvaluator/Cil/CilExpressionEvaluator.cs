@@ -61,10 +61,10 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
             ? compiled.MetadataReader.GetMethodDefinition(compiled.EntryMethod).DecodeSignature(SignatureKeyProvider.Dotted, null).ReturnType
             : null;
 
-    /// <summary>Where an expression's value is typed by a type parameter of its frame's class or method (T): the parameter's
-    /// name and, as C# names it, the type the frame runs it as (object where that is shared or has no such name); null for
-    /// any other type.</summary>
-    internal (string Name, string RunAs)? TypeParameterOf(string expression, CompiledExpressionEvaluationContext context)
+    /// <summary>Where an expression's value is typed by its frame's type parameters, alone or in a larger type (T, V? of a
+    /// struct V, List&lt;T&gt;, T[]): that type as a cast names it with the parameters, and as C# names it with the types the
+    /// frame runs them as (null where one of those is shared or has no such name); null for a type using none.</summary>
+    internal (string Cast, string? RunAs)? TypeParametersOf(string expression, CompiledExpressionEvaluationContext context)
     {
         if (context.RootValue is not null || _compiler.TryCompile(expression, context, out _) is not { } compiled)
         {
@@ -72,36 +72,41 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
         }
         MetadataReader reader = compiled.MetadataReader;
         MethodDefinition method = reader.GetMethodDefinition(compiled.EntryMethod);
-        string type = method.DecodeSignature(SignatureKeyProvider.Dotted, null).ReturnType;
-        bool ofMethod = type.StartsWith("!!", StringComparison.Ordinal);
-        if (!type.StartsWith('!') || !int.TryParse(type.AsSpan(ofMethod ? 2 : 1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int index))
+        if (!method.DecodeSignature(SignatureKeyProvider.Dotted, null).ReturnType.Contains('!', StringComparison.Ordinal))
         {
             return null;
         }
-        GenericParameterHandleCollection parameters = ofMethod ? method.GetGenericParameters() : reader.GetTypeDefinition(method.GetDeclaringType()).GetGenericParameters();
-        (ICorDebugType[] ofClass, ICorDebugType[] ofFrameMethod) = CilInterpreter.SplitFrameTypeParameters(debugger, debugger.GetIlFrameForThreadIdAndStackDepth(context.ThreadId, context.StackDepth));
-        ICorDebugType[] arguments = ofMethod ? ofFrameMethod : ofClass;
-        if (index >= parameters.Count || index >= arguments.Length)
+        TypeParameterNames named = new(NamesOf(reader, reader.GetTypeDefinition(method.GetDeclaringType()).GetGenericParameters()), NamesOf(reader, method.GetGenericParameters()));
+        (ICorDebugType[] ofClass, ICorDebugType[] ofMethod) = CilInterpreter.SplitFrameTypeParameters(debugger, debugger.GetIlFrameForThreadIdAndStackDepth(context.ThreadId, context.StackDepth));
+        return Nameable(method.DecodeSignature(CSharpTypeNames.NullableSpelled, named).ReturnType) is { } cast
+            ? (cast, Nameable(method.DecodeSignature(CSharpTypeNames.Instance, new TypeParameterNames(RunAs(ofClass), RunAs(ofMethod))).ReturnType))
+            : null;
+
+        static string?[] NamesOf(MetadataReader reader, GenericParameterHandleCollection parameters) =>
+            [.. parameters.Select(parameter => reader.GetString(reader.GetGenericParameter(parameter).Name))];
+
+        static string?[] RunAs(ICorDebugType[] arguments) => [.. arguments.Select(argument =>
         {
-            return null;
-        }
-        string runAs;
-        try
-        {
-            runAs = ManagedDebugger.GetCorDebugTypeFriendlyName(arguments[index]);
-        }
-        catch (Exception error) when (Failures.OfRuntime(error))
-        {
-            runAs = "object";
-        }
-        return (reader.GetString(reader.GetGenericParameter(parameters[index]).Name),
-            runAs == "System.__Canon" || SyntaxFactory.ParseTypeName(runAs).ContainsDiagnostics ? "object" : runAs);
+            try
+            {
+                return ManagedDebugger.GetCorDebugTypeFriendlyName(argument) is string name && name != "System.__Canon" ? name : null;
+            }
+            catch (Exception error) when (Failures.OfRuntime(error))
+            {
+                return null;
+            }
+        })];
+
+        static string? Nameable(string? type) => type is not null && !SyntaxFactory.ParseTypeName(type).ContainsDiagnostics ? type : null;
     }
 
-    /// <summary>Whether an expression fails to compile with the error <paramref name="id"/> (CS8331, a readonly variable
-    /// assigned) among its errors, none of it run.</summary>
-    internal bool FailsWith(string expression, CompiledExpressionEvaluationContext context, string id) =>
-        _compiler.TryCompile(expression, context, out _, out ImmutableArray<string> errors, out _) is null && errors.Contains(id);
+    /// <summary>Whether an expression fails to compile with one of the errors <paramref name="ids"/> (CS8331, a readonly
+    /// variable assigned) among its errors, none of it run.</summary>
+    internal bool FailsWith(string expression, CompiledExpressionEvaluationContext context, IReadOnlyCollection<string> ids) =>
+        _compiler.TryCompile(expression, context, out _, out ImmutableArray<string> errors, out _) is null && errors.Any(ids.Contains);
+
+    /// <summary>Whether an expression compiles, none of it run.</summary>
+    internal bool Compiles(string expression, CompiledExpressionEvaluationContext context) => _compiler.TryCompile(expression, context, out _) is not null;
 
     /// <summary>The type an expression's value is as it compiles, which its members' expressions reach them through.</summary>
     private static DeclaredType? DeclaredOf(CompiledEvaluationMethod compiled) =>

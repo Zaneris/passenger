@@ -5,8 +5,8 @@ namespace Passenger.Tests.Debugging;
 
 /// <summary>Set Value through the protocol, at Setting.Run's stop in PassengerCases: what it writes is what was asked,
 /// into what the expression names, its target run once, and the program goes on with it. A string holding a NUL is
-/// written and read whole, and a pointer takes another address. In Typed.Make, a variable typed by a type parameter takes
-/// a value fitting the type its frame runs it as.</summary>
+/// written and read whole, and a pointer takes another address. In Typed.Make and Typed.Wrap, a variable typed by type
+/// parameters, alone or in a larger type, takes a value fitting the type its frame runs it as.</summary>
 [Collection(DebugSession.Collection)]
 public class SetValueTests(ITestOutputHelper testOutputHelper)
 {
@@ -130,6 +130,41 @@ public class SetValueTests(ITestOutputHelper testOutputHelper)
         await host.ContinueAsync();
         (string output, _) = await host.WaitForEnd();
         Assert.Contains("generic 9 7 five four", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>In a generic method's frame, a List&lt;T&gt; local (T the class's, int) and a V? local (V the method's own
+    /// struct, double) take values of the types the frame runs them as, null too, which the program goes on with, and a value
+    /// of another type is refused naming the type the frame runs.</summary>
+    [Fact]
+    public async Task Set_Value_on_a_variable_typed_by_a_type_parameter_in_a_larger_type_takes_a_value_fitting_the_type_its_frame_runs()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["generic"])
+            .WaitForInitializedEvent();
+        int wrapped = Debuggees.Line("PassengerCases", "return $\"{list.Count} {list[0]} {maybe}\";");
+        await host.BreakpointsAsync([wrapped], Debuggees.Source("PassengerCases", "Program.cs")).ConfigurationDoneAsync();
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.True(stop.ReadStopInfo().line == wrapped, $"The program was to stop in Typed.Wrap at line {wrapped}, but stopped at the {stop.Reason} at line {stop.Line}");
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+
+        Assert.Equal("Count = 2", await Set(host, frame, "list", "new List<int> { 7, 8 }"));
+        Assert.True(await Evaluate(host, frame, "list[1]") == "8", $"list = new List<int> {{ 7, 8 }} left list[1] {await Evaluate(host, frame, "list[1]")}");
+        Assert.Equal("null", await Set(host, frame, "maybe", "null"));
+        Assert.True(await Evaluate(host, frame, "maybe.HasValue") == "false", $"maybe = null left maybe {await Evaluate(host, frame, "maybe")}");
+        Assert.Equal("1.5", await Set(host, frame, "maybe", "1.5"));
+        Assert.True(await Evaluate(host, frame, "maybe") == "1.5", $"maybe = 1.5 left maybe {await Evaluate(host, frame, "maybe")}");
+        DapException refused = await Assert.ThrowsAsync<DapException>(() => Set(host, frame, "list", "new List<string>()"));
+        Assert.True(refused.Message.Contains("List<int>'", StringComparison.Ordinal),
+            $"A List<string> set into list, a List<T> run as List<int>, was refused saying \"{refused.Message}\", naming no List<int>");
+        DapException refusedMaybe = await Assert.ThrowsAsync<DapException>(() => Set(host, frame, "maybe", "\"one\""));
+        Assert.True(refusedMaybe.Message.Contains("'double?'", StringComparison.Ordinal),
+            $"A string set into maybe, a V? run as double?, was refused saying \"{refusedMaybe.Message}\", naming no double?");
+
+        await host.ContinueAsync();
+        (string output, _) = await host.WaitForEnd();
+        Assert.Contains("wrapped 2 7 1.5", output, StringComparison.Ordinal);
     }
 
     /// <summary>The program launched to Setting.Run's stop, and its top frame.</summary>

@@ -1014,37 +1014,40 @@ public partial class ManagedDebugger
     /// <summary>Set Value: what an expression names takes a value, by their assignment's one evaluation, whose own value is
     /// the answer, so the target (an index that moves on, a call) runs once. A real number with no suffix, as a float's or
     /// a decimal's value is shown, takes the one its target's type needs, read from the target's compile alone. A variable
-    /// typed by a type parameter takes a value that fits the type its frame runs that as; one C# keeps readonly (an in
-    /// parameter, a ref readonly local) is written through the location it refers to.</summary>
+    /// typed by type parameters (T, List&lt;T&gt;) takes a value that fits the type its frame runs them as; one C# keeps
+    /// readonly (an in parameter, a ref readonly local, a member of either) is written through the location it refers to.</summary>
     public async Task<VariableInfo> Assign(string target, string value, int? frameId)
     {
         ArgumentNullException.ThrowIfNull(_expressionEvaluator);
         CompiledExpressionEvaluationContext context = ContextOf(frameId);
-        (string Name, string RunAs)? typeParameter = _expressionEvaluator.TypeParameterOf(target, context);
+        (string Cast, string? RunAs)? typed = _expressionEvaluator.TypeParametersOf(target, context);
         if (RealLiteral().IsMatch(value))
         {
-            value += (typeParameter?.RunAs ?? _expressionEvaluator.TypeOf(target, context)) switch
+            value += (typed?.RunAs ?? _expressionEvaluator.TypeOf(target, context)) switch
             {
                 "System.Single" or "System.Nullable`1<System.Single>" or "float" or "float?" => "f",
                 "System.Decimal" or "System.Nullable`1<System.Decimal>" or "decimal" or "decimal?" => "m",
                 _ => string.Empty,
             };
         }
-        if (typeParameter is (string name, string runAs))
+        if (typed is { } parameterized)
         {
-            // An array's element takes the value as a variable of that type would, converting it or refusing it by C#'s rules.
-            value = $"({name})(object)new {runAs}[] {{ {value} }}[0]";
+            // An element of an array of the type the frame runs takes the value as C# would, converting it or refusing it.
+            value = parameterized.RunAs is { } runAs
+                ? $"({parameterized.Cast})(object)new {CSharpTypeNames.ArrayOf(runAs, "[]")} {{ {value} }}[0]"
+                : $"({parameterized.Cast})(object)({value})";
         }
         string assignment = $"{target} = {value}";
-        if (_expressionEvaluator.FailsWith(assignment, context, ReadOnlyVariableAssigned))
+        if (_expressionEvaluator.FailsWith(assignment, context, ReadOnlyAssigned))
         {
-            assignment = $"System.Runtime.CompilerServices.Unsafe.AsRef(in {target}) = {value}";
+            assignment = WritableTargets.Of(target).Select(writable => $"{writable} = {value}").FirstOrDefault(writable => _expressionEvaluator.Compiles(writable, context))
+                ?? assignment;
         }
         return await Evaluate(assignment, frameId, target.Trim(), implicitly: false);
     }
 
-    /// <summary>The compiler's error for an assignment to a variable it keeps readonly.</summary>
-    private const string ReadOnlyVariableAssigned = "CS8331";
+    /// <summary>The compiler's errors for an assignment to a variable it keeps readonly, and to a member of one.</summary>
+    private static readonly string[] ReadOnlyAssigned = ["CS8331", "CS8332"];
 
     /// <summary>A real number as the debugger shows a float's, a double's or a decimal's: a point or an exponent, no suffix.</summary>
     [System.Text.RegularExpressions.GeneratedRegex(@"^-?\d+(\.\d+([eE][+-]?\d+)?|[eE][+-]?\d+)$")]

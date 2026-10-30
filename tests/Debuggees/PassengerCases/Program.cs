@@ -113,6 +113,7 @@ if (args is ["refs"])
 if (args is ["generic"])
 {
 	Console.WriteLine($"generic {Typed<int>.Make(4, "four")}");
+	Console.WriteLine($"wrapped {Typed<int>.Wrap(5, 2.5)}");
 	return;
 }
 if (args is ["culture"])
@@ -887,7 +888,8 @@ internal static class Contexts
 	}
 }
 
-// By-ref slots an evaluation reads and writes through: ref, out and in parameters, a ref local, a struct method's this.
+// By-ref slots an evaluation reads and writes through: ref, out and in parameters (a struct's among them), a ref local, a
+// struct method's this.
 internal static class Refs
 {
 	private static readonly int[] Firsts = [1];
@@ -897,13 +899,13 @@ internal static class Refs
 		int counted = 1;
 		IncrementByRef(ref counted);
 		AssignOut(out int assigned);
-		int added = AddOneIn(in counted);
+		Tile tile = new() { X = 3, Y = 4 };
+		int added = AddOneIn(in counted, in tile);
 		int height = 0;
 		for (int i = 0; i < 4; i++)
 		{
 			Climb(ref height);
 		}
-		Tile tile = new() { X = 3, Y = 4 };
 		tile.Grow(2);
 		Console.WriteLine($"refs {counted} {assigned} {added} {Firsts[0]} {height} {tile.X} {tile.Y}");
 	}
@@ -921,7 +923,7 @@ internal static class Refs
 		Console.WriteLine($"assigned {value}");
 	}
 
-	private static int AddOneIn(in int value)
+	private static int AddOneIn(in int value, in Tile iv)
 	{
 		int one = 1;
 		return value + one;
@@ -945,7 +947,8 @@ internal static class Cultured
 	}
 }
 
-// Variables typed by type parameters, the class's (int here) and the method's own (string).
+// Variables typed by type parameters, the class's (int here) and the method's own (string, and double, a struct), alone and
+// in larger types.
 internal static class Typed<T>
 {
 	public static string Make<U>(T t, U u)
@@ -953,6 +956,13 @@ internal static class Typed<T>
 		T copy = t;
 		U other = u;
 		return $"{copy} {t} {other} {u}";
+	}
+
+	public static string Wrap<V>(T t, V v) where V : struct
+	{
+		List<T> list = [t];
+		V? maybe = v;
+		return $"{list.Count} {list[0]} {maybe}";
 	}
 }
 

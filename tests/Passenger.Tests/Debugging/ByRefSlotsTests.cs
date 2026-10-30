@@ -3,9 +3,9 @@ using Passenger.Tests.Debugging.Helpers;
 
 namespace Passenger.Tests.Debugging;
 
-/// <summary>By-ref slots of a frame in PassengerCases' Refs (ref, out and in parameters, a ref local, a struct method's
-/// this) through the protocol: evaluated, set and read in conditions as the managed locations they are, a change written
-/// where they refer to, which the program goes on with.</summary>
+/// <summary>By-ref slots of a frame in PassengerCases' Refs (ref, out and in parameters, a member of an in struct, a ref
+/// local, a struct method's this) through the protocol: evaluated, set and read in conditions as the managed locations they
+/// are, a change written where they refer to, which the program goes on with.</summary>
 [Collection(DebugSession.Collection)]
 public class ByRefSlotsTests(ITestOutputHelper testOutputHelper)
 {
@@ -43,6 +43,23 @@ public class ByRefSlotsTests(ITestOutputHelper testOutputHelper)
         await host.ContinueAsync();
         (string output, _) = await host.WaitForEnd();
         Assert.Contains("refs 20 7 21 7 160 5 6", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>A member of an in parameter, a struct C# keeps readonly, takes a value written into the caller's struct,
+    /// which the program goes on with.</summary>
+    [Fact]
+    public async Task A_member_of_an_in_parameter_takes_a_value_written_into_the_callers_struct()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await LaunchToAsync(host, [new DapSourceBreakpoint(AddOne)], AddOne);
+
+        Assert.Equal("3", await Evaluate(host, frame, "iv.X"));
+        Assert.Equal("5", await Set(host, frame, "iv.X", "5"));
+        Assert.True(await Evaluate(host, frame, "iv.X + iv.Y") == "9", $"iv.X = 5 left iv.X {await Evaluate(host, frame, "iv.X")} and iv.Y {await Evaluate(host, frame, "iv.Y")}");
+
+        await host.ContinueAsync();
+        (string output, _) = await host.WaitForEnd();
+        Assert.Contains("refs 4 42 5 1 160 7 6", output, StringComparison.Ordinal);
     }
 
     /// <summary>A condition on a ref parameter is evaluated through it at every hit, so the breakpoint stops once, where it
