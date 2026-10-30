@@ -74,7 +74,6 @@
             "WSL",
             "WSL2"
           ],
-          "default": "",
           "minLength": 1
         },
         "commandLineArgs": {
@@ -128,8 +127,7 @@
         },
         "ancmHostingModel": {
           "enum": ["InProcess", "OutOfProcess"],
-          "description": "Specifies the hosting model to use when running ASP.NET core projects in IIS and IIS Express.",
-          "default": false
+          "description": "Specifies the hosting model to use when running ASP.NET core projects in IIS and IIS Express."
         },
         "sqlDebugging": {
           "type": "boolean",

@@ -24,8 +24,8 @@
          nothing else reads them. -->
     <WebServersMoved Include="node_modules/vscode-langservers-extracted/node_modules/typescript/lib/lib%2A.d.ts|node_modules/node_modules/typescript/lib" />
     <!-- JSON schemas the JSON server is given for the files that name none (package.json, tsconfig.json, appsettings.json,
-         launchSettings.json, global.json) and those they refer to, as SchemaStore publishes them, and the YAML server the Compose
-         specification's for compose files. -->
+         launchSettings.json, global.json) and those they refer to, SchemaStore's with the changes THIRD_PARTY_NOTICES.md lists,
+         and the YAML server the Compose specification's for compose files. -->
     <WebServersSchema Include="$(MSBuildThisFileDirectory)WebServers/schemas/*.json" />
   </ItemGroup>
 

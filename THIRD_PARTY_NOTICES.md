@@ -871,7 +871,7 @@ limitations under the License.
 ## SchemaStore's JSON schemas
 
 `src/Passenger.Lsp/WebServers/schemas/` holds JSON schemas of the JSON Schema Store
-(https://github.com/SchemaStore/schemastore, `src/schemas/json/` at commit 5661ee1b), unchanged, carried under
+(https://github.com/SchemaStore/schemastore, `src/schemas/json/` at commit 5661ee1b), modified as listed below, carried under
 `web/schemas/`: those the JSON language server checks and completes package.json, tsconfig.json, jsconfig.json,
 appsettings.json, launchSettings.json and global.json by (`package.json`, `tsconfig.json`, `jsconfig.json`,
 `appsettings.json`, `launchsettings.json`, `global.json`), and those they refer to (`eslintrc.json`, `prettierrc.json`,
@@ -883,6 +883,13 @@ Store's NOTICE:
 JSON Schema Store
 Copyright 2015-Current Mads Kristensen and Contributors
 ```
+
+Passenger's changes, each where a schema refused what the tool it describes takes or offered what it refuses:
+
+- `appsettings.json`, `launchsettings.json`, `prettierrc.json`: NLog's `internalLogToConsole`, `internalLogToConsoleError`
+  and `autoShutdown` default to the booleans their strings named; the defaults their own schema refuses are left out
+  (NLog's `targetDefaultWrapper`, rule and filter `{}`, launch settings' `commandName` `""` and `ancmHostingModel`
+  `false`, Prettier's `rangeEnd` `null`).
 
 ## The Compose specification's schema
 

@@ -88,6 +88,12 @@
     <Compile Include="../../src/Passenger.App/Run/BuiltInputs.cs" Link="App/BuiltInputs.cs" />
   </ItemGroup>
 
+  <!-- The JSON schemas the app carries under web/schemas, compiled in for the checks of what they offer and take. -->
+  <ItemGroup>
+    <EmbeddedResource Include="../../src/Passenger.Lsp/WebServers/schemas/*.json" LogicalName="schemas/%(Filename)%(Extension)"
+                      Link="Schemas/Carried/%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
