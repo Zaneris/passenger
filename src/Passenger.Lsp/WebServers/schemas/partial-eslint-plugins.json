@@ -738,7 +738,7 @@
     "@angular-eslint/use-pipe-transform-interface": {
       "description": "Ensures that `Pipes` implement `PipeTransform` interface\nhttps://github.com/angular-eslint/angular-eslint/blob/main/packages/eslint-plugin/docs/rules/use-pipe-transform-interface.md"
     },
-    "eslint-plugin-import/no-unresolved": {
+    "import/no-unresolved": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -797,7 +797,7 @@
       ],
       "description": "Ensure imports point to a file/module that can be resolved.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-unresolved.md"
     },
-    "eslint-plugin-import/named": {
+    "import/named": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -834,10 +834,10 @@
       ],
       "description": "Ensure named imports correspond to a named export in the remote file.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/named.md"
     },
-    "eslint-plugin-import/default": {
+    "import/default": {
       "description": "Ensure a default export is present, given a default import.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/default.md"
     },
-    "eslint-plugin-import/namespace": {
+    "import/namespace": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -876,7 +876,7 @@
       ],
       "description": "Ensure imported namespaces contain dereferenced properties as they are dereferenced.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/namespace.md"
     },
-    "eslint-plugin-import/no-namespace": {
+    "import/no-namespace": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -917,16 +917,16 @@
       ],
       "description": "Forbid namespace (a.k.a. \"wildcard\" `*`) imports.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-namespace.md"
     },
-    "eslint-plugin-import/export": {
+    "import/export": {
       "description": "Forbid any invalid exports, i.e. re-export of the same name.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/export.md"
     },
-    "eslint-plugin-import/no-mutable-exports": {
+    "import/no-mutable-exports": {
       "description": "Forbid the use of mutable exports with `var` or `let`.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-mutable-exports.md"
     },
-    "eslint-plugin-import/extensions": {
+    "import/extensions": {
       "description": "Ensure consistent use of file extension within the import path.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/extensions.md"
     },
-    "eslint-plugin-import/no-restricted-paths": {
+    "import/no-restricted-paths": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1013,7 +1013,7 @@
       ],
       "description": "Enforce which files can be imported in a given folder.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-restricted-paths.md"
     },
-    "eslint-plugin-import/no-internal-modules": {
+    "import/no-internal-modules": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1046,10 +1046,10 @@
       ],
       "description": "Forbid importing the submodules of other modules.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-internal-modules.md"
     },
-    "eslint-plugin-import/group-exports": {
+    "import/group-exports": {
       "description": "Prefer named exports to be grouped together in a single export declaration\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/group-exports.md"
     },
-    "eslint-plugin-import/no-relative-packages": {
+    "import/no-relative-packages": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1100,7 +1100,7 @@
       ],
       "description": "Forbid importing packages through relative paths.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-relative-packages.md"
     },
-    "eslint-plugin-import/no-relative-parent-imports": {
+    "import/no-relative-parent-imports": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1151,7 +1151,7 @@
       ],
       "description": "Forbid importing modules from parent directories.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-relative-parent-imports.md"
     },
-    "eslint-plugin-import/consistent-type-specifier-style": {
+    "import/consistent-type-specifier-style": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1184,10 +1184,10 @@
       ],
       "description": "Enforce or ban the use of inline type-only markers for named imports.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/consistent-type-specifier-style.md"
     },
-    "eslint-plugin-import/no-self-import": {
+    "import/no-self-import": {
       "description": "Forbid a module from importing itself.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-self-import.md"
     },
-    "eslint-plugin-import/no-cycle": {
+    "import/no-cycle": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1261,16 +1261,16 @@
       ],
       "description": "Forbid a module from importing a module with a dependency path back to itself.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-cycle.md"
     },
-    "eslint-plugin-import/no-named-default": {
+    "import/no-named-default": {
       "description": "Forbid named default exports.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-named-default.md"
     },
-    "eslint-plugin-import/no-named-as-default": {
+    "import/no-named-as-default": {
       "description": "Forbid use of exported name as identifier of default export.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-named-as-default.md"
     },
-    "eslint-plugin-import/no-named-as-default-member": {
+    "import/no-named-as-default-member": {
       "description": "Forbid use of exported name as property of default export.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-named-as-default-member.md"
     },
-    "eslint-plugin-import/no-anonymous-default-export": {
+    "import/no-anonymous-default-export": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1336,7 +1336,7 @@
       ],
       "description": "Forbid anonymous values as default exports.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-anonymous-default-export.md"
     },
-    "eslint-plugin-import/no-unused-modules": {
+    "import/no-unused-modules": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1396,13 +1396,13 @@
       ],
       "description": "Forbid modules without exports, or exports without matching import in another module.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-unused-modules.md"
     },
-    "eslint-plugin-import/no-commonjs": {
+    "import/no-commonjs": {
       "description": "Forbid CommonJS `require` calls and `module.exports` or `exports.*`.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-commonjs.md"
     },
-    "eslint-plugin-import/no-amd": {
+    "import/no-amd": {
       "description": "Forbid AMD `require` and `define` calls.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-amd.md"
     },
-    "eslint-plugin-import/no-duplicates": {
+    "import/no-duplicates": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1442,7 +1442,7 @@
       ],
       "description": "Forbid repeated import of the same module in multiple places.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-duplicates.md"
     },
-    "eslint-plugin-import/first": {
+    "import/first": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1475,7 +1475,7 @@
       ],
       "description": "Ensure all imports appear before other statements.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/first.md"
     },
-    "eslint-plugin-import/max-dependencies": {
+    "import/max-dependencies": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1515,7 +1515,7 @@
       ],
       "description": "Enforce the maximum number of dependencies a module can have.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/max-dependencies.md"
     },
-    "eslint-plugin-import/no-extraneous-dependencies": {
+    "import/no-extraneous-dependencies": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1618,7 +1618,7 @@
       ],
       "description": "Forbid the use of extraneous packages.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-extraneous-dependencies.md"
     },
-    "eslint-plugin-import/no-absolute-path": {
+    "import/no-absolute-path": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1669,7 +1669,7 @@
       ],
       "description": "Forbid import of modules using absolute paths.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-absolute-path.md"
     },
-    "eslint-plugin-import/no-nodejs-modules": {
+    "import/no-nodejs-modules": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1710,10 +1710,10 @@
       ],
       "description": "Forbid Node.js builtin modules.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-nodejs-modules.md"
     },
-    "eslint-plugin-import/no-webpack-loader-syntax": {
+    "import/no-webpack-loader-syntax": {
       "description": "Forbid webpack loader syntax in imports.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-webpack-loader-syntax.md"
     },
-    "eslint-plugin-import/order": {
+    "import/order": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1821,7 +1821,7 @@
       ],
       "description": "Enforce a convention in module import order.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/order.md"
     },
-    "eslint-plugin-import/newline-after-import": {
+    "import/newline-after-import": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1865,7 +1865,7 @@
       ],
       "description": "Enforce a newline after import statements.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/newline-after-import.md"
     },
-    "eslint-plugin-import/prefer-default-export": {
+    "import/prefer-default-export": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1904,13 +1904,13 @@
       ],
       "description": "Prefer a default export if module exports a single name or multiple names.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/prefer-default-export.md"
     },
-    "eslint-plugin-import/no-default-export": {
+    "import/no-default-export": {
       "description": "Forbid default exports.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-default-export.md"
     },
-    "eslint-plugin-import/no-named-export": {
+    "import/no-named-export": {
       "description": "Forbid named exports.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-named-export.md"
     },
-    "eslint-plugin-import/no-dynamic-require": {
+    "import/no-dynamic-require": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -1947,10 +1947,10 @@
       ],
       "description": "Forbid `require()` calls with expressions.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-dynamic-require.md"
     },
-    "eslint-plugin-import/unambiguous": {
+    "import/unambiguous": {
       "description": "Forbid potentially ambiguous parse goal (`script` vs. `module`).\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/unambiguous.md"
     },
-    "eslint-plugin-import/no-unassigned-import": {
+    "import/no-unassigned-import": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2023,7 +2023,7 @@
       ],
       "description": "Forbid unassigned imports\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-unassigned-import.md"
     },
-    "eslint-plugin-import/no-useless-path-segments": {
+    "import/no-useless-path-segments": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2063,7 +2063,7 @@
       ],
       "description": "Forbid unnecessary path segments in import and require statements.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-useless-path-segments.md"
     },
-    "eslint-plugin-import/dynamic-import-chunkname": {
+    "import/dynamic-import-chunkname": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2107,7 +2107,7 @@
       ],
       "description": "Enforce a leading comment with the webpackChunkName for dynamic imports.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/dynamic-import-chunkname.md"
     },
-    "eslint-plugin-import/no-import-module-exports": {
+    "import/no-import-module-exports": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2144,16 +2144,16 @@
       ],
       "description": "Forbid import statements with CommonJS module.exports.\n"
     },
-    "eslint-plugin-import/no-empty-named-blocks": {
+    "import/no-empty-named-blocks": {
       "description": "Forbid empty named import blocks.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-empty-named-blocks.md"
     },
-    "eslint-plugin-import/exports-last": {
+    "import/exports-last": {
       "description": "Ensure all exports appear after other statements.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/exports-last.md"
     },
-    "eslint-plugin-import/no-deprecated": {
+    "import/no-deprecated": {
       "description": "Forbid imported names marked with `@deprecated` documentation tag.\nhttps://github.com/import-js/eslint-plugin-import/blob/v2.29.1/docs/rules/no-deprecated.md"
     },
-    "eslint-plugin-import/imports-first": {
+    "import/imports-first": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2186,7 +2186,7 @@
       ],
       "description": "Replaced by `import/first`.\nhttps://github.com/import-js/eslint-plugin-import/blob/7b25c1cb95ee18acc1531002fd343e1e6031f9ed/docs/rules/imports-first.md"
     },
-    "eslint-plugin-unicorn/better-regex": {
+    "unicorn/better-regex": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2224,7 +2224,7 @@
       ],
       "description": "Improve regexes by making them shorter, consistent, and safer.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/better-regex.md"
     },
-    "eslint-plugin-unicorn/catch-error-name": {
+    "unicorn/catch-error-name": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2265,13 +2265,13 @@
       ],
       "description": "Enforce a specific parameter name in catch clauses.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/catch-error-name.md"
     },
-    "eslint-plugin-unicorn/consistent-destructuring": {
+    "unicorn/consistent-destructuring": {
       "description": "Use destructured variables over properties.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/consistent-destructuring.md"
     },
-    "eslint-plugin-unicorn/consistent-empty-array-spread": {
+    "unicorn/consistent-empty-array-spread": {
       "description": "Prefer consistent types when spreading a ternary in an array literal.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/consistent-empty-array-spread.md"
     },
-    "eslint-plugin-unicorn/consistent-function-scoping": {
+    "unicorn/consistent-function-scoping": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2309,19 +2309,19 @@
       ],
       "description": "Move function definitions to the highest possible scope.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/consistent-function-scoping.md"
     },
-    "eslint-plugin-unicorn/custom-error-definition": {
+    "unicorn/custom-error-definition": {
       "description": "Enforce correct `Error` subclassing.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/custom-error-definition.md"
     },
-    "eslint-plugin-unicorn/empty-brace-spaces": {
+    "unicorn/empty-brace-spaces": {
       "description": "Enforce no spaces between braces.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/empty-brace-spaces.md"
     },
-    "eslint-plugin-unicorn/error-message": {
+    "unicorn/error-message": {
       "description": "Enforce passing a `message` value when creating a built-in error.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/error-message.md"
     },
-    "eslint-plugin-unicorn/escape-case": {
+    "unicorn/escape-case": {
       "description": "Require escape sequences to use uppercase values.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/escape-case.md"
     },
-    "eslint-plugin-unicorn/expiring-todo-comments": {
+    "unicorn/expiring-todo-comments": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2377,7 +2377,7 @@
       ],
       "description": "Add expiration conditions to TODO comments.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/expiring-todo-comments.md"
     },
-    "eslint-plugin-unicorn/explicit-length-check": {
+    "unicorn/explicit-length-check": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2415,7 +2415,7 @@
       ],
       "description": "Enforce explicitly comparing the `length` or `size` property of a value.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/explicit-length-check.md"
     },
-    "eslint-plugin-unicorn/filename-case": {
+    "unicorn/filename-case": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2448,28 +2448,28 @@
       ],
       "description": "Enforce a case style for filenames.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/filename-case.md"
     },
-    "eslint-plugin-unicorn/import-style": {
+    "unicorn/import-style": {
       "description": "Enforce specific import styles per module.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/import-style.md"
     },
-    "eslint-plugin-unicorn/new-for-builtins": {
+    "unicorn/new-for-builtins": {
       "description": "Enforce the use of `new` for all builtins, except `String`, `Number`, `Boolean`, `Symbol` and `BigInt`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/new-for-builtins.md"
     },
-    "eslint-plugin-unicorn/no-abusive-eslint-disable": {
+    "unicorn/no-abusive-eslint-disable": {
       "description": "Enforce specifying rules to disable in `eslint-disable` comments.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-abusive-eslint-disable.md"
     },
-    "eslint-plugin-unicorn/no-anonymous-default-export": {
+    "unicorn/no-anonymous-default-export": {
       "description": "Disallow anonymous functions and classes as the default export.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-anonymous-default-export.md"
     },
-    "eslint-plugin-unicorn/no-array-callback-reference": {
+    "unicorn/no-array-callback-reference": {
       "description": "Prevent passing a function reference directly to iterator methods.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-array-callback-reference.md"
     },
-    "eslint-plugin-unicorn/no-array-for-each": {
+    "unicorn/no-array-for-each": {
       "description": "Prefer `for…of` over the `forEach` method.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-array-for-each.md"
     },
-    "eslint-plugin-unicorn/no-array-method-this-argument": {
+    "unicorn/no-array-method-this-argument": {
       "description": "Disallow using the `this` argument in array methods.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-array-method-this-argument.md"
     },
-    "eslint-plugin-unicorn/no-array-push-push": {
+    "unicorn/no-array-push-push": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2507,7 +2507,7 @@
       ],
       "description": "Enforce combining multiple `Array#push()` into one call.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-array-push-push.md"
     },
-    "eslint-plugin-unicorn/no-array-reduce": {
+    "unicorn/no-array-reduce": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2545,37 +2545,37 @@
       ],
       "description": "Disallow `Array#reduce()` and `Array#reduceRight()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-array-reduce.md"
     },
-    "eslint-plugin-unicorn/no-await-expression-member": {
+    "unicorn/no-await-expression-member": {
       "description": "Disallow member access from await expression.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-await-expression-member.md"
     },
-    "eslint-plugin-unicorn/no-await-in-promise-methods": {
+    "unicorn/no-await-in-promise-methods": {
       "description": "Disallow using `await` in `Promise` method parameters.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-await-in-promise-methods.md"
     },
-    "eslint-plugin-unicorn/no-console-spaces": {
+    "unicorn/no-console-spaces": {
       "description": "Do not use leading/trailing space between `console.log` parameters.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-console-spaces.md"
     },
-    "eslint-plugin-unicorn/no-document-cookie": {
+    "unicorn/no-document-cookie": {
       "description": "Do not use `document.cookie` directly.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-document-cookie.md"
     },
-    "eslint-plugin-unicorn/no-empty-file": {
+    "unicorn/no-empty-file": {
       "description": "Disallow empty files.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-empty-file.md"
     },
-    "eslint-plugin-unicorn/no-for-loop": {
+    "unicorn/no-for-loop": {
       "description": "Do not use a `for` loop that can be replaced with a `for-of` loop.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-for-loop.md"
     },
-    "eslint-plugin-unicorn/no-hex-escape": {
+    "unicorn/no-hex-escape": {
       "description": "Enforce the use of Unicode escapes instead of hexadecimal escapes.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-hex-escape.md"
     },
-    "eslint-plugin-unicorn/no-instanceof-array": {
+    "unicorn/no-instanceof-array": {
       "description": "Require `Array.isArray()` instead of `instanceof Array`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-instanceof-array.md"
     },
-    "eslint-plugin-unicorn/no-invalid-fetch-options": {
+    "unicorn/no-invalid-fetch-options": {
       "description": "Disallow invalid options in `fetch()` and `new Request()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-invalid-fetch-options.md"
     },
-    "eslint-plugin-unicorn/no-invalid-remove-event-listener": {
+    "unicorn/no-invalid-remove-event-listener": {
       "description": "Prevent calling `EventTarget#removeEventListener()` with the result of an expression.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-invalid-remove-event-listener.md"
     },
-    "eslint-plugin-unicorn/no-keyword-prefix": {
+    "unicorn/no-keyword-prefix": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2626,28 +2626,28 @@
       ],
       "description": "Disallow identifiers starting with `new` or `class`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-keyword-prefix.md"
     },
-    "eslint-plugin-unicorn/no-lonely-if": {
+    "unicorn/no-lonely-if": {
       "description": "Disallow `if` statements as the only statement in `if` blocks without `else`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-lonely-if.md"
     },
-    "eslint-plugin-unicorn/no-magic-array-flat-depth": {
+    "unicorn/no-magic-array-flat-depth": {
       "description": "Disallow a magic number as the `depth` argument in `Array#flat(…).`\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-magic-array-flat-depth.md"
     },
-    "eslint-plugin-unicorn/no-negated-condition": {
+    "unicorn/no-negated-condition": {
       "description": "Disallow negated conditions.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-negated-condition.md"
     },
-    "eslint-plugin-unicorn/no-negation-in-equality-check": {
+    "unicorn/no-negation-in-equality-check": {
       "description": "Disallow negated expression in equality check.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-negation-in-equality-check.md"
     },
-    "eslint-plugin-unicorn/no-nested-ternary": {
+    "unicorn/no-nested-ternary": {
       "description": "Disallow nested ternary expressions.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-nested-ternary.md"
     },
-    "eslint-plugin-unicorn/no-new-array": {
+    "unicorn/no-new-array": {
       "description": "Disallow `new Array()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-new-array.md"
     },
-    "eslint-plugin-unicorn/no-new-buffer": {
+    "unicorn/no-new-buffer": {
       "description": "Enforce the use of `Buffer.from()` and `Buffer.alloc()` instead of the deprecated `new Buffer()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-new-buffer.md"
     },
-    "eslint-plugin-unicorn/no-null": {
+    "unicorn/no-null": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2685,25 +2685,25 @@
       ],
       "description": "Disallow the use of the `null` literal.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-null.md"
     },
-    "eslint-plugin-unicorn/no-object-as-default-parameter": {
+    "unicorn/no-object-as-default-parameter": {
       "description": "Disallow the use of objects as default parameters.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-object-as-default-parameter.md"
     },
-    "eslint-plugin-unicorn/no-process-exit": {
+    "unicorn/no-process-exit": {
       "description": "Disallow `process.exit()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-process-exit.md"
     },
-    "eslint-plugin-unicorn/no-single-promise-in-promise-methods": {
+    "unicorn/no-single-promise-in-promise-methods": {
       "description": "Disallow passing single-element arrays to `Promise` methods.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-single-promise-in-promise-methods.md"
     },
-    "eslint-plugin-unicorn/no-static-only-class": {
+    "unicorn/no-static-only-class": {
       "description": "Disallow classes that only have static members.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-static-only-class.md"
     },
-    "eslint-plugin-unicorn/no-thenable": {
+    "unicorn/no-thenable": {
       "description": "Disallow `then` property.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-thenable.md"
     },
-    "eslint-plugin-unicorn/no-this-assignment": {
+    "unicorn/no-this-assignment": {
       "description": "Disallow assigning `this` to a variable.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-this-assignment.md"
     },
-    "eslint-plugin-unicorn/no-typeof-undefined": {
+    "unicorn/no-typeof-undefined": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2741,10 +2741,10 @@
       ],
       "description": "Disallow comparing `undefined` using `typeof`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-typeof-undefined.md"
     },
-    "eslint-plugin-unicorn/no-unnecessary-await": {
+    "unicorn/no-unnecessary-await": {
       "description": "Disallow awaiting non-promise values.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-unnecessary-await.md"
     },
-    "eslint-plugin-unicorn/no-unnecessary-polyfills": {
+    "unicorn/no-unnecessary-polyfills": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2791,31 +2791,31 @@
       ],
       "description": "Enforce the use of built-in methods instead of unnecessary polyfills.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-unnecessary-polyfills.md"
     },
-    "eslint-plugin-unicorn/no-unreadable-array-destructuring": {
+    "unicorn/no-unreadable-array-destructuring": {
       "description": "Disallow unreadable array destructuring.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-unreadable-array-destructuring.md"
     },
-    "eslint-plugin-unicorn/no-unreadable-iife": {
+    "unicorn/no-unreadable-iife": {
       "description": "Disallow unreadable IIFEs.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-unreadable-iife.md"
     },
-    "eslint-plugin-unicorn/no-unused-properties": {
+    "unicorn/no-unused-properties": {
       "description": "Disallow unused object properties.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-unused-properties.md"
     },
-    "eslint-plugin-unicorn/no-useless-fallback-in-spread": {
+    "unicorn/no-useless-fallback-in-spread": {
       "description": "Disallow useless fallback when spreading in object literals.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-useless-fallback-in-spread.md"
     },
-    "eslint-plugin-unicorn/no-useless-length-check": {
+    "unicorn/no-useless-length-check": {
       "description": "Disallow useless array length check.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-useless-length-check.md"
     },
-    "eslint-plugin-unicorn/no-useless-promise-resolve-reject": {
+    "unicorn/no-useless-promise-resolve-reject": {
       "description": "Disallow returning/yielding `Promise.resolve/reject()` in async functions or promise callbacks\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-useless-promise-resolve-reject.md"
     },
-    "eslint-plugin-unicorn/no-useless-spread": {
+    "unicorn/no-useless-spread": {
       "description": "Disallow unnecessary spread.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-useless-spread.md"
     },
-    "eslint-plugin-unicorn/no-useless-switch-case": {
+    "unicorn/no-useless-switch-case": {
       "description": "Disallow useless case in switch statements.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-useless-switch-case.md"
     },
-    "eslint-plugin-unicorn/no-useless-undefined": {
+    "unicorn/no-useless-undefined": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2855,13 +2855,13 @@
       ],
       "description": "Disallow useless `undefined`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-useless-undefined.md"
     },
-    "eslint-plugin-unicorn/no-zero-fractions": {
+    "unicorn/no-zero-fractions": {
       "description": "Disallow number literals with zero fractions or dangling dots.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/no-zero-fractions.md"
     },
-    "eslint-plugin-unicorn/number-literal-case": {
+    "unicorn/number-literal-case": {
       "description": "Enforce proper case for numeric literals.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/number-literal-case.md"
     },
-    "eslint-plugin-unicorn/numeric-separators-style": {
+    "unicorn/numeric-separators-style": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -2975,7 +2975,7 @@
       ],
       "description": "Enforce the style of numeric separators by correctly grouping digits.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/numeric-separators-style.md"
     },
-    "eslint-plugin-unicorn/prefer-add-event-listener": {
+    "unicorn/prefer-add-event-listener": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3016,7 +3016,7 @@
       ],
       "description": "Prefer `.addEventListener()` and `.removeEventListener()` over `on`-functions.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-add-event-listener.md"
     },
-    "eslint-plugin-unicorn/prefer-array-find": {
+    "unicorn/prefer-array-find": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3054,10 +3054,10 @@
       ],
       "description": "Prefer `.find(…)` and `.findLast(…)` over the first or last element from `.filter(…)`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-array-find.md"
     },
-    "eslint-plugin-unicorn/prefer-array-flat-map": {
+    "unicorn/prefer-array-flat-map": {
       "description": "Prefer `.flatMap(…)` over `.map(…).flat()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-array-flat-map.md"
     },
-    "eslint-plugin-unicorn/prefer-array-flat": {
+    "unicorn/prefer-array-flat": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3095,13 +3095,13 @@
       ],
       "description": "Prefer `Array#flat()` over legacy techniques to flatten arrays.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-array-flat.md"
     },
-    "eslint-plugin-unicorn/prefer-array-index-of": {
+    "unicorn/prefer-array-index-of": {
       "description": "Prefer `Array#{indexOf,lastIndexOf}()` over `Array#{findIndex,findLastIndex}()` when looking for the index of an item.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-array-index-of.md"
     },
-    "eslint-plugin-unicorn/prefer-array-some": {
+    "unicorn/prefer-array-some": {
       "description": "Prefer `.some(…)` over `.filter(…).length` check and `.{find,findLast,findIndex,findLastIndex}(…)`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-array-some.md"
     },
-    "eslint-plugin-unicorn/prefer-at": {
+    "unicorn/prefer-at": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3143,34 +3143,34 @@
       ],
       "description": "Prefer `.at()` method for index access and `String#charAt()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-at.md"
     },
-    "eslint-plugin-unicorn/prefer-blob-reading-methods": {
+    "unicorn/prefer-blob-reading-methods": {
       "description": "Prefer `Blob#arrayBuffer()` over `FileReader#readAsArrayBuffer(…)` and `Blob#text()` over `FileReader#readAsText(…)`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-blob-reading-methods.md"
     },
-    "eslint-plugin-unicorn/prefer-code-point": {
+    "unicorn/prefer-code-point": {
       "description": "Prefer `String#codePointAt(…)` over `String#charCodeAt(…)` and `String.fromCodePoint(…)` over `String.fromCharCode(…)`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-code-point.md"
     },
-    "eslint-plugin-unicorn/prefer-date-now": {
+    "unicorn/prefer-date-now": {
       "description": "Prefer `Date.now()` to get the number of milliseconds since the Unix Epoch.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-date-now.md"
     },
-    "eslint-plugin-unicorn/prefer-default-parameters": {
+    "unicorn/prefer-default-parameters": {
       "description": "Prefer default parameters over reassignment.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-default-parameters.md"
     },
-    "eslint-plugin-unicorn/prefer-dom-node-append": {
+    "unicorn/prefer-dom-node-append": {
       "description": "Prefer `Node#append()` over `Node#appendChild()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-dom-node-append.md"
     },
-    "eslint-plugin-unicorn/prefer-dom-node-dataset": {
+    "unicorn/prefer-dom-node-dataset": {
       "description": "Prefer using `.dataset` on DOM elements over calling attribute methods.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-dom-node-dataset.md"
     },
-    "eslint-plugin-unicorn/prefer-dom-node-remove": {
+    "unicorn/prefer-dom-node-remove": {
       "description": "Prefer `childNode.remove()` over `parentNode.removeChild(childNode)`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-dom-node-remove.md"
     },
-    "eslint-plugin-unicorn/prefer-dom-node-text-content": {
+    "unicorn/prefer-dom-node-text-content": {
       "description": "Prefer `.textContent` over `.innerText`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-dom-node-text-content.md"
     },
-    "eslint-plugin-unicorn/prefer-event-target": {
+    "unicorn/prefer-event-target": {
       "description": "Prefer `EventTarget` over `EventEmitter`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-event-target.md"
     },
-    "eslint-plugin-unicorn/prefer-export-from": {
+    "unicorn/prefer-export-from": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3208,40 +3208,40 @@
       ],
       "description": "Prefer `export…from` when re-exporting.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-export-from.md"
     },
-    "eslint-plugin-unicorn/prefer-includes": {
+    "unicorn/prefer-includes": {
       "description": "Prefer `.includes()` over `.indexOf()`, `.lastIndexOf()`, and `Array#some()` when checking for existence or non-existence.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-includes.md"
     },
-    "eslint-plugin-unicorn/prefer-json-parse-buffer": {
+    "unicorn/prefer-json-parse-buffer": {
       "description": "Prefer reading a JSON file as a buffer.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-json-parse-buffer.md"
     },
-    "eslint-plugin-unicorn/prefer-keyboard-event-key": {
+    "unicorn/prefer-keyboard-event-key": {
       "description": "Prefer `KeyboardEvent#key` over `KeyboardEvent#keyCode`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-keyboard-event-key.md"
     },
-    "eslint-plugin-unicorn/prefer-logical-operator-over-ternary": {
+    "unicorn/prefer-logical-operator-over-ternary": {
       "description": "Prefer using a logical operator over a ternary.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-logical-operator-over-ternary.md"
     },
-    "eslint-plugin-unicorn/prefer-math-trunc": {
+    "unicorn/prefer-math-trunc": {
       "description": "Enforce the use of `Math.trunc` instead of bitwise operators.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-math-trunc.md"
     },
-    "eslint-plugin-unicorn/prefer-modern-dom-apis": {
+    "unicorn/prefer-modern-dom-apis": {
       "description": "Prefer `.before()` over `.insertBefore()`, `.replaceWith()` over `.replaceChild()`, prefer one of `.before()`, `.after()`, `.append()` or `.prepend()` over `insertAdjacentText()` and `insertAdjacentElement()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-modern-dom-apis.md"
     },
-    "eslint-plugin-unicorn/prefer-modern-math-apis": {
+    "unicorn/prefer-modern-math-apis": {
       "description": "Prefer modern `Math` APIs over legacy patterns.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-modern-math-apis.md"
     },
-    "eslint-plugin-unicorn/prefer-module": {
+    "unicorn/prefer-module": {
       "description": "Prefer JavaScript modules (ESM) over CommonJS.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-module.md"
     },
-    "eslint-plugin-unicorn/prefer-native-coercion-functions": {
+    "unicorn/prefer-native-coercion-functions": {
       "description": "Prefer using `String`, `Number`, `BigInt`, `Boolean`, and `Symbol` directly.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-native-coercion-functions.md"
     },
-    "eslint-plugin-unicorn/prefer-negative-index": {
+    "unicorn/prefer-negative-index": {
       "description": "Prefer negative index over `.length - index` when possible.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-negative-index.md"
     },
-    "eslint-plugin-unicorn/prefer-node-protocol": {
+    "unicorn/prefer-node-protocol": {
       "description": "Prefer using the `node:` protocol when importing Node.js builtin modules.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-node-protocol.md"
     },
-    "eslint-plugin-unicorn/prefer-number-properties": {
+    "unicorn/prefer-number-properties": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3283,7 +3283,7 @@
       ],
       "description": "Prefer `Number` static properties over global ones.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-number-properties.md"
     },
-    "eslint-plugin-unicorn/prefer-object-from-entries": {
+    "unicorn/prefer-object-from-entries": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3321,46 +3321,46 @@
       ],
       "description": "Prefer using `Object.fromEntries(…)` to transform a list of key-value pairs into an object.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-object-from-entries.md"
     },
-    "eslint-plugin-unicorn/prefer-optional-catch-binding": {
+    "unicorn/prefer-optional-catch-binding": {
       "description": "Prefer omitting the `catch` binding parameter.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-optional-catch-binding.md"
     },
-    "eslint-plugin-unicorn/prefer-prototype-methods": {
+    "unicorn/prefer-prototype-methods": {
       "description": "Prefer borrowing methods from the prototype instead of the instance.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-prototype-methods.md"
     },
-    "eslint-plugin-unicorn/prefer-query-selector": {
+    "unicorn/prefer-query-selector": {
       "description": "Prefer `.querySelector()` over `.getElementById()`, `.querySelectorAll()` over `.getElementsByClassName()` and `.getElementsByTagName()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-query-selector.md"
     },
-    "eslint-plugin-unicorn/prefer-reflect-apply": {
+    "unicorn/prefer-reflect-apply": {
       "description": "Prefer `Reflect.apply()` over `Function#apply()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-reflect-apply.md"
     },
-    "eslint-plugin-unicorn/prefer-regexp-test": {
+    "unicorn/prefer-regexp-test": {
       "description": "Prefer `RegExp#test()` over `String#match()` and `RegExp#exec()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-regexp-test.md"
     },
-    "eslint-plugin-unicorn/prefer-set-has": {
+    "unicorn/prefer-set-has": {
       "description": "Prefer `Set#has()` over `Array#includes()` when checking for existence or non-existence.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-set-has.md"
     },
-    "eslint-plugin-unicorn/prefer-set-size": {
+    "unicorn/prefer-set-size": {
       "description": "Prefer using `Set#size` instead of `Array#length`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-set-size.md"
     },
-    "eslint-plugin-unicorn/prefer-spread": {
+    "unicorn/prefer-spread": {
       "description": "Prefer the spread operator over `Array.from(…)`, `Array#concat(…)`, `Array#{slice,toSpliced}()` and `String#split('')`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-spread.md"
     },
-    "eslint-plugin-unicorn/prefer-string-raw": {
+    "unicorn/prefer-string-raw": {
       "description": "Prefer using the `String.raw` tag to avoid escaping `\\`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-string-raw.md"
     },
-    "eslint-plugin-unicorn/prefer-string-replace-all": {
+    "unicorn/prefer-string-replace-all": {
       "description": "Prefer `String#replaceAll()` over regex searches with the global flag.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-string-replace-all.md"
     },
-    "eslint-plugin-unicorn/prefer-string-slice": {
+    "unicorn/prefer-string-slice": {
       "description": "Prefer `String#slice()` over `String#substr()` and `String#substring()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-string-slice.md"
     },
-    "eslint-plugin-unicorn/prefer-string-starts-ends-with": {
+    "unicorn/prefer-string-starts-ends-with": {
       "description": "Prefer `String#startsWith()` & `String#endsWith()` over `RegExp#test()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-string-starts-ends-with.md"
     },
-    "eslint-plugin-unicorn/prefer-string-trim-start-end": {
+    "unicorn/prefer-string-trim-start-end": {
       "description": "Prefer `String#trimStart()` / `String#trimEnd()` over `String#trimLeft()` / `String#trimRight()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-string-trim-start-end.md"
     },
-    "eslint-plugin-unicorn/prefer-structured-clone": {
+    "unicorn/prefer-structured-clone": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3398,7 +3398,7 @@
       ],
       "description": "Prefer using `structuredClone` to create a deep clone.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-structured-clone.md"
     },
-    "eslint-plugin-unicorn/prefer-switch": {
+    "unicorn/prefer-switch": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3445,7 +3445,7 @@
       ],
       "description": "Prefer `switch` over multiple `else-if`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-switch.md"
     },
-    "eslint-plugin-unicorn/prefer-ternary": {
+    "unicorn/prefer-ternary": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3478,16 +3478,16 @@
       ],
       "description": "Prefer ternary expressions over simple `if-else` statements.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-ternary.md"
     },
-    "eslint-plugin-unicorn/prefer-top-level-await": {
+    "unicorn/prefer-top-level-await": {
       "description": "Prefer top-level await over top-level promises and async function calls.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-top-level-await.md"
     },
-    "eslint-plugin-unicorn/prefer-type-error": {
+    "unicorn/prefer-type-error": {
       "description": "Enforce throwing `TypeError` in type checking conditions.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prefer-type-error.md"
     },
-    "eslint-plugin-unicorn/prevent-abbreviations": {
+    "unicorn/prevent-abbreviations": {
       "description": "Prevent abbreviations.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/prevent-abbreviations.md"
     },
-    "eslint-plugin-unicorn/relative-url-style": {
+    "unicorn/relative-url-style": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3520,16 +3520,16 @@
       ],
       "description": "Enforce consistent relative URL style.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/relative-url-style.md"
     },
-    "eslint-plugin-unicorn/require-array-join-separator": {
+    "unicorn/require-array-join-separator": {
       "description": "Enforce using the separator argument with `Array#join()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/require-array-join-separator.md"
     },
-    "eslint-plugin-unicorn/require-number-to-fixed-digits-argument": {
+    "unicorn/require-number-to-fixed-digits-argument": {
       "description": "Enforce using the digits argument with `Number#toFixed()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/require-number-to-fixed-digits-argument.md"
     },
-    "eslint-plugin-unicorn/require-post-message-target-origin": {
+    "unicorn/require-post-message-target-origin": {
       "description": "Enforce using the `targetOrigin` argument with `window.postMessage()`.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/require-post-message-target-origin.md"
     },
-    "eslint-plugin-unicorn/string-content": {
+    "unicorn/string-content": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3589,7 +3589,7 @@
       ],
       "description": "Enforce better string content.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/string-content.md"
     },
-    "eslint-plugin-unicorn/switch-case-braces": {
+    "unicorn/switch-case-braces": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3622,7 +3622,7 @@
       ],
       "description": "Enforce consistent brace style for `case` clauses.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/switch-case-braces.md"
     },
-    "eslint-plugin-unicorn/template-indent": {
+    "unicorn/template-indent": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3696,64 +3696,64 @@
       ],
       "description": "Fix whitespace-insensitive template indentation.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/template-indent.md"
     },
-    "eslint-plugin-unicorn/text-encoding-identifier-case": {
+    "unicorn/text-encoding-identifier-case": {
       "description": "Enforce consistent case for text encoding identifiers.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/text-encoding-identifier-case.md"
     },
-    "eslint-plugin-unicorn/throw-new-error": {
+    "unicorn/throw-new-error": {
       "description": "Require `new` when creating an error.\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/rules/throw-new-error.md"
     },
-    "eslint-plugin-unicorn/import-index": {
+    "unicorn/import-index": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#import-index"
     },
-    "eslint-plugin-unicorn/no-array-instanceof": {
+    "unicorn/no-array-instanceof": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#no-array-instanceof"
     },
-    "eslint-plugin-unicorn/no-fn-reference-in-iterator": {
+    "unicorn/no-fn-reference-in-iterator": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#no-fn-reference-in-iterator"
     },
-    "eslint-plugin-unicorn/no-reduce": {
+    "unicorn/no-reduce": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#no-reduce"
     },
-    "eslint-plugin-unicorn/no-unsafe-regex": {
+    "unicorn/no-unsafe-regex": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#no-unsafe-regex"
     },
-    "eslint-plugin-unicorn/prefer-dataset": {
+    "unicorn/prefer-dataset": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#prefer-dataset"
     },
-    "eslint-plugin-unicorn/prefer-event-key": {
+    "unicorn/prefer-event-key": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#prefer-event-key"
     },
-    "eslint-plugin-unicorn/prefer-exponentiation-operator": {
+    "unicorn/prefer-exponentiation-operator": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#prefer-exponentiation-operator"
     },
-    "eslint-plugin-unicorn/prefer-flat-map": {
+    "unicorn/prefer-flat-map": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#prefer-flat-map"
     },
-    "eslint-plugin-unicorn/prefer-node-append": {
+    "unicorn/prefer-node-append": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#prefer-node-append"
     },
-    "eslint-plugin-unicorn/prefer-node-remove": {
+    "unicorn/prefer-node-remove": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#prefer-node-remove"
     },
-    "eslint-plugin-unicorn/prefer-object-has-own": {
+    "unicorn/prefer-object-has-own": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#prefer-object-has-own"
     },
-    "eslint-plugin-unicorn/prefer-replace-all": {
+    "unicorn/prefer-replace-all": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#prefer-replace-all"
     },
-    "eslint-plugin-unicorn/prefer-starts-ends-with": {
+    "unicorn/prefer-starts-ends-with": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#prefer-starts-ends-with"
     },
-    "eslint-plugin-unicorn/prefer-text-content": {
+    "unicorn/prefer-text-content": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#prefer-text-content"
     },
-    "eslint-plugin-unicorn/prefer-trim-start-end": {
+    "unicorn/prefer-trim-start-end": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#prefer-trim-start-end"
     },
-    "eslint-plugin-unicorn/regex-shorthand": {
+    "unicorn/regex-shorthand": {
       "description": "\nhttps://github.com/sindresorhus/eslint-plugin-unicorn/blob/v54.0.0/docs/deprecated-rules.md#regex-shorthand"
     },
-    "eslint-plugin-vue/array-bracket-newline": {
+    "vue/array-bracket-newline": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3786,7 +3786,7 @@
       ],
       "description": "Enforce linebreaks after opening and before closing array brackets in `<template>`\nhttps://eslint.vuejs.org/rules/array-bracket-newline.html"
     },
-    "eslint-plugin-vue/array-bracket-spacing": {
+    "vue/array-bracket-spacing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3819,10 +3819,10 @@
       ],
       "description": "Enforce consistent spacing inside array brackets in `<template>`\nhttps://eslint.vuejs.org/rules/array-bracket-spacing.html"
     },
-    "eslint-plugin-vue/array-element-newline": {
+    "vue/array-element-newline": {
       "description": "Enforce line breaks after each array element in `<template>`\nhttps://eslint.vuejs.org/rules/array-element-newline.html"
     },
-    "eslint-plugin-vue/arrow-spacing": {
+    "vue/arrow-spacing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3864,7 +3864,7 @@
       ],
       "description": "Enforce consistent spacing before and after the arrow in arrow functions in `<template>`\nhttps://eslint.vuejs.org/rules/arrow-spacing.html"
     },
-    "eslint-plugin-vue/attribute-hyphenation": {
+    "vue/attribute-hyphenation": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3897,7 +3897,7 @@
       ],
       "description": "enforce attribute naming style on custom components in template\nhttps://eslint.vuejs.org/rules/attribute-hyphenation.html"
     },
-    "eslint-plugin-vue/attributes-order": {
+    "vue/attributes-order": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -3983,7 +3983,7 @@
       ],
       "description": "enforce order of attributes\nhttps://eslint.vuejs.org/rules/attributes-order.html"
     },
-    "eslint-plugin-vue/block-lang": {
+    "vue/block-lang": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4016,7 +4016,7 @@
       ],
       "description": "disallow use other than available `lang`\nhttps://eslint.vuejs.org/rules/block-lang.html"
     },
-    "eslint-plugin-vue/block-order": {
+    "vue/block-order": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4068,7 +4068,7 @@
       ],
       "description": "enforce order of component top-level elements\nhttps://eslint.vuejs.org/rules/block-order.html"
     },
-    "eslint-plugin-vue/block-spacing": {
+    "vue/block-spacing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4101,7 +4101,7 @@
       ],
       "description": "Disallow or enforce spaces inside of blocks after opening block and before closing block in `<template>`\nhttps://eslint.vuejs.org/rules/block-spacing.html"
     },
-    "eslint-plugin-vue/block-tag-newline": {
+    "vue/block-tag-newline": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4167,7 +4167,7 @@
       ],
       "description": "enforce line breaks after opening and before closing block-level tags\nhttps://eslint.vuejs.org/rules/block-tag-newline.html"
     },
-    "eslint-plugin-vue/brace-style": {
+    "vue/brace-style": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4200,7 +4200,7 @@
       ],
       "description": "Enforce consistent brace style for blocks in `<template>`\nhttps://eslint.vuejs.org/rules/brace-style.html"
     },
-    "eslint-plugin-vue/camelcase": {
+    "vue/camelcase": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4257,10 +4257,10 @@
       ],
       "description": "Enforce camelcase naming convention in `<template>`\nhttps://eslint.vuejs.org/rules/camelcase.html"
     },
-    "eslint-plugin-vue/comma-dangle": {
+    "vue/comma-dangle": {
       "description": "Require or disallow trailing commas in `<template>`\nhttps://eslint.vuejs.org/rules/comma-dangle.html"
     },
-    "eslint-plugin-vue/comma-spacing": {
+    "vue/comma-spacing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4302,7 +4302,7 @@
       ],
       "description": "Enforce consistent spacing before and after commas in `<template>`\nhttps://eslint.vuejs.org/rules/comma-spacing.html"
     },
-    "eslint-plugin-vue/comma-style": {
+    "vue/comma-style": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4335,7 +4335,7 @@
       ],
       "description": "Enforce consistent comma style in `<template>`\nhttps://eslint.vuejs.org/rules/comma-style.html"
     },
-    "eslint-plugin-vue/comment-directive": {
+    "vue/comment-directive": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4372,7 +4372,7 @@
       ],
       "description": "support comment-directives in `<template>`\nhttps://eslint.vuejs.org/rules/comment-directive.html"
     },
-    "eslint-plugin-vue/component-api-style": {
+    "vue/component-api-style": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4405,7 +4405,7 @@
       ],
       "description": "enforce component API style\nhttps://eslint.vuejs.org/rules/component-api-style.html"
     },
-    "eslint-plugin-vue/component-definition-name-casing": {
+    "vue/component-definition-name-casing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4438,7 +4438,7 @@
       ],
       "description": "enforce specific casing for component definition name\nhttps://eslint.vuejs.org/rules/component-definition-name-casing.html"
     },
-    "eslint-plugin-vue/component-name-in-template-casing": {
+    "vue/component-name-in-template-casing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4471,7 +4471,7 @@
       ],
       "description": "enforce specific casing for the component naming style in template\nhttps://eslint.vuejs.org/rules/component-name-in-template-casing.html"
     },
-    "eslint-plugin-vue/component-options-name-casing": {
+    "vue/component-options-name-casing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4504,7 +4504,7 @@
       ],
       "description": "enforce the casing of component name in `components` options\nhttps://eslint.vuejs.org/rules/component-options-name-casing.html"
     },
-    "eslint-plugin-vue/component-tags-order": {
+    "vue/component-tags-order": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4556,10 +4556,10 @@
       ],
       "description": "enforce order of component top-level elements\nhttps://eslint.vuejs.org/rules/component-tags-order.html"
     },
-    "eslint-plugin-vue/custom-event-name-casing": {
+    "vue/custom-event-name-casing": {
       "description": "enforce specific casing for custom event name\nhttps://eslint.vuejs.org/rules/custom-event-name-casing.html"
     },
-    "eslint-plugin-vue/define-emits-declaration": {
+    "vue/define-emits-declaration": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4592,7 +4592,7 @@
       ],
       "description": "enforce declaration style of `defineEmits`\nhttps://eslint.vuejs.org/rules/define-emits-declaration.html"
     },
-    "eslint-plugin-vue/define-macros-order": {
+    "vue/define-macros-order": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4642,7 +4642,7 @@
       ],
       "description": "enforce order of `defineEmits` and `defineProps` compiler macros\nhttps://eslint.vuejs.org/rules/define-macros-order.html"
     },
-    "eslint-plugin-vue/define-props-declaration": {
+    "vue/define-props-declaration": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4675,7 +4675,7 @@
       ],
       "description": "enforce declaration style of `defineProps`\nhttps://eslint.vuejs.org/rules/define-props-declaration.html"
     },
-    "eslint-plugin-vue/dot-location": {
+    "vue/dot-location": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4708,7 +4708,7 @@
       ],
       "description": "Enforce consistent newlines before and after dots in `<template>`\nhttps://eslint.vuejs.org/rules/dot-location.html"
     },
-    "eslint-plugin-vue/dot-notation": {
+    "vue/dot-notation": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4750,7 +4750,7 @@
       ],
       "description": "Enforce dot notation whenever possible in `<template>`\nhttps://eslint.vuejs.org/rules/dot-notation.html"
     },
-    "eslint-plugin-vue/enforce-style-attribute": {
+    "vue/enforce-style-attribute": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4793,10 +4793,10 @@
       ],
       "description": "enforce or forbid the use of the `scoped` and `module` attributes in SFC top level style tags\nhttps://eslint.vuejs.org/rules/enforce-style-attribute.html"
     },
-    "eslint-plugin-vue/eqeqeq": {
+    "vue/eqeqeq": {
       "description": "Require the use of `===` and `!==` in `<template>`\nhttps://eslint.vuejs.org/rules/eqeqeq.html"
     },
-    "eslint-plugin-vue/first-attribute-linebreak": {
+    "vue/first-attribute-linebreak": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4836,10 +4836,10 @@
       ],
       "description": "enforce the location of first attribute\nhttps://eslint.vuejs.org/rules/first-attribute-linebreak.html"
     },
-    "eslint-plugin-vue/func-call-spacing": {
+    "vue/func-call-spacing": {
       "description": "Require or disallow spacing between function identifiers and their invocations in `<template>`\nhttps://eslint.vuejs.org/rules/func-call-spacing.html"
     },
-    "eslint-plugin-vue/html-button-has-type": {
+    "vue/html-button-has-type": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4885,7 +4885,7 @@
       ],
       "description": "disallow usage of button without an explicit type attribute\nhttps://eslint.vuejs.org/rules/html-button-has-type.html"
     },
-    "eslint-plugin-vue/html-closing-bracket-newline": {
+    "vue/html-closing-bracket-newline": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4938,7 +4938,7 @@
       ],
       "description": "require or disallow a line break before tag's closing brackets\nhttps://eslint.vuejs.org/rules/html-closing-bracket-newline.html"
     },
-    "eslint-plugin-vue/html-closing-bracket-spacing": {
+    "vue/html-closing-bracket-spacing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -4981,7 +4981,7 @@
       ],
       "description": "require or disallow a space before tag's closing brackets\nhttps://eslint.vuejs.org/rules/html-closing-bracket-spacing.html"
     },
-    "eslint-plugin-vue/html-comment-content-newline": {
+    "vue/html-comment-content-newline": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -5014,7 +5014,7 @@
       ],
       "description": "enforce unified line brake in HTML comments\nhttps://eslint.vuejs.org/rules/html-comment-content-newline.html"
     },
-    "eslint-plugin-vue/html-comment-content-spacing": {
+    "vue/html-comment-content-spacing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -5047,7 +5047,7 @@
       ],
       "description": "enforce unified spacing in HTML comments\nhttps://eslint.vuejs.org/rules/html-comment-content-spacing.html"
     },
-    "eslint-plugin-vue/html-comment-indent": {
+    "vue/html-comment-indent": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -5080,10 +5080,10 @@
       ],
       "description": "enforce consistent indentation in HTML comments\nhttps://eslint.vuejs.org/rules/html-comment-indent.html"
     },
-    "eslint-plugin-vue/html-end-tags": {
+    "vue/html-end-tags": {
       "description": "enforce end tag style\nhttps://eslint.vuejs.org/rules/html-end-tags.html"
     },
-    "eslint-plugin-vue/html-indent": {
+    "vue/html-indent": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -5116,7 +5116,7 @@
       ],
       "description": "enforce consistent indentation in `<template>`\nhttps://eslint.vuejs.org/rules/html-indent.html"
     },
-    "eslint-plugin-vue/html-quotes": {
+    "vue/html-quotes": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -5149,13 +5149,13 @@
       ],
       "description": "enforce quotes style of HTML attributes\nhttps://eslint.vuejs.org/rules/html-quotes.html"
     },
-    "eslint-plugin-vue/html-self-closing": {
+    "vue/html-self-closing": {
       "description": "enforce self-closing style\nhttps://eslint.vuejs.org/rules/html-self-closing.html"
     },
-    "eslint-plugin-vue/jsx-uses-vars": {
+    "vue/jsx-uses-vars": {
       "description": "prevent variables used in JSX to be marked as unused\nhttps://eslint.vuejs.org/rules/jsx-uses-vars.html"
     },
-    "eslint-plugin-vue/key-spacing": {
+    "vue/key-spacing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -5188,7 +5188,7 @@
       ],
       "description": "Enforce consistent spacing between keys and values in object literal properties in `<template>`\nhttps://eslint.vuejs.org/rules/key-spacing.html"
     },
-    "eslint-plugin-vue/keyword-spacing": {
+    "vue/keyword-spacing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6052,7 +6052,7 @@
       ],
       "description": "Enforce consistent spacing before and after keywords in `<template>`\nhttps://eslint.vuejs.org/rules/keyword-spacing.html"
     },
-    "eslint-plugin-vue/match-component-file-name": {
+    "vue/match-component-file-name": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6096,10 +6096,10 @@
       ],
       "description": "require component name property to match its file name\nhttps://eslint.vuejs.org/rules/match-component-file-name.html"
     },
-    "eslint-plugin-vue/match-component-import-name": {
+    "vue/match-component-import-name": {
       "description": "require the registered component name to match the imported component name\nhttps://eslint.vuejs.org/rules/match-component-import-name.html"
     },
-    "eslint-plugin-vue/max-attributes-per-line": {
+    "vue/max-attributes-per-line": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6169,7 +6169,7 @@
       ],
       "description": "enforce the maximum number of attributes per line\nhttps://eslint.vuejs.org/rules/max-attributes-per-line.html"
     },
-    "eslint-plugin-vue/max-len": {
+    "vue/max-len": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6202,7 +6202,7 @@
       ],
       "description": "enforce a maximum line length in `.vue` files\nhttps://eslint.vuejs.org/rules/max-len.html"
     },
-    "eslint-plugin-vue/max-lines-per-block": {
+    "vue/max-lines-per-block": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6251,7 +6251,7 @@
       ],
       "description": "enforce maximum number of lines in Vue SFC blocks\nhttps://eslint.vuejs.org/rules/max-lines-per-block.html"
     },
-    "eslint-plugin-vue/multi-word-component-names": {
+    "vue/multi-word-component-names": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6292,7 +6292,7 @@
       ],
       "description": "require component names to be always multi-word\nhttps://eslint.vuejs.org/rules/multi-word-component-names.html"
     },
-    "eslint-plugin-vue/multiline-html-element-content-newline": {
+    "vue/multiline-html-element-content-newline": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6339,7 +6339,7 @@
       ],
       "description": "require a line break before and after the contents of a multiline element\nhttps://eslint.vuejs.org/rules/multiline-html-element-content-newline.html"
     },
-    "eslint-plugin-vue/multiline-ternary": {
+    "vue/multiline-ternary": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6372,7 +6372,7 @@
       ],
       "description": "Enforce newlines between operands of ternary expressions in `<template>`\nhttps://eslint.vuejs.org/rules/multiline-ternary.html"
     },
-    "eslint-plugin-vue/mustache-interpolation-spacing": {
+    "vue/mustache-interpolation-spacing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6405,7 +6405,7 @@
       ],
       "description": "enforce unified spacing in mustache interpolations\nhttps://eslint.vuejs.org/rules/mustache-interpolation-spacing.html"
     },
-    "eslint-plugin-vue/new-line-between-multi-line-property": {
+    "vue/new-line-between-multi-line-property": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6443,7 +6443,7 @@
       ],
       "description": "enforce new lines between multi-line properties in Vue components\nhttps://eslint.vuejs.org/rules/new-line-between-multi-line-property.html"
     },
-    "eslint-plugin-vue/next-tick-style": {
+    "vue/next-tick-style": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6476,13 +6476,13 @@
       ],
       "description": "enforce Promise or callback style in `nextTick`\nhttps://eslint.vuejs.org/rules/next-tick-style.html"
     },
-    "eslint-plugin-vue/no-arrow-functions-in-watch": {
+    "vue/no-arrow-functions-in-watch": {
       "description": "disallow using arrow functions to define watcher\nhttps://eslint.vuejs.org/rules/no-arrow-functions-in-watch.html"
     },
-    "eslint-plugin-vue/no-async-in-computed-properties": {
+    "vue/no-async-in-computed-properties": {
       "description": "disallow asynchronous actions in computed properties\nhttps://eslint.vuejs.org/rules/no-async-in-computed-properties.html"
     },
-    "eslint-plugin-vue/no-bare-strings-in-template": {
+    "vue/no-bare-strings-in-template": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6544,7 +6544,7 @@
       ],
       "description": "disallow the use of bare strings in `<template>`\nhttps://eslint.vuejs.org/rules/no-bare-strings-in-template.html"
     },
-    "eslint-plugin-vue/no-boolean-default": {
+    "vue/no-boolean-default": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6577,7 +6577,7 @@
       ],
       "description": "disallow boolean defaults\nhttps://eslint.vuejs.org/rules/no-boolean-default.html"
     },
-    "eslint-plugin-vue/no-child-content": {
+    "vue/no-child-content": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6619,10 +6619,10 @@
       ],
       "description": "disallow element's child contents which would be overwritten by a directive like `v-html` or `v-text`\nhttps://eslint.vuejs.org/rules/no-child-content.html"
     },
-    "eslint-plugin-vue/no-computed-properties-in-data": {
+    "vue/no-computed-properties-in-data": {
       "description": "disallow accessing computed properties in `data`.\nhttps://eslint.vuejs.org/rules/no-computed-properties-in-data.html"
     },
-    "eslint-plugin-vue/no-console": {
+    "vue/no-console": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6664,7 +6664,7 @@
       ],
       "description": "Disallow the use of `console` in `<template>`\nhttps://eslint.vuejs.org/rules/no-console.html"
     },
-    "eslint-plugin-vue/no-constant-condition": {
+    "vue/no-constant-condition": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6702,37 +6702,37 @@
       ],
       "description": "Disallow constant expressions in conditions in `<template>`\nhttps://eslint.vuejs.org/rules/no-constant-condition.html"
     },
-    "eslint-plugin-vue/no-custom-modifiers-on-v-model": {
+    "vue/no-custom-modifiers-on-v-model": {
       "description": "disallow custom modifiers on v-model used on the component\nhttps://eslint.vuejs.org/rules/no-custom-modifiers-on-v-model.html"
     },
-    "eslint-plugin-vue/no-deprecated-data-object-declaration": {
+    "vue/no-deprecated-data-object-declaration": {
       "description": "disallow using deprecated object declaration on data (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-data-object-declaration.html"
     },
-    "eslint-plugin-vue/no-deprecated-destroyed-lifecycle": {
+    "vue/no-deprecated-destroyed-lifecycle": {
       "description": "disallow using deprecated `destroyed` and `beforeDestroy` lifecycle hooks (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-destroyed-lifecycle.html"
     },
-    "eslint-plugin-vue/no-deprecated-dollar-listeners-api": {
+    "vue/no-deprecated-dollar-listeners-api": {
       "description": "disallow using deprecated `$listeners` (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-dollar-listeners-api.html"
     },
-    "eslint-plugin-vue/no-deprecated-dollar-scopedslots-api": {
+    "vue/no-deprecated-dollar-scopedslots-api": {
       "description": "disallow using deprecated `$scopedSlots` (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-dollar-scopedslots-api.html"
     },
-    "eslint-plugin-vue/no-deprecated-events-api": {
+    "vue/no-deprecated-events-api": {
       "description": "disallow using deprecated events api (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-events-api.html"
     },
-    "eslint-plugin-vue/no-deprecated-filter": {
+    "vue/no-deprecated-filter": {
       "description": "disallow using deprecated filters syntax (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-filter.html"
     },
-    "eslint-plugin-vue/no-deprecated-functional-template": {
+    "vue/no-deprecated-functional-template": {
       "description": "disallow using deprecated the `functional` template (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-functional-template.html"
     },
-    "eslint-plugin-vue/no-deprecated-html-element-is": {
+    "vue/no-deprecated-html-element-is": {
       "description": "disallow using deprecated the `is` attribute on HTML elements (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-html-element-is.html"
     },
-    "eslint-plugin-vue/no-deprecated-inline-template": {
+    "vue/no-deprecated-inline-template": {
       "description": "disallow using deprecated `inline-template` attribute (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-inline-template.html"
     },
-    "eslint-plugin-vue/no-deprecated-model-definition": {
+    "vue/no-deprecated-model-definition": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6769,10 +6769,10 @@
       ],
       "description": "disallow deprecated `model` definition (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-model-definition.html"
     },
-    "eslint-plugin-vue/no-deprecated-props-default-this": {
+    "vue/no-deprecated-props-default-this": {
       "description": "disallow deprecated `this` access in props default function (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-props-default-this.html"
     },
-    "eslint-plugin-vue/no-deprecated-router-link-tag-prop": {
+    "vue/no-deprecated-router-link-tag-prop": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6814,10 +6814,10 @@
       ],
       "description": "disallow using deprecated `tag` property on `RouterLink` (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-router-link-tag-prop.html"
     },
-    "eslint-plugin-vue/no-deprecated-scope-attribute": {
+    "vue/no-deprecated-scope-attribute": {
       "description": "disallow deprecated `scope` attribute (in Vue.js 2.5.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-scope-attribute.html"
     },
-    "eslint-plugin-vue/no-deprecated-slot-attribute": {
+    "vue/no-deprecated-slot-attribute": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6858,25 +6858,25 @@
       ],
       "description": "disallow deprecated `slot` attribute (in Vue.js 2.6.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-slot-attribute.html"
     },
-    "eslint-plugin-vue/no-deprecated-slot-scope-attribute": {
+    "vue/no-deprecated-slot-scope-attribute": {
       "description": "disallow deprecated `slot-scope` attribute (in Vue.js 2.6.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-slot-scope-attribute.html"
     },
-    "eslint-plugin-vue/no-deprecated-v-bind-sync": {
+    "vue/no-deprecated-v-bind-sync": {
       "description": "disallow use of deprecated `.sync` modifier on `v-bind` directive (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-v-bind-sync.html"
     },
-    "eslint-plugin-vue/no-deprecated-v-is": {
+    "vue/no-deprecated-v-is": {
       "description": "disallow deprecated `v-is` directive (in Vue.js 3.1.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-v-is.html"
     },
-    "eslint-plugin-vue/no-deprecated-v-on-native-modifier": {
+    "vue/no-deprecated-v-on-native-modifier": {
       "description": "disallow using deprecated `.native` modifiers (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-v-on-native-modifier.html"
     },
-    "eslint-plugin-vue/no-deprecated-v-on-number-modifiers": {
+    "vue/no-deprecated-v-on-number-modifiers": {
       "description": "disallow using deprecated number (keycode) modifiers (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-v-on-number-modifiers.html"
     },
-    "eslint-plugin-vue/no-deprecated-vue-config-keycodes": {
+    "vue/no-deprecated-vue-config-keycodes": {
       "description": "disallow using deprecated `Vue.config.keyCodes` (in Vue.js 3.0.0+)\nhttps://eslint.vuejs.org/rules/no-deprecated-vue-config-keycodes.html"
     },
-    "eslint-plugin-vue/no-dupe-keys": {
+    "vue/no-dupe-keys": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6913,13 +6913,13 @@
       ],
       "description": "disallow duplication of field names\nhttps://eslint.vuejs.org/rules/no-dupe-keys.html"
     },
-    "eslint-plugin-vue/no-dupe-v-else-if": {
+    "vue/no-dupe-v-else-if": {
       "description": "disallow duplicate conditions in `v-if` / `v-else-if` chains\nhttps://eslint.vuejs.org/rules/no-dupe-v-else-if.html"
     },
-    "eslint-plugin-vue/no-duplicate-attr-inheritance": {
+    "vue/no-duplicate-attr-inheritance": {
       "description": "enforce `inheritAttrs` to be set to `false` when using `v-bind=\"$attrs\"`\nhttps://eslint.vuejs.org/rules/no-duplicate-attr-inheritance.html"
     },
-    "eslint-plugin-vue/no-duplicate-attributes": {
+    "vue/no-duplicate-attributes": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -6959,10 +6959,10 @@
       ],
       "description": "disallow duplication of attributes\nhttps://eslint.vuejs.org/rules/no-duplicate-attributes.html"
     },
-    "eslint-plugin-vue/no-empty-component-block": {
+    "vue/no-empty-component-block": {
       "description": "disallow the `<template>` `<script>` `<style>` block to be empty\nhttps://eslint.vuejs.org/rules/no-empty-component-block.html"
     },
-    "eslint-plugin-vue/no-empty-pattern": {
+    "vue/no-empty-pattern": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7000,19 +7000,19 @@
       ],
       "description": "Disallow empty destructuring patterns in `<template>`\nhttps://eslint.vuejs.org/rules/no-empty-pattern.html"
     },
-    "eslint-plugin-vue/no-export-in-script-setup": {
+    "vue/no-export-in-script-setup": {
       "description": "disallow `export` in `<script setup>`\nhttps://eslint.vuejs.org/rules/no-export-in-script-setup.html"
     },
-    "eslint-plugin-vue/no-expose-after-await": {
+    "vue/no-expose-after-await": {
       "description": "disallow asynchronously registered `expose`\nhttps://eslint.vuejs.org/rules/no-expose-after-await.html"
     },
-    "eslint-plugin-vue/no-extra-parens": {
+    "vue/no-extra-parens": {
       "description": "Disallow unnecessary parentheses in `<template>`\nhttps://eslint.vuejs.org/rules/no-extra-parens.html"
     },
-    "eslint-plugin-vue/no-invalid-model-keys": {
+    "vue/no-invalid-model-keys": {
       "description": "require valid keys in model option\nhttps://eslint.vuejs.org/rules/no-invalid-model-keys.html"
     },
-    "eslint-plugin-vue/no-irregular-whitespace": {
+    "vue/no-irregular-whitespace": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7070,10 +7070,10 @@
       ],
       "description": "disallow irregular whitespace in `.vue` files\nhttps://eslint.vuejs.org/rules/no-irregular-whitespace.html"
     },
-    "eslint-plugin-vue/no-lifecycle-after-await": {
+    "vue/no-lifecycle-after-await": {
       "description": "disallow asynchronously registered lifecycle hooks\nhttps://eslint.vuejs.org/rules/no-lifecycle-after-await.html"
     },
-    "eslint-plugin-vue/no-lone-template": {
+    "vue/no-lone-template": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7110,10 +7110,10 @@
       ],
       "description": "disallow unnecessary `<template>`\nhttps://eslint.vuejs.org/rules/no-lone-template.html"
     },
-    "eslint-plugin-vue/no-loss-of-precision": {
+    "vue/no-loss-of-precision": {
       "description": "Disallow literal numbers that lose precision in `<template>`\nhttps://eslint.vuejs.org/rules/no-loss-of-precision.html"
     },
-    "eslint-plugin-vue/no-multi-spaces": {
+    "vue/no-multi-spaces": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7150,16 +7150,16 @@
       ],
       "description": "disallow multiple spaces\nhttps://eslint.vuejs.org/rules/no-multi-spaces.html"
     },
-    "eslint-plugin-vue/no-multiple-objects-in-class": {
+    "vue/no-multiple-objects-in-class": {
       "description": "disallow to pass multiple objects into array to class\nhttps://eslint.vuejs.org/rules/no-multiple-objects-in-class.html"
     },
-    "eslint-plugin-vue/no-multiple-slot-args": {
+    "vue/no-multiple-slot-args": {
       "description": "disallow to pass multiple arguments to scoped slots\nhttps://eslint.vuejs.org/rules/no-multiple-slot-args.html"
     },
-    "eslint-plugin-vue/no-multiple-template-root": {
+    "vue/no-multiple-template-root": {
       "description": "disallow adding multiple root nodes to the template\nhttps://eslint.vuejs.org/rules/no-multiple-template-root.html"
     },
-    "eslint-plugin-vue/no-mutating-props": {
+    "vue/no-mutating-props": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7196,7 +7196,7 @@
       ],
       "description": "disallow mutation of component props\nhttps://eslint.vuejs.org/rules/no-mutating-props.html"
     },
-    "eslint-plugin-vue/no-parsing-error": {
+    "vue/no-parsing-error": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7338,7 +7338,7 @@
       ],
       "description": "disallow parsing errors in `<template>`\nhttps://eslint.vuejs.org/rules/no-parsing-error.html"
     },
-    "eslint-plugin-vue/no-potential-component-option-typo": {
+    "vue/no-potential-component-option-typo": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7393,16 +7393,16 @@
       ],
       "description": "disallow a potential typo in your component property\nhttps://eslint.vuejs.org/rules/no-potential-component-option-typo.html"
     },
-    "eslint-plugin-vue/no-ref-as-operand": {
+    "vue/no-ref-as-operand": {
       "description": "disallow use of value wrapped by `ref()` (Composition API) as an operand\nhttps://eslint.vuejs.org/rules/no-ref-as-operand.html"
     },
-    "eslint-plugin-vue/no-ref-object-destructure": {
+    "vue/no-ref-object-destructure": {
       "description": "disallow usages of ref objects that can lead to loss of reactivity\nhttps://eslint.vuejs.org/rules/no-ref-object-destructure.html"
     },
-    "eslint-plugin-vue/no-ref-object-reactivity-loss": {
+    "vue/no-ref-object-reactivity-loss": {
       "description": "disallow usages of ref objects that can lead to loss of reactivity\nhttps://eslint.vuejs.org/rules/no-ref-object-reactivity-loss.html"
     },
-    "eslint-plugin-vue/no-required-prop-with-default": {
+    "vue/no-required-prop-with-default": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7439,7 +7439,7 @@
       ],
       "description": "enforce props with default values to be optional\nhttps://eslint.vuejs.org/rules/no-required-prop-with-default.html"
     },
-    "eslint-plugin-vue/no-reserved-component-names": {
+    "vue/no-reserved-component-names": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7479,7 +7479,7 @@
       ],
       "description": "disallow the use of reserved names in component definitions\nhttps://eslint.vuejs.org/rules/no-reserved-component-names.html"
     },
-    "eslint-plugin-vue/no-reserved-keys": {
+    "vue/no-reserved-keys": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7519,7 +7519,7 @@
       ],
       "description": "disallow overwriting reserved keys\nhttps://eslint.vuejs.org/rules/no-reserved-keys.html"
     },
-    "eslint-plugin-vue/no-reserved-props": {
+    "vue/no-reserved-props": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7556,64 +7556,64 @@
       ],
       "description": "disallow reserved names in props\nhttps://eslint.vuejs.org/rules/no-reserved-props.html"
     },
-    "eslint-plugin-vue/no-restricted-block": {
+    "vue/no-restricted-block": {
       "description": "disallow specific block\nhttps://eslint.vuejs.org/rules/no-restricted-block.html"
     },
-    "eslint-plugin-vue/no-restricted-call-after-await": {
+    "vue/no-restricted-call-after-await": {
       "description": "disallow asynchronously called restricted methods\nhttps://eslint.vuejs.org/rules/no-restricted-call-after-await.html"
     },
-    "eslint-plugin-vue/no-restricted-class": {
+    "vue/no-restricted-class": {
       "description": "disallow specific classes in Vue components\nhttps://eslint.vuejs.org/rules/no-restricted-class.html"
     },
-    "eslint-plugin-vue/no-restricted-component-names": {
+    "vue/no-restricted-component-names": {
       "description": "disallow specific component names\nhttps://eslint.vuejs.org/rules/no-restricted-component-names.html"
     },
-    "eslint-plugin-vue/no-restricted-component-options": {
+    "vue/no-restricted-component-options": {
       "description": "disallow specific component option\nhttps://eslint.vuejs.org/rules/no-restricted-component-options.html"
     },
-    "eslint-plugin-vue/no-restricted-custom-event": {
+    "vue/no-restricted-custom-event": {
       "description": "disallow specific custom event\nhttps://eslint.vuejs.org/rules/no-restricted-custom-event.html"
     },
-    "eslint-plugin-vue/no-restricted-html-elements": {
+    "vue/no-restricted-html-elements": {
       "description": "disallow specific HTML elements\nhttps://eslint.vuejs.org/rules/no-restricted-html-elements.html"
     },
-    "eslint-plugin-vue/no-restricted-props": {
+    "vue/no-restricted-props": {
       "description": "disallow specific props\nhttps://eslint.vuejs.org/rules/no-restricted-props.html"
     },
-    "eslint-plugin-vue/no-restricted-static-attribute": {
+    "vue/no-restricted-static-attribute": {
       "description": "disallow specific attribute\nhttps://eslint.vuejs.org/rules/no-restricted-static-attribute.html"
     },
-    "eslint-plugin-vue/no-restricted-syntax": {
+    "vue/no-restricted-syntax": {
       "description": "Disallow specified syntax in `<template>`\nhttps://eslint.vuejs.org/rules/no-restricted-syntax.html"
     },
-    "eslint-plugin-vue/no-restricted-v-bind": {
+    "vue/no-restricted-v-bind": {
       "description": "disallow specific argument in `v-bind`\nhttps://eslint.vuejs.org/rules/no-restricted-v-bind.html"
     },
-    "eslint-plugin-vue/no-restricted-v-on": {
+    "vue/no-restricted-v-on": {
       "description": "disallow specific argument in `v-on`\nhttps://eslint.vuejs.org/rules/no-restricted-v-on.html"
     },
-    "eslint-plugin-vue/no-root-v-if": {
+    "vue/no-root-v-if": {
       "description": "disallow `v-if` directives on root element\nhttps://eslint.vuejs.org/rules/no-root-v-if.html"
     },
-    "eslint-plugin-vue/no-setup-props-destructure": {
+    "vue/no-setup-props-destructure": {
       "description": "disallow usages that lose the reactivity of `props` passed to `setup`\nhttps://eslint.vuejs.org/rules/no-setup-props-destructure.html"
     },
-    "eslint-plugin-vue/no-setup-props-reactivity-loss": {
+    "vue/no-setup-props-reactivity-loss": {
       "description": "disallow usages that lose the reactivity of `props` passed to `setup`\nhttps://eslint.vuejs.org/rules/no-setup-props-reactivity-loss.html"
     },
-    "eslint-plugin-vue/no-shared-component-data": {
+    "vue/no-shared-component-data": {
       "description": "enforce component's data property to be a function\nhttps://eslint.vuejs.org/rules/no-shared-component-data.html"
     },
-    "eslint-plugin-vue/no-side-effects-in-computed-properties": {
+    "vue/no-side-effects-in-computed-properties": {
       "description": "disallow side effects in computed properties\nhttps://eslint.vuejs.org/rules/no-side-effects-in-computed-properties.html"
     },
-    "eslint-plugin-vue/no-spaces-around-equal-signs-in-attribute": {
+    "vue/no-spaces-around-equal-signs-in-attribute": {
       "description": "disallow spaces around equal signs in attribute\nhttps://eslint.vuejs.org/rules/no-spaces-around-equal-signs-in-attribute.html"
     },
-    "eslint-plugin-vue/no-sparse-arrays": {
+    "vue/no-sparse-arrays": {
       "description": "Disallow sparse arrays in `<template>`\nhttps://eslint.vuejs.org/rules/no-sparse-arrays.html"
     },
-    "eslint-plugin-vue/no-static-inline-styles": {
+    "vue/no-static-inline-styles": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7650,10 +7650,10 @@
       ],
       "description": "disallow static inline `style` attributes\nhttps://eslint.vuejs.org/rules/no-static-inline-styles.html"
     },
-    "eslint-plugin-vue/no-template-key": {
+    "vue/no-template-key": {
       "description": "disallow `key` attribute on `<template>`\nhttps://eslint.vuejs.org/rules/no-template-key.html"
     },
-    "eslint-plugin-vue/no-template-shadow": {
+    "vue/no-template-shadow": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7694,7 +7694,7 @@
       ],
       "description": "disallow variable declarations from shadowing variables declared in the outer scope\nhttps://eslint.vuejs.org/rules/no-template-shadow.html"
     },
-    "eslint-plugin-vue/no-template-target-blank": {
+    "vue/no-template-target-blank": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7734,13 +7734,13 @@
       ],
       "description": "disallow target=\"_blank\" attribute without rel=\"noopener noreferrer\"\nhttps://eslint.vuejs.org/rules/no-template-target-blank.html"
     },
-    "eslint-plugin-vue/no-textarea-mustache": {
+    "vue/no-textarea-mustache": {
       "description": "disallow mustaches in `<textarea>`\nhttps://eslint.vuejs.org/rules/no-textarea-mustache.html"
     },
-    "eslint-plugin-vue/no-this-in-before-route-enter": {
+    "vue/no-this-in-before-route-enter": {
       "description": "disallow `this` usage in a `beforeRouteEnter` method\nhttps://eslint.vuejs.org/rules/no-this-in-before-route-enter.html"
     },
-    "eslint-plugin-vue/no-undef-components": {
+    "vue/no-undef-components": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7777,7 +7777,7 @@
       ],
       "description": "disallow use of undefined components in `<template>`\nhttps://eslint.vuejs.org/rules/no-undef-components.html"
     },
-    "eslint-plugin-vue/no-undef-properties": {
+    "vue/no-undef-properties": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7818,7 +7818,7 @@
       ],
       "description": "disallow undefined properties\nhttps://eslint.vuejs.org/rules/no-undef-properties.html"
     },
-    "eslint-plugin-vue/no-unsupported-features": {
+    "vue/no-unsupported-features": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7879,7 +7879,7 @@
       ],
       "description": "disallow unsupported Vue.js syntax on the specified version\nhttps://eslint.vuejs.org/rules/no-unsupported-features.html"
     },
-    "eslint-plugin-vue/no-unused-components": {
+    "vue/no-unused-components": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7916,10 +7916,10 @@
       ],
       "description": "disallow registering components that are not used inside templates\nhttps://eslint.vuejs.org/rules/no-unused-components.html"
     },
-    "eslint-plugin-vue/no-unused-emit-declarations": {
+    "vue/no-unused-emit-declarations": {
       "description": "disallow unused emit declarations\nhttps://eslint.vuejs.org/rules/no-unused-emit-declarations.html"
     },
-    "eslint-plugin-vue/no-unused-properties": {
+    "vue/no-unused-properties": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -7983,10 +7983,10 @@
       ],
       "description": "disallow unused properties\nhttps://eslint.vuejs.org/rules/no-unused-properties.html"
     },
-    "eslint-plugin-vue/no-unused-refs": {
+    "vue/no-unused-refs": {
       "description": "disallow unused refs\nhttps://eslint.vuejs.org/rules/no-unused-refs.html"
     },
-    "eslint-plugin-vue/no-unused-vars": {
+    "vue/no-unused-vars": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8023,13 +8023,13 @@
       ],
       "description": "disallow unused variable definitions of v-for directives or scope attributes\nhttps://eslint.vuejs.org/rules/no-unused-vars.html"
     },
-    "eslint-plugin-vue/no-use-computed-property-like-method": {
+    "vue/no-use-computed-property-like-method": {
       "description": "disallow use computed property like method\nhttps://eslint.vuejs.org/rules/no-use-computed-property-like-method.html"
     },
-    "eslint-plugin-vue/no-use-v-else-with-v-for": {
+    "vue/no-use-v-else-with-v-for": {
       "description": "disallow using `v-else-if`/`v-else` on the same element as `v-for`\nhttps://eslint.vuejs.org/rules/no-use-v-else-with-v-for.html"
     },
-    "eslint-plugin-vue/no-use-v-if-with-v-for": {
+    "vue/no-use-v-if-with-v-for": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8066,10 +8066,10 @@
       ],
       "description": "disallow using `v-if` on the same element as `v-for`\nhttps://eslint.vuejs.org/rules/no-use-v-if-with-v-for.html"
     },
-    "eslint-plugin-vue/no-useless-concat": {
+    "vue/no-useless-concat": {
       "description": "Disallow unnecessary concatenation of literals or template literals in `<template>`\nhttps://eslint.vuejs.org/rules/no-useless-concat.html"
     },
-    "eslint-plugin-vue/no-useless-mustaches": {
+    "vue/no-useless-mustaches": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8109,10 +8109,10 @@
       ],
       "description": "disallow unnecessary mustache interpolations\nhttps://eslint.vuejs.org/rules/no-useless-mustaches.html"
     },
-    "eslint-plugin-vue/no-useless-template-attributes": {
+    "vue/no-useless-template-attributes": {
       "description": "disallow useless attribute on `<template>`\nhttps://eslint.vuejs.org/rules/no-useless-template-attributes.html"
     },
-    "eslint-plugin-vue/no-useless-v-bind": {
+    "vue/no-useless-v-bind": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8152,19 +8152,19 @@
       ],
       "description": "disallow unnecessary `v-bind` directives\nhttps://eslint.vuejs.org/rules/no-useless-v-bind.html"
     },
-    "eslint-plugin-vue/no-v-for-template-key-on-child": {
+    "vue/no-v-for-template-key-on-child": {
       "description": "disallow key of `<template v-for>` placed on child elements\nhttps://eslint.vuejs.org/rules/no-v-for-template-key-on-child.html"
     },
-    "eslint-plugin-vue/no-v-for-template-key": {
+    "vue/no-v-for-template-key": {
       "description": "disallow `key` attribute on `<template v-for>`\nhttps://eslint.vuejs.org/rules/no-v-for-template-key.html"
     },
-    "eslint-plugin-vue/no-v-html": {
+    "vue/no-v-html": {
       "description": "disallow use of v-html to prevent XSS attack\nhttps://eslint.vuejs.org/rules/no-v-html.html"
     },
-    "eslint-plugin-vue/no-v-model-argument": {
+    "vue/no-v-model-argument": {
       "description": "disallow adding an argument to `v-model` used in custom component\nhttps://eslint.vuejs.org/rules/no-v-model-argument.html"
     },
-    "eslint-plugin-vue/no-v-text-v-html-on-component": {
+    "vue/no-v-text-v-html-on-component": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8205,13 +8205,13 @@
       ],
       "description": "disallow v-text / v-html on component\nhttps://eslint.vuejs.org/rules/no-v-text-v-html-on-component.html"
     },
-    "eslint-plugin-vue/no-v-text": {
+    "vue/no-v-text": {
       "description": "disallow use of v-text\nhttps://eslint.vuejs.org/rules/no-v-text.html"
     },
-    "eslint-plugin-vue/no-watch-after-await": {
+    "vue/no-watch-after-await": {
       "description": "disallow asynchronously registered `watch`\nhttps://eslint.vuejs.org/rules/no-watch-after-await.html"
     },
-    "eslint-plugin-vue/object-curly-newline": {
+    "vue/object-curly-newline": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8244,7 +8244,7 @@
       ],
       "description": "Enforce consistent line breaks after opening and before closing braces in `<template>`\nhttps://eslint.vuejs.org/rules/object-curly-newline.html"
     },
-    "eslint-plugin-vue/object-curly-spacing": {
+    "vue/object-curly-spacing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8277,7 +8277,7 @@
       ],
       "description": "Enforce consistent spacing inside braces in `<template>`\nhttps://eslint.vuejs.org/rules/object-curly-spacing.html"
     },
-    "eslint-plugin-vue/object-property-newline": {
+    "vue/object-property-newline": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8319,13 +8319,13 @@
       ],
       "description": "Enforce placing object properties on separate lines in `<template>`\nhttps://eslint.vuejs.org/rules/object-property-newline.html"
     },
-    "eslint-plugin-vue/object-shorthand": {
+    "vue/object-shorthand": {
       "description": "Require or disallow method and property shorthand syntax for object literals in `<template>`\nhttps://eslint.vuejs.org/rules/object-shorthand.html"
     },
-    "eslint-plugin-vue/one-component-per-file": {
+    "vue/one-component-per-file": {
       "description": "enforce that each component should be in its own file\nhttps://eslint.vuejs.org/rules/one-component-per-file.html"
     },
-    "eslint-plugin-vue/operator-linebreak": {
+    "vue/operator-linebreak": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8358,7 +8358,7 @@
       ],
       "description": "Enforce consistent linebreak style for operators in `<template>`\nhttps://eslint.vuejs.org/rules/operator-linebreak.html"
     },
-    "eslint-plugin-vue/order-in-components": {
+    "vue/order-in-components": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8395,7 +8395,7 @@
       ],
       "description": "enforce order of properties in components\nhttps://eslint.vuejs.org/rules/order-in-components.html"
     },
-    "eslint-plugin-vue/padding-line-between-blocks": {
+    "vue/padding-line-between-blocks": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8428,7 +8428,7 @@
       ],
       "description": "require or disallow padding lines between blocks\nhttps://eslint.vuejs.org/rules/padding-line-between-blocks.html"
     },
-    "eslint-plugin-vue/padding-line-between-tags": {
+    "vue/padding-line-between-tags": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8461,7 +8461,7 @@
       ],
       "description": "require or disallow newlines between sibling tags in template\nhttps://eslint.vuejs.org/rules/padding-line-between-tags.html"
     },
-    "eslint-plugin-vue/padding-lines-in-component-definition": {
+    "vue/padding-lines-in-component-definition": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8494,22 +8494,22 @@
       ],
       "description": "require or disallow padding lines in component definition\nhttps://eslint.vuejs.org/rules/padding-lines-in-component-definition.html"
     },
-    "eslint-plugin-vue/prefer-define-options": {
+    "vue/prefer-define-options": {
       "description": "enforce use of `defineOptions` instead of default export.\nhttps://eslint.vuejs.org/rules/prefer-define-options.html"
     },
-    "eslint-plugin-vue/prefer-import-from-vue": {
+    "vue/prefer-import-from-vue": {
       "description": "enforce import from 'vue' instead of import from '@vue/*'\nhttps://eslint.vuejs.org/rules/prefer-import-from-vue.html"
     },
-    "eslint-plugin-vue/prefer-prop-type-boolean-first": {
+    "vue/prefer-prop-type-boolean-first": {
       "description": "enforce `Boolean` comes first in component prop types\nhttps://eslint.vuejs.org/rules/prefer-prop-type-boolean-first.html"
     },
-    "eslint-plugin-vue/prefer-separate-static-class": {
+    "vue/prefer-separate-static-class": {
       "description": "require static class names in template to be in a separate `class` attribute\nhttps://eslint.vuejs.org/rules/prefer-separate-static-class.html"
     },
-    "eslint-plugin-vue/prefer-template": {
+    "vue/prefer-template": {
       "description": "Require template literals instead of string concatenation in `<template>`\nhttps://eslint.vuejs.org/rules/prefer-template.html"
     },
-    "eslint-plugin-vue/prefer-true-attribute-shorthand": {
+    "vue/prefer-true-attribute-shorthand": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8542,7 +8542,7 @@
       ],
       "description": "require shorthand form attribute when `v-bind` value is `true`\nhttps://eslint.vuejs.org/rules/prefer-true-attribute-shorthand.html"
     },
-    "eslint-plugin-vue/prop-name-casing": {
+    "vue/prop-name-casing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8575,16 +8575,16 @@
       ],
       "description": "enforce specific casing for the Prop name in Vue components\nhttps://eslint.vuejs.org/rules/prop-name-casing.html"
     },
-    "eslint-plugin-vue/quote-props": {
+    "vue/quote-props": {
       "description": "Require quotes around object literal property names in `<template>`\nhttps://eslint.vuejs.org/rules/quote-props.html"
     },
-    "eslint-plugin-vue/require-component-is": {
+    "vue/require-component-is": {
       "description": "require `v-bind:is` of `<component>` elements\nhttps://eslint.vuejs.org/rules/require-component-is.html"
     },
-    "eslint-plugin-vue/require-default-prop": {
+    "vue/require-default-prop": {
       "description": "require default value for props\nhttps://eslint.vuejs.org/rules/require-default-prop.html"
     },
-    "eslint-plugin-vue/require-direct-export": {
+    "vue/require-direct-export": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8621,10 +8621,10 @@
       ],
       "description": "require the component to be directly exported\nhttps://eslint.vuejs.org/rules/require-direct-export.html"
     },
-    "eslint-plugin-vue/require-emit-validator": {
+    "vue/require-emit-validator": {
       "description": "require type definitions in emits\nhttps://eslint.vuejs.org/rules/require-emit-validator.html"
     },
-    "eslint-plugin-vue/require-explicit-emits": {
+    "vue/require-explicit-emits": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8661,13 +8661,13 @@
       ],
       "description": "require `emits` option with name triggered by `$emit()`\nhttps://eslint.vuejs.org/rules/require-explicit-emits.html"
     },
-    "eslint-plugin-vue/require-explicit-slots": {
+    "vue/require-explicit-slots": {
       "description": "require slots to be explicitly defined\nhttps://eslint.vuejs.org/rules/require-explicit-slots.html"
     },
-    "eslint-plugin-vue/require-expose": {
+    "vue/require-expose": {
       "description": "require declare public properties using `expose`\nhttps://eslint.vuejs.org/rules/require-expose.html"
     },
-    "eslint-plugin-vue/require-macro-variable-name": {
+    "vue/require-macro-variable-name": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8721,10 +8721,10 @@
       ],
       "description": "require a certain macro variable name\nhttps://eslint.vuejs.org/rules/require-macro-variable-name.html"
     },
-    "eslint-plugin-vue/require-name-property": {
+    "vue/require-name-property": {
       "description": "require a name property in Vue components\nhttps://eslint.vuejs.org/rules/require-name-property.html"
     },
-    "eslint-plugin-vue/require-prop-comment": {
+    "vue/require-prop-comment": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8761,34 +8761,34 @@
       ],
       "description": "require props to have a comment\nhttps://eslint.vuejs.org/rules/require-prop-comment.html"
     },
-    "eslint-plugin-vue/require-prop-type-constructor": {
+    "vue/require-prop-type-constructor": {
       "description": "require prop type to be a constructor\nhttps://eslint.vuejs.org/rules/require-prop-type-constructor.html"
     },
-    "eslint-plugin-vue/require-prop-types": {
+    "vue/require-prop-types": {
       "description": "require type definitions in props\nhttps://eslint.vuejs.org/rules/require-prop-types.html"
     },
-    "eslint-plugin-vue/require-render-return": {
+    "vue/require-render-return": {
       "description": "enforce render function to always return value\nhttps://eslint.vuejs.org/rules/require-render-return.html"
     },
-    "eslint-plugin-vue/require-slots-as-functions": {
+    "vue/require-slots-as-functions": {
       "description": "enforce properties of `$slots` to be used as a function\nhttps://eslint.vuejs.org/rules/require-slots-as-functions.html"
     },
-    "eslint-plugin-vue/require-toggle-inside-transition": {
+    "vue/require-toggle-inside-transition": {
       "description": "require control the display of the content inside `<transition>`\nhttps://eslint.vuejs.org/rules/require-toggle-inside-transition.html"
     },
-    "eslint-plugin-vue/require-typed-object-prop": {
+    "vue/require-typed-object-prop": {
       "description": "enforce adding type declarations to object props\nhttps://eslint.vuejs.org/rules/require-typed-object-prop.html"
     },
-    "eslint-plugin-vue/require-typed-ref": {
+    "vue/require-typed-ref": {
       "description": "require `ref` and `shallowRef` functions to be strongly typed\nhttps://eslint.vuejs.org/rules/require-typed-ref.html"
     },
-    "eslint-plugin-vue/require-v-for-key": {
+    "vue/require-v-for-key": {
       "description": "require `v-bind:key` with `v-for` directives\nhttps://eslint.vuejs.org/rules/require-v-for-key.html"
     },
-    "eslint-plugin-vue/require-valid-default-prop": {
+    "vue/require-valid-default-prop": {
       "description": "enforce props default values to be valid\nhttps://eslint.vuejs.org/rules/require-valid-default-prop.html"
     },
-    "eslint-plugin-vue/return-in-computed-property": {
+    "vue/return-in-computed-property": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8825,10 +8825,10 @@
       ],
       "description": "enforce that a return statement is present in computed property\nhttps://eslint.vuejs.org/rules/return-in-computed-property.html"
     },
-    "eslint-plugin-vue/return-in-emits-validator": {
+    "vue/return-in-emits-validator": {
       "description": "enforce that a return statement is present in emits validator\nhttps://eslint.vuejs.org/rules/return-in-emits-validator.html"
     },
-    "eslint-plugin-vue/script-indent": {
+    "vue/script-indent": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8861,10 +8861,10 @@
       ],
       "description": "enforce consistent indentation in `<script>`\nhttps://eslint.vuejs.org/rules/script-indent.html"
     },
-    "eslint-plugin-vue/script-setup-uses-vars": {
+    "vue/script-setup-uses-vars": {
       "description": "prevent `<script setup>` variables used in `<template>` to be marked as unused\nhttps://eslint.vuejs.org/rules/script-setup-uses-vars.html"
     },
-    "eslint-plugin-vue/singleline-html-element-content-newline": {
+    "vue/singleline-html-element-content-newline": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8918,7 +8918,7 @@
       ],
       "description": "require a line break before and after the contents of a singleline element\nhttps://eslint.vuejs.org/rules/singleline-html-element-content-newline.html"
     },
-    "eslint-plugin-vue/sort-keys": {
+    "vue/sort-keys": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8951,7 +8951,7 @@
       ],
       "description": "enforce sort-keys in a manner that is compatible with order-in-components\nhttps://eslint.vuejs.org/rules/sort-keys.html"
     },
-    "eslint-plugin-vue/space-in-parens": {
+    "vue/space-in-parens": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -8984,7 +8984,7 @@
       ],
       "description": "Enforce consistent spacing inside parentheses in `<template>`\nhttps://eslint.vuejs.org/rules/space-in-parens.html"
     },
-    "eslint-plugin-vue/space-infix-ops": {
+    "vue/space-infix-ops": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -9022,7 +9022,7 @@
       ],
       "description": "Require spacing around infix operators in `<template>`\nhttps://eslint.vuejs.org/rules/space-infix-ops.html"
     },
-    "eslint-plugin-vue/space-unary-ops": {
+    "vue/space-unary-ops": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -9070,10 +9070,10 @@
       ],
       "description": "Enforce consistent spacing before or after unary operators in `<template>`\nhttps://eslint.vuejs.org/rules/space-unary-ops.html"
     },
-    "eslint-plugin-vue/static-class-names-order": {
+    "vue/static-class-names-order": {
       "description": "enforce static class names order\nhttps://eslint.vuejs.org/rules/static-class-names-order.html"
     },
-    "eslint-plugin-vue/template-curly-spacing": {
+    "vue/template-curly-spacing": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -9106,7 +9106,7 @@
       ],
       "description": "Require or disallow spacing around embedded expressions of template strings in `<template>`\nhttps://eslint.vuejs.org/rules/template-curly-spacing.html"
     },
-    "eslint-plugin-vue/this-in-template": {
+    "vue/this-in-template": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -9139,10 +9139,10 @@
       ],
       "description": "disallow usage of `this` in template\nhttps://eslint.vuejs.org/rules/this-in-template.html"
     },
-    "eslint-plugin-vue/use-v-on-exact": {
+    "vue/use-v-on-exact": {
       "description": "enforce usage of `exact` modifier on `v-on`\nhttps://eslint.vuejs.org/rules/use-v-on-exact.html"
     },
-    "eslint-plugin-vue/v-bind-style": {
+    "vue/v-bind-style": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -9175,7 +9175,7 @@
       ],
       "description": "enforce `v-bind` directive style\nhttps://eslint.vuejs.org/rules/v-bind-style.html"
     },
-    "eslint-plugin-vue/v-for-delimiter-style": {
+    "vue/v-for-delimiter-style": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -9208,10 +9208,10 @@
       ],
       "description": "enforce `v-for` directive's delimiter style\nhttps://eslint.vuejs.org/rules/v-for-delimiter-style.html"
     },
-    "eslint-plugin-vue/v-if-else-key": {
+    "vue/v-if-else-key": {
       "description": "require key attribute for conditionally rendered repeated components\nhttps://eslint.vuejs.org/rules/v-if-else-key.html"
     },
-    "eslint-plugin-vue/v-on-event-hyphenation": {
+    "vue/v-on-event-hyphenation": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -9244,7 +9244,7 @@
       ],
       "description": "enforce v-on event naming style on custom components in template\nhttps://eslint.vuejs.org/rules/v-on-event-hyphenation.html"
     },
-    "eslint-plugin-vue/v-on-function-call": {
+    "vue/v-on-function-call": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -9277,7 +9277,7 @@
       ],
       "description": "enforce or forbid parentheses after method calls without arguments in `v-on` directives\nhttps://eslint.vuejs.org/rules/v-on-function-call.html"
     },
-    "eslint-plugin-vue/v-on-handler-style": {
+    "vue/v-on-handler-style": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -9310,7 +9310,7 @@
       ],
       "description": "enforce writing style for handlers in `v-on` directives\nhttps://eslint.vuejs.org/rules/v-on-handler-style.html"
     },
-    "eslint-plugin-vue/v-on-style": {
+    "vue/v-on-style": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -9343,7 +9343,7 @@
       ],
       "description": "enforce `v-on` directive style\nhttps://eslint.vuejs.org/rules/v-on-style.html"
     },
-    "eslint-plugin-vue/v-slot-style": {
+    "vue/v-slot-style": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -9376,61 +9376,61 @@
       ],
       "description": "enforce `v-slot` directive style\nhttps://eslint.vuejs.org/rules/v-slot-style.html"
     },
-    "eslint-plugin-vue/valid-attribute-name": {
+    "vue/valid-attribute-name": {
       "description": "require valid attribute names\nhttps://eslint.vuejs.org/rules/valid-attribute-name.html"
     },
-    "eslint-plugin-vue/valid-define-emits": {
+    "vue/valid-define-emits": {
       "description": "enforce valid `defineEmits` compiler macro\nhttps://eslint.vuejs.org/rules/valid-define-emits.html"
     },
-    "eslint-plugin-vue/valid-define-options": {
+    "vue/valid-define-options": {
       "description": "enforce valid `defineOptions` compiler macro\nhttps://eslint.vuejs.org/rules/valid-define-options.html"
     },
-    "eslint-plugin-vue/valid-define-props": {
+    "vue/valid-define-props": {
       "description": "enforce valid `defineProps` compiler macro\nhttps://eslint.vuejs.org/rules/valid-define-props.html"
     },
-    "eslint-plugin-vue/valid-model-definition": {
+    "vue/valid-model-definition": {
       "description": "require valid keys in model option\nhttps://eslint.vuejs.org/rules/valid-model-definition.html"
     },
-    "eslint-plugin-vue/valid-next-tick": {
+    "vue/valid-next-tick": {
       "description": "enforce valid `nextTick` function calls\nhttps://eslint.vuejs.org/rules/valid-next-tick.html"
     },
-    "eslint-plugin-vue/valid-template-root": {
+    "vue/valid-template-root": {
       "description": "enforce valid template root\nhttps://eslint.vuejs.org/rules/valid-template-root.html"
     },
-    "eslint-plugin-vue/valid-v-bind-sync": {
+    "vue/valid-v-bind-sync": {
       "description": "enforce valid `.sync` modifier on `v-bind` directives\nhttps://eslint.vuejs.org/rules/valid-v-bind-sync.html"
     },
-    "eslint-plugin-vue/valid-v-bind": {
+    "vue/valid-v-bind": {
       "description": "enforce valid `v-bind` directives\nhttps://eslint.vuejs.org/rules/valid-v-bind.html"
     },
-    "eslint-plugin-vue/valid-v-cloak": {
+    "vue/valid-v-cloak": {
       "description": "enforce valid `v-cloak` directives\nhttps://eslint.vuejs.org/rules/valid-v-cloak.html"
     },
-    "eslint-plugin-vue/valid-v-else-if": {
+    "vue/valid-v-else-if": {
       "description": "enforce valid `v-else-if` directives\nhttps://eslint.vuejs.org/rules/valid-v-else-if.html"
     },
-    "eslint-plugin-vue/valid-v-else": {
+    "vue/valid-v-else": {
       "description": "enforce valid `v-else` directives\nhttps://eslint.vuejs.org/rules/valid-v-else.html"
     },
-    "eslint-plugin-vue/valid-v-for": {
+    "vue/valid-v-for": {
       "description": "enforce valid `v-for` directives\nhttps://eslint.vuejs.org/rules/valid-v-for.html"
     },
-    "eslint-plugin-vue/valid-v-html": {
+    "vue/valid-v-html": {
       "description": "enforce valid `v-html` directives\nhttps://eslint.vuejs.org/rules/valid-v-html.html"
     },
-    "eslint-plugin-vue/valid-v-if": {
+    "vue/valid-v-if": {
       "description": "enforce valid `v-if` directives\nhttps://eslint.vuejs.org/rules/valid-v-if.html"
     },
-    "eslint-plugin-vue/valid-v-is": {
+    "vue/valid-v-is": {
       "description": "enforce valid `v-is` directives\nhttps://eslint.vuejs.org/rules/valid-v-is.html"
     },
-    "eslint-plugin-vue/valid-v-memo": {
+    "vue/valid-v-memo": {
       "description": "enforce valid `v-memo` directives\nhttps://eslint.vuejs.org/rules/valid-v-memo.html"
     },
-    "eslint-plugin-vue/valid-v-model": {
+    "vue/valid-v-model": {
       "description": "enforce valid `v-model` directives\nhttps://eslint.vuejs.org/rules/valid-v-model.html"
     },
-    "eslint-plugin-vue/valid-v-on": {
+    "vue/valid-v-on": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -9467,16 +9467,16 @@
       ],
       "description": "enforce valid `v-on` directives\nhttps://eslint.vuejs.org/rules/valid-v-on.html"
     },
-    "eslint-plugin-vue/valid-v-once": {
+    "vue/valid-v-once": {
       "description": "enforce valid `v-once` directives\nhttps://eslint.vuejs.org/rules/valid-v-once.html"
     },
-    "eslint-plugin-vue/valid-v-pre": {
+    "vue/valid-v-pre": {
       "description": "enforce valid `v-pre` directives\nhttps://eslint.vuejs.org/rules/valid-v-pre.html"
     },
-    "eslint-plugin-vue/valid-v-show": {
+    "vue/valid-v-show": {
       "description": "enforce valid `v-show` directives\nhttps://eslint.vuejs.org/rules/valid-v-show.html"
     },
-    "eslint-plugin-vue/valid-v-slot": {
+    "vue/valid-v-slot": {
       "oneOf": [
         {
           "$ref": "#/definitions/ruleNumber"
@@ -9513,7 +9513,7 @@
       ],
       "description": "enforce valid `v-slot` directives\nhttps://eslint.vuejs.org/rules/valid-v-slot.html"
     },
-    "eslint-plugin-vue/valid-v-text": {
+    "vue/valid-v-text": {
       "description": "enforce valid `v-text` directives\nhttps://eslint.vuejs.org/rules/valid-v-text.html"
     },
     "@typescript-eslint/adjacent-overload-signatures": {

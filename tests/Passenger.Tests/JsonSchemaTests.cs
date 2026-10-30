@@ -95,6 +95,52 @@ public sealed class JsonSchemaTests
         Assert.True(marked.Count == 0, $"Conditions Node.js resolves are marked as wrong, where the file has {Said(marked)}");
     }
 
+    /// <summary>ESLint's configuration names a plugin's rule by the plugin's short name (import/, vue/, unicorn/), so the rules
+    /// package.json's eslintConfig offers are named so, never by the plugin's package.</summary>
+    [AvaloniaFact]
+    public void Package_jsons_eslint_config_offers_plugin_rules_by_the_names_eslint_finds_them_by()
+    {
+        WebLanguagesTests.SkipWithoutNode();
+        string folder = PathNames.Canonical(TestFolders.Create("eslint-rules-"));
+        TestFolders.Write(folder, "package.json", """
+            {
+              "name": "lint",
+              "eslintConfig": {
+                "plugins": ["import"],
+                "rules": {
+                  "eqeqeq": "error"
+                }
+              }
+            }
+
+            """);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile(Path.Combine(folder, "package.json"));
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "\"eqeqeq\": \"error\"");
+            window.KeyTextInput(",");
+            Ui.Press(window, "ENTER");
+            window.KeyTextInput("\"");
+            Ui.WaitFor(() => window.Assist.CompletionLabels.Count > 0, "the rules eslintConfig takes offered");
+            foreach (char typed in "imp")
+            {
+                window.KeyTextInput(typed.ToString());
+                Ui.Settle();
+            }
+            Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "\"imp", "the rules narrowed to those of imp");
+            Assert.True(window.Assist.CompletionLabels.Contains("import/no-unresolved"),
+                $"import's no-unresolved is not offered by the name ESLint finds it by, where completion offers [{string.Join(", ", window.Assist.CompletionLabels.Take(10))}]");
+            Assert.DoesNotContain(window.Assist.CompletionLabels, l => l.StartsWith("eslint-plugin-", StringComparison.Ordinal));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>The file written alone in a folder of its own and opened with no C# server, read once its server has checked
     /// it against its schema: what it marks, as the text marked and the message, but the one value the test gives it of the
     /// wrong type, <paramref name="wrong"/>, whose mark says the check is in.</summary>

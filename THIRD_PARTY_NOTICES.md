@@ -894,6 +894,8 @@ Passenger's changes, each where a schema refused what the tool it describes take
   level's and a method call's) each also under a pattern of its name that ignores case, and a required key (Serilog's
   `Name`, Kestrel's `Url`, NLog's `type` and `logger`, elmah.io's `ApiKey` and `LogId`) required only where no key is
   it in another case.
+- `partial-eslint-plugins.json`: the rules of eslint-plugin-import, eslint-plugin-unicorn and eslint-plugin-vue are
+  named by the plugin's short name (`import/no-unresolved`), as ESLint names them, where the package's name led them.
 - `package.json`: an export or import condition is any name but one starting with a dot or an array index, where it
   took no digit or dot.
 - `tsconfig.json`: ts-node's `scopeDir` has no default, the sentence that stood as one now its description.
