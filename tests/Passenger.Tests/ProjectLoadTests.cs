@@ -339,6 +339,42 @@ public sealed class ProjectLoadTests : IDisposable
         }
     }
 
+    /// <summary>A nuget.config naming a local source only a teammate has, under a folder the system owns: the restore's
+    /// failure is said in NuGet's words alone, in the status bar and under the project in Problems, never as that folder
+    /// being read-only.</summary>
+    [AvaloniaFact]
+    public void A_local_source_not_there_under_a_system_folder_is_said_in_nugets_words_not_as_that_folder_being_read_only()
+    {
+        string missing = Path.Combine(Path.GetPathRoot(folder)!, "Users", "passenger-teammate", "feeds");
+        Assert.SkipWhen(Directory.Exists(missing), $"{missing}, the teammate's source this test names, is here");
+        File.WriteAllText(Path.Combine(folder, "nuget.config"), $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="teammate" value="{missing}" />
+              </packageSources>
+              <auditSources>
+                <clear />
+              </auditSources>
+              <config>
+                <add key="globalPackagesFolder" value="packages" />
+              </config>
+            </configuration>
+            """);
+        MainWindow window = Open();
+        string words = $"The local source '{missing}' doesn't exist.";
+        ProblemsModel problems = window.BottomPanel.Problems;
+        Ui.WaitFor(() => problems.ToolsetProblems.Any(p => p.Message.Contains(words, StringComparison.Ordinal)),
+            () => $"Problems to list Web's restore failing for the teammate's source (it lists [{string.Join(" | ", problems.ToolsetProblems.Select(p => p.Message))}], the status bar says \"{window.Status}\")");
+        Problem failed = problems.ToolsetProblems.First(p => p.Message.Contains(words, StringComparison.Ordinal));
+        Assert.True(failed is { Severity: ProblemSeverity.Error, Project: "Web" } && !failed.Message.Contains("read-only", StringComparison.Ordinal),
+            $"Problems lists the restore's failure as {failed.Severity} \"{failed.Message}\" under {failed.Project}, not NuGet's words alone");
+        Assert.True(window.Status?.Contains(words, StringComparison.Ordinal) == true && !window.Status.Contains("read-only", StringComparison.Ordinal),
+            $"The status bar says \"{window.Status}\", not NuGet's words alone on the teammate's source");
+        window.Close();
+    }
+
     /// <summary>A window on the folder, its projects loaded by the language server.</summary>
     private MainWindow Open()
     {

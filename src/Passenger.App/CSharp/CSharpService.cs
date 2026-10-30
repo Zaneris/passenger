@@ -908,7 +908,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             if (takenAhead is not null)
             {
                 started = takenAhead;
-                Hear(started.Server);
+                Hear(started.Server, opening.Folder);
                 // Started with the default settings: this window's from now on.
                 started.Server.ReplaceOptions(options);
                 // What it said while no window listened, its projects' load among it, heard now in order.
@@ -925,7 +925,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             else if (warm?.Take(opening.Folder, solution, projects, Feed) is { } taken)
             {
                 started = taken.Session;
-                Hear(started.Server);
+                Hear(started.Server, opening.Folder);
                 HearKept(taken.Problems);
                 started.Server.ReplaceOptions(options);
                 loadAgain = taken.LoadAgain;
@@ -947,7 +947,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 IProjectFeed? feed = Feed;
                 started = await BackgroundWork.Run(async () =>
                 {
-                    RoslynSession begun = await RoslynSession.StartAsync(opening.Folder, solution, projects, logs, cancel, options, Hear, first, feed, ServerCache);
+                    RoslynSession begun = await RoslynSession.StartAsync(opening.Folder, solution, projects, logs, cancel, options, server => Hear(server, opening.Folder), first, feed, ServerCache);
                     // Said as its start comes back, however long the window's thread takes to get to it.
                     if (!cancel.IsCancellationRequested)
                     {
@@ -1134,9 +1134,10 @@ public sealed partial class CSharpService : IAsyncDisposable
         return true;
     }
 
-    /// <summary>Listens to a server as it starts, before it is asked to load anything (or as a warm one is taken up); on the
-    /// server's thread, where its errors and warnings go to the log at once and only what the window shows crosses to it.</summary>
-    private void Hear(LanguageServer server)
+    /// <summary>Listens to a server on a folder as it starts, before it is asked to load anything (or as a warm one is taken
+    /// up); on the server's thread, where its errors and warnings go to the log at once and only what the window shows
+    /// crosses to it.</summary>
+    private void Hear(LanguageServer server, string folder)
     {
         RestoreReports restores = new();
         EventHandler<LogMessageParams> logged = (_, message) =>
@@ -1153,13 +1154,13 @@ public sealed partial class CSharpService : IAsyncDisposable
             }
             if (LoadReport.Read(message.Message) is { } report)
             {
-                string? unwritable = report.Problem is { Severity: ProblemSeverity.Error } error ? UnwritableFolders.Of(error.Message) : null;
+                string? unwritable = report.Problem is { Severity: ProblemSeverity.Error } error ? FolderAccess.Unwritable(error, folder) : null;
                 UiThread.Post(() => OnLoadReport(server, unwritable is null ? report
                     : report with { Problem = report.Problem! with { Message = Unwritable(unwritable, report.Problem.Message) } }));
             }
             foreach (ProjectLoadProblem failed in restores.Hear(message.Message))
             {
-                string? unwritable = UnwritableFolders.Of(failed.Message);
+                string? unwritable = FolderAccess.Unwritable(failed, folder);
                 UiThread.Post(() => OnLoadReport(server, new LoadReport(LoadReportKind.Problem,
                     failed with { Message = unwritable is null ? InFolder(failed.Message) : Unwritable(unwritable, failed.Message) }, null)));
             }

@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Passenger.App.Run;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App.CSharp;
 
@@ -167,41 +168,20 @@ internal sealed partial class RestoreReports
     private static partial Regex Spaces();
 }
 
-/// <summary>The folder a project's load or restore error names that this user cannot write (one read-only, or on a
-/// read-only volume, or whose owner keeps them out), where MSBuild writes what the project loads with: of each path the
-/// error quotes, the nearest folder there is. Asked of the system by the folder's mode on macOS and Linux, on the
-/// server's thread; Windows, whose folders' read-only mark keeps no one from writing, is not asked.</summary>
-internal static partial class UnwritableFolders
+/// <summary>The folder a project's load or restore error blames that this user cannot write
+/// (<see cref="UnwritableFolders"/>), asked of the system by the folder's mode on macOS and Linux, on the server's thread;
+/// Windows, whose folders' read-only mark keeps no one from writing, is not asked.</summary>
+internal static partial class FolderAccess
 {
     /// <summary>access's question whether the caller may write.</summary>
     private const int MayWrite = 2;
 
-    /// <summary>The first such folder the error names, or null where it names none or each can be written.</summary>
-    public static string? Of(string error)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return null;
-        }
-        foreach (Match quoted in QuotedPath().Matches(error))
-        {
-            for (string? at = quoted.Groups["path"].Value; at is not null; at = Path.GetDirectoryName(at))
-            {
-                if (Directory.Exists(at))
-                {
-                    if (Access(at, MayWrite) != 0)
-                    {
-                        return PathNames.Canonical(at);
-                    }
-                    break;
-                }
-            }
-        }
-        return null;
-    }
-
-    [GeneratedRegex(@"'(?<path>/[^'\n]+)'")]
-    private static partial Regex QuotedPath();
+    /// <summary>The folder a project's error blames, canonical, or null for none; a folder under the open one counts as the
+    /// project's own.</summary>
+    public static string? Unwritable(ProjectLoadProblem problem, string? folder) =>
+        !OperatingSystem.IsWindows() && UnwritableFolders.Of(problem.Message, problem.Project, folder, Directory.Exists, at => Access(at, MayWrite) == 0) is { } found
+            ? PathNames.Canonical(found)
+            : null;
 
     [LibraryImport("libc", EntryPoint = "access", StringMarshalling = StringMarshalling.Utf8)]
     private static partial int Access(string path, int mode);
