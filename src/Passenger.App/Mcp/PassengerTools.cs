@@ -2002,7 +2002,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         [.. Session.Debug.Tabs.Select(t => $"{t.Name}: {(t.IsLive && t.Session is { } live ? live.State.ToString().ToLowerInvariant() : "ended")}")];
 
     /// <summary>Where the debugger is in a session's program (the chosen one's by default), from its own model: the session's
-    /// state in its words, and while paused the stop with the top frame's locals; with several programs debugged, which one
+    /// state in its words, and while paused the stop with its shown frame's locals; with several programs debugged, which one
     /// this is and every one's state.</summary>
     private async Task<DebugSnapshot> DebugSnapshotAsync(DebugSession? session = null)
     {

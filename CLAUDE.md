@@ -298,10 +298,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   environment only; Endpoints sends nothing but on Test or Send, and a send taking the person's environment asks first.
   `ResourceFiles` is the one reader of `.resx` and `xlf/*.xlf`.
 - **Debugging.** `DebugController` (a `DebugTab` per session, several at once), `DebugSession`, `BreakpointStore`;
-  Variables and the hover card are one list; a member row's cast comes from the declared type read from metadata
-  (`DeclaredType`). A session's built lines and Hot Reload begin at its build's save (`DebugController.Building`,
-  `BuiltEdits`). A C# breakpoint inside a lambda on its statement's line keeps the lambda's column
-  (`LambdaBreakpoints`).
+  Variables and the hover card are one list; a row's expression is the debugger's `evaluateName` (`RowExpressions`),
+  never built in the window, a member row's cast from the declared type read from metadata (`DeclaredType`). A session's
+  built lines and Hot Reload begin at its build's save (`DebugController.Building`, `BuiltEdits`). A C# breakpoint
+  inside a lambda on its statement's line keeps the lambda's column (`LambdaBreakpoints`).
 - **Tests window.** `TestFinder` (tests from code before any build), `TestRunners`; `VsTestRunner` is the only file that
   knows VSTest's object model. A run from the editor, a filter or the Explorer chooses its tests once its build has
   ended (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and line
@@ -354,8 +354,9 @@ site-shots` retakes its images.
   disconnect. Never leave `_stepper` set but inactive (async stepping reads it as a queued StepComplete). An evaluation
   past its time is aborted only where the abort takes (never rude: one left pending fires later inside a lock, #238).
   Before letting a program go the engine runs it off patch and step stops (CET would fault it) and waits out abandoned
-  evaluations. A decompile never runs under the lock. One assembly in two load contexts is two modules at one base
-  address: modules are kept by their `ICorDebugModule`, and a breakpoint's bindings
+  evaluations. A decompile never runs under the lock. Returned partway through a statement, a frame's IL offset reads as
+  the statement's start, so the call it returned from is sought across the whole statement. One assembly in two load
+  contexts is two modules at one base address: modules are kept by their `ICorDebugModule`, and a breakpoint's bindings
   (`BreakpointManager.BreakpointBinding`) name their `ModuleInfo`, never an address. After a Hot Reload update, read a
   method's points, locals and IL only at the frame's version (`Points`, `DebugOf`, `MethodIL`). A runtime-async await
   (.NET 11) steps by a breakpoint where its method goes on (`AsyncStepper_RuntimeAsync`), which a Just My Code stepper
