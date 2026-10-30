@@ -873,7 +873,8 @@ limitations under the License.
 ## SchemaStore's JSON schemas
 
 `src/Passenger.Lsp/WebServers/schemas/` holds JSON schemas of the JSON Schema Store
-(https://github.com/SchemaStore/schemastore, `src/schemas/json/` at commit 5661ee1b), modified as listed below, carried
+(https://github.com/SchemaStore/schemastore, `src/schemas/json/` at commit 5661ee1b), modified as listed below (each
+changed file saying so in its top-level `$comment`), carried
 under `web/schemas/`: those the JSON language server checks and completes package.json, tsconfig.json, jsconfig.json,
 appsettings.json, launchSettings.json and global.json by (`package.json`, `tsconfig.json`, `jsconfig.json`,
 `appsettings.json`, `launchsettings.json`, `global.json`), and those they refer to (`eslintrc.json`, `prettierrc.json`,
@@ -913,7 +914,8 @@ Passenger's changes, each where a schema refused what the tool it describes take
 ## The Compose specification's schema
 
 `src/Passenger.Lsp/WebServers/schemas/compose-spec.json` is the Compose specification's JSON schema
-(https://github.com/compose-spec/compose-spec, `schema/compose-spec.json` at commit 914ec15d), modified as below,
+(https://github.com/compose-spec/compose-spec, `schema/compose-spec.json` at commit 914ec15d), modified as below (the
+file saying so in its top-level `$comment`),
 carried under `web/schemas/`: the YAML language server checks and completes compose files (`compose.yaml`,
 `docker-compose.yml` and their variants) by it, under the Apache License 2.0 given under TextMate grammars above, with
 the Compose Specification's NOTICE:

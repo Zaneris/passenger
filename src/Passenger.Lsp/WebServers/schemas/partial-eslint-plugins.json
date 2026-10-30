@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://json.schemastore.org/partial-eslint-plugins.json",
-  "$comment": "For improvements to this schema, please send a PR to https://github.com/fox-projects/jsonschema-extractor.",
+  "$comment": "Changed by Passenger: see THIRD_PARTY_NOTICES.md. For improvements to this schema, please send a PR to https://github.com/fox-projects/jsonschema-extractor.",
   "type": "object",
   "definitions": {
     "ruleNumber": {
