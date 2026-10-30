@@ -544,9 +544,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     {
         string urls = environment.TryGetValue("ASPNETCORE_URLS", out string? configured) ? configured
             : Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? string.Empty;
-        Uri? existing = urls.Split(';', StringSplitOptions.RemoveEmptyEntries)
-            .Select(url => Uri.TryCreate(url.Trim(), UriKind.Absolute, out Uri? endpoint) ? endpoint : null)
-            .FirstOrDefault(endpoint => endpoint?.Scheme == Uri.UriSchemeHttp);
+        Uri? existing = DashboardAddress.FromUrls(urls);
         using TcpListener port = new(IPAddress.Loopback, 0);
         if (existing is null)
         {

@@ -36,6 +36,11 @@
     <Compile Include="../../src/Passenger.App/Containers/DockerfileStages.cs" Link="App/DockerfileStages.cs" />
   </ItemGroup>
 
+  <!-- Where an AppHost's dashboard is called from where it listens, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Aspire/DashboardAddress.cs" Link="App/DashboardAddress.cs" />
+  </ItemGroup>
+
   <!-- What Safe Delete takes out of a C# file, read from Roslyn's syntax alone, compiled in since its project's editor
        brings Avalonia. -->
   <ItemGroup>
