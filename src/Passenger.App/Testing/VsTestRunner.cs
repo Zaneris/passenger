@@ -37,12 +37,27 @@ public sealed class VsTestRunner : ITestRunner
     /// never returns) and ended, its test hosts with it.</summary>
     private static readonly TimeSpan StopLimit = TimeSpan.FromSeconds(10);
 
-    private readonly VsTestConsoleWrapper console;
+    /// <summary>How long a run told to stop has to end after the test under way, before it is aborted, its test hosts ended.</summary>
+    private static readonly TimeSpan CancelLimit = TimeSpan.FromSeconds(2);
+
+    /// <summary>How long a run aborted has to end, before vstest.console is taken for stuck and ended, its test hosts with it.</summary>
+    private static readonly TimeSpan AbortLimit = TimeSpan.FromSeconds(3);
+
+    private readonly string consolePath;
+    private readonly string host;
+
+    /// <summary>The session of vstest.console the runner asks, another taken once a stopped run left one stuck.</summary>
+    private VsTestConsoleWrapper console;
 
     /// <summary>The test cases discovered, by the key of the test each was told as.</summary>
     private readonly TestCatalog<TestCase> cases = new();
 
-    private VsTestRunner(VsTestConsoleWrapper console) => this.console = console;
+    private VsTestRunner(string consolePath, string host, VsTestConsoleWrapper console)
+    {
+        this.consolePath = consolePath;
+        this.host = host;
+        this.console = console;
+    }
 
     /// <summary>A runner for a folder: vstest.console from the SDK `dotnet --version` names there (<see cref="Dotnet.SdkAsync"/>),
     /// saying why when it names none.</summary>
@@ -63,6 +78,20 @@ public sealed class VsTestRunner : ITestRunner
         {
             throw new FileNotFoundException($"The SDK {sdk} has no vstest.console", console);
         }
+        VsTestRunner runner = new(console, host, await SessionAsync(console, host));
+        IdeLog.Write(IdeLog.Tests, $"vstest.console of the SDK {sdk} started for {folder}");
+        if (cancellation.IsCancellationRequested)
+        {
+            // Stopped while it started: it ends now, rather than run idle until the IDE does.
+            IdeErrors.Observe(BackgroundWork.Unheld(runner.Dispose));
+            cancellation.ThrowIfCancellationRequested();
+        }
+        return runner;
+    }
+
+    /// <summary>vstest.console started, run by the dotnet given, its session begun.</summary>
+    private static async Task<VsTestConsoleWrapper> SessionAsync(string console, string host)
+    {
         ConsoleParameters parameters = new()
         {
             InheritEnvironmentVariables = true,
@@ -77,15 +106,7 @@ public sealed class VsTestRunner : ITestRunner
                 $"VSTest's translation layer {typeof(VsTestConsoleWrapper).Assembly.GetName().Version} cannot be told which dotnet runs vstest.console: VsTestRunner must follow its constructors");
         // Its async calls wait for the handshake before starting vstest.console, so for ever: the blocking one, on a worker.
         await Told(BackgroundWork.Run(wrapper.StartSession));
-        IdeLog.Write(IdeLog.Tests, $"vstest.console of the SDK {sdk} started for {folder}");
-        VsTestRunner runner = new(wrapper);
-        if (cancellation.IsCancellationRequested)
-        {
-            // Stopped while it started: it ends now, rather than run idle until the IDE does.
-            IdeErrors.Observe(BackgroundWork.Unheld(runner.Dispose));
-            cancellation.ThrowIfCancellationRequested();
-        }
-        return runner;
+        return wrapper;
     }
 
     public bool IsUsable { get; private set; } = true;
@@ -95,10 +116,11 @@ public sealed class VsTestRunner : ITestRunner
     public async Task<IReadOnlyList<TestItem>> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default)
     {
         Discovery handler = new(log);
+        VsTestConsoleWrapper session = console;
         // The blocking call returns once VSTest has told the handler discovery is complete, stopped or not.
-        Task discovering = BackgroundWork.Run(() => console.DiscoverTests([.. assemblies.Select(a => a.Path)], RunSettings, new TestPlatformOptions(), handler));
+        Task discovering = BackgroundWork.Run(() => session.DiscoverTests([.. assemblies.Select(a => a.Path)], RunSettings, new TestPlatformOptions(), handler));
         // Not held, off the canceller's thread: the stop is said by discovery's own end.
-        using (cancel.Register(() => IdeErrors.Observe(BackgroundWork.Unheld(console.CancelDiscovery))))
+        using (cancel.Register(() => IdeErrors.Observe(BackgroundWork.Unheld(session.CancelDiscovery))))
         {
             try
             {
@@ -143,23 +165,80 @@ public sealed class VsTestRunner : ITestRunner
             }
         }
         Run handler = new(running, outcomes, log);
-        // Not held, off the canceller's thread: the stop is said by the run's own end.
-        using (cancel.Register(() => IdeErrors.Observe(BackgroundWork.Unheld(console.CancelTestRun))))
+        VsTestConsoleWrapper session = console;
+        long began = Stopwatch.GetTimestamp();
+        // Not held: a debugged run waits here while stopped at a breakpoint.
+        Task run = BackgroundWork.Unheld(() =>
         {
-            // Not held: a debugged run waits here while stopped at a breakpoint.
-            await Told(BackgroundWork.Unheld(() =>
+            if (debugger is null)
             {
-                if (debugger is null)
-                {
-                    console.RunTests(chosen, settings, new TestPlatformOptions(), handler);
-                }
-                else
-                {
-                    console.RunTestsWithCustomTestHost(chosen, settings, new TestPlatformOptions(), handler, new DebugLauncher(debugger, environment));
-                }
-            }));
+                session.RunTests(chosen, settings, new TestPlatformOptions(), handler);
+            }
+            else
+            {
+                session.RunTestsWithCustomTestHost(chosen, settings, new TestPlatformOptions(), handler, new DebugLauncher(debugger, environment));
+            }
+        });
+        // Not held, off the canceller's thread: the stop is said by the run's own end.
+        using (cancel.Register(() => IdeErrors.Observe(BackgroundWork.Unheld(session.CancelTestRun))))
+        {
+            try
+            {
+                await Told(run.WaitAsync(cancel));
+            }
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+            {
+                return await StoppedAsync(session, run, handler, began);
+            }
             return await handler.Done.Task;
         }
+    }
+
+    /// <summary>A run told to stop, ended: as canceled once the test under way ends, else aborted, its test hosts ended, else
+    /// with vstest.console ended, its test hosts with it, and another session taken; what had run kept either way.</summary>
+    private async Task<RunSummary> StoppedAsync(VsTestConsoleWrapper session, Task run, Run handler, long began)
+    {
+        if (!await EndsWithin(run, CancelLimit))
+        {
+            IdeLog.Write(IdeLog.Tests, $"A run told to stop ran on {Waits.Of(CancelLimit).TotalSeconds:0} s: aborted");
+            IdeErrors.Observe(BackgroundWork.Unheld(session.AbortTestRun));
+            if (!await EndsWithin(run, AbortLimit))
+            {
+                IdeLog.Write(IdeLog.Tests, $"A run aborted ran on {Waits.Of(AbortLimit).TotalSeconds:0} s: vstest.console is ended, its test hosts with it");
+                _ = run.ContinueWith(ended => _ = ended.Exception, TaskScheduler.Default);
+                await BackgroundWork.Unheld(() => End(session));
+                try
+                {
+                    console = await SessionAsync(consolePath, host);
+                }
+                catch (Exception failed) when (failed is InvalidOperationException or IOException)
+                {
+                    IdeLog.Write(IdeLog.Tests, $"vstest.console could not start again: {failed.Message}");
+                    IsUsable = false;
+                }
+            }
+        }
+        // Whatever the run's own end says, it was stopped: what it tells after this is no longer its.
+        RunSummary told = handler.Close(Stopwatch.GetElapsedTime(began));
+        return told with { Canceled = true, Aborted = false, Error = null };
+    }
+
+    /// <summary>Whether a run ends within its limit (scaled as the IDE's waits are), however it ends.</summary>
+    private static async Task<bool> EndsWithin(Task run, TimeSpan limit)
+    {
+        try
+        {
+            await run.WaitAsync(Waits.Of(limit));
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException or TestPlatformException)
+        {
+            // Ended by a failure, which the run's log said.
+        }
+        return true;
     }
 
     /// <summary>A run's settings: VSTest's design mode, as an IDE runs it, and the environment, each variable an element as
@@ -198,11 +277,14 @@ public sealed class VsTestRunner : ITestRunner
         }
     }
 
-    public void Dispose()
+    public void Dispose() => End(console);
+
+    /// <summary>Ends a session: vstest.console told to end, and ended a moment later if it has not, its test hosts with it.</summary>
+    private static void End(VsTestConsoleWrapper session)
     {
         try
         {
-            console.EndSession();
+            session.EndSession();
         }
         catch (Exception error) when (error is IOException or InvalidOperationException or ObjectDisposedException)
         {
@@ -281,7 +363,22 @@ public sealed class VsTestRunner : ITestRunner
     {
         private readonly List<TestOutcome> all = [];
 
+        /// <summary>Whether the run was let go of once stopped (<see cref="Close"/>): what VSTest tells after is no run's.</summary>
+        private bool closed;
+
+        private RunSummary? ended;
+
         public TaskCompletionSource<RunSummary> Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>The run let go of: how it ended if it has, else what it told before, in the time given.</summary>
+        public RunSummary Close(TimeSpan elapsed)
+        {
+            lock (all)
+            {
+                closed = true;
+                return ended ?? new RunSummary(elapsed, true, false, null) { Outcomes = [.. all] };
+            }
+        }
 
         public void HandleTestRunStatsChange(TestRunChangedEventArgs? testRunChangedArgs)
         {
@@ -294,6 +391,10 @@ public sealed class VsTestRunner : ITestRunner
             }
             lock (all)
             {
+                if (closed)
+                {
+                    return;
+                }
                 all.AddRange(batch);
             }
             outcomes(batch);
@@ -306,15 +407,19 @@ public sealed class VsTestRunner : ITestRunner
             {
                 log?.Invoke(error.Message);
             }
-            List<TestOutcome> told;
+            RunSummary summary;
             lock (all)
             {
-                told = [.. all];
+                summary = new RunSummary(testRunCompleteArgs.ElapsedTimeInRunningTests, testRunCompleteArgs.IsCanceled, testRunCompleteArgs.IsAborted, testRunCompleteArgs.Error?.Message)
+                {
+                    Outcomes = [.. all],
+                };
+                ended ??= closed ? null : summary;
             }
-            string ended = testRunCompleteArgs.IsCanceled ? "stopped" : testRunCompleteArgs.IsAborted ? "aborted" : "complete";
-            IdeLog.Write(IdeLog.Tests, $"Run {ended}: {Plural.Of(told.Count, "result")} in {testRunCompleteArgs.ElapsedTimeInRunningTests.TotalSeconds:0.00} s"
+            string how = testRunCompleteArgs.IsCanceled ? "stopped" : testRunCompleteArgs.IsAborted ? "aborted" : "complete";
+            IdeLog.Write(IdeLog.Tests, $"Run {how}: {Plural.Of(summary.Outcomes.Count, "result")} in {testRunCompleteArgs.ElapsedTimeInRunningTests.TotalSeconds:0.00} s"
                 + (testRunCompleteArgs.Error is { } failed ? $": {failed.Message}" : string.Empty));
-            Done.TrySetResult(new RunSummary(testRunCompleteArgs.ElapsedTimeInRunningTests, testRunCompleteArgs.IsCanceled, testRunCompleteArgs.IsAborted, testRunCompleteArgs.Error?.Message) { Outcomes = told });
+            Done.TrySetResult(summary);
         }
 
         public int LaunchProcessWithDebuggerAttached(TestProcessStartInfo testProcessStartInfo) => -1;

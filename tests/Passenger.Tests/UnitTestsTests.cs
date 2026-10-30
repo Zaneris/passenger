@@ -249,6 +249,34 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>Stop ends a run whose test never ends within seconds, saying it stopped, its test host gone and the test
+    /// not run; and the next run starts and runs.</summary>
+    [AvaloniaFact]
+    public void Stop_ends_a_run_whose_test_never_ends_and_its_test_host_and_the_next_run_runs()
+    {
+        string host = Path.Combine(Folder, "hanging.txt");
+        Write("HangingTests.cs",
+            "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class HangingTests\n{\n    [Fact]\n    public void Never_ends()\n    {\n" +
+            $"        File.WriteAllText(@\"{host}\", Environment.ProcessId.ToString());\n" +
+            "        Thread.Sleep(Timeout.Infinite);\n    }\n}\n");
+        MainWindow window = Open();
+        Tree(window);
+        Ui.WaitFor(() => Method(window, "Never_ends") is not null && Method(window, "Two_and_two_make_four") is not null, "the tests in the Unit Tests window");
+
+        Task<string?> hanging = window.Tests.RunAsync(window.Folder!, [Method(window, "Never_ends")!]);
+        int testHost = Processes.WrittenId(host, "the test host running the test that never ends");
+        Assert.True(window.Perform(AppActions.StopTests));
+        Assert.True(Ui.Await(hanging, "the run of the test that never ends to stop", TimeSpan.FromSeconds(20)) is null,
+            $"The run of the test that never ends was refused: {window.BottomPanel.Tests.Status}");
+        Assert.True(Processes.Gone(testHost, TimeSpan.FromSeconds(15)), $"The test host ({Processes.Describe(testHost)}) still ran after Stop");
+        Assert.EndsWith(", stopped", window.BottomPanel.Tests.Status, StringComparison.Ordinal);
+        Assert.Equal(TestState.NotRun, Method(window, "Never_ends")!.State);
+
+        Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [Method(window, "Two_and_two_make_four")!]), "the run after the stopped one", TimeSpan.FromSeconds(120));
+        Assert.Equal(TestState.Passed, Method(window, "Two_and_two_make_four")!.State);
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Typing_in_one_file_among_many_open_reads_and_marks_that_files_tests_and_no_others()
@@ -930,6 +958,36 @@ public sealed class UnitTestsDebuggingTests : UnitTestsFolders, IClassFixture<Re
         Assert.True(greets.State == TestState.Passed, $"A test ran without its project's launch profile's variables, which Rider gives it:\n{greets.Details}");
         Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [greets], debug: true), "the test debugged", TimeSpan.FromSeconds(120));
         Assert.True(greets.State == TestState.Passed, $"A test debugged ran without its project's launch profile's variables:\n{greets.Details}");
+        window.Close();
+    }
+
+    /// <summary>Stop Unit Tests ends a debugged run paused at a breakpoint inside its test within seconds, saying it
+    /// stopped, its test host ended; and the next run runs.</summary>
+    [AvaloniaFact]
+    public void Stop_unit_tests_ends_a_debugged_run_paused_at_a_breakpoint_and_the_next_run_runs()
+    {
+        string host = Path.Combine(Folder, "paused.txt");
+        string tests = Write("PausedTests.cs", "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class PausedTests\n{\n    [Fact]\n    public void Pauses()\n    {\n" +
+            $"        File.WriteAllText(@\"{host}\", Environment.ProcessId.ToString());\n" +
+            "        int sum = 2 + 2;\n        Assert.Equal(4, sum);\n    }\n}\n");
+        MainWindow window = Open();
+        window.OpenFile(tests);
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(11, 9));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        Ui.Run(window, AppActions.DebugTests);
+        Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames.Count > 0, "the stop in the test", TimeSpan.FromSeconds(120));
+        int testHost = Processes.WrittenId(host, "the test host paused in the test");
+
+        Assert.True(window.Perform(AppActions.StopTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy, "the debugged run to stop", TimeSpan.FromSeconds(20));
+        Assert.True(Processes.Gone(testHost, TimeSpan.FromSeconds(15)), $"The test host ({Processes.Describe(testHost)}) still ran after Stop");
+        Assert.EndsWith(", stopped", window.BottomPanel.Tests.Status, StringComparison.Ordinal);
+
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [Method(window, "Two_and_two_make_four")!]), "the run after the stopped one", TimeSpan.FromSeconds(120));
+        Assert.Equal(TestState.Passed, Method(window, "Two_and_two_make_four")!.State);
         window.Close();
     }
 }

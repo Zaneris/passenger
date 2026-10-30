@@ -355,6 +355,7 @@ public sealed class TestController : IAsyncDisposable
             }
             finally
             {
+                LetGoOfStuck();
                 stopping = null;
                 IsBusy = false;
                 working?.Dispose();
@@ -458,14 +459,21 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>What the window says of a run stopped before its tests ran; a build stopped says so itself.</summary>
     private string Stopped()
     {
-        if (runner is { IsUsable: false } stuck)
-        {
-            // A discovery that never said it had stopped: its runner ends, its test hosts with it.
-            runner = null;
-            IdeErrors.Observe(BackgroundWork.Unheld(stuck.Dispose));
-        }
+        LetGoOfStuck();
         Message?.Invoke(this, StoppedMessage);
         return StoppedMessage;
+    }
+
+    /// <summary>Ends a runner that cannot be asked again (one stopped that never said it had), its test hosts with it, off
+    /// the window's thread; the next finds every assembly's tests again, which only it can run.</summary>
+    private void LetGoOfStuck()
+    {
+        if (runner is { IsUsable: false } stuck)
+        {
+            runner = null;
+            discovered.Clear();
+            IdeErrors.Observe(BackgroundWork.Unheld(stuck.Dispose));
+        }
     }
 
     private async Task<string?> DiscoverCore(string workspace, bool build, CancellationToken cancel)
