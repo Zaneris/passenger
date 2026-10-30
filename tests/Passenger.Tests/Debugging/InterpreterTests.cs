@@ -313,6 +313,33 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("null", (await Evaluate(host, frame, "nobody?.Value")).Value);
     }
 
+    /// <summary>With the program's culture fr-FR, a number interpolated in an evaluation is written as the program writes it,
+    /// with or without a format: its own ToString of each, in that culture, comma and all.</summary>
+    [Fact]
+    public async Task An_interpolated_number_is_formatted_in_the_programs_culture()
+    {
+        string cultured = "Console.WriteLine($\"cultured {d} {d:N1} {d:P0} {below:N0}\");";
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["culture"])
+            .WaitForInitializedEvent();
+        await host.BreakpointsAsync([Line(cultured)], Debuggees.Source("PassengerCases", "Program.cs")).ConfigurationDoneAsync();
+        int frame = await StoppedAt(host, cultured);
+
+        Assert.Equal("\"1234,5\"", (await Evaluate(host, frame, "d.ToString()")).Value);
+        foreach ((string interpolated, string own) in new[]
+        {
+            ("$\"{d}\"", "d.ToString()"), ("$\"{d:N1}\"", "d.ToString(\"N1\")"), ("$\"{d:P0}\"", "d.ToString(\"P0\")"),
+            ("$\"{below:N0}\"", "below.ToString(\"N0\")"), ("$\"{below}\"", "below.ToString()"), ("$\"[{d,10}]\"", "\"[\" + d.ToString().PadLeft(10) + \"]\""),
+        })
+        {
+            string written = (await Evaluate(host, frame, interpolated)).Value;
+            string expected = (await Evaluate(host, frame, own)).Value;
+            Assert.True(written == expected, $"{interpolated} answered {written}, where the program's {own} is {expected}");
+        }
+    }
+
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);
 
     /// <summary>PassengerCases launched and stopped in Reading.Run once its rounds are done; the top frame.</summary>

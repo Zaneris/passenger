@@ -110,6 +110,11 @@ if (args is ["generic"])
 	Console.WriteLine($"generic {Typed<int>.Make(4, "four")}");
 	return;
 }
+if (args is ["culture"])
+{
+	Cultured.Run();
+	return;
+}
 if (args is ["named main"])
 {
 	// Main's thread named as an app may name its UI thread: the debugger still knows it for Main's.
@@ -848,6 +853,18 @@ internal static class Refs
 	private static void Climb(ref int value)
 	{
 		value += 40;
+	}
+}
+
+// Numbers in a culture of their own, whose separators an evaluation's interpolation must write as the program does.
+internal static class Cultured
+{
+	public static void Run()
+	{
+		System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("fr-FR");
+		double d = 1234.5;
+		int below = -1234;
+		Console.WriteLine($"cultured {d} {d:N1} {d:P0} {below:N0}");
 	}
 }
 

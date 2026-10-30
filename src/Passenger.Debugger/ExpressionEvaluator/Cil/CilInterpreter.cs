@@ -1925,26 +1925,31 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             return string.Empty;
         }
 
-        if (value.Value is IFormattable formattable)
+        ICorDebugValue receiver;
+        if (value.Value is { } primitive && PrimitiveCilType(primitive) is not null && !WrittenAlikeInEveryCulture(primitive, format))
+        {
+            // The program's culture decides its separators, signs and symbols, so the program writes it.
+            receiver = await MaterializeReceiverAsync(value, context, null, resolver, handles);
+        }
+        else if (value.Value is IFormattable formattable)
         {
             return formattable.ToString(format, null);
         }
-
-        if (value.Value is not null)
+        else if (value.Value is not null)
         {
             return value.Value.ToString() ?? string.Empty;
         }
-
-        if (value.GetStringText() is { } text)
+        else if (value.GetStringText() is { } text)
         {
             return text;
         }
-
-        ICorDebugValue receiver = value.CorValue ?? throw new InvalidOperationException("Interpolated value is unavailable");
-        bool isDebuggeeValueType = receiver.ExactType.Type == CorElementType.VALUETYPE;
-        if (isDebuggeeValueType)
+        else
         {
-            receiver = (await BoxAsync(value, receiver.ExactType, context, handles)).CorValue!;
+            receiver = value.CorValue ?? throw new InvalidOperationException("Interpolated value is unavailable");
+            if (receiver.ExactType.Type == CorElementType.VALUETYPE)
+            {
+                receiver = (await BoxAsync(value, receiver.ExactType, context, handles)).CorValue!;
+            }
         }
         ICorDebugEval eval = context.Thread.CreateEval();
         ICorDebugValue? result;
@@ -1965,4 +1970,17 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         }
         return result?.UnwrapDebugValue() is ICorDebugStringValue stringValue ? stringValue.String : string.Empty;
     }
+
+    /// <summary>Whether a primitive is written alike in every culture, as the program would write it: a bool or a char, or
+    /// an integer at or above zero with no format, all digits.</summary>
+    private static bool WrittenAlikeInEveryCulture(object primitive, string? format) => primitive switch
+    {
+        bool or char => true,
+        byte or ushort or uint or ulong => format is null,
+        sbyte number => format is null && number >= 0,
+        short number => format is null && number >= 0,
+        int number => format is null && number >= 0,
+        long number => format is null && number >= 0,
+        _ => false,
+    };
 }
