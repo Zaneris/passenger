@@ -240,8 +240,8 @@ public static partial class RouteRequests
             : parameter.Name;
     }
 
-    /// <summary>A request's URL sent to another address: its leading <c>{{variable}}</c> or <c>scheme://host</c> replaced, a
-    /// path alone put after it.</summary>
+    /// <summary>A request's URL sent to another address: its leading <c>{{variable}}</c> or <c>scheme://host</c> replaced and
+    /// what follows kept (its path, query and fragment, whichever comes first), a path alone put after it.</summary>
     public static string WithHost(string url, string address)
     {
         string trimmed = url.Trim();
@@ -252,8 +252,8 @@ public static partial class RouteRequests
         }
         if (trimmed.IndexOf("://", StringComparison.Ordinal) is int scheme and > 0)
         {
-            int slash = trimmed.IndexOf('/', scheme + 3);
-            return root + (slash < 0 ? string.Empty : trimmed[slash..]);
+            int authorityEnd = trimmed.IndexOfAny(['/', '?', '#'], scheme + 3);
+            return root + (authorityEnd < 0 ? string.Empty : trimmed[authorityEnd..]);
         }
         return root + (trimmed.StartsWith('/') ? trimmed : "/" + trimmed);
     }
