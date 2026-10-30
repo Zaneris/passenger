@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-	<!-- A library for PassengerCases, which loads it into load contexts of its own. -->
+	<!-- A library for PassengerCases: Linked.cs compiled into both, and an assembly the program loads into load contexts of
+	     its own. -->
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>

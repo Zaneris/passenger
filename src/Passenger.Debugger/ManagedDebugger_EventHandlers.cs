@@ -150,7 +150,7 @@ public partial class ManagedDebugger
 
         if (metadataReader.HasSymbols)
         {
-            TryBindPendingBreakpoints();
+            BindLineBreakpoints(moduleInfo);
             foreach (BreakpointManager.BreakpointInfo breakpoint in _breakpointManager.GetFunctionBreakpoints().Where(b => !b.Refused))
             {
                 bool becameVerified = TryBindFunctionBreakpoint(breakpoint, moduleInfo);
@@ -198,31 +198,22 @@ public partial class ManagedDebugger
 
         foreach (BreakpointManager.BreakpointInfo breakpoint in _breakpointManager.GetAllBreakpoints())
         {
+            int removedBindingCount = breakpoint.Bindings.RemoveAll(binding => ReferenceEquals(binding.Module, moduleInfo));
+            if (removedBindingCount is 0 || breakpoint.Bindings.Count > 0)
+            {
+                continue;
+            }
+
+            breakpoint.Verified = false;
             if (breakpoint.IsFunctionBreakpoint)
             {
-                int removedBindingCount = breakpoint.FunctionBindings.RemoveAll(binding => ReferenceEquals(binding.Module, moduleInfo));
-                if (removedBindingCount is 0 || breakpoint.FunctionBindings.Count > 0)
-                {
-                    continue;
-                }
-
-                breakpoint.Verified = false;
                 breakpoint.Message = "The breakpoint will not currently be hit. No matching function has been loaded.";
-                OnBreakpointChanged?.Invoke(breakpoint);
-                continue;
             }
-
-            if (!ReferenceEquals(breakpoint.Module, moduleInfo))
+            else
             {
-                continue;
+                breakpoint.Message = "The breakpoint will not currently be hit. No symbols have been loaded for this document.";
+                TryBindBreakpoint(breakpoint);
             }
-
-            breakpoint.CorBreakpoint = null;
-            breakpoint.ResolvedBreakpointFromPdb = null;
-            breakpoint.Module = null;
-            breakpoint.Verified = false;
-            breakpoint.Message = "The breakpoint will not currently be hit. No symbols have been loaded for this document.";
-            TryBindBreakpoint(breakpoint);
             OnBreakpointChanged?.Invoke(breakpoint);
         }
 
@@ -341,6 +332,7 @@ public partial class ManagedDebugger
             return;
         }
 
+        BreakpointManager.BreakpointBinding? hit = managedBreakpoint.Bindings.Find(binding => binding.CorBreakpoint == functionBreakpoint);
         managedBreakpoint.HitCount++;
 
         if (managedBreakpoint.HitCondition is not null && EvaluateHitCondition(managedBreakpoint.HitCount, managedBreakpoint.HitCondition) is false)
@@ -376,7 +368,7 @@ public partial class ManagedDebugger
         else if (!managedBreakpoint.Suspend)
         {
             // What a breakpoint that neither stops nor says anything of its own writes.
-            OnConsole?.Invoke($"Breakpoint reached at {Path.GetFileName(managedBreakpoint.FilePath)}:{managedBreakpoint.ResolvedBreakpointFromPdb?.StartLine ?? managedBreakpoint.Line}\n");
+            OnConsole?.Invoke($"Breakpoint reached at {Path.GetFileName(managedBreakpoint.FilePath)}:{(managedBreakpoint.IsFunctionBreakpoint ? managedBreakpoint.Line : hit?.Source.StartLine ?? managedBreakpoint.Line)}\n");
         }
         if (!managedBreakpoint.Suspend)
         {
@@ -401,7 +393,7 @@ public partial class ManagedDebugger
             return;
         }
 
-        if (managedBreakpoint.ResolvedBreakpointFromPdb is not { } resolvedBreakpoint)
+        if (hit?.Source is not { } resolvedBreakpoint)
         {
             throw new UnreachableException("Breakpoint was not resolved from PDB - this should never happen, as source breakpoints are only bound to resolved source locations");
         }

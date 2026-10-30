@@ -204,11 +204,20 @@ public partial class ManagedDebugger
             return false;
         }
 
-        if (bp.CorBreakpoint?.TryActivate(false) is int deactivated and < 0)
-        {
-            _logger?.Invoke($"Error deactivating breakpoint: 0x{deactivated:X8}");
-        }
+        LetGo(bp);
         return _breakpointManager.RemoveBreakpoint(id);
+    }
+
+    /// <summary>A breakpoint's bindings let go, as it is removed.</summary>
+    private void LetGo(BreakpointManager.BreakpointInfo bp)
+    {
+        foreach (BreakpointManager.BreakpointBinding binding in bp.Bindings)
+        {
+            if (binding.CorBreakpoint.TryActivate(false) is int deactivated and < 0)
+            {
+                _logger?.Invoke($"Error deactivating breakpoint {bp.Id}: 0x{deactivated:X8}");
+            }
+        }
     }
 
     /// <summary>The process to attach to, taken hold of by configurationDone once the client's breakpoints are set;
@@ -464,10 +473,7 @@ public partial class ManagedDebugger
         }
         foreach (BreakpointManager.BreakpointInfo gone in existingBreakpoints.Where(b => !kept.Contains(b)))
         {
-            if (gone.CorBreakpoint?.TryActivate(false) is int deactivated and < 0)
-            {
-                _logger?.Invoke($"Error deactivating breakpoint: 0x{deactivated:X8}");
-            }
+            LetGo(gone);
             _breakpointManager.RemoveBreakpoint(gone.Id);
         }
 
@@ -530,13 +536,7 @@ public partial class ManagedDebugger
         }
         foreach (BreakpointManager.BreakpointInfo gone in existing.Where(b => !kept.Contains(b)))
         {
-            foreach (BreakpointManager.FunctionBreakpointBinding binding in gone.FunctionBindings)
-            {
-                if (binding.CorBreakpoint.TryActivate(false) is int deactivated and < 0)
-                {
-                    _logger?.Invoke($"Error deactivating function breakpoint: 0x{deactivated:X8}");
-                }
-            }
+            LetGo(gone);
             _breakpointManager.RemoveBreakpoint(gone.Id);
         }
 

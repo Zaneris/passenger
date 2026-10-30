@@ -389,17 +389,17 @@ public partial class ManagedDebugger
         {
             if (!breakpoint.IsFunctionBreakpoint)
             {
-                if (ReferenceEquals(breakpoint.Module, module))
+                if (breakpoint.Bindings.Any(binding => ReferenceEquals(binding.Module, module)))
                 {
                     breakpoint.Request = null;
                 }
                 continue;
             }
-            List<BreakpointManager.FunctionBreakpointBinding> stale = [.. breakpoint.FunctionBindings.Where(b => ReferenceEquals(b.Module, module) && methods.Contains(b.MethodToken))];
-            foreach (BreakpointManager.FunctionBreakpointBinding binding in stale)
+            List<BreakpointManager.BreakpointBinding> stale = [.. breakpoint.Bindings.Where(b => ReferenceEquals(b.Module, module) && methods.Contains(b.MethodToken))];
+            foreach (BreakpointManager.BreakpointBinding binding in stale)
             {
                 binding.CorBreakpoint.TryActivate(false);
-                breakpoint.FunctionBindings.Remove(binding);
+                breakpoint.Bindings.Remove(binding);
             }
             if (stale.Count > 0)
             {

@@ -90,6 +90,11 @@ if (args is ["reckoning"])
 	Reckoning.Run();
 	return;
 }
+if (args is ["linked"])
+{
+	Linking.Run();
+	return;
+}
 if (args is ["contexts"])
 {
 	Contexts.Run();
@@ -755,6 +760,17 @@ internal static class Finally
 		Console.WriteLine("a finally next"); // stop before an evaluation spins or sleeps in a finally block
 		freer.Join();
 		Console.WriteLine($"let out, {Turns} turns"); // stop once the evaluation has been let out
+	}
+}
+
+// One file, LinkedLibrary's Linked.cs, compiled into this program and into LinkedLibrary: each calls its own copy.
+internal static class Linking
+{
+	public static void Run()
+	{
+		int own = Linked.Twice(2);
+		int library = LinkedLibrary.Entry.Twice(3);
+		Console.WriteLine($"linked {own} {library}");
 	}
 }
 

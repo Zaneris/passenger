@@ -278,6 +278,32 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         }
     }
 
+    /// <summary>One file compiled into two assemblies, the program and a library it calls, is code in each: a breakpoint in
+    /// it stops in the program's copy, then in the library's, which loads after the breakpoint was bound in the program.</summary>
+    [Fact]
+    public async Task A_breakpoint_in_a_file_compiled_into_two_assemblies_stops_in_each()
+    {
+        string source = Debuggees.Source("LinkedLibrary", "Linked.cs");
+        int line = Debuggees.Line("LinkedLibrary", "Linked.cs", "return value * 2;");
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host.InitializeAsync().LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["linked"]).WaitForInitializedEvent();
+        await host.BreakpointsAsync(line, source).ConfigurationDoneAsync();
+
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        foreach ((string assembly, string value) in new[] { ("PassengerCases", "2"), ("LinkedLibrary", "3") })
+        {
+            if (assembly is "LinkedLibrary")
+            {
+                stop = await host.ContinueAsync().WaitForStoppedEvent();
+            }
+            string frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Name;
+            Assert.True(stop.ReadStopInfo().line == line && frame.StartsWith($"{assembly}.dll!", StringComparison.Ordinal),
+                $"The breakpoint in Linked.cs was to stop in {assembly}'s copy, but stopped at line {stop.ReadStopInfo().line} in {frame}");
+            Assert.Equal(value, Assert.Single(await host.LocalsAsync(stop), v => v.Name == "value").Value);
+        }
+        Assert.Contains("linked 4 6", (await host.ContinueAsync().WaitForEnd()).Output, StringComparison.Ordinal);
+    }
+
     private const string Stepping = "SteppingConsoleApp";
 
     private const string Counted = "int counted = numbers.Count(n => n > 2);";

@@ -21,15 +21,14 @@ public class BreakpointManager
         public int EndLine { get; set; }
         public int? EndColumn { get; set; }
         public bool Verified { get; set; }
-        public ICorDebugFunctionBreakpoint? CorBreakpoint { get; set; }
-        public List<FunctionBreakpointBinding> FunctionBindings { get; } = [];
+
+        /// <summary>Where the breakpoint is bound: a line breakpoint in each loaded module whose symbols name its file best
+        /// (one file compiled into two assemblies, one assembly loaded into two load contexts), a function breakpoint in each
+        /// method it names.</summary>
+        public List<BreakpointBinding> Bindings { get; } = [];
         public string? FunctionName { get; set; }
         public bool IsFunctionBreakpoint => FunctionName is not null;
         public string? Message { get; set; }
-        public ModuleMetadataReader.ResolvedBreakpoint? ResolvedBreakpointFromPdb { get; set; }
-
-        /// <summary>The module a line breakpoint is bound in.</summary>
-        public ModuleInfo? Module { get; set; }
 
         /// <summary>Conditional expression to evaluate when breakpoint is hit</summary>
         public string? Condition { get; set; }
@@ -57,10 +56,10 @@ public class BreakpointManager
         public bool Refused { get; set; }
     }
 
-    /// <summary>A function breakpoint bound in one module. Its module is told apart from another of the same base address:
-    /// one assembly loaded into two load contexts (the Avalonia inspector, a startup hook that loads itself again) is two
-    /// modules over one image, and code runs in either.</summary>
-    public record FunctionBreakpointBinding(
+    /// <summary>A breakpoint bound in one method of one module, and where it is in the source. Its module is told apart from
+    /// another of the same base address: one assembly loaded into two load contexts (the Avalonia inspector, a startup hook
+    /// that loads itself again) is two modules over one image, and code runs in either.</summary>
+    public record BreakpointBinding(
         ICorDebugFunctionBreakpoint CorBreakpoint,
         int MethodToken,
         ModuleMetadataReader.ResolvedBreakpoint Source,
@@ -178,9 +177,7 @@ public class BreakpointManager
     {
         lock (_lock)
         {
-            return _breakpoints.Values.FirstOrDefault(bp =>
-                bp.CorBreakpoint == corBreakpoint ||
-                bp.FunctionBindings.Any(binding => binding.CorBreakpoint == corBreakpoint));
+            return _breakpoints.Values.FirstOrDefault(bp => bp.Bindings.Any(binding => binding.CorBreakpoint == corBreakpoint));
         }
     }
 
