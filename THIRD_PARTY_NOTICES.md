@@ -896,7 +896,9 @@ Passenger's changes, each where a schema refused what the tool it describes take
   it in another case.
 - `partial-eslint-plugins.json`: the rules of eslint-plugin-import, eslint-plugin-unicorn and eslint-plugin-vue are
   named by the plugin's short name (`import/no-unresolved`), as ESLint names them, where the package's name led them;
-  a rule's array form takes its severity alone, where it had to hold an option too.
+  a rule's array form takes its severity alone, where it had to hold an option too;
+  `@typescript-eslint/consistent-generic-constructors` takes `constructor` or `type-annotation` as its option, and the
+  68 other rules whose option was an object of no properties take options of any kind and number.
 - `package.json`: an export or import condition is any name but one starting with a dot or an array index, where it
   took no digit or dot.
 - `stylelintrc.json`: a rule that takes a number takes it first in its array form, where the number had to be one of an

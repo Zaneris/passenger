@@ -183,6 +183,30 @@ public sealed class JsonSchemaTests
         Assert.True(marked.Count == 0, $"Rules ESLint runs are marked as wrong, where the file has {Said(marked)}");
     }
 
+    /// <summary>typescript-eslint's consistent-generic-constructors takes constructor or type-annotation as its option, and
+    /// a plugin's rule whose options the schema does not describe takes what ESLint gives it, so package.json's eslintConfig
+    /// marks none of them.</summary>
+    [AvaloniaFact]
+    public void Package_jsons_eslint_config_takes_a_rules_string_options_as_eslint_runs_them()
+    {
+        List<(string Text, string Message)> marked = Marked("package.json", """
+            {
+              "name": "lint",
+              "private": "yes",
+              "eslintConfig": {
+                "rules": {
+                  "@typescript-eslint/consistent-generic-constructors": ["error", "constructor"],
+                  "@typescript-eslint/method-signature-style": ["error", "method"],
+                  "vue/html-indent": ["error", "tab", { "baseIndent": 1 }],
+                  "@typescript-eslint/no-unused-vars": ["warn", "all"]
+                }
+              }
+            }
+
+            """, "\"yes\"");
+        Assert.True(marked.Count == 0, $"Rules ESLint runs are marked as wrong, where the file has {Said(marked)}");
+    }
+
     /// <summary>stylelint runs a rule that takes a number written with its options, [2, { "severity": "warning" }], so a
     /// stylelint configuration in package.json marks none of them.</summary>
     [AvaloniaFact]

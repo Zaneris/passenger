@@ -256,7 +256,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -269,11 +268,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -1023,7 +1018,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -1036,11 +1030,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -1161,7 +1151,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -1174,11 +1163,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -1452,7 +1437,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -1465,11 +1449,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -2163,7 +2143,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -2176,11 +2155,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -2425,7 +2400,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -2438,11 +2412,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -3455,7 +3425,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -3468,11 +3437,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -3497,7 +3462,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -3510,11 +3474,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -3599,7 +3559,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -3612,11 +3571,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -3763,7 +3718,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -3776,11 +3730,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -3796,7 +3746,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -3809,11 +3758,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -3874,7 +3819,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -3887,11 +3831,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -3993,7 +3933,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -4006,11 +3945,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -4078,7 +4013,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -4091,11 +4025,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -4177,7 +4107,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -4190,11 +4119,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -4312,7 +4237,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -4325,11 +4249,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -4382,7 +4302,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -4395,11 +4314,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -4415,7 +4330,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -4428,11 +4342,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -4448,7 +4358,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -4461,11 +4370,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -4481,7 +4386,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -4494,11 +4398,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -4569,7 +4469,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -4582,11 +4481,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -4652,7 +4547,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -4665,11 +4559,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -4685,7 +4575,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -4698,11 +4587,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -4991,7 +4876,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -5004,11 +4888,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -5024,7 +4904,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -5037,11 +4916,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -5057,7 +4932,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -5070,11 +4944,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -5093,7 +4963,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -5106,11 +4975,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -5126,7 +4991,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -5139,11 +5003,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -5165,7 +5025,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -5178,11 +5037,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -6179,7 +6034,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -6192,11 +6046,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -6349,7 +6199,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -6362,11 +6211,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -6382,7 +6227,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -6395,11 +6239,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -6453,7 +6293,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -6466,11 +6305,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -6554,7 +6389,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -6567,11 +6401,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -8221,7 +8051,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -8234,11 +8063,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -8254,7 +8079,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -8267,11 +8091,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -8335,7 +8155,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -8348,11 +8167,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -8405,7 +8220,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -8418,11 +8232,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -8438,7 +8248,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -8451,11 +8260,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -8471,7 +8276,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -8484,11 +8288,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -8519,7 +8319,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -8532,11 +8331,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -8552,7 +8347,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -8565,11 +8359,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -8838,7 +8628,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -8851,11 +8640,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -8928,7 +8713,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -8941,11 +8725,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -8961,7 +8741,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -8974,11 +8753,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -9083,7 +8858,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -9096,11 +8870,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -9116,7 +8886,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -9129,11 +8898,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -9152,7 +8917,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -9165,11 +8929,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -9185,7 +8945,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -9198,11 +8957,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -9221,7 +8976,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -9234,11 +8988,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -9254,7 +9004,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -9267,11 +9016,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -9287,7 +9032,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -9300,11 +9044,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -9320,7 +9060,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -9333,11 +9072,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -9353,7 +9088,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -9366,11 +9100,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -9658,7 +9388,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -9671,11 +9400,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -9691,7 +9416,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -9704,11 +9428,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -9724,7 +9444,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -9737,11 +9456,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -9880,9 +9595,8 @@
               ]
             },
             {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
+              "type": "string",
+              "enum": ["constructor", "type-annotation"]
             }
           ]
         }
@@ -9970,7 +9684,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -9983,11 +9696,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -10356,7 +10065,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -10369,11 +10077,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -10392,7 +10096,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -10405,11 +10108,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -11407,7 +11106,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -11420,11 +11118,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -11590,7 +11284,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -11603,11 +11296,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -12980,7 +12669,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -12993,11 +12681,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -13013,7 +12697,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -13026,11 +12709,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -13099,7 +12778,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -13112,11 +12790,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -13220,7 +12894,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -13233,11 +12906,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -14121,7 +13790,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -14134,11 +13802,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
@@ -14154,7 +13818,6 @@
         },
         {
           "minItems": 1,
-          "maxItems": 2,
           "type": "array",
           "items": [
             {
@@ -14167,11 +13830,7 @@
                 }
               ]
             },
-            {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {}
-            }
+            {}
           ]
         }
       ],
