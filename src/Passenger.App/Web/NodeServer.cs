@@ -147,6 +147,12 @@ internal sealed class NodeServer
                     IdeErrors.Observe(BackgroundWork.Unheld(() => started.DisposeAsync().AsTask()));
                     throw;
                 }
+                // Its folder closed while it was configured: never installed for a folder no longer open.
+                if (cancelled.IsCancellationRequested || ended)
+                {
+                    IdeErrors.Observe(BackgroundWork.Unheld(() => started.DisposeAsync().AsTask()));
+                    return null;
+                }
             }
             Hear(started);
             Session = started;

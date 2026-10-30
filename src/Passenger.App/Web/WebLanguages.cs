@@ -62,6 +62,10 @@ public sealed class WebLanguages : IAsyncDisposable
     private bool asksDockerHub;
     private bool disposed;
 
+    /// <summary>The next server's configuring held by a test (<see cref="HoldNextConfigure"/>): what it waits for, and its
+    /// process's id told once it waits.</summary>
+    private (Task Until, TaskCompletionSource<int> Holding)? configureHeld;
+
     /// <summary>A folder's servers, run on the Node.js Settings names (null for the PATH's), with ESLint and Prettier as
     /// <paramref name="settings"/> configure them; remote JSON schemas are downloaded, and Docker Hub asked for image
     /// tags, while Settings allows it. The container <paramref name="engine"/> (the person's when none is given) checks
@@ -462,7 +466,7 @@ public sealed class WebLanguages : IAsyncDisposable
             Package = Path.Combine(Modules, Package(kind), "package.json"),
             Missing = () => Missing(kind),
             Command = node => Starting(kind, node),
-            Configure = language => Configure(kind, language),
+            Configure = language => ConfigureAsync(kind, language),
             Listen = started => started.Server.TypeScriptVersion += (_, _) => UiThread.Post(() => StateChanged?.Invoke(this, EventArgs.Empty)),
             Started = started => Started(kind, started),
             Unavailable = () => Unavailable(kind),
@@ -621,6 +625,26 @@ public sealed class WebLanguages : IAsyncDisposable
     /// <summary>The settings a server reads from <c>workspace/didChangeConfiguration</c> rather than asks for, sent once it
     /// has started: the JSON server's validation and formatting, and which schema each well-known file takes; and the YAML
     /// server's word that Passenger answers for schemas over HTTP.</summary>
+    /// <summary>Holds the next server's configuring, its process started, until <paramref name="until"/> ends, for a test of
+    /// what goes on meanwhile; its process's id once it is held.</summary>
+    public Task<int> HoldNextConfigure(Task until)
+    {
+        TaskCompletionSource<int> holding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        configureHeld = (until, holding);
+        return holding.Task;
+    }
+
+    private async Task ConfigureAsync(WebServerKind kind, LanguageServer server)
+    {
+        if (configureHeld is { } hold)
+        {
+            configureHeld = null;
+            hold.Holding.SetResult(server.ProcessId);
+            await hold.Until;
+        }
+        await Configure(kind, server);
+    }
+
     private static async Task Configure(WebServerKind kind, LanguageServer server)
     {
         switch (kind)

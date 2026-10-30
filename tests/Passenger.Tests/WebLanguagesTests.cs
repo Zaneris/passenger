@@ -394,6 +394,30 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
+    /// <summary>A web language server still being configured as its folder closes is never installed for it: the JSON
+    /// server's configuring held while package.json opens, the window closed, then let go, its process ends.</summary>
+    [AvaloniaFact]
+    public void A_web_server_still_being_configured_as_its_folder_closes_ends()
+    {
+        SkipWithoutNode();
+        MainWindow window = app.Open("Program.cs", languageServer: false);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int server;
+        try
+        {
+            Task<int> held = window.Session.Web!.HoldNextConfigure(release.Task);
+            window.OpenFile(app.PathOf("package.json"));
+            server = Ui.AwaitPumped(held, "the JSON server's configuring to be held", TimeSpan.FromMinutes(1));
+            Assert.True(Processes.IsRunning(server), "The JSON server held at its configuring is not running");
+        }
+        finally
+        {
+            window.Close();
+            release.SetResult();
+        }
+        Ui.PumpUntil(() => !Processes.IsRunning(server), "the JSON server, configured after its folder closed, to end", TimeSpan.FromSeconds(30));
+    }
+
     /// <summary>File Structure on a JSON file lists its keys, nested under the objects they are in, as its server outlines
     /// them, and a key chosen is where the caret goes.</summary>
     [AvaloniaFact]
