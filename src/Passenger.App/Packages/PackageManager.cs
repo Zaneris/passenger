@@ -16,10 +16,26 @@ public sealed record PackageOutcome(bool Done, IReadOnlyList<string> Changed, IR
     /// <summary>The files the change wrote, those of one that failed among them, which it put back where it could.</summary>
     public IReadOnlyList<string> Written { get; init; } = [];
 
-    /// <summary>For a change that failed having written files, what became of them: put back as before, or those the disk
-    /// would not take back left changed; else null.</summary>
-    public string? Left => Done || Written.Count == 0 ? null
-        : Changed.Count > 0 ? $"{Named(Changed)} left changed" : $"{Named(Written)} put back as before";
+    /// <summary>The files of a change that failed that were saved while it ran, which it left as saved rather than put back.</summary>
+    public IReadOnlyList<string> Meanwhile { get; init; } = [];
+
+    /// <summary>For a change that failed having written files, what became of them: put back as before, those the disk
+    /// would not take back left changed, and those saved meanwhile left as saved; else null.</summary>
+    public string? Left
+    {
+        get
+        {
+            if (Done || Written.Count == 0)
+            {
+                return null;
+            }
+            List<string> unsaved = [.. Changed.Where(c => !Meanwhile.Contains(c, PathNames.Comparer))];
+            List<string> back = [.. Written.Where(w => !Meanwhile.Contains(w, PathNames.Comparer))];
+            string? kept = Meanwhile.Count > 0 ? $"{Named(Meanwhile)} saved meanwhile, left as saved" : null;
+            string? rest = unsaved.Count > 0 ? $"{Named(unsaved)} left changed" : back.Count > 0 ? $"{Named(back)} put back as before" : null;
+            return rest is null ? kept : kept is null ? rest : $"{rest}; {kept}";
+        }
+    }
 
     /// <summary>Why a change was refused or failed, in dotnet's last words (else <paramref name="otherwise"/>), with what
     /// became of the files it wrote; null for one done.</summary>

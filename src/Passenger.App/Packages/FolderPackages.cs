@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Passenger.App.Editors;
 using Passenger.Core;
 using Passenger.Packages;
@@ -273,8 +274,8 @@ public sealed class FolderPackages
     /// <summary>A package change, whoever asks for it: one at a time (another asked meanwhile is refused, saying what is under
     /// way), the open files saved first (refused, saying why, when one is not), shown as the window's work under <see
     /// cref="Changing"/>; its files (<see cref="PackageFiles"/>) recorded <paramref name="within"/> the caller's command, else
-    /// as its own named <paramref name="name"/>. One that fails puts back what it wrote, then, unless stopped, runs <paramref
-    /// name="again"/> (a restore of the project as it was). Then its end is told (<see cref="Changed"/>).</summary>
+    /// as its own named <paramref name="name"/>. One that fails puts back what it wrote but a file saved meanwhile, then,
+    /// unless stopped, runs <paramref name="again"/> (a restore of the project as it was). Its end is told (<see cref="Changed"/>).</summary>
     private async Task<PackageOutcome> ChangeAsync(string stage, string name, ProjectModel project, CommandHistory.Recording? within, Func<Task<bool>> change,
         Func<Task<bool>>? again = null)
     {
@@ -305,6 +306,16 @@ public sealed class FolderPackages
                 {
                     // Read once the open files are saved: what the save wrote is not the change's.
                     byte[]?[] before = [.. files.Select(Bytes)];
+                    // The change writes through dotnet alone, so a save of one of its files from here is an edit of the person's.
+                    ConcurrentDictionary<string, bool> saved = new(PathNames.Comparer);
+                    Action<string, byte[]?, byte[]> saving = (path, _, _) =>
+                    {
+                        if (files.FirstOrDefault(f => PathNames.Same(f, path)) is { } file)
+                        {
+                            saved[file] = true;
+                        }
+                    };
+                    FileText.Wrote += saving;
                     CommandHistory.Recording? recording = within ?? (own = Commands?.RecordWrites(name));
                     foreach (string file in files)
                     {
@@ -316,16 +327,30 @@ public sealed class FolderPackages
                         hold.Reached.TrySetResult();
                         await hold.Until;
                     }
-                    bool done = await change();
+                    bool done;
+                    try
+                    {
+                        done = await change();
+                    }
+                    finally
+                    {
+                        FileText.Wrote -= saving;
+                    }
                     // What the put back's restore says is the log's alone: the change's own words say why it failed.
                     manager.Line -= heard;
                     int[] wrote = Unlike(files, before);
-                    if (!done && wrote.Length > 0 && await PutBackAsync([.. wrote.Select(i => (files[i], before[i]))]) && again is not null && !manager.Stopped)
+                    int[] back = [.. wrote.Where(i => !saved.ContainsKey(files[i]))];
+                    if (!done && back.Length > 0 && await PutBackAsync([.. back.Select(i => (files[i], before[i]))]) && again is not null && !manager.Stopped)
                     {
                         await again();
                     }
                     IReadOnlyList<string> written = [.. wrote.Select(i => files[i])];
-                    outcome = new(done, done ? written : [.. Unlike(files, before).Select(i => files[i])], said) { Name = name, Written = written };
+                    IReadOnlyList<string> meanwhile = done ? [] : [.. wrote.Except(back).Select(i => files[i])];
+                    if (meanwhile.Count > 0)
+                    {
+                        Line?.Invoke(this, $"{PackageOutcome.Named(meanwhile)} saved meanwhile, left as saved");
+                    }
+                    outcome = new(done, done ? written : [.. Unlike(files, before).Select(i => files[i])], said) { Name = name, Written = written, Meanwhile = meanwhile };
                 }
             }
             finally

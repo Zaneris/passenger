@@ -159,6 +159,45 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A change that fails puts back only what it wrote: an edit to Lib.csproj typed and saved while the change
+    /// waited is kept, never written over by the bytes read before the change, and the change's words say it was left as
+    /// saved.</summary>
+    [AvaloniaFact]
+    public void A_failed_change_keeps_an_edit_saved_to_the_project_while_it_ran()
+    {
+        Project("Lib", TestProjects.Framework, "  <PropertyGroup>\n    <Description>Before</Description>\n  </PropertyGroup>\n");
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task reached = nuget.Packages.HoldNextChange(release.Task);
+        Task<PackageOutcome> change = nuget.Packages.InstallAsync(Named(window, "Lib"), "Passenger.Missing", "1.0.0");
+        try
+        {
+            // Pumped, not settled: the held change keeps the window's work from landing.
+            Ui.PumpUntil(() => reached.IsCompleted, "Lib's install to be under way");
+            Assert.Null(window.OpenFile(lib));
+            Ui.PumpUntil(() => window.EditorArea.Active?.Path == Passenger.Core.PathNames.Canonical(lib), "Lib.csproj open in the editor");
+            Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            editor.Select(new Passenger.Text.TextRange(editor.Document.Snapshot.ToString().IndexOf("Before", StringComparison.Ordinal), "Before".Length));
+            Avalonia.Headless.HeadlessWindowExtensions.KeyTextInput(window, "Kept");
+            Ui.Run(window, AppActions.SaveAll, settle: false);
+            Ui.PumpUntil(() => File.ReadAllText(lib).Contains("<Description>Kept</Description>", StringComparison.Ordinal), "the edit to Lib.csproj saved");
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+        PackageOutcome outcome = Ui.Landed(change, "Lib's install of a package no feed holds");
+        Assert.True(!outcome.Done && File.ReadAllText(lib).Contains("<Description>Kept</Description>", StringComparison.Ordinal),
+            $"The install of a package no feed holds {(outcome.Done ? "was done" : "failed")}, leaving Lib.csproj as:\n{File.ReadAllText(lib)}\n{nuget.Log}");
+        Assert.True(outcome.Failure("failed")?.EndsWith("Lib.csproj saved meanwhile, left as saved", StringComparison.Ordinal) == true,
+            $"The failed install said \"{outcome.Failure("failed")}\", not that the project saved meanwhile was left as saved");
+        Assert.True(window.EditorArea.Active?.Text.Snapshot.ToString().Contains("<Description>Kept</Description>", StringComparison.Ordinal) == true,
+            "The open project no longer shows the edit saved while the change ran");
+        window.Close();
+    }
+
     /// <summary>A change refused because an open file would not save (Windows refuses a write to a file another program
     /// holds, stood in for here) says why in the window's status, never "Working…" left unexplained, and leaves the
     /// projects' actions enabled and the project as it was.</summary>
