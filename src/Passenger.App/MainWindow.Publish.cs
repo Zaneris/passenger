@@ -199,7 +199,7 @@ public partial class MainWindow
                     else
                     {
                         made.Watch(file);
-                        FileText.Save(file, text, had.Encoding, had.HasBom, had.CrBreaks);
+                        FileText.SaveOver(file, had, text);
                     }
                 }
                 finally

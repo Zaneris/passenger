@@ -213,7 +213,7 @@ public partial class MainWindow
             FileText file = Written(path);
             if (file.Text != text)
             {
-                FileText.Save(path, text, file.Encoding, file.HasBom, file.CrBreaks);
+                FileText.SaveOver(path, file, text);
             }
         }
     }

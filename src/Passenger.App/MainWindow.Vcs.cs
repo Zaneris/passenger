@@ -795,11 +795,18 @@ public partial class MainWindow
         }
         try
         {
-            FileText? file = File.Exists(ignore) ? FileText.Load(ignore) ?? throw new IOException(".gitignore is not a text file") : null;
-            string before = file?.Text ?? string.Empty;
-            string eol = TextDocument.DetectLineEnding(before);
-            FileText.Save(ignore, before + (before.Length > 0 && !before.EndsWith('\n') ? eol : string.Empty) + line + eol,
-                file?.Encoding ?? new System.Text.UTF8Encoding(false), file?.HasBom ?? false, file?.CrBreaks ?? false);
+            if (!File.Exists(ignore))
+            {
+                FileText.SaveNew(ignore, line + "\n");
+            }
+            else if (FileText.Load(ignore) is { } file)
+            {
+                FileText.SaveOver(ignore, file, file.Text + (file.Text.Length > 0 && !file.Text.EndsWith('\n') ? file.Break : string.Empty) + line + file.Break);
+            }
+            else
+            {
+                throw new IOException(".gitignore is not a text file");
+            }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

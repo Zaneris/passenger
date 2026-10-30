@@ -260,6 +260,25 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
         return (written, unheld is null ? null : $"{Path.GetFileName(path)} was saved as UTF-8: {FileEncoding.Of(encoding, bom).Name} cannot hold '{unheld}'");
     }
 
+    /// <summary>Writes a file the IDE makes as its .editorconfig asks, as <see cref="Save"/> writes: each of the text's breaks
+    /// as <c>end_of_line</c> says (else '\n'), in the encoding <c>charset</c> names (else UTF-8 without a BOM).</summary>
+    public static (FileText Written, string? Converted) SaveNew(string path, string text)
+    {
+        EditorConfig conventions = EditorConfig.For(path);
+        FileEncoding charset = conventions.Charset ?? FileEncoding.Utf8;
+        LineSeparator separator = conventions.EndOfLine ?? LineSeparator.LF;
+        return Save(path, LineEndings.In(text, separator.Held()), charset.Encoding, charset.Bom, separator == LineSeparator.CR);
+    }
+
+    /// <summary>Writes a file's new text as the file was stored (<paramref name="had"/>), as <see cref="Save"/> writes: its
+    /// encoding and byte order mark, and a CR file's breaks as '\r'.</summary>
+    public static (FileText Written, string? Converted) SaveOver(string path, FileText had, string text) =>
+        Save(path, text, had.Encoding, had.HasBom, had.CrBreaks);
+
+    /// <summary>The line break its text holds, which what is added to it takes: "\r\n" where its first line ends so, else
+    /// '\n' (a CR file's, held so).</summary>
+    public string Break => TextDocument.DetectLineEnding(Text);
+
     /// <summary>A text's bytes as a save writes them: in the encoding, after its BOM when it has one, a CR file's breaks
     /// as '\r'.</summary>
     public static byte[] Encoded(string text, Encoding encoding, bool bom, bool crBreaks = false)

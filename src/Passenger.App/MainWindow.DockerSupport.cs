@@ -318,7 +318,7 @@ public partial class MainWindow
                 made.Watch(compose);
                 try
                 {
-                    FileText.Save(compose, text, file.Encoding, file.HasBom, file.CrBreaks);
+                    FileText.SaveOver(compose, file, text);
                 }
                 finally
                 {
@@ -387,10 +387,7 @@ public partial class MainWindow
     private static void WriteNew(CommandHistory.Recording made, string path, string text)
     {
         made.Watch(path);
-        EditorConfig conventions = EditorConfig.For(path);
-        FileEncoding charset = conventions.Charset ?? FileEncoding.Utf8;
-        LineSeparator separator = conventions.EndOfLine ?? LineSeparator.LF;
-        FileText.Save(path, LineEndings.In(text, separator.Held()), charset.Encoding, charset.Bom, separator == LineSeparator.CR);
+        FileText.SaveNew(path, text);
     }
 
     /// <summary>What an Add did to the context's .dockerignore.</summary>
@@ -421,7 +418,7 @@ public partial class MainWindow
         made.Watch(ignore);
         try
         {
-            FileText.Save(ignore, text, file.Encoding, file.HasBom, file.CrBreaks);
+            FileText.SaveOver(ignore, file, text);
         }
         finally
         {

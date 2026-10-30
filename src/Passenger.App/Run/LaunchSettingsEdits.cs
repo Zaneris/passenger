@@ -159,12 +159,7 @@ public static class LaunchSettingsEdits
     {
         if (!File.Exists(path))
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            EditorConfig conventions = EditorConfig.For(path);
-            FileEncoding charset = conventions.Charset ?? FileEncoding.Utf8;
-            LineSeparator separator = conventions.EndOfLine ?? LineSeparator.LF;
-            string made = JsonText.Laid(new JsonObject { ["$schema"] = Schema, ["profiles"] = new JsonObject { [profile] = values.DeepClone() } }) + "\n";
-            FileText.Save(path, LineEndings.In(made, separator.Held()), charset.Encoding, charset.Bom, separator == LineSeparator.CR);
+            FileText.SaveNew(path, JsonText.Laid(new JsonObject { ["$schema"] = Schema, ["profiles"] = new JsonObject { [profile] = values.DeepClone() } }) + "\n");
             return null;
         }
         FileText file = FileText.Load(path) ?? throw new IOException($"{Path.GetFileName(path)} is not a text file");
@@ -173,7 +168,7 @@ public static class LaunchSettingsEdits
         {
             return problem;
         }
-        FileText.Save(path, text, file.Encoding, file.HasBom, file.CrBreaks);
+        FileText.SaveOver(path, file, text);
         return null;
     }
 
@@ -223,7 +218,7 @@ public static class LaunchSettingsEdits
         }
         if (text != file.Text)
         {
-            FileText.Save(path, text, file.Encoding, file.HasBom, file.CrBreaks);
+            FileText.SaveOver(path, file, text);
         }
         return null;
     }

@@ -277,7 +277,7 @@ public static class FileSearch
             {
                 return new Written(plan.Path, null, null, null, ChangedWhy);
             }
-            string? converted = FileText.Save(plan.Path, after, file.Encoding, file.HasBom, file.CrBreaks).Converted;
+            string? converted = FileText.SaveOver(plan.Path, file, after).Converted;
             return new Written(plan.Path, TextSnapshot.From(file.Text), TextSnapshot.From(after), converted, null);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

@@ -1,4 +1,3 @@
-using System.Text;
 using Avalonia.Controls;
 using Passenger.App.CSharp;
 using Passenger.App.Editors;
@@ -360,12 +359,12 @@ public partial class MainWindow
             }
             FileText? had = File.Exists(path) ? FileText.Load(path) : null;
             string existing = had?.Text ?? string.Empty;
-            string breaks = existing.Length > 0 ? TextDocument.DetectLineEnding(existing) : "\n";
-            string text = existing + RouteRequests.Entry(route, existing.Replace("\r\n", "\n", StringComparison.Ordinal), address).Replace("\n", breaks, StringComparison.Ordinal);
+            string added = RouteRequests.Entry(route, existing.Replace("\r\n", "\n", StringComparison.Ordinal), address);
+            string text;
             using (CommandHistory.Recording made = Editors.Commands.Record("Generate Request"))
             {
                 made.Watch(path);
-                FileText.Save(path, text, had?.Encoding ?? new UTF8Encoding(false), had?.HasBom ?? false);
+                text = (had is null ? FileText.SaveNew(path, added) : FileText.SaveOver(path, had, existing + added.Replace("\n", had.Break, StringComparison.Ordinal))).Written.Text;
                 if (await UnlandedAsync(made) is { } unlanded)
                 {
                     throw unlanded;

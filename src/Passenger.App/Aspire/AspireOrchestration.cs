@@ -70,7 +70,7 @@ public static class AspireOrchestration
                 ? Path.Combine(staging, "outside", files.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), Path.GetFileName(path))
                 : Staged(path);
             Directory.CreateDirectory(Path.GetDirectoryName(to)!);
-            FileText.Save(to, text.Text, text.Encoding, text.HasBom, text.CrBreaks);
+            FileText.SaveOver(to, text, text.Text);
             files.Add(path, (to, before));
             return to;
         }
@@ -315,7 +315,7 @@ public static class AspireOrchestration
     private static void Save(string path, string text)
     {
         FileText file = Read(path);
-        FileText.Save(path, text, file.Encoding, file.HasBom, file.CrBreaks);
+        FileText.SaveOver(path, file, text);
     }
 
     private static void Check(string? problem)

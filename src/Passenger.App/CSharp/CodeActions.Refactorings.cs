@@ -291,7 +291,7 @@ internal sealed partial class CodeActions
         {
             return false;
         }
-        _ = FileText.Save(doomed.Path, after.ToString(), file.Encoding, file.HasBom, file.CrBreaks);
+        _ = FileText.SaveOver(doomed.Path, file, after.ToString());
         wrote(doomed.Path);
         return true;
     }

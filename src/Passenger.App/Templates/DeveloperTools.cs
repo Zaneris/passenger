@@ -48,7 +48,7 @@ public static partial class DeveloperTools
             string edited = edits.Aggregate(read.Text, (now, edit) => edit.Replace(now, string.Empty));
             if (edited != read.Text)
             {
-                FileText.Save(file, edited, read.Encoding, read.HasBom, read.CrBreaks);
+                FileText.SaveOver(file, read, edited);
                 changed.Add(file);
             }
         }

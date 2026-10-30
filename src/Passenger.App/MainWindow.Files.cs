@@ -100,15 +100,7 @@ public partial class MainWindow
         }
         try
         {
-            Following([path], () =>
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                // Made as its .editorconfig asks: its line breaks and its charset.
-                EditorConfig conventions = EditorConfig.For(path);
-                FileEncoding charset = conventions.Charset ?? FileEncoding.Utf8;
-                LineSeparator separator = conventions.EndOfLine ?? LineSeparator.LF;
-                FileText.Save(path, LineEndings.In(text, separator.Held()), charset.Encoding, charset.Bom, separator == LineSeparator.CR);
-            });
+            Following([path], () => FileText.SaveNew(path, text));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

@@ -1320,7 +1320,7 @@ public sealed class CommandHistory
                     bool changed = text != loaded.Text;
                     if (changed)
                     {
-                        FileText.Save(at, text, loaded.Encoding, loaded.HasBom, loaded.CrBreaks);
+                        FileText.SaveOver(at, loaded, text);
                     }
                     TextSnapshot before = TextSnapshot.From(loaded.Text);
                     made.Add(new ChangeMade(file.Key, at, before, changed ? TextSnapshot.From(text) : before, changed));
@@ -1369,7 +1369,7 @@ public sealed class CommandHistory
                         left.Add($"{name} has been changed since");
                         continue;
                     }
-                    FileText.Save(at, before.ToString(), now.Encoding, now.HasBom, now.CrBreaks);
+                    FileText.SaveOver(at, now, before.ToString());
                     wrote(at);
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)

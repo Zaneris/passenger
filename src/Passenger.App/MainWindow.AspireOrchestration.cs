@@ -99,7 +99,7 @@ public partial class MainWindow
                     foreach (AspireOrchestration.Write write in writes.OrderBy(w => w.Before is null ? 0 : Lists(w.Path) ? 2 : 1))
                     {
                         Directory.CreateDirectory(Path.GetDirectoryName(write.Path)!);
-                        FileText.Save(write.Path, write.Text.Text, write.Text.Encoding, write.Text.HasBom, write.Text.CrBreaks);
+                        FileText.SaveOver(write.Path, write.Text, write.Text.Text);
                     }
                 }
                 finally

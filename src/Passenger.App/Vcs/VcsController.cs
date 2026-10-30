@@ -1381,8 +1381,8 @@ public sealed class VcsController : IDisposable
     }
 
     /// <summary>The merge window's Apply: the result written to the file in the encoding, byte order mark and line breaks
-    /// the working tree has it in (CRLF under core.autocrlf, as git checked it out), and once it has landed the file marked
-    /// resolved; the open files show it.</summary>
+    /// the working tree has it in (CRLF under core.autocrlf, as git checked it out), one gone from it made as its .editorconfig
+    /// asks, and once it has landed the file marked resolved; the open files show it.</summary>
     public async Task<VcsOutcome> ResolveAsync(string path, string text)
     {
         if (git is not { } repository)
@@ -1401,10 +1401,14 @@ public sealed class VcsController : IDisposable
             }
             try
             {
-                FileText? before = InConflict(path);
-                // A CR file's breaks are held as '\n', and written as '\r'.
-                string eol = before is null || before.CrBreaks ? "\n" : TextDocument.DetectLineEnding(before.Text);
-                FileText.Save(path, LineEndings.In(text, eol), before?.Encoding ?? new System.Text.UTF8Encoding(false), before?.HasBom ?? false, before?.CrBreaks ?? false);
+                if (InConflict(path) is { } before)
+                {
+                    FileText.SaveOver(path, before, LineEndings.In(text, before.Break));
+                }
+                else
+                {
+                    FileText.SaveNew(path, text);
+                }
             }
             catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
             {

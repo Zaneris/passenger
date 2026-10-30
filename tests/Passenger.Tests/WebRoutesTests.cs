@@ -266,6 +266,63 @@ public sealed class WebRoutesTests
         }
     }
 
+    /// <summary>A route's Send with no request for it in a folder whose .editorconfig asks for CRLF and a UTF-8 BOM makes its
+    /// project's .http file so, and the next route's request goes in as that file is stored; another project's .http file,
+    /// stored with '\n' and no BOM, takes its request so.</summary>
+    [AvaloniaFact]
+    public void A_routes_http_file_is_made_as_its_editorconfig_asks_and_takes_more_requests_as_it_is_stored()
+    {
+        using HeldPort port = new();
+        string folder = TestFolders.Create("http-form-");
+        TestFolders.Write(folder, ".editorconfig", "root = true\n\n[*]\nend_of_line = crlf\ncharset = utf-8-bom\n");
+        TestFolders.Write(folder, "Shop/Shop.csproj", TestProjects.Web());
+        TestFolders.Write(folder, "Admin/Admin.csproj", TestProjects.Web());
+        TestFolders.Write(folder, "Admin/Admin.http", "@Admin_HostAddress = http://127.0.0.1:1\n\n### Earlier\nGET {{Admin_HostAddress}}/ping\n");
+        foreach (string project in new[] { "Shop", "Admin" })
+        {
+            TestFolders.Write(folder, $"{project}/Properties/launchSettings.json",
+                $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port.Port}\" }}\n  }}\n}}\n");
+            TestFolders.Write(folder, $"{project}/Program.cs", "WebApplication app = WebApplication.CreateBuilder(args).Build();\napp.MapGet(\"/health\", () => \"ok\");\napp.MapDelete(\"/cache\", () => \"gone\");\napp.Run();\n");
+        }
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            string shop = Path.Combine(folder, "Shop", "Shop.http");
+            Send(window, folder, "Shop", "GET", "/health");
+            byte[] made = File.ReadAllBytes(shop);
+            Assert.True(made.AsSpan().StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]), "Shop.http was made without the UTF-8 BOM its .editorconfig asks for");
+            string text = System.Text.Encoding.UTF8.GetString(made, 3, made.Length - 3);
+            Assert.True(text.Replace("\r\n", "", StringComparison.Ordinal).IndexOf('\n', StringComparison.Ordinal) < 0, $"Shop.http was made with '\\n' breaks where its .editorconfig asks for CRLF:\n{text}");
+            Assert.Contains("GET {{Shop_HostAddress}}/health\r\n", text, StringComparison.Ordinal);
+
+            Send(window, folder, "Shop", "DELETE", "/cache");
+            byte[] again = File.ReadAllBytes(shop);
+            Assert.True(again.AsSpan().StartsWith(made), "The second request did not go after the first, Shop.http as it was");
+            string added = System.Text.Encoding.UTF8.GetString(again, made.Length, again.Length - made.Length);
+            Assert.True(added.Contains("DELETE {{Shop_HostAddress}}/cache\r\n", StringComparison.Ordinal) && added.Replace("\r\n", "", StringComparison.Ordinal).IndexOf('\n', StringComparison.Ordinal) < 0,
+                $"The second request was not written in Shop.http's CRLF breaks:\n{added}");
+
+            string admin = Path.Combine(folder, "Admin", "Admin.http");
+            Send(window, folder, "Admin", "GET", "/health");
+            string stored = File.ReadAllText(admin);
+            Assert.True(!stored.Contains('\r', StringComparison.Ordinal) && File.ReadAllBytes(admin)[0] == (byte)'@',
+                $"Admin.http, stored with '\\n' and no BOM, was written in the .editorconfig's form:\n{stored}");
+            Assert.Contains("GET {{Admin_HostAddress}}/health\n", stored, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static void Send(MainWindow window, string folder, string project, string method, string template)
+        {
+            string path = Passenger.Core.PathNames.Canonical(Path.Combine(folder, project, "Program.cs"));
+            WebRoute route = new(Passenger.Core.PathNames.Canonical(Path.Combine(folder, project, $"{project}.csproj")), RouteKinds.Minimal, [method], template, null, [],
+                $"{method} {template}", path, new Place(1, 0), new Place(1, 10), "unread");
+            Assert.Null(Ui.Await(window.SendRouteAsync(route), $"the request for {method} {template} to be written into {project}.http and sent"));
+        }
+    }
+
     /// <summary>gRPC's packages at the versions tests/AspireGraphs' AppHost restores into the package cache (Aspire's
     /// dashboard client brings them), so the service restores from there, never from nuget.org.</summary>
     private static readonly (string Id, string Version)[] GrpcPackages = [("Grpc.AspNetCore", "2.83.0"), ("Google.Protobuf", "3.36.1")];

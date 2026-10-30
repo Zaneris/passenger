@@ -106,10 +106,13 @@ public sealed class MigrationsTests
         }
     }
 
+    /// <summary>The tool's manifest the fix makes is made as the folder's .editorconfig asks, CRLF and a UTF-8 BOM, which
+    /// dotnet tool's own write of it keeps.</summary>
     [AvaloniaFact]
     public void A_missing_tool_and_Design_package_are_found_before_the_command_fixed_in_place_and_the_command_made()
     {
         string folder = ShopApp.Make(design: false, tool: null);
+        TestFolders.Write(folder, ".editorconfig", "root = true\n\n[dotnet-tools.json]\nend_of_line = crlf\ncharset = utf-8-bom\n");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         List<string> opened = [];
         window.EditorArea.Opened += (_, document) => opened.Add($"{Path.GetFileName(document.Path)}, opened from:\n"
@@ -137,6 +140,7 @@ public sealed class MigrationsTests
 
             JsonObject manifest = (JsonObject)JsonNode.Parse(File.ReadAllText(Path.Combine(folder, "dotnet-tools.json")))!;
             Assert.Equal(ShopApp.Version, manifest["tools"]!["dotnet-ef"]!["version"]!.GetValue<string>());
+            InForm(Path.Combine(folder, "dotnet-tools.json"), "its .editorconfig asks for");
             string project = File.ReadAllText(Path.Combine(folder, "Shop.csproj"));
             Assert.Contains($"<PackageReference Include=\"Microsoft.EntityFrameworkCore.Design\" Version=\"{ShopApp.Version}\"", project, StringComparison.Ordinal);
             Assert.Contains("<PrivateAssets>all</PrivateAssets>", project, StringComparison.Ordinal);
@@ -239,10 +243,13 @@ public sealed class MigrationsTests
         }
     }
 
+    /// <summary>The manifest, stored with CRLF and a UTF-8 BOM, keeps them through dotnet tool's write of it.</summary>
     [AvaloniaFact]
     public void A_tool_of_another_version_is_said_with_both_versions_and_pinned_to_the_runtimes_before_the_command()
     {
         string folder = ShopApp.Make(design: true, tool: ShopApp.Older);
+        string tools = Path.Combine(folder, "dotnet-tools.json");
+        File.WriteAllBytes(tools, [0xEF, 0xBB, 0xBF, .. System.Text.Encoding.UTF8.GetBytes(File.ReadAllText(tools).Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", "\r\n", StringComparison.Ordinal))]);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
@@ -257,6 +264,7 @@ public sealed class MigrationsTests
             Ui.WaitFor(() => window.Migrations.Migrations.Any(m => m.Name == "Initial"), $"the migration made with the pinned tool ({window.Status})", Slow);
             JsonObject manifest = (JsonObject)JsonNode.Parse(File.ReadAllText(Path.Combine(folder, "dotnet-tools.json")))!;
             Assert.Equal(ShopApp.Version, manifest["tools"]!["dotnet-ef"]!["version"]!.GetValue<string>());
+            InForm(tools, "it was stored with");
             Assert.DoesNotContain("does not match", Gaps(window), StringComparison.Ordinal);
         }
         finally
@@ -359,8 +367,9 @@ public sealed class MigrationsTests
 
     /// <summary>A context dotnet ef cannot make is said with why, and the design-time factory added for it reads the
     /// context's own connection from the configuration by its name: with Reporting's string (a production password in it)
-    /// configured before Shop's, ShopContextFactory reads Shop and holds no connection string, Reporting's or another; dotnet
-    /// ef then makes the context through it, and Undo takes the factory back.</summary>
+    /// configured before Shop's, ShopContextFactory reads Shop and holds no connection string, Reporting's or another, made
+    /// with the CRLF and UTF-8 BOM its .editorconfig asks; dotnet ef then makes the context through it, and Undo takes the
+    /// factory back.</summary>
     [AvaloniaFact]
     public void A_context_the_tools_cannot_make_is_said_with_why_and_a_design_time_factory_added_in_place_and_taken_back_by_undo()
     {
@@ -382,6 +391,7 @@ public sealed class MigrationsTests
             }
 
             """);
+        TestFolders.Write(folder, ".editorconfig", "root = true\n\n[*Factory.cs]\nend_of_line = crlf\ncharset = utf-8-bom\n");
         const string Production = "Server=reporting.example;Database=reports;User Id=sa;Password=Pr0duction-Secret";
         TestFolders.Write(folder, "appsettings.json", $$"""
             {
@@ -403,6 +413,7 @@ public sealed class MigrationsTests
             string factory = Path.Combine(folder, "ShopContextFactory.cs");
             Ui.WaitFor(() => File.Exists(factory), "the factory written");
             Assert.Contains("IDesignTimeDbContextFactory<ShopContext>", File.ReadAllText(factory), StringComparison.Ordinal);
+            InForm(factory, "its .editorconfig asks for");
             string made = File.ReadAllText(factory);
             Assert.True(made.Contains("options.UseSqlite(connection)", StringComparison.Ordinal) && made.Contains("ConnectionString(\"Shop\")", StringComparison.Ordinal),
                 $"The factory does not read ShopContext's own connection, Shop, from the configuration:\n{made}");
@@ -522,6 +533,16 @@ public sealed class MigrationsTests
     }
 
     private static string Gaps(MainWindow window) => string.Join(" | ", window.MigrationsView.GapsShown);
+
+    /// <summary>Checks a file holds a UTF-8 BOM and only CRLF breaks, as <paramref name="why"/>.</summary>
+    private static void InForm(string path, string why)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        string text = System.Text.Encoding.UTF8.GetString(bytes);
+        Assert.True(bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]), $"{Path.GetFileName(path)} has no UTF-8 BOM, which {why}:\n{text}");
+        Assert.True(text.Contains("\r\n", StringComparison.Ordinal) && text.Replace("\r\n", "", StringComparison.Ordinal).IndexOf('\n', StringComparison.Ordinal) < 0,
+            $"{Path.GetFileName(path)} has '\\n' breaks where {why} CRLF:\n{text}");
+    }
 
     private static IReadOnlyList<(string Name, bool? Applied)> Rows(MainWindow window) => [.. window.Migrations.Migrations.Select(m => (m.Name, m.Applied))];
 

@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.Docking;
@@ -1067,27 +1066,36 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     }
 
     /// <summary>The local tool pinned to the project's EF Core, in the nearest manifest inside the folder, else one Passenger
-    /// makes at the folder's root: one step of global undo, which takes the manifest back (or away).</summary>
+    /// makes at the folder's root as its .editorconfig asks: one step of global undo, which takes the manifest back (or
+    /// away). The manifest dotnet tool writes anew keeps the line breaks, encoding and byte order mark it had.</summary>
     private async Task<string?> PinToolAsync(ProjectSession session, ProjectModel startup, string runtime, Working work)
     {
         string root = session.Folder!;
         string? manifest = EfTools.NearestManifest(startup.Folder) is { } near && PathNames.IsUnder(near, root) ? near : null;
         EfTool? local = manifest is null ? null : EfTools.Local(startup.Folder);
         using CommandHistory.Recording recording = parts.Editors.Commands.RecordWrites($"Pin {EfTools.Id} to {runtime}");
+        FileText? had;
         if (manifest is null)
         {
             manifest = Path.Combine(root, "dotnet-tools.json");
             recording.Watch(manifest);
-            FileText.Save(manifest, EfTools.NewManifest, new UTF8Encoding(false), false);
+            had = FileText.SaveNew(manifest, EfTools.NewManifest).Written;
         }
         else
         {
             recording.Watch(manifest);
+            had = FileText.Load(manifest);
         }
         IReadOnlyList<string> arguments = local is null
             ? ["tool", "install", EfTools.Id, "--version", runtime, "--tool-manifest", manifest]
             : ["tool", "update", EfTools.Id, "--version", runtime, "--allow-downgrade", "--tool-manifest", manifest];
         string? failed = await ToolCommandAsync(arguments, Path.GetDirectoryName(manifest)!, work);
+        if (had is not null && FileText.Load(manifest) is { } now && LineEndings.In(now.Text, had.Break) is var kept
+            && (kept != now.Text || now.EncodingName != had.EncodingName || now.CrBreaks != had.CrBreaks))
+        {
+            // dotnet tool writes it with '\n' and no byte order mark, whatever it had.
+            FileText.SaveOver(manifest, had, kept);
+        }
         parts.FollowWritten([manifest]);
         Touched = [manifest];
         return failed;
@@ -1194,7 +1202,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         string connection = told?.Name ?? EfConnections.Assumed(context.Name);
         using CommandHistory.Recording recording = parts.Editors.Commands.Record($"Add a Design-Time Factory for {context.Name}");
         recording.Watch(file);
-        FileText.Save(file, EfTemplates.Factory(context, restore, connection), new UTF8Encoding(false), false);
+        FileText.SaveNew(file, EfTemplates.Factory(context, restore, connection));
         fixedSaid = told is { } found
             ? $"Added {Path.GetFileName(file)}, which reads the connection string {connection}, as {found.Told} names it, from the configuration"
             : $"Added {Path.GetFileName(file)}, which reads the connection string {connection}: nothing in {startup.Name} names {context.Name}'s connection, "
