@@ -316,6 +316,48 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
+    /// <summary>A script's line too long to colour that the grammar runs out of a long line's time on, a line's time cut to
+    /// 100 ms: opening the script reads it once, a key typed in it once more, and a key on the line above, which leaves
+    /// the state the long line begins in as it was, not at all; the comment it opens at its end, never reached, leaves
+    /// the next line code.</summary>
+    [AvaloniaFact]
+    public void A_line_too_long_to_colour_is_read_once_a_pass_and_not_for_a_key_that_leaves_its_state_as_it_was()
+    {
+        string? was = Environment.GetEnvironmentVariable(TextMateHighlighter.LineTimeVariable);
+        Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, "100");
+        MainWindow window = Window();
+        try
+        {
+            // About 0.3 s of the grammar's reading however warm, against the 10 ms a long line then has.
+            string longLine = string.Concat(Enumerable.Repeat("(a,b)=>", 10_000)) + " /* opens";
+            string text = "const before = 1;\n" + longLine + "\nfunction after() {}\n";
+            CodeEditor editor = Open(window, "vendor.min.js", text);
+            TextMateHighlighter colours = (TextMateHighlighter)window.EditorArea.Active!.Highlighter!;
+            Assert.True(colours.LongLines == (1, 1),
+                $"Opening a script read its {longLine.Length:N0}-character line {colours.LongLines.Read} times, {colours.LongLines.OutOfTime} of them out of time, where one read within a long line's time takes its state");
+            Assert.True(KindOf(editor, "function") == TokenKind.Keyword,
+                $"The line after a long line the grammar ran out of time on is coloured {KindOf(editor, "function")?.ToString() ?? "in several kinds"}: the state it was stopped in reached past it");
+
+            editor.Selections = SelectionSet.Single(text.IndexOf("=>", StringComparison.Ordinal));
+            editor.Focus();
+            window.KeyTextInput("x");
+            Ui.Settle();
+            Assert.True(colours.LongLines == (2, 2),
+                $"A key typed in the long line had it read {colours.LongLines.Read - 1} more times, {colours.LongLines.OutOfTime - 1} of them out of time, where once more takes its new state");
+
+            editor.Selections = SelectionSet.Single(text.IndexOf("before", StringComparison.Ordinal) + 2);
+            window.KeyTextInput("x");
+            Ui.Settle();
+            Assert.True(colours.LongLines.Read == 2,
+                $"A key on the line above the long line, its state left as it was, had the long line read {colours.LongLines.Read - 2} more times");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, was);
+            window.Close();
+        }
+    }
+
     /// <summary>A YAML key that reads as a typed scalar (on, true, null) is a key in a flow mapping as in a block mapping:
     /// the four keys of <c>{ on: 1, true: 2, null: 3, x: 4 }</c> are coloured alike, as keys.</summary>
     [AvaloniaFact]

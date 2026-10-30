@@ -13,8 +13,13 @@ namespace Passenger.Languages.TextMate;
 /// newer key ends it a little way on, the next pass going on from there.</summary>
 public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, IDisposable
 {
-    /// <summary>A line longer than this (minified, generated) is left plain, read only for the state it ends in.</summary>
+    /// <summary>A line longer than this (minified, generated) is left plain, read only for the state it ends in, once a pass
+    /// within <see cref="LongLineTime"/>.</summary>
     private const int LongestLine = 20_000;
+
+    /// <summary>How much of the first long line a grammar's long rules read is read first with the time any line has, so
+    /// the parse of their first patterns is not taken out of the line's own time.</summary>
+    private const int WarmingLength = 1_000;
 
     /// <summary>Lines read under one hold of the grammar's lock, between looks at whether the text has moved on.</summary>
     private const int LinesAtATime = 128;
@@ -42,6 +47,8 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     private bool disposed;
     private long linesRead;
     private long linesOutOfTime;
+    private long longLinesRead;
+    private long longLinesOutOfTime;
     private int passes;
     private long workTicks;
 
@@ -71,9 +78,17 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             : throw new FormatException($"{LineTimeVariable} takes a whole number of milliseconds above 0, not '{given}'")
         : TimeSpan.FromSeconds(1);
 
+    /// <summary>How long the grammar may read a line too long to colour for the state it ends in: a tenth of
+    /// <see cref="LineTime"/>.</summary>
+    public static TimeSpan LongLineTime => LineTime / 10;
+
     /// <summary>How many times a line ran out of <see cref="LineTime"/> twice over, read once more and out of it again: each
     /// kept the colours found and ended in the state it began in.</summary>
     public long LinesOutOfTime => Interlocked.Read(ref linesOutOfTime);
+
+    /// <summary>How many times the grammar read a line too long to colour, each once within <see cref="LongLineTime"/>, and
+    /// how many of those ran out of it, ending in the state they began in.</summary>
+    public (long Read, long OutOfTime) LongLines => (Interlocked.Read(ref longLinesRead), Interlocked.Read(ref longLinesOutOfTime));
 
     /// <summary>Why the grammar could not colour the file, when it could not.</summary>
     public Exception? Failure { get; private set; }
@@ -188,6 +203,7 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         long began = Stopwatch.GetTimestamp();
         Tokenizer rules = grammar.Rules;
         TimeSpan limit = LineTime;
+        TimeSpan longLimit = LongLineTime;
         int count = text.LineCount;
         int oldCount = old?.Count ?? 0;
         int delta = count - oldCount;
@@ -206,25 +222,25 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         char[] buffer = [];
         while (line < count)
         {
-            int until = Math.Min(count, line + LinesAtATime);
             int readFrom = line;
             bool converged = false;
-            lock (grammar.Gate)
+            if (text.GetLine(line) is { Length: > LongestLine } longLine)
             {
-                for (; line < until; line++)
+                state = EndOfLong(text, longLine, state, limit, longLimit, ref buffer);
+                built.Add(new TokenLine([], state));
+                converged = Converged(++line);
+            }
+            else
+            {
+                int until = Math.Min(count, line + LinesAtATime);
+                lock (grammar.Gate)
                 {
-                    TokenLine read = Read(rules, limit, text, line, state, scratch, ref buffer);
-                    built.Add(read);
-                    state = read.End;
-                    int next = line + 1;
-                    int was = next - 1 - delta;
-                    if (next >= convergeFrom && next < count && was >= 0 && was < old!.StaleFrom && old[was].End is { } end && end.Equals(state))
+                    while (!converged && line < until && text.GetLine(line) is { Length: <= LongestLine } span)
                     {
-                        built.AddRange(old, was + 1, oldCount - was - 1);
-                        staleFrom = Math.Max(next, old.StaleFrom + delta);
-                        line = next;
-                        converged = true;
-                        break;
+                        TokenLine read = Read(rules, limit, text, span, state, scratch, ref buffer);
+                        built.Add(read);
+                        state = read.End;
+                        converged = Converged(++line);
                     }
                 }
             }
@@ -255,6 +271,19 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         Interlocked.Add(ref workTicks, Stopwatch.GetTimestamp() - began);
         return built.Build(staleFrom);
 
+        // Whether the line before next, past those that changed, ends as its old line did: the rest then the old table's.
+        bool Converged(int next)
+        {
+            int was = next - 1 - delta;
+            if (next < convergeFrom || next >= count || was < 0 || was >= old!.StaleFrom || old[was].End is not { } end || !end.Equals(state))
+            {
+                return false;
+            }
+            built.AddRange(old, was + 1, oldCount - was - 1);
+            staleFrom = Math.Max(next, old.StaleFrom + delta);
+            return true;
+        }
+
         // The lines past where a pass stopped keep what they had: blank where they changed, their old colours where not.
         void Rest(LineTableBuilder into, int from)
         {
@@ -282,12 +311,9 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
 
     /// <summary>One line's colours and the state it ends in, reusing the pass's buffer between lines. A line read past
     /// <paramref name="limit"/> is read once more, its grammar's patterns now parsed; past it again, it keeps the colours
-    /// found and ends in the state it began in, so a rule it was stopped inside never reaches the lines after it. A line
-    /// longer than <see cref="LongestLine"/> is read so too, for the state it ends in alone.</summary>
-    private TokenLine Read(Tokenizer rules, TimeSpan limit, TextSnapshot text, int line, StateStack? state, List<SyntaxSpan> scratch, ref char[] buffer)
+    /// found and ends in the state it began in, so a rule it was stopped inside never reaches the lines after it.</summary>
+    private TokenLine Read(Tokenizer rules, TimeSpan limit, TextSnapshot text, LineSpan span, StateStack? state, List<SyntaxSpan> scratch, ref char[] buffer)
     {
-        LineSpan span = text.GetLine(line);
-        bool plain = span.Length > LongestLine;
         if (buffer.Length < span.Length)
         {
             buffer = new char[Math.Max(span.Length, Math.Min(LongestLine, buffer.Length * 2))];
@@ -305,10 +331,6 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
                 Interlocked.Increment(ref linesOutOfTime);
                 next = before;
             }
-        }
-        if (plain)
-        {
-            return new TokenLine([], next);
         }
         scratch.Clear();
         for (int i = 0; i < tokens.Length; i++)
@@ -330,6 +352,38 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             }
         }
         return new TokenLine(scratch.Count == 0 ? [] : [.. scratch], next);
+    }
+
+    /// <summary>The state a line longer than <see cref="LongestLine"/> ends in, read once by the grammar's long rules within
+    /// <paramref name="longLimit"/>, no hold of the grammar's own rules kept meanwhile; past that time, the state it began
+    /// in, so a rule it was stopped inside never reaches the lines after it.</summary>
+    private StateStack EndOfLong(TextSnapshot text, LineSpan span, StateStack? state, TimeSpan limit, TimeSpan longLimit, ref char[] buffer)
+    {
+        if (buffer.Length < span.Length)
+        {
+            buffer = new char[span.Length];
+        }
+        text.CopyTo(span.Start, buffer.AsSpan(0, span.Length));
+        StateStack before = state ?? StateStack.Initial;
+        Interlocked.Increment(ref longLinesRead);
+        lock (grammar.LongGate)
+        {
+            Tokenizer rules = grammar.LongRules;
+            if (!grammar.LongRulesWarm)
+            {
+                rules.TimeBudget = limit;
+                _ = rules.TokenizeLineEncoded(buffer.AsSpan(0, WarmingLength), before, out _);
+                grammar.LongRulesWarm = true;
+            }
+            rules.TimeBudget = longLimit;
+            _ = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), before, out StateStack next);
+            if (!rules.StoppedEarly)
+            {
+                return next;
+            }
+        }
+        Interlocked.Increment(ref longLinesOutOfTime);
+        return before;
     }
 
     private void OnUi(Action action)

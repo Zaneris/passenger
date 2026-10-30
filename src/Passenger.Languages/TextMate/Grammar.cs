@@ -9,8 +9,8 @@ namespace Passenger.Languages.TextMate;
 
 /// <summary>A language's TextMate grammar (VS Code's, or Razor's and C#'s from dotnet/roslyn, carried in this assembly
 /// under <c>TextMate/Grammars</c>) with the grammars it embeds, in a registry of its own. Documents of this scope
-/// share a tokenizer, whose mutable scratch buffers and scanners are protected by <see cref="Gate"/>. Different
-/// scopes use separate registries and tokenizers.</summary>
+/// share a tokenizer, whose mutable scratch buffers and scanners are protected by <see cref="Gate"/>, and one for long
+/// lines behind <see cref="LongGate"/>. Different scopes use separate registries and tokenizers.</summary>
 internal sealed class Grammar
 {
     private static readonly Dictionary<string, Lazy<Grammar>> Loaded = [];
@@ -18,13 +18,17 @@ internal sealed class Grammar
     /// <summary>The theme every registry shares: each rule's foreground is the kind it colours, as #0000NN.</summary>
     private static readonly string Theme = ThemeText();
 
+    private readonly Lazy<(GrammarRegistry Registry, Tint.Theme Theme)> compiled;
     private readonly Lazy<Tokenizer> rules;
+    private readonly Lazy<Tokenizer> longRules;
     private TokenKind[] kinds = [];
 
     private Grammar(string scope, Tags tags)
     {
         Tags = tags;
-        rules = new Lazy<Tokenizer>(() => Load(scope), LazyThreadSafetyMode.ExecutionAndPublication);
+        compiled = new(() => Load(scope), LazyThreadSafetyMode.ExecutionAndPublication);
+        rules = new(() => compiled.Value.Registry.CreateTokenizer(scope, compiled.Value.Theme), LazyThreadSafetyMode.ExecutionAndPublication);
+        longRules = new(() => compiled.Value.Registry.CreateTokenizer(scope, compiled.Value.Theme), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     /// <summary>A language's grammar, made once and shared by every file of every language it colours.</summary>
@@ -48,10 +52,20 @@ internal sealed class Grammar
     /// <summary>The compiled rules, loaded on first use (off the UI thread: a grammar is read and its includes with it).</summary>
     public Tokenizer Rules => rules.Value;
 
+    /// <summary>Held around everything done with <see cref="LongRules"/>.</summary>
+    public object LongGate { get; } = new();
+
+    /// <summary>The same rules in a tokenizer of their own, for lines too long to colour, so reading one holds no other
+    /// file's lines behind <see cref="Gate"/>.</summary>
+    public Tokenizer LongRules => longRules.Value;
+
+    /// <summary>Whether <see cref="LongRules"/> has read a line's start, its first patterns parsed; set under <see cref="LongGate"/>.</summary>
+    public bool LongRulesWarm { get; set; }
+
     /// <summary>The kind a token's foreground colour id stands for.</summary>
     public TokenKind KindOf(int foreground) => foreground < kinds.Length ? kinds[foreground] : TokenKind.Text;
 
-    private Tokenizer Load(string scope)
+    private (GrammarRegistry Registry, Tint.Theme Theme) Load(string scope)
     {
         GrammarRegistry registry = new();
         HashSet<string> loaded = new(StringComparer.Ordinal);
@@ -65,7 +79,7 @@ internal sealed class Grammar
             int value = int.Parse(colour.AsSpan(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
             kinds[id] = Enum.IsDefined((TokenKind)value) ? (TokenKind)value : TokenKind.Text;
         }
-        return registry.CreateTokenizer(scope, theme);
+        return (registry, theme);
 
         void Add(string name)
         {
