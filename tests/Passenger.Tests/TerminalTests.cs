@@ -338,6 +338,7 @@ public sealed class TerminalTests
             ["STY"] = "4242.ttys001.host",
             ["WINDOW"] = "0",
         };
+        MainWindow? window = null;
         try
         {
             foreach ((string variable, string value) in outer)
@@ -345,7 +346,7 @@ public sealed class TerminalTests
                 OwnEnvironment.Set(variable, value);
             }
             string project = TestFolders.Write(folder, "Listed/Listed.csproj", TestProjects.Console());
-            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+            window = Ui.OpenFolder(folder, languageServer: false);
             TerminalSession shell = OpenTerminal(window, OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh");
             // Only these variables listed, so nothing else of the machine's environment reaches the screen.
             Run(window, OperatingSystem.IsWindows()
@@ -383,10 +384,11 @@ public sealed class TerminalTests
                 Assert.False(listed.Any(line => line.StartsWith(variable + "=", StringComparison.Ordinal) && line != "WINDOW=given"),
                     $"{variable}, the outer tmux's or screen's, reached a program run in the Terminal:\n{Screen(program)}");
             }
-            window.Close();
         }
         finally
         {
+            // The Terminal's shell works in the folder until its window closes, which a test failing part-way leaves open.
+            window?.Close();
             foreach (string variable in outer.Keys)
             {
                 OwnEnvironment.Set(variable, null);

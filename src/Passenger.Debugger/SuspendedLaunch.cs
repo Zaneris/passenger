@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
+using Passenger.Core;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -126,7 +127,8 @@ public sealed partial class SuspendedLaunch : IDisposable
                     Check(Dup2(childIn, 0), "dup2");
                     Check(Dup2(childOut, 1), "dup2");
                     Check(Dup2(childErr, 2), "dup2");
-                    int hr = DbgShim.CreateProcessForLaunch(CommandLine(program, arguments), true, environmentBlock, folder, out uint pid, out resume);
+                    // dbgshim splits the command line back by Windows' rules on every system.
+                    int hr = DbgShim.CreateProcessForLaunch(WindowsCommandLine.Of(arguments.Prepend(program)), true, environmentBlock, folder, out uint pid, out resume);
                     Marshal.ThrowExceptionForHR(hr);
                     processId = checked((int)pid);
                 }
@@ -398,41 +400,6 @@ public sealed partial class SuspendedLaunch : IDisposable
         Input.Dispose();
         Output.Dispose();
         Error.Dispose();
-    }
-
-    /// <summary>The program and its arguments as one command line, quoted as dbgshim's own parser (the
-    /// runtime's platform layer, which follows Windows' rules) splits it back.</summary>
-    internal static string CommandLine(string program, IReadOnlyList<string> arguments)
-    {
-        StringBuilder line = new();
-        foreach (string argument in arguments.Prepend(program))
-        {
-            if (line.Length > 0)
-            {
-                line.Append(' ');
-            }
-            if (argument.Length > 0 && !argument.Any(c => char.IsWhiteSpace(c) || c == '"'))
-            {
-                line.Append(argument);
-                continue;
-            }
-            line.Append('"');
-            int backslashes = 0;
-            foreach (char c in argument)
-            {
-                if (c == '\\')
-                {
-                    backslashes++;
-                    continue;
-                }
-                // Backslashes before a quote are doubled, and the quote escaped; elsewhere they stand as they are.
-                line.Append('\\', c == '"' ? backslashes * 2 + 1 : backslashes);
-                backslashes = 0;
-                line.Append(c);
-            }
-            line.Append('\\', backslashes * 2).Append('"');
-        }
-        return line.ToString();
     }
 
     private static (int Read, int Write) Pipe()

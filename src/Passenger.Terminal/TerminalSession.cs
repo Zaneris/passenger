@@ -134,7 +134,9 @@ public sealed class TerminalSession : IAsyncDisposable
             Rows = Screen.Rows,
             Cwd = cwd,
             App = app,
-            CommandLine = args,
+            // On Windows, quoted as the C runtime splits a command line back, and given whole.
+            CommandLine = OperatingSystem.IsWindows() ? [WindowsCommandLine.Of(args)] : args,
+            VerbatimCommandLine = OperatingSystem.IsWindows(),
             Environment = environment,
         };
         pty = await PtyProvider.SpawnAsync(options, CancellationToken.None);
