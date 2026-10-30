@@ -9,10 +9,43 @@ namespace Passenger.App.Run;
 /// it runs).</summary>
 public static class BuiltInputs
 {
-    /// <summary>Whether a file was written after <paramref name="since"/> under the project's folder (another project's folder
-    /// under it not entered, nor bin, obj or a hidden folder) or, with <paramref name="references"/>, under the folders of the
-    /// projects it references, in turn. On any thread.</summary>
-    public static bool ChangedSince(string project, DateTime since, IReadOnlyList<ProjectModel> projects, bool references = true)
+    /// <summary>What a build's inputs were as it began, read just before it: the time, and each project's input files then
+    /// (<see cref="ChangedSince"/>'s walk, from <paramref name="project"/>). Reads the disk: off the UI thread.</summary>
+    public static Listing Listed(string project, IReadOnlyList<ProjectModel> projects, bool references = true)
+    {
+        DateTime began = DateTime.UtcNow;
+        Dictionary<string, IReadOnlySet<string>> files = new(PathNames.Comparer);
+        Walk(project, projects, references, (current, inputs) =>
+        {
+            files[current] = new HashSet<string>(inputs, PathNames.Comparer);
+            return false;
+        });
+        return new Listing(began, files);
+    }
+
+    /// <summary>Whether a project's inputs changed since <paramref name="listing"/>: a file written after its build began, or
+    /// one come or gone since (deleted, renamed, moved in keeping an older time), under the project's folder (another
+    /// project's folder under it not entered, nor bin, obj or a hidden folder) or, with <paramref name="references"/>, under
+    /// the folders of the projects it references, in turn; a project the listing does not hold by its times alone. On any
+    /// thread.</summary>
+    public static bool ChangedSince(string project, Listing listing, IReadOnlyList<ProjectModel> projects, bool references = true) =>
+        Walk(project, projects, references, (current, inputs) =>
+        {
+            HashSet<string> now = new(PathNames.Comparer);
+            foreach (string file in inputs)
+            {
+                if (File.GetLastWriteTimeUtc(file) > listing.Began)
+                {
+                    return true;
+                }
+                now.Add(file);
+            }
+            return listing.Files.TryGetValue(current, out IReadOnlySet<string>? then) && !then.SetEquals(now);
+        });
+
+    /// <summary>Each project of the walk (canonical) with its input files, until <paramref name="stops"/> answers true;
+    /// whether it did.</summary>
+    private static bool Walk(string project, IReadOnlyList<ProjectModel> projects, bool references, Func<string, IEnumerable<string>, bool> stops)
     {
         HashSet<string> others = new(projects.Select(p => PathNames.Canonical(p.Folder)), PathNames.Comparer);
         HashSet<string> seen = new(PathNames.Comparer);
@@ -24,8 +57,7 @@ public static class BuiltInputs
                 continue;
             }
             string folder = PathNames.Canonical(Path.GetDirectoryName(current)!);
-            if (FolderWalk.Files(folder, built: true, enters: inner => PathNames.Same(inner, folder) || !others.Contains(inner))
-                .Any(file => IsInput(file) && File.GetLastWriteTimeUtc(file) > since))
+            if (stops(current, FolderWalk.Files(folder, built: true, enters: inner => PathNames.Same(inner, folder) || !others.Contains(inner)).Where(IsInput)))
             {
                 return true;
             }
@@ -39,6 +71,9 @@ public static class BuiltInputs
         }
         return false;
     }
+
+    /// <summary>A build's inputs as it began (<see cref="Listed"/>): when, and each project's input files by its canonical path.</summary>
+    public sealed record Listing(DateTime Began, IReadOnlyDictionary<string, IReadOnlySet<string>> Files);
 
     /// <summary>A build's output as it stands, which a run of services compares to know which service's build changed since it
     /// started: each assembly's, symbols' and settings' name, length and time. A file gone as it is read is left out, and a

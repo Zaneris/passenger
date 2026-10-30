@@ -1445,9 +1445,9 @@ public sealed partial class BuildRunController
                 }
                 AspireAppRun[] apps = session.Aspire.Apps.Where(app => app.Group == main.Group && !app.Stopping).ToArray();
                 // Each service with when the build it runs began: its own restart's, else its AppHost's.
-                (AspireAppRun App, (AspireResourceRun Service, DateTime Since)[] Running)[] runs = [.. apps.Select(app => (app,
+                (AspireAppRun App, (AspireResourceRun Service, BuiltInputs.Listing Since)[] Running)[] runs = [.. apps.Select(app => (app,
                     app.Services.Where(s => !s.Stopping.IsCancellationRequested).Select(s => (s, app.Rebuilt.GetValueOrDefault(s.Project, app.BuildBegan))).ToArray()))];
-                (string Project, DateTime Since)[] hosts = [.. apps.Select(app => (app.Configuration.Project, app.BuildBegan))];
+                (string Project, BuiltInputs.Listing Since)[] hosts = [.. apps.Select(app => (app.Configuration.Project, app.BuildBegan))];
                 IReadOnlyList<ProjectModel> projects = session.Projects;
                 // Read before anything is built, so only what changed stops and builds, never over a program's running files.
                 (bool hostChanged, (AspireAppRun App, List<AspireResourceRun> Changed)[] services) = await BackgroundWork.Run(() =>

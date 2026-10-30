@@ -349,7 +349,8 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         Func<BuildStep, Task<BuildOutcome>> build, CancellationToken cancellation, (string AppHost, string Name)? profileTarget, HttpsChoice https,
         IReadOnlyList<string> said)
     {
-        DateTime began = DateTime.UtcNow;
+        IReadOnlyList<ProjectModel> projects = workspace.Projects;
+        BuiltInputs.Listing began = await BackgroundWork.Run(() => BuiltInputs.Listed(configuration.Project, projects));
         LaunchPlan plan = await ResolveAppHostAsync(configuration, build, cancellation);
         if (plan.Build is { } step && await build(step) is { Succeeded: false } failed)
         {
@@ -1299,12 +1300,12 @@ public sealed class AspireAppRun : ServiceRun
     internal bool ProfileClaimed { get; set; }
     internal (string AppHost, string Name)? ProfileTarget { get; init; }
 
-    /// <summary>When the AppHost's build began (the build its first services run too): its own code changed once a file its
-    /// folder holds was written after it.</summary>
-    internal DateTime BuildBegan { get; init; }
+    /// <summary>The inputs of the AppHost's build as it began (the build its first services run too), the projects it
+    /// references in turn: its own code changed once a file its folder holds was written after it, came or went.</summary>
+    internal BuiltInputs.Listing BuildBegan { get; init; } = new(DateTime.MinValue, new Dictionary<string, IReadOnlySet<string>>());
 
-    /// <summary>When the build each service project was built by again for a restart began, by project.</summary>
-    internal Dictionary<string, DateTime> Rebuilt { get; } = new(PathNames.Comparer);
+    /// <summary>The inputs of the build each service project was built by again for a restart as it began, by project.</summary>
+    internal Dictionary<string, BuiltInputs.Listing> Rebuilt { get; } = new(PathNames.Comparer);
     internal TaskCompletionSource<string?> ProfileStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>DCP's request to start the service Profile records, by its name; the profile's time limit counts from it.</summary>
@@ -1613,9 +1614,9 @@ public sealed class AspireResourceRun(string id, string instanceId, string proje
     internal string BuiltStamp { get; init; } = string.Empty;
 
     /// <summary>Whether Rerun builds it again and restarts it: its output changed since it started (a build of another's),
-    /// or a file its build reads was written after the build it runs began (<paramref name="since"/>). Reads the disk: off
-    /// the UI thread.</summary>
-    internal bool ChangedSinceStart(IReadOnlyList<ProjectModel> projects, DateTime since) =>
+    /// or a file its build reads was written, came or went since the build it runs began (<paramref name="since"/>). Reads
+    /// the disk: off the UI thread.</summary>
+    internal bool ChangedSinceStart(IReadOnlyList<ProjectModel> projects, BuiltInputs.Listing since) =>
         BuiltStamp != ReadBuiltStamp(Plan) || BuiltInputs.ChangedSince(Project, since, projects);
 
     public string? ResourceName { get; internal set; }

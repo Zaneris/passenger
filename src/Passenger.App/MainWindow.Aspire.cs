@@ -533,7 +533,8 @@ public partial class MainWindow
         }
         foreach (AspireResourceRun start in starts.DistinctBy(start => (start.Project, start.Plan.Framework)))
         {
-            app.Rebuilt[start.Project] = DateTime.UtcNow;
+            IReadOnlyList<Passenger.Workspace.ProjectModel> projects = current.Projects;
+            app.Rebuilt[start.Project] = await BackgroundWork.Run(() => BuiltInputs.Listed(start.Project, projects));
             if (await buildRun.BuildForAsync(new BuildStep(start.Project, start.Plan.Framework), cancel) is { Succeeded: false } failed)
             {
                 throw new InvalidOperationException(failed.Message);
