@@ -167,14 +167,14 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   in `MainWindow.Follow` or `SettingsStore.InForce`.
 - **Every action is an `IdeAction`** in the window's `ActionRegistry` (ids and keymaps in `AppActions.cs`): keys, menus,
   Find Action, context menus and MCP's `ide_action` all run it, `WhyNot` greys it with why, titles come from the
-  registry (`TitleWhere`), a title that asks more ends in "…", and what's missing is said in `Refusals`' words. Anything
-  that takes a while holds a `Working` (`ActionWork.Begin`) from its first moment to its hand-over, saying each stage
-  and honouring `Stopping`, and tells what it came to (`Working.Tell`, `ActionWork.Tell`), which `ide_action` answers;
-  toolbar buttons bind with `ActionButtons.Bind`. An agent's run (`ActionRegistry.RunForAgent`, `ActionContext.ByAgent`)
-  never takes the person's keys or brings a window forward (`DockHost.ShowBehind`); an attached agent's flow is marked
-  by `AgentAsks`, whose `Install` cancels its focus moves and refuses its popups and modal dialogs
-  (`Refusals.AsksThePerson`; a popup host asks `AgentAsks.Refused`/`Popup`), and a file it opens comes in a tab behind
-  (`EditorArea.Activate`).
+  registry (`TitleWhere`), a title that asks more ends in "…", and what's missing is said in `Refusals`' words
+  (RefusalsTests fails a copy). Anything that takes a while holds a `Working` (`ActionWork.Begin`) from its first moment
+  to its hand-over, saying each stage and honouring `Stopping`, and tells what it came to (`Working.Tell`,
+  `ActionWork.Tell`), which `ide_action` answers; toolbar buttons bind with `ActionButtons.Bind`. An agent's run
+  (`ActionRegistry.RunForAgent`, `ActionContext.ByAgent`) never takes the person's keys or brings a window forward
+  (`DockHost.ShowBehind`); an attached agent's flow is marked by `AgentAsks`, whose `Install` cancels its focus moves
+  and refuses its popups and modal dialogs (`Refusals.AsksThePerson`; a popup host asks `AgentAsks.Refused`/`Popup`),
+  and a file it opens comes in a tab behind (`EditorArea.Activate`).
 - **One way out to the system:** a browser only through `MainWindow.Browse`, the file manager only through
   `ShowInFileManager` (both recorded for tests).
 - **Shortcuts follow Rider's**: its Visual Studio (Windows) or Visual Studio OSX (macOS) keymap, and its VS Code keymaps
@@ -201,7 +201,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   exit code said with its signal), `WindowsCommandLine` (the one maker of a Windows command line), `Product` (the one
   place the version is read), `PassengerLog` (below the App, never `IdeLog`; a line quoting a program's words through
   `WriteMasked`), `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's lines read and messages written as pooled
-  bytes), `SharedNames` (a name read from bytes, made once).
+  bytes), `SharedNames` (a name read from bytes, made once), `PrimitiveTypes` (the one table of primitives; the
+  debugger's element types through `MetadataTypeNames.ElementTypeOf`, a generic name closed through
+  `CSharpTypeNames.Closed`).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
   function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `Outline` (a tree's rows in reading order, kept where
   unchanged), `FileText`, and anchors (`AnchorAt`/`RangeAt`/`MarkAt`, `AnchoredList`; moved before `Changed`, each
@@ -329,10 +331,11 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **The rest.** `Packages` (every package change's one path, its files the project, its lock file and
   Directory.Packages.props, one command of Undo, put back when it fails; credentials only to their feed's host),
   `Workspace` (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`; a version
-  written where packages are managed centrally goes through `CentralPackages` (the file, `PropsOf`)), `Templates` (every `dotnet new` through
-  `ProjectTemplates`, what it writes above the new folder part of its command, `FilesAbove`; a new service's container
-  or Aspire set-up after Create through Add's own actions, `MainWindow.ServiceSetup`), `Updates` (only an installed copy
-  updates itself; What's New from `docs/release-notes/X.Y.Z.md`).
+  written where packages are managed centrally goes through `CentralPackages` (the file, `PropsOf`)),
+  `ShellWords.Quoted` a word for a shell by kind (a dropped path, Settings' agent commands), `Templates` (every `dotnet
+  new` through `ProjectTemplates`, what it writes above the new folder part of its command, `FilesAbove`; a new
+  service's container or Aspire set-up after Create through Add's own actions, `MainWindow.ServiceSetup`), `Updates`
+  (only an installed copy updates itself; What's New from `docs/release-notes/X.Y.Z.md`).
 - **MCP.** `PassengerTools` (every tool, run on the UI thread, answering with what its operation returned), `McpHost`
   (`--mcp FOLDER`, a window's socket, `--mcp-attach` through `McpProxy`), `HeadStart` (an `--mcp` folder's opening
   begun before its window, which its first session takes up), `AgentConnection` (admission and questions). A relay
@@ -596,7 +599,7 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
   (`Passenger.Divider` between panels); menus' value in force `MenuChoice` (`Holding` makes its submenu as it opens); a
   menu the menu key opens `ListMenus.PlaceForKeys`; tool window tabs `ToolTabs.Tab`; popups' widths `PopupFrame`, titles
   `popupTitle`; every row `ListRow.Height` (24); empty states `TextBlock.emptyText` (with an action's link `EmptyState`); toolbar icon buttons
-  `ToolButtons.Of`/`Toggle` (never focusable); muted words `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`;
+  `ToolButtons.Of`/`Toggle` (never focusable); muted words `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`, lists `Plural.Listed`;
   rounded borders `Border.kindBadge`, `tag` or `box`, never a literal radius; lists of what runs `RunRows`, Details tabs
   `DetailsTables`, merged consoles `MergedLog` (a console's Find `OutputView.Find`); a tree window's Expand and Collapse
   All `ToolWindow.ExpandAll`/`CollapseAll`; a toolbar down a side `ToolColumn`; scrollbars `ControlThemes.axaml`; the
