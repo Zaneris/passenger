@@ -51,51 +51,77 @@ public partial class ManagedDebugger
 
     private static string GetFlagsEnumValue(IMetaDataImport metaDataImport, mdTypeDef enumTypeDef, string valueAsString)
     {
-        if (!ulong.TryParse(valueAsString, out ulong enumValue))
-        {
-            return valueAsString;
-        }
-
-        ulong remaining = enumValue;
-
-        // value -> name, ordered by value (ascending)
-        SortedDictionary<ulong, string> flags = new SortedDictionary<ulong, string>();
-
+        List<(string Name, object? Literal)> members = [];
         foreach (mdFieldDef field in metaDataImport.EnumFields(enumTypeDef))
         {
             const CorFieldAttr requiredAttributesForEnumOption = CorFieldAttr.fdPublic | CorFieldAttr.fdStatic | CorFieldAttr.fdLiteral | CorFieldAttr.fdHasDefault;
 
             (string szField, mdTypeDef pClass, CorFieldAttr pdwAttr, nint ppvSigBlob, int pcbSigBlob, CorElementType pdwCPlusTypeFlag, nint ppValue, int pcchValue) fieldProps = metaDataImport.GetFieldProps(field);
-            if ((fieldProps.pdwAttr & requiredAttributesForEnumOption) != requiredAttributesForEnumOption)
+            if ((fieldProps.pdwAttr & requiredAttributesForEnumOption) == requiredAttributesForEnumOption)
             {
-                continue;
-            }
-
-            object? fieldValueObj = GetLiteralValue(fieldProps.ppValue, fieldProps.pdwCPlusTypeFlag, fieldProps.pcchValue);
-
-            ulong fieldValue = Convert.ToUInt64(fieldValueObj);
-
-            // Zero flag is excluded from OR expressions
-            if (fieldValue is 0)
-            {
-                continue;
-            }
-
-            // Exact match already handled earlier
-            if ((fieldValue & remaining) == fieldValue)
-            {
-                flags[fieldValue] = fieldProps.szField;
-                remaining &= ~fieldValue;
+                members.Add((fieldProps.szField, GetLiteralValue(fieldProps.ppValue, fieldProps.pdwCPlusTypeFlag, fieldProps.pcchValue)));
             }
         }
-
-        if (flags.Count > 0 && remaining == 0)
-        {
-            return string.Join(" | ", flags.Values);
-        }
-
-        return enumValue.ToString();
+        return FlagsOf(members, valueAsString);
     }
+
+    /// <summary>A [Flags] enum's value as the names of its non-zero members that make it up, joined by " | ", members in
+    /// the enum's order taken while all their bits are left, listed by value; the value as it is where they leave bits over.
+    /// Each member and the value are their underlying type's bits, so a negative member (All = -1) takes part as them.</summary>
+    internal static string FlagsOf(IEnumerable<(string Name, object? Literal)> members, string valueAsString)
+    {
+        List<(string Name, ulong Bits)> bitsOfMembers = [];
+        ulong width = ulong.MaxValue;
+        foreach ((string name, object? literal) in members)
+        {
+            if (literal is not null && UnderlyingBits(literal) is ({ } bits, { } mask))
+            {
+                bitsOfMembers.Add((name, bits));
+                width = mask;
+            }
+        }
+        ulong parsed;
+        if (ulong.TryParse(valueAsString, out ulong unsigned))
+        {
+            parsed = unsigned;
+        }
+        else if (long.TryParse(valueAsString, out long signed))
+        {
+            parsed = unchecked((ulong)signed);
+        }
+        else
+        {
+            return valueAsString;
+        }
+
+        ulong remaining = parsed & width;
+        SortedDictionary<ulong, string> flags = new SortedDictionary<ulong, string>();
+        foreach ((string name, ulong bits) in bitsOfMembers)
+        {
+            if (bits != 0 && (bits & remaining) == bits)
+            {
+                flags[bits] = name;
+                remaining &= ~bits;
+            }
+        }
+        return flags.Count > 0 && remaining == 0 ? string.Join(" | ", flags.Values) : valueAsString;
+    }
+
+    /// <summary>An integer literal's bits at its own width, and the mask of that width; nulls for any other value.</summary>
+    private static (ulong? Bits, ulong? Mask) UnderlyingBits(object literal) => literal switch
+    {
+        bool flag => (flag ? 1UL : 0UL, byte.MaxValue),
+        sbyte value => (unchecked((byte)value), byte.MaxValue),
+        byte value => (value, byte.MaxValue),
+        short value => (unchecked((ushort)value), ushort.MaxValue),
+        ushort value => (value, ushort.MaxValue),
+        char value => (value, ushort.MaxValue),
+        int value => (unchecked((uint)value), uint.MaxValue),
+        uint value => (value, uint.MaxValue),
+        long value => (unchecked((ulong)value), ulong.MaxValue),
+        ulong value => (value, ulong.MaxValue),
+        _ => (null, null),
+    };
 
     // All of the below is for const fields
     private static bool TryGetEnumDisplayValue((string FriendlyName, ModuleInfo Module, EntityHandle Handle) fieldType, string value, out string displayValue)

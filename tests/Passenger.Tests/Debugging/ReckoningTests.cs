@@ -73,6 +73,18 @@ public class ReckoningTests(ITestOutputHelper testOutputHelper)
             $"unproxied, whose proxy is in no assembly, opens to {string.Join(", ", raw.Select(v => $"{v.Name} {v.Value}"))}, not its own Raw 4");
     }
 
+    [Fact]
+    public async Task A_flags_enum_with_a_negative_member_shows_a_combination_by_its_members_names()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        (StoppedEvent stop, int frame) = await StoppedAtReckoningAsync(host);
+
+        DapVariable access = Assert.Single(await host.LocalsAsync(stop), v => v.Name == "access");
+        Assert.True(access.Value == "Read | Write", $"Read | Write of an enum declaring All = -1 shows as {access.Value}");
+        Assert.Equal("Read | Write", await Evaluate(host, frame, "access"));
+        Assert.Equal("All", await Evaluate(host, frame, "Access.All"));
+    }
+
     /// <summary>The program launched to Reckoning.Run's stop, and its top frame.</summary>
     private static async Task<(StoppedEvent Stop, int Frame)> StoppedAtReckoningAsync(DebugSession host)
     {

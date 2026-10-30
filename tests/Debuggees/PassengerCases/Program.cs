@@ -320,12 +320,14 @@ internal static class Reckoning
 		Names names = new();
 		Counted counted = new();
 		Unproxied unproxied = new();
+		Access access = Access.Read | Access.Write;
 		Console.WriteLine("reckoning");
-		Console.WriteLine($"reckoned {wide & big}, {date:yyyy-MM}, {names.First}, {counted.Count}, {unproxied.Raw}");
+		Console.WriteLine($"reckoned {wide & big}, {date:yyyy-MM}, {names.First}, {counted.Count}, {unproxied.Raw}, {access}");
 	}
 }
 
 [Flags] internal enum Wide : long { Low = 1, Big = 1L << 41 }
+[Flags] internal enum Access { None = 0, Read = 1, Write = 2, Run = 4, All = -1 }
 
 internal class Listed<T>
 {
