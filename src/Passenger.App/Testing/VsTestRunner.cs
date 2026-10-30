@@ -52,6 +52,9 @@ public sealed class VsTestRunner : ITestRunner
     /// <summary>The test cases discovered, by the key of the test each was told as.</summary>
     private readonly TestCatalog<TestCase> cases = new();
 
+    /// <summary>The run settings file each assembly looked at runs with, by its path; null for none.</summary>
+    private readonly Dictionary<string, string?> settingsOf = new(StringComparer.Ordinal);
+
     private VsTestRunner(string consolePath, string host, VsTestConsoleWrapper console)
     {
         this.consolePath = consolePath;
@@ -111,14 +114,31 @@ public sealed class VsTestRunner : ITestRunner
 
     public bool IsUsable { get; private set; } = true;
 
-    /// <summary>The tests in built test assemblies, as their adapters find them. Canceled, VSTest stops finding them and
-    /// ends its test hosts; one that does not within a few seconds leaves the runner unusable, to be ended.</summary>
+    /// <summary>The tests in built test assemblies, as their adapters find them, each with its project's run settings.
+    /// Canceled, VSTest stops finding them and ends its test hosts; one that does not within a few seconds leaves the runner
+    /// unusable, to be ended.</summary>
     public async Task<IReadOnlyList<TestItem>> DiscoverAsync(IReadOnlyList<TestAssembly> assemblies, Action<string>? log = null, CancellationToken cancel = default)
+    {
+        List<TestCase> found = [];
+        foreach (IGrouping<string?, TestAssembly> group in assemblies.GroupBy(a => a.RunSettings, StringComparer.Ordinal))
+        {
+            foreach (TestAssembly assembly in group)
+            {
+                settingsOf[assembly.Path] = group.Key;
+            }
+            string settings = await BackgroundWork.Run(() => Settings(null, log, group.Key), cancel);
+            found.AddRange(await DiscoverWith([.. group.Select(a => a.Path)], settings, log, cancel));
+        }
+        return await BackgroundWork.Run(() => Tell(assemblies, found));
+    }
+
+    /// <summary>The test cases in assemblies, found with these settings.</summary>
+    private async Task<IReadOnlyList<TestCase>> DiscoverWith(List<string> assemblies, string settings, Action<string>? log, CancellationToken cancel)
     {
         Discovery handler = new(log);
         VsTestConsoleWrapper session = console;
         // The blocking call returns once VSTest has told the handler discovery is complete, stopped or not.
-        Task discovering = BackgroundWork.Run(() => session.DiscoverTests([.. assemblies.Select(a => a.Path)], RunSettings, new TestPlatformOptions(), handler));
+        Task discovering = BackgroundWork.Run(() => session.DiscoverTests(assemblies, settings, new TestPlatformOptions(), handler));
         // Not held, off the canceller's thread: the stop is said by discovery's own end.
         using (cancel.Register(() => IdeErrors.Observe(BackgroundWork.Unheld(session.CancelDiscovery))))
         {
@@ -143,17 +163,16 @@ public sealed class VsTestRunner : ITestRunner
                 throw;
             }
         }
-        IReadOnlyList<TestCase> found = await handler.Done.Task;
-        return await BackgroundWork.Run(() => Tell(assemblies, found));
+        return await handler.Done.Task;
     }
 
     /// <summary>Runs tests, their outcomes told a batch at a time as VSTest sends them; done when the run ends, with its
-    /// time and whether it was stopped, which cancellation does, keeping the outcomes of what has run. The environment
-    /// given is set in the test hosts VSTest starts, as its run settings' EnvironmentVariables are.</summary>
+    /// time and whether it was stopped, which cancellation does, keeping the outcomes of what has run. The tests of each
+    /// project's run settings run with them, the environment given set in the test hosts VSTest starts as the settings'
+    /// EnvironmentVariables are.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
         ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, CancellationToken cancel = default)
     {
-        string settings = Settings(environment, log);
         // xUnit gives a test the same id in each target framework's assembly: its assembly tells them apart.
         Dictionary<(Guid, string), TestItem> running = [];
         List<TestCase> chosen = [];
@@ -164,6 +183,24 @@ public sealed class VsTestRunner : ITestRunner
                 chosen.Add(found);
             }
         }
+        RunSummary? summary = null;
+        foreach (IGrouping<string?, TestCase> group in chosen.GroupBy(c => settingsOf.GetValueOrDefault(cases.Canonical(c.Source)), StringComparer.Ordinal))
+        {
+            string settings = await BackgroundWork.Run(() => Settings(environment, log, group.Key), cancel);
+            RunSummary part = await RunWith([.. group], settings, running, outcomes, log, debugger, environment, cancel);
+            summary = summary is null ? part : summary.And(part);
+            if (part.Canceled)
+            {
+                break;
+            }
+        }
+        return summary ?? new RunSummary(TimeSpan.Zero, cancel.IsCancellationRequested, false, null);
+    }
+
+    /// <summary>Runs test cases with these settings (<see cref="RunAsync"/>).</summary>
+    private async Task<RunSummary> RunWith(List<TestCase> chosen, string settings, Dictionary<(Guid, string), TestItem> running, Action<IReadOnlyList<TestOutcome>> outcomes,
+        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, CancellationToken cancel)
+    {
         Run handler = new(running, outcomes, log);
         VsTestConsoleWrapper session = console;
         long began = Stopwatch.GetTimestamp();
@@ -241,27 +278,54 @@ public sealed class VsTestRunner : ITestRunner
         return true;
     }
 
-    /// <summary>A run's settings: VSTest's design mode, as an IDE runs it, and the environment, each variable an element as
-    /// VSTest reads them; a name XML cannot hold is left out and said.</summary>
-    private static string Settings(IReadOnlyDictionary<string, string>? environment, Action<string>? log)
+    /// <summary>A run's settings: the project's run settings file's, if it names one, with VSTest's design mode, as an IDE
+    /// runs it, and the environment, each variable an element as VSTest reads them, over the file's of the same name; a name
+    /// XML cannot hold is left out and said, as is a file that cannot be read. A worker's: it reads the file.</summary>
+    private static string Settings(IReadOnlyDictionary<string, string>? environment, Action<string>? log, string? file)
     {
-        if (environment is not { Count: > 0 })
+        if (environment is not { Count: > 0 } && file is null)
         {
             return RunSettings;
         }
-        XElement variables = new("EnvironmentVariables");
-        foreach ((string name, string value) in environment)
+        XElement root = new("RunSettings");
+        if (file is not null)
         {
             try
             {
-                variables.Add(new XElement(XmlConvert.VerifyName(name), value));
+                root = XDocument.Load(file).Root is { Name.LocalName: "RunSettings" } read ? read : throw new XmlException("its root is not RunSettings");
             }
-            catch (XmlException)
+            catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or XmlException)
             {
-                log?.Invoke($"The environment variable {name} cannot be given to the tests: VSTest names each in XML, which cannot hold that name");
+                log?.Invoke($"The run settings {PathNames.Shown(file, null)} were left out: {unread.Message}");
             }
         }
-        return new XElement("RunSettings", new XElement("RunConfiguration", new XElement("DesignMode", "true"), variables)).ToString(SaveOptions.DisableFormatting);
+        XElement configuration = Child(root, "RunConfiguration");
+        configuration.SetElementValue("DesignMode", "true");
+        if (environment is { Count: > 0 })
+        {
+            XElement variables = Child(configuration, "EnvironmentVariables");
+            foreach ((string name, string value) in environment)
+            {
+                try
+                {
+                    variables.SetElementValue(XmlConvert.VerifyName(name), value);
+                }
+                catch (XmlException)
+                {
+                    log?.Invoke($"The environment variable {name} cannot be given to the tests: VSTest names each in XML, which cannot hold that name");
+                }
+            }
+        }
+        return root.ToString(SaveOptions.DisableFormatting);
+
+        static XElement Child(XElement parent, string name)
+        {
+            if (parent.Element(name) is not { } child)
+            {
+                parent.Add(child = new XElement(name));
+            }
+            return child;
+        }
     }
 
     /// <summary>VSTest's failure told as the IDE's: the controller knows no VSTest type.</summary>

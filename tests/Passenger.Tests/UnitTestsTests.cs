@@ -475,6 +475,30 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>A project's run settings file (RunSettingsFilePath) is the run's, as `dotnet test` takes it: a variable it
+    /// sets reaches the test, beside its launch profile's.</summary>
+    [AvaloniaFact]
+    public void A_projects_run_settings_file_gives_its_variables_to_its_tests_beside_its_launch_profiles()
+    {
+        string solution = NewFolder();
+        Write(solution, "Settled.Tests/Settled.Tests.csproj", TestProject(TestProjects.Framework)
+            .Replace("</PropertyGroup>", "    <RunSettingsFilePath>$(MSBuildProjectDirectory)/settled.runsettings</RunSettingsFilePath>\n  </PropertyGroup>", StringComparison.Ordinal));
+        Write(solution, "Settled.Tests/settled.runsettings",
+            "<RunSettings>\n  <RunConfiguration>\n    <EnvironmentVariables>\n      <SETTLED_BY>the run settings</SETTLED_BY>\n    </EnvironmentVariables>\n  </RunConfiguration>\n</RunSettings>\n");
+        Write(solution, "Settled.Tests/Properties/launchSettings.json",
+            "{ \"profiles\": { \"Settled\": { \"commandName\": \"Project\", \"environmentVariables\": { \"PROFILED_BY\": \"the profile\" } } } }");
+        Write(solution, "Settled.Tests/SettledTests.cs",
+            "using Xunit;\n\nnamespace Settled.Tests;\n\npublic class SettledTests\n{\n    [Fact]\n    public void Reads_both() =>\n" +
+            "        Assert.Equal(\"the run settings, the profile\", $\"{Environment.GetEnvironmentVariable(\"SETTLED_BY\")}, {Environment.GetEnvironmentVariable(\"PROFILED_BY\")}\");\n}\n");
+        Restore.Run(Path.Combine(solution, "Settled.Tests"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Reads_both")?.State is TestState.Passed or TestState.Failed, "the run of the test", TimeSpan.FromSeconds(180));
+        TestNode test = Method(window, "Reads_both")!;
+        Assert.True(test.State == TestState.Passed, $"The test ran without its project's run settings' variable beside its profile's:\n{test.Details}");
+        window.Close();
+    }
+
     /// <summary>A run broken off by its test host's crash, a test calling Environment.Exit(3), says why in its tally, which
     /// an agent's tests_run answers with, in the Unit Tests window and on the status bar: the crash as VSTest tells it, and
     /// the test running then.</summary>
