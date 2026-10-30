@@ -374,7 +374,6 @@ internal sealed partial class XamlAssist : LanguageAssist
                 .OrderByDescending(f => Path.GetFileNameWithoutExtension(f).Length));
             candidates.AddRange(known.Where(f => f.Contains("/Accents/", StringComparison.Ordinal) && !candidates.Contains(f)));
         }
-        Regex place = ThemePlace(target);
         foreach (string candidate in candidates.Take(12))
         {
             if (await Fetch(candidate) is not { } local)
@@ -382,10 +381,9 @@ internal sealed partial class XamlAssist : LanguageAssist
                 continue;
             }
             string text = EditorArea.ReadText(local) ?? string.Empty;
-            Match where = place.Match(text);
-            if (where.Success)
+            if (XamlNavigation.ThemePlace(target, text) is { } at)
             {
-                return ((local, TextSnapshot.From(text).GetPosition(where.Groups["at"].Index)), $"{theme.Name}'s {candidate.TrimStart('/')}, from its Source Link");
+                return ((local, TextSnapshot.From(text).GetPosition(at)), $"{theme.Name}'s {candidate.TrimStart('/')}, from its Source Link");
             }
         }
         return (null, said.Last ?? $"{target.Name} is not in {theme.Name}'s XAML");
@@ -396,9 +394,8 @@ internal sealed partial class XamlAssist : LanguageAssist
     private static IEnumerable<string> Included(string text, string from, string assembly)
     {
         string folder = from[..(from.LastIndexOf('/') + 1)];
-        foreach (Match include in IncludeSource().Matches(text))
+        foreach (string source in XamlNavigation.ThemeIncludes(text))
         {
-            string source = include.Groups["source"].Value;
             string own = $"avares://{assembly}/";
             if (source.StartsWith(own, StringComparison.Ordinal))
             {
@@ -411,9 +408,6 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
     }
 
-    [GeneratedRegex(@"<(?:Merge)?ResourceInclude\b[^>]*\bSource=""(?<source>[^""]+)""")]
-    private static partial Regex IncludeSource();
-
     /// <summary>The last reason a library file could not be had, kept as it is said.</summary>
     private sealed class Said : IProgress<string>
     {
@@ -421,15 +415,6 @@ internal sealed partial class XamlAssist : LanguageAssist
 
         public void Report(string value) => Last = value;
     }
-
-    /// <summary>Where a theme's XAML writes what a target names: a template part's name, a control's theme, a resource's key.</summary>
-    private static Regex ThemePlace(XamlTarget target) => target switch
-    {
-        { Part: { } part, Type: not null } => new($@"\b(?:x:)?Name=""(?<at>{Regex.Escape(part)})"""),
-        { Type: { } shown } => new($@"<(?<at>ControlTheme)\b[^>]*(?:\{{x:Type\s+{Regex.Escape(shown.Name)}\}}|TargetType=""{Regex.Escape(shown.Name)}"")"),
-        { Part: { } key } => new($@"\bx:Key=""(?<at>{Regex.Escape(key)})"""),
-        _ => new("(?!)"),
-    };
 
     /// <summary>Goes where a XAML name leads (<see cref="XamlPlaceAsync"/>), saying in the status bar what there is to say.</summary>
     internal async Task Arrive(XamlTarget target, XamlFile? file = null)

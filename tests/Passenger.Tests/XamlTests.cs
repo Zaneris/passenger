@@ -1635,6 +1635,34 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A theme resource keyed in single quotes, and one spaced round its equals sign, in a theme file merged in by a
+    /// source in single quotes, are where Go to Declaration from a use of each lands in the theme's own XAML.</summary>
+    [AvaloniaFact]
+    public void Go_to_declaration_reaches_a_theme_resource_keyed_in_single_quotes_or_spaced_round_its_equals()
+    {
+        app.Rewrite("App.axaml", Gallery.AppXaml.Replace("<FluentTheme />", "<FluentTheme />\n        <Style Selector=\"Button\">\n"
+            + "            <Setter Property=\"Background\" Value=\"{DynamicResource ButtonBackground}\" />\n"
+            + "            <Setter Property=\"Foreground\" Value=\"{DynamicResource ButtonForeground}\" />\n        </Style>", StringComparison.Ordinal));
+        MainWindow window = app.Open(app.PathOf("App.axaml"));
+        window.XamlService.LibraryFiles = new ThemeSources(TestFolders.Create("xaml-theme-"), text => text
+            .Replace("Source=\"Button.xaml\"", "Source='Button.xaml'", StringComparison.Ordinal)
+            .Replace("<StaticResource x:Key=\"ButtonBackground\" ResourceKey=\"ControlFillColorDefaultBrush\" />",
+                "<StaticResource x:Key='ButtonBackground' ResourceKey=\"ControlFillColorDefaultBrush\" />\n"
+                + "  <StaticResource x:Key = \"ButtonForeground\" ResourceKey=\"TextFillColorPrimaryBrush\" />", StringComparison.Ordinal));
+        foreach ((string use, string key) in ((string, string)[])[("{DynamicResource ButtonBack", "x:Key='|ButtonBackground'"), ("{DynamicResource ButtonFore", "x:Key = \"|ButtonForeground\"")])
+        {
+            window.OpenFile(app.PathOf("App.axaml"));
+            Ui.Settle();
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, use);
+            Ui.Run(window, AppActions.GoToDeclaration);
+            Ui.Settle();
+            string landed = $"{window.EditorArea.Active?.Name}: {CaretLine(window.EditorArea.CodeEditor)}";
+            Assert.True(landed.StartsWith("Button.xaml: ", StringComparison.Ordinal) && landed.Contains(key, StringComparison.Ordinal),
+                $"Go to Declaration from {use}… landed at {landed}, not at {key} in the theme's XAML (status: {window.Status})");
+        }
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_themes_include_that_climbs_out_of_its_sources_folder_is_refused_and_nothing_is_written_outside_it()
     {
@@ -1673,9 +1701,9 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         }
     }
 
-    /// <summary>A theme library's files as its Source Link would give them, written into a folder of the test's; what was
-    /// asked for, in order.</summary>
-    private sealed class ThemeSources(string folder) : Passenger.App.Xaml.ILibraryFiles
+    /// <summary>A theme library's files as its Source Link would give them, written into a folder of the test's, each as
+    /// <paramref name="written"/> rewrites it where given; what was asked for, in order.</summary>
+    private sealed class ThemeSources(string folder, Func<string, string>? written = null) : Passenger.App.Xaml.ILibraryFiles
     {
         public List<(string Assembly, string Path)> Asked { get; } = [];
 
@@ -1701,7 +1729,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             // Kept as Source Link's files are, under a MetadataAsSource folder, which the editor shows read-only.
             string local = Path.Combine(folder, "MetadataAsSource", "SourceLink", assemblyName, path.TrimStart('/'));
             Directory.CreateDirectory(Path.GetDirectoryName(local)!);
-            File.WriteAllText(local, text);
+            File.WriteAllText(local, written?.Invoke(text) ?? text);
             return Task.FromResult<string?>(local);
         }
     }

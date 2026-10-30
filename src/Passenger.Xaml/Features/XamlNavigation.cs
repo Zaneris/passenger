@@ -497,6 +497,40 @@ public static class XamlNavigation
         }
     }
 
+    /// <summary>Where a theme library's XAML text writes what a theme target names, read from its markup however its values
+    /// are quoted or spaced: a template part's name (<c>x:Name</c> or <c>Name</c>), the tag of the <c>ControlTheme</c> a
+    /// type is given (keyed or targeted <c>{x:Type Button}</c>, or targeted <c>Button</c>), a resource's <c>x:Key</c>; null
+    /// where the text writes none.</summary>
+    public static int? ThemePlace(XamlTarget target, string text)
+    {
+        IReadOnlyList<XmlElement> elements = XmlTree.Parse(text).Elements;
+        return target switch
+        {
+            { Part: { } part, Type: not null } => elements.Select(XamlFile.NameAttribute).FirstOrDefault(a => a is { IsValueClosed: true } && a.Value == part)?.ValueStart,
+            { Type: { } shown } => elements.FirstOrDefault(e => IsThemeOf(e, shown.Name))?.NameStart,
+            { Part: { } key } => elements.Select(e => XamlFile.Directive(e, "Key")).FirstOrDefault(a => a is { IsValueClosed: true } && a.Value == key)?.ValueStart,
+            _ => null,
+        };
+    }
+
+    /// <summary>The files a theme library's XAML text merges in, as its <c>ResourceInclude</c>s and
+    /// <c>MergeResourceInclude</c>s write their <c>Source</c>, however it is quoted or spaced.</summary>
+    public static IEnumerable<string> ThemeIncludes(string text) =>
+        XmlTree.Parse(text).Elements.Where(e => e.LocalName is "ResourceInclude" or "MergeResourceInclude")
+            .Select(e => e.Attribute("Source")).OfType<XmlAttribute>().Where(a => a is { IsValueClosed: true, Value.Length: > 0 }).Select(a => a.Value);
+
+    /// <summary>Whether an element is the control theme a theme gives a type, by the type's name: keyed or targeted
+    /// <c>{x:Type Button}</c>, or targeted <c>Button</c>.</summary>
+    private static bool IsThemeOf(XmlElement element, string type) =>
+        element.LocalName == "ControlTheme"
+        && (TypeExtension(XamlFile.Directive(element, "Key")?.Value) == type
+            || element.Attribute("TargetType")?.Value is { } target && (TypeExtension(target) ?? target.Trim()) == type);
+
+    /// <summary>The type an <c>{x:Type}</c> value names, as written; null for another value.</summary>
+    private static string? TypeExtension(string? value) =>
+        value?.Trim() is { } trimmed && MarkupExtension.Parse(trimmed, 0, trimmed.Length) is { LocalName: "Type" } extension
+        && extension.Argument(null) is { Nested: null } argument ? argument.Value.Trim() : null;
+
     /// <summary>What a name is, in words: a type with its base, a member with its type and declaring type, a resource with
     /// what makes it (and its colour), an element with its type.</summary>
     public static string Describe(XamlFile file, XamlSymbol symbol)
