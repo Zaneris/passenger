@@ -11,17 +11,27 @@ public static class FolderMoves
     /// <summary>Moves a folder to a path not there yet: at once on one volume, else carried (<see cref="Carry"/>).</summary>
     public static void Move(string from, string to)
     {
+        if (!Renamed(from, to))
+        {
+            Carry(from, to);
+        }
+    }
+
+    /// <summary>Moves a folder to a path not there yet by renaming it, at once, where it lies on the volume it goes to: false,
+    /// nothing moved, where it must be carried (<see cref="Carry"/>).</summary>
+    public static bool Renamed(string from, string to)
+    {
         Directory.CreateDirectory(Path.GetDirectoryName(to)!);
         try
         {
             Directory.Move(from, to);
-            return;
+            return true;
         }
         catch (IOException) when (Directory.Exists(from) && !Directory.Exists(to))
         {
             // A rename moves nothing when it fails, so the folder is carried, as it must be from one volume to another.
+            return false;
         }
-        Carry(from, to);
     }
 
     /// <summary>Moves a folder by copy, as from one volume to another: renamed beside itself first, which a folder a process

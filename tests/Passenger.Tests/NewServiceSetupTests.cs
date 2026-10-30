@@ -3,6 +3,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Containers;
+using Passenger.App.Editors;
 using Passenger.App.Explorer;
 using Passenger.App.Run;
 using Passenger.App.Templates;
@@ -378,6 +379,114 @@ public sealed class NewServiceSetupTests : IDisposable
             held?.Dispose();
             window.Close();
         }
+    }
+
+    /// <summary>Undo and Redo of New Project whose folder lies on another volume than the IDE's state (a disk image of the
+    /// test's own, as an external drive is) carry the folder off the window's thread, the window's work saying so: keys
+    /// typed while a carry is held reach the editor, and Redo brings the folder back whole, what builds wrote in it too.</summary>
+    [AvaloniaFact]
+    public void Undo_and_Redo_of_New_Project_on_another_volume_carry_its_folder_while_the_window_answers_keys()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "A volume of the test's own is a disk image hdiutil makes, on macOS alone");
+        string volume = Directory.CreateDirectory(Path.Combine(place, "volume")).FullName;
+        string disk = Path.Combine(place, "volume.dmg");
+        ChildResult image = Ran("/usr/bin/hdiutil", "create", "-size", "64m", "-fs", "HFS+", "-volname", "Passenger Undo Tests", "-ov", disk, "-quiet");
+        Assert.SkipUnless(image.Succeeded, $"hdiutil made no disk image (exit code {image.ExitCode}): {image.Error}{image.Output}");
+        ChildResult attached = Ran("/usr/bin/hdiutil", "attach", disk, "-nobrowse", "-noautoopen", "-mountpoint", volume, "-quiet");
+        Assert.SkipUnless(attached.Succeeded, $"hdiutil attached no disk image (exit code {attached.ExitCode}): {attached.Error}{attached.Output}");
+        MainWindow? window = null;
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            // Spotlight indexes a volume wherever it is mounted, unless it holds this marker.
+            File.WriteAllText(Path.Combine(volume, ".metadata_never_index"), string.Empty);
+            TestFolders.Write(volume, "Tool/Tool.csproj", TestProjects.Console());
+            const string Program = "System.Console.WriteLine(\"tool\");\n";
+            TestFolders.Write(volume, "Tool/Program.cs", Program);
+            TestFolders.Write(volume, "Shop.slnx", "<Solution>\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
+            string root = PathNames.Canonical(volume);
+            string lib = Path.Combine(root, "Lib");
+            window = Ui.OpenFolder(root, languageServer: false);
+            Ui.Run(window, AppActions.NewProject);
+            NewProjectDialog dialog = Opened(window);
+            Choose(dialog, "classlib");
+            dialog.ProjectName = "Lib";
+            dialog.Framework = TestProjects.Framework;
+            Created(dialog, "the class library");
+            Assert.Null(SetUp(window));
+            string built = TestFolders.Write(lib, "bin/Debug/built.txt", "built\n");
+            Dictionary<string, byte[]> made = Made(lib);
+            window.OpenFile(Path.Combine(root, "Tool", "Program.cs"));
+            Ui.Settle();
+            List<string> asked = Answer(window);
+
+            Task held = MadeFolders.HoldNextCarry(release.Task);
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Undo, settle: false);
+            Ui.PumpUntil(() => held.IsCompleted || window.Status?.StartsWith("Cannot undo", StringComparison.Ordinal) == true,
+                "Undo's carry of the folder to the state's volume to be held");
+            Assert.True(held.IsCompleted, $"Undo of New Project on another volume carried nothing: {window.Status}");
+            Assert.Equal("Setting Lib aside: copying it to another disk…", window.Status);
+            Assert.True(window.Actions.WhyNot(EditorActions.Undo, window.Actions.Context()) is null,
+                $"Undo is greyed while the folder is carried, so the typing's own Undo cannot be asked: {window.Actions.WhyNot(EditorActions.Undo, window.Actions.Context())}");
+            Typed(window, "a", "a" + Program);
+            release.SetResult();
+            Ui.WaitFor(() => window.Status == "Undone: New Project Lib", () => $"Undo of New Project once its folder is carried; the status says '{window.Status}'");
+            Assert.Equal(["Undo"], asked);
+            Assert.False(Directory.Exists(lib), $"Undo left the new project's folder: {window.Status}");
+
+            release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            held = MadeFolders.HoldNextCarry(release.Task);
+            Ui.Run(window, AppActions.FocusExplorer);
+            Ui.Run(window, EditorActions.Redo, settle: false);
+            Ui.PumpUntil(() => held.IsCompleted || window.Status?.StartsWith("Cannot redo", StringComparison.Ordinal) == true,
+                "Redo's carry of the folder back to the test's volume to be held");
+            Assert.True(held.IsCompleted, $"Redo of New Project on another volume carried nothing: {window.Status}");
+            Assert.Equal("Putting Lib back: copying it from another disk…", window.Status);
+            Typed(window, "b", "ba" + Program);
+            release.SetResult();
+            Ui.WaitFor(() => window.Status == "Redone: New Project Lib", () => $"Redo of New Project once its folder is carried back; the status says '{window.Status}'");
+            Dictionary<string, byte[]> back = Made(lib);
+            Assert.True(back.Count == made.Count && made.All(f => back.TryGetValue(f.Key, out byte[]? now) && now.AsSpan().SequenceEqual(f.Value)),
+                $"Redo did not put the folder back as it was: [{string.Join(", ", back.Keys)}] of [{string.Join(", ", made.Keys)}]");
+            Assert.True(File.Exists(built) && File.ReadAllText(built) == "built\n", "Redo put the folder back without what builds wrote in its bin");
+        }
+        finally
+        {
+            release.TrySetResult();
+            if (window is not null)
+            {
+                window.Close();
+                Ui.AwaitPumped(window.Ended ?? Task.CompletedTask, "what the closed window started to end", MainWindow.EndLimit + TimeSpan.FromSeconds(5));
+            }
+            Detach(volume);
+        }
+    }
+
+    /// <summary>A key typed into the open file while the window's thread is free, read back from the editor at once.</summary>
+    private static void Typed(MainWindow window, string key, string text)
+    {
+        window.EditorArea.CodeEditor.Focus();
+        window.EditorArea.CodeEditor.Selections = Passenger.Text.SelectionSet.Single(0);
+        window.KeyTextInput(key);
+        Assert.True(window.EditorArea.CodeEditor.Document.Snapshot.ToString() == text,
+            $"A key typed while the folder was carried did not reach the editor, so the window was not answering: '{window.EditorArea.CodeEditor.Document.Snapshot}'");
+    }
+
+    /// <summary>The test's disk image detached, even while something still reads it.</summary>
+    private static void Detach(string volume)
+    {
+        ChildResult detached = null!;
+        Assert.True(Waiting.Until(() => (detached = Ran("/usr/bin/hdiutil", "detach", volume, "-force", "-quiet")).Succeeded, TimeSpan.FromSeconds(10), every: TimeSpan.FromSeconds(1)),
+            $"The test's volume {volume} could not be detached (hdiutil exited with code {detached.ExitCode}): {detached.Error}");
+    }
+
+    /// <summary>A system tool run on the thread pool and waited for with the window's loop running.</summary>
+    private static ChildResult Ran(string tool, params string[] arguments)
+    {
+        TimeSpan limit = TimeSpan.FromMinutes(1);
+        return Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tool, arguments), limit: limit.Scaled())),
+            $"{tool} {string.Join(' ', arguments)}", limit.Scaled() + TestFolders.Spare);
     }
 
     /// <summary>New Solution of a web API with Docker Compose: the solution's compose.yaml has it as a service built from its

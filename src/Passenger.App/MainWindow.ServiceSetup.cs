@@ -193,8 +193,8 @@ public partial class MainWindow
     /// <summary>The folder a command made whole, at its end, kept as its files' lengths and times read off the window's
     /// thread: Undo moves it aside under the window's state (its open files' tabs closed) once every file in it but what
     /// builds write is as the command left it and none holds edits not saved, saying which otherwise, and Redo moves it
-    /// back from there, each before the command's files, so a move the disk refuses leaves the command as it was and says
-    /// why; nothing of its bytes is read or held.</summary>
+    /// back from there (<see cref="MoveMadeAsync"/>), each before the command's files, so a move the disk refuses leaves the
+    /// command as it was and says why; nothing of its bytes is read or held.</summary>
     private async Task<CommandHistory.Part> MadeFolderAsync(string folder)
     {
         string state = StateFolder;
@@ -209,29 +209,53 @@ public partial class MainWindow
             redo ? Directory.Exists(folder) || File.Exists(folder) ? $"{name} is already there" : Directory.Exists(aside) ? null : $"{name} was not kept to be made again"
             : !Directory.Exists(folder) ? $"{name} is no longer there"
             : Editors.Documents.FirstOrDefault(d => d.IsModified && PathNames.IsUnder(d.Path, folder)) is { } edited ? $"{edited.Name} has edits not saved"
-            : null, redo => Following([folder], () =>
-        {
-            try
-            {
-                MadeFolders.Move(redo ? aside : folder, redo ? folder : aside);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                return $"{name} could not be {(redo ? "put back" : "set aside")}: {error.Message}";
-            }
-            if (!redo)
-            {
-                foreach (OpenDocument document in Editors.Documents.Where(d => PathNames.IsUnder(d.Path, folder)).ToList())
-                {
-                    Editors.CloseDeleted(document);
-                }
-            }
-            return (string?)null;
-        }))
+            : null, redo => MoveMadeAsync(folder, aside, redo))
         {
             Read = redo => redo ? Task.FromResult<string?>(null) : BackgroundWork.Run(() => MadeFolders.Unlike(folder, made)),
             Dropped = () => MadeFolders.Forget(aside),
             First = true,
         };
+    }
+
+    /// <summary>A folder a command made moved aside (or back, given true) and followed: renamed at once on one volume, else
+    /// carried off the window's thread while the window's work says so, its tabs closed first, as nothing can be saved into
+    /// it meanwhile. Why the disk refused it, the folder left where it was; null once moved.</summary>
+    private async Task<string?> MoveMadeAsync(string folder, string aside, bool redo)
+    {
+        string name = Path.GetFileName(folder);
+        Dictionary<string, bool> stood = Standing([folder]);
+        try
+        {
+            await MadeFolders.MoveAsync(redo ? aside : folder, redo ? folder : aside, () =>
+            {
+                if (!redo)
+                {
+                    CloseUnder(folder);
+                }
+                return work.Begin(MadeFolders.Carrying,
+                    redo ? $"Putting {name} back: copying it from another disk…" : $"Setting {name} aside: copying it to another disk…", stoppable: false);
+            });
+            if (!redo)
+            {
+                CloseUnder(folder);
+            }
+            return null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return $"{name} could not be {(redo ? "put back" : "set aside")}: {error.Message}";
+        }
+        finally
+        {
+            Followed(stood, [], [folder]);
+        }
+    }
+
+    private void CloseUnder(string folder)
+    {
+        foreach (OpenDocument document in Editors.Documents.Where(d => PathNames.IsUnder(d.Path, folder)).ToList())
+        {
+            Editors.CloseDeleted(document);
+        }
     }
 }

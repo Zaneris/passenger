@@ -124,7 +124,7 @@ public partial class MainWindow
             redo =>
             {
                 configurations.SetEdit(name, redo ? after : before);
-                return null;
+                return Task.FromResult<string?>(null);
             }));
         return (now, null);
     }
@@ -286,11 +286,11 @@ public partial class MainWindow
                     {
                         Directory.Delete(properties);
                     }
-                    return null;
+                    return Task.FromResult<string?>(null);
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
-                    return $"the Properties folder could not be deleted: {error.Message}";
+                    return Task.FromResult<string?>($"the Properties folder could not be deleted: {error.Message}");
                 }
             }));
         }
@@ -310,10 +310,10 @@ public partial class MainWindow
             {
                 if (redo)
                 {
-                    return configurations.Share(mine.Name, project.Path, profile) is null ? $"The launch profile {profile} makes no run configuration" : null;
+                    return Task.FromResult(configurations.Share(mine.Name, project.Path, profile) is null ? $"The launch profile {profile} makes no run configuration" : null);
                 }
                 configurations.Unshare(mine, at, now.Name, before, chosen);
-                return null;
+                return Task.FromResult<string?>(null);
             }));
         return (now, $"Saved as the launch profile {profile} in {project.Name}'s {LaunchProfile.SettingsShown(project.Path)}{(madeFile ? ", made for it" : string.Empty)}: "
             + $"it is now {now.Name}, generated from that profile");
