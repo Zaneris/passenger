@@ -995,12 +995,38 @@ public partial class ManagedDebugger
 
     /// <summary>An expression's value in a frame. One asked for by name (the Evaluate window, a watch) runs the code it needs
     /// even once implicit evaluation is off; one the IDE asks of itself (a hover) does not.</summary>
-    public async Task<VariableInfo> Evaluate(string expression, int? frameId, bool implicitly = false)
+    public Task<VariableInfo> Evaluate(string expression, int? frameId, bool implicitly = false) =>
+        Evaluate(expression, frameId, expression.Trim(), implicitly);
+
+    /// <summary>Set Value: what an expression names takes a value, by their assignment's one evaluation, whose own value is
+    /// the answer, so the target (an index that moves on, a call) runs once. A real number with no suffix, as a float's or
+    /// a decimal's value is shown, takes the one its target's type needs, read from the target's compile alone.</summary>
+    public async Task<VariableInfo> Assign(string target, string value, int? frameId)
+    {
+        if (RealLiteral().IsMatch(value))
+        {
+            ArgumentNullException.ThrowIfNull(_expressionEvaluator);
+            value += _expressionEvaluator.TypeOf(target, ContextOf(frameId)) switch
+            {
+                "System.Single" or "System.Nullable`1<System.Single>" => "f",
+                "System.Decimal" or "System.Nullable`1<System.Decimal>" => "m",
+                _ => string.Empty,
+            };
+        }
+        return await Evaluate($"{target} = {value}", frameId, target.Trim(), implicitly: false);
+    }
+
+    /// <summary>A real number as the debugger shows a float's, a double's or a decimal's: a point or an exponent, no suffix.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"^-?\d+(\.\d+([eE][+-]?\d+)?|[eE][+-]?\d+)$")]
+    private static partial System.Text.RegularExpressions.Regex RealLiteral();
+
+    /// <summary>An expression's value, its members reached by the name given (the target of an assignment, for one).</summary>
+    private async Task<VariableInfo> Evaluate(string expression, int? frameId, string named, bool implicitly)
     {
         EvalStatus.Explicit = !implicitly;
         try
         {
-            return await EvaluateInFrame(expression, frameId);
+            return await EvaluateInFrame(expression, frameId, named);
         }
         finally
         {
@@ -1008,9 +1034,48 @@ public partial class ManagedDebugger
         }
     }
 
-    private async Task<VariableInfo> EvaluateInFrame(string expression, int? frameId)
+    private async Task<VariableInfo> EvaluateInFrame(string expression, int? frameId, string named)
     {
         _logger?.Invoke($"Evaluate: {expression}");
+        CompiledExpressionEvaluationContext evalContext = ContextOf(frameId);
+        (ThreadId threadId, FrameStackDepth frameStackDepth) = (evalContext.ThreadId, evalContext.StackDepth);
+        ArgumentNullException.ThrowIfNull(_expressionEvaluator);
+        using EvaluationResult result = await _expressionEvaluator.Evaluate(expression, evalContext);
+
+        if (result.Error is not null)
+        {
+            _logger?.Invoke($"Evaluation error: {result.Error}");
+            return new VariableInfo
+            {
+                Name = null!,
+                Value = result.Error,
+                Type = null,
+                PresentationHint = new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation },
+                VariablesReference = 0
+            };
+        }
+        (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError) = await GetValueForCorDebugValueAsync(result.Value!, threadId, frameStackDepth, true);
+        VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null;
+        int variablesReference = GetVariablesReference(result.Value!, friendlyTypeName, threadId, frameStackDepth, debuggerProxyInstance, named);
+        VariableInfo variableInfo = new VariableInfo
+        {
+            Name = null!,
+            Value = value,
+            Type = friendlyTypeName,
+            PresentationHint = variablePresentationHint,
+            VariablesReference = variablesReference
+        };
+        if (variablesReference != 0)
+        {
+            result.RelinquishResultHandleOwnership();
+        }
+
+        return variableInfo;
+    }
+
+    /// <summary>Where an expression is evaluated: a frame of the stopped program, one an evaluation can run in.</summary>
+    private CompiledExpressionEvaluationContext ContextOf(int? frameId)
+    {
         if (frameId is null or 0)
         {
             throw new InvalidOperationException("Frame ID is required for evaluation");
@@ -1030,40 +1095,7 @@ public partial class ManagedDebugger
 
         ICorDebugThread? thread = _threads.GetValueOrDefault(threadId.Value)?.Thread;
         ArgumentNullException.ThrowIfNull(thread);
-
-        CompiledExpressionEvaluationContext evalContext = new CompiledExpressionEvaluationContext(thread, threadId, frameStackDepth);
-        ArgumentNullException.ThrowIfNull(_expressionEvaluator);
-        using EvaluationResult result = await _expressionEvaluator.Evaluate(expression, evalContext);
-
-        if (result.Error is not null)
-        {
-            _logger?.Invoke($"Evaluation error: {result.Error}");
-            return new VariableInfo
-            {
-                Name = null!,
-                Value = result.Error,
-                Type = null,
-                PresentationHint = new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation },
-                VariablesReference = 0
-            };
-        }
-        (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError) = await GetValueForCorDebugValueAsync(result.Value!, threadId, frameStackDepth, true);
-        VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null;
-        int variablesReference = GetVariablesReference(result.Value!, friendlyTypeName, threadId, frameStackDepth, debuggerProxyInstance, expression.Trim());
-        VariableInfo variableInfo = new VariableInfo
-        {
-            Name = null!,
-            Value = value,
-            Type = friendlyTypeName,
-            PresentationHint = variablePresentationHint,
-            VariablesReference = variablesReference
-        };
-        if (variablesReference != 0)
-        {
-            result.RelinquishResultHandleOwnership();
-        }
-
-        return variableInfo;
+        return new CompiledExpressionEvaluationContext(thread, threadId, frameStackDepth);
     }
 
     /// <summary>Ends the program and lets go of it, once the runtime has seen it go.</summary>

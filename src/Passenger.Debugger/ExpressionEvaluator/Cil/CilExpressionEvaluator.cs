@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Reflection.Metadata;
 using Passenger.Debugger.ExpressionEvaluator.Compiler;
 using Passenger.Debugger.Interop;
 
@@ -50,6 +51,14 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
             return new EvaluationResult { Error = $"error: {ex.Message}" };
         }
     }
+
+    /// <summary>The type of an expression's value as it compiles, none of it run, as
+    /// <see cref="SignatureKeyProvider.Dotted"/> writes it (System.Single, System.Nullable`1&lt;System.Decimal&gt;); null
+    /// where it does not compile.</summary>
+    internal string? TypeOf(string expression, CompiledExpressionEvaluationContext context) =>
+        _compiler.TryCompile(expression, context, out _) is { } compiled
+            ? compiled.MetadataReader.GetMethodDefinition(compiled.EntryMethod).DecodeSignature(SignatureKeyProvider.Dotted, null).ReturnType
+            : null;
 
     /// <summary>Loads into the program the assemblies an expression needs and it has not loaded (a program that has
     /// called no LINQ method has no System.Linq). Whether each loaded, the runtime's module load having added it to

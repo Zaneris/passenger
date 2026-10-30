@@ -12,7 +12,7 @@ namespace Passenger.DebugAdapter;
 /// an event; a read of the stop (<see cref="Read{T}(Func{T})"/>) waits behind every other request, and the read under way
 /// gives way as one that leaves the stop comes (<see cref="Leave"/>). Each engine event goes out as the protocol's.
 /// Lines and columns are the client's choice of base, the engine's own counting from one.</summary>
-public sealed partial class DebugAdapter
+public sealed class DebugAdapter
 {
     private readonly ManagedDebugger debugger;
     private readonly DapConnection connection;
@@ -180,21 +180,12 @@ public sealed partial class DebugAdapter
         });
         connection.Handle<SetExpressionArguments, SetExpressionResponse>(DapCommands.SetExpression, async arguments =>
         {
-            // The value is set as an assignment's evaluation, then read back as it now is.
-            string value = arguments.Value;
-            if (RealLiteral().IsMatch(value))
-            {
-                // A float or a decimal is shown with no suffix, which its literal needs to be assigned: it is added.
-                VariableInfo target = await Locked(() => debugger.Evaluate(arguments.Expression, arguments.FrameId));
-                value += target.Type switch { "float" or "float?" => "f", "decimal" or "decimal?" => "m", _ => string.Empty };
-            }
-            VariableInfo assigned = await Locked(() => debugger.Evaluate($"{arguments.Expression} = {value}", arguments.FrameId));
+            VariableInfo assigned = await Locked(() => debugger.Assign(arguments.Expression, arguments.Value, arguments.FrameId));
             if (assigned.PresentationHint?.Attributes == AttributesValue.FailedEvaluation)
             {
                 throw new InvalidOperationException(assigned.Value.StartsWith("error: ", StringComparison.Ordinal) ? assigned.Value["error: ".Length..] : assigned.Value);
             }
-            VariableInfo now = await Locked(() => debugger.Evaluate(arguments.Expression, arguments.FrameId));
-            return new SetExpressionResponse { Value = now.Value, Type = now.Type, VariablesReference = now.VariablesReference };
+            return new SetExpressionResponse { Value = assigned.Value, Type = assigned.Type, VariablesReference = assigned.VariablesReference };
         });
         connection.Handle<ThreadArguments, ContinueResponse>(DapCommands.Continue, async _ =>
         {
@@ -769,8 +760,4 @@ public sealed partial class DebugAdapter
     private int ColumnIn(int column) => columnsStartAt1 ? column : column + 1;
 
     private int ColumnOut(int column) => columnsStartAt1 ? column : column - 1;
-
-    /// <summary>A real number as the debugger shows a float's, a double's or a decimal's: a point or an exponent, no suffix.</summary>
-    [System.Text.RegularExpressions.GeneratedRegex(@"^-?\d+(\.\d+([eE][+-]?\d+)?|[eE][+-]?\d+)$")]
-    private static partial System.Text.RegularExpressions.Regex RealLiteral();
 }

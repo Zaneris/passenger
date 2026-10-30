@@ -4,7 +4,7 @@ using Passenger.Tests.Debugging.Helpers;
 namespace Passenger.Tests.Debugging;
 
 /// <summary>Set Value through the protocol, at Setting.Run's stop in PassengerCases: what it writes is what was asked,
-/// into what the expression names, and the program goes on with it.</summary>
+/// into what the expression names, its target run once, and the program goes on with it.</summary>
 [Collection(DebugSession.Collection)]
 public class SetValueTests(ITestOutputHelper testOutputHelper)
 {
@@ -29,6 +29,25 @@ public class SetValueTests(ITestOutputHelper testOutputHelper)
         await host.ContinueAsync();
         (string output, _) = await host.WaitForEnd();
         Assert.Contains("boxed 7, shared 42, same False", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>Set Value on an element its index moves past runs the index once and answers the element it wrote, a real
+    /// number written as a float is shown taking its suffix without the target being run for it.</summary>
+    [Fact]
+    public async Task Set_Value_runs_its_target_once_and_answers_the_value_it_wrote()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        (_, int frame) = await StoppedAtSettingAsync(host);
+
+        Assert.Equal("123", await Set(host, frame, "values[i++]", "123"));
+        Assert.True(await Evaluate(host, frame, "i") == "2", $"values[i++] = 123 left i {await Evaluate(host, frame, "i")}, where its index runs once from 1");
+        Assert.Equal(("123", "30"), (await Evaluate(host, frame, "values[1]"), await Evaluate(host, frame, "values[2]")));
+        Assert.Equal("2.5", await Set(host, frame, "ratios[j++]", "2.5"));
+        Assert.True(await Evaluate(host, frame, "j") == "1", $"ratios[j++] = 2.5 left j {await Evaluate(host, frame, "j")}, where its index runs once from 0");
+
+        await host.ContinueAsync();
+        (string output, _) = await host.WaitForEnd();
+        Assert.Contains("values 10 123 30, i 2, ratios 25, j 1", output, StringComparison.Ordinal);
     }
 
     /// <summary>The program launched to Setting.Run's stop, and its top frame.</summary>
