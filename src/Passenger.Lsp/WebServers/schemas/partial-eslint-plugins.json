@@ -107,7 +107,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -147,7 +147,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -193,7 +193,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -255,7 +255,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -294,7 +294,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -334,7 +334,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -414,7 +414,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -452,7 +452,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -492,7 +492,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -558,7 +558,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -614,7 +614,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -659,7 +659,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -704,7 +704,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -747,7 +747,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -806,7 +806,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -846,7 +846,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -885,7 +885,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -935,7 +935,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1022,7 +1022,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1058,7 +1058,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1109,7 +1109,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1160,7 +1160,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1196,7 +1196,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1279,7 +1279,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1345,7 +1345,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1411,7 +1411,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1451,7 +1451,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1484,7 +1484,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1524,7 +1524,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1627,7 +1627,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1678,7 +1678,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1722,7 +1722,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1830,7 +1830,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1874,7 +1874,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1919,7 +1919,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -1959,7 +1959,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2032,7 +2032,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2072,7 +2072,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2116,7 +2116,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2162,7 +2162,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2195,7 +2195,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2233,7 +2233,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2280,7 +2280,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2330,7 +2330,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2386,7 +2386,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2424,7 +2424,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2478,7 +2478,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2516,7 +2516,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2584,7 +2584,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2656,7 +2656,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2712,7 +2712,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2753,7 +2753,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2824,7 +2824,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2870,7 +2870,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -2984,7 +2984,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3025,7 +3025,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3066,7 +3066,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3110,7 +3110,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3179,7 +3179,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3250,7 +3250,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3292,7 +3292,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3369,7 +3369,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3407,7 +3407,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3454,7 +3454,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3496,7 +3496,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3538,7 +3538,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3598,7 +3598,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3631,7 +3631,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3762,7 +3762,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3795,7 +3795,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3831,7 +3831,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3873,7 +3873,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3906,7 +3906,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -3992,7 +3992,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4025,7 +4025,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4077,7 +4077,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4110,7 +4110,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4176,7 +4176,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4209,7 +4209,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4269,7 +4269,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4311,7 +4311,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4344,7 +4344,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4381,7 +4381,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4414,7 +4414,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4447,7 +4447,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4480,7 +4480,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4513,7 +4513,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4568,7 +4568,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4601,7 +4601,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4651,7 +4651,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4684,7 +4684,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4717,7 +4717,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4759,7 +4759,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4805,7 +4805,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4848,7 +4848,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4894,7 +4894,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4947,7 +4947,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -4990,7 +4990,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -5023,7 +5023,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -5056,7 +5056,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -5092,7 +5092,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -5125,7 +5125,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -5164,7 +5164,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -5197,7 +5197,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6061,7 +6061,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6108,7 +6108,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6178,7 +6178,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6211,7 +6211,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6260,7 +6260,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6301,7 +6301,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6348,7 +6348,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6381,7 +6381,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6414,7 +6414,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6452,7 +6452,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6491,7 +6491,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6553,7 +6553,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6586,7 +6586,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6631,7 +6631,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6673,7 +6673,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6741,7 +6741,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6781,7 +6781,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6826,7 +6826,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6885,7 +6885,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6928,7 +6928,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -6971,7 +6971,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7021,7 +7021,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7082,7 +7082,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7122,7 +7122,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7168,7 +7168,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7205,7 +7205,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7347,7 +7347,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7411,7 +7411,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7448,7 +7448,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7488,7 +7488,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7528,7 +7528,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7622,7 +7622,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7662,7 +7662,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7703,7 +7703,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7749,7 +7749,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7786,7 +7786,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7827,7 +7827,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7888,7 +7888,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7928,7 +7928,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -7995,7 +7995,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8038,7 +8038,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8078,7 +8078,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8121,7 +8121,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8173,7 +8173,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8220,7 +8220,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8253,7 +8253,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8286,7 +8286,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8334,7 +8334,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8367,7 +8367,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8404,7 +8404,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8437,7 +8437,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8470,7 +8470,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8518,7 +8518,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8551,7 +8551,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8593,7 +8593,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8633,7 +8633,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8676,7 +8676,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8733,7 +8733,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8797,7 +8797,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8837,7 +8837,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8873,7 +8873,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8927,7 +8927,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8960,7 +8960,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -8993,7 +8993,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9031,7 +9031,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9082,7 +9082,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9115,7 +9115,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9151,7 +9151,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9184,7 +9184,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9220,7 +9220,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9253,7 +9253,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9286,7 +9286,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9319,7 +9319,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9352,7 +9352,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9439,7 +9439,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9485,7 +9485,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9528,7 +9528,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9571,7 +9571,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9616,7 +9616,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9657,7 +9657,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9690,7 +9690,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9723,7 +9723,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9756,7 +9756,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9823,7 +9823,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9865,7 +9865,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9898,7 +9898,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9931,7 +9931,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -9969,7 +9969,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -10002,7 +10002,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -10035,7 +10035,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -10072,7 +10072,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -10120,7 +10120,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -10174,7 +10174,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -10243,7 +10243,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -10295,7 +10295,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -10355,7 +10355,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -10391,7 +10391,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -10424,7 +10424,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11300,7 +11300,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11406,7 +11406,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11439,7 +11439,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11484,7 +11484,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11550,7 +11550,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11589,7 +11589,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11631,7 +11631,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11674,7 +11674,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11720,7 +11720,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11763,7 +11763,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11820,7 +11820,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11857,7 +11857,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11908,7 +11908,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -11958,7 +11958,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12103,7 +12103,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12143,7 +12143,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12181,7 +12181,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12238,7 +12238,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12319,7 +12319,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12360,7 +12360,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12431,7 +12431,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12482,7 +12482,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12525,7 +12525,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12569,7 +12569,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12625,7 +12625,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12670,7 +12670,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12710,7 +12710,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12768,7 +12768,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12810,7 +12810,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12861,7 +12861,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12929,7 +12929,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -12979,7 +12979,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13012,7 +13012,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13054,7 +13054,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13098,7 +13098,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13131,7 +13131,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13174,7 +13174,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13219,7 +13219,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13267,7 +13267,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13307,7 +13307,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13378,7 +13378,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13444,7 +13444,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13481,7 +13481,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13518,7 +13518,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13664,7 +13664,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13706,7 +13706,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13840,7 +13840,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13881,7 +13881,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -13939,7 +13939,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -14001,7 +14001,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -14053,7 +14053,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -14120,7 +14120,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -14153,7 +14153,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -14186,7 +14186,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -14224,7 +14224,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -14285,7 +14285,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -14327,7 +14327,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -14373,7 +14373,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -14425,7 +14425,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -14483,7 +14483,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [
@@ -14521,7 +14521,7 @@
           "$ref": "#/definitions/ruleString"
         },
         {
-          "minItems": 2,
+          "minItems": 1,
           "maxItems": 2,
           "type": "array",
           "items": [

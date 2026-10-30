@@ -161,6 +161,28 @@ public sealed class JsonSchemaTests
         }
     }
 
+    /// <summary>ESLint runs a plugin's rule written as its severity alone in an array, ["error"], as it runs "error", so
+    /// package.json's eslintConfig marks none of them.</summary>
+    [AvaloniaFact]
+    public void Package_jsons_eslint_config_takes_a_plugin_rule_of_its_severity_alone_in_an_array_as_eslint_runs_it()
+    {
+        List<(string Text, string Message)> marked = Marked("package.json", """
+            {
+              "name": "lint",
+              "private": "yes",
+              "eslintConfig": {
+                "rules": {
+                  "@typescript-eslint/no-explicit-any": ["error"],
+                  "import/no-unresolved": ["warn"],
+                  "vue/max-len": [2]
+                }
+              }
+            }
+
+            """, "\"yes\"");
+        Assert.True(marked.Count == 0, $"Rules ESLint runs are marked as wrong, where the file has {Said(marked)}");
+    }
+
     /// <summary>stylelint runs a rule that takes a number written with its options, [2, { "severity": "warning" }], so a
     /// stylelint configuration in package.json marks none of them.</summary>
     [AvaloniaFact]

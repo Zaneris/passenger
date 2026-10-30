@@ -895,7 +895,8 @@ Passenger's changes, each where a schema refused what the tool it describes take
   `Name`, Kestrel's `Url`, NLog's `type` and `logger`, elmah.io's `ApiKey` and `LogId`) required only where no key is
   it in another case.
 - `partial-eslint-plugins.json`: the rules of eslint-plugin-import, eslint-plugin-unicorn and eslint-plugin-vue are
-  named by the plugin's short name (`import/no-unresolved`), as ESLint names them, where the package's name led them.
+  named by the plugin's short name (`import/no-unresolved`), as ESLint names them, where the package's name led them;
+  a rule's array form takes its severity alone, where it had to hold an option too.
 - `package.json`: an export or import condition is any name but one starting with a dot or an array index, where it
   took no digit or dot.
 - `stylelintrc.json`: a rule that takes a number takes it first in its array form, where the number had to be one of an
