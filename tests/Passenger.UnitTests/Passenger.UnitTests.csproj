@@ -40,6 +40,11 @@
     <Compile Include="../../src/Passenger.App/Debugging/Signatures.cs" Link="App/Signatures.cs" />
   </ItemGroup>
 
+  <!-- How a CSV's records are read, from its text alone, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Tables/Table.cs" Link="App/Table.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>

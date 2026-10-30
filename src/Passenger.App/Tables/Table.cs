@@ -81,16 +81,43 @@ public sealed class CsvTable : Table
     public override string Header(int column) => first == 1 ? Field(0, column) : Letters(column);
 
     /// <summary>The separator a file's name says (a tab for .tsv), or for a .csv whichever of comma and semicolon its first
-    /// line has more of, as Excel writes semicolons where the comma is the decimal point.</summary>
+    /// record has more of outside quoted fields, as Excel writes semicolons where the comma is the decimal point. The record
+    /// is read as <see cref="Parse"/> reads one, a quoted field's line breaks within it.</summary>
     public static char SeparatorFor(string path, ReadOnlySpan<char> text)
     {
         if (Path.GetExtension(path).Equals(".tsv", StringComparison.OrdinalIgnoreCase))
         {
             return '\t';
         }
-        int end = text.IndexOfAny('\r', '\n');
-        ReadOnlySpan<char> line = end < 0 ? text : text[..end];
-        return line.Count(';') > line.Count(',') ? ';' : ',';
+        int commas = 0;
+        int semicolons = 0;
+        int i = 0;
+        while (i < text.Length)
+        {
+            // A field, either separator ending it: quoted only where a quote begins it, then on to its end.
+            if (text[i] == '"')
+            {
+                i = PastQuoted(text, i);
+            }
+            while (i < text.Length && text[i] is not (',' or ';' or '\r' or '\n'))
+            {
+                i++;
+            }
+            if (i == text.Length || text[i] is '\r' or '\n')
+            {
+                break;
+            }
+            if (text[i] == ',')
+            {
+                commas++;
+            }
+            else
+            {
+                semicolons++;
+            }
+            i++;
+        }
+        return semicolons > commas ? ';' : ',';
     }
 
     /// <summary>Reads a text's records in one pass; with <paramref name="header"/>, the first is the columns' names.</summary>
@@ -110,24 +137,8 @@ public sealed class CsvTable : Table
                 int start = i;
                 if (i < length && text[i] == '"')
                 {
-                    // Quoted: to the quote that no other quote follows, then on to the separator or the line's end.
-                    i++;
-                    while (i < length)
-                    {
-                        int quote = text.IndexOf('"', i);
-                        if (quote < 0)
-                        {
-                            i = length;
-                            break;
-                        }
-                        if (quote + 1 < length && text[quote + 1] == '"')
-                        {
-                            i = quote + 2;
-                            continue;
-                        }
-                        i = quote + 1;
-                        break;
-                    }
+                    // Quoted: past its closing quote, then on to the separator or the line's end.
+                    i = PastQuoted(text, i);
                 }
                 while (i < length && text[i] != separator && text[i] != '\n' && text[i] != '\r')
                 {
@@ -155,6 +166,29 @@ public sealed class CsvTable : Table
         }
         records.Add(fields.Count / 2);
         return new CsvTable(text, [.. fields], [.. records], columns, header);
+    }
+
+    /// <summary>Just past the quote that closes a quoted field opened at <paramref name="open"/>, the one no other quote
+    /// follows, or the text's end where none does.</summary>
+    private static int PastQuoted(ReadOnlySpan<char> text, int open)
+    {
+        int i = open + 1;
+        while (i < text.Length)
+        {
+            int quote = text[i..].IndexOf('"');
+            if (quote < 0)
+            {
+                break;
+            }
+            quote += i;
+            if (quote + 1 < text.Length && text[quote + 1] == '"')
+            {
+                i = quote + 2;
+                continue;
+            }
+            return quote + 1;
+        }
+        return text.Length;
     }
 
     private ReadOnlySpan<char> Span(int record, int column)
