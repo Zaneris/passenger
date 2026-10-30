@@ -144,7 +144,7 @@ public static class SolutionEdits
         {
             return (false, problem);
         }
-        FileText.Save(file, text, read.Encoding, read.HasBom, read.CrBreaks);
+        FileText.SaveOver(file, read, text);
         return (true, null);
     }
 
@@ -218,9 +218,9 @@ public static class SolutionEdits
 
         protected abstract string Written();
 
-        /// <summary>Writes the solution back as an editor's save does (<see cref="FileText.Save"/>), in the encoding
+        /// <summary>Writes the solution back as an editor's save does (<see cref="FileText.SaveOver"/>), in the encoding
         /// and line breaks it came with.</summary>
-        public void Write() => FileText.Save(FilePath, Written(), file.Encoding, file.HasBom, file.CrBreaks);
+        public void Write() => FileText.SaveOver(FilePath, file, Written());
 
         /// <summary>A path the solution names, relative to it, as the file system names it.</summary>
         protected string Resolve(string relative) => PathNames.Canonical(Path.Combine(Root, relative.Replace('\\', '/')));

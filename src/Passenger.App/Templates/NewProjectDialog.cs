@@ -889,7 +889,7 @@ public sealed class NewProjectDialog : IdeWindow
                         }
                         else
                         {
-                            FileText.Save(path, before.Text, before.Encoding, before.HasBom, before.CrBreaks);
+                            FileText.SaveOver(path, before, before.Text);
                         }
                     }
                     catch (Exception error) when (error is IOException or UnauthorizedAccessException)

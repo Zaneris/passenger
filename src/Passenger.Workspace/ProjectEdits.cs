@@ -396,8 +396,8 @@ public static class ProjectEdits
 
         public string Text { get; }
 
-        /// <summary>Writes the project back as an editor's save does (<see cref="FileText.Save"/>), in the encoding and
+        /// <summary>Writes the project back as an editor's save does (<see cref="FileText.SaveOver"/>), in the encoding and
         /// line breaks it came with.</summary>
-        public void Write(string text) => FileText.Save(path, text, file.Encoding, file.HasBom, file.CrBreaks);
+        public void Write(string text) => FileText.SaveOver(path, file, text);
     }
 }

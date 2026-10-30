@@ -1711,6 +1711,57 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Add to .gitignore with no .gitignore makes one as its .editorconfig asks, a byte order mark and CRLF, and
+    /// Undo then Redo in the Solution view puts it back in those same bytes, whether it was closed or open when undone.</summary>
+    [AvaloniaFact]
+    public void Add_to_gitignore_making_the_file_as_its_editorconfig_asks_and_Undo_then_Redo_put_it_back_in_the_same_bytes()
+    {
+        File.WriteAllText(Path.Combine(folder, ".editorconfig"), "root = true\n\n[*]\nend_of_line = crlf\ncharset = utf-8-bom\n");
+        File.WriteAllText(Path.Combine(folder, "notes.txt"), "scratch\n");
+        string ignore = Path.Combine(PathNames.Canonical(folder), ".gitignore");
+        MainWindow window = Open();
+        List<string> asked = [];
+        window.Confirm = (_, text, _) =>
+        {
+            asked.Add(text);
+            return Task.FromResult(true);
+        };
+        window.Perform(AppActions.ShowCommit);
+        Avalonia.Controls.ListBox changes = Find(window.CommitView, window.CommitView.Rows);
+        Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "notes.txt"), "the unversioned file listed");
+        changes.SelectedItem = window.CommitView.Rows.OfType<CommitRow>().First(r => r.Change.Name == "notes.txt");
+        Ui.ChooseFromMenu(changes, "Add to .gitignore");
+        byte[] made = [0xEF, 0xBB, 0xBF, .. "/notes.txt\r\n"u8];
+        Assert.Equal(made, File.ReadAllBytes(ignore));
+
+        foreach (bool open in new[] { false, true })
+        {
+            if (open)
+            {
+                window.OpenFile(ignore);
+                Ui.Settle();
+            }
+            Global(window, EditorActions.Undo);
+            Assert.True(!File.Exists(ignore), $"Undo left the .gitignore Add to .gitignore made ({(open ? "open" : "closed")}): {window.Status}; asked [{string.Join("; ", asked)}]");
+            Global(window, EditorActions.Redo);
+            Assert.True(File.Exists(ignore) && File.ReadAllBytes(ignore).AsSpan().SequenceEqual(made),
+                $"Redo of Add to .gitignore, undone {(open ? "open" : "closed")}, wrote {(File.Exists(ignore) ? Convert.ToHexString(File.ReadAllBytes(ignore)) : "nothing")}, not {Convert.ToHexString(made)}: {window.Status}");
+        }
+        window.Close();
+    }
+
+    /// <summary>Undo or Redo of the window's last command of files, run in the Solution view with Shop.cs's row chosen.</summary>
+    private void Global(MainWindow window, string action)
+    {
+        string shop = PathNames.Canonical(Path.Combine(folder, "Shop.cs"));
+        Assert.True(window.Perform(AppActions.FocusExplorer), "The Solution view did not come forward");
+        window.ExplorerView.Reveal(shop);
+        Ui.Settle();
+        Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == shop));
+        Ui.Run(window, action);
+        Ui.Settle();
+    }
+
     /// <summary>Add to .gitignore has Git ignore the chosen file and no other, whatever its name holds: notes.txt at the top
     /// and not docs/notes.txt, [draft].md and not d.md (its brackets a pattern), #todo.txt and !keep.txt (a comment and a
     /// negation written plainly), and where a name can hold them a wildcard and a space it ends with.</summary>

@@ -1,4 +1,3 @@
-using System.Text;
 using Passenger.App.History;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -395,7 +394,7 @@ public sealed class CommandHistory
         }
         List<FilePut> writes =
         [
-            .. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => Text(t.Path, t.Before, t.After, looks[command.Moved(t.Path)])),
+            .. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => Text(t.Path, t.Before, t.After, looks[command.Moved(t.Path)].Stored)),
             .. command.Deleted.Select(Restored),
         ];
         string? unmoved = moving(() =>
@@ -423,11 +422,12 @@ public sealed class CommandHistory
         }
         foreach (Creation made in command.Created)
         {
+            made.Stored = editors.Find(made.Path) is { } open ? StoredAs(open) : looks.GetValueOrDefault(made.Path)?.Stored ?? made.Stored;
             if (Unmake(made) is { } failed)
             {
                 return await TakenBackAsync(failed, done);
             }
-            done.Add(() => InTurnAsync(what, [made.Path], _ => Saved(made.Path, made.Text, null)));
+            done.Add(() => InTurnAsync(what, [made.Path], _ => Saved(made.Path, made.Text, made.Stored)));
         }
         foreach (Part part in command.Parts.Reverse().Where(p => !p.First))
         {
@@ -458,8 +458,8 @@ public sealed class CommandHistory
         }
         List<FilePut> writes =
         [
-            .. command.Created.Select(c => Text(c.Path, c.Text, null, null)),
-            .. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => Text(t.Path, t.After, t.Before, looks[t.Path])),
+            .. command.Created.Select(c => Text(c.Path, c.Text, null, c.Stored)),
+            .. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => Text(t.Path, t.After, t.Before, looks[t.Path].Stored)),
             .. command.Deleted.Select(DeletedAgain),
         ];
         Step(command, redo: true);
@@ -654,7 +654,7 @@ public sealed class CommandHistory
                 {
                     return ($"{name} has been changed since", looks);
                 }
-                looks[path] = new Look(stamp.Length, stamp.Written, file.Encoding, file.HasBom, file.CrBreaks);
+                looks[path] = new Look(stamp.Length, stamp.Written, file with { Text = string.Empty });
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
@@ -679,13 +679,17 @@ public sealed class CommandHistory
     /// back when a later part of the put is refused, each saying why the disk refused it, null once done.</summary>
     private sealed record FilePut(string Path, Func<string?> Put, Func<string?> Back);
 
-    /// <summary>A file's text written as a look found it stored (UTF-8 for one a command made), taken back by writing
-    /// <paramref name="back"/> the same way, or by deleting the file when that is null.</summary>
-    private static FilePut Text(string path, TextSnapshot text, TextSnapshot? back, Look? stored) =>
+    /// <summary>A file's text written as a look found it stored (a file a command made, as its Undo found it), taken back by
+    /// writing <paramref name="back"/> the same way, or by deleting the file when that is null.</summary>
+    private static FilePut Text(string path, TextSnapshot text, TextSnapshot? back, FileText? stored) =>
         new(path, () => Saved(path, text, stored), () => back is null ? OnDisk(path, "deleted", () => File.Delete(path)) : Saved(path, back, stored));
 
-    private static string? Saved(string path, TextSnapshot text, Look? stored) => OnDisk(path, "written", () =>
-        FileText.Save(path, text.ToString(), stored?.Encoding ?? new UTF8Encoding(false), stored?.HasBom ?? false, stored?.CrBreaks ?? false));
+    /// <summary>A file's text written in the form it was stored in, or, with none known, as a file the IDE makes.</summary>
+    private static string? Saved(string path, TextSnapshot text, FileText? stored) => OnDisk(path, "written", () =>
+        _ = stored is null ? FileText.SaveNew(path, text.ToString()) : FileText.SaveOver(path, stored, text.ToString()));
+
+    /// <summary>How an open file is stored: its encoding, byte order mark and a CR file's breaks, its text left out.</summary>
+    private static FileText StoredAs(OpenDocument document) => new(string.Empty, document.Encoding, document.HasBom, document.Separator == LineSeparator.CR);
 
     /// <summary>A file a command deleted written back as it was, taken back by deleting it again.</summary>
     private static FilePut Restored(Deletion deleted) => new(deleted.Path,
@@ -812,8 +816,8 @@ public sealed class CommandHistory
     }
 
     /// <summary>A file not open as a look found it: its length and last write time, which a later look compares before it
-    /// reads the file again, and how it is stored, which its Undo or Redo writes it in.</summary>
-    private sealed record Look(long Length, DateTime Written, Encoding Encoding, bool HasBom, bool CrBreaks);
+    /// reads the file again, and how it is stored (its text left out), which its Undo or Redo writes it in.</summary>
+    private sealed record Look(long Length, DateTime Written, FileText Stored);
 
     /// <summary>What a command did: its name ("Rename Foo to Bar"), each file's text before and after it (at the path the
     /// file had then; an open file's with the undo step that made it), the files it moved, in order, the files it made, the
@@ -845,7 +849,12 @@ public sealed class CommandHistory
     }
 
     /// <summary>A file a command made, with the text it wrote there.</summary>
-    public sealed record Creation(string Path, TextSnapshot Text);
+    public sealed record Creation(string Path, TextSnapshot Text)
+    {
+        /// <summary>How the file was stored as its Undo took it away (its text left out), which its Redo writes it in
+        /// again; null before.</summary>
+        public FileText? Stored { get; set; }
+    }
 
     /// <summary>A file a command deleted (one a rename moved another over), at its path as the command began, with the bytes
     /// it held: its Undo writes them back once the moves are taken back, and its Redo deletes it again before they are made.</summary>

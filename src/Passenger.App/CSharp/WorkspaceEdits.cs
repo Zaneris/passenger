@@ -409,9 +409,7 @@ public static class WorkspaceEdits
                 {
                     recording.Watch(resource.Path);
                 }
-                // Written as a save writes, in the charset its .editorconfig names.
-                FileEncoding charset = EditorConfig.For(resource.Path).Charset ?? FileEncoding.Utf8;
-                FileText.Save(resource.Path, string.Empty, charset.Encoding, charset.Bom);
+                FileText.SaveNew(resource.Path, string.Empty);
                 editors.Find(resource.Path)?.Reload(overUnsaved: true);
                 break;
             }

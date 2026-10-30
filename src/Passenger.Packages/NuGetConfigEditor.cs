@@ -146,13 +146,14 @@ public static class NuGetConfigEditor
 
     private static string Escape(string value) => XmlText.Escape(value);
 
-    /// <summary>Reads the file, makes the changes on its text, and writes it back as it came through
-    /// <see cref="FileText.Save"/>. A file not there yet, or empty, is made with NuGet's empty configuration.</summary>
+    /// <summary>Reads the file, makes the changes on its text, and writes it back as it came (<see cref="FileText.SaveOver"/>).
+    /// A file not there yet, or empty, is made with NuGet's empty configuration, one not there as its .editorconfig asks
+    /// (<see cref="FileText.SaveNew"/>).</summary>
     private static void Change(string path, Action<XmlText> change)
     {
         FileText? file = File.Exists(path) ? FileText.Load(path) ?? throw new IOException($"{Path.GetFileName(path)} is not a text file") : null;
         XmlText text = new(file is { Text.Length: > 0 } read ? read.Text : "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<configuration>\n</configuration>\n");
         change(text);
-        FileText.Save(path, text.Text, file?.Encoding ?? new UTF8Encoding(false), file?.HasBom ?? false, file?.CrBreaks ?? false);
+        _ = file is null ? FileText.SaveNew(path, text.Text) : FileText.SaveOver(path, file, text.Text);
     }
 }

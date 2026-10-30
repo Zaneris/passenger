@@ -60,7 +60,7 @@ public static class ProgramEdits
         {
             edited.Remove(start, length).Insert(start, with);
         }
-        FileText.Save(program, edited.ToString(), file.Encoding, file.HasBom, file.CrBreaks);
+        FileText.SaveOver(program, file, edited.ToString());
         return true;
 
         static string Full(string folder, string relative) => Path.GetFullPath(Path.Combine(folder, relative.Replace('\\', '/')));
