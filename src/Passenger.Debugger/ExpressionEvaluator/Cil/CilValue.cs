@@ -282,7 +282,9 @@ internal interface IDebuggeeLocation : ICilLocation
 }
 
 /// <summary>A local or an argument of the frame, fetched afresh each time: what ICorDebug hands out for a slot is a
-/// snapshot, so a struct written through one copy would read back as it was ("sum = 10m" showing the old sum).</summary>
+/// snapshot, so a struct written through one copy would read back as it was ("sum = 10m" showing the old sum). A by-ref
+/// slot (a ref, out or in parameter, a ref local, a struct method's this) reads as the managed location it holds, which the
+/// code loading it goes through.</summary>
 internal sealed class FrameSlotLocation(ICorDebugILFrame frame, int index, bool argument, Func<ICorDebugILFrame> refind) : IDebuggeeLocation
 {
     public ICorDebugValue Value
@@ -302,10 +304,24 @@ internal sealed class FrameSlotLocation(ICorDebugILFrame frame, int index, bool 
         }
     }
 
-    public CilValue Read() => new CorDebugLocation(Value).Read();
+    public CilValue Read() => Value is ICorDebugReferenceValue { Type: CorElementType.BYREF }
+        ? CilValue.FromLocation(new FrameSlotTarget(this))
+        : new CorDebugLocation(Value).Read();
     public void Write(CilValue value) => new CorDebugLocation(Value).Write(value);
 
     private ICorDebugValue Slot(ICorDebugILFrame at) => argument ? at.GetArgument(index) : at.GetLocalVariable(index);
+}
+
+/// <summary>Where a by-ref slot of the frame refers to, reached through the slot afresh each time: a function evaluation
+/// may move the object it lies in.</summary>
+internal sealed class FrameSlotTarget(FrameSlotLocation slot) : IDebuggeeLocation
+{
+    public ICorDebugValue Value => slot.Value is ICorDebugReferenceValue { IsNull: false } reference
+        ? reference.Dereference()
+        : throw new NullReferenceException();
+
+    public CilValue Read() => CilValue.FromCorValue(Value);
+    public void Write(CilValue value) => new CorDebugLocation(Value).Write(value);
 }
 
 internal sealed class CorDebugLocation(ICorDebugValue value) : IDebuggeeLocation

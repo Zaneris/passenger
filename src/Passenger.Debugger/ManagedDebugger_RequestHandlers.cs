@@ -1005,12 +1005,13 @@ public partial class ManagedDebugger
 
     /// <summary>Set Value: what an expression names takes a value, by their assignment's one evaluation, whose own value is
     /// the answer, so the target (an index that moves on, a call) runs once. A real number with no suffix, as a float's or
-    /// a decimal's value is shown, takes the one its target's type needs, read from the target's compile alone.</summary>
+    /// a decimal's value is shown, takes the one its target's type needs, read from the target's compile alone. A variable
+    /// C# keeps readonly (an in parameter, a ref readonly local) is written through the location it refers to.</summary>
     public async Task<VariableInfo> Assign(string target, string value, int? frameId)
     {
+        ArgumentNullException.ThrowIfNull(_expressionEvaluator);
         if (RealLiteral().IsMatch(value))
         {
-            ArgumentNullException.ThrowIfNull(_expressionEvaluator);
             value += _expressionEvaluator.TypeOf(target, ContextOf(frameId)) switch
             {
                 "System.Single" or "System.Nullable`1<System.Single>" => "f",
@@ -1018,8 +1019,16 @@ public partial class ManagedDebugger
                 _ => string.Empty,
             };
         }
-        return await Evaluate($"{target} = {value}", frameId, target.Trim(), implicitly: false);
+        string assignment = $"{target} = {value}";
+        if (_expressionEvaluator.FailsWith(assignment, ContextOf(frameId), ReadOnlyVariableAssigned))
+        {
+            assignment = $"System.Runtime.CompilerServices.Unsafe.AsRef(in {target}) = {value}";
+        }
+        return await Evaluate(assignment, frameId, target.Trim(), implicitly: false);
     }
+
+    /// <summary>The compiler's error for an assignment to a variable it keeps readonly.</summary>
+    private const string ReadOnlyVariableAssigned = "CS8331";
 
     /// <summary>A real number as the debugger shows a float's, a double's or a decimal's: a point or an exponent, no suffix.</summary>
     [System.Text.RegularExpressions.GeneratedRegex(@"^-?\d+(\.\d+([eE][+-]?\d+)?|[eE][+-]?\d+)$")]

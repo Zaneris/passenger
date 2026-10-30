@@ -100,6 +100,11 @@ if (args is ["contexts"])
 	Contexts.Run();
 	return;
 }
+if (args is ["refs"])
+{
+	Refs.Run();
+	return;
+}
 if (args is ["named main"])
 {
 	// Main's thread named as an app may name its UI thread: the debugger still knows it for Main's.
@@ -792,6 +797,64 @@ internal static class Contexts
 		int first = (int)twices[0].Invoke(null, [10])!;
 		int second = (int)twices[1].Invoke(null, [11])!;
 		Console.WriteLine($"contexts {first} {second}");
+	}
+}
+
+// By-ref slots an evaluation reads and writes through: ref, out and in parameters, a ref local, a struct method's this.
+internal static class Refs
+{
+	private static readonly int[] Firsts = [1];
+
+	public static void Run()
+	{
+		int counted = 1;
+		IncrementByRef(ref counted);
+		AssignOut(out int assigned);
+		int added = AddOneIn(in counted);
+		int height = 0;
+		for (int i = 0; i < 4; i++)
+		{
+			Climb(ref height);
+		}
+		Tile tile = new() { X = 3, Y = 4 };
+		tile.Grow(2);
+		Console.WriteLine($"refs {counted} {assigned} {added} {Firsts[0]} {height} {tile.X} {tile.Y}");
+	}
+
+	private static int IncrementByRef(ref int value)
+	{
+		ref int first = ref Firsts[0];
+		value += 3;
+		return value + first;
+	}
+
+	private static void AssignOut(out int value)
+	{
+		value = 42;
+		Console.WriteLine($"assigned {value}");
+	}
+
+	private static int AddOneIn(in int value)
+	{
+		int one = 1;
+		return value + one;
+	}
+
+	private static void Climb(ref int value)
+	{
+		value += 40;
+	}
+}
+
+internal struct Tile
+{
+	public int X;
+	public int Y;
+
+	public void Grow(int by)
+	{
+		X += by;
+		Y += by;
 	}
 }
 

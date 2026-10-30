@@ -108,14 +108,16 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
     private int _cachedModuleVersion = -1;
 
     public CompiledEvaluationMethod? TryCompile(string expression, CompiledExpressionEvaluationContext context, out string? errorMessage) =>
-        TryCompile(expression, context, out errorMessage, out _);
+        TryCompile(expression, context, out errorMessage, out _, out _);
 
-    /// <summary>Compiles an expression in the frame or type context, or says why not and which assemblies it needs that
-    /// the program has not loaded (System.Linq, for a LINQ method on a list where the program has used none yet), to be
-    /// loaded and the expression compiled again.</summary>
-    public CompiledEvaluationMethod? TryCompile(string expression, CompiledExpressionEvaluationContext context, out string? errorMessage, out ImmutableArray<string> missingAssemblies)
+    /// <summary>Compiles an expression in the frame or type context, or says why not, with its errors' ids (CS8331), and
+    /// which assemblies it needs that the program has not loaded (System.Linq, for a LINQ method on a list where the program
+    /// has used none yet), to be loaded and the expression compiled again.</summary>
+    public CompiledEvaluationMethod? TryCompile(string expression, CompiledExpressionEvaluationContext context, out string? errorMessage, out ImmutableArray<string> errors,
+        out ImmutableArray<string> missingAssemblies)
     {
         errorMessage = null;
+        errors = [];
         missingAssemblies = [];
         if (context.RootValue is not null)
         {
@@ -163,6 +165,7 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
                 errorMessage = string.Join("; ", diagnostics.AsEnumerable()
                     .Where(d => d.Severity == DiagnosticSeverity.Error)
                     .Select(d => d.GetMessage()));
+                errors = [.. diagnostics.AsEnumerable().Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.Id)];
                 evaluationContext.GetErrorMessageAndMissingAssemblyIdentities(diagnostics, DebuggerDiagnosticFormatter.Instance, preferredUICulture: null,
                     EvaluationContextBase.SystemLinqIdentity, out _, out ImmutableArray<AssemblyIdentity> missing);
                 missingAssemblies = [.. missing.Select(identity => identity.Name)];

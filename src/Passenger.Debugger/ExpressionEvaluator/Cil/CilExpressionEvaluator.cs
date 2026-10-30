@@ -30,10 +30,10 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
                 ICorDebugHandleValue handle = handles.CreateOwnedHandle(returned);
                 return new EvaluationResult { Value = handle, OwnedResultHandle = handles.DetachIfOwned(handle) };
             }
-            CompiledEvaluationMethod? compiled = _compiler.TryCompile(expression, context, out string? error, out ImmutableArray<string> missing);
+            CompiledEvaluationMethod? compiled = _compiler.TryCompile(expression, context, out string? error, out _, out ImmutableArray<string> missing);
             if (compiled is null && missing.Length > 0 && await LoadAsync(missing, context))
             {
-                compiled = _compiler.TryCompile(expression, context, out error, out _);
+                compiled = _compiler.TryCompile(expression, context, out error);
             }
             if (compiled is null)
             {
@@ -59,6 +59,11 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
         _compiler.TryCompile(expression, context, out _) is { } compiled
             ? compiled.MetadataReader.GetMethodDefinition(compiled.EntryMethod).DecodeSignature(SignatureKeyProvider.Dotted, null).ReturnType
             : null;
+
+    /// <summary>Whether an expression fails to compile with the error <paramref name="id"/> (CS8331, a readonly variable
+    /// assigned) among its errors, none of it run.</summary>
+    internal bool FailsWith(string expression, CompiledExpressionEvaluationContext context, string id) =>
+        _compiler.TryCompile(expression, context, out _, out ImmutableArray<string> errors, out _) is null && errors.Contains(id);
 
     /// <summary>The type an expression's value is as it compiles, which its members' expressions reach them through.</summary>
     private static DeclaredType? DeclaredOf(CompiledEvaluationMethod compiled) =>

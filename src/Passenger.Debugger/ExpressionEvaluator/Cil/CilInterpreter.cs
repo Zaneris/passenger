@@ -1843,8 +1843,9 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
     };
 
     // The calls run here rather than in the program, which cannot run them: those of DefaultInterpolatedStringHandler
-    // that interpolated strings are lowered to. Pointer and span arithmetic (Unsafe, MemoryMarshal, span-based
-    // String.Join) is not modelled, so such an expression fails rather than give a wrong value.
+    // that interpolated strings are lowered to, and Unsafe.AsRef of a reference, which the program could only be lent a
+    // copy of. Pointer and span arithmetic (the rest of Unsafe, MemoryMarshal, span-based String.Join) is not modelled,
+    // so such an expression fails rather than give a wrong value.
     private async Task<(bool Handled, CilValue? Result)> TryExecuteIntrinsicCallAsync(
         ResolvedRuntimeMethod method,
         CilValue? receiver,
@@ -1854,6 +1855,12 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         EvaluationHandleScope handles)
     {
         string declaringType = resolver.GetRuntimeTypeName(method.DeclaringType);
+        if (declaringType == "System.Runtime.CompilerServices.Unsafe" && method.Name == "AsRef"
+            && method.Signature.ParameterTypes is [{ } parameter] && parameter.EndsWith('&') && arguments is [{ Location: not null } readOnly])
+        {
+            // A readonly reference made writable is the very location it was.
+            return (true, readOnly);
+        }
         if (declaringType != "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler")
         {
             return (false, null);
