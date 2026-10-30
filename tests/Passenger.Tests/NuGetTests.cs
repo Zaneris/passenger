@@ -100,7 +100,8 @@ public sealed class NuGetTests : IDisposable
 
     /// <summary>A project built for two frameworks, the package at 1.1.0 for its first and at a vulnerable 1.0.0 for its
     /// second, shows both versions on its line, marked, the package's row and the status counting it vulnerable, and
-    /// offers the version that fixes it as an Update.</summary>
+    /// offers the version that fixes it as what it is for every framework, whose references move together: a downgrade
+    /// naming net11.0, which it takes down from 1.1.0, never a plain Update.</summary>
     [AvaloniaFact]
     public void A_package_whose_version_differs_by_framework_shows_each_and_is_marked_vulnerable_when_any_is()
     {
@@ -113,8 +114,9 @@ public sealed class NuGetTests : IDisposable
         Assert.True(nuget.Selected!.IsVulnerable && nuget.Status == "1 package installed, 1 vulnerable",
             $"With {TestProjects.Framework}'s 1.0.0 vulnerable, the package's row is {(nuget.Selected.IsVulnerable ? "marked" : "unmarked")} and the status says \"{nuget.Status}\"");
         Assert.True(ShownVersion(nuget, "Lib") == "1.1.0, 1.0.0", $"Lib's line shows {ShownVersion(nuget, "Lib")}, not each framework's version");
-        Assert.True(nuget.ChosenVersion == "1.0.1" && Action(nuget, "Lib", "Update") is not null,
-            $"The window offers {nuget.ChosenVersion} as [{string.Join(", ", Labels(nuget, "Lib"))}], not 1.0.1, which fixes {TestProjects.Framework}'s 1.0.0, as an Update");
+        Assert.True(nuget.ChosenVersion == "1.0.1" && Labels(nuget, "Lib").SequenceEqual(["Downgrade net11.0", "Remove"]),
+            $"The window offers {nuget.ChosenVersion} as [{string.Join(", ", Labels(nuget, "Lib"))}], not 1.0.1, which fixes {TestProjects.Framework}'s 1.0.0 "
+            + "and takes net11.0's 1.1.0 down, as a downgrade naming net11.0");
 
         // The second framework's version alone changed on disk, as a person edits the project.
         File.WriteAllText(lib, File.ReadAllText(lib).Replace("Version=\"1.0.0\"", "Version=\"1.0.1\"", StringComparison.Ordinal));

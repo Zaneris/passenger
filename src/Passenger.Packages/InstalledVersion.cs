@@ -1,12 +1,14 @@
 namespace Passenger.Packages;
 
 /// <summary>What choosing a version does to a project's references of a package: moves one up (an update), only down (a
-/// downgrade), or nothing, each of its frameworks having that version already.</summary>
+/// downgrade), one up and another down (a project of several frameworks, every framework's moved together), or nothing,
+/// each of its frameworks having that version already.</summary>
 public enum PackageMove
 {
     None,
     Update,
     Downgrade,
+    UpdateAndDowngrade,
 }
 
 /// <summary>A package as a project references it for one of its target frameworks (null for a project of one): the
@@ -31,13 +33,26 @@ public sealed record InstalledVersion(string? Framework, string? Given, string? 
     public bool IsRanged => Range is { Bare: false, IsExact: false };
 
     /// <summary>What a change of every framework's reference to <paramref name="version"/> is: an update where it raises
-    /// any one's version in force (a floating one's least before it is restored), a downgrade where it lowers one and
-    /// raises none, else none.</summary>
+    /// a version in force (a floating one's least before it is restored) and lowers none, a downgrade where it lowers one
+    /// and raises none, both where it does each, else none.</summary>
     public static PackageMove Move(string version, IReadOnlyList<InstalledVersion> at)
     {
-        int[] orders = [.. at.Select(v => v.Version ?? v.Range?.Min).OfType<string>().Select(v => VersionOrder.Instance.Compare(version, v))];
-        return orders.Any(o => o > 0) ? PackageMove.Update : orders.Any(o => o < 0) ? PackageMove.Downgrade : PackageMove.None;
+        int[] orders = [.. at.Select(v => Order(version, v)).OfType<int>()];
+        return (orders.Any(o => o > 0), orders.Any(o => o < 0)) switch
+        {
+            (true, true) => PackageMove.UpdateAndDowngrade,
+            (true, false) => PackageMove.Update,
+            (false, true) => PackageMove.Downgrade,
+            _ => PackageMove.None,
+        };
     }
+
+    /// <summary>The references a change of every framework's to <paramref name="version"/> moves down, in their order.</summary>
+    public static IReadOnlyList<InstalledVersion> Lowered(string version, IReadOnlyList<InstalledVersion> at) => [.. at.Where(v => Order(version, v) < 0)];
+
+    /// <summary>How a version stands to a reference's version in force; null where nothing says.</summary>
+    private static int? Order(string version, InstalledVersion at) =>
+        (at.Version ?? at.Range?.Min) is { } now ? VersionOrder.Instance.Compare(version, now) : null;
 
     /// <summary>The version a change to a bare <paramref name="version"/> writes: pinned alone ("[9.0.0]") where the
     /// project pins every framework's reference, so a change never turns a pin into a minimum unasked; else as given.</summary>

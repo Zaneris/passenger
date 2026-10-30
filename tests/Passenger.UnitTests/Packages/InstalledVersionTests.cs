@@ -3,8 +3,9 @@ using Passenger.Packages;
 namespace Passenger.UnitTests.Packages;
 
 /// <summary>What the NuGet window offers on a project's line for the version chosen, against every framework's reference
-/// of the package: Update where any would move up, Downgrade where one would only move down, nothing where each has it; a
-/// range read as the version its restore resolved, else its least, and a pin kept a pin by a change.</summary>
+/// of the package: Update where one would move up and none down, Downgrade where one would only move down, both where one
+/// would move up and another down, nothing where each has it; a range read as the version its restore resolved, else its
+/// least, and a pin kept a pin by a change.</summary>
 public class InstalledVersionTests
 {
     private static InstalledVersion[] Of(params string?[] versions) => [.. versions.Select((v, i) => new InstalledVersion($"net{10 + i}.0", v))];
@@ -18,10 +19,21 @@ public class InstalledVersionTests
     }
 
     [Fact]
-    public void A_version_any_framework_would_move_up_to_is_an_update_though_another_would_move_down()
+    public void A_version_one_framework_would_move_up_to_and_none_down_is_an_update()
     {
         Assert.Equal(PackageMove.Update, InstalledVersion.Move("9.0.0", Of("9.0.0", "8.0.0")));
-        Assert.Equal(PackageMove.Update, InstalledVersion.Move("8.5.0", Of("9.0.0", "8.0.0")));
+        Assert.Empty(InstalledVersion.Lowered("9.0.0", Of("9.0.0", "8.0.0")));
+    }
+
+    /// <summary>A security update of one framework's vulnerable version that would take another framework's newer one down
+    /// is never a plain Update: the change moves every framework's reference together.</summary>
+    [Fact]
+    public void A_version_one_framework_would_move_up_to_and_another_down_is_both_naming_the_one_that_goes_down()
+    {
+        InstalledVersion[] at = Of("2.0.0", "3.0.0");
+        Assert.Equal(PackageMove.UpdateAndDowngrade, InstalledVersion.Move("2.1.0", at));
+        Assert.Equal(["net11.0"], InstalledVersion.Lowered("2.1.0", at).Select(v => v.Framework));
+        Assert.Equal(PackageMove.UpdateAndDowngrade, InstalledVersion.Move("8.5.0", Of("9.0.0", "8.0.0")));
     }
 
     [Fact]

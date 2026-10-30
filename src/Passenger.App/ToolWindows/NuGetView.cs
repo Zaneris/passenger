@@ -731,7 +731,11 @@ public sealed class NuGetView : DockPanel
             {
                 if (ChosenVersion is { } chosen && InstalledVersion.Move(chosen, at) is PackageMove move and not PackageMove.None)
                 {
-                    line.Children.Add(Action(move.ToString(), () => InstallAsync(project)));
+                    Button moving = Action(Moved(move, chosen, at), () => InstallAsync(project));
+                    ToolTip.SetTip(moving, move == PackageMove.UpdateAndDowngrade
+                        ? $"Moves every framework to {chosen}: " + string.Join(", ", at.Where(v => v.Version is not null).Select(v => $"{v.Framework} from {v.Version}"))
+                        : null);
+                    line.Children.Add(moving);
                 }
                 line.Children.Add(Action("Remove", () => RemoveAsync(project)));
             }
@@ -750,6 +754,16 @@ public sealed class NuGetView : DockPanel
         bool ranged = at.Any(v => v.Given is { } given && given != v.Shown);
         return at.Count > 1 || ranged
             ? string.Join("\n", at.Select(v => (at.Count > 1 ? $"{v.Framework}: " : string.Empty) + (v.Shown ?? "installed")
+    /// <summary>What a project's button for the chosen version says: Update or Downgrade, a downgrade naming the frameworks
+    /// that go down where another does not, as every framework's reference moves together.</summary>
+    private static string Moved(PackageMove move, string version, IReadOnlyList<InstalledVersion> at)
+    {
+        IReadOnlyList<InstalledVersion> lowered = InstalledVersion.Lowered(version, at);
+        return move == PackageMove.Update || (move == PackageMove.Downgrade && lowered.Count == at.Count)
+            ? move.ToString()
+            : $"Downgrade {string.Join(", ", lowered.Select(v => v.Framework ?? "it"))}";
+    }
+
                 + (v.Given is { } given && given != v.Shown ? $", given as {given}" : string.Empty)))
             : null;
     }
