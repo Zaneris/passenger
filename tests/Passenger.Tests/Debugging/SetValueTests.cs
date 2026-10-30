@@ -4,7 +4,8 @@ using Passenger.Tests.Debugging.Helpers;
 namespace Passenger.Tests.Debugging;
 
 /// <summary>Set Value through the protocol, at Setting.Run's stop in PassengerCases: what it writes is what was asked,
-/// into what the expression names, its target run once, and the program goes on with it.</summary>
+/// into what the expression names, its target run once, and the program goes on with it. A string holding a NUL is
+/// written whole.</summary>
 [Collection(DebugSession.Collection)]
 public class SetValueTests(ITestOutputHelper testOutputHelper)
 {
@@ -48,6 +49,21 @@ public class SetValueTests(ITestOutputHelper testOutputHelper)
         await host.ContinueAsync();
         (string output, _) = await host.WaitForEnd();
         Assert.Contains("values 10 123 30, i 2, ratios 25, j 1", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>A string written with a NUL inside it is the whole string in the program, its length counting past the NUL.</summary>
+    [Fact]
+    public async Task A_string_set_with_a_NUL_inside_it_is_the_whole_string_in_the_program()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        (_, int frame) = await StoppedAtSettingAsync(host);
+
+        Assert.Equal("\"A\\0B\"", await Set(host, frame, "text", "\"A\\0B\""));
+        Assert.True(await Evaluate(host, frame, "text.Length") == "3", $"text = \"A\\0B\" made a string of length {await Evaluate(host, frame, "text.Length")}");
+
+        await host.ContinueAsync();
+        (string output, _) = await host.WaitForEnd();
+        Assert.Contains("text 3", output, StringComparison.Ordinal);
     }
 
     /// <summary>The program launched to Setting.Run's stop, and its top frame.</summary>

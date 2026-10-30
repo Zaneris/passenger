@@ -205,10 +205,11 @@ public static class Extensions
             e => e.Eval.Result);
     }
 
+    /// <summary>A string made in the program, every character of it: its length is given, so a NUL inside it is kept.</summary>
     internal static async Task<ICorDebugValue> NewStringAsync(this ICorDebugEval eval, Func<Task<CorDebugManagedCallbackEventArgs>> processEventsUntilEvalEventFunc, EvalStatus evalStatus, string str, bool throwOnException = false)
     {
         return (await RunEvalAsync(eval, processEventsUntilEvalEventFunc, evalStatus, throwOnException,
-            () => eval.NewString(str),
+            () => eval.NewStringWithLength(str),
             e => e.Eval.Result))!;
     }
 

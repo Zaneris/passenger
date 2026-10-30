@@ -35,11 +35,5 @@ public static class CorDebugEvalExtensions
                 return ppThread;
             }
         }
-
-        /// <inheritdoc cref="M:Passenger.Debugger.Interop.ICorDebugEval.TryNewString(System.String)" />
-        public void NewString(string @string)
-        {
-            Marshal.ThrowExceptionForHR(instance.TryNewString(@string));
-        }
     }
 }

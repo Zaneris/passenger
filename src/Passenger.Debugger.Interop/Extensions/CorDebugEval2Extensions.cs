@@ -32,5 +32,11 @@ public static class CorDebugEval2Extensions
         {
             Marshal.ThrowExceptionForHR(instance.TryNewParameterizedObjectNoConstructor(pClass, checked((uint)nTypeArgs), ppTypeArgs));
         }
+
+        /// <inheritdoc cref="M:Passenger.Debugger.Interop.ICorDebugEval2.TryNewStringWithLength(System.String,System.UInt32)" />
+        public void NewStringWithLength(string @string)
+        {
+            Marshal.ThrowExceptionForHR(instance.TryNewStringWithLength(@string, checked((uint)@string.Length)));
+        }
     }
 }

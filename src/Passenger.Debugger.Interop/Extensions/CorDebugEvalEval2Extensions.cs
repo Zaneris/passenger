@@ -41,5 +41,11 @@ public static class CorDebugEvalEval2Extensions
         {
             instance.Eval2.NewParameterizedObjectNoConstructor(pClass, nTypeArgs, ppTypeArgs);
         }
+
+        /// <inheritdoc cref="M:Passenger.Debugger.Interop.ICorDebugEval2.TryNewStringWithLength(System.String,System.UInt32)" />
+        public void NewStringWithLength(string @string)
+        {
+            instance.Eval2.NewStringWithLength(@string);
+        }
     }
 }

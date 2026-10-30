@@ -282,8 +282,8 @@ internal static class Interpreter
 	}
 }
 
-// What Set Value writes, each into what it names: an object holding a box another local shares, and an int's and a
-// float's element whose index moves past it.
+// What Set Value writes, each into what it names: an object holding a box another local shares, an int's and a float's
+// element whose index moves past it, and a string holding a NUL.
 internal static class Setting
 {
 	public static void Run()
@@ -294,9 +294,11 @@ internal static class Setting
 		int i = 1;
 		float[] ratios = [0.5f, 1.5f];
 		int j = 0;
+		string text = "x";
 		Console.WriteLine("setting");
 		Console.WriteLine($"boxed {boxed ?? "null"}, shared {shared}, same {ReferenceEquals(boxed, shared)}");
 		Console.WriteLine($"values {string.Join(" ", values)}, i {i}, ratios {ratios[0] * 10}, j {j}");
+		Console.WriteLine($"text {text.Length}");
 	}
 }
 
