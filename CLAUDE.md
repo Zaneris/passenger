@@ -117,8 +117,10 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   crosses from another thread only through `UiThread` (`Post`, `Marshal` for a library's handler, `InvokeAsync` to wait
   for an answer).
 - **Paths are canonical** (`PathNames.Canonical`, symlinks resolved, as MSBuild and Roslyn report them); compare with
-  `PathNames.Comparer`/`Same`/`IsUnder`, walk a project's folders with `FoldersUnder` and the open folder's files with
-  `FilesUnder` (`IsSystemFile` passed over). Show one to a person with `PathNames.Shown`.
+  `PathNames.Comparer`/`Same`/`IsUnder` (a folder asked whether it tells case apart only for names alike but for case),
+  names in one folder with `NamesIn(folder)`, never `Comparison` for a path, walk a project's folders with
+  `FoldersUnder` and the open folder's files with `FilesUnder` (`IsSystemFile` passed over). Show one to a person with
+  `PathNames.Shown`.
 - **Lines differ by reader.** Roslyn's server and compilers end a line at a lone '\r', U+0085, U+2028 and U+2029, an XML
   reader (XAML's compilers, BAML, XamlIl) at a lone '\r' only. Every place crossing to a server, compiler, PDB or running
   app goes through `ServerLines`/`ServerPlaces` (`Compiled`, `CountedByRoslyn`, `PositionOfCompiled`), never `new
@@ -517,15 +519,15 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
 - A visual inconsistency is fixed once, in a shared place (a token, a base style, a helper), never per control:
   Passenger's own consistency settles a design question. The shared pieces: dialogs `DialogFooter` (`Of`, `Listed`,
   `Answers`, `Bar`, `Page`) in a `Border.footerBar`; lists in a page `Border.framed`; rules `Passenger.Separator`
-  (`Passenger.Divider` between panels); menus' value in force `MenuChoice`; tool window tabs `ToolTabs.Tab`; popups'
-  widths `PopupFrame`, titles `popupTitle`; every row `ListRow.Height` (24); empty states `TextBlock.emptyText`; toolbar
-  icon buttons `ToolButtons.Of`/`Toggle` (never focusable); muted words `MutedText`; list keys `ListKeys.Move`; counts
-  `Plural.Of`; rounded borders `Border.kindBadge`, `tag` or `box`, never a literal radius; lists of what runs `RunRows`,
-  Details tabs `DetailsTables`, merged consoles `MergedLog` (a console's Find `OutputView.Find`); a tree window's Expand
-  and Collapse All `ToolWindow.ExpandAll`/`CollapseAll`; a toolbar down a side `ToolColumn`; scrollbars
-  `ControlThemes.axaml`; the focus ring `FocusRing`; a window's icon `AppIcon`; a list's rows `ReusedRows` (`Use`,
-  `Showing`), their icons `RowIcon` (a tree row's chevron and icon `RowGlyphs`), drawn as `PathIcon` draws for a
-  fraction of its cost, never `PathIcon` (UiRulesTests). A row hears its item only while shown
+  (`Passenger.Divider` between panels); menus' value in force `MenuChoice` (`Holding` makes its submenu as it opens);
+  tool window tabs `ToolTabs.Tab`; popups' widths `PopupFrame`, titles `popupTitle`; every row `ListRow.Height` (24);
+  empty states `TextBlock.emptyText`; toolbar icon buttons `ToolButtons.Of`/`Toggle` (never focusable); muted words
+  `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`; rounded borders `Border.kindBadge`, `tag` or `box`, never
+  a literal radius; lists of what runs `RunRows`, Details tabs `DetailsTables`, merged consoles `MergedLog` (a console's
+  Find `OutputView.Find`); a tree window's Expand and Collapse All `ToolWindow.ExpandAll`/`CollapseAll`; a toolbar down
+  a side `ToolColumn`; scrollbars `ControlThemes.axaml`; the focus ring `FocusRing`; a window's icon `AppIcon`; a list's
+  rows `ReusedRows` (`Use`, `Showing`), their icons `RowIcon` (a tree row's chevron and icon `RowGlyphs`), drawn as
+  `PathIcon` draws for a fraction of its cost, never `PathIcon` (UiRulesTests). A row hears its item only while shown
   (`Observable.FollowWhileShown`).
 - `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, and new windows fit the screen's
   working area (`FitToScreen`).
