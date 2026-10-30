@@ -9,7 +9,7 @@ namespace WpfTreeApp;
 /// <summary>What a person does in the app comes as lines on its standard input, which the Debug window's console sends:
 /// "click X,Y" (or "move X,Y") in the main window's units, as Windows sends a pointer's messages to the window, so WPF takes
 /// them as it takes a real mouse's while the person's own pointer stays where it is; "rebind" gives the window a new view
-/// model, binding (and failing) again.</summary>
+/// model, binding (and failing) again; "nudge" has the Count button set its own Margin (SetCurrentValue) over its Style's.</summary>
 public partial class App : Application
 {
     private const int MouseMove = 0x0200;
@@ -47,6 +47,12 @@ public partial class App : Application
         {
             window.DataContext = new MainViewModel();
             Console.WriteLine("Bound again");
+            return;
+        }
+        if (words is ["nudge"] && window is WpfTreeApp.MainWindow main)
+        {
+            main.Count.SetCurrentValue(FrameworkElement.MarginProperty, new Thickness(3));
+            Console.WriteLine("Nudged");
             return;
         }
         if (words is not [string doing, string at] || at.Split(',') is not [string x, string y])

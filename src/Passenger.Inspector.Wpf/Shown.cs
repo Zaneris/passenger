@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -11,14 +10,9 @@ namespace Passenger.Inspector.Wpf;
 /// values of properties named, and its window's size and scaling.</summary>
 internal static class Shown
 {
-    /// <summary>The longest text an element's line carries.</summary>
-    private const int Longest = 200;
-
     /// <summary>An element as a sentence names it: its type, then #name, or the text it shows when it has no name.</summary>
     public static string Called(DependencyObject element) =>
-        element is FrameworkElement { Name.Length: > 0 } || TextOf(element) is not { Length: > 0 } text
-            ? Details.Describe(element)
-            : $"{Details.Describe(element)} \"{(text.Length > 40 ? text[..37] + "..." : text)}\"";
+        Words.Called(Details.Describe(element), element is FrameworkElement { Name.Length: > 0 } ? null : TextOf(element));
 
     /// <summary>A top level's client area in units: a window's less its frame (its content's own box), a popup root's whole.</summary>
     public static Size ClientSize(Visual top)
@@ -97,23 +91,12 @@ internal static class Shown
             ContentPresenter { Content: string content } when element is FrameworkElement { TemplatedParent: null } => content,
             _ => null,
         };
-        return text is { Length: > Longest } ? text[..(Longest - 3)] + "..." : text;
+        return Words.Shows(text);
     }
 
     /// <summary>The values of the properties named that an element has: its dependency properties by name, an attached one
     /// as Owner.Name, else a public CLR property.</summary>
-    public static Dictionary<string, string>? Values(DependencyObject element, IReadOnlyList<string> names)
-    {
-        Dictionary<string, string> values = [];
-        foreach (string name in names)
-        {
-            if (Value(element, name) is { } value)
-            {
-                values[name] = value;
-            }
-        }
-        return values.Count == 0 ? null : values;
-    }
+    public static Dictionary<string, string>? Values(DependencyObject element, IReadOnlyList<string> names) => Words.Values(names, name => Value(element, name));
 
     private static string? Value(DependencyObject element, string name)
     {
@@ -121,20 +104,9 @@ internal static class Shown
         {
             return Details.Format(element.GetValue(property));
         }
-        if (!name.Contains('.', StringComparison.Ordinal) && element.GetType().GetProperty(name, BindingFlags.Public | BindingFlags.Instance) is { GetMethod: not null } clr
-            && clr.GetIndexParameters().Length == 0)
-        {
-            try
-            {
-                // A password box's password as the box shows it.
-                return Details.Format(element is PasswordBox box && name == nameof(PasswordBox.Password) ? Words.Dots(box.Password) : clr.GetValue(element));
-            }
-            catch (TargetInvocationException error)
-            {
-                return $"({error.InnerException?.GetType().Name ?? error.GetType().Name}: {error.InnerException?.Message})";
-            }
-        }
-        return null;
+        // A password box's password as the box shows it.
+        return name.Contains('.', StringComparison.Ordinal) ? null
+            : Words.Read(element, name, value => Details.Format(element is PasswordBox box && name == nameof(PasswordBox.Password) ? Words.Dots(box.Password) : value));
     }
 
     /// <summary>What a scroll viewer at or around an element shows: its offset in its extent.</summary>
@@ -144,8 +116,7 @@ internal static class Shown
         {
             if (at is ScrollViewer viewer)
             {
-                return string.Create(CultureInfo.InvariantCulture,
-                    $"{Details.Describe(viewer)} at {viewer.HorizontalOffset:0.##},{viewer.VerticalOffset:0.##} of {viewer.ExtentWidth:0.##}x{viewer.ExtentHeight:0.##} (viewport {viewer.ViewportWidth:0.##}x{viewer.ViewportHeight:0.##})");
+                return Words.Scrolled(Details.Describe(viewer), viewer.HorizontalOffset, viewer.VerticalOffset, viewer.ExtentWidth, viewer.ExtentHeight, viewer.ViewportWidth, viewer.ViewportHeight);
             }
         }
         return null;

@@ -19,7 +19,7 @@ namespace Passenger.Tests;
 
 /// <summary>Breakpoints in an Avalonia app's XAML and on its controls' properties, debugged from the window:
 /// tests/Debuggees/XamlBreakpointsApp, written into a folder of its own with a project file on the tests' own Avalonia,
-/// headless, its standard input ("paint", "warn", "rename", typed into the Debug window's console) having its code-behind
+/// headless, its standard input ("paint", "warn", "nudge", "rename", typed into the Debug window's console) having its code-behind
 /// change its controls as something a person did would. Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisposable
@@ -301,6 +301,43 @@ public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisp
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");
         // Each named a control of that run, as a data breakpoint names an object: none outlives it.
         Assert.Empty(store.Properties);
+        window.Close();
+    }
+
+    /// <summary>Delete's Background, which Fluent's theme gave it, set by the control itself (SetCurrentValue): the property
+    /// breakpoint says the control set it, as the property's row says it and as the theme's setter says what overrides it,
+    /// never the theme that gave the value before.</summary>
+    [AvaloniaFact]
+    public void A_property_breakpoint_on_a_value_the_control_sets_itself_says_so_as_its_row_and_the_setter_it_overrides_do()
+    {
+        MainWindow window = Opened();
+        Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
+        LiveTreeView tree = window.LiveTree;
+        Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Delete"),
+            $"the Live Visual Tree to show the app's window ({window.LiveApp?.State} {window.LiveApp?.Problem})", TimeSpan.FromMinutes(2));
+
+        PropertyBreakpoint background = Watch(window, "Delete", "Background");
+        Ui.WaitFor(() => background.Status == BreakpointStatus.Bound, $"the debugger to take the property breakpoint, not to say {background.Message}");
+        Ui.TypeToDebugged(window, "nudge");
+        DebugStop stop = Stopped(window, "the stop where nudge has Delete set its own Background");
+        AssertAt(stop, CodeBehind, Line(CodeBehind, "Delete.SetCurrentValue("));
+        Says(window, "New Value: Purple, by the control itself (SetCurrentValue))");
+        Resume(window);
+        Ui.WaitFor(() => Console(window).Contains("Nudged", StringComparison.Ordinal), "nudge to finish");
+
+        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Panel");
+        Ui.WaitFor(() => tree.Details?.Name == "Panel", "the panel's details");
+        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Delete");
+        Ui.WaitFor(() => tree.Details?.Name == "Delete", "Delete's details");
+        PropertyValue row = tree.Details!.Properties.Single(p => p.Name == "Background");
+        Assert.True(row is { Source: ValueSources.Current, Detail: "Set by the control itself (SetCurrentValue)" },
+            $"Delete's Background row said it came from {row.Source} ({row.Detail}), not the control itself");
+        SetterReport themes = tree.Details.Styles.Single(s => s.Kind == StyleKinds.Theme).Setters.Single(s => s.Property == "Background");
+        Assert.True(themes is { State: SetterStates.Overridden, By: "the control itself (SetCurrentValue)" },
+            $"The theme's Background setter on Delete was {themes.State} by {themes.By}, not overridden by the control itself");
+
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");
         window.Close();
     }
 

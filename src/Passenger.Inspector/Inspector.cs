@@ -206,5 +206,5 @@ internal sealed class Inspector : Inspecting<Visual>
     /// <summary>A visual as an agent's answer names it: its type and #name (or the text it shows), and the control whose
     /// template made it.</summary>
     public static string Named(Visual visual) =>
-        visual is StyledElement { TemplatedParent: Visual parent } ? $"{Shown.Called(visual)} in {Shown.Called(parent)}'s template" : Shown.Called(visual);
+        Words.Named(Shown.Called(visual), visual is StyledElement { TemplatedParent: Visual parent } ? Shown.Called(parent) : null);
 }

@@ -74,24 +74,20 @@ internal sealed class PropertyBreaks
             Breaks.Changed(breakpoint, Element, property, before, now, change, null);
         }
 
-        /// <summary>What set the value, from where WPF says it now comes.</summary>
+        /// <summary>What set the value, from where WPF says it now comes: its Style's setters or triggers as the property's
+        /// row names them, the rest in the inspector's shared words.</summary>
         private string By()
         {
             try
             {
                 ValueSource source = DependencyPropertyHelper.GetValueSource(Element, property);
-                return source switch
+                string from = Details.SourceOf(source);
+                return (from, source.BaseValueSource) switch
                 {
-                    { IsAnimated: true } => ", by an animation",
-                    { IsCurrent: true } => ", by the control itself (SetCurrentValue)",
-                    { BaseValueSource: BaseValueSource.Local, IsExpression: true } => $", by its binding {Details.Bound(Element, property)}",
-                    { BaseValueSource: BaseValueSource.Local } => ", its local value",
-                    { BaseValueSource: BaseValueSource.Style or BaseValueSource.ImplicitStyleReference } => ", by its Style",
-                    { BaseValueSource: BaseValueSource.StyleTrigger } => ", by a trigger of its Style",
-                    { BaseValueSource: BaseValueSource.DefaultStyle or BaseValueSource.DefaultStyleTrigger } => ", by its default style",
-                    { BaseValueSource: BaseValueSource.TemplateTrigger or BaseValueSource.ParentTemplate or BaseValueSource.ParentTemplateTrigger } => ", by a template",
-                    { BaseValueSource: BaseValueSource.Inherited } => ", inherited",
-                    _ => string.Empty,
+                    (ValueSources.Local, _) when source.IsExpression => Words.ChangedByBinding(Details.Bound(Element, property)),
+                    (ValueSources.Style, BaseValueSource.StyleTrigger) => $", by {Details.Said(Element, BaseValueSource.StyleTrigger)}",
+                    (ValueSources.Style, _) => $", by {Details.Said(Element, BaseValueSource.Style)}",
+                    _ => Words.ChangedBy(from),
                 };
             }
             catch (Exception error) when (error is InvalidOperationException or ArgumentException)

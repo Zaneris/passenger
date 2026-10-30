@@ -203,27 +203,31 @@ internal sealed class Styling
     }
 
     /// <summary>A setter's row: it wins when the property's value comes from where the setter is and it is that one, else
-    /// what overrides it, in the words of the property's own row.</summary>
+    /// what overrides it (an animation or the control itself over any setter), in the words of the property's own row.</summary>
     private SetterReport SetterOf(Setter setter, BaseValueSource from, bool chosen)
     {
         DependencyProperty property = setter.Property;
-        BaseValueSource now;
+        ValueSource now;
         try
         {
-            now = DependencyPropertyHelper.GetValueSource(element, property).BaseValueSource;
+            now = DependencyPropertyHelper.GetValueSource(element, property);
         }
         catch (ArgumentException)
         {
-            now = BaseValueSource.Unknown;
+            now = default;
         }
-        bool wins = chosen && (now == from || (from == BaseValueSource.Style && now == BaseValueSource.ImplicitStyleReference));
+        if (Details.SourceOf(now) is (ValueSources.Animation or ValueSources.Current) and string over)
+        {
+            return new SetterReport(Name(property), Details.Format(setter.Value), Details.Place(setter), SetterStates.Overridden, Words.Giver(over));
+        }
+        bool wins = chosen && (now.BaseValueSource == from || (from == BaseValueSource.Style && now.BaseValueSource == BaseValueSource.ImplicitStyleReference));
         return new SetterReport(Name(property), Details.Format(setter.Value), Details.Place(setter), wins ? SetterStates.Wins : SetterStates.Overridden,
-            wins ? null : By(now));
+            wins ? null : By(now.BaseValueSource));
     }
 
     private static string By(BaseValueSource source) => source switch
     {
-        BaseValueSource.Local => "its local value",
+        BaseValueSource.Local => Words.Giver(ValueSources.Local),
         BaseValueSource.Style or BaseValueSource.ImplicitStyleReference => "another setter of its Style",
         BaseValueSource.StyleTrigger => "a trigger of its Style",
         BaseValueSource.TemplateTrigger => "a trigger of its template",
@@ -231,7 +235,7 @@ internal sealed class Styling
         BaseValueSource.ParentTemplateTrigger => "a trigger of the template that made it",
         BaseValueSource.DefaultStyle => "another setter of its default style",
         BaseValueSource.DefaultStyleTrigger => "a trigger of its default style",
-        BaseValueSource.Inherited => "a value it inherits",
+        BaseValueSource.Inherited => Words.Giver(ValueSources.Inherited),
         _ => "a later setter",
     };
 

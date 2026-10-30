@@ -29,6 +29,13 @@ public partial class MainWindow : Window
         Console.WriteLine("Warned");
     }
 
+    /// <summary>"nudge": Delete sets its own Background (SetCurrentValue), over the one its theme gives it.</summary>
+    public void Nudge()
+    {
+        Delete.SetCurrentValue(Button.BackgroundProperty, Brushes.Purple);
+        Console.WriteLine("Nudged");
+    }
+
     /// <summary>"rename": the view model's caption changes, which the caption's binding shows.</summary>
     public void Rename() => ((MainViewModel)DataContext!).Caption = "Renamed";
 }

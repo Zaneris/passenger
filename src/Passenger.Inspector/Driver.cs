@@ -14,7 +14,7 @@ namespace Passenger.Inspector;
 /// over, focuses, recognises gestures and runs key bindings and commands as it would. The pointer is a mouse of the
 /// inspector's own, apart from the person's (whose real pointer never moves), and nothing activates the window, so an app on
 /// the screen never takes the person's focus; keys go to the element given the keyboard focus, active window or not.</summary>
-internal sealed class Driver(Inspector inspector)
+internal sealed class Driver(Inspector inspector) : Driving<Visual, TopLevel>
 {
     /// <summary>The window's input root, which raw input names and Avalonia 12 keeps internal (its presentation source).</summary>
     private static readonly PropertyInfo? InputRoot = typeof(TopLevel).GetProperty("InputRoot", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -30,34 +30,27 @@ internal sealed class Driver(Inspector inspector)
 
     private ulong Now => (ulong)clock.ElapsedMilliseconds + apart;
 
-    public InputDone Do(InputAction action)
+    protected override string Hidden => "IsVisible is false on it or an ancestor";
+
+    protected override Visual? Find(long id) => inspector.Find(id);
+
+    protected override TopLevel? OpenTop(Visual element) => element as TopLevel;
+
+    protected override TopLevel? TopOf(Visual element) => element as TopLevel ?? TopLevel.GetTopLevel(element);
+
+    protected override void Ready(TopLevel top)
     {
-        Visual? element = action.Element is long id ? inspector.Find(id) ?? throw new Refusal("That element is no longer in the app") : null;
-        TopLevel top = element is not null
-            ? element as TopLevel ?? TopLevel.GetTopLevel(element) ?? throw new Refusal($"{Shown.Called(element)} is in no window")
-            : action.Window is long window && inspector.Find(window) is TopLevel named ? named
-            : throw new Refusal(action.Window is null ? "Name an element or a window" : "That window is no longer open");
         if (top.PlatformImpl is null)
         {
             throw new Refusal("That window has closed");
         }
         // Before anything is focused there; keys going to a focus elsewhere are weighed as each is sent.
         Refuse(top, keys: false);
-        // The window's own element names its point and takes its keys as any other does.
-        Visual? target = element == top && action.X is not null ? null : element;
-        return action.Kind switch
-        {
-            InputKinds.Click => Click(top, target, action),
-            InputKinds.Scroll => Scroll(top, target, action),
-            InputKinds.Type => Type(top, element, action),
-            InputKinds.Key => Keys(top, element, action),
-            _ => throw new Refusal($"The inspector knows no input '{action.Kind}'"),
-        };
     }
 
-    private InputDone Click(TopLevel top, Visual? element, InputAction action)
+    protected override InputDone Click(TopLevel top, Visual? element, InputAction action)
     {
-        Point at = At(top, element, action, "click");
+        Point at = Aim(top, element, action, "click");
         RawInputModifiers held = Held(action.Modifiers);
         (RawPointerEventType down, RawPointerEventType up) = action.Button switch
         {
@@ -66,7 +59,7 @@ internal sealed class Driver(Inspector inspector)
             "middle" => (RawPointerEventType.MiddleButtonDown, RawPointerEventType.MiddleButtonUp),
             _ => throw new Refusal($"A button is left, right or middle, not '{action.Button}'"),
         };
-        Visual? hit = Hit(top, at);
+        Visual? hit = Hit(top, at.X, at.Y);
         IInputRoot root = Root(top);
         apart += 1000;
         Send(top, new RawPointerEventArgs(mouse, Now, root, RawPointerEventType.Move, at, held));
@@ -82,10 +75,10 @@ internal sealed class Driver(Inspector inspector)
         return Done(top, at, Took(element, hit), Shown.TextOf(element ?? hit ?? top));
     }
 
-    private InputDone Scroll(TopLevel top, Visual? element, InputAction action)
+    protected override InputDone Scroll(TopLevel top, Visual? element, InputAction action)
     {
-        Point at = At(top, element, action, "scroll");
-        Visual? hit = Hit(top, at);
+        Point at = Aim(top, element, action, "scroll");
+        Visual? hit = Hit(top, at.X, at.Y);
         IInputRoot root = Root(top);
         RawInputModifiers held = Held(action.Modifiers);
         Send(top, new RawPointerEventArgs(mouse, Now, root, RawPointerEventType.Move, at, held));
@@ -94,7 +87,7 @@ internal sealed class Driver(Inspector inspector)
         return Done(top, at, Took(element, hit), Shown.ScrolledOf(hit ?? element));
     }
 
-    private InputDone Type(TopLevel top, Visual? element, InputAction action)
+    protected override InputDone Type(TopLevel top, Visual? element, InputAction action)
     {
         (Visual? focused, bool gave) = Focus(element);
         if (action.Replace == true)
@@ -133,7 +126,7 @@ internal sealed class Driver(Inspector inspector)
         return Into(top, focused);
     }
 
-    private InputDone Keys(TopLevel top, Visual? element, InputAction action)
+    protected override InputDone Keys(TopLevel top, Visual? element, InputAction action)
     {
         (Visual? focused, _) = Focus(element);
         foreach (Chord chord in action.Keys ?? [])
@@ -192,7 +185,7 @@ internal sealed class Driver(Inspector inspector)
 
     /// <summary>Gives an element the keyboard focus, as Tab or a click would, unless it or something inside it has it;
     /// with none, whatever has the focus keeps it. Says what has it, and whether this gave it.</summary>
-    private static (Visual? Focused, bool Gave) Focus(Visual? element)
+    private (Visual? Focused, bool Gave) Focus(Visual? element)
     {
         if (element is null or TopLevel)
         {
@@ -208,7 +201,7 @@ internal sealed class Driver(Inspector inspector)
         }
         if (!input.IsEffectivelyVisible)
         {
-            throw new Refusal($"{Shown.Called(element)} is not shown (IsVisible is false on it or an ancestor)");
+            throw new Refusal($"{Shown.Called(element)} is not shown ({Hidden})");
         }
         InputElement? taking = input.Focusable && input.IsEffectivelyEnabled
             ? input
@@ -222,76 +215,35 @@ internal sealed class Driver(Inspector inspector)
         return (taking, true);
     }
 
-    /// <summary>Where the pointer acts: the point asked for in the window, or an element's centre (of the part of it its
-    /// window and scroll viewers show), or a point in the element from its top left. An element hidden, disabled, out of
-    /// view or covered by another is refused, saying which, rather than acting on whatever is there.</summary>
-    private static Point At(TopLevel top, Visual? element, InputAction action, string doing)
+    /// <summary>Where the pointer acts (<see cref="Driving{T, TTop}.At"/>), as Avalonia's point.</summary>
+    private Point Aim(TopLevel top, Visual? element, InputAction action, string doing)
     {
-        Rect window = new(top.ClientSize);
-        if (element is null)
-        {
-            if (action.X is not double x || action.Y is not double y)
-            {
-                throw new Refusal("Name an element, or a point (x and y) in the window");
-            }
-            Point point = new(x, y);
-            return window.Contains(point)
-                ? point
-                : throw new Refusal($"{Spot(point)} is outside the window, which is {Box(window)}");
-        }
-        string name = Shown.Called(element);
-        if (!element.IsEffectivelyVisible)
-        {
-            throw new Refusal($"{name} is not shown (IsVisible is false on it or an ancestor)");
-        }
-        if (element is InputElement { IsEffectivelyEnabled: false })
-        {
-            throw new Refusal($"{name} is disabled: a {doing} would not reach it");
-        }
-        Rect box = Shown.RectIn(element, top) ?? throw new Refusal($"{name} is in no window");
-        Rect seen = box.Intersect(window);
-        Visual? clipper = null;
-        for (Visual? at = element.GetVisualParent(); at is not null && at != top; at = at.GetVisualParent())
-        {
-            if (at.ClipToBounds && Shown.RectIn(at, top) is { } clip)
-            {
-                Rect within = seen.Intersect(clip);
-                if (within.Width <= 0 || within.Height <= 0)
-                {
-                    clipper ??= at;
-                }
-                seen = within;
-            }
-        }
-        if (seen.Width <= 0 || seen.Height <= 0)
-        {
-            throw new Refusal(clipper?.FindAncestorOfType<ScrollViewer>(includeSelf: true) is { } scroller
-                ? $"{name} is scrolled out of view inside {Shown.Called(scroller)}: scroll it to bring it into view"
-                : $"{name} is out of view ({Box(box)} in a window {Box(window)})");
-        }
-        Point aim = action.X is double ox && action.Y is double oy ? new Point(box.X + ox, box.Y + oy) : seen.Center;
-        if (!seen.Contains(aim))
-        {
-            throw new Refusal($"{Spot(aim)} is outside the part of {name} shown ({Box(seen)})");
-        }
-        if (Hit(top, aim) is { } hit && hit != element && !element.IsVisualAncestorOf(hit) && !hit.IsVisualAncestorOf(element))
-        {
-            throw new Refusal($"{name} is covered at {Spot(aim)} by {Inspector.Named(hit)}, which would take the {doing}");
-        }
-        return aim;
+        (double x, double y) = At(top, element, action, doing);
+        return new Point(x, y);
     }
 
-    private static string Box(Rect rect) => Words.Box(rect.X, rect.Y, rect.Width, rect.Height);
+    protected override Box Client(TopLevel top) => new(0, 0, top.ClientSize.Width, top.ClientSize.Height);
 
-    private static string Spot(Point point) => Words.Spot(point.X, point.Y);
+    protected override bool IsShown(Visual element) => element.IsEffectivelyVisible;
 
-    /// <summary>What took pointer input aimed at an element: the element when the hit is it or inside it, else what was hit
-    /// (an ancestor, the element taking no input where it was aimed).</summary>
-    private static Visual? Took(Visual? element, Visual? hit) =>
-        element is not null && hit is not null && (hit == element || element.IsVisualAncestorOf(hit)) ? element : hit;
+    protected override bool IsEnabled(Visual element) => element is not InputElement { IsEffectivelyEnabled: false };
+
+    protected override Box? BoxIn(Visual element, TopLevel top) => Shown.RectIn(element, top) is { } box ? new Box(box.X, box.Y, box.Width, box.Height) : null;
+
+    protected override Visual? Parent(Visual element) => element.GetVisualParent();
+
+    protected override bool Clips(Visual element) => element.ClipToBounds;
+
+    protected override Visual? ScrollerAround(Visual element) => element.FindAncestorOfType<ScrollViewer>(includeSelf: true);
 
     /// <summary>What a person's pointer at a point would be over: what Avalonia's own hit test finds, disabled or not.</summary>
-    private static Visual? Hit(TopLevel top, Point at) => top.InputHitTest(at, enabledElementsOnly: false) as Visual;
+    protected override Visual? Hit(TopLevel top, double x, double y) => top.InputHitTest(new Point(x, y), enabledElementsOnly: false) as Visual;
+
+    protected override bool Within(Visual element, Visual ancestor) => element == ancestor || ancestor.IsVisualAncestorOf(element);
+
+    protected override string Called(Visual element) => Shown.Called(element);
+
+    protected override string Named(Visual element) => Inspector.Named(element);
 
     private InputDone Done(TopLevel top, Point? at, Visual? target, string? shows) => new(
         inspector.IdOf(top),

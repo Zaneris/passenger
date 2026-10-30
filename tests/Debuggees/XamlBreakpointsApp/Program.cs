@@ -11,7 +11,7 @@ public static class Program
     public static Dispatcher? Ui { get; set; }
 
     /// <summary>Headless, so a test's run puts nothing on the screen. A line on its standard input ("paint", "warn",
-    /// "rename") has the window's code-behind change something, as something a person did in it would.</summary>
+    /// "nudge", "rename") has the window's code-behind change something, as something a person did in it would.</summary>
     public static int Main(string[] args)
     {
         Thread input = new(Input) { IsBackground = true, Name = "Input" };
@@ -42,6 +42,9 @@ public static class Program
                         break;
                     case "warn":
                         window.Warn();
+                        break;
+                    case "nudge":
+                        window.Nudge();
                         break;
                     case "rename":
                         window.Rename();

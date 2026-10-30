@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Data;
 using Avalonia.Diagnostics;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Markup.Xaml.Styling;
@@ -238,16 +237,10 @@ internal sealed class Styling
         if (!property.IsDirect)
         {
             AvaloniaPropertyValue effective = element.GetDiagnostic(property);
-            if (effective.IsOverriddenCurrentValue)
+            string source = effective.IsOverriddenCurrentValue ? ValueSources.Current : Details.SourceOf(effective.Priority);
+            if (source is ValueSources.Current or ValueSources.Local or ValueSources.Animation)
             {
-                return new SetterReport(name, value, place, SetterStates.Overridden, "the control's own value (SetCurrentValue)");
-            }
-            switch (effective.Priority)
-            {
-                case BindingPriority.LocalValue:
-                    return new SetterReport(name, value, place, SetterStates.Overridden, "its local value");
-                case BindingPriority.Animation:
-                    return new SetterReport(name, value, place, SetterStates.Overridden, "an animation");
+                return new SetterReport(name, value, place, SetterStates.Overridden, Words.Giver(source));
             }
         }
         IValueFrameDiagnostic? winner = WinningFrame(property);
@@ -257,7 +250,7 @@ internal sealed class Styling
         }
         StyleBase? other = winner.Source as StyleBase;
         string by = other is not null ? SelectorText(other)
-            : winner.Type == IValueFrameDiagnostic.FrameType.Template ? "its template" : "another frame";
+            : winner.Type == IValueFrameDiagnostic.FrameType.Template ? Words.Giver(ValueSources.Template) : "another frame";
         return new SetterReport(name, value, place, SetterStates.Overridden, by) { ByPlace = other is null ? null : Details.Place(other) };
     }
 

@@ -240,6 +240,33 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
         window.Close();
     }
 
+    /// <summary>The Count button's Margin, which its implicit Style gave it, set by the control itself (SetCurrentValue): the
+    /// property's row says the control set it, and the Style's setter is overridden by it rather than shown winning.</summary>
+    [AvaloniaFact]
+    public void A_value_a_wpf_control_sets_itself_overrides_its_styles_setter_in_the_words_its_row_says()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        MainWindow window = Debugged();
+        Ui.TypeToDebugged(window, "nudge");
+        Ui.WaitFor(() =>
+        {
+            window.BottomPanel.Debug.Console.Flush();
+            return window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("Nudged", StringComparison.Ordinal);
+        }, () => $"the app to say Count set its own Margin: {Said(window)}");
+
+        Choose(window, "Greeting");
+        ElementDetails count = Choose(window, "Count");
+        PropertyValue margin = count.Properties.Single(p => p.Name == "Margin");
+        Assert.True(margin is { Source: ValueSources.Current, Detail: "Set by the control itself (SetCurrentValue)" },
+            $"Count's Margin row said it came from {margin.Source} ({margin.Detail}), not the control itself");
+        SetterReport styled = count.Styles.Single(s => s.Kind == StyleKinds.Style).Setters.Single(s => s.Property == "Margin");
+        Assert.True(styled is { State: SetterStates.Overridden, By: "the control itself (SetCurrentValue)" },
+            $"The implicit Style's Margin setter on Count was {styled.State} by {styled.By}, not overridden by the control itself");
+
+        Stop(window);
+        window.Close();
+    }
+
     /// <summary>Whether a row of the tree is the element of a name or inside it, by the rows above it a level up each.</summary>
     private static bool Under(LiveTreeView tree, long id, string name)
     {

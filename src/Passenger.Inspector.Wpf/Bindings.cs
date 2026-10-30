@@ -206,7 +206,7 @@ internal static partial class Bindings
             {
                 break;
             }
-            at = at.GetType().GetProperty(step.Trim(), BindingFlags.Public | BindingFlags.Instance) is { GetMethod: not null } property && property.GetIndexParameters().Length == 0
+            at = at.GetType().GetProperty(step.Trim(), BindingFlags.Public | BindingFlags.Instance) is { } property && Words.Readable(property)
                 ? Read(property, at)
                 : null;
         }
@@ -259,14 +259,7 @@ internal static partial class Bindings
     /// its dependency properties.</summary>
     private static HashSet<string> Members(Type type)
     {
-        HashSet<string> names = new(StringComparer.Ordinal);
-        foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (property.GetMethod is not null && property.GetIndexParameters().Length == 0)
-            {
-                names.Add(property.Name);
-            }
-        }
+        HashSet<string> names = new(Words.ReadableNames(type), StringComparer.Ordinal);
         if (typeof(DependencyObject).IsAssignableFrom(type))
         {
             foreach (FieldInfo field in type.GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy))

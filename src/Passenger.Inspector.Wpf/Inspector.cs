@@ -285,5 +285,5 @@ internal sealed class Inspector : Inspecting<DependencyObject>
     /// <summary>An element as an agent's answer names it: its type and #name (or the text it shows), and the control whose
     /// template made it.</summary>
     public static string Named(DependencyObject element) =>
-        element is FrameworkElement { TemplatedParent: DependencyObject parent } ? $"{Shown.Called(element)} in {Shown.Called(parent)}'s template" : Shown.Called(element);
+        Words.Named(Shown.Called(element), element is FrameworkElement { TemplatedParent: DependencyObject parent } ? Shown.Called(parent) : null);
 }

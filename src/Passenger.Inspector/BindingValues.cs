@@ -389,7 +389,7 @@ internal static class BindingReader
     {
         try
         {
-            return of.GetType().GetProperty(name, Instance) is { GetMethod: not null } property && property.GetIndexParameters().Length == 0 ? property.GetValue(of) : null;
+            return of.GetType().GetProperty(name, Instance) is { } property && Words.Readable(property) ? property.GetValue(of) : null;
         }
         catch (Exception error) when (error is TargetInvocationException or AmbiguousMatchException)
         {

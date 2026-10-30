@@ -82,8 +82,7 @@ internal sealed class Details(Inspector inspector)
     }
 
     /// <summary>A visual as a sentence names it: its type, then #name.</summary>
-    public static string Describe(Visual visual) =>
-        visual is StyledElement { Name: { Length: > 0 } name } ? $"{Words.TypeName(visual.GetType())}#{name}" : Words.TypeName(visual.GetType());
+    public static string Describe(Visual visual) => Words.Describe(visual.GetType(), (visual as StyledElement)?.Name);
 
     private static LayoutInfo Layout(Visual visual)
     {
@@ -160,7 +159,7 @@ internal sealed class Details(Inspector inspector)
         string value = Shown.Format(visual, name, diagnostic.Value);
         if (diagnostic.IsOverriddenCurrentValue)
         {
-            return new PropertyValue(name, owner, attached, type, value, ValueSources.Current, "Set by the control itself (SetCurrentValue)", null);
+            return new PropertyValue(name, owner, attached, type, value, ValueSources.Current, Words.SetItself, null);
         }
         switch (diagnostic.Priority)
         {
@@ -208,19 +207,23 @@ internal sealed class Details(Inspector inspector)
             AvaloniaPropertyValue there = at.GetDiagnostic(property);
             if (there.Priority is not (BindingPriority.Inherited or BindingPriority.Unset))
             {
-                string how = there.Priority switch
-                {
-                    BindingPriority.LocalValue => "its local value",
-                    BindingPriority.Style or BindingPriority.StyleTrigger => "a style",
-                    BindingPriority.Template => "its template",
-                    BindingPriority.Animation => "an animation",
-                    _ => "a value",
-                };
-                return ($"From {(at is Visual ancestor ? Describe(ancestor) : Words.TypeName(at.GetType()))} ({how})", Place(at));
+                return (Words.InheritedFrom(at is Visual ancestor ? Describe(ancestor) : Words.TypeName(at.GetType()), SourceOf(there.Priority)), Place(at));
             }
         }
         return (null, null);
     }
+
+    /// <summary>The source (<see cref="ValueSources"/>) a value set at an Avalonia priority has, as the inspector's shared
+    /// words name it (<see cref="Words.Giver"/>).</summary>
+    public static string SourceOf(BindingPriority priority) => priority switch
+    {
+        BindingPriority.LocalValue => ValueSources.Local,
+        BindingPriority.Animation => ValueSources.Animation,
+        BindingPriority.Style or BindingPriority.StyleTrigger => ValueSources.Style,
+        BindingPriority.Template => ValueSources.Template,
+        BindingPriority.Inherited => ValueSources.Inherited,
+        _ => ValueSources.Default,
+    };
 
     /// <summary>A value as the window shows it: text quoted, a brush by its colour.</summary>
     public static string Format(object? value) => Words.Value(value, Framed);

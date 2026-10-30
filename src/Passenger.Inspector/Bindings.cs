@@ -173,14 +173,7 @@ internal static partial class Bindings
     /// an AvaloniaObject's Avalonia properties, and methods of one parameter or none (bound as commands).</summary>
     private static HashSet<string> Members(Type type)
     {
-        HashSet<string> names = new(StringComparer.Ordinal);
-        foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (property.GetMethod is not null && property.GetIndexParameters().Length == 0)
-            {
-                names.Add(property.Name);
-            }
-        }
+        HashSet<string> names = new(Words.ReadableNames(type), StringComparer.Ordinal);
         if (typeof(AvaloniaObject).IsAssignableFrom(type))
         {
             foreach (AvaloniaProperty property in AvaloniaPropertyRegistry.Instance.GetRegistered(type))

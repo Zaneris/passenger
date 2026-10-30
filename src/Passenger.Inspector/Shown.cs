@@ -1,4 +1,3 @@
-using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -11,14 +10,9 @@ namespace Passenger.Inspector;
 /// the values of properties named, and what has the keyboard focus.</summary>
 internal static class Shown
 {
-    /// <summary>The longest text an element's line carries.</summary>
-    private const int Longest = 200;
-
     /// <summary>An element as a sentence names it: its type, then #name, or the text it shows when it has no name.</summary>
     public static string Called(Visual visual) =>
-        visual is StyledElement { Name.Length: > 0 } || TextOf(visual) is not { Length: > 0 } text
-            ? Details.Describe(visual)
-            : $"{Details.Describe(visual)} \"{(text.Length > 40 ? text[..37] + "..." : text)}\"";
+        Words.Called(Details.Describe(visual), visual is StyledElement { Name.Length: > 0 } ? null : TextOf(visual));
 
     /// <summary>An element's box in its window's units, its transforms and its ancestors' included; null when it is in no
     /// window.</summary>
@@ -46,23 +40,12 @@ internal static class Shown
             ContentControl { Content: IFormattable formattable } => formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
             _ => null,
         };
-        return text is { Length: > Longest } ? text[..(Longest - 3)] + "..." : text;
+        return Words.Shows(text);
     }
 
     /// <summary>The values of the properties named that an element has: Avalonia's by name, an attached one as Owner.Name,
     /// else a public CLR property.</summary>
-    public static Dictionary<string, string>? Values(Visual visual, IReadOnlyList<string> names)
-    {
-        Dictionary<string, string> values = [];
-        foreach (string name in names)
-        {
-            if (Value(visual, name) is { } value)
-            {
-                values[name] = value;
-            }
-        }
-        return values.Count == 0 ? null : values;
-    }
+    public static Dictionary<string, string>? Values(Visual visual, IReadOnlyList<string> names) => Words.Values(names, name => Value(visual, name));
 
     private static string? Value(Visual visual, string name)
     {
@@ -75,19 +58,7 @@ internal static class Shown
         {
             return Format(visual, name, visual.GetValue(property));
         }
-        if (dot < 0 && visual.GetType().GetProperty(name, BindingFlags.Public | BindingFlags.Instance) is { GetMethod: not null } clr
-            && clr.GetIndexParameters().Length == 0)
-        {
-            try
-            {
-                return Format(visual, name, clr.GetValue(visual));
-            }
-            catch (TargetInvocationException error)
-            {
-                return $"({error.InnerException?.GetType().Name ?? error.GetType().Name}: {error.InnerException?.Message})";
-            }
-        }
-        return null;
+        return dot < 0 ? Words.Read(visual, name, value => Format(visual, name, value)) : null;
     }
 
     /// <summary>Whether a property of an element, by its name, holds a password's text: the Text, SelectedText or
@@ -111,7 +82,7 @@ internal static class Shown
         {
             if (at is ScrollViewer viewer)
             {
-                return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{Details.Describe(viewer)} at {viewer.Offset.X:0.##},{viewer.Offset.Y:0.##} of {viewer.Extent.Width:0.##}x{viewer.Extent.Height:0.##} (viewport {viewer.Viewport.Width:0.##}x{viewer.Viewport.Height:0.##})");
+                return Words.Scrolled(Details.Describe(viewer), viewer.Offset.X, viewer.Offset.Y, viewer.Extent.Width, viewer.Extent.Height, viewer.Viewport.Width, viewer.Viewport.Height);
             }
         }
         return null;

@@ -9,15 +9,14 @@ namespace Passenger.Inspector.Wpf;
 /// a click chooses it (the app never sees that click) and ends it; Escape ends it choosing nothing. The element chosen
 /// in Passenger is outlined the same way: an adorner of the inspector's own, in colours of its own, since Passenger's
 /// theme tokens are not the app's.</summary>
-internal sealed class Picker(Inspector inspector, Connection connection)
+internal sealed class Picker(Inspector inspector, Connection connection) : Picking<DependencyObject>(connection)
 {
     private readonly List<(UIElement Top, MouseEventHandler Moved, MouseButtonEventHandler Pressed, MouseButtonEventHandler Released, KeyEventHandler Keys)> hooked = [];
     private Marker? outline;
 
     public bool IsOwn(DependencyObject element) => element == outline;
 
-    /// <summary>Turns Select Element on, in every window the app has open, or off.</summary>
-    public void Choose(bool on)
+    public override void Choose(bool on)
     {
         foreach ((UIElement top, MouseEventHandler moved, MouseButtonEventHandler pressed, MouseButtonEventHandler released, KeyEventHandler keys) in hooked)
         {
@@ -49,8 +48,7 @@ internal sealed class Picker(Inspector inspector, Connection connection)
         }
     }
 
-    /// <summary>Outlines an element in its window, or takes the outline away.</summary>
-    public void Outline(DependencyObject? element)
+    public override void Outline(DependencyObject? element)
     {
         if (outline is { } old)
         {
@@ -97,12 +95,7 @@ internal sealed class Picker(Inspector inspector, Connection connection)
     private void Pick(UIElement top, MouseButtonEventArgs e)
     {
         e.Handled = true;
-        DependencyObject? chosen = At(top, e);
-        Choose(false);
-        Outline(chosen);
-        connection.Send(chosen is null
-            ? new Reply { Event = Wire.PickEnded }
-            : new Reply { Event = Wire.Picked, Element = inspector.IdOf(chosen) });
+        Picked(At(top, e));
     }
 
     private void Escape(KeyEventArgs e)
@@ -112,9 +105,7 @@ internal sealed class Picker(Inspector inspector, Connection connection)
             return;
         }
         e.Handled = true;
-        Choose(false);
-        Outline(null);
-        connection.Send(new Reply { Event = Wire.PickEnded });
+        Picked(null);
     }
 
     /// <summary>The outline: a box over the element, drawn by the inspector, which hit testing passes through.</summary>

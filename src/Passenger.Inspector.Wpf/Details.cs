@@ -90,8 +90,7 @@ internal sealed class Details(Inspector inspector)
     public static SourcePlace? Place(object made) => Sources.Place(made);
 
     /// <summary>An element as a sentence names it: its type, then #name.</summary>
-    public static string Describe(DependencyObject element) =>
-        element is FrameworkElement { Name: { Length: > 0 } name } ? $"{Words.TypeName(element.GetType())}#{name}" : Words.TypeName(element.GetType());
+    public static string Describe(DependencyObject element) => Words.Describe(element.GetType(), (element as FrameworkElement)?.Name);
 
     private static LayoutInfo Layout(DependencyObject element)
     {
@@ -163,7 +162,7 @@ internal sealed class Details(Inspector inspector)
         }
         if (source.IsCurrent)
         {
-            return new PropertyValue(name, owner, attached, type, value, ValueSources.Current, "Set by the control itself (SetCurrentValue)", null);
+            return new PropertyValue(name, owner, attached, type, value, ValueSources.Current, Words.SetItself, null);
         }
         string? coerced = source.IsCoerced ? "coerced" : null;
         switch (source.BaseValueSource)
@@ -177,13 +176,7 @@ internal sealed class Details(Inspector inspector)
                 or BaseValueSource.DefaultStyle or BaseValueSource.DefaultStyleTrigger
                 or BaseValueSource.TemplateTrigger or BaseValueSource.ParentTemplate or BaseValueSource.ParentTemplateTrigger:
                 Styling.Won? won = styling.Winner(property, source.BaseValueSource);
-                string where = source.BaseValueSource switch
-                {
-                    BaseValueSource.DefaultStyle or BaseValueSource.DefaultStyleTrigger => ValueSources.Theme,
-                    BaseValueSource.TemplateTrigger or BaseValueSource.ParentTemplate or BaseValueSource.ParentTemplateTrigger => ValueSources.Template,
-                    _ => ValueSources.Style,
-                };
-                return new PropertyValue(name, owner, attached, type, value, where,
+                return new PropertyValue(name, owner, attached, type, value, SourceOf(source.BaseValueSource),
                     Join(won?.Detail ?? Said(element, source.BaseValueSource), source.IsExpression ? Bound(element, property) : null, coerced), won?.Place);
             case BaseValueSource.Default:
                 return new PropertyValue(name, owner, attached, type, value, ValueSources.Default, coerced, null);
@@ -192,8 +185,28 @@ internal sealed class Details(Inspector inspector)
         }
     }
 
+    /// <summary>The source (<see cref="ValueSources"/>) WPF says a value has, as the inspector's shared words name it
+    /// (<see cref="Words.Giver"/>): an animation's or SetCurrentValue's over whatever gave its base value.</summary>
+    public static string SourceOf(ValueSource source) => source switch
+    {
+        { IsAnimated: true } => ValueSources.Animation,
+        { IsCurrent: true } => ValueSources.Current,
+        _ => SourceOf(source.BaseValueSource),
+    };
+
+    /// <summary>The source (<see cref="ValueSources"/>) a WPF base value source gives a value.</summary>
+    public static string SourceOf(BaseValueSource source) => source switch
+    {
+        BaseValueSource.Local => ValueSources.Local,
+        BaseValueSource.Style or BaseValueSource.StyleTrigger or BaseValueSource.ImplicitStyleReference => ValueSources.Style,
+        BaseValueSource.DefaultStyle or BaseValueSource.DefaultStyleTrigger => ValueSources.Theme,
+        BaseValueSource.TemplateTrigger or BaseValueSource.ParentTemplate or BaseValueSource.ParentTemplateTrigger => ValueSources.Template,
+        BaseValueSource.Inherited => ValueSources.Inherited,
+        _ => ValueSources.Default,
+    };
+
     /// <summary>A source WPF names with no setter to point at, in the window's words.</summary>
-    private static string Said(DependencyObject element, BaseValueSource source)
+    public static string Said(DependencyObject element, BaseValueSource source)
     {
         string? parent = element is FrameworkElement { TemplatedParent: { } templated } ? Describe(templated) : null;
         return source switch
@@ -278,15 +291,7 @@ internal sealed class Details(Inspector inspector)
             }
             if (there is not (BaseValueSource.Inherited or BaseValueSource.Default or BaseValueSource.Unknown))
             {
-                string how = there switch
-                {
-                    BaseValueSource.Local => "its local value",
-                    BaseValueSource.Style or BaseValueSource.StyleTrigger or BaseValueSource.ImplicitStyleReference => "a style",
-                    BaseValueSource.DefaultStyle or BaseValueSource.DefaultStyleTrigger => "its default style",
-                    BaseValueSource.ParentTemplate or BaseValueSource.ParentTemplateTrigger or BaseValueSource.TemplateTrigger => "its template",
-                    _ => "a value",
-                };
-                return ($"From {Describe(at)} ({how})", Sources.Place(at));
+                return (Words.InheritedFrom(Describe(at), SourceOf(there)), Sources.Place(at));
             }
         }
         return (null, null);

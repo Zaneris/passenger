@@ -16,7 +16,7 @@ namespace Passenger.Inspector.Wpf;
 /// keys are WPF's key events on the element with the focus, then their text through WPF's text input; the wheel is WPF's wheel
 /// event. A window not active is never activated: the focus given there is held here for the keys. A chord with modifiers
 /// runs the command its gesture is bound to, as WPF reads modifiers from the keyboard itself.</summary>
-internal sealed class Driver(Inspector inspector)
+internal sealed class Driver(Inspector inspector) : Driving<DependencyObject, Visual>
 {
     /// <summary>A wheel's notch, as Windows reports one.</summary>
     private const int Notch = 120;
@@ -24,29 +24,18 @@ internal sealed class Driver(Inspector inspector)
     /// <summary>The element an agent gave the focus to in a window that was not active, which keys go to from then.</summary>
     private WeakReference<DependencyObject>? given;
 
-    public InputDone Do(InputAction action)
-    {
-        DependencyObject? element = action.Element is long id ? inspector.Find(id) ?? throw new Refusal("That element is no longer in the app") : null;
-        Visual top = element is not null
-            ? (element as Visual is { } own && inspector.TopLevels().Contains(own) ? own : Inspector.TopOf(element)) ?? throw new Refusal($"{Shown.Called(element)} is in no window")
-            : action.Window is long window && inspector.Find(window) is Visual named && inspector.TopLevels().Contains(named) ? named
-            : throw new Refusal(action.Window is null ? "Name an element or a window" : "That window is no longer open");
-        // The window's own element names its point and takes its keys as any other does.
-        DependencyObject? target = element == top && action.X is not null ? null : element;
-        return action.Kind switch
-        {
-            InputKinds.Click => Click(top, target, action),
-            InputKinds.Scroll => Scroll(top, target, action),
-            InputKinds.Type => Type(top, element, action),
-            InputKinds.Key => Keys(top, element, action),
-            _ => throw new Refusal($"The inspector knows no input '{action.Kind}'"),
-        };
-    }
+    protected override string Hidden => "it or an ancestor is hidden or collapsed";
 
-    private InputDone Click(Visual top, DependencyObject? element, InputAction action)
+    protected override DependencyObject? Find(long id) => inspector.Find(id);
+
+    protected override Visual? OpenTop(DependencyObject element) => element is Visual own && inspector.TopLevels().Contains(own) ? own : null;
+
+    protected override Visual? TopOf(DependencyObject element) => OpenTop(element) ?? Inspector.TopOf(element);
+
+    protected override InputDone Click(Visual top, DependencyObject? element, InputAction action)
     {
-        Point at = At(top, element, action, "click");
-        DependencyObject? hit = Hit(top, at);
+        Point at = Aim(top, element, action, "click");
+        DependencyObject? hit = Hit(top, at.X, at.Y);
         DependencyObject? took = hit ?? element;
         if (action.Modifiers is { Count: > 0 } held && held.Any(h => h != Modifier.Shift))
         {
@@ -225,10 +214,10 @@ internal sealed class Driver(Inspector inspector)
         return opening.Handled;
     }
 
-    private InputDone Scroll(Visual top, DependencyObject? element, InputAction action)
+    protected override InputDone Scroll(Visual top, DependencyObject? element, InputAction action)
     {
-        Point at = At(top, element, action, "scroll");
-        DependencyObject? hit = Hit(top, at) ?? element;
+        Point at = Aim(top, element, action, "scroll");
+        DependencyObject? hit = Hit(top, at.X, at.Y) ?? element;
         if (hit is not IInputElement input)
         {
             throw new Refusal("Nothing there takes the wheel");
@@ -265,7 +254,7 @@ internal sealed class Driver(Inspector inspector)
         return Done(top, at, Took(element, hit), Shown.ScrolledOf(hit));
     }
 
-    private InputDone Type(Visual top, DependencyObject? element, InputAction action)
+    protected override InputDone Type(Visual top, DependencyObject? element, InputAction action)
     {
         (IInputElement? target, bool gave) = Focused(top, element);
         if (action.Replace == true)
@@ -300,7 +289,7 @@ internal sealed class Driver(Inspector inspector)
         return Into(top);
     }
 
-    private InputDone Keys(Visual top, DependencyObject? element, InputAction action)
+    protected override InputDone Keys(Visual top, DependencyObject? element, InputAction action)
     {
         Focused(top, element);
         foreach (Chord chord in action.Keys ?? [])
@@ -564,7 +553,7 @@ internal sealed class Driver(Inspector inspector)
         }
         if (!input.IsVisible)
         {
-            throw new Refusal($"{Shown.Called(element)} is not shown (it or an ancestor is hidden or collapsed)");
+            throw new Refusal($"{Shown.Called(element)} is not shown ({Hidden})");
         }
         UIElement? taking = input.Focusable && input.IsEnabled ? input : Descendants(input).OfType<UIElement>().FirstOrDefault(d => d.Focusable && d.IsEnabled && d.IsVisible);
         if (taking is null || !GiveFocus(taking))
@@ -603,75 +592,41 @@ internal sealed class Driver(Inspector inspector)
         return null;
     }
 
-    /// <summary>Where the pointer acts: the point asked for in the window, or an element's centre (of the part of it its
-    /// window and scroll viewers show), or a point in the element from its top left. An element hidden, disabled, out of
-    /// view or covered by another is refused, saying which, rather than acting on whatever is there.</summary>
-    private Point At(Visual top, DependencyObject? element, InputAction action, string doing)
+    /// <summary>Where the pointer acts (<see cref="Driving{T, TTop}.At"/>), as WPF's point.</summary>
+    private Point Aim(Visual top, DependencyObject? element, InputAction action, string doing)
     {
-        Rect window = new(Shown.ClientSize(top));
-        if (element is null)
-        {
-            if (action.X is not double x || action.Y is not double y)
-            {
-                throw new Refusal("Name an element, or a point (x and y) in the window");
-            }
-            Point point = new(x, y);
-            return window.Contains(point) ? point : throw new Refusal($"{Spot(point)} is outside the window, which is {Box(window)}");
-        }
-        string name = Shown.Called(element);
-        if (element is UIElement { IsVisible: false })
-        {
-            throw new Refusal($"{name} is not shown (it or an ancestor is hidden or collapsed)");
-        }
-        if (element is UIElement { IsEnabled: false })
-        {
-            throw new Refusal($"{name} is disabled: a {doing} would not reach it");
-        }
-        Rect box = Shown.RectIn(element, top) ?? throw new Refusal($"{name} is in no window");
-        Rect seen = Rect.Intersect(box, window);
-        DependencyObject? clipper = null;
-        for (DependencyObject? at = Shown.Parent(element); at is not null && at != top && !seen.IsEmpty; at = Shown.Parent(at))
-        {
-            if (Shown.Clips(at) && Shown.RectIn(at, top) is { } clip)
-            {
-                Rect within = Rect.Intersect(seen, clip);
-                if (within.IsEmpty || within.Width <= 0 || within.Height <= 0)
-                {
-                    clipper ??= at;
-                }
-                seen = within;
-            }
-        }
-        if (seen.IsEmpty || seen.Width <= 0 || seen.Height <= 0)
-        {
-            throw new Refusal(Up<ScrollViewer>(clipper) is { } scroller
-                ? $"{name} is scrolled out of view inside {Shown.Called(scroller)}: scroll it to bring it into view"
-                : $"{name} is out of view ({Box(box)} in a window {Box(window)})");
-        }
-        Point aim = action.X is double ox && action.Y is double oy ? new Point(box.X + ox, box.Y + oy) : new Point(seen.X + (seen.Width / 2), seen.Y + (seen.Height / 2));
-        if (!seen.Contains(aim))
-        {
-            throw new Refusal($"{Spot(aim)} is outside the part of {name} shown ({Box(seen)})");
-        }
-        if (Hit(top, aim) is { } hit && !Shown.IsWithin(hit, element) && !Shown.IsWithin(element, hit))
-        {
-            throw new Refusal($"{name} is covered at {Spot(aim)} by {Inspector.Named(hit)}, which would take the {doing}");
-        }
-        return aim;
+        (double x, double y) = At(top, element, action, doing);
+        return new Point(x, y);
     }
+
+    protected override Box Client(Visual top)
+    {
+        Size size = Shown.ClientSize(top);
+        return new Box(0, 0, size.Width, size.Height);
+    }
+
+    protected override bool IsShown(DependencyObject element) => element is not UIElement { IsVisible: false };
+
+    protected override bool IsEnabled(DependencyObject element) => element is not UIElement { IsEnabled: false };
+
+    protected override Box? BoxIn(DependencyObject element, Visual top) => Shown.RectIn(element, top) is { } box ? new Box(box.X, box.Y, box.Width, box.Height) : null;
+
+    protected override DependencyObject? Parent(DependencyObject element) => Shown.Parent(element);
+
+    protected override bool Clips(DependencyObject element) => Shown.Clips(element);
+
+    protected override DependencyObject? ScrollerAround(DependencyObject element) => Up<ScrollViewer>(element);
 
     /// <summary>What a person's pointer at a point would be over: the input element WPF's own hit test finds there (a
     /// hyperlink in a text block included).</summary>
-    private DependencyObject? Hit(Visual top, Point at) =>
-        top is UIElement root && root.InputHitTest(at) is DependencyObject input && !inspector.IsOwn(input) ? input : null;
+    protected override DependencyObject? Hit(Visual top, double x, double y) =>
+        top is UIElement root && root.InputHitTest(new Point(x, y)) is DependencyObject input && !inspector.IsOwn(input) ? input : null;
 
-    /// <summary>What took pointer input aimed at an element: the element when the hit is it or inside it, else what was hit.</summary>
-    private static DependencyObject? Took(DependencyObject? element, DependencyObject? hit) =>
-        element is not null && hit is not null && Shown.IsWithin(hit, element) ? element : hit;
+    protected override bool Within(DependencyObject element, DependencyObject ancestor) => Shown.IsWithin(element, ancestor);
 
-    private static string Box(Rect rect) => Words.Box(rect.X, rect.Y, rect.Width, rect.Height);
+    protected override string Called(DependencyObject element) => Shown.Called(element);
 
-    private static string Spot(Point point) => Words.Spot(point.X, point.Y);
+    protected override string Named(DependencyObject element) => Inspector.Named(element);
 
     private InputDone Done(Visual top, Point? at, DependencyObject? target, string? shows) => new(
         inspector.IdOf(top),

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Data;
 using Avalonia.Data.Core;
+using Avalonia.Diagnostics;
 using Passenger.Dap;
 
 namespace Passenger.Inspector;
@@ -79,31 +80,25 @@ internal sealed class PropertyBreaks
             Breaks.Changed(breakpoint, Element, property, e.OldValue, e.NewValue, change, at is null ? null : JsonSerializer.Serialize(at, WireJson.Default.SourcePlace));
         }
 
-        /// <summary>What set the value, from the priority Avalonia set it at: a binding (as its XAML writes it), a style
-        /// (its selector, and apart where it is written), an animation, the template, inheritance, or the element's local
-        /// value.</summary>
+        /// <summary>What set the value: the control itself (SetCurrentValue, kept until anything else sets it), else from
+        /// the priority Avalonia set it at, a binding (as its XAML writes it), a style (its selector, and apart where it is
+        /// written), an animation, the template, inheritance, or the element's local value.</summary>
         private (string By, SourcePlace? At) By(AvaloniaPropertyChangedEventArgs e)
         {
             try
             {
+                if (!property.IsDirect && Element.GetDiagnostic(property).IsOverriddenCurrentValue)
+                {
+                    return (Words.ChangedBy(ValueSources.Current), null);
+                }
                 switch (e.Priority)
                 {
-                    case BindingPriority.Animation:
-                        return (", by an animation", null);
-                    case BindingPriority.Inherited:
-                        return (", inherited", null);
-                    case BindingPriority.Template:
-                        return (", by its template", null);
                     case BindingPriority.Style or BindingPriority.StyleTrigger when Element is Visual visual && new Styling(visual).Winner(property) is { } won:
                         return ($", by {(won.Source == ValueSources.Theme ? "theme" : "style")} {won.Detail}", won.Place);
-                    case BindingPriority.Style or BindingPriority.StyleTrigger:
-                        return (", by a style", null);
                     case BindingPriority.LocalValue when BindingOperations.GetBindingExpressionBase(Element, property) is UntypedBindingExpressionBase { Priority: BindingPriority.LocalValue } bound:
-                        return ($", by its binding {bound.Description}", null);
-                    case BindingPriority.LocalValue:
-                        return (", its local value", null);
+                        return (Words.ChangedByBinding(bound.Description), null);
                     default:
-                        return (string.Empty, null);
+                        return (Words.ChangedBy(Details.SourceOf(e.Priority)), null);
                 }
             }
             catch (Exception error) when (error is InvalidOperationException or NotSupportedException or ArgumentException)
