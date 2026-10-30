@@ -1220,7 +1220,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             if (!run.IsCompleted)
             {
                 await StopReadAsync(Session.Debug.Session, cancel);
-                return TestInfo(tests) with { Debugger = await DebugSnapshotAsync() };
+                DebugSnapshot stopped = await DebugSnapshotAsync();
+                // The run is under way: no tally of its own yet, and the last run's is another's.
+                return new TestRunInfo($"Running under the debugger, paused{(stopped.Location is { } at ? $" at {at}" : string.Empty)}: debug_continue goes on", [], stopped);
             }
         }
         if (await run.WaitAsync(cancel) is { } problem)
@@ -1261,12 +1263,17 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>How long tests_list waits for the tests to be found from the test projects' code.</summary>
     private static readonly TimeSpan TestsLookLimit = TimeSpan.FromSeconds(60);
 
-    /// <summary>The last run's tally and its failures, of the tests it ran alone.</summary>
+    /// <summary>The last run's tally and its failures, of the tests it ran alone, each message and stack whole and its
+    /// output's last lines.</summary>
     private TestRunInfo TestInfo(Testing.TestController tests)
     {
         List<Testing.TestNode> failed = [.. tests.RunMethods.Where(m => m.State == Testing.TestState.Failed)];
-        return new TestRunInfo(tests.Summary, [.. failed.Select(m => new TestFailure(TestName(m), m.Path is { } at ? $"{Relative(at)}:{m.Line}" : null, m.Details))]);
+        return new TestRunInfo(tests.Summary, [.. failed.Select(m => new TestFailure(TestName(m), m.Path is { } at ? $"{Relative(at)}:{m.Line}" : null,
+            Testing.TestNode.DetailsOf(m.Results, FailureOutputLines)))]);
     }
+
+    /// <summary>How many of a failure's last lines of output an answer gives: an agent's answer holds no test's every line.</summary>
+    private const int FailureOutputLines = 50;
 
     /// <summary>A test's full name, Namespace.Class.Method, and the target framework it ran under when its project has several.</summary>
     private static string TestName(Testing.TestNode method)

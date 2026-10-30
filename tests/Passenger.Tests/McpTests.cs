@@ -149,6 +149,52 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("Sums.Tests.SumTests.Written_just_now", Assert.Single(run.GetProperty("failures").EnumerateArray()).GetProperty("test").GetString());
     }
 
+    /// <summary>A failing test that wrote 200,000 lines is answered with its message and stack whole and its output's last
+    /// lines after a note of what was left out, an answer an agent can take in.</summary>
+    [Fact]
+    public async Task An_agents_run_of_a_failing_test_that_wrote_200000_lines_answers_its_last_lines_and_says_the_rest_was_left_out()
+    {
+        string tests = PathNames.Canonical(TestFolders.Create("mcp-flood-tests-"));
+        DeleteAtEnd(tests);
+        await TestFolders.PrepareAsync(async () =>
+        {
+            File.WriteAllText(Path.Combine(tests, "Flood.Tests.csproj"),
+                $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
+                "  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"18.10.1\" />\n    <PackageReference Include=\"xunit\" Version=\"2.9.3\" />\n" +
+                "    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"3.1.5\" />\n  </ItemGroup>\n</Project>\n");
+            File.WriteAllText(Path.Combine(tests, "FloodTests.cs"), """
+                using Xunit;
+                using Xunit.Abstractions;
+
+                namespace Flood.Tests;
+
+                public class FloodTests(ITestOutputHelper output)
+                {
+                    [Fact]
+                    public void Writes()
+                    {
+                        for (int line = 0; line < 200_000; line++)
+                        {
+                            output.WriteLine($"line {line} of the flood");
+                        }
+                        Assert.Fail("the flood is over");
+                    }
+                }
+
+                """);
+            await Restore.RunAsync(tests);
+        }, tests);
+        await using McpClient client = await Start(["--mcp", tests], languageServer: false);
+        CallToolResult answer = await Result(client, McpTools.TestsRun, new() { ["filter"] = "Writes" });
+        string text = Text(answer);
+        Assert.True(text.Length < 64 * 1024, $"tests_run answered a failing test that wrote 200,000 lines in {text.Length:N0} characters");
+        JsonElement failure = Assert.Single(JsonDocument.Parse(text).RootElement.GetProperty("failures").EnumerateArray());
+        string details = failure.GetProperty("details").GetString()!;
+        Assert.True(details.Contains("the flood is over", StringComparison.Ordinal) && details.Contains("FloodTests.Writes()", StringComparison.Ordinal)
+            && details.Contains("earlier lines of output", StringComparison.Ordinal) && details.TrimEnd().EndsWith("line 199999 of the flood", StringComparison.Ordinal),
+            $"tests_run's failure did not give its message, stack and the output's last lines after a note of the rest: {details[..Math.Min(details.Length, 2000)]}");
+    }
+
     /// <summary>A VSTest test that reads its standard input reads its end at once, never the agent's requests, which are
     /// Passenger's standard input: its run passes, and the agent's next call is answered.</summary>
     [Fact]

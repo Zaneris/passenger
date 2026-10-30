@@ -143,7 +143,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>A debugged test run an agent goes on with from its stop answers, as its test host ends, with the tally and
-    /// failures tests_run gives.</summary>
+    /// failures tests_run gives; its stop answers that it is paused there, never an earlier run's tally.</summary>
     [Fact]
     public async Task An_agent_going_on_from_a_stop_in_a_debugged_test_run_gets_its_tally_as_it_ends()
     {
@@ -161,9 +161,13 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             await Restore.RunAsync(tests);
         }, tests);
         await using McpClient client = await Start(["--mcp", tests], languageServer: false);
+        Assert.StartsWith("Tests passed: 1, failed: 1 of 2", (await Call(client, McpTools.TestsRun)).GetProperty("summary").GetString(), StringComparison.Ordinal);
         await Call(client, McpTools.BreakpointSet, new() { ["path"] = "SumTests.cs", ["line"] = 10 });
         // Stopped at the breakpoint, and at the failing test's exception where the exception breakpoints say so, in either order.
-        JsonElement ended = (await Call(client, McpTools.TestsRun, new() { ["debug"] = true })).GetProperty("debugger");
+        JsonElement paused = await Call(client, McpTools.TestsRun, new() { ["debug"] = true });
+        Assert.True(paused.GetProperty("summary").GetString()!.StartsWith("Running under the debugger, paused at ", StringComparison.Ordinal) && paused.GetProperty("failures").GetArrayLength() == 0,
+            $"tests_run with debug, its test paused, did not answer that it is paused there: {paused}");
+        JsonElement ended = paused.GetProperty("debugger");
         List<string> stops = [];
         while (ended.GetProperty("state").GetString() == "paused" && stops.Count < 5)
         {

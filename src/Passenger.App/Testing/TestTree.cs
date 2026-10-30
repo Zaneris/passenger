@@ -150,12 +150,45 @@ public sealed class TestNode : Observable, ITreeRow
     };
 
     /// <summary>What the details pane shows: each result's outcome, message, stack, output and the files it carries.</summary>
-    public string Details => string.Join("\n\n", results.Select(r =>
+    public string Details => DetailsOf(results);
+
+    /// <summary>Results as the details pane shows them, each output whole, or with <paramref name="outputTail"/> only its last
+    /// lines, at most that many, and a note of what was left out.</summary>
+    public static string DetailsOf(IReadOnlyList<TestOutcome> results, int? outputTail = null) => string.Join("\n\n", results.Select(r =>
     {
         string header = results.Count > 1 ? $"{ResultName(r)}: {r.State}" : r.State.ToString();
         string? attachments = r.Attachments.Count > 0 ? $"Attachments:\n{string.Join('\n', r.Attachments.Select(a => $"  {a.Name}: {a.Path}"))}" : null;
-        return string.Join('\n', new[] { header, r.Message, r.StackTrace, r.Output is { } output ? $"Output:\n{output.TrimEnd()}" : null, attachments }.Where(t => !string.IsNullOrWhiteSpace(t)));
+        string? output = r.Output?.TrimEnd() is { } written ? $"Output:\n{(outputTail is { } tail ? Tail(written, tail) : written)}" : null;
+        return string.Join('\n', new[] { header, r.Message, r.StackTrace, output, attachments }.Where(t => !string.IsNullOrWhiteSpace(t)));
     }));
+
+    /// <summary>An output's last lines, at most a number of them and about 80 characters each (a longer last line's end),
+    /// after a note of how much came before them.</summary>
+    private static string Tail(string output, int lines)
+    {
+        int most = lines * 80;
+        int start = output.Length;
+        for (int kept = 0; kept < lines && start > 0; kept++)
+        {
+            int before = start == output.Length ? start - 1 : start - 2;
+            int from = before < 0 ? 0 : output.LastIndexOf('\n', before) + 1;
+            if (output.Length - from > most)
+            {
+                break;
+            }
+            start = from;
+        }
+        if (start == output.Length)
+        {
+            start = Math.Max(0, output.Length - most);
+        }
+        if (start == 0)
+        {
+            return output;
+        }
+        int left = output.AsSpan(0, start).Count('\n') + (output[start - 1] == '\n' ? 0 : 1);
+        return $"[{Plural.Of(left, "earlier line")} of output ({start:N0} characters) left out; the Unit Tests window shows them]\n{output[start..]}";
+    }
 
     /// <summary>The pictures its results carry, the frames of a failing headless test's windows among them, in its results'
     /// order, each with the result it is of.</summary>
