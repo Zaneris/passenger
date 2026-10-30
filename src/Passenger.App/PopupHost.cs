@@ -62,6 +62,10 @@ public sealed class PopupHost
     /// <summary>Whether a popup is open.</summary>
     public bool IsOpen => Layers.Layer.IsVisible;
 
+    /// <summary>How many popups have been shown, in any of the IDE's windows: one shown since a count was read means the
+    /// person went to it.</summary>
+    public int Shown { get; private set; }
+
     /// <summary>Whether a popup is open over this window.</summary>
     public bool IsOpenOver(TopLevel window) => IsOpen && TopLevel.GetTopLevel(Layers.Layer) == window;
 
@@ -72,6 +76,7 @@ public sealed class PopupHost
     /// <see cref="PointIn"/>), kept inside it. Another open on another window's layer goes.</summary>
     public void Show(Control popup, Point? at = null)
     {
+        Shown++;
         (Panel layer, ContentControl host) = InFront();
         if (Layers.Layer != layer)
         {

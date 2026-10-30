@@ -1,8 +1,11 @@
+using Avalonia;
+using Avalonia.Controls;
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.CSharp;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Languages.CSharp;
 using Passenger.Lsp;
 using Passenger.Text;
@@ -33,10 +36,33 @@ public partial class MainWindow
             CollapseAll = () => Find.CollapseAll(),
         });
         assist.UsagesFound += (_, found) => ShowUsages(found.Title, found.Usages, found.Note);
+        actions!.Running += (_, running) =>
+        {
+            if (running.Action.Id == AppActions.FindUsages)
+            {
+                usagesAsked = running.Context is { ByAgent: false, Focused: Visual focused }
+                    ? new UsagesAsked(focused, (focused as CodeEditor)?.Document.Snapshot, (focused as CodeEditor)?.Selections, popups.Shown)
+                    : null;
+            }
+        };
     }
 
     /// <summary>Bumped by each search shown, so one that lands after a later one is dropped.</summary>
     private int usageSearches;
+
+    /// <summary>Where the keys were as the person last asked for Find Usages; none for an agent's asking.</summary>
+    private UsagesAsked? usagesAsked;
+
+    /// <summary>Where the keys were as Find Usages was asked: what had them, an editor's text and carets then, and how many
+    /// popups had been shown.</summary>
+    private sealed record UsagesAsked(Visual Focused, TextSnapshot? Text, SelectionSet? Carets, int Popups)
+    {
+        /// <summary>Whether the keys are still there: with what had them, nothing typed or moved in it, and no popup shown
+        /// since, so the person is still waiting where they asked.</summary>
+        public bool Stands(PopupHost popups) =>
+            !popups.IsOpen && popups.Shown == Popups && TopLevel.GetTopLevel(Focused)?.FocusManager?.GetFocusedElement() == Focused
+            && (Focused is not CodeEditor editor || (editor.Document.Snapshot == Text && editor.Selections == Carets));
+    }
 
     private void ShowUsages(string title, IReadOnlyList<LspLocation> locations, string? note) => IdeErrors.Observe(ShowUsagesAsync(title, locations, note));
 
@@ -86,9 +112,12 @@ public partial class MainWindow
         }
         Find.Show(title, usages, note);
         ShowToolWindow(ToolWindowIds.Find);
-        // The usages take the keys, once a window just shown has laid out rows to take them.
-        Dock.UpdateLayout();
-        Find.FocusRows();
+        // The usages take the keys where the person still waits for them, once a window just shown has laid out rows to take them.
+        if (usagesAsked?.Stands(popups) == true)
+        {
+            Dock.UpdateLayout();
+            Find.FocusRows();
+        }
         status.Text = $"{title}: {usages.Count} found{(note is null ? string.Empty : $"; {char.ToLowerInvariant(note[0])}{note[1..]}")}";
     }
 }

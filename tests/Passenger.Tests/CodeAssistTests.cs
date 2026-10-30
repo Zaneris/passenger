@@ -2108,6 +2108,41 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>Find Usages' results that come once the person has moved on leave the keys where they went: with the
+    /// server's answer held, Go to File opened and a name typed in it, the usages come to the Find window, the keys stay in
+    /// Go to File, and Enter opens the file, where the results took the keys and Enter opened a usage.</summary>
+    [AvaloniaFact]
+    public void Find_usages_coming_after_the_person_moved_on_leave_the_keys_where_they_went()
+    {
+        MainWindow window = project.Open("Loop.cs");
+        FindView find = window.Find;
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int tot");
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.References, _ => true, answered.Task);
+        GoToFilePopup? goToFile;
+        try
+        {
+            Ui.Run(window, AppActions.FindUsages, settle: false);
+            Ui.AwaitPumped(held, "the server's usages, held unanswered");
+            Ui.Press(window, Ui.Shortcut(AppActions.GoToFile), settle: false);
+            window.KeyTextInput("Inferr");
+            Ui.PumpUntil(() => window.Popup is GoToFilePopup { Rows: [{ Name: "Inferred.cs" }, ..] }, "Go to File to offer Inferred.cs first");
+            goToFile = (GoToFilePopup)window.Popup!;
+        }
+        finally
+        {
+            answered.SetResult();
+        }
+        Ui.WaitFor(() => find.Rows.Count(r => r.Usage is not null) == 3, "the usages in the Find window");
+        Assert.True(window.Popup == goToFile && goToFile.IsKeyboardFocusWithin,
+            $"Find Usages' results, come after Go to File opened, left the keys on {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, not in Go to File");
+        Ui.Press(window, "ENTER");
+        Assert.Equal("Inferred.cs", window.EditorArea.Active?.Name);
+        Assert.Equal(File.ReadAllText(project.PathOf("Loop.cs")), window.EditorArea.Documents.Single(d => d.Name == "Loop.cs").Text.Snapshot.ToString());
+        window.Close();
+    }
+
     /// <summary>The Find and Hierarchy windows' rows have the menu every list of results has: Go to (F4) and Copy.</summary>
     [AvaloniaFact]
     public void A_usages_and_a_callers_menu_goes_to_it_and_copies_its_path()

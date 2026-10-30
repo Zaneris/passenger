@@ -29,8 +29,9 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
     /// <summary>What the window's actions are doing that takes a while.</summary>
     public ActionWork Work => work;
 
-    /// <summary>An action about to run, however it was asked for: Local History names what a refactoring writes by it.</summary>
-    public event EventHandler<IdeAction>? Running;
+    /// <summary>An action about to run, however it was asked for, with where it runs: Local History names what a
+    /// refactoring writes by it, and Find Usages' results take the keys only where they still are.</summary>
+    public event EventHandler<(IdeAction Action, ActionContext Context)>? Running;
 
     /// <summary>Every action, in the order Find Action lists them before anything is typed: by group, then title.</summary>
     public IReadOnlyList<IdeAction> All => sorted ??=
@@ -122,7 +123,7 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
             return why;
         }
         IdeAction action = byId[AppActions.Now(id)];
-        Running?.Invoke(this, action);
+        Running?.Invoke(this, (action, context));
         action.Run(context);
         return null;
     }

@@ -64,7 +64,7 @@ public partial class MainWindow
         // What an agent's Passenger on the same state kept while the person was away is listed as they come back.
         Activated += (_, _) => session.LocalHistory?.LookAgain();
         // A refactoring's activity; another action since (a quick fix) is not the refactoring.
-        actions.Running += (_, action) => refactoring = action.Menus.Any(m => m.Path == "Refactor") ? action.Title.TrimEnd('.') : null;
+        actions.Running += (_, running) => refactoring = running.Action.Menus.Any(m => m.Path == "Refactor") ? running.Action.Title.TrimEnd('.') : null;
         // What a refactoring writes to files not open is one change set under its name; a quick fix's is not named.
         Editors.Recording = () =>
         {
