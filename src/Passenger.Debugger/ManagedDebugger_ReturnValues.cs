@@ -32,6 +32,16 @@ public partial class ManagedDebugger
 
     private ReturnWatch? _returnWatch;
 
+    /// <summary>The method a step began in (its label and return type), on its thread, and its caller's frame, to which the
+    /// step returns when it goes past the method's end: what a returned row names where the runtime gives no value.</summary>
+    private sealed record StepBegan(int ThreadId, StackRange Caller, string Method, string ReturnType);
+
+    private StepBegan? _stepBegan;
+
+    /// <summary>A returned row the runtime gave no value for, on the thread that stepped, with why, shown at the step's stop
+    /// with the values.</summary>
+    private (int ThreadId, StepBegan Method, string Why)? _unshown;
+
     /// <summary>Watches the calls a step over of [start, end) of a frame will make for the values they return.</summary>
     private void WatchReturns(ICorDebugThread thread, ICorDebugILFrame frame, int start, int end)
     {
@@ -117,7 +127,7 @@ public partial class ManagedDebugger
     }
 
     /// <summary>A step that returned to a caller (a step out, or a step past a method's end) stops right after the call that
-    /// returned: its value is read there, the latest call of the statement before the stop that has one.</summary>
+    /// returned: its value is read there, from the one call of the statement the runtime finds the frame right after.</summary>
     private async Task TakeValueReturnedTo(ICorDebugThread thread, ICorDebugILFrame frame)
     {
         if (FindModule(frame.Function.Module) is not { } module)
@@ -125,13 +135,14 @@ public partial class ManagedDebugger
             return;
         }
         int token = frame.Function.Token;
-        (int ip, _) = frame.IP;
+        (int ip, CorDebugMappingResult mapping) = frame.IP;
         int? version = ModuleMetadataReader.VersionOf(frame);
-        if (module.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(token, ip, version) is not var (start, _))
+        if (module.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(token, ip, version) is not var (start, end))
         {
             return;
         }
-        foreach (ModuleMetadataReader.CallSite call in module.MetadataReader.CallSites(token, start, ip + 1, version).Reverse())
+        // The stop's IL offset is where its statement's code begins, not the call it is after: every call of it is asked.
+        foreach (ModuleMetadataReader.CallSite call in module.MetadataReader.CallSites(token, start, end > start ? end : int.MaxValue, version).Reverse())
         {
             if (call.Kind == ModuleMetadataReader.CallKind.Call && module.MetadataReader.DescribeCall(call.Token) is { ReturnType: not "void" } called
                 && !IsCompilersOwn(called) && await ReadReturnedValue(thread, frame, call.Offset, MethodLabel(called.Name)))
@@ -139,6 +150,23 @@ public partial class ManagedDebugger
                 return;
             }
         }
+        _logger?.Invoke($"No call of the statement at IL_{start:X4} returned to IL_{ip:X4} ({mapping}) has a value the runtime gives");
+        if (_stepBegan is { } began && began.ThreadId == thread.Id && RangeOf(frame) == began.Caller
+            && frame.Function.Module.Module2.TryGetJITCompilerFlags(out CorDebugJITCompilerFlags flags) is Cor.S_OK && flags == CorDebugJITCompilerFlags.CORDEBUG_JIT_DEFAULT)
+        {
+            // Code compiled for running, not debugging (an optimized build's): the JIT marks no place where a call's value is.
+            _unshown = (thread.Id, began, $"Not shown: {module.ModuleName} is built optimized, and the runtime keeps no value a call returns in its code");
+        }
+    }
+
+    /// <summary>The method a step begins in on a thread and its caller's frame; none where it returns nothing or has no caller.</summary>
+    private StepBegan? BeganIn(ICorDebugThread thread)
+    {
+        ICorDebugILFrame[] frames = [.. EnumerateFramesForThread(thread).OfType<ICorDebugILFrame>().Take(2)];
+        return frames is [var top, var caller] && RangeOf(caller) is { } range && FindModule(top.Function.Module) is { } module
+            && module.MetadataReader.DescribeCall(top.Function.Token) is { ReturnType: not "void" } method
+            ? new StepBegan(thread.Id, range, MethodLabel(method.Name), method.ReturnType)
+            : null;
     }
 
     /// <summary>Reads and keeps what the call at an IL offset of a frame returned; false when the frame is not right after
@@ -237,6 +265,17 @@ public partial class ManagedDebugger
     /// <summary>The return values' rows, at the top of the frame a step stopped in.</summary>
     private async Task AddReturnedValues(List<VariableInfo> result, ThreadId threadId, FrameStackDepth stackDepth)
     {
+        if (stackDepth.Value == 0 && _unshown is (int unshownThread, StepBegan method, string why) && unshownThread == threadId.Value)
+        {
+            result.Add(new VariableInfo
+            {
+                Name = $"{method.Method} returned",
+                Value = why,
+                Type = method.ReturnType,
+                PresentationHint = new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation },
+                VariablesReference = 0,
+            });
+        }
         if (stackDepth.Value != 0 || _returnedThread != threadId.Value)
         {
             return;
@@ -269,7 +308,8 @@ public partial class ManagedDebugger
     }
 
     /// <summary>Whether a stopped thread's top frame has return values to show.</summary>
-    private bool HasReturnedValues(ThreadId threadId, FrameStackDepth stackDepth) => stackDepth.Value == 0 && _returnedThread == threadId.Value && _returned.Count > 0;
+    private bool HasReturnedValues(ThreadId threadId, FrameStackDepth stackDepth) =>
+        stackDepth.Value == 0 && (_returnedThread == threadId.Value && _returned.Count > 0 || _unshown?.ThreadId == threadId.Value);
 
     /// <summary>An expression's name for the i-th value returned (from zero): $ReturnValue for the last, $ReturnValue1 on
     /// for the others, in the order they returned.</summary>
@@ -327,6 +367,7 @@ public partial class ManagedDebugger
         }
         _returned.Clear();
         _returnedThread = null;
+        _unshown = null;
     }
 
     /// <summary>A type's assembly-qualified name, as the expression compiler takes an alias's type: the program's own

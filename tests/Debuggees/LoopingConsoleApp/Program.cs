@@ -8,7 +8,8 @@
 // its await goes on on a third thread, where a call takes what the await gave. With "race" the first thread lets a second
 // go in a call it steps over, and the second passes a line at once, so a step's end and another thread's breakpoint come
 // together, either first; with "race throws" the second throws and catches an exception there too, and the call runs on
-// a while longer each turn, so over the turns the step's end meets the exception's handler found.
+// a while longer each turn, so over the turns the step's end meets the exception's handler found. With "returns" it calls
+// a method that returns a value each turn, which a debugger attaches to (LoopingConsoleAppOptimized is it built optimized).
 if (args is ["count"])
 {
     Thread counting = new(() =>
@@ -84,6 +85,15 @@ if (args is ["race"] or ["race", "throws"])
         Race.WaitForPass(); // the step over the call that lets it go ends here
     }
 }
+if (args is ["returns"])
+{
+    Console.WriteLine("returning");
+    for (long turn = 1; ; turn++)
+    {
+        long doubled = Returning.Twice(turn); // the call stepped out of
+        Thread.Sleep(20);
+    }
+}
 long turns = 0;
 bool sleeps = args is ["sleep", ..];
 // Shown by its own ToString, which a thread paused in the sleep cannot run.
@@ -95,6 +105,16 @@ while (true)
     if (sleeps)
     {
         Thread.Sleep(nap);
+    }
+}
+
+internal static class Returning
+{
+    // Its own frame in the optimized copy too, where the JIT would otherwise put its body in the loop's.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    public static long Twice(long turn)
+    {
+        return turn * 2; // returns twice the turn
     }
 }
 

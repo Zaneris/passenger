@@ -1,10 +1,13 @@
+using System.Diagnostics;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Tests.Debugging.Helpers;
 
 namespace Passenger.Tests.Debugging;
 
 /// <summary>The debugger's own names: what each call a step ran returned, listed at the top of the frame's values and
-/// named $ReturnValue in an expression, and the exception stopped at, $exception.</summary>
+/// named $ReturnValue in an expression (or, in optimized code, where the runtime keeps none, why not), and the exception
+/// stopped at, $exception.</summary>
 [Collection(DebugSession.Collection)]
 public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
 {
@@ -63,6 +66,86 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
         DapVariable returned = (await host.LocalsAsync(stop))[0];
         Assert.Equal(("Count() returned", "42"), (returned.Name, returned.Value));
         Assert.Equal("42", (await Evaluate(host, (await host.TopFrameAsync(thread)).Id, "$ReturnValue")).Result);
+    }
+
+    [Fact]
+    public async Task A_step_out_of_a_call_part_way_through_its_statement_lists_what_it_returned()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program(Stepping), stopAtEntry: false, justMyCode: true)
+            .WaitForInitializedEvent();
+        await host.RequestAsync(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([]));
+        await host.BreakpointsAsync([Line("int added = x + y;"), Line("return value * 2;")], Debuggees.Source(Stepping, "Program.cs")).ConfigurationDoneAsync();
+
+        // Add(a, 1), then Twice(a) and Twice(b) as Add's arguments, then that Add: each returns part way through its statement.
+        (string Name, string Value)[] expected = [("Add() returned", "2"), ("Twice() returned", "2"), ("Twice() returned", "4"), ("Add() returned", "6")];
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        for (int i = 0; i < expected.Length; i++)
+        {
+            if (i > 0)
+            {
+                stop = await host.ContinueAsync().WaitForStoppedEvent();
+            }
+            stop = await host.StepOutAsync(stop.ThreadId!.Value).WaitForStoppedEvent();
+            List<DapVariable> locals = await host.LocalsAsync(stop);
+            Assert.True(locals.FirstOrDefault() is { } returned && (returned.Name, returned.Value) == expected[i],
+                $"Stepped out to line {stop.ReadStopInfo().line}, the step's value was not listed as {expected[i].Name} {expected[i].Value}: {string.Join(", ", locals.Select(v => $"{v.Name} = {v.Value}"))}");
+        }
+    }
+
+    [Fact]
+    public async Task An_attached_programs_step_out_lists_what_the_method_returned()
+    {
+        (DebugSession host, StoppedEvent stop) = await AttachToReturning("LoopingConsoleApp", justMyCode: true);
+        await using (host)
+        {
+            long turn = long.Parse(Assert.Single(await host.LocalsAsync(stop), v => v.Name == "turn").Value, System.Globalization.CultureInfo.InvariantCulture);
+            stop = await host.StepOutAsync(stop.ThreadId!.Value).WaitForStoppedEvent();
+            List<DapVariable> locals = await host.LocalsAsync(stop);
+            Assert.True(locals.FirstOrDefault() is { Name: "Twice() returned" } returned && returned.Value == $"{turn * 2}",
+                $"Stepped out of Twice({turn}) in the program attached to, its value was not listed: {string.Join(", ", locals.Select(v => $"{v.Name} = {v.Value}"))}");
+        }
+    }
+
+    [Fact]
+    public async Task An_attached_optimized_programs_step_out_says_why_no_value_is_listed()
+    {
+        // Optimized code is not the user's: the step goes out to it only with Just My Code off.
+        (DebugSession host, StoppedEvent stop) = await AttachToReturning("LoopingConsoleAppOptimized", justMyCode: false);
+        await using (host)
+        {
+            stop = await host.StepOutAsync(stop.ThreadId!.Value).WaitForStoppedEvent();
+            List<DapVariable> locals = await host.LocalsAsync(stop);
+            Assert.True(locals.FirstOrDefault() is { Name: "Twice() returned" } returned
+                && returned.Value.StartsWith("Not shown: LoopingConsoleAppOptimized.dll is built optimized", StringComparison.Ordinal)
+                && returned.PresentationHint?.Attributes?.Contains("failedEvaluation") == true,
+                $"Stepped out of Twice() in an optimized program, Variables did not say why no value is listed: {string.Join(", ", locals.Select(v => $"{v.Name} = {v.Value}"))}");
+        }
+    }
+
+    /// <summary>A LoopingConsoleApp build (its own, or its optimized copy) running "returns", attached to and stopped inside
+    /// the method each turn calls for its value.</summary>
+    private async Task<(DebugSession Host, StoppedEvent Stop)> AttachToReturning(string program, bool justMyCode)
+    {
+        const string looping = "LoopingConsoleApp";
+        ProcessStartInfo start = ChildProcesses.Command(Debuggees.Apphost(program), ["returns"]);
+        start.RedirectStandardOutput = true;
+        Process running = ChildProcesses.Start(start);
+        DebugSession host = DebugSession.ForAttach(testOutputHelper, running);
+        try
+        {
+            Assert.Equal("returning", await running.StandardOutput.ReadLineAsync(TestContext.Current.CancellationToken));
+            await host.InitializeAsync().AttachAsync(running.Id, justMyCode).WaitForInitializedEvent();
+            await host.BreakpointsAsync(Debuggees.Line(looping, "return turn * 2;"), Debuggees.Source(looping, "Program.cs")).ConfigurationDoneAsync();
+            return (host, await host.WaitForStoppedEvent());
+        }
+        catch
+        {
+            await host.DisposeAsync();
+            throw;
+        }
     }
 
     [Fact]

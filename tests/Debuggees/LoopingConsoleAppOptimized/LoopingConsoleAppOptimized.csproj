@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!-- LoopingConsoleApp's own Program.cs built optimized, as a Release build is: the runtime compiles its code for
+	     running rather than debugging, so the tests see what the debugger can and cannot show of it once attached. -->
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<Optimize>true</Optimize>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Include="../LoopingConsoleApp/Program.cs" />
+	</ItemGroup>
+
+</Project>

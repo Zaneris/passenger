@@ -7,6 +7,7 @@ Returns.Run();
 Throws.Run();
 Queries.Run();
 Chooses.Run();
+Arguments.Run();
 
 internal static class Calls
 {
@@ -127,5 +128,28 @@ internal static class Chooses
     private static int Pick(int value)
     {
         return value * 10;
+    }
+}
+
+internal static class Arguments
+{
+    public static void Run()
+    {
+        int a = 1;
+        int b = 2;
+        int first = Add(a, 1);
+        int total = Add(Twice(a), Twice(b));
+        Console.WriteLine($"arguments {first} {total}");
+    }
+
+    private static int Add(int x, int y)
+    {
+        int added = x + y;
+        return added;
+    }
+
+    private static int Twice(int value)
+    {
+        return value * 2;
     }
 }

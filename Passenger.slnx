@@ -53,6 +53,7 @@
     <Project Path="tests/Debuggees/DebuggableConsoleApp/DebuggableConsoleApp.csproj" />
     <Project Path="tests/Debuggees/LinkedLibrary/LinkedLibrary.csproj" />
     <Project Path="tests/Debuggees/LoopingConsoleApp/LoopingConsoleApp.csproj" />
+    <Project Path="tests/Debuggees/LoopingConsoleAppOptimized/LoopingConsoleAppOptimized.csproj" />
     <Project Path="tests/Debuggees/PassengerCases/PassengerCases.csproj" />
     <Project Path="tests/Debuggees/PassengerCasesProxies/PassengerCasesProxies.csproj" />
     <Project Path="tests/Debuggees/ReadsInputConsoleApp/ReadsInputConsoleApp.csproj" />

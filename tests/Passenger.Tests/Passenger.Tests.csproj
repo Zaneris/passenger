@@ -184,6 +184,7 @@
     <ProjectReference Include="../Debuggees/AsyncTopLevelStatementsConsoleApp/AsyncTopLevelStatementsConsoleApp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/DebuggableConsoleApp/DebuggableConsoleApp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/LoopingConsoleApp/LoopingConsoleApp.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../Debuggees/LoopingConsoleAppOptimized/LoopingConsoleAppOptimized.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/PassengerCases/PassengerCases.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/ReadsInputConsoleApp/ReadsInputConsoleApp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../Debuggees/ReadsInputConsoleAppNoCet/ReadsInputConsoleAppNoCet.csproj" ReferenceOutputAssembly="false" />

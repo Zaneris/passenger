@@ -420,6 +420,7 @@ public partial class ManagedDebugger
             throw new InvalidOperationException("A step operation is already in progress");
         }
         ForgetReturnedValues();
+        _stepBegan = null;
         if (EvalStatus.Abandoned.ContainsKey(threadId))
         {
             // A stepper made now would be the given-up evaluation's, ended with it: the step waits for it to return.
@@ -448,6 +449,7 @@ public partial class ManagedDebugger
                 return;
             }
         }
+        _stepBegan = BeganIn(thread);
         SetupStepper(thread, type);
         if (type is StepType.StepOver && thread.ActiveFrame is ICorDebugILFrame from && StepRangeOf(from) is var (start, end))
         {
