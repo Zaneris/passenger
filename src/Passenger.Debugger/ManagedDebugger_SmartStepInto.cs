@@ -272,12 +272,10 @@ public partial class ManagedDebugger
     {
         if (name == ".ctor")
         {
-            return creation && called.Name == ".ctor" && (type is null || SimpleTypeName(called.DeclaringType) == type);
+            return creation && called.Name == ".ctor" && (type is null || CSharpTypeNames.WithoutTypeArguments(called.DeclaringType) == type);
         }
         return !creation && (called.Name == name || called.Name.Contains($">g__{name}|", StringComparison.Ordinal));
     }
-
-    private static string? SimpleTypeName(string? type) => type is null ? null : type.IndexOf('<') is int generic and > 0 ? type[..generic] : type;
 
     /// <summary>A call's label: its name and its parameters' types, a constructor's as new and its type.</summary>
     private static string Label(ModuleMetadataReader.CalledMethod called)
@@ -285,7 +283,7 @@ public partial class ManagedDebugger
         string parameters = string.Join(", ", called.Parameters);
         if (called.Name == ".ctor")
         {
-            return $"new {SimpleTypeName(called.DeclaringType)}({parameters})";
+            return $"new {CSharpTypeNames.WithoutTypeArguments(called.DeclaringType)}({parameters})";
         }
         string name = called.Name;
         int local = name.IndexOf(">g__", StringComparison.Ordinal);

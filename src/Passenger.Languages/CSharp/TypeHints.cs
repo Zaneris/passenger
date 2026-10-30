@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.Languages.CSharp;
@@ -27,15 +28,6 @@ public static class TypeHints
     private static readonly HashSet<string> Integers = new(StringComparer.Ordinal)
     {
         "sbyte", "byte", "short", "ushort", "int", "uint", "long", "ulong", "nint", "nuint", "char",
-    };
-
-    /// <summary>The types C# names by keyword, by the name their type declares.</summary>
-    private static readonly Dictionary<string, string> Declared = new(StringComparer.Ordinal)
-    {
-        ["bool"] = "Boolean", ["byte"] = "Byte", ["sbyte"] = "SByte", ["short"] = "Int16", ["ushort"] = "UInt16",
-        ["int"] = "Int32", ["uint"] = "UInt32", ["long"] = "Int64", ["ulong"] = "UInt64", ["nint"] = "IntPtr",
-        ["nuint"] = "UIntPtr", ["float"] = "Single", ["double"] = "Double", ["decimal"] = "Decimal", ["char"] = "Char",
-        ["string"] = "String", ["object"] = "Object",
     };
 
     /// <summary>The hint for the type Roslyn would show at an offset (its label as Roslyn writes the type), or null
@@ -309,7 +301,7 @@ public static class TypeHints
 
     /// <summary>The name a type's declaration gives it, generic arguments and namespaces left off: <c>List</c> for
     /// <c>List&lt;int&gt;</c>, <c>Int32</c> for int; empty for an array, a tuple or a pointer, which no type declares.</summary>
-    private static string DeclaredName(string bare) => Declared.TryGetValue(bare, out string? declared) ? declared : ShortName(bare);
+    private static string DeclaredName(string bare) => PrimitiveTypes.OfKeyword(bare)?.Name ?? ShortName(bare);
 
     private static string ShortName(string bare)
     {

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Passenger.Core;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -34,31 +35,16 @@ public partial class ManagedDebugger
 
         CorVoidClass = module.GetClassFromToken(typeDef.Value);
 
-        (CorElementType, string)[] corElementToValueNameMap = new[]
+        // The class a value of each primitive is boxed in, as a value returned is kept.
+        foreach (PrimitiveType primitive in PrimitiveTypes.All.Where(row => row.IsPrimitiveValue))
         {
-            (CorElementType.BOOLEAN, "System.Boolean"),
-            (CorElementType.CHAR, "System.Char"),
-            (CorElementType.I1, "System.SByte"),
-            (CorElementType.U1, "System.Byte"),
-            (CorElementType.I2, "System.Int16"),
-            (CorElementType.U2, "System.UInt16"),
-            (CorElementType.I4, "System.Int32"),
-            (CorElementType.U4, "System.UInt32"),
-            (CorElementType.I8, "System.Int64"),
-            (CorElementType.U8, "System.UInt64"),
-            (CorElementType.R4, "System.Single"),
-            (CorElementType.R8, "System.Double")
-        };
-
-        foreach ((CorElementType corElementType, string? typeName) in corElementToValueNameMap)
-        {
-            mdTypeDef? typedef = metadataImport.FindTypeDefByNameOrNull(typeName, mdToken.Nil);
+            mdTypeDef? typedef = metadataImport.FindTypeDefByNameOrNull(primitive.SystemName, mdToken.Nil);
             if (typedef is null || typedef.Value.IsNil)
             {
-                throw new InvalidOperationException($"Could not find {typeName} type definition");
+                throw new InvalidOperationException($"Could not find {primitive.SystemName} type definition");
             }
 
-            CorElementToValueClassMap[corElementType] = module.GetClassFromToken(typedef.Value);
+            CorElementToValueClassMap[MetadataTypeNames.ElementTypeOf(primitive.Code!.Value)] = module.GetClassFromToken(typedef.Value);
         }
     }
 }

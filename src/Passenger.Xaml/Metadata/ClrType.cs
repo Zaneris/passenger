@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Xaml.Metadata;
 
 /// <summary>What kind of type a <see cref="ClrType"/> is.</summary>
@@ -229,36 +231,12 @@ public sealed record ClrTypeDetails(TypeRef? Base, IReadOnlyList<TypeRef> Interf
 /// declared.</summary>
 public sealed record TypeOrigin(string AssemblyName, string? AssemblyPath, SourcePlace? Place);
 
-/// <summary>C#'s keywords for the types they name.</summary>
+/// <summary>C#'s keywords for the types they name (<see cref="PrimitiveTypes"/>).</summary>
 public static class TypeNames
 {
-    private static readonly Dictionary<string, string> Keywords = new(StringComparer.Ordinal)
-    {
-        ["bool"] = "System.Boolean",
-        ["byte"] = "System.Byte",
-        ["sbyte"] = "System.SByte",
-        ["char"] = "System.Char",
-        ["decimal"] = "System.Decimal",
-        ["double"] = "System.Double",
-        ["float"] = "System.Single",
-        ["int"] = "System.Int32",
-        ["uint"] = "System.UInt32",
-        ["long"] = "System.Int64",
-        ["ulong"] = "System.UInt64",
-        ["short"] = "System.Int16",
-        ["ushort"] = "System.UInt16",
-        ["nint"] = "System.IntPtr",
-        ["nuint"] = "System.UIntPtr",
-        ["object"] = "System.Object",
-        ["string"] = "System.String",
-        ["void"] = "System.Void",
-    };
-
-    private static readonly Dictionary<string, string> Shown = Keywords.ToDictionary(k => k.Value, k => k.Key, StringComparer.Ordinal);
-
     /// <summary>The full name a C# keyword names, or null.</summary>
-    public static string? FromKeyword(string keyword) => Keywords.GetValueOrDefault(keyword);
+    public static string? FromKeyword(string keyword) => PrimitiveTypes.OfKeyword(keyword)?.SystemName;
 
     /// <summary>The C# keyword for a full name, or null.</summary>
-    public static string? Keyword(string fullName) => Shown.GetValueOrDefault(fullName);
+    public static string? Keyword(string fullName) => PrimitiveTypes.Named(fullName)?.Keyword;
 }

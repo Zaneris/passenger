@@ -72,26 +72,10 @@ public partial class ManagedDebugger
         type.Kind is HandleKind.TypeDefinition
         && GeneratedNameParser.GetKind(reader.GetString(reader.GetTypeDefinition((TypeDefinitionHandle)type).Name)) is GeneratedNameKind.LambdaDisplayClass;
 
+    /// <summary>A frame's type with the type arguments it runs with, its nested types joined by '.', a nullable spelled out.</summary>
     private static string GetFormattedTypeName(MetadataReader reader, TypeDefinitionHandle handle, IReadOnlyList<string> typeArguments)
     {
-        int argumentIndex = 0;
-        return GetFormattedTypeName(reader, handle, typeArguments, ref argumentIndex);
-    }
-
-    private static string GetFormattedTypeName(MetadataReader reader, TypeDefinitionHandle handle, IReadOnlyList<string> typeArguments, ref int argumentIndex)
-    {
-        TypeDefinition type = reader.GetTypeDefinition(handle);
-        TypeDefinitionHandle declaringType = type.GetDeclaringType();
-        string prefix = declaringType.IsNil
-            ? reader.GetString(type.Namespace)
-            : GetFormattedTypeName(reader, declaringType, typeArguments, ref argumentIndex);
-        string name = reader.GetString(type.Name);
-        int arityIndex = name.LastIndexOf('`');
-        if (arityIndex >= 0 && int.TryParse(name.AsSpan(arityIndex + 1), out int arity))
-        {
-            name = $"{name[..arityIndex]}<{string.Join(", ", typeArguments.Skip(argumentIndex).Take(arity))}>";
-            argumentIndex += arity;
-        }
-        return string.IsNullOrEmpty(prefix) ? name : $"{prefix}.{name}";
+        string name = MetadataTypeNames.Of(reader, handle, '.');
+        return CSharpTypeNames.Closed(name, typeArguments, spelledNullable: true) ?? name;
     }
 }

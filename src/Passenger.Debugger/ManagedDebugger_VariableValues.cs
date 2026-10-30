@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Reflection.Metadata;
 using System.Runtime.InteropServices;
 using Microsoft.CodeAnalysis.CSharp;
+using Passenger.Core;
 using Passenger.Debugger.ExpressionEvaluator;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.ExpressionEvaluator.Compiler;
@@ -430,88 +431,12 @@ public partial class ManagedDebugger
             string elementName = GetCorDebugTypeFriendlyName(corDebugType.FirstTypeParameter);
             return $"{elementName}[{new string(',', corDebugType.Rank - 1)}]";
         }
-        ICorDebugClass corDebugClass = corDebugType.Class;
         // Type parameters cover enclosing types too, each level taking as many as its arity (`1, `2), outermost first.
-        List<ICorDebugType> typeParameters = corDebugType.TypeParameters.ToList();
-        string name = GetCorDebugTypeFriendlyNameInternal(corDebugClass, typeParameters);
-        return name;
-    }
-
-    private static string GetCorDebugTypeFriendlyNameInternal(ICorDebugClass corDebugClass, List<ICorDebugType> typeParameterTypes)
-    {
-        ICorDebugModule module = corDebugClass.Module;
-        mdTypeDef token = corDebugClass.Token;
-        IMetaDataImport metadataImport = module.GetMetaDataInterface<IMetaDataImport>();
-        (string szTypeDef, CorTypeAttr pdwTypeDefFlags, mdToken ptkExtends) typeDefProps = metadataImport.GetTypeDefProps(token);
-        string typeName = typeDefProps.szTypeDef;
-        bool isNested = typeDefProps.pdwTypeDefFlags.IsTdNested();
-
-        string? parentTypeName = null;
-        if (isNested)
-        {
-            mdTypeDef parentTypeDef = metadataImport.GetNestedClassProps(token);
-            ICorDebugClass parentTypeCorDebugClass = module.GetClassFromToken(parentTypeDef);
-            parentTypeName = GetCorDebugTypeFriendlyNameInternal(parentTypeCorDebugClass, typeParameterTypes);
-        }
-
-        // Reached first by the outermost type, which takes the type parameters its arity names.
-
-        int backtickIndex = typeName.LastIndexOf('`');
-        bool typeHasTypeParameters = backtickIndex is not -1;
-        if (typeHasTypeParameters)
-        {
-            ReadOnlySpan<char> typeNameAsSpan = typeName.AsSpan();
-            ReadOnlySpan<char> aritySpan = typeNameAsSpan[(backtickIndex + 1)..];
-            if (int.TryParse(aritySpan, out int arity) is false)
-            {
-                throw new InvalidOperationException("Failed to parse generic type arity from type name");
-            }
-
-            ImmutableArray<string> typeParametersFriendlyNamesForType = typeParameterTypes.Take(arity).Select(GetCorDebugTypeFriendlyName).ToImmutableArray();
-            typeParameterTypes.RemoveRange(0, arity);
-            typeName = $"{typeName[..backtickIndex]}<{string.Join(", ", typeParametersFriendlyNamesForType)}>";
-        }
-
-        if (typeName.StartsWith("System.Nullable<")) // unwrap System.Nullable<int> to int?
-        {
-            ReadOnlySpan<char> span = typeName.AsSpan();
-            int openingIndex = span.IndexOf('<');
-            int closingIndex = span.LastIndexOf('>');
-            ReadOnlySpan<char> underlyingType = span.Slice(openingIndex + 1, closingIndex - openingIndex - 1);
-            typeName = $"{underlyingType}?";
-        }
-
-        string languageAlias = ClassNameToMaybeLanguageAlias(typeName);
-        return isNested ? $"{parentTypeName}.{languageAlias}" : languageAlias;
-    }
-
-    private static string ClassNameToMaybeLanguageAlias(string className)
-    {
-        className = className switch
-        {
-            "System.String" => "string",
-            "System.Object" => "object",
-            "System.Decimal" => "decimal",
-
-            // These will be hit in the case that a primitive is boxed, e.g. object myInt = 4;
-            "System.Boolean" => "bool",
-            "System.Byte" => "byte",
-            "System.SByte" => "sbyte",
-            "System.Char" => "char",
-            "System.Int16" => "short",
-            "System.UInt16" => "ushort",
-            "System.Int32" => "int",
-            "System.UInt32" => "uint",
-            "System.Int64" => "long",
-            "System.UInt64" => "ulong",
-            "System.Single" => "float",
-            "System.Double" => "double",
-            "System.IntPtr" => "nint",
-            "System.UIntPtr" => "nuint",
-
-            _ => className
-        };
-        return className;
+        ICorDebugClass corDebugClass = corDebugType.Class;
+        string name = MetadataTypeNames.Of(corDebugClass.Module.GetMetaDataInterface<IMetaDataImport>(), corDebugClass.Token, '.');
+        string[] typeArguments = [.. corDebugType.TypeParameters.Select(GetCorDebugTypeFriendlyName)];
+        string closed = CSharpTypeNames.Closed(name, typeArguments, spelledNullable: false) ?? name;
+        return PrimitiveTypes.Named(closed)?.Keyword ?? closed;
     }
 
     public static CorDebugValueValueResult GetCorDebugGenericValue_Value_AsString(ICorDebugGenericValue corDebugGenericValue)
@@ -585,28 +510,5 @@ public partial class ManagedDebugger
         return result;
     }
 
-    private static string? GetFriendlyTypeName(CorElementType elementType)
-    {
-        return elementType switch
-        {
-            CorElementType.VOID => "void",
-            CorElementType.BOOLEAN => "bool",
-            CorElementType.CHAR => "char",
-            CorElementType.I1 => "sbyte",
-            CorElementType.U1 => "byte",
-            CorElementType.I2 => "short",
-            CorElementType.U2 => "ushort",
-            CorElementType.I4 => "int",
-            CorElementType.U4 => "uint",
-            CorElementType.I8 => "long",
-            CorElementType.U8 => "ulong",
-            CorElementType.R4 => "float",
-            CorElementType.R8 => "double",
-            CorElementType.STRING => "string",
-            CorElementType.OBJECT => "object",
-            CorElementType.I => "nint",
-            CorElementType.U => "nuint",
-            _ => null
-        };
-    }
+    private static string? GetFriendlyTypeName(CorElementType elementType) => MetadataTypeNames.PrimitiveOf(elementType)?.Keyword;
 }

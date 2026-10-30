@@ -240,7 +240,7 @@ public partial class ManagedDebugger
     /// runtime-async method's AsyncHelpers.Await) or an interpolated string's, whose values no one asked for.</summary>
     private static bool IsCompilersOwn(ModuleMetadataReader.CalledMethod called)
     {
-        string type = called.DeclaringType is { } declaring && declaring.IndexOf('<') is int generic and > 0 ? declaring[..generic] : called.DeclaringType ?? "";
+        string type = CSharpTypeNames.WithoutTypeArguments(called.DeclaringType) ?? "";
         return called.Name == "GetAwaiter" || type.EndsWith("Awaiter", StringComparison.Ordinal) || type.EndsWith("Awaitable", StringComparison.Ordinal)
             || type.EndsWith("MethodBuilder", StringComparison.Ordinal) || type is "DefaultInterpolatedStringHandler" or "AsyncHelpers";
     }
@@ -387,26 +387,7 @@ public partial class ManagedDebugger
 
     private (string Name, string Assembly) ReflectionName(ICorDebugType type)
     {
-        string? primitive = type.Type switch
-        {
-            CorElementType.BOOLEAN => "System.Boolean",
-            CorElementType.CHAR => "System.Char",
-            CorElementType.I1 => "System.SByte",
-            CorElementType.U1 => "System.Byte",
-            CorElementType.I2 => "System.Int16",
-            CorElementType.U2 => "System.UInt16",
-            CorElementType.I4 => "System.Int32",
-            CorElementType.U4 => "System.UInt32",
-            CorElementType.I8 => "System.Int64",
-            CorElementType.U8 => "System.UInt64",
-            CorElementType.R4 => "System.Single",
-            CorElementType.R8 => "System.Double",
-            CorElementType.I => "System.IntPtr",
-            CorElementType.U => "System.UIntPtr",
-            CorElementType.STRING => "System.String",
-            CorElementType.OBJECT => "System.Object",
-            _ => null,
-        };
+        string? primitive = MetadataTypeNames.PrimitiveOf(type.Type)?.SystemName;
         if (primitive is not null)
         {
             ModuleInfo coreLib = _modules.Values.FirstOrDefault(module => module.ModuleName == "System.Private.CoreLib.dll")
@@ -425,25 +406,13 @@ public partial class ManagedDebugger
         ICorDebugClass @class = type.Class;
         ModuleInfo module = FindModule(@class.Module) ?? throw new InvalidOperationException(ModuleWithoutMetadata);
         MetadataReader reader = module.MetadataReader.PeMetadataReader;
-        string name = NestedName(reader, (TypeDefinitionHandle)System.Reflection.Metadata.Ecma335.MetadataTokens.Handle(@class.Token));
+        string name = MetadataTypeNames.Of(reader, (TypeDefinitionHandle)System.Reflection.Metadata.Ecma335.MetadataTokens.Handle(@class.Token), '+');
         ICorDebugType[] arguments = type.TypeParameters;
         if (arguments.Length > 0)
         {
             name += $"[{string.Join(",", arguments.Select(argument => ReflectionName(argument)).Select(argument => $"[{argument.Name}, {argument.Assembly}]"))}]";
         }
         return (name, AssemblyName(module));
-
-        static string NestedName(MetadataReader reader, TypeDefinitionHandle handle)
-        {
-            TypeDefinition definition = reader.GetTypeDefinition(handle);
-            string own = reader.GetString(definition.Name);
-            if (!definition.GetDeclaringType().IsNil)
-            {
-                return $"{NestedName(reader, definition.GetDeclaringType())}+{own}";
-            }
-            string @namespace = reader.GetString(definition.Namespace);
-            return @namespace.Length == 0 ? own : $"{@namespace}.{own}";
-        }
 
         static string AssemblyName(ModuleInfo module)
         {

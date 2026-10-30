@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
@@ -43,6 +44,18 @@ public class CSharpTypeNamesTests
     public void An_array_of_an_array_takes_its_rank_before_its_elements(string element, string array) =>
         Assert.Equal(array, CSharpTypeNames.ArrayOf(element, "[]"));
 
+    [Fact]
+    public void A_frames_parameter_of_a_nested_generic_type_gives_each_type_its_own_arguments()
+    {
+        using ModuleMetadataReader reader = ModuleMetadataReader.TryLoad(typeof(Holder<>).Assembly.Location)
+            ?? throw new InvalidOperationException("The unit tests' own assembly could not be read");
+        MethodInfo take = typeof(Holder<>).GetMethod(nameof(Holder<int>.Take)) ?? throw new InvalidOperationException("Holder has no method Take");
+        ImmutableArray<string> parameters = reader.PeMetadataReader.GetMethodDefinition((MethodDefinitionHandle)MetadataTokens.EntityHandle(take.MetadataToken))
+            .DecodeSignature(FrameDisplaySignatureTypeProvider.Instance, new FrameDisplayGenericContext(["int"], [])).ParameterTypes;
+        Assert.True(parameters.SequenceEqual([Here + ".Outer<int>.Inner<long>", "System.Nullable<int>", "System.Collections.Generic.List<int>"]),
+            $"A frame showed Take's parameters as {string.Join(", ", parameters)}: a nested generic type's arguments went to the wrong type");
+    }
+
     /// <summary>A field of <see cref="Holder{T}"/> named by <paramref name="names"/>, with T as <paramref name="parameter"/>.</summary>
     private static string? FieldType(string field, string? parameter, CSharpTypeNames names)
     {
@@ -67,5 +80,9 @@ public class CSharpTypeNamesTests
         public Dictionary<string, List<T>>? Keyed;
         public Outer<T>.Inner<long>? Nested;
         public decimal? Plain;
+
+        public static void Take(Outer<T>.Inner<long> nested, T? maybe, List<T> listed)
+        {
+        }
     }
 }

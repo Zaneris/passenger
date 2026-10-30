@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Symbols;
+using Passenger.Core;
 using Passenger.Debugger.Interop;
 using Passenger.Debugger.Models.Response;
 using Passenger.Debugger.PresentationHintModels;
@@ -306,7 +307,7 @@ public partial class ManagedDebugger
                 return 0;
             }
             // a boxed primitive is CorElementType.VALUETYPE but should be displayed as a primitive. They can never be nullable.
-            if (friendlyTypeName is "bool" or "byte" or "sbyte" or "char" or "short" or "ushort" or "int" or "uint" or "long" or "ulong" or "float" or "double" or "nint" or "nuint")
+            if (PrimitiveTypes.OfKeyword(friendlyTypeName) is { IsPrimitiveValue: true })
             {
                 return 0;
             }
@@ -720,7 +721,7 @@ public partial class ManagedDebugger
         FieldDefinition field = reader.GetFieldDefinition((FieldDefinitionHandle)handle);
         string typeName = field.DecodeSignature(SignatureKeyProvider.Dotted, null);
         EntityHandle typeHandle = field.DecodeSignature(FieldTypeHandleProvider.Instance, null);
-        return (ClassNameToMaybeLanguageAlias(typeName), moduleInfo, typeHandle);
+        return (PrimitiveTypes.Named(typeName)?.Keyword ?? typeName, moduleInfo, typeHandle);
     }
 
     internal class EvalException(string message) : Exception(message);

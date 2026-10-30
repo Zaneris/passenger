@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Text;
+using Passenger.Core;
 using Passenger.Debugger.ExpressionEvaluator.Compiler;
 using Passenger.Debugger.Interop;
 
@@ -1045,22 +1046,8 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             return typedResult;
         }
 
-        CorElementType elementType = expectedElementType ?? value.Value switch
-        {
-            bool => CorElementType.BOOLEAN,
-            char => CorElementType.CHAR,
-            sbyte => CorElementType.I1,
-            byte => CorElementType.U1,
-            short => CorElementType.I2,
-            ushort => CorElementType.U2,
-            int => CorElementType.I4,
-            uint => CorElementType.U4,
-            long => CorElementType.I8,
-            ulong => CorElementType.U8,
-            float => CorElementType.R4,
-            double => CorElementType.R8,
-            _ => throw new NotSupportedException($"Cannot materialize CIL value '{value.Value.GetType().Name}'")
-        };
+        CorElementType elementType = expectedElementType ?? GetPrimitiveElementType(PrimitiveOf(value.Value))
+            ?? throw new NotSupportedException($"Cannot materialize CIL value '{value.Value.GetType().Name}'");
         ICorDebugGenericValue generic = await CreatePrimitiveAsync(eval, elementType, resolver, handles);
         object materializedValue = elementType == CorElementType.BOOLEAN ? value.IsTrue() : value.Value;
         byte[] bytes = CilValueEncoding.GetBytes(materializedValue, elementType);
@@ -1101,9 +1088,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
 
     /// <summary>A primitive value type's element type, null for any other type.</summary>
     private static CorElementType? GetPrimitiveElementType(PrimitiveTypeCode? primitive) =>
-        primitive is { } code && MetadataTypeNames.ElementTypeOf(code) is var element
-            && element is not (CorElementType.VOID or CorElementType.STRING or CorElementType.OBJECT or CorElementType.TYPEDBYREF or CorElementType.END)
-            ? element : null;
+        primitive is { } code && PrimitiveTypes.Of(code).IsPrimitiveValue ? MetadataTypeNames.ElementTypeOf(code) : null;
 
     private async ValueTask<ICorDebugValue> GetStaticFieldValue(ResolvedRuntimeField field, EvaluationMetadataResolver resolver, CompiledExpressionEvaluationContext context)
     {
@@ -1774,22 +1759,11 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
     }
 
     /// <summary>The primitive type a value the interpreter holds itself is of; null for any other value.</summary>
-    private static ResolvedCilType? PrimitiveCilType(object? value) => value switch
-    {
-        bool => new(PrimitiveTypeCode.Boolean, null),
-        char => new(PrimitiveTypeCode.Char, null),
-        sbyte => new(PrimitiveTypeCode.SByte, null),
-        byte => new(PrimitiveTypeCode.Byte, null),
-        short => new(PrimitiveTypeCode.Int16, null),
-        ushort => new(PrimitiveTypeCode.UInt16, null),
-        int => new(PrimitiveTypeCode.Int32, null),
-        uint => new(PrimitiveTypeCode.UInt32, null),
-        long => new(PrimitiveTypeCode.Int64, null),
-        ulong => new(PrimitiveTypeCode.UInt64, null),
-        float => new(PrimitiveTypeCode.Single, null),
-        double => new(PrimitiveTypeCode.Double, null),
-        _ => null,
-    };
+    private static ResolvedCilType? PrimitiveCilType(object? value) => PrimitiveOf(value) is { } code ? new(code, null) : null;
+
+    /// <summary>The primitive a value the interpreter holds itself is (a bool, a char or a number); null for any other.</summary>
+    private static PrimitiveTypeCode? PrimitiveOf(object? value) =>
+        value is not null && PrimitiveTypes.Of(value.GetType()) is { IsPrimitiveValue: true, Code: { } code } ? code : null;
 
     private async Task<ICorDebugValue> MaterializeReceiverAsync(
         CilValue value,
@@ -1861,22 +1835,9 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         return boxed;
     }
 
-    private static CorElementType GetPrimitiveElementType(object value) => value switch
-    {
-        bool => CorElementType.BOOLEAN,
-        char => CorElementType.CHAR,
-        sbyte => CorElementType.I1,
-        byte => CorElementType.U1,
-        short => CorElementType.I2,
-        ushort => CorElementType.U2,
-        int => CorElementType.I4,
-        uint => CorElementType.U4,
-        long => CorElementType.I8,
-        ulong => CorElementType.U8,
-        float => CorElementType.R4,
-        double => CorElementType.R8,
-        _ => throw new NotSupportedException($"Value '{value.GetType().Name}' is not a primitive CIL value")
-    };
+    /// <summary>The element type of a primitive value the interpreter holds itself.</summary>
+    private static CorElementType GetPrimitiveElementType(object value) =>
+        GetPrimitiveElementType(PrimitiveOf(value)) ?? throw new NotSupportedException($"Value '{value.GetType().Name}' is not a primitive CIL value");
 
     // The calls run here rather than in the program, which cannot run them: those of DefaultInterpolatedStringHandler
     // that interpolated strings are lowered to, and Unsafe.AsRef and Nullable.GetValueRefOrDefaultRef of a reference,

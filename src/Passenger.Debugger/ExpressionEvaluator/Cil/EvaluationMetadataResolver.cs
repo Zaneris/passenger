@@ -5,6 +5,7 @@ using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
+using Passenger.Core;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger.ExpressionEvaluator.Cil;
@@ -94,24 +95,12 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
 
     private ResolvedCilType ResolveCorDebugType(ICorDebugType type)
     {
+        if (MetadataTypeNames.PrimitiveOf(type.Type) is { Code: { } primitive })
+        {
+            return new ResolvedCilType(primitive, null);
+        }
         return type.Type switch
         {
-            CorElementType.BOOLEAN => new ResolvedCilType(PrimitiveTypeCode.Boolean, null),
-            CorElementType.CHAR => new ResolvedCilType(PrimitiveTypeCode.Char, null),
-            CorElementType.I1 => new ResolvedCilType(PrimitiveTypeCode.SByte, null),
-            CorElementType.U1 => new ResolvedCilType(PrimitiveTypeCode.Byte, null),
-            CorElementType.I2 => new ResolvedCilType(PrimitiveTypeCode.Int16, null),
-            CorElementType.U2 => new ResolvedCilType(PrimitiveTypeCode.UInt16, null),
-            CorElementType.I4 => new ResolvedCilType(PrimitiveTypeCode.Int32, null),
-            CorElementType.U4 => new ResolvedCilType(PrimitiveTypeCode.UInt32, null),
-            CorElementType.I8 => new ResolvedCilType(PrimitiveTypeCode.Int64, null),
-            CorElementType.U8 => new ResolvedCilType(PrimitiveTypeCode.UInt64, null),
-            CorElementType.R4 => new ResolvedCilType(PrimitiveTypeCode.Single, null),
-            CorElementType.R8 => new ResolvedCilType(PrimitiveTypeCode.Double, null),
-            CorElementType.I => new ResolvedCilType(PrimitiveTypeCode.IntPtr, null),
-            CorElementType.U => new ResolvedCilType(PrimitiveTypeCode.UIntPtr, null),
-            CorElementType.STRING => new ResolvedCilType(PrimitiveTypeCode.String, null),
-            CorElementType.OBJECT => new ResolvedCilType(PrimitiveTypeCode.Object, null),
             CorElementType.CLASS or CorElementType.VALUETYPE => new ResolvedCilType(null, ResolveRuntimeType(type)),
             CorElementType.SZARRAY => new ResolvedCilType(null, null, ResolveCorDebugType(type.FirstTypeParameter), 1, true),
             CorElementType.ARRAY => new ResolvedCilType(null, null, ResolveCorDebugType(type.FirstTypeParameter), type.Rank),
@@ -335,27 +324,13 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
             throw new NotSupportedException("The CIL type cannot be materialized");
         }
 
-        (string? name, CorElementType elementType) = primitive switch
+        if (primitive is PrimitiveTypeCode.Void or PrimitiveTypeCode.TypedReference)
         {
-            PrimitiveTypeCode.Boolean => ("Boolean", CorElementType.VALUETYPE),
-            PrimitiveTypeCode.Byte => ("Byte", CorElementType.VALUETYPE),
-            PrimitiveTypeCode.SByte => ("SByte", CorElementType.VALUETYPE),
-            PrimitiveTypeCode.Char => ("Char", CorElementType.VALUETYPE),
-            PrimitiveTypeCode.Int16 => ("Int16", CorElementType.VALUETYPE),
-            PrimitiveTypeCode.UInt16 => ("UInt16", CorElementType.VALUETYPE),
-            PrimitiveTypeCode.Int32 => ("Int32", CorElementType.VALUETYPE),
-            PrimitiveTypeCode.UInt32 => ("UInt32", CorElementType.VALUETYPE),
-            PrimitiveTypeCode.Int64 => ("Int64", CorElementType.VALUETYPE),
-            PrimitiveTypeCode.UInt64 => ("UInt64", CorElementType.VALUETYPE),
-            PrimitiveTypeCode.Single => ("Single", CorElementType.VALUETYPE),
-            PrimitiveTypeCode.Double => ("Double", CorElementType.VALUETYPE),
-            PrimitiveTypeCode.String => ("String", CorElementType.CLASS),
-            PrimitiveTypeCode.Object => ("Object", CorElementType.CLASS),
-            PrimitiveTypeCode.IntPtr => ("IntPtr", CorElementType.VALUETYPE),
-            PrimitiveTypeCode.UIntPtr => ("UIntPtr", CorElementType.VALUETYPE),
-            _ => throw new NotSupportedException($"Primitive CIL type '{primitive}' cannot be materialized")
-        };
-        ResolvedRuntimeType primitiveRuntimeType = FindRuntimeType("System", name);
+            throw new NotSupportedException($"Primitive CIL type '{primitive}' cannot be materialized");
+        }
+        PrimitiveType row = PrimitiveTypes.Of(primitive);
+        CorElementType elementType = row.Type.IsValueType ? CorElementType.VALUETYPE : CorElementType.CLASS;
+        ResolvedRuntimeType primitiveRuntimeType = FindRuntimeType("System", row.Name);
         return ((ICorDebugClass2)primitiveRuntimeType.Class).GetParameterizedType(elementType, 0, []);
     }
 
@@ -427,9 +402,7 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
             return null;
         }
         string name = GetTypeName(runtimeType);
-        return Enum.GetValues<PrimitiveTypeCode>().Where(code => MetadataTypeNames.ElementTypeOf(code)
-            is not (CorElementType.END or CorElementType.VOID or CorElementType.STRING or CorElementType.OBJECT or CorElementType.TYPEDBYREF))
-            .Select(code => (PrimitiveTypeCode?)code).FirstOrDefault(code => MetadataTypeNames.Of(code!.Value) == name);
+        return PrimitiveTypes.Named(name) is { IsPrimitiveValue: true } named ? named.Code : null;
     }
 
     /// <summary>The primitive an enum is stored as, from its one instance field; null for any other type.</summary>

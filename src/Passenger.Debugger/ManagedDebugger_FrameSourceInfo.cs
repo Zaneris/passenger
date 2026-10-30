@@ -97,22 +97,10 @@ public partial class ManagedDebugger
         mdTypeDef containingTypeDef = metadataImport.GetMethodProps(methodToken).pClass;
         return new DecompiledSourceInfo
         {
-            TypeFullName = GetFullMetadataTypeName(metadataImport, containingTypeDef),
+            TypeFullName = MetadataTypeNames.Of(metadataImport, containingTypeDef, '+'),
             Assembly = new AssemblyPathAndMvid(module.ModulePath, mvid),
             CallingUserCodeAssemblyPath = callingUserCodeAssemblyPath
         };
-    }
-
-    private static string GetFullMetadataTypeName(IMetaDataImport metadataImport, mdTypeDef typeDef)
-    {
-        (string szTypeDef, CorTypeAttr pdwTypeDefFlags, mdToken ptkExtends) typeProps = metadataImport.GetTypeDefProps(typeDef);
-        if (typeProps.pdwTypeDefFlags.IsTdNested() is false)
-        {
-            return typeProps.szTypeDef;
-        }
-
-        mdTypeDef declaringType = metadataImport.GetNestedClassProps(typeDef);
-        return $"{GetFullMetadataTypeName(metadataImport, declaringType)}+{typeProps.szTypeDef}";
     }
 
     /// <summary>A module with no symbols of its own given its decompiled ones from the cache, read once; false while the cache

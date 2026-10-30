@@ -1,14 +1,19 @@
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
+using Passenger.Core;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
 
 /// <summary>The names the debugger knows metadata's types by: a type named alike from its definition and from a reference
 /// to it in another module (its namespace, then each type it is nested in, joined by <c>nested</c>: '+' as reflection writes
-/// it, '.' as C# does), and a primitive by its System type's name and its runtime element type.</summary>
+/// it, '.' as C# does), and a primitive (<see cref="PrimitiveTypes"/>) by its System type's name and its runtime element
+/// type.</summary>
 internal static class MetadataTypeNames
 {
+    private static readonly Dictionary<CorElementType, PrimitiveType> ByElementType =
+        PrimitiveTypes.All.Where(row => row.Code is not null).ToDictionary(row => ElementTypeOf(row.Code!.Value));
+
     public static string Of(MetadataReader reader, TypeDefinitionHandle handle, char nested = '+')
     {
         TypeDefinition type = reader.GetTypeDefinition(handle);
@@ -26,52 +31,24 @@ internal static class MetadataTypeNames
             : Joined(reader.GetString(type.Namespace), name);
     }
 
-    public static string Of(PrimitiveTypeCode code) => code switch
+    /// <summary>A type definition named through the runtime's metadata import, as a module made while the program runs
+    /// gives it too.</summary>
+    public static string Of(IMetaDataImport import, mdTypeDef token, char nested = '+')
     {
-        PrimitiveTypeCode.Boolean => "System.Boolean",
-        PrimitiveTypeCode.Byte => "System.Byte",
-        PrimitiveTypeCode.SByte => "System.SByte",
-        PrimitiveTypeCode.Char => "System.Char",
-        PrimitiveTypeCode.Int16 => "System.Int16",
-        PrimitiveTypeCode.UInt16 => "System.UInt16",
-        PrimitiveTypeCode.Int32 => "System.Int32",
-        PrimitiveTypeCode.UInt32 => "System.UInt32",
-        PrimitiveTypeCode.Int64 => "System.Int64",
-        PrimitiveTypeCode.UInt64 => "System.UInt64",
-        PrimitiveTypeCode.Single => "System.Single",
-        PrimitiveTypeCode.Double => "System.Double",
-        PrimitiveTypeCode.IntPtr => "System.IntPtr",
-        PrimitiveTypeCode.UIntPtr => "System.UIntPtr",
-        PrimitiveTypeCode.Object => "System.Object",
-        PrimitiveTypeCode.String => "System.String",
-        PrimitiveTypeCode.Void => "System.Void",
-        PrimitiveTypeCode.TypedReference => "System.TypedReference",
-        _ => $"System.{code}",
-    };
+        (string name, CorTypeAttr flags, _) = import.GetTypeDefProps(token);
+        return flags.IsTdNested() ? $"{Of(import, import.GetNestedClassProps(token), nested)}{nested}{name}" : name;
+    }
 
-    /// <summary>The runtime's element type of a primitive, <see cref="CorElementType.END"/> for none.</summary>
-    public static CorElementType ElementTypeOf(PrimitiveTypeCode code) => code switch
-    {
-        PrimitiveTypeCode.Void => CorElementType.VOID,
-        PrimitiveTypeCode.Boolean => CorElementType.BOOLEAN,
-        PrimitiveTypeCode.Char => CorElementType.CHAR,
-        PrimitiveTypeCode.SByte => CorElementType.I1,
-        PrimitiveTypeCode.Byte => CorElementType.U1,
-        PrimitiveTypeCode.Int16 => CorElementType.I2,
-        PrimitiveTypeCode.UInt16 => CorElementType.U2,
-        PrimitiveTypeCode.Int32 => CorElementType.I4,
-        PrimitiveTypeCode.UInt32 => CorElementType.U4,
-        PrimitiveTypeCode.Int64 => CorElementType.I8,
-        PrimitiveTypeCode.UInt64 => CorElementType.U8,
-        PrimitiveTypeCode.Single => CorElementType.R4,
-        PrimitiveTypeCode.Double => CorElementType.R8,
-        PrimitiveTypeCode.String => CorElementType.STRING,
-        PrimitiveTypeCode.TypedReference => CorElementType.TYPEDBYREF,
-        PrimitiveTypeCode.IntPtr => CorElementType.I,
-        PrimitiveTypeCode.UIntPtr => CorElementType.U,
-        PrimitiveTypeCode.Object => CorElementType.OBJECT,
-        _ => CorElementType.END,
-    };
+    public static string Of(PrimitiveTypeCode code) => PrimitiveTypes.Of(code).SystemName;
+
+    /// <summary>The runtime's element type of a primitive, which ECMA-335 numbers as it numbers the primitive's code.</summary>
+    public static CorElementType ElementTypeOf(PrimitiveTypeCode code) => (CorElementType)code;
+
+    /// <summary>The primitive an element type is, null for any other (a class, an array, a pointer).</summary>
+    public static PrimitiveType? PrimitiveOf(CorElementType element) => ByElementType.GetValueOrDefault(element);
+
+    /// <summary>A metadata name without its generic arity: List`1 is List.</summary>
+    public static string WithoutArity(string name) => name.IndexOf('`', StringComparison.Ordinal) is int arity and >= 0 ? name[..arity] : name;
 
     private static string Joined(string @namespace, string name) => @namespace.Length == 0 ? name : $"{@namespace}.{name}";
 }

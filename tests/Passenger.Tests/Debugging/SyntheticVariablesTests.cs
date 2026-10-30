@@ -69,6 +69,31 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
+    public async Task A_step_out_of_a_method_returning_an_nint_or_an_nuint_lists_its_value()
+    {
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, Line("nint signed = Signed();"), []);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        int thread = stop.ThreadId!.Value;
+
+        stop = await StepOutOf("static nint Signed() => -42;", "Signed() returned", "-42", "nint");
+        stop = await host.StepOverAsync(thread).WaitForStoppedEvent();
+        Assert.Equal(Line("nuint unsigned = Unsigned();"), stop.ReadStopInfo().line);
+        await StepOutOf("static nuint Unsigned() => 4000000000;", "Unsigned() returned", "4000000000", "nuint");
+
+        async Task<StoppedEvent> StepOutOf(string body, string name, string value, string type)
+        {
+            StoppedEvent inside = await host.StepInAsync(thread).WaitForStoppedEvent();
+            Assert.Equal(Line(body), inside.ReadStopInfo().line);
+            StoppedEvent back = await host.StepOutAsync(thread).WaitForStoppedEvent();
+            DapVariable returned = (await host.LocalsAsync(back))[0];
+            Assert.True((returned.Name, returned.Value, returned.Type) == (name, value, type),
+                $"Stepped out, the first row was {returned.Name} = {returned.Value} ({returned.Type}), not {name} = {value} ({type}): what it returned was lost");
+            Assert.Equal(value, (await Evaluate(host, (await host.TopFrameAsync(thread)).Id, "$ReturnValue")).Result);
+            return back;
+        }
+    }
+
+    [Fact]
     public async Task A_step_out_of_a_call_part_way_through_its_statement_lists_what_it_returned()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);

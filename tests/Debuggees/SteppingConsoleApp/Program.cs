@@ -8,6 +8,7 @@ Throws.Run();
 Queries.Run();
 Chooses.Run();
 Arguments.Run();
+Natives.Run();
 
 internal static class Calls
 {
@@ -152,4 +153,18 @@ internal static class Arguments
     {
         return value * 2;
     }
+}
+
+internal static class Natives
+{
+    public static void Run()
+    {
+        nint signed = Signed();
+        nuint unsigned = Unsigned();
+        Console.WriteLine($"natives {signed} {unsigned}");
+    }
+
+    private static nint Signed() => -42;
+
+    private static nuint Unsigned() => 4000000000;
 }

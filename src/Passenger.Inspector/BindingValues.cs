@@ -11,6 +11,7 @@ using Avalonia.Data.Core;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Passenger.Core;
 
 namespace Passenger.Inspector;
 
@@ -449,7 +450,7 @@ internal static class BindingReader
     /// <summary>A type as C# writes it: a keyword for the built-in ones, else its namespace, name and type arguments.</summary>
     public static string TypeName(Type type)
     {
-        if (Keyword(type) is { } keyword)
+        if (PrimitiveTypes.Of(type)?.Keyword is { } keyword)
         {
             return keyword;
         }
@@ -461,27 +462,6 @@ internal static class BindingReader
         int tick = name.IndexOf('`', StringComparison.Ordinal);
         return tick < 0 ? name : $"{name[..tick]}<{string.Join(", ", type.GetGenericArguments().Select(TypeName))}>";
     }
-
-    private static string? Keyword(Type type) => Type.GetTypeCode(type) switch
-    {
-        _ when type.IsEnum => null,
-        TypeCode.String => "string",
-        TypeCode.Boolean => "bool",
-        TypeCode.Char => "char",
-        TypeCode.Byte => "byte",
-        TypeCode.SByte => "sbyte",
-        TypeCode.Int16 => "short",
-        TypeCode.UInt16 => "ushort",
-        TypeCode.Int32 => "int",
-        TypeCode.UInt32 => "uint",
-        TypeCode.Int64 => "long",
-        TypeCode.UInt64 => "ulong",
-        TypeCode.Single => "float",
-        TypeCode.Double => "double",
-        TypeCode.Decimal => "decimal",
-        _ when type == typeof(object) => "object",
-        _ => null,
-    };
 }
 
 /// <summary>The properties each XAML file's values read over the socket showed, watched while the app runs: a change to any of

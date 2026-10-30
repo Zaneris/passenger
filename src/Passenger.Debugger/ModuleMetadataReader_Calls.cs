@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
+using Passenger.Core;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
 
 namespace Passenger.Debugger;
@@ -69,7 +70,7 @@ public partial class ModuleMetadataReader
             {
                 MethodDefinition method = _peMetadataReader.GetMethodDefinition((MethodDefinitionHandle)handle);
                 MethodSignature<string> signature = method.DecodeSignature(CallLabelProvider.Instance, null);
-                return new CalledMethod(_peMetadataReader.GetString(method.Name), SimpleName(GetTypeName(method.GetDeclaringType()).Name), signature.ParameterTypes, signature.ReturnType);
+                return new CalledMethod(_peMetadataReader.GetString(method.Name), MetadataTypeNames.WithoutArity(GetTypeName(method.GetDeclaringType()).Name), signature.ParameterTypes, signature.ReturnType);
             }
             case HandleKind.MemberReference:
             {
@@ -81,8 +82,8 @@ public partial class ModuleMetadataReader
                 MethodSignature<string> signature = member.DecodeMethodSignature(CallLabelProvider.Instance, null);
                 string? declaring = member.Parent.Kind switch
                 {
-                    HandleKind.TypeDefinition => SimpleName(GetTypeName((TypeDefinitionHandle)member.Parent).Name),
-                    HandleKind.TypeReference => SimpleName(GetTypeName((TypeReferenceHandle)member.Parent).Name),
+                    HandleKind.TypeDefinition => MetadataTypeNames.WithoutArity(GetTypeName((TypeDefinitionHandle)member.Parent).Name),
+                    HandleKind.TypeReference => MetadataTypeNames.WithoutArity(GetTypeName((TypeReferenceHandle)member.Parent).Name),
                     HandleKind.TypeSpecification => _peMetadataReader.GetTypeSpecification((TypeSpecificationHandle)member.Parent).DecodeSignature(CallLabelProvider.Instance, null),
                     _ => null,
                 };
@@ -123,8 +124,6 @@ public partial class ModuleMetadataReader
         return null;
     }
 
-    private static string SimpleName(string name) => name.IndexOf('`') is int arity and >= 0 ? name[..arity] : name;
-
     /// <summary>Types as a call's label shows them: C#'s keywords, other types by their simple name.</summary>
     private sealed class CallLabelProvider : ISignatureTypeProvider<string, object?>
     {
@@ -140,9 +139,9 @@ public partial class ModuleMetadataReader
         public string GetPinnedType(string elementType) => elementType;
         public string GetPointerType(string elementType) => elementType + "*";
         public string GetSZArrayType(string elementType) => elementType + "[]";
-        public string GetPrimitiveType(PrimitiveTypeCode typeCode) => FrameDisplaySignatureTypeProvider.Instance.GetPrimitiveType(typeCode);
-        public string GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) => SimpleName(reader.GetString(reader.GetTypeDefinition(handle).Name));
-        public string GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) => SimpleName(reader.GetString(reader.GetTypeReference(handle).Name));
+        public string GetPrimitiveType(PrimitiveTypeCode typeCode) => PrimitiveTypes.Of(typeCode).CSharpName;
+        public string GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) => MetadataTypeNames.WithoutArity(reader.GetString(reader.GetTypeDefinition(handle).Name));
+        public string GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) => MetadataTypeNames.WithoutArity(reader.GetString(reader.GetTypeReference(handle).Name));
         public string GetTypeFromSpecification(MetadataReader reader, object? genericContext, TypeSpecificationHandle handle, byte rawTypeKind) =>
             reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
     }

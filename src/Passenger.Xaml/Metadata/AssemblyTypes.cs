@@ -508,7 +508,7 @@ public sealed class AssemblyTypes
 
         public TypeRef GetPointerType(TypeRef elementType) => elementType;
 
-        public TypeRef GetPrimitiveType(PrimitiveTypeCode typeCode) => TypeRef.Named(Primitive(typeCode));
+        public TypeRef GetPrimitiveType(PrimitiveTypeCode typeCode) => TypeRef.Named(PrimitiveTypes.Of(typeCode).SystemName);
 
         public TypeRef GetSZArrayType(TypeRef elementType) => elementType with { IsArray = true };
 
@@ -522,7 +522,7 @@ public sealed class AssemblyTypes
 
     private sealed class AttributeTypes(AssemblyTypes assembly) : ICustomAttributeTypeProvider<TypeRef>
     {
-        public TypeRef GetPrimitiveType(PrimitiveTypeCode typeCode) => TypeRef.Named(Primitive(typeCode));
+        public TypeRef GetPrimitiveType(PrimitiveTypeCode typeCode) => TypeRef.Named(PrimitiveTypes.Of(typeCode).SystemName);
 
         public TypeRef GetSystemType() => TypeRef.Named("System.Type");
 
@@ -543,27 +543,4 @@ public sealed class AssemblyTypes
 
         public bool IsSystemType(TypeRef type) => type.Name == "System.Type";
     }
-
-    private static string Primitive(PrimitiveTypeCode code) => code switch
-    {
-        PrimitiveTypeCode.Boolean => "System.Boolean",
-        PrimitiveTypeCode.Byte => "System.Byte",
-        PrimitiveTypeCode.SByte => "System.SByte",
-        PrimitiveTypeCode.Char => "System.Char",
-        PrimitiveTypeCode.Double => "System.Double",
-        PrimitiveTypeCode.Single => "System.Single",
-        PrimitiveTypeCode.Int16 => "System.Int16",
-        PrimitiveTypeCode.Int32 => "System.Int32",
-        PrimitiveTypeCode.Int64 => "System.Int64",
-        PrimitiveTypeCode.UInt16 => "System.UInt16",
-        PrimitiveTypeCode.UInt32 => "System.UInt32",
-        PrimitiveTypeCode.UInt64 => "System.UInt64",
-        PrimitiveTypeCode.IntPtr => "System.IntPtr",
-        PrimitiveTypeCode.UIntPtr => "System.UIntPtr",
-        PrimitiveTypeCode.Object => "System.Object",
-        PrimitiveTypeCode.String => "System.String",
-        PrimitiveTypeCode.TypedReference => "System.TypedReference",
-        PrimitiveTypeCode.Void => "System.Void",
-        _ => "System.Object",
-    };
 }

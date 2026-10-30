@@ -1,3 +1,5 @@
+using System.Reflection.Metadata;
+using Passenger.Core;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger.ExpressionEvaluator.Cil;
@@ -63,7 +65,7 @@ internal sealed class CilValue
     /// primitive as unboxed from an object.</summary>
     public ICorDebugGenericValue? Struct => Location is null && (_inBox || CorValue is not ICorDebugReferenceValue)
         && CorValue?.UnwrapDebugValue() is ICorDebugGenericValue { Type: CorElementType.VALUETYPE } generic
-        && UnderlyingType(generic) is null && PrimitiveClassName(generic) is null
+        && UnderlyingType(generic) is null && PrimitiveClass(generic) is null
         ? generic
         : null;
 
@@ -176,27 +178,25 @@ internal sealed class CilValue
             CorElementType.I => data.Length == 8 ? BitConverter.ToInt64(data) : BitConverter.ToInt32(data),
             CorElementType.U => data.Length == 8 ? BitConverter.ToUInt64(data) : BitConverter.ToUInt32(data),
             // What a box of a floating-point value holds, unboxed (a reference to the box stays one): as its class.
-            CorElementType.VALUETYPE when ReferenceEquals(unwrapped, value) => PrimitiveClassName(value) switch
+            CorElementType.VALUETYPE when ReferenceEquals(unwrapped, value) => PrimitiveClass(value)?.Code switch
             {
-                "System.Double" => BitConverter.ToDouble(data),
-                "System.Single" => BitConverter.ToSingle(data),
+                PrimitiveTypeCode.Double => BitConverter.ToDouble(data),
+                PrimitiveTypeCode.Single => BitConverter.ToSingle(data),
                 _ => null,
             },
             _ => null
         };
     }
 
-    /// <summary>The name of a value's class when it is one of CoreLib's primitive types, as a box of one holds it (the
+    /// <summary>The primitive a value's class is when it is one of CoreLib's primitive values, as a box of one holds it (the
     /// floating-point ones no integer reading covers); null for any other.</summary>
-    private static string? PrimitiveClassName(ICorDebugValue value)
+    private static PrimitiveType? PrimitiveClass(ICorDebugValue value)
     {
         try
         {
             ICorDebugClass corClass = value.ExactType.Class;
             string name = corClass.Module.GetMetaDataInterface<IMetaDataImport>().GetTypeDefProps(corClass.Token).szTypeDef;
-            return name is "System.Double" or "System.Single" or "System.Boolean" or "System.Char" or "System.SByte" or "System.Byte"
-                or "System.Int16" or "System.UInt16" or "System.Int32" or "System.UInt32" or "System.Int64" or "System.UInt64"
-                or "System.IntPtr" or "System.UIntPtr" ? name : null;
+            return PrimitiveTypes.Named(name) is { IsPrimitiveValue: true } primitive ? primitive : null;
         }
         catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidOperationException)
         {
@@ -230,24 +230,7 @@ internal sealed class CilValue
     /// type or as its CoreLib class, or an enum's underlying one; null for any other struct.</summary>
     internal static CorElementType? StoredAs(ICorDebugValue value) => value is ICorDebugGenericValue { Type: not CorElementType.VALUETYPE } generic
         ? generic.Type
-        : UnderlyingType(value) ?? PrimitiveClassName(value) switch
-        {
-            "System.Boolean" => CorElementType.BOOLEAN,
-            "System.Char" => CorElementType.CHAR,
-            "System.SByte" => CorElementType.I1,
-            "System.Byte" => CorElementType.U1,
-            "System.Int16" => CorElementType.I2,
-            "System.UInt16" => CorElementType.U2,
-            "System.Int32" => CorElementType.I4,
-            "System.UInt32" => CorElementType.U4,
-            "System.Int64" => CorElementType.I8,
-            "System.UInt64" => CorElementType.U8,
-            "System.Single" => CorElementType.R4,
-            "System.Double" => CorElementType.R8,
-            "System.IntPtr" => CorElementType.I,
-            "System.UIntPtr" => CorElementType.U,
-            _ => null,
-        };
+        : UnderlyingType(value) ?? (PrimitiveClass(value)?.Code is { } code ? MetadataTypeNames.ElementTypeOf(code) : (CorElementType?)null);
 
     /// <summary>An enum's underlying element type, from its value__ field's signature; null for a struct
     /// that is not an enum.</summary>
