@@ -4,7 +4,7 @@ using Passenger.Tests.Debugging.Helpers;
 namespace Passenger.Tests.Debugging;
 
 /// <summary>What an evaluation calls at Implemented.Run's stop in PassengerCases, through the generic interfaces and bases
-/// its values' types implement, held to what the program's own calls answer.</summary>
+/// its values' types implement and through LINQ the program has not loaded, held to what the program's own calls answer.</summary>
 [Collection(DebugSession.Collection)]
 public class ImplementedTests(ITestOutputHelper testOutputHelper)
 {
@@ -24,6 +24,23 @@ public class ImplementedTests(ITestOutputHelper testOutputHelper)
         Assert.True(compared == "1", $"((IComparable<string>)text).CompareTo(\"a\") is {compared}, not the 1 \"hello\" compares to \"a\" with");
         string described = await Evaluate(host, frame, "tagged.Describe()");
         Assert.True(described == "\"valued Int32\"", $"tagged.Describe(), of Tagged<string, int> : Valued<int>, is {described}: the base was called as another instantiation than Valued<int>");
+    }
+
+    /// <summary>A LINQ call evaluated before the program has loaded System.Linq answers the first time, the one taking a lambda
+    /// as the one taking nothing, whichever comes first, though without System.Linq the compiler binds Count elsewhere.</summary>
+    [Theory]
+    [InlineData("list.Count()", "3", "list.Count(x => x > 1)", "2")]
+    [InlineData("list.Count(x => x > 1)", "2", "list.Count()", "3")]
+    public async Task A_LINQ_call_evaluates_the_first_time_in_a_program_that_has_not_loaded_System_Linq(string first, string firstCount, string then, string thenCount)
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await StoppedAtImplementedAsync(host);
+        string loaded = await Evaluate(host, frame, "string.Join(\", \", (object[])AppDomain.CurrentDomain.GetAssemblies()).Contains(\"System.Linq, \")");
+        Assert.True(loaded == "false", $"Whether the program has loaded System.Linq before any LINQ call is {loaded}, so the test cannot tell a first call");
+
+        string counted = await Evaluate(host, frame, first);
+        Assert.True(counted == firstCount, $"{first}, the first LINQ call, is {counted}, not the {firstCount} the program would count");
+        Assert.Equal(thenCount, await Evaluate(host, frame, then));
     }
 
     /// <summary>The program launched to Implemented.Run's stop, and its top frame.</summary>

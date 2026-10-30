@@ -1,4 +1,6 @@
+using System.Collections.Frozen;
 using System.Collections.Immutable;
+using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using Microsoft.CodeAnalysis;
@@ -95,6 +97,13 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
 {
     private static readonly PortableExecutableReference _intrinsicMethodsReference = MetadataReference.CreateFromImage(CreateIntrinsicMethodsAssembly());
 
+    /// <summary>The names of System.Linq's Enumerable and of its methods, as the debugger's own runtime has them.</summary>
+    private static readonly FrozenSet<string> _linqNames = typeof(Enumerable)
+        .GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
+        .Select(method => method.Name)
+        .Append(nameof(Enumerable))
+        .ToFrozenSet(StringComparer.Ordinal);
+
     private const int CacheCapacity = 256;
     private readonly record struct CompileCacheKey(int ModuleVersion, CompileContextKind ContextKind, CORDB_ADDRESS Module, int Token, int IlOffset, string Expression, string? Exception, string ReturnValues);
     private enum CompileContextKind { Method, Type }
@@ -169,6 +178,11 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
                 evaluationContext.GetErrorMessageAndMissingAssemblyIdentities(diagnostics, DebuggerDiagnosticFormatter.Instance, preferredUICulture: null,
                     EvaluationContextBase.SystemLinqIdentity, out _, out ImmutableArray<AssemblyIdentity> missing);
                 missingAssemblies = [.. missing.Select(identity => identity.Name)];
+                string linq = EvaluationContextBase.SystemLinqIdentity.Name;
+                if (!missingAssemblies.Contains(linq) && NamesLinq(expression) && !Loaded(linq))
+                {
+                    missingAssemblies = [.. missingAssemblies, linq];
+                }
                 return null;
             }
 
@@ -179,6 +193,23 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
             diagnostics.Free();
         }
     }
+
+    /// <summary>Whether an expression is a query, names Enumerable or calls a member by a name Enumerable's methods have: a
+    /// LINQ call, which binds only once the program has loaded System.Linq, whatever another method of that name (an
+    /// extension of a span's, a property) makes its compile's error say without it.</summary>
+    internal static bool NamesLinq(string expression) =>
+        SyntaxFactory.ParseExpression(expression).DescendantNodesAndSelf().Any(node => node switch
+        {
+            QueryExpressionSyntax => true,
+            MemberAccessExpressionSyntax access => _linqNames.Contains(access.Name.Identifier.ValueText),
+            MemberBindingExpressionSyntax binding => _linqNames.Contains(binding.Name.Identifier.ValueText),
+            IdentifierNameSyntax { Identifier.ValueText: nameof(Enumerable) } => true,
+            _ => false,
+        });
+
+    /// <summary>Whether the program has loaded an assembly of this name.</summary>
+    private bool Loaded(string assembly) => debugger.AllModules.Any(module =>
+        module.MetadataReader.PeMetadataReader is { IsAssembly: true } reader && reader.StringComparer.Equals(reader.GetAssemblyDefinition().Name, assembly));
 
     private CompileCacheKey CreateCacheKey(string expression, CompiledExpressionEvaluationContext context, ICorDebugILFrame frame, ICorDebugModule preferredModule, string? exception, string returnValues)
     {

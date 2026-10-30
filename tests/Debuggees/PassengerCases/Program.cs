@@ -388,7 +388,8 @@ internal sealed class Counted : PassengerCasesProxies.ICounted
 internal sealed class Unproxied { public int Raw = 4; }
 
 // Values whose calls go through the generic interfaces and bases their types implement: a dictionary through
-// IDictionary and IReadOnlyDictionary, a string through IComparable, and a class through a base of other type arguments.
+// IDictionary and IReadOnlyDictionary, a string through IComparable, and a class through a base of other type arguments;
+// and a list, in a program that has called no LINQ method, so has not loaded System.Linq.
 internal static class Implemented
 {
 	public static void Run()
@@ -397,8 +398,9 @@ internal static class Implemented
 		IReadOnlyDictionary<string, int> readOnly = ages;
 		string text = "hello";
 		Tagged<string, int> tagged = new() { Tag = "one", Value = 1 };
+		List<int> list = [1, 2, 3];
 		Console.WriteLine("implemented");
-		Console.WriteLine($"implemented {ages.Count}, {readOnly.Count}, {text}, {tagged.Describe()}");
+		Console.WriteLine($"implemented {ages.Count}, {readOnly.Count}, {text}, {tagged.Describe()}, {list.Count}");
 	}
 }
 
