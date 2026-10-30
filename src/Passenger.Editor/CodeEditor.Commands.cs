@@ -77,13 +77,18 @@ public sealed partial class CodeEditor
                     CaretLimitReached?.Invoke(this, EventArgs.Empty);
                     return true;
                 }
-                SetSelections(SelectionCommands.SelectNextOccurrence(text, selections), reveal: true);
+                bool fromCarets = selections.Items.Any(s => s.IsEmpty);
+                bool wholeWords = ReferenceEquals(selections, wordOccurrences);
+                SetSelections(SelectionCommands.SelectNextOccurrence(text, selections, wholeWords), reveal: true);
+                wordOccurrences = fromCarets || wholeWords ? selections : null;
                 return true;
             case EditorActions.UnselectOccurrence:
+                bool ofWords = ReferenceEquals(selections, wordOccurrences);
                 SetSelections(SelectionCommands.UnselectLast(selections), reveal: true);
+                wordOccurrences = ofWords ? selections : null;
                 return true;
             case EditorActions.SelectAllOccurrences:
-                SetSelections(SelectionCommands.SelectAllOccurrences(text, selections, out bool every), reveal: false);
+                SetSelections(SelectionCommands.SelectAllOccurrences(text, selections, ReferenceEquals(selections, wordOccurrences), out bool every), reveal: false);
                 if (every)
                 {
                     CaretLimitReached?.Invoke(this, EventArgs.Empty);

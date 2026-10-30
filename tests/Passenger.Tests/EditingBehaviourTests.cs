@@ -133,6 +133,22 @@ public sealed class EditingBehaviourTests
         Assert.Equal("sum = sum + sum", rig.Text);
     }
 
+    [AvaloniaFact]
+    public void Occurrences_of_a_word_taken_from_a_caret_leave_longer_names_holding_it_alone()
+    {
+        EditorRig rig = new("_value value values value");
+        rig.PlaceCaret(9);
+        rig.Press("alt shift PERIOD");
+        rig.Press("alt shift PERIOD");
+        rig.Press("alt shift PERIOD");
+        rig.Type("amount");
+        Assert.True(rig.Text == "_value amount values amount", $"Select Next Occurrence from a caret in value, typing amount, left {rig.Text}");
+        rig.PlaceCaret(9);
+        rig.Press("alt shift SEMICOLON");
+        rig.Type("sum");
+        Assert.True(rig.Text == "_value sum values sum", $"Select All Occurrences from a caret in amount, typing sum, left {rig.Text}");
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Joining_three_selected_lines_whose_middle_one_is_only_spaces_gives_one_line_and_leaves_the_next_alone()

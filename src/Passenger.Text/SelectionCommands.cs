@@ -4,9 +4,10 @@ namespace Passenger.Text;
 /// <see cref="SelectionSet.MaxCount"/>; one that would have says so.</summary>
 public static class SelectionCommands
 {
-    /// <summary>Select Next Occurrence (Alt+Shift+.): first the word under each empty caret, then the
-    /// next copy of the primary selection after the last caret, wrapping, as a new primary.</summary>
-    public static SelectionSet SelectNextOccurrence(TextSnapshot text, SelectionSet selections)
+    /// <summary>Select Next Occurrence (Alt+Shift+.): first the word under each empty caret, then the next copy of the
+    /// primary selection after the last caret, wrapping, as a new primary: for <paramref name="wholeWords"/> (a selection
+    /// this took from a caret) only a copy standing as a whole word.</summary>
+    public static SelectionSet SelectNextOccurrence(TextSnapshot text, SelectionSet selections, bool wholeWords)
     {
         if (selections.Items.Any(s => s.IsEmpty))
         {
@@ -22,14 +23,15 @@ public static class SelectionCommands
         }
         string needle = text.GetText(selections.Primary.Start, selections.Primary.Length);
         int from = selections.Items[^1].End;
-        int? found = Find(text, needle, from, skip: selections);
+        int? found = Find(text, needle, from, skip: selections, wholeWords);
         return found is { } at ? selections.Add(new Selection(at, at + needle.Length)) : selections;
     }
 
     /// <summary>Select All Occurrences (Alt+Shift+;): a selection on every copy of the primary selection, or of the word
-    /// under the caret, the first <see cref="SelectionSet.MaxCount"/> of them (<paramref name="limited"/> past that),
-    /// the one the caret was on always among them and copies overlapping it left out.</summary>
-    public static SelectionSet SelectAllOccurrences(TextSnapshot text, SelectionSet selections, out bool limited)
+    /// under the caret as a whole word (as for <paramref name="wholeWords"/>), the first <see cref="SelectionSet.MaxCount"/>
+    /// of them (<paramref name="limited"/> past that), the one the caret was on always among them and copies overlapping it
+    /// left out.</summary>
+    public static SelectionSet SelectAllOccurrences(TextSnapshot text, SelectionSet selections, bool wholeWords, out bool limited)
     {
         limited = false;
         Selection primary = selections.Primary;
@@ -39,10 +41,15 @@ public static class SelectionCommands
             return selections;
         }
         string needle = text.GetText(range);
+        wholeWords |= primary.IsEmpty;
         List<Selection> all = [];
         int primaryIndex = -1;
         foreach (int at in OccurrencesAround(text, needle, range))
         {
+            if (wholeWords && at != range.Start && !StandsWhole(text, at, needle))
+            {
+                continue;
+            }
             if (all.Count == SelectionSet.MaxCount)
             {
                 limited = true;
@@ -111,13 +118,13 @@ public static class SelectionCommands
         return carets.Count == 0 ? selections : SelectionSet.Create(carets, carets.Count - 1);
     }
 
-    /// <summary>The first copy of the needle at or after <paramref name="from"/> that no selection starts at, else the first
-    /// before it, wrapping.</summary>
-    private static int? Find(TextSnapshot text, string needle, int from, SelectionSet skip)
+    /// <summary>The first copy of the needle at or after <paramref name="from"/> that no selection starts at (and that
+    /// stands whole, for <paramref name="wholeWords"/>), else the first before it, wrapping.</summary>
+    private static int? Find(TextSnapshot text, string needle, int from, SelectionSet skip, bool wholeWords)
     {
         foreach (int at in text.Occurrences(needle, from, overlapping: true))
         {
-            if (!StartsSelection(skip, at))
+            if (!StartsSelection(skip, at) && (!wholeWords || StandsWhole(text, at, needle)))
             {
                 return at;
             }
@@ -128,12 +135,22 @@ public static class SelectionCommands
             {
                 break;
             }
-            if (!StartsSelection(skip, at))
+            if (!StartsSelection(skip, at) && (!wholeWords || StandsWhole(text, at, needle)))
             {
                 return at;
             }
         }
         return null;
+    }
+
+    /// <summary>Whether the copy of <paramref name="needle"/> at <paramref name="at"/> is a whole word: no word character
+    /// carries on from its first or its last where that is a word character, so _value and values hold no value.</summary>
+    private static bool StandsWhole(TextSnapshot text, int at, string needle)
+    {
+        int end = at + needle.Length;
+        bool joinedBefore = TextNavigation.IsWordChar(needle[0]) && at > 0 && TextNavigation.IsWordChar(text[at - 1]);
+        bool joinedAfter = TextNavigation.IsWordChar(needle[^1]) && end < text.Length && TextNavigation.IsWordChar(text[end]);
+        return !joinedBefore && !joinedAfter;
     }
 
     private static bool StartsSelection(SelectionSet selections, int offset)

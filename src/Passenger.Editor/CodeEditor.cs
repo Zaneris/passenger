@@ -37,6 +37,10 @@ public sealed partial class CodeEditor : Control
     private TextDocument document = new();
     private SelectionSet selections = SelectionSet.Single(0);
 
+    /// <summary>The selections Select Next Occurrence took from carets' words, while they stand: its next copies, and
+    /// Select All's, are whole words. Any other change of the selections is a set of its own, ending this.</summary>
+    private SelectionSet? wordOccurrences;
+
     /// <summary>The text the carets are offsets in: the document's, but while a change is told to those who heard of it
     /// before this editor carried its carets through it (mid-edit, or someone else's edit).</summary>
     private TextSnapshot caretsText;
