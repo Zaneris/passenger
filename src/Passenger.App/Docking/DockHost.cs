@@ -190,7 +190,13 @@ public sealed class DockHost : Grid
     }
 
     /// <summary>Shows a window in its place, hiding the one that was there.</summary>
-    public void Show([IdentifierOf(typeof(ToolWindowIds))] string id)
+    public void Show([IdentifierOf(typeof(ToolWindowIds))] string id) => Show(id, forward: true);
+
+    /// <summary>Shows a window in its place as <see cref="Show(string)"/> does, but brings no window forward: a floating or
+    /// windowed one already open stays where it is, and one opened comes without the keys (an agent's asking).</summary>
+    public void ShowBehind([IdentifierOf(typeof(ToolWindowIds))] string id) => Show(id, forward: false);
+
+    private void Show(string id, bool forward)
     {
         ToolWindow window = this[id];
         hiddenAll = null;
@@ -205,7 +211,7 @@ public sealed class DockHost : Grid
         Active = window;
         if (window.Mode != ToolMode.Docked)
         {
-            Float(window);
+            Float(window, forward);
         }
         Layout();
         LayoutChanged?.Invoke(this, EventArgs.Empty);
@@ -331,15 +337,19 @@ public sealed class DockHost : Grid
         }
     }
 
-    /// <summary>A floating or windowed window's own window, opened (where it last stood) or brought forward.</summary>
-    private void Float(ToolWindow window)
+    /// <summary>A floating or windowed window's own window, opened (where it last stood) or, when <paramref name="forward"/>,
+    /// brought forward; opened otherwise, it comes without the keys.</summary>
+    private void Float(ToolWindow window, bool forward)
     {
         if (floats.TryGetValue(window, out FloatWindow? open))
         {
-            open.Activate();
+            if (forward)
+            {
+                open.Activate();
+            }
             return;
         }
-        FloatWindow created = new(this, window.WindowBounds, new Size(520, 420)) { Title = window.Title, ShowInTaskbar = window.Mode == ToolMode.Windowed };
+        FloatWindow created = new(this, window.WindowBounds, new Size(520, 420)) { Title = window.Title, ShowInTaskbar = window.Mode == ToolMode.Windowed, ShowActivated = forward };
         ToolPane pane = new(this) { Floating = created };
         pane.Show(window);
         created.Content = pane;
@@ -500,13 +510,13 @@ public sealed class DockHost : Grid
                 {
                     if (floating.IsShown && floating.Mode != ToolMode.Docked)
                     {
-                        Float(floating);
+                        Float(floating, forward: true);
                     }
                 };
             }
             else
             {
-                Float(floating);
+                Float(floating, forward: true);
             }
         }
 

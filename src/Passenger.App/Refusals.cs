@@ -56,6 +56,10 @@ public static class Refusals
     /// outlines, and none has it open.</summary>
     public static string NoOutline(string file) => $"{file} has no outline: no language server has it open";
 
+    /// <summary>An action whose whole work is to move the person's keys (Focus Editor), asked for by an agent, which never
+    /// moves them.</summary>
+    public const string PersonsKeys = "It moves the person's keys, which only the person does";
+
     /// <summary>Go to Declaration found nothing to go to where it was asked.</summary>
     public const string NoDeclaration = "Cannot find a declaration to go to";
 

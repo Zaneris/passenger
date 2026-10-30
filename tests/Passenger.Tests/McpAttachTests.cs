@@ -456,6 +456,59 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's ide_action shows what it shows without the person's keys or a window brought forward: Problems
+    /// shown for it leaves an Enter the person types going into their file, and its Focus Editor, whose whole work is to
+    /// move the keys, is refused with a floating tool window in front, which stays there.</summary>
+    [AvaloniaFact]
+    public void An_agents_ide_action_shows_a_tool_window_without_the_persons_keys_and_brings_no_window_forward()
+    {
+        string folder = Plain("mcp-action-keys-");
+        string typed = TestFolders.Write(folder, "Typed.txt", "typed\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.ApplySettings(window.Settings with { McpServer = true });
+        window.OpenFile(typed);
+        Ui.Settle();
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "typed");
+        editor.Focus();
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Asked(window, client, McpTools.IdeAction, "run an IDE action", new() { ["action"] = AppActions.ShowProblems });
+            Ui.Settle();
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Problems), "The agent's ide_action of Problems did not show the Problems window");
+            Ui.Press(window, "enter");
+            Assert.True(editor.Document.Snapshot.ToString() == "typed\n\n",
+                $"After the agent showed Problems, an Enter the person typed went to {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, not into their file");
+
+            List<Window> floats = [];
+            window.DockHost.WindowOpened += (_, opened) => floats.Add(opened);
+            window.DockHost.Show(ToolWindowIds.Structure);
+            window.DockHost.SetMode(window.DockHost[ToolWindowIds.Structure], Passenger.App.Docking.ToolMode.Floating);
+            Ui.Settle();
+            Window structure = Assert.Single(floats);
+            Ui.Leave(window);
+            structure.Activate();
+            Ui.Settle();
+            Assert.True(structure.IsActive && !window.IsActive, $"The floating Structure window did not come in front of the IDE's window: it is {(structure.IsActive ? "active" : "inactive")}, the IDE's {(window.IsActive ? "active" : "inactive")}");
+            CallToolResult focusing = Await(Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.FocusEditor })), "the agent's Focus Editor");
+            Ui.Settle();
+            Assert.True(structure.IsActive && !window.IsActive,
+                $"The agent's Focus Editor left the IDE's window {(window.IsActive ? "active" : "inactive")} and the floating Structure window {(structure.IsActive ? "active" : "inactive")}");
+            Assert.True(focusing.IsError == true && Text(focusing).Contains(Refusals.PersonsKeys, StringComparison.Ordinal),
+                $"The agent's Focus Editor was answered: {Text(focusing)}");
+            string listed = Assert.Single(Await(Waiting.Apart(() => Call(client, McpTools.IdeActions)), "the agent's list of actions").EnumerateArray()
+                .Select(a => a.GetString()!), a => a.StartsWith($"{AppActions.FocusEditor}: ", StringComparison.Ordinal));
+            Assert.True(listed.EndsWith($" - cannot run: {Refusals.PersonsKeys}", StringComparison.Ordinal), $"ide_actions lists Focus Editor for the agent as {listed}");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { McpServer = false });
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>A question shown without the keys: an Enter in the window goes to the editor; chosen from the status bar's
     /// words, the question takes the keys, and an Enter there answers nothing, the agent's call still waiting.</summary>
     private void EnterLeavesWaiting(MainWindow window, Passenger.Editor.CodeEditor editor, Window question, Task waiting, string afterEnter)

@@ -120,15 +120,25 @@ public sealed class ActionContext(OpenDocument? file, CodeEditor editor, object?
     /// Request sends in place of the one chosen in the Endpoints window.</summary>
     public (Endpoints.EndpointRequest Request, Endpoints.HttpFile File)? Request { get; init; }
 
+    /// <summary>Asked for by an agent (ide_action), not the person: the action shows what it shows without the person's
+    /// keys, and brings no window forward.</summary>
+    public bool ByAgent { get; private init; }
+
     /// <summary>The same place with a tool window's own button asking, which runs its action on that window without taking
     /// the keys.</summary>
-    public ActionContext In(ToolWindow window) => new(file, editor, focused, window, debugging)
+    public ActionContext In(ToolWindow window) => Copy(window, ByAgent);
+
+    /// <summary>The same place with an agent asking (<see cref="ByAgent"/>).</summary>
+    public ActionContext ForAgent() => Copy(toolWindow, byAgent: true);
+
+    private ActionContext Copy(ToolWindow? window, bool byAgent) => new(file, editor, focused, window, debugging)
     {
         Tab = Tab,
         ExplorerRow = ExplorerRow,
         Service = Service,
         Configuration = Configuration,
         Request = Request,
+        ByAgent = byAgent,
     };
 
     private static string? SymbolAt(CodeEditor editor)

@@ -1754,7 +1754,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         action.StartsWith("app.migrations.", StringComparison.Ordinal) && window.Actions[action] is not null ? await window.MigrationsForAgentAsync(action, input, cancel)
         : action == AppActions.SaveAsLaunchProfile ? await window.SaveAsLaunchProfileForAgentAsync(input)
         : input is not null ? throw new InvalidOperationException($"{action} takes no input")
-        : window.Actions.Run(action) is { } why ? throw new InvalidOperationException($"{action} did not run: {why}") : $"Ran {action}");
+        : window.Actions.RunForAgent(action) is { } why ? throw new InvalidOperationException($"{action} did not run: {why}") : $"Ran {action}");
 
     [McpServerTool(Name = McpTools.IdeActions, Title = "The IDE's actions", ReadOnly = true), Description(
         "Every action ide_action runs (those with no shortcut too), as id: name [group] (shortcut on this platform), " +
@@ -1762,7 +1762,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     public Task<IReadOnlyList<string>> IdeActions(CancellationToken cancel = default) => OnUi(cancel, () =>
     {
         ActionRegistry actions = window.Actions;
-        ActionContext context = actions.Context();
+        ActionContext context = actions.Context().ForAgent();
         return Task.FromResult((IReadOnlyList<string>)[.. actions.All.Select(a =>
             $"{a.Id}: {a.Title} [{a.Group}]{(actions.Shortcut(a.Id) is { } keys ? $" ({keys})" : string.Empty)}{(a.WhyNot(context) is { } why ? $" - cannot run: {why}" : string.Empty)}")]);
     });

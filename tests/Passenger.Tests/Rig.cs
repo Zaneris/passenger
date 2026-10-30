@@ -1028,6 +1028,18 @@ public static class Ui
         task.GetAwaiter().GetResult();
     }
 
+    /// <summary>The system takes a window's activation away, as the person going to another window or program does: headless
+    /// windows are otherwise all active at once.</summary>
+    public static void Leave(Window window)
+    {
+        object shown = window.PlatformImpl ?? throw new InvalidOperationException($"{window.Title} has no window of the platform's to leave");
+        PropertyInfo deactivated = shown.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .FirstOrDefault(p => p.Name.EndsWith("Deactivated", StringComparison.Ordinal) && p.PropertyType == typeof(Action))
+            ?? throw new InvalidOperationException($"Avalonia's headless window no longer tells its window it was left through Deactivated ({shown.GetType().Name})");
+        ((Action?)deactivated.GetValue(shown))?.Invoke();
+        Settle();
+    }
+
     /// <summary>Closes a window as the application's shutdown does (the application menu's Quit on macOS): its owned windows
     /// asked first, each with the same reason.</summary>
     public static void CloseAsQuit(Window window)

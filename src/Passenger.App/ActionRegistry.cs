@@ -109,6 +109,10 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
     /// <summary>Runs an action where it is asked for now; null once it has run, else why it could not.</summary>
     public string? Run(string id) => Run(id, Context());
 
+    /// <summary>Runs an action an agent asks for (ide_action) where it is asked for now, without the person's keys or a
+    /// window brought forward (<see cref="ActionContext.ByAgent"/>); null once it has run, else why it could not.</summary>
+    public string? RunForAgent(string id) => Run(id, Context().ForAgent());
+
     /// <summary>Runs an action in a context made before something else took the keys (a menu, a popup); null once it has
     /// run, else why it could not.</summary>
     public string? Run(string id, ActionContext context)

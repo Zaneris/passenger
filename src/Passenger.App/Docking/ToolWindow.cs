@@ -188,9 +188,23 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     /// <summary>Open in the layout the IDE starts with (the Explorer), and so after Restore Default Layout.</summary>
     public bool OpenAtFirst { get; init; }
 
-    /// <summary>The action that shows it, as the dock adds it.</summary>
+    /// <summary>The action that shows it, as the dock adds it: an agent's shows it with the keys left where they are.</summary>
     internal IdeAction? ShowAction(DockHost dock) => Action is { } id
-        ? new IdeAction(id, ActionTitle ?? Title, "Tool Windows", _ => (Activate ?? (() => dock.Activate(Id)))()) { Menus = Menus, FromTerminal = true }
+        ? new IdeAction(id, ActionTitle ?? Title, "Tool Windows", context =>
+        {
+            if (context.ByAgent)
+            {
+                dock.ShowBehind(Id);
+            }
+            else
+            {
+                (Activate ?? (() => dock.Activate(Id)))();
+            }
+        })
+        {
+            Menus = Menus,
+            FromTerminal = true,
+        }
         : null;
 
     public ToolAnchor Anchor

@@ -555,11 +555,19 @@ public partial class MainWindow : IdeWindow
     /// <summary>Opens a tool window in its place (one of <see cref="ToolWindowIds"/>).</summary>
     public void ShowToolWindow(string id) => Dock.Show(id);
 
-    /// <summary>Shift+Escape: the tool window open last closes, and the editor has the keys again.</summary>
-    private void HideToolWindow()
+    /// <summary>Shift+Escape: the tool window open last closes, and the editor has the keys again. An agent's leaves the keys
+    /// where they are and brings no window forward, the editor taking them only where they went with what it hid.</summary>
+    private void HideToolWindow(ActionContext context)
     {
         Dock.HideActive();
-        FocusEditor();
+        if (!context.ByAgent)
+        {
+            FocusEditor();
+        }
+        else if (Editors.Active is not null && TopLevel.GetTopLevel(Editors.CodeEditor)?.FocusManager?.GetFocusedElement() is null)
+        {
+            Editors.CodeEditor.Focus();
+        }
     }
 
     /// <summary>Focus Editor: the file shown has the keys again, its window brought to the front from a tool window
