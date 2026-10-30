@@ -242,7 +242,7 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException($"Nothing was replaced; {string.Join("; ", said)}");
         }
-        string replaced = $"Replaced {FilesReplaced.Count(changed)}: {string.Join(", ", changed.Select(m => m.Path).Distinct().Select(Relative))}";
+        string replaced = $"Replaced {FilesReplaced.Count(changed)}: {AgentAnswers.Named([.. changed.Select(m => m.Path).Distinct().Select(Relative)], "file", "local_history of a folder within names those there")}";
         return said.Count == 0 ? replaced : $"{replaced}; {string.Join("; ", said)}";
     });
 
@@ -361,8 +361,8 @@ public sealed partial class PassengerTools
 
     [McpServerTool(Name = McpTools.LocalHistory, Title = "Local History", ReadOnly = true), Description(
         "The Local History of a file or folder (the open folder by default), as its window lists it, 5 days of activity: each " +
-        "change set that touched it, newest first, with its number, time, title (Change, Create, Rename, External change, a " +
-        "refactoring's, a Git operation's, a label's...) and files. With set, what was there before it, which " +
+        "change set that touched it, newest first (at most 100), with its number, time, title (Change, Create, Rename, External " +
+        "change, a refactoring's, a Git operation's, a label's...) and files (at most 10). With set, what was there before it, which " +
         "local_history_revert puts back: a file's text (exists false where there was none), or the folder's files that differ " +
         "now.")]
     public Task<LocalHistoryInfo> LocalHistoryOf(string? path = null, long? set = null, CancellationToken cancel = default) =>
@@ -377,16 +377,21 @@ public sealed partial class PassengerTools
         IReadOnlyList<HistoryRow> rows = await BackgroundWork.Run(() => isFolder ? HistoryRows.OfFolder(events, full) : HistoryRows.OfFile(events, known, full), cancel);
         if (set is not long chosen)
         {
-            return new LocalHistoryInfo(Relative(full), [.. rows.Select(Row)]);
+            (IReadOnlyList<HistoryRow> newest, string? older) = AgentAnswers.Listed(rows, MostHistoryRows, "change set",
+                "local_history of a file or folder within lists its own");
+            return new LocalHistoryInfo(Relative(full), [.. newest.Select(Row)]) { More = older };
         }
         HistoryRow row = rows.FirstOrDefault(r => r.Set == chosen)
             ?? throw new ArgumentException($"No change set {chosen} is in the history of {Relative(full)}; local_history lists those there are");
         if (isFolder)
         {
             IReadOnlyList<HistoryDifference> since = await BackgroundWork.Run(() => HistoryRows.Since(events, known, chosen, full), cancel);
+            (IReadOnlyList<HistoryDifference> differing, string? more) = AgentAnswers.Listed(since, AgentAnswers.MostFiles, "file",
+                $"local_history of a folder within, with set {chosen}, lists its own");
             return new LocalHistoryInfo(Relative(full), [Row(row)])
             {
-                Files = [.. since.Select(f => new VcsChange(Relative(f.Path), f.Kind.ToString().ToLowerInvariant(), null))],
+                Files = [.. differing.Select(f => new VcsChange(Relative(f.Path), f.Kind.ToString().ToLowerInvariant(), null))],
+                More = more,
             };
         }
         if (row.Version is not { } version)
@@ -397,9 +402,19 @@ public sealed partial class PassengerTools
             ?? throw new InvalidOperationException($"What {Relative(full)} held before change set {chosen} is no longer kept");
         return new LocalHistoryInfo(Relative(full), [Row(row)]) { Exists = true, Text = FileText.FromBytes(bytes)?.Text ?? string.Empty };
 
-        HistoryRowInfo Row(HistoryRow r) => new(r.Set, r.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
-            r.Title, r.IsLabel, [.. r.Files.Select(Relative)]);
+        HistoryRowInfo Row(HistoryRow r)
+        {
+            (IReadOnlyList<string> files, string? more) = AgentAnswers.Listed(r.Files, MostRowFiles, "file", "local_history of a folder within names its own");
+            return new(r.Set, r.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+                r.Title, r.IsLabel, [.. files.Select(Relative)]) { More = more };
+        }
     });
+
+    /// <summary>How many change sets local_history lists, the newest.</summary>
+    private const int MostHistoryRows = 100;
+
+    /// <summary>How many files local_history names for each change set.</summary>
+    private const int MostRowFiles = 10;
 
     [McpServerTool(Name = McpTools.LocalHistoryRevert, Title = "Revert to a Local History version", Destructive = true), Description(
         "Puts a file or folder back as it was before Local History's change set set, as Revert Selected and Later Changes " +
@@ -492,10 +507,17 @@ public sealed record LocalHistoryInfo(string Path, IReadOnlyList<HistoryRowInfo>
 
     /// <summary>A folder's files that are not now what they were before the set: added, deleted or modified since.</summary>
     public IReadOnlyList<VcsChange>? Files { get; init; }
+
+    /// <summary>How many more change sets, or files before the set, were left out, and how to read them.</summary>
+    public string? More { get; init; }
 }
 
 /// <summary>A change set of Local History as its window lists it.</summary>
-public sealed record HistoryRowInfo(long Set, string Time, string Title, bool Label, IReadOnlyList<string> Files);
+public sealed record HistoryRowInfo(long Set, string Time, string Title, bool Label, IReadOnlyList<string> Files)
+{
+    /// <summary>How many more files the set changed there, left out, and how to read them.</summary>
+    public string? More { get; init; }
+}
 
 /// <summary>What the Problems window lists beyond a file's diagnostics: the projects' load problems, the last build's, and the
 /// solution's with solution-wide analysis on (null while it is off).</summary>

@@ -19,30 +19,57 @@ public sealed partial class PassengerTools
     // Version control
 
     [McpServerTool(Name = McpTools.VcsStatus, Title = "Changed files", ReadOnly = true), Description(
-        "The branch and the files changed since the last commit (modified, added, deleted, renamed, unversioned, conflicted). " +
+        "The branch and the files changed since the last commit (modified, added, deleted, renamed, unversioned, conflicted), " +
+        "a folder of untracked files as one entry with how many it holds (files), as git status shows it; at most 200, more saying the rest. " +
         "While a merge, rebase, unstash or cherry-pick is stopped for conflicts, conflicts says what is under way, which " +
         "branches yours and theirs are (in a rebase yours is the branch being rebased) and whether each side modified or " +
         "deleted each file in conflict; vcs_resolve resolves them. underWay names a merge, rebase, cherry-pick or revert still " +
         "in progress, its conflicts resolved or not, or a rebase stopped at an edit, break or exec, where vcs_commit commits " +
-        "and amends. With path, that file's changes since the last commit as a unified diff: the editor's text when it is " +
-        "open (unsaved changes included), else the file on disk.")]
-    public async Task<object> VcsStatus(string? path = null, CancellationToken cancel = default) =>
-        path is null ? await VcsChanges(cancel) : await VcsDiff(path, cancel);
-
-    private Task<VcsStatus> VcsChanges(CancellationToken cancel) => OnUi(cancel, async () =>
+        "and amends. With path, a folder's changes alone, or a file's since the last commit as a unified diff: the editor's " +
+        "text when it is open (unsaved changes included), else the file on disk.")]
+    public Task<object> VcsStatus(string? path = null, CancellationToken cancel = default) => OnUi<object>(cancel, async () =>
     {
         VcsController vcs = Session.Vcs;
         await vcs.Opened;
+        // Read now, so a rename made a moment ago is measured from where the file was.
         await vcs.RefreshAsync();
-        if (vcs.Repository is null)
+        Git repository = vcs.Repository ?? throw new InvalidOperationException(vcs.NoRepository);
+        if (path is null)
         {
-            throw new InvalidOperationException(vcs.NoRepository);
+            return await VcsChangesAsync(vcs, repository, repository.Root);
         }
+        string full = Resolve(path);
+        bool named = vcs.Changes.Any(c => PathNames.Same(c.Path, full) || c.From is { } from && PathNames.Same(from, full));
+        // A folder whose every file was deleted is one still, as its changes name it.
+        bool folder = Directory.Exists(full) || !File.Exists(full) && !named
+            && vcs.Changes.Any(c => PathNames.IsUnder(c.Path, full) || c.From is { } from && PathNames.IsUnder(from, full));
+        if (folder)
+        {
+            return await VcsChangesAsync(vcs, repository, PathNames.IsUnder(repository.Root, full) ? repository.Root
+                : PathNames.Within(full, repository.Root) ? full
+                : throw new ArgumentException($"{Relative(full)} is not in the repository, which is {repository.Root}"));
+        }
+        return File.Exists(full) || named ? await VcsDiffAsync(full, cancel)
+            : throw new ArgumentException($"No file or folder {Relative(full)} is here, and no change names it");
+    });
+
+    /// <summary>vcs_status's changes in a folder of the repository: a folder of untracked files as one entry, at most
+    /// <see cref="AgentAnswers.MostFiles"/>, then how many more there are.</summary>
+    private async Task<VcsStatus> VcsChangesAsync(VcsController vcs, Git repository, string scope)
+    {
+        IReadOnlyList<FileChange> changes = vcs.Changes;
+        IReadOnlyList<string> untracked = changes.Any(c => c.Kind == ChangeKind.Unversioned) ? await repository.UntrackedFoldersAsync() : [];
         ConflictSides sides = vcs.Sides;
         VcsConflicts? conflicts = vcs.Conflicts.Count == 0 ? null : new VcsConflicts(sides.Description, sides.Yours, sides.Theirs,
             [.. vcs.Conflicts.Select(c => new VcsConflict(Relative(c.Path), sides.YoursHas(c) ? "modified" : "deleted", sides.TheirsHas(c) ? "modified" : "deleted"))]);
-        return new VcsStatus(vcs.Branch, [.. vcs.Changes.Select(c => new VcsChange(Relative(c.Path), c.Kind.ToString().ToLowerInvariant(), c.From is { } from ? Relative(from) : null, c.Uncommittable))], conflicts, vcs.Merge.UnderWay);
-    });
+        (IReadOnlyList<ListedChange> listed, string? more) = AgentAnswers.Listed(AgentAnswers.Gathered(changes, untracked, scope), AgentAnswers.MostFiles,
+            "change", "vcs_status with a folder's path lists its own");
+        return new VcsStatus(vcs.Branch, [.. listed.Select(Listed)], conflicts, vcs.Merge.UnderWay) { More = more };
+
+        VcsChange Listed(ListedChange c) => c.Files is { } files
+            ? new VcsChange(Relative(c.Change.Path) + Path.DirectorySeparatorChar, "unversioned", null) { Files = files }
+            : new VcsChange(Relative(c.Change.Path), c.Change.Kind.ToString().ToLowerInvariant(), c.Change.From is { } from ? Relative(from) : null, c.Change.Uncommittable);
+    }
 
     [McpServerTool(Name = McpTools.VcsResolve, Title = "Resolve a conflict", Destructive = true), Description(
         "Resolves a file in conflict (vcs_status lists them) as the Conflicts dialog does: take yours or theirs, that side's " +
@@ -71,17 +98,10 @@ public sealed partial class PassengerTools
         return left == 0 ? $"{Relative(full)} resolved; no conflicts are left" : $"{Relative(full)} resolved; {Plural.Of(left, "file")} {(left == 1 ? "is" : "are")} still in conflict";
     });
 
-    private Task<string> VcsDiff(string path, CancellationToken cancel) => OnUi(cancel, async () =>
+    /// <summary>vcs_status of a file: its changes since the last commit, as the repository was read just before.</summary>
+    private async Task<string> VcsDiffAsync(string full, CancellationToken cancel)
     {
-        string full = Resolve(path);
         string name = Relative(full).Replace('\\', '/');
-        await Session.Vcs.Opened;
-        // Read now, so a rename made a moment ago is measured from where the file was.
-        await Session.Vcs.RefreshAsync();
-        if (Session.Vcs.Repository is null)
-        {
-            throw new InvalidOperationException(Session.Vcs.NoRepository);
-        }
         // Git's own words for a change of mode come first, as its diff says it.
         string? mode = Session.Vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, full))?.Mode?.Unified;
         if (await Session.Vcs.BinaryChangeAsync(full) is { } binary)
@@ -100,7 +120,7 @@ public sealed partial class PassengerTools
         return Joined(mode, encoding, separators, diff.Length == 0 ? null : diff);
 
         static string Joined(params string?[] parts) => parts.OfType<string>().ToArray() is { Length: > 0 } said ? string.Join('\n', said) : "No changes";
-    });
+    }
 
     [McpServerTool(Name = McpTools.VcsCommit, Title = "Commit", Destructive = true), Description(
         "Commits the paths given, else every changed file but the unversioned (saved first), with message; amend changes the " +
@@ -562,7 +582,11 @@ public sealed partial class PassengerTools
 }
 
 /// <summary>The branch, the changed files, what stopped for conflicts and what is under way, conflicts or none.</summary>
-public sealed record VcsStatus(string? Branch, IReadOnlyList<VcsChange> Changes, VcsConflicts? Conflicts = null, string? UnderWay = null);
+public sealed record VcsStatus(string? Branch, IReadOnlyList<VcsChange> Changes, VcsConflicts? Conflicts = null, string? UnderWay = null)
+{
+    /// <summary>How many changes past the first ones listed were left out, and how to read them.</summary>
+    public string? More { get; init; }
+}
 
 /// <summary>What stopped for conflicts, the branches yours and theirs are, and the files in conflict.</summary>
 public sealed record VcsConflicts(string Operation, string? Yours, string? Theirs, IReadOnlyList<VcsConflict> Files);
@@ -571,7 +595,11 @@ public sealed record VcsConflicts(string Operation, string? Yours, string? Their
 public sealed record VcsConflict(string Path, string Yours, string Theirs);
 
 /// <summary>A changed file, and where it is a submodule whose own files alone changed, why it has nothing to commit here.</summary>
-public sealed record VcsChange(string Path, string Kind, string? From, string? Uncommittable = null);
+public sealed record VcsChange(string Path, string Kind, string? From, string? Uncommittable = null)
+{
+    /// <summary>A folder of untracked files listed as one: how many files it holds.</summary>
+    public int? Files { get; init; }
+}
 
 /// <summary>A commit as vcs_log lists it; with a path, what it did there.</summary>
 public sealed record VcsCommit(string Hash, string Subject, string Author, string Date, IReadOnlyList<string> Refs, IReadOnlyList<VcsChange>? Changes = null);

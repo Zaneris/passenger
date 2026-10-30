@@ -791,6 +791,42 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("No changes", (await Call(client, McpTools.VcsStatus, asked)).GetString());
     }
 
+    /// <summary>vcs_status lists a folder of new files as one entry saying how many, as git's status does; with a folder's
+    /// path it lists that folder's changes alone (its own folders of new files one entry each), and with a path that names
+    /// nothing it is refused saying so, where each path answered "No changes".</summary>
+    [Fact]
+    public async Task An_agents_status_of_a_folder_lists_its_changes_and_of_a_path_naming_nothing_is_refused()
+    {
+        string repository = TestFolders.Create("mcp-folder-status-");
+        DeleteAtEnd(repository);
+        Directory.CreateDirectory(Path.Combine(repository, "Cons"));
+        File.WriteAllText(Path.Combine(repository, "Cons", "Program.cs"), "one\n");
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "notes\n");
+        await TestGit.InitAsync(repository);
+        File.WriteAllText(Path.Combine(repository, "Cons", "Program.cs"), "two\n");
+        File.WriteAllText(Path.Combine(repository, "Cons", "New.cs"), "new\n");
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "more notes\n");
+        for (int i = 0; i < 300; i++)
+        {
+            TestFolders.Write(repository, Path.Combine("node_modules", $"package{i % 3}", $"file{i}.js"), "made\n");
+        }
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        string modules = "node_modules" + Path.DirectorySeparatorChar;
+        Assert.Equal([$"{Path.Combine("Cons", "Program.cs")} modified", "Notes.txt modified", $"{Path.Combine("Cons", "New.cs")} unversioned", $"{modules} unversioned 300"],
+            Changes(await Call(client, McpTools.VcsStatus)));
+        Assert.Equal([$"{Path.Combine("Cons", "Program.cs")} modified", $"{Path.Combine("Cons", "New.cs")} unversioned"],
+            Changes(await Call(client, McpTools.VcsStatus, new() { ["path"] = "Cons" })));
+        Assert.Equal([.. Enumerable.Range(0, 3).Select(p => $"{modules}package{p}{Path.DirectorySeparatorChar} unversioned 100")],
+            Changes(await Call(client, McpTools.VcsStatus, new() { ["path"] = "node_modules" })));
+        CallToolResult nowhere = await Result(client, McpTools.VcsStatus, new() { ["path"] = "Nowhere" });
+        Assert.True(nowhere.IsError == true && Text(nowhere).Contains("No file or folder Nowhere is here", StringComparison.Ordinal),
+            $"vcs_status of a path that names nothing answered: {Text(nowhere)}");
+
+        static IEnumerable<string> Changes(JsonElement status) => status.GetProperty("changes").EnumerateArray().Select(c =>
+            $"{c.GetProperty("path").GetString()} {c.GetProperty("kind").GetString()}{(c.TryGetProperty("files", out JsonElement files) ? $" {files.GetInt32()}" : string.Empty)}");
+    }
+
     /// <summary>vcs_status with the path of a file whose only change is its line separators says which changed on how many
     /// lines, and of one whose only change is its mode (where git keeps modes) says the mode as git's diff does, where each
     /// answered no changes.</summary>

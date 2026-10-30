@@ -1,12 +1,20 @@
 using System.Globalization;
 using Passenger.App.Mcp;
+using Passenger.Core;
+using Passenger.Vcs;
 
 namespace Passenger.UnitTests.Mcp;
 
 /// <summary>What an agent's answer holds of what runs long: a debugged value cut at a few thousand characters, saying its
-/// length and the debug_evaluate that reads on, a string's literal never cut inside an escape.</summary>
-public sealed class AgentAnswersTests
+/// length and the debug_evaluate that reads on, a string's literal never cut inside an escape; a list of thousands of files
+/// held to its first ones, saying how many more and how to read them; and a folder of untracked files one entry, as git's
+/// status shows it, from the repository's root or a folder in it.</summary>
+public sealed class AgentAnswersTests : IDisposable
 {
+    private readonly string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
+
+    public void Dispose() => Directory.Delete(root, recursive: true);
+
     [Fact]
     public void A_short_value_is_shown_whole_and_says_no_cut()
     {
@@ -70,4 +78,66 @@ public sealed class AgentAnswersTests
         }
         return count;
     }
+
+    [Fact]
+    public void Five_thousand_files_in_a_folder_git_shows_whole_are_one_entry_saying_how_many_beside_the_new_file_of_a_tracked_folder()
+    {
+        string modules = At("node_modules");
+        List<FileChange> changes = [new(At("src", "App.cs"), ChangeKind.Modified), new(At("src", "New.cs"), ChangeKind.Unversioned)];
+        changes.AddRange(Enumerable.Range(0, 5_000).Select(i => new FileChange(At("node_modules", $"package{i % 50}", $"file{i}.js"), ChangeKind.Unversioned)));
+        IReadOnlyList<ListedChange> listed = AgentAnswers.Gathered(changes, [modules], root);
+        Assert.Equal([(At("src", "App.cs"), (int?)null), (At("src", "New.cs"), null), (modules, 5_000)], listed.Select(c => (c.Change.Path, c.Files)));
+    }
+
+    [Fact]
+    public void A_folder_inside_one_git_shows_whole_lists_its_own_folders_as_one_entry_each_and_its_own_files()
+    {
+        List<FileChange> changes = [new(At("README.md"), ChangeKind.Modified), new(At("node_modules", "index.js"), ChangeKind.Unversioned)];
+        changes.AddRange(Enumerable.Range(0, 5_000).Select(i => new FileChange(At("node_modules", $"package{i % 50}", "lib", $"file{i}.js"), ChangeKind.Unversioned)));
+        IReadOnlyList<ListedChange> listed = AgentAnswers.Gathered(changes, [At("node_modules")], At("node_modules"));
+        Assert.Equal(51, listed.Count);
+        Assert.Equal((At("node_modules", "index.js"), (int?)null), (listed[0].Change.Path, listed[0].Files));
+        Assert.All(listed.Skip(1), c => Assert.True(c.Files == 100 && Path.GetDirectoryName(c.Change.Path) == At("node_modules"),
+            $"{c.Change.Path} was listed with {c.Files} files, not as one of node_modules' own folders of 100"));
+        IReadOnlyList<ListedChange> package = AgentAnswers.Gathered(changes, [At("node_modules")], At("node_modules", "package7"));
+        Assert.Equal([(At("node_modules", "package7", "lib"), (int?)100)], package.Select(c => (c.Change.Path, c.Files)));
+    }
+
+    [Fact]
+    public void A_folders_changes_are_those_under_it_and_a_rename_out_of_it()
+    {
+        IReadOnlyList<FileChange> changes =
+        [
+            new(At("src", "App.cs"), ChangeKind.Modified),
+            new(At("docs", "Moved.md"), ChangeKind.Renamed, At("src", "Moved.md")),
+            new(At("srcs", "Other.cs"), ChangeKind.Modified),
+            new(At("tests", "AppTests.cs"), ChangeKind.Deleted),
+        ];
+        Assert.Equal([At("src", "App.cs"), At("docs", "Moved.md")], AgentAnswers.Gathered(changes, [], At("src")).Select(c => c.Change.Path));
+    }
+
+    [Fact]
+    public void Five_thousand_changes_are_held_to_the_first_ones_saying_how_many_more_and_how_to_read_them()
+    {
+        IReadOnlyList<ListedChange> gathered = AgentAnswers.Gathered(
+            [.. Enumerable.Range(0, 5_000).Select(i => new FileChange(At($"folder{i % 20}", $"file{i}.cs"), ChangeKind.Modified))], [], root);
+        (IReadOnlyList<ListedChange> kept, string? more) = AgentAnswers.Listed(gathered, AgentAnswers.MostFiles, "change", "vcs_status with a folder's path lists its own");
+        Assert.Equal(gathered.Take(AgentAnswers.MostFiles), kept);
+        Assert.Equal("4,800 more changes left out: vcs_status with a folder's path lists its own", more);
+        (IReadOnlyList<ListedChange> all, string? none) = AgentAnswers.Listed(gathered.Take(AgentAnswers.MostFiles).ToList(), AgentAnswers.MostFiles, "change", "never said");
+        Assert.True(all.Count == AgentAnswers.MostFiles && none is null, $"A list that fits was cut, saying: {none}");
+    }
+
+    [Fact]
+    public void Five_thousand_files_named_in_a_sentence_are_held_to_the_first_ones_saying_how_many_more_and_how_to_read_them()
+    {
+        string[] names = [.. Enumerable.Range(0, 5_000).Select(i => $"many/file-with-a-longish-name-{i}.txt")];
+        string said = AgentAnswers.Named(names, "file", "local_history of a folder within names those there");
+        Assert.True(said.Length < 5_000 && said.StartsWith("many/file-with-a-longish-name-0.txt, many/file-with-a-longish-name-1.txt, ", StringComparison.Ordinal)
+            && said.EndsWith($"many/file-with-a-longish-name-{AgentAnswers.MostNamed - 1}.txt; 4,900 more files left out: local_history of a folder within names those there", StringComparison.Ordinal),
+            $"5,000 files were named in {said.Length:N0} characters: {said[..Math.Min(said.Length, 300)]}…{said[^Math.Min(said.Length, 200)..]}");
+        Assert.Equal("a.txt, b.txt", AgentAnswers.Named(["a.txt", "b.txt"], "file", "never said"));
+    }
+
+    private string At(params string[] names) => Path.Combine([root, .. names]);
 }

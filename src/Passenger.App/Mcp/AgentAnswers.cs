@@ -1,13 +1,22 @@
 using System.Globalization;
+using Passenger.Core;
+using Passenger.Vcs;
 
 namespace Passenger.App.Mcp;
 
 /// <summary>What an agent's answer holds of what can run long, so it stays within what an agent's client takes: a debugged
-/// value's first few thousand characters. Each cut says what it left out and how to read it. Pure.</summary>
+/// value's first few thousand characters, a list's first entries, and the unversioned files of a folder git shows whole
+/// gathered into that folder's one entry. Each cut says what it left out and how to read it. Pure.</summary>
 public static class AgentAnswers
 {
     /// <summary>How many characters of a value a debug answer shows.</summary>
     public const int ValueLength = 4000;
+
+    /// <summary>How many entries a list of files or changes holds.</summary>
+    public const int MostFiles = 200;
+
+    /// <summary>How many files a sentence names.</summary>
+    public const int MostNamed = 100;
 
     /// <summary>A value as a debug answer shows it: whole when short, else its first characters and "…", with words saying
     /// its length and the debug_evaluate that reads on, of <paramref name="expression"/> or, where none is given, of the
@@ -90,4 +99,78 @@ public static class AgentAnswers
             return count;
         }
     }
+
+    /// <summary>A list's first <paramref name="most"/> entries, and words saying how many more it left out and how to read
+    /// them (<paramref name="how"/>), null when it left none.</summary>
+    public static (IReadOnlyList<T> Kept, string? More) Listed<T>(IReadOnlyList<T> items, int most, string noun, string how) =>
+        items.Count <= most ? (items, null) : ([.. items.Take(most)], More(items.Count - most, noun, how));
+
+    /// <summary>Names in a sentence, at most <see cref="MostNamed"/>, then how many more were left out and how to read them.</summary>
+    public static string Named(IReadOnlyList<string> names, string noun, string how)
+    {
+        (IReadOnlyList<string> kept, string? more) = Listed(names, MostNamed, noun, how);
+        return more is null ? string.Join(", ", kept) : $"{string.Join(", ", kept)}; {more}";
+    }
+
+    /// <summary>Words for what a list left out: "1,200 more files left out: …".</summary>
+    public static string More(int left, string noun, string how) =>
+        string.Create(CultureInfo.InvariantCulture, $"{left:N0} more {Plural.Noun(left, noun)} left out: {how}");
+
+    /// <summary>The changes in <paramref name="scope"/> (the repository's root for every one), each unversioned file in a
+    /// folder git shows whole (<paramref name="untracked"/>, as <see cref="Git.UntrackedFoldersAsync"/> lists them) gathered
+    /// into one entry: that folder where it lies inside the scope, else, the scope being the folder or inside it, the
+    /// scope's folder the file is in, as git's status of the scope shows it. A rename is the scope's where either of its
+    /// paths is.</summary>
+    public static IReadOnlyList<ListedChange> Gathered(IReadOnlyList<FileChange> changes, IReadOnlyCollection<string> untracked, string scope)
+    {
+        HashSet<string> whole = new(untracked, PathNames.Comparer);
+        List<ListedChange> listed = [];
+        Dictionary<string, int> folders = new(PathNames.Comparer);
+        foreach (FileChange change in changes)
+        {
+            if (!PathNames.Within(change.Path, scope) && (change.From is not { } from || !PathNames.Within(from, scope)))
+            {
+                continue;
+            }
+            if ((change.Kind == ChangeKind.Unversioned && whole.Count > 0 ? FolderOf(change.Path, whole, scope) : null) is not { } folder)
+            {
+                listed.Add(new ListedChange(change, null));
+            }
+            else if (folders.TryGetValue(folder, out int at))
+            {
+                listed[at] = listed[at] with { Files = listed[at].Files + 1 };
+            }
+            else
+            {
+                folders[folder] = listed.Count;
+                listed.Add(new ListedChange(new FileChange(folder, ChangeKind.Unversioned), 1));
+            }
+        }
+        return listed;
+    }
+
+    /// <summary>The folder an unversioned file is gathered into within a scope: the folder git shows whole that holds it,
+    /// where it lies inside the scope, else the scope's folder the file is in; null where it is shown alone.</summary>
+    private static string? FolderOf(string path, HashSet<string> whole, string scope)
+    {
+        for (string? folder = Path.GetDirectoryName(path); folder is not null; folder = Path.GetDirectoryName(folder))
+        {
+            if (!whole.Contains(folder))
+            {
+                continue;
+            }
+            if (PathNames.IsUnder(folder, scope))
+            {
+                return folder;
+            }
+            ReadOnlySpan<char> below = PathNames.Below(path, scope);
+            int first = below.IndexOfAny(PathNames.Separators);
+            return first < 0 ? null : Path.Join(scope.AsSpan().TrimEnd(PathNames.Separators), below[..first]);
+        }
+        return null;
+    }
 }
+
+/// <summary>A change as vcs_status lists it: a file's, or a folder's that git shows whole, with how many unversioned files
+/// it holds (null for a file).</summary>
+public sealed record ListedChange(FileChange Change, int? Files);

@@ -404,6 +404,19 @@ public sealed class Git
         static ModeChange? Mode(string head, string worktree) => head != worktree && Staged(head) && Staged(worktree) ? new ModeChange(head, worktree) : null;
     }
 
+    /// <summary>The folders git's status shows whole by default (absolute, as the disk names them): each holds untracked
+    /// files and none git tracks, ignored ones left out.</summary>
+    public async Task<IReadOnlyList<string>> UntrackedFoldersAsync()
+    {
+        GitResult listed = await RunAsync(Root, ["ls-files", "-z", "--others", "--exclude-standard", "--directory", "--no-empty-directory"]);
+        if (!listed.Succeeded)
+        {
+            throw new InvalidOperationException(listed.Message);
+        }
+        DiskNames names = new(Root);
+        return [.. listed.Output.Split('\0').Where(e => e.Length > 1 && e[^1] == '/').Select(e => names.Full(e[..^1]))];
+    }
+
     /// <summary>Whether each blob a conflict's stages name is binary, by the blob's hash, which names those bytes for good.</summary>
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> binaryBlobs = new(StringComparer.Ordinal);
 
