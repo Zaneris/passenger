@@ -357,6 +357,10 @@ public sealed class MigrationsTests
         }
     }
 
+    /// <summary>A context dotnet ef cannot make is said with why, and the design-time factory added for it reads the
+    /// context's own connection from the configuration by its name: with Reporting's string (a production password in it)
+    /// configured before Shop's, ShopContextFactory reads Shop and holds no connection string, Reporting's or another; dotnet
+    /// ef then makes the context through it, and Undo takes the factory back.</summary>
     [AvaloniaFact]
     public void A_context_the_tools_cannot_make_is_said_with_why_and_a_design_time_factory_added_in_place_and_taken_back_by_undo()
     {
@@ -378,6 +382,16 @@ public sealed class MigrationsTests
             }
 
             """);
+        const string Production = "Server=reporting.example;Database=reports;User Id=sa;Password=Pr0duction-Secret";
+        TestFolders.Write(folder, "appsettings.json", $$"""
+            {
+              "ConnectionStrings": {
+                "Reporting": "{{Production}}",
+                "Shop": "Data Source=shop.db"
+              }
+            }
+
+            """);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
@@ -389,7 +403,12 @@ public sealed class MigrationsTests
             string factory = Path.Combine(folder, "ShopContextFactory.cs");
             Ui.WaitFor(() => File.Exists(factory), "the factory written");
             Assert.Contains("IDesignTimeDbContextFactory<ShopContext>", File.ReadAllText(factory), StringComparison.Ordinal);
-            Assert.Contains("options.UseSqlite(", File.ReadAllText(factory), StringComparison.Ordinal);
+            string made = File.ReadAllText(factory);
+            Assert.True(made.Contains("options.UseSqlite(connection)", StringComparison.Ordinal) && made.Contains("ConnectionString(\"Shop\")", StringComparison.Ordinal),
+                $"The factory does not read ShopContext's own connection, Shop, from the configuration:\n{made}");
+            Assert.True(!made.Contains("Reporting", StringComparison.Ordinal) && !made.Contains("Password", StringComparison.Ordinal) && !made.Contains("Data Source", StringComparison.Ordinal),
+                $"The factory holds a connection string, Reporting's or another, where it should read Shop's from the configuration:\n{made}");
+            Assert.True(window.Status?.Contains("reads the connection string Shop", StringComparison.Ordinal) == true, $"Adding the factory said \"{window.Status}\"");
 
             Tool(window, AppActions.MigrationsRefresh);
             Ui.WaitFor(() => window.Migrations.Listed && window.Migrations.Busy is null, $"the migrations listed through the factory ({window.Status}; gaps: {Gaps(window)})", Slow);

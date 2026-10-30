@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.Docking;
+using Passenger.App.CSharp;
 using Passenger.App.Editors;
 using Passenger.App.Packages;
 using Passenger.App.Run;
@@ -1011,8 +1013,9 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             {
                 return "Fix cancelled";
             }
+            fixedSaid = null;
             string? why = await FixAsync(fix, session, startup, runtime, work);
-            parts.Say(why ?? $"{fix.Title}: done");
+            parts.Say(why ?? fixedSaid ?? $"{fix.Title}: done");
             return why;
         }
         finally
@@ -1031,6 +1034,9 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     /// <summary>The files the last fix wrote, which an agent's apply_code_action names.</summary>
     public IReadOnlyList<string> Touched { get; private set; } = [];
 
+    /// <summary>What the fix under way says once done, where it says more than that it is done.</summary>
+    private string? fixedSaid;
+
     private async Task<string?> FixAsync(EfFix fix, ProjectSession session, ProjectModel startup, string runtime, Working work)
     {
         work.Say($"{fix.Title}…");
@@ -1048,7 +1054,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             case EfFixKind.AlignProvider:
                 return await AlignAsync(startup, runtime, work);
             case EfFixKind.AddFactory:
-                return AddFactory(session);
+                return await AddFactoryAsync();
             case EfFixKind.ScriptPlain:
                 return null;
             case EfFixKind.AddMigration:
@@ -1156,8 +1162,9 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     }
 
     /// <summary>A design-time factory for the context, beside the project's file, from a template: the provider's own
-    /// <c>Use…</c> with the connection string the startup project's appsettings.json names first.</summary>
-    private string? AddFactory(ProjectSession session)
+    /// <c>Use…</c> with the connection string of the context's name (<see cref="EfConnections"/>), read from the startup
+    /// project's configuration as dotnet ef runs; where nothing tells that name, the context's own, said.</summary>
+    private async Task<string?> AddFactoryAsync()
     {
         if (Project is not { } project || Startup is not { } startup)
         {
@@ -1175,13 +1182,40 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         {
             return $"{Path.GetFileName(file)} is already there";
         }
+        IReadOnlyList<ProjectModel> projects = parts.Session().Projects;
+        CSharpParseOptions options = CompilationSymbols.Of(project);
+        (string Name, string Told)? told = await BackgroundWork.Run(() => EfConnections.NameOf(context.Name,
+            new[] { startup, project }.Distinct().SelectMany(p => FolderWalk.ProjectFiles(p, projects, ".cs")).Distinct(PathNames.Comparer).Select(f => (f, Code(f))),
+            options, EfConnections.Configured(startup.Folder)));
+        if (File.Exists(file))
+        {
+            return $"{Path.GetFileName(file)} is already there";
+        }
+        string connection = told?.Name ?? EfConnections.Assumed(context.Name);
         using CommandHistory.Recording recording = parts.Editors.Commands.Record($"Add a Design-Time Factory for {context.Name}");
         recording.Watch(file);
-        FileText.Save(file, EfTemplates.Factory(context, restore, EfTemplates.ConnectionOf(startup.Folder)), new UTF8Encoding(false), false);
+        FileText.Save(file, EfTemplates.Factory(context, restore, connection), new UTF8Encoding(false), false);
+        fixedSaid = told is { } found
+            ? $"Added {Path.GetFileName(file)}, which reads the connection string {connection}, as {found.Told} names it, from the configuration"
+            : $"Added {Path.GetFileName(file)}, which reads the connection string {connection}: nothing in {startup.Name} names {context.Name}'s connection, "
+                + $"so give it in appsettings.json's ConnectionStrings or as ConnectionStrings__{connection}";
         Touched = [file];
         parts.FollowWritten([file]);
         parts.OpenFile(PathNames.Canonical(file));
         return null;
+    }
+
+    /// <summary>A C# file's text on disk; none for one that cannot be read.</summary>
+    private static string Code(string file)
+    {
+        try
+        {
+            return FileText.Load(file)?.Text ?? string.Empty;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
     }
 
     /// <summary>Builds the project and its startup project with Passenger's own build, the Build window and Problems
