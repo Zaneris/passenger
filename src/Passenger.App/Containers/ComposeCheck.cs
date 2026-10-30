@@ -18,10 +18,6 @@ namespace Passenger.App.Containers;
 /// (one Compose normalizes, a flow collection's insides), are given nothing.</summary>
 internal sealed partial class ComposeCheck(EngineChecks owner, OpenDocument document, WebDocument web) : EngineCheck(owner, document, web)
 {
-    private static readonly string[] Bases = ["compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml"];
-
-    private static readonly string[] Overrides = ["compose.override.yml", "compose.override.yaml", "docker-compose.override.yml", "docker-compose.override.yaml"];
-
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(20);
 
     /// <summary>The most of a value a hint shows.</summary>
@@ -107,19 +103,16 @@ internal sealed partial class ComposeCheck(EngineChecks owner, OpenDocument docu
     internal static (bool IsBase, string? Partner)? ReadWith(string path)
     {
         string folder = Path.GetDirectoryName(path)!;
-        string? first = Found(folder, Bases);
-        string? second = first is null ? null : Found(folder, Overrides);
+        string? first = Canonical(ComposeFiles.In(folder));
+        string? second = first is null ? null : Canonical(ComposeFiles.OverrideIn(folder));
         bool isBase = first is not null && PathNames.Same(first, path);
         return isBase || (second is not null && PathNames.Same(second, path)) ? (isBase, isBase ? second : first) : null;
     }
 
-    /// <summary>The files Compose reads unasked in a folder: its first base, and the first override beside that.</summary>
-    internal static IReadOnlyList<string> Unasked(string folder) =>
-        Found(folder, Bases) is { } first ? Found(folder, Overrides) is { } second ? [first, second] : [first] : [];
+    /// <summary>The files Compose reads unasked in a folder (<see cref="ComposeFiles.Unasked"/>), as the disk names them.</summary>
+    internal static IReadOnlyList<string> Unasked(string folder) => [.. ComposeFiles.Unasked(folder).Select(PathNames.Canonical)];
 
-    /// <summary>The first of the names a folder has, as the disk names it.</summary>
-    private static string? Found(string folder, string[] names) =>
-        names.Select(name => Path.Combine(folder, name)).FirstOrDefault(File.Exists) is { } there ? PathNames.Canonical(there) : null;
+    private static string? Canonical(string? path) => path is null ? null : PathNames.Canonical(path);
 
     /// <summary><c>docker compose config</c> on the files given, <c>-</c> the text typed, in the file's folder as the project's.</summary>
     private static Task<ChildResult> ConfigAsync(ContainerEngine engine, string folder, string[] files, string text, CancellationToken cancel)

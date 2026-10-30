@@ -361,9 +361,8 @@ public partial class MainWindow
         return SolutionEdits.AddFile(solution.Path, folder, path);
     }
 
-    /// <summary>The compose file a folder has, by the names Compose looks for; null with none.</summary>
-    private static string? ComposeFileIn(string folder) =>
-        new[] { "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml" }.Select(n => Path.Combine(folder, n)).FirstOrDefault(File.Exists);
+    /// <summary>The compose file Compose reads in a folder; null with none.</summary>
+    private static string? ComposeFileIn(string folder) => Containers.ComposeFiles.In(folder);
 
     private ProjectModel? SolutionProject(string project) => session.Workspace?.Projects.FirstOrDefault(p => PathNames.Same(p.Path, project));
 

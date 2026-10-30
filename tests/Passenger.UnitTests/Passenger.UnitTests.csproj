@@ -27,6 +27,12 @@
     <ProjectReference Include="../../src/Passenger.Xaml/Passenger.Xaml.csproj" />
   </ItemGroup>
 
+  <!-- What the container runs read of Compose's and Docker's files, as text and paths alone, compiled in since their
+       project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Containers/ComposeFiles.cs" Link="App/ComposeFiles.cs" />
+  </ItemGroup>
+
   <!-- What Safe Delete takes out of a C# file, read from Roslyn's syntax alone, compiled in since its project's editor
        brings Avalonia. -->
   <ItemGroup>

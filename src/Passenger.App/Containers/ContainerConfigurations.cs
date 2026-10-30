@@ -15,9 +15,6 @@ namespace Passenger.App.Containers;
 /// the rest the files' text, on the window's thread: the few files it reads are kept by their time.</summary>
 public static class ContainerConfigurations
 {
-    /// <summary>The names a compose file has, as <c>docker compose</c> looks for them in a folder, in its order.</summary>
-    public static readonly IReadOnlyList<string> ComposeNames = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"];
-
     private static readonly Dictionary<string, (DateTime Written, string Text)> Read = new(StringComparer.Ordinal);
 
     public static bool IsComposeProject(string path) => WorkspaceModel.IsComposeProject(path);
@@ -39,29 +36,23 @@ public static class ContainerConfigurations
             .. projects.SelectMany(p => (string?[])[p.Folder, Path.GetDirectoryName(p.Folder)])];
         foreach (string folder in folders.OfType<string>().Where(f => PathNames.Within(f, workspace.Folder)).Distinct(StringComparer.Ordinal))
         {
-            foreach (string name in ComposeNames)
+            // The files docker compose reads in the folder, as a configuration of it reads them.
+            if (ComposeFiles.Unasked(folder) is not [string file, ..] files || covered.Contains(file))
             {
-                string file = Path.Combine(folder, name);
-                if (covered.Contains(file) || !File.Exists(file))
-                {
-                    continue;
-                }
-                List<string> files = [file, .. Overrides(file)];
-                covered.UnionWith(files);
-                string relative = Path.GetRelativePath(workspace.Folder, file).Replace('\\', '/');
-                made.Add(new RunConfiguration
-                {
-                    Name = $"Compose: {relative}",
-                    Kind = RunKind.Compose,
-                    ComposeFiles = files,
-                    // The first .NET service's published port, once it answers; none for an application that publishes none.
-                    LaunchBrowser = true,
-                    BrowserUrl = ServiceUrl,
-                    Origin = $"Generated for {relative}{(files.Count > 1 ? $" with {string.Join(", ", files.Skip(1).Select(Path.GetFileName))}" : string.Empty)}",
-                });
-                // docker compose reads the first of these names a folder has, and so does a configuration of it.
-                break;
+                continue;
             }
+            covered.UnionWith(files);
+            string relative = Path.GetRelativePath(workspace.Folder, file).Replace('\\', '/');
+            made.Add(new RunConfiguration
+            {
+                Name = $"Compose: {relative}",
+                Kind = RunKind.Compose,
+                ComposeFiles = [.. files],
+                // The first .NET service's published port, once it answers; none for an application that publishes none.
+                LaunchBrowser = true,
+                BrowserUrl = ServiceUrl,
+                Origin = $"Generated for {relative}{(files.Count > 1 ? $" with {string.Join(", ", files.Skip(1).Select(Path.GetFileName))}" : string.Empty)}",
+            });
         }
         foreach (ProjectModel project in projects.Where(p => p.Exists && p.IsRunnable))
         {
@@ -174,7 +165,7 @@ public static class ContainerConfigurations
         string? Property(string name) => root.Descendants().FirstOrDefault(e => e.Name.LocalName == name && e.Parent?.Name.LocalName == "PropertyGroup")?.Value.Trim();
         string basis = Property("DockerComposeBaseFilePath") is { Length: > 0 } named ? named : "docker-compose";
         string file = new[] { ".yml", ".yaml" }.Select(e => Path.Combine(folder, basis + e)).FirstOrDefault(File.Exists) ?? Path.Combine(folder, basis + ".yml");
-        List<string> files = [PathNames.Canonical(file), .. Overrides(file).Select(PathNames.Canonical)];
+        List<string> files = [PathNames.Canonical(file), .. ((string?[])[Override(file)]).OfType<string>().Select(PathNames.Canonical)];
         foreach (string more in (Property("AdditionalComposeFilePaths") ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             files.Add(PathNames.Canonical(Path.Combine(folder, more.Replace('\\', '/'))));
@@ -219,22 +210,13 @@ public static class ContainerConfigurations
         return made;
     }
 
-    /// <summary>A compose file's overrides beside it, as Compose and Visual Studio pair them: compose.override.yaml for
-    /// compose.yaml, docker-compose.override.yml for docker-compose.yml, and any other <c>*.override.*</c> of its name.</summary>
-    public static IReadOnlyList<string> Overrides(string file)
+    /// <summary>A Docker Compose project's override beside its base file, as Visual Studio pairs them: the base's name
+    /// with <c>.override.yml</c> (docker-compose.override.yml for docker-compose.yml), else <c>.override.yaml</c>; null
+    /// where it has neither.</summary>
+    private static string? Override(string file)
     {
-        string folder = Path.GetDirectoryName(file)!;
-        string stem = Path.GetFileNameWithoutExtension(file);
-        try
-        {
-            return [.. Directory.EnumerateFiles(folder, $"{stem}.override.*")
-                .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".yaml" or ".yml")
-                .Order(StringComparer.Ordinal)];
-        }
-        catch (Exception unreadable) when (unreadable is IOException or UnauthorizedAccessException)
-        {
-            return [];
-        }
+        string stem = Path.Combine(Path.GetDirectoryName(file)!, Path.GetFileNameWithoutExtension(file));
+        return new[] { ".override.yml", ".override.yaml" }.Select(extension => stem + extension).FirstOrDefault(File.Exists);
     }
 
     /// <summary>A project's Dockerfile: the one its evaluated DockerfileFile names (from the project's folder), else

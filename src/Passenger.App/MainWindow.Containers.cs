@@ -126,7 +126,7 @@ public partial class MainWindow
     /// UI thread, so a missing or stopped one is said before anything needs it.</summary>
     private void CheckEngineFor(string? folder)
     {
-        string[] names = ["compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml", "Dockerfile"];
+        string[] names = [.. ComposeFiles.Names, "Dockerfile"];
         if (folder is null || !names.Any(name => File.Exists(Path.Combine(folder, name))))
         {
             return;
