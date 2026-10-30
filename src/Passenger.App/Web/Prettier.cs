@@ -290,7 +290,7 @@ public sealed class PrettierService : IAsyncDisposable
             {
                 if (said.Length > 0)
                 {
-                    IdeErrors.Write($"Prettier runner (process {id}): {said}");
+                    IdeErrors.Write($"Prettier runner (process {id}): {Containers.ContainerSecrets.InSaid(said)}");
                 }
             }));
             return new Runner(process, node);

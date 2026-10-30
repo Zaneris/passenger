@@ -127,7 +127,7 @@ public sealed class ProjectHost : IAsyncDisposable
         {
             if (line.Length > 0)
             {
-                PassengerLog.Write($"Project host (process {id}): {line}");
+                PassengerLog.WriteMasked(mask => $"Project host (process {id}): {mask(line)}");
                 if (started is { crashed: null } host && line.StartsWith("Unhandled exception.", StringComparison.Ordinal))
                 {
                     host.crashed = line.Length > 300 ? line[..300] + "…" : line;
