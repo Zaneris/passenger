@@ -42,8 +42,15 @@ public partial class ManagedDebugger
         ICorDebugValue? proxyInstance = null;
         if (resolvedValue.Value is { } valueToProxy && formatted.DebuggerProxyTypeName is { } debuggerProxyTypeName)
         {
-            ICorDebugModule module = valueToProxy.ExactType.Class.Module;
-            proxyInstance = await CreateDebuggerProxyInstance(valueToProxy, threadId, module, debuggerProxyTypeName, valueToProxy.ExactType.TypeParameters);
+            (ICorDebugModule? module, string proxyName) = FindProxyType(debuggerProxyTypeName, valueToProxy.ExactType.Class.Module);
+            if (module is not null)
+            {
+                proxyInstance = await CreateDebuggerProxyInstance(valueToProxy, threadId, module, proxyName, valueToProxy.ExactType.TypeParameters);
+            }
+            else
+            {
+                _logger?.Invoke($"The proxy {debuggerProxyTypeName} is in no module the program has loaded");
+            }
         }
         return (formatted.FriendlyTypeName, formatted.Value, proxyInstance, formatted.ResultIsError, formatted.DisplayName);
     }
@@ -116,6 +123,38 @@ public partial class ManagedDebugger
         }
         return new FormattedValue(friendlyTypeName, value, debuggerProxyTypeName, resultIsError, displayName);
     }
+
+    /// <summary>The module holding the type a [DebuggerTypeProxy] names, and its name there: in the assembly an
+    /// assembly-qualified name gives, else in the shown type's own module or CoreLib, as the runtime resolves it. A null
+    /// module where no module the program has loaded holds it, so the value opens into its own members.</summary>
+    private (ICorDebugModule? Module, string TypeName) FindProxyType(string proxyTypeName, ICorDebugModule shownModule)
+    {
+        int depth = 0;
+        int comma = -1;
+        for (int at = 0; at < proxyTypeName.Length && comma < 0; at++)
+        {
+            depth += proxyTypeName[at] switch { '[' => 1, ']' => -1, _ => 0 };
+            comma = proxyTypeName[at] == ',' && depth == 0 ? at : -1;
+        }
+        string typeName = (comma < 0 ? proxyTypeName : proxyTypeName[..comma]).Trim();
+        // A generic proxy is found by its definition; the value's own type arguments instantiate it.
+        typeName = typeName.IndexOf('[', StringComparison.Ordinal) is var arguments and >= 0 ? typeName[..arguments] : typeName;
+        string? assemblyName = comma < 0 ? null : proxyTypeName[(comma + 1)..].Split(',')[0].Trim();
+        IEnumerable<ICorDebugModule> candidates = assemblyName is null
+            ? [shownModule, .. _modules.Values.Where(module => AssemblyNameOf(module) == "System.Private.CoreLib").Select(module => module.Module)]
+            : _modules.Values.Where(module => string.Equals(AssemblyNameOf(module), assemblyName, StringComparison.OrdinalIgnoreCase)).Select(module => module.Module);
+        foreach (ICorDebugModule candidate in candidates)
+        {
+            if (candidate.GetMetaDataInterface<IMetaDataImport>().FindMaybeNestedTypeDefByNameOrNull(typeName) is not null)
+            {
+                return (candidate, typeName);
+            }
+        }
+        return (null, typeName);
+    }
+
+    private static string? AssemblyNameOf(ModuleInfo module) =>
+        module.MetadataReader.PeMetadataReader is { IsAssembly: true } reader ? reader.GetString(reader.GetAssemblyDefinition().Name) : null;
 
     /// <summary>The [DebuggerTypeProxy] made for a value, or null when its constructor throws, so the value opens into
     /// its own members rather than the exception's.</summary>

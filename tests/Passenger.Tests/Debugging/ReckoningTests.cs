@@ -57,6 +57,22 @@ public class ReckoningTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("1", Assert.Single(members, v => v.Name == "Count").Value);
     }
 
+    [Fact]
+    public async Task A_proxy_in_another_library_shows_its_members_and_one_in_no_library_leaves_the_raw_members()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        (StoppedEvent stop, _) = await StoppedAtReckoningAsync(host);
+        List<DapVariable> locals = await host.LocalsAsync(stop);
+
+        List<DapVariable> proxied = await host.VariablesAsync(Assert.Single(locals, v => v.Name == "counted").VariablesReference);
+        Assert.True(proxied.Any(v => v.Name == "Doubled" && v.Value == "42"),
+            $"counted opens to {string.Join(", ", proxied.Select(v => $"{v.Name} {v.Value}"))}, not its proxy's Doubled 42 from PassengerCasesProxies");
+        Assert.Contains(proxied, v => v.Name == "Raw View");
+        List<DapVariable> raw = await host.VariablesAsync(Assert.Single(locals, v => v.Name == "unproxied").VariablesReference);
+        Assert.True(raw.Any(v => v.Name == "Raw" && v.Value == "4"),
+            $"unproxied, whose proxy is in no assembly, opens to {string.Join(", ", raw.Select(v => $"{v.Name} {v.Value}"))}, not its own Raw 4");
+    }
+
     /// <summary>The program launched to Reckoning.Run's stop, and its top frame.</summary>
     private static async Task<(StoppedEvent Stop, int Frame)> StoppedAtReckoningAsync(DebugSession host)
     {

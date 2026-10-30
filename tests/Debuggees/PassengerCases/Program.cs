@@ -318,8 +318,10 @@ internal static class Reckoning
 		Wide big = Wide.Big;
 		DateTime date = new(2026, 10, 30, 13, 45, 0);
 		Names names = new();
+		Counted counted = new();
+		Unproxied unproxied = new();
 		Console.WriteLine("reckoning");
-		Console.WriteLine($"reckoned {wide & big}, {date:yyyy-MM}, {names.First}");
+		Console.WriteLine($"reckoned {wide & big}, {date:yyyy-MM}, {names.First}, {counted.Count}, {unproxied.Raw}");
 	}
 }
 
@@ -338,6 +340,14 @@ internal sealed class Names : Listed<string>
 	public Names() => Add("Ada");
 }
 
+[DebuggerTypeProxy(typeof(PassengerCasesProxies.CountedProxy))]
+internal sealed class Counted : PassengerCasesProxies.ICounted
+{
+	public int Count => 21;
+}
+
+[DebuggerTypeProxy("Nowhere.MissingProxy, Nowhere")]
+internal sealed class Unproxied { public int Raw = 4; }
 
 // What an evaluation reads and leaves as it was: a record struct and a tuple a with copies, a char joined to a string,
 // a box a pattern takes apart, read again each round, native integers wider than an int, and floats cast to integers

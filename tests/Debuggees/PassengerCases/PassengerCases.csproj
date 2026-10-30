@@ -10,4 +10,8 @@
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	</PropertyGroup>
 
+	<ItemGroup>
+		<ProjectReference Include="../PassengerCasesProxies/PassengerCasesProxies.csproj" />
+	</ItemGroup>
+
 </Project>
