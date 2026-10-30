@@ -1250,9 +1250,40 @@ public sealed class Git
         return moves.Length == 0 ? staged : await RunAsync(Root, ["update-index", "-z", "--index-info"], moves.ToString());
     }
 
-    /// <summary>Update Project: the branch's upstream merged in (or rebased onto, as the person's pull.rebase
-    /// says).</summary>
-    public Task<GitResult> PullAsync() => RunAsync(Root, ["pull", "--no-edit"]);
+    /// <summary>Update Project's first half: the remote the branch's upstream is on fetched (origin where it has none),
+    /// which changes no file of the tree.</summary>
+    public Task<GitResult> FetchUpstreamAsync() => RunAsync(Root, ["fetch"]);
+
+    /// <summary>How the person's git config has Update Project bring the upstream's commits in, for this branch.</summary>
+    public async Task<UpdatePlan> UpdatePlanAsync(string branch)
+    {
+        GitResult set = await RunAsync(Root, ["config", "-z", "--get-regexp", @"^(pull\.(rebase|ff)|branch\..*\.rebase)$"], answers: [1]);
+        return UpdatePlan.Of(set.Succeeded ? set.Output : string.Empty, branch);
+    }
+
+    /// <summary>Update Project's second half, once the upstream is fetched: the branch merged with it or rebased onto it as
+    /// <paramref name="plan"/> says, its uncommitted changes to tracked files set aside first and put back after
+    /// (--autostash); a merge or rebase stopped for conflicts puts them back once it is finished or aborted.</summary>
+    public Task<GitResult> IntegrateAsync(UpdatePlan plan) => plan.Rebase
+        ? RunAsync(Root, ["rebase", "--autostash", .. plan.RebaseMerges ? new[] { "--rebase-merges" } : []],
+            environment: new Dictionary<string, string> { ["GIT_EDITOR"] = "true" })
+        : RunAsync(Root, ["merge", "--no-edit", "--autostash", .. plan.FastForward is { } fastForward ? new[] { fastForward } : [], "@{upstream}"]);
+
+    /// <summary>How many commits the branch has that its upstream lacks, and the upstream has that it lacks; null where it
+    /// tracks none.</summary>
+    public async Task<(int Ahead, int Behind)?> DivergenceAsync()
+    {
+        GitResult counted = await RunAsync(Root, ["rev-list", "--left-right", "--count", "HEAD...@{upstream}", "--"], answers: [NotThere]);
+        string[] counts = counted.Output.Split('\t', StringSplitOptions.TrimEntries);
+        return counted.Succeeded && counts.Length == 2
+            && int.TryParse(counts[0], System.Globalization.CultureInfo.InvariantCulture, out int ahead)
+            && int.TryParse(counts[1], System.Globalization.CultureInfo.InvariantCulture, out int behind)
+            ? (ahead, behind) : null;
+    }
+
+    /// <summary>Whether a file git tracks has changes not committed, staged or not.</summary>
+    public async Task<bool> HasTrackedChangesAsync() =>
+        (await RunAsync(Root, ["status", "--porcelain", "--untracked-files=no"])).Output.Trim().Length > 0;
 
     public Task<GitResult> FetchAsync() => RunAsync(Root, ["fetch", "--all", "--prune"]);
 
@@ -1304,8 +1335,14 @@ public sealed class Git
     }
 
     /// <summary>Whether the branch checked out tracks a remote's branch (its upstream), which a push goes to.</summary>
-    public async Task<bool> TracksAsync() =>
-        (await RunAsync(Root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], answers: [NotThere])).Succeeded;
+    public async Task<bool> TracksAsync() => await UpstreamAsync() is not null;
+
+    /// <summary>The branch the one checked out tracks, as the remote's branches are named (origin/main), or null.</summary>
+    public async Task<string?> UpstreamAsync()
+    {
+        GitResult upstream = await RunAsync(Root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], answers: [NotThere]);
+        return upstream.Succeeded && upstream.Output.Trim() is { Length: > 0 } name ? name : null;
+    }
 
     /// <summary>The remotes' names.</summary>
     public async Task<IReadOnlyList<string>> RemotesAsync()
@@ -1812,6 +1849,37 @@ public sealed class Git
         // A background status or diff never takes the index's lock, so a stash, commit or checkout then never fails on it.
         start.Environment["GIT_OPTIONAL_LOCKS"] = "0";
         return start;
+    }
+}
+
+/// <summary>How Update Project brings the upstream's commits in, as the person's git config says (branch.NAME.rebase,
+/// else pull.rebase; and pull.ff): rebased onto them, with <see cref="RebaseMerges"/> keeping the branch's merges, or
+/// merged, <see cref="FastForward"/> the merge's --ff-only, --no-ff or --ff; merged where neither rebase setting is there
+/// (<see cref="Configured"/> false).</summary>
+public sealed record UpdatePlan(bool Rebase, bool RebaseMerges, string? FastForward, bool Configured)
+{
+    /// <summary>The plan `git config -z --get-regexp` wrote for <paramref name="branch"/>: each setting its name, a line
+    /// break and its value, ended by a NUL; a name alone (no value) is true. A rebase setting git does not know merges.</summary>
+    public static UpdatePlan Of(string config, string branch)
+    {
+        Dictionary<string, string> set = new(StringComparer.Ordinal);
+        foreach (string entry in config.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int line = entry.IndexOf('\n', StringComparison.Ordinal);
+            set[line < 0 ? entry : entry[..line]] = line < 0 ? "true" : entry[(line + 1)..];
+        }
+        string? rebase = set.GetValueOrDefault($"branch.{branch}.rebase") ?? set.GetValueOrDefault("pull.rebase");
+        string? fastForward = set.GetValueOrDefault("pull.ff") is not { } ff ? null
+            : Is(ff, "only") ? "--ff-only"
+            : Truth(ff) is { } on ? (on ? "--ff" : "--no-ff") : null;
+        bool merges = rebase is not null && Is(rebase, "merges", "m");
+        bool rebases = rebase is not null && (merges || Truth(rebase) == true || Is(rebase, "interactive", "i"));
+        return new UpdatePlan(rebases, merges, fastForward, rebase is not null);
+
+        // As git reads a boolean: null where the value is none.
+        static bool? Truth(string value) => Is(value, "true", "yes", "on", "1") ? true : Is(value, "false", "no", "off", "0", "") ? false : null;
+
+        static bool Is(string value, params string[] words) => words.Any(word => word.Equals(value, StringComparison.OrdinalIgnoreCase));
     }
 }
 

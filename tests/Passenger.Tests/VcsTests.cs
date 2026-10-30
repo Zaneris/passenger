@@ -863,6 +863,72 @@ public sealed class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Update Project of a branch with commits of its own and the upstream's, where git's config says neither merge
+    /// nor rebase, merges them, saying so, and an uncommitted edit to a file the upstream changed is set aside and put back.</summary>
+    [AvaloniaFact]
+    public void Update_project_merges_a_diverged_branch_where_git_is_not_told_how_keeping_an_uncommitted_edit()
+    {
+        string clone = Diverged();
+        File.WriteAllText(Path.Combine(clone, "Notes.txt"), Notes.Replace("ten", "ten, edited here", StringComparison.Ordinal));
+
+        MainWindow window = Ui.OpenFolder(clone, languageServer: false);
+        Ui.Settle();
+        window.Perform(AppActions.UpdateProject);
+        Ui.Landed(() => window.Status?.StartsWith("Update", StringComparison.Ordinal) == true && window.Actions.Work.Of(AppActions.UpdateProject) is null, "the update's end in the status bar");
+        Assert.Equal("Updated main: merged 1 commit from origin/main, as pull.rebase is not set; local changes set aside and put back", window.Status);
+        Assert.Equal("0", TestGit.Run(clone, "rev-list", "--count", "HEAD..origin/main").Trim());
+        Assert.Equal(3, TestGit.Run(clone, "rev-list", "--parents", "-1", "HEAD").Trim().Split(' ').Length);
+        Assert.Equal(Notes.Replace("one", "one, upstream", StringComparison.Ordinal).Replace("ten", "ten, edited here", StringComparison.Ordinal),
+            File.ReadAllText(Path.Combine(clone, "Notes.txt")));
+        Assert.Equal(" M Notes.txt", TestGit.Run(clone, "status", "--porcelain").TrimEnd());
+        Assert.True(File.Exists(Path.Combine(clone, "Local.cs")), "The branch's own commit was lost");
+        Assert.Empty(TestGit.Run(clone, "stash", "list").Trim());
+        window.Close();
+    }
+
+    /// <summary>Update Project where pull.rebase is true rebases the branch's own commit onto the upstream's with an
+    /// uncommitted edit to a file the upstream did not change, which it sets aside and puts back.</summary>
+    [AvaloniaFact]
+    public void Update_project_with_pull_rebase_rebases_onto_the_upstream_keeping_an_unrelated_uncommitted_edit()
+    {
+        string clone = Diverged();
+        TestGit.Run(clone, "config", "pull.rebase", "true");
+        File.WriteAllText(Path.Combine(clone, "Shop.cs"), Original.Replace("count++", "count += 1", StringComparison.Ordinal));
+
+        MainWindow window = Ui.OpenFolder(clone, languageServer: false);
+        Ui.Settle();
+        window.Perform(AppActions.UpdateProject);
+        Ui.Landed(() => window.Status?.StartsWith("Update", StringComparison.Ordinal) == true && window.Actions.Work.Of(AppActions.UpdateProject) is null, "the update's end in the status bar");
+        Assert.Equal("Updated main: rebased onto 1 commit from origin/main; local changes set aside and put back", window.Status);
+        Assert.Equal(TestGit.Run(clone, "rev-parse", "origin/main").Trim(), TestGit.Run(clone, "rev-parse", "HEAD~1").Trim());
+        Assert.Equal("Local", TestGit.Run(clone, "log", "-1", "--format=%s").Trim());
+        Assert.Equal(Original.Replace("count++", "count += 1", StringComparison.Ordinal), File.ReadAllText(Path.Combine(clone, "Shop.cs")));
+        Assert.Equal(Notes.Replace("one", "one, upstream", StringComparison.Ordinal), File.ReadAllText(Path.Combine(clone, "Notes.txt")));
+        Assert.Equal(" M Shop.cs", TestGit.Run(clone, "status", "--porcelain").TrimEnd());
+        window.Close();
+    }
+
+    private const string Notes = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n";
+
+    /// <summary>A clone of the repository with Notes.txt, an author of its own and a commit of its own (Local.cs), and a
+    /// commit to Notes.txt's first line in the repository it cloned that it has not fetched.</summary>
+    private string Diverged()
+    {
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), Notes);
+        Git("add", "Notes.txt");
+        Git("commit", "-q", "-m", "Notes");
+        string clone = TestFolders.Create("git-clone-");
+        Git("clone", "-q", "-c", "core.autocrlf=false", folder, clone);
+        TestGit.Run(clone, "config", "user.email", "tests@passenger.invalid");
+        TestGit.Run(clone, "config", "user.name", "Passenger Tests");
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), Notes.Replace("one", "one, upstream", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Upstream");
+        File.WriteAllText(Path.Combine(clone, "Local.cs"), "class Local { }\n");
+        TestGit.Run(clone, "add", "Local.cs");
+        TestGit.Run(clone, "commit", "-q", "-m", "Local");
+        return clone;
+    }
+
     /// <summary>Push of a branch that tracks none goes to the repository's only remote whatever its name, the branch tracking
     /// it there from then on; with several remotes the window asks which, and pushes to the one chosen.</summary>
     [AvaloniaFact]

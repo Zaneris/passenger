@@ -678,8 +678,9 @@ public sealed class VcsController : IDisposable
         return await choose(branch, remotes) is { } chosen ? (chosen, null) : (null, $"{branch} was not pushed: no remote was chosen");
     }
 
-    /// <summary>Update Project: the upstream's commits brought in, then the open files and Git read again; one of Git's
-    /// changes to the tree, refused while another runs and refusing others until it ends.</summary>
+    /// <summary>Update Project: the upstream fetched, then its commits brought in as the person's git config says (merged
+    /// where it says nothing), the uncommitted changes set aside and put back, then the open files and Git read again; one
+    /// of Git's changes to the tree, refused while another runs and refusing others until it ends.</summary>
     public async Task<VcsOutcome> UpdateAsync()
     {
         UiThread.Check();
@@ -698,21 +699,51 @@ public sealed class VcsController : IDisposable
         using Working? held = work;
         return await OneAtATimeAsync(async () =>
         {
+            if (await repository.BranchAsync() is not { } branch)
+            {
+                return Report(false, "A detached head has no branch to update");
+            }
+            if (await repository.UpstreamAsync() is not { } upstream)
+            {
+                return Report(false, $"{branch} tracks no remote's branch to update from");
+            }
+            GitResult fetched = await repository.FetchUpstreamAsync();
+            if (!fetched.Succeeded)
+            {
+                return Report(false, $"Update failed: {fetched.Message}");
+            }
             if (await SavedFirstAsync(work) is { } unsaved)
             {
                 return Report(false, unsaved);
             }
+            UpdatePlan plan = await repository.UpdatePlanAsync(branch);
+            (int ahead, int behind) = await repository.DivergenceAsync() ?? (0, 0);
+            bool setAside = behind > 0 && await repository.HasTrackedChangesAsync();
+            work?.Say(plan.Rebase && ahead > 0 ? $"Rebasing {branch} onto {upstream}…" : $"Merging {upstream} into {branch}…");
             // Named until Git is read again, so the folder watcher has heard of what it changed.
             using IDisposable? named = Activity?.Invoke("Update from VCS");
-            GitResult pulled = await repository.PullAsync();
+            GitResult integrated = await repository.IntegrateAsync(plan);
             ReloadOpenFiles();
             await RefreshAsync();
             if (Conflicted(Merge.Operation is MergeOperation.Rebase ? "Rebase stopped due to conflicts" : "Merged with conflicts") is { } stopped)
             {
                 return stopped;
             }
-            return Report(pulled.Succeeded, pulled.Succeeded ? Summary(pulled.Output, "Updated") : $"Update failed: {pulled.Message}");
+            return Report(integrated.Succeeded, integrated.Succeeded ? Updated(branch, upstream, plan, ahead, behind, setAside) : $"Update failed: {integrated.Message}");
         }, refused => refused);
+    }
+
+    /// <summary>What an update did, in its words: the commits brought in, merged or rebased onto where the branch had its
+    /// own too (merged, saying why, where git's config says neither), and the uncommitted changes set aside and put back.</summary>
+    private static string Updated(string branch, string upstream, UpdatePlan plan, int ahead, int behind, bool setAside)
+    {
+        string commits = Plural.Of(behind, "commit");
+        string how = behind == 0 ? $"already up to date with {upstream}"
+            : ahead == 0 ? $"{commits} from {upstream}"
+            : plan.Rebase ? $"rebased onto {commits} from {upstream}"
+            : plan.Configured ? $"merged {commits} from {upstream}"
+            : $"merged {commits} from {upstream}, as pull.rebase is not set";
+        return $"Updated {branch}: {how}{(setAside ? "; local changes set aside and put back" : string.Empty)}";
     }
 
     /// <summary>After an operation that can stop for conflicts: when it did, what it came to, told to the status bar
@@ -762,9 +793,6 @@ public sealed class VcsController : IDisposable
         Message?.Invoke(this, message);
         return new VcsOutcome(succeeded, message);
     }
-
-    private static string Summary(string output, string fallback) =>
-        output.Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim() is { Length: > 0 } last ? $"{fallback}: {last}" : fallback;
 
     /// <summary>The last commit's message, which Amend starts from.</summary>
     public async Task<string?> LastMessageAsync() => git is { } repository ? await repository.LastMessageAsync() : null;
