@@ -245,10 +245,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   DAP, in a process of its own under `debugger/`. `Passenger.ContainerTools` (`passenger-tools`) runs inside a Linux
   container, self-contained, carried only in the release's archives.
 - `Passenger.Profiler`: EventPipe sampling and ClrMD heap snapshots (its Azure packages stay carried; its DAC stays
-  loaded once used: unloading it crashed on Linux); recording inside a container trusts nothing in a frame. A run keeps
-  its newest three memory snapshots' objects (`KeptSnapshots`). A heap dump is Passenger's own (`DumpTool`, deleted only
-  once its writer and reader end, `DeleteAfterAsync`; leftovers swept, `Sweep`): the runtime's createdump writes into
-  the program's stdout, and Windows' dumps only its parent.
+  loaded once used: unloading it crashed on Linux); recording inside a container trusts nothing in a frame. A session's
+  stop goes through `EventPipeStops.StopAsync`, a diagnostic port's failures through `DiagnosticsFailures.Of`, a
+  recording in a container begins through `ContainerTrace.StartAsync`, passenger-tools' words are `ContainerToolsWords`.
+  A run keeps its newest three memory snapshots' objects (`KeptSnapshots`). A heap dump is Passenger's own (`DumpTool`,
+  deleted only once its writer and reader end, `DeleteAfterAsync`; leftovers swept, `Sweep`): the runtime's createdump
+  writes into the program's stdout, and Windows' dumps only its parent.
 - `Passenger.Inspector` (+`.Wpf`): the Live Visual Tree's helper, loaded into the app by a startup hook, answering over a
   Unix socket (`Protocol.cs` compiled into both ends). `Passenger.WpfPreview` (Windows only), `Passenger.TestFrames`
   (pictures of a failed headless test), `Passenger.Terminal` (the VT emulator, Porta.Pty).
