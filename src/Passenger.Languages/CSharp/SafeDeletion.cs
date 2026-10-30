@@ -73,7 +73,8 @@ public static class SafeDeletion
     }
 
     /// <summary>An enum member with the comma that parts it from the next, as a whole declaration; the last, with none
-    /// after it, from the comma before it, unless a comment follows that comma, which then stays as the enum's last.</summary>
+    /// after it, from the comma before it, unless a comment follows that comma or a directive or text it leaves out lies
+    /// before the member, when that comma stays as the enum's last.</summary>
     private static Removal EnumMember(TextSnapshot text, EnumMemberDeclarationSyntax member, string name)
     {
         const string Kind = "enum member";
@@ -83,7 +84,9 @@ public static class SafeDeletion
         {
             return Whole(text, member, members.GetSeparator(index), name, Kind);
         }
-        if (index == 0 || members.GetSeparator(index - 1).TrailingTrivia.Any(t => !t.IsKind(SyntaxKind.EndOfLineTrivia) && !t.IsKind(SyntaxKind.WhitespaceTrivia)))
+        if (index == 0
+            || members.GetSeparator(index - 1).TrailingTrivia.Any(t => !t.IsKind(SyntaxKind.EndOfLineTrivia) && !t.IsKind(SyntaxKind.WhitespaceTrivia))
+            || member.GetLeadingTrivia().Any(t => t.IsDirective || t.IsKind(SyntaxKind.DisabledTextTrivia)))
         {
             return Whole(text, member, member.GetLastToken(), name, Kind);
         }
