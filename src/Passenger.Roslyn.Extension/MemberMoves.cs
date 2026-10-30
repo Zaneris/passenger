@@ -42,12 +42,12 @@ internal static class MemberMoves
             return Changes.Refused(problem!);
         }
         Compilation compilation = (await document.Project.GetCompilationAsync(cancel).ConfigureAwait(false))!;
-        if (DocumentationCommentId.GetFirstSymbolForDeclarationId(move.Target, compilation) is not INamedTypeSymbol target
-            || !(SymbolEqualityComparer.Default.Equals(target, type.BaseType) || Bases(type).Contains(target, SymbolEqualityComparer.Default) || type.AllInterfaces.Contains(target, SymbolEqualityComparer.Default))
-            || !InSource(target))
+        if (Bases(type).Concat(type.AllInterfaces).FirstOrDefault(b => InSource(b) && TypeId(b) == move.Target) is not { } target)
         {
             return Changes.Refused($"Choose a base type of '{type.Name}' in this solution to pull members up to");
         }
+        INamedTypeSymbol declaring = target.OriginalDefinition;
+        Dictionary<ITypeParameterSymbol, ITypeParameterSymbol> named = NamedBy(type, target);
         List<ISymbol> members = Chosen(type, move.Members);
         if (members.Count == 0)
         {
@@ -55,7 +55,7 @@ internal static class MemberMoves
         }
         Solution solution = document.Project.Solution;
         Editors editors = new(solution, cancel);
-        TypeDeclarationSyntax into = await DeclarationAsync(target, cancel).ConfigureAwait(false);
+        TypeDeclarationSyntax into = await DeclarationAsync(declaring, cancel).ConfigureAwait(false);
         DocumentEditor targetEditor = await editors.OfAsync(into).ConfigureAwait(false);
         HashSet<Document> sources = [];
         bool needsAbstract = false;
@@ -74,29 +74,36 @@ internal static class MemberMoves
             ISymbol? replaced = target.TypeKind != TypeKind.Interface && !makeAbstract && Overridden(member) is { IsAbstract: true } overridden && Same(overridden.ContainingType, target)
                 ? overridden
                 : null;
-            if (PullProblem(compilation.GetSemanticModel(declared.SyntaxTree), member, declared, type, target, below, moving, makeAbstract, replaced is not null, cancel) is { } wrong)
+            SemanticModel model = compilation.GetSemanticModel(declared.SyntaxTree);
+            if (PullProblem(model, member, declared, type, target, below, moving, named, makeAbstract, replaced is not null, cancel) is { } wrong)
             {
                 return Changes.Refused(wrong);
             }
+            if (replaced is not null && NamesOtherwise(replaced, target, named))
+            {
+                return Changes.Refused($"'{member.Name}' overrides {Interfaces.Text(replaced.OriginalDefinition)} as '{Shown(target)}' gives it, so it cannot take the place of that declaration in '{target.Name}'");
+            }
             if (target.TypeKind != TypeKind.Interface && (makeAbstract || member.IsAbstract)
-                && await UnimplementedAsync(solution, member, type, target, makeAbstract, cancel).ConfigureAwait(false) is { } lacking)
+                && await UnimplementedAsync(solution, member, type, declaring, makeAbstract, cancel).ConfigureAwait(false) is { } lacking)
             {
                 return Changes.Refused(lacking);
             }
             if (target.TypeKind == TypeKind.Interface)
             {
-                editors.AddMember(targetEditor, into, Interfaces.Declare(targetEditor.Generator, member));
+                editors.AddMember(targetEditor, into, RenamedAsGenerated(Interfaces.Declare(targetEditor.Generator, member), member, named));
                 continue;
             }
+            SyntaxNode Written(SyntaxNode node) => Renamed(model, node, named, cancel);
             if (makeAbstract)
             {
                 needsAbstract = true;
-                editors.AddMember(targetEditor, into, Abstract(targetEditor.Generator, declared, member.IsOverride));
+                editors.AddMember(targetEditor, into, Abstract(targetEditor.Generator, Written(declared), member.IsOverride));
                 sourceEditor.ReplaceNode(declared, (current, generator) => generator.WithModifiers(current, generator.GetModifiers(current).WithIsVirtual(false).WithIsOverride(true)));
                 continue;
             }
             needsAbstract |= member.IsAbstract;
-            SyntaxNode moved = member.DeclaredAccessibility == Accessibility.Private ? targetEditor.Generator.WithAccessibility(Alone(declared), Accessibility.Protected) : Alone(declared);
+            SyntaxNode moved = Alone(declared, Written);
+            moved = member.DeclaredAccessibility == Accessibility.Private ? targetEditor.Generator.WithAccessibility(moved, Accessibility.Protected) : moved;
             if (replaced is not null)
             {
                 SyntaxNode stated = await DeclarationAsync(replaced, cancel).ConfigureAwait(false);
@@ -110,14 +117,14 @@ internal static class MemberMoves
         }
         if (needsAbstract && !target.IsAbstract)
         {
-            if (await ConstructedAsync(solution, target, cancel).ConfigureAwait(false) is { } made)
+            if (await ConstructedAsync(solution, declaring, cancel).ConfigureAwait(false) is { } made)
             {
                 return Changes.Refused(made);
             }
             targetEditor.ReplaceNode(into, (current, generator) => generator.WithModifiers(current, generator.GetModifiers(current).WithIsAbstract(true)));
         }
         Solution changed = await editors.ChangedAsync(sources).ConfigureAwait(false);
-        if (target.TypeKind == TypeKind.Interface && await UnimplementedInterfaceAsync(solution, changed, target, cancel).ConfigureAwait(false) is { } unimplemented)
+        if (target.TypeKind == TypeKind.Interface && await UnimplementedInterfaceAsync(solution, changed, declaring, cancel).ConfigureAwait(false) is { } unimplemented)
         {
             return Changes.Refused(unimplemented);
         }
@@ -134,7 +141,7 @@ internal static class MemberMoves
         Solution solution = document.Project.Solution;
         IEnumerable<INamedTypeSymbol> derived = await SymbolFinder.FindDerivedClassesAsync(type, solution, transitive: false, cancellationToken: cancel).ConfigureAwait(false);
         HashSet<string> wanted = [.. move.Target.Split('\n', StringSplitOptions.RemoveEmptyEntries)];
-        List<INamedTypeSymbol> targets = [.. derived.Where(d => InSource(d) && wanted.Contains(Id(d)))];
+        List<INamedTypeSymbol> targets = [.. derived.Where(d => InSource(d) && wanted.Contains(TypeId(d)))];
         if (targets.Count == 0)
         {
             return Changes.Refused($"Choose the classes derived from '{type.Name}' to push members down to");
@@ -252,8 +259,15 @@ internal static class MemberMoves
 
     private static string Id(ISymbol symbol) => DocumentationCommentId.CreateDeclarationId(symbol) ?? symbol.Name;
 
-    private static Member TypeOf(INamedTypeSymbol type) => new(Id(type), type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
-        type.TypeKind == TypeKind.Interface ? "interface" : "class");
+    /// <summary>A type's id as the hierarchy names it: its documentation comment id, a constructed generic one's with its type
+    /// arguments (T:Shop.IShape{System.Int32}), so two constructions of one type are told apart.</summary>
+    private static string TypeId(INamedTypeSymbol type) =>
+        SymbolEqualityComparer.Default.Equals(type, type.OriginalDefinition) ? Id(type) : "T:" + DocumentationCommentId.CreateReferenceId(type);
+
+    private static Member TypeOf(INamedTypeSymbol type) => new(TypeId(type), Shown(type), type.TypeKind == TypeKind.Interface ? "interface" : "class");
+
+    /// <summary>A type as the class names it: IShape&lt;int&gt;.</summary>
+    private static string Shown(INamedTypeSymbol type) => type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
 
     private static Member MemberOf(ISymbol member) => new(Id(member), Interfaces.Text(member), member switch
     {
@@ -271,11 +285,20 @@ internal static class MemberMoves
         return node is VariableDeclaratorSyntax { Parent.Parent: BaseFieldDeclarationSyntax field } && field.Declaration.Variables.Count == 1 ? field : node;
     }
 
-    /// <summary>A member's declaration as it goes into another type: one variable of a field declaring several as a field
-    /// declaration of its own, with the field's modifiers, attributes and comment.</summary>
-    private static SyntaxNode Alone(SyntaxNode declared) => declared is VariableDeclaratorSyntax { Parent: VariableDeclarationSyntax { Parent: BaseFieldDeclarationSyntax field } list } variable
-        ? field.WithDeclaration(list.WithVariables(SyntaxFactory.SingletonSeparatedList(variable.WithoutTrivia())))
-        : declared;
+    /// <summary>A member's declaration as it goes into another type, written there as <paramref name="written"/> writes the
+    /// code it is in: one variable of a field declaring several as a field declaration of its own, with the field's
+    /// modifiers, attributes and comment.</summary>
+    private static SyntaxNode Alone(SyntaxNode declared, Func<SyntaxNode, SyntaxNode>? written = null)
+    {
+        written ??= node => node;
+        if (declared is not VariableDeclaratorSyntax { Parent: VariableDeclarationSyntax { Parent: BaseFieldDeclarationSyntax field } list } variable)
+        {
+            return written(declared);
+        }
+        int at = list.Variables.IndexOf(variable);
+        BaseFieldDeclarationSyntax whole = (BaseFieldDeclarationSyntax)written(field);
+        return whole.WithDeclaration(whole.Declaration.WithVariables(SyntaxFactory.SingletonSeparatedList(whole.Declaration.Variables[at].WithoutTrivia())));
+    }
 
     /// <summary>Whether a type already declares a member as the one moved would be declared there: a method or indexer
     /// of the same parameters, anything else of the same name and kind.</summary>
@@ -603,10 +626,12 @@ internal static class MemberMoves
     private static string Names(string[] names) => names.Length == 1 ? names[0] : $"{string.Join(", ", names[..^1])} and {names[^1]}";
 
     /// <summary>Why a member cannot be pulled up into a target; null when it can. The target or a class between already
-    /// declaring it (but an abstract declaration the member overrides, which it replaces), or code that goes with it using
-    /// what the target would not reach, each would leave code that does not build.</summary>
+    /// declaring it (but an abstract declaration the member overrides, which it replaces), code that goes with it using
+    /// what the target would not reach, or a type parameter of its own named as one it renames (<paramref name="named"/>),
+    /// each would leave code that does not build.</summary>
     private static string? PullProblem(SemanticModel model, ISymbol member, SyntaxNode declared, INamedTypeSymbol type, INamedTypeSymbol target,
-        IReadOnlySet<INamedTypeSymbol> below, IReadOnlySet<ISymbol> moving, bool makeAbstract, bool replaces, CancellationToken cancel)
+        IReadOnlySet<INamedTypeSymbol> below, IReadOnlySet<ISymbol> moving, IReadOnlyDictionary<ITypeParameterSymbol, ITypeParameterSymbol> named,
+        bool makeAbstract, bool replaces, CancellationToken cancel)
     {
         bool contract = target.TypeKind == TypeKind.Interface;
         if (contract && member is IFieldSymbol)
@@ -629,7 +654,11 @@ internal static class MemberMoves
         {
             return $"'{target.Name}' already declares {Interfaces.Text(member)}";
         }
-        (List<ISymbol> left, ISymbol? unmoved, ISymbol? based) = Reaches(model, contract || makeAbstract ? Signature(declared) : Code(declared), target, below, moving, cancel);
+        if (member is IMethodSymbol method && method.TypeParameters.FirstOrDefault(p => named.Any(n => n.Key.Name != n.Value.Name && (n.Key.Name == p.Name || n.Value.Name == p.Name))) is { } clash)
+        {
+            return $"'{member.Name}' declares its own {clash.Name}, which '{target.Name}' would read as another type parameter";
+        }
+        (List<ISymbol> left, ISymbol? unmoved, ISymbol? based) = Reaches(model, contract || makeAbstract ? Signature(declared) : Code(declared), target, below, moving, named, cancel);
         if (unmoved is not null)
         {
             string whose = unmoved is ITypeParameterSymbol ? $"a type parameter of '{unmoved.ContainingType.Name}'" : $"a parameter of the primary constructor of '{unmoved.ContainingType.Name}'";
@@ -657,9 +686,11 @@ internal static class MemberMoves
 
     /// <summary>What code moved into the target would no longer reach: the members and nested types of the classes below
     /// it that do not move, named alone or through this or base, or where the target may not see them; a type parameter
-    /// or primary constructor's parameter of those classes; and a member of the target itself reached through base.</summary>
+    /// (but one the target names, <paramref name="named"/>) or primary constructor's parameter of those classes; and a
+    /// member of the target itself reached through base.</summary>
     private static (List<ISymbol> Left, ISymbol? Unmoved, ISymbol? Based) Reaches(SemanticModel model, IEnumerable<SyntaxNode> code, INamedTypeSymbol target,
-        IReadOnlySet<INamedTypeSymbol> below, IReadOnlySet<ISymbol> moving, CancellationToken cancel)
+        IReadOnlySet<INamedTypeSymbol> below, IReadOnlySet<ISymbol> moving, IReadOnlyDictionary<ITypeParameterSymbol, ITypeParameterSymbol> named,
+        CancellationToken cancel)
     {
         List<ISymbol> left = [];
         ISymbol? unmoved = null;
@@ -669,7 +700,7 @@ internal static class MemberMoves
             ISymbol? used = model.GetSymbolInfo(name, cancel).Symbol?.OriginalDefinition;
             if (used is ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Type } or IParameterSymbol { ContainingSymbol: IMethodSymbol { MethodKind: MethodKind.Constructor } })
             {
-                unmoved ??= below.Contains(used.ContainingType.OriginalDefinition) ? used : null;
+                unmoved ??= below.Contains(used.ContainingType.OriginalDefinition) && !(used is ITypeParameterSymbol parameter && named.ContainsKey(parameter)) ? used : null;
                 continue;
             }
             if (used is not (IFieldSymbol or IPropertySymbol or IEventSymbol or INamedTypeSymbol or IMethodSymbol { MethodKind: MethodKind.Ordinary })
@@ -682,7 +713,7 @@ internal static class MemberMoves
             {
                 based ??= used;
             }
-            else if (below.Contains(holder.OriginalDefinition) && !Inherited(used, below) && (own || !model.Compilation.IsSymbolAccessibleWithin(used, target))
+            else if (below.Contains(holder.OriginalDefinition) && !Inherited(used, below) && (own || !model.Compilation.IsSymbolAccessibleWithin(used, target.OriginalDefinition))
                 && !left.Contains(used, SymbolEqualityComparer.Default))
             {
                 left.Add(used);
@@ -690,6 +721,79 @@ internal static class MemberMoves
         }
         return (left, unmoved, based);
     }
+
+    /// <summary>Each type parameter of a class that its base type is given as a type argument (Box&lt;U&gt; : Base&lt;U&gt;), with
+    /// the base's own type parameter it is there (T), as code moved into the base names it.</summary>
+    private static Dictionary<ITypeParameterSymbol, ITypeParameterSymbol> NamedBy(INamedTypeSymbol type, INamedTypeSymbol target)
+    {
+        Dictionary<ITypeParameterSymbol, ITypeParameterSymbol> named = new(SymbolEqualityComparer.Default);
+        foreach ((ITypeSymbol given, ITypeParameterSymbol own) in target.TypeArguments.Zip(target.OriginalDefinition.TypeParameters))
+        {
+            if (given is ITypeParameterSymbol parameter && SymbolEqualityComparer.Default.Equals(parameter.ContainingSymbol, type))
+            {
+                named.TryAdd(parameter, own);
+            }
+        }
+        return named;
+    }
+
+    /// <summary>Code of the class's declaration with each of its type parameters the base names (<see cref="NamedBy"/>)
+    /// written as the base's own.</summary>
+    private static SyntaxNode Renamed(SemanticModel model, SyntaxNode node, IReadOnlyDictionary<ITypeParameterSymbol, ITypeParameterSymbol> named, CancellationToken cancel)
+    {
+        if (named.Count == 0)
+        {
+            return node;
+        }
+        Dictionary<SyntaxNode, string> names = [];
+        foreach (IdentifierNameSyntax name in node.DescendantNodesAndSelf(descendIntoTrivia: true).OfType<IdentifierNameSyntax>())
+        {
+            if (model.GetSymbolInfo(name, cancel).Symbol is ITypeParameterSymbol parameter && named.TryGetValue(parameter, out ITypeParameterSymbol? own))
+            {
+                names[name] = own.Name;
+            }
+        }
+        return node.ReplaceNodes(names.Keys, (original, _) => SyntaxFactory.IdentifierName(names[original]).WithTriviaFrom(original));
+    }
+
+    /// <summary>A declaration written from a member's symbol, each type parameter of its class the base names written as the
+    /// base's own, by name: in it a type parameter is a name alone, any other type a qualified one. A method's own type
+    /// parameter of that name is the one its code means, and stays.</summary>
+    private static SyntaxNode RenamedAsGenerated(SyntaxNode declaration, ISymbol member, IReadOnlyDictionary<ITypeParameterSymbol, ITypeParameterSymbol> named)
+    {
+        HashSet<string> own = member is IMethodSymbol method ? [.. method.TypeParameters.Select(p => p.Name)] : [];
+        Dictionary<string, string> names = named.Where(n => !own.Contains(n.Key.Name)).ToDictionary(n => n.Key.Name, n => n.Value.Name, StringComparer.Ordinal);
+        IdentifierNameSyntax[] renamed = [.. declaration.DescendantNodes().OfType<IdentifierNameSyntax>().Where(n => names.ContainsKey(n.Identifier.ValueText)
+            && n.Parent is not (QualifiedNameSyntax or AliasQualifiedNameSyntax or MemberAccessExpressionSyntax))];
+        return renamed.Length == 0 ? declaration : declaration.ReplaceNodes(renamed, (original, _) => SyntaxFactory.IdentifierName(names[original.Identifier.ValueText]).WithTriviaFrom(original));
+    }
+
+    /// <summary>Whether a member of a generic base, as its declaration names its types, takes one of the base's type
+    /// parameters that the class gives a type argument other than one of its own the base names: an override written as
+    /// the class has it would be another member there.</summary>
+    private static bool NamesOtherwise(ISymbol stated, INamedTypeSymbol target, IReadOnlyDictionary<ITypeParameterSymbol, ITypeParameterSymbol> named)
+    {
+        ITypeParameterSymbol[] given = [.. target.TypeArguments.Zip(target.OriginalDefinition.TypeParameters)
+            .Where(t => !(t.First is ITypeParameterSymbol parameter && named.ContainsKey(parameter))).Select(t => t.Second)];
+        IEnumerable<ITypeSymbol> types = stated.OriginalDefinition switch
+        {
+            IMethodSymbol method => method.Parameters.Select(p => p.Type).Prepend(method.ReturnType),
+            IPropertySymbol property => property.Parameters.Select(p => p.Type).Prepend(property.Type),
+            IEventSymbol @event => [@event.Type],
+            _ => [],
+        };
+        return given.Length > 0 && types.Any(t => given.Any(p => Mentions(t, p)));
+    }
+
+    /// <summary>Whether a type is a type parameter or is made with it.</summary>
+    private static bool Mentions(ITypeSymbol type, ITypeParameterSymbol parameter) => type switch
+    {
+        ITypeParameterSymbol given => SymbolEqualityComparer.Default.Equals(given, parameter),
+        IArrayTypeSymbol array => Mentions(array.ElementType, parameter),
+        IPointerTypeSymbol pointer => Mentions(pointer.PointedAtType, parameter),
+        INamedTypeSymbol named => named.TypeArguments.Any(a => Mentions(a, parameter)) || (named.ContainingType is { } outer && Mentions(outer, parameter)),
+        _ => false,
+    };
 
     /// <summary>Whether a name reaches its member as the code's own: alone, or through this or base, rather than through
     /// another object or a type's name.</summary>

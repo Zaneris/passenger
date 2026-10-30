@@ -620,6 +620,50 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "Price was pulled up to IPriced");
     }
 
+    /// <summary>Pull Members Up to a generic base as the class names it, an interface or a class given a type of its own or
+    /// one of the class's type parameters: the member goes there with the class's type parameters written as the base's
+    /// own, and the project builds; an override of the base's abstract member it gives another type is refused, nothing
+    /// changed.</summary>
+    [Fact]
+    public async Task An_agent_pulling_members_up_to_a_generic_base_finds_them_written_as_the_base_names_its_types_and_the_project_building()
+    {
+        await TakeFolderAsync();
+        const string Contracts = "namespace Shop;\n\npublic interface IShape<T>\n{\n}\n\npublic interface IMeasured<T>\n{\n}\n\npublic class Base<T>\n{\n}\n\n"
+            + "public abstract class Store<T>\n{\n    public abstract T Get();\n}\n";
+        const string Tile = "namespace Shop;\n\npublic class Tile : Base<string>, IShape<int>\n{\n    public int Area() => 1;\n\n"
+            + "    public string Label(string name) => name.ToUpperInvariant();\n}\n\npublic class Shelf : Store<string>\n{\n    public override string Get() => \"tin\";\n}\n";
+        const string Box = "namespace Shop;\n\npublic class Box<U> : Base<U>, IMeasured<U>\n{\n    public U Kept(U value) => value;\n\n    public U Measure() => default!;\n}\n";
+        (string Name, string Text)[] files = [("Contracts.cs", Contracts), ("Tile.cs", Tile), ("Box.cs", Box)];
+        Shop(files);
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        JsonElement described = (await Call(client, McpTools.Refactor, Place("pull_members_up", "Tile.cs", Tile, "class Til"))).GetProperty("dialog");
+        Assert.Equal(["Base<string>", "IShape<int>"], described.GetProperty("bases").EnumerateArray().Select(b => b.GetProperty("text").GetString()));
+        CallToolResult refused = await Result(client, McpTools.Refactor, Place("pull_members_up", "Tile.cs", Tile, "class She", new { target = "Store<string>", members = new[] { "Get" } }));
+        Assert.True(refused.IsError == true && Text(refused).Contains("'Get' overrides Get(): T as 'Store<string>' gives it", StringComparison.Ordinal),
+            $"Pulling Shelf's Get up to Store<string> answered: {Text(refused)}");
+        foreach ((string name, string written) in files)
+        {
+            Assert.True(File.ReadAllText(PathOf(name)) == written, $"Pulling Shelf's Get up to Store<string>, refused, changed {name}:\n{File.ReadAllText(PathOf(name))}");
+        }
+
+        JsonElement shaped = await Call(client, McpTools.Refactor, Place("pull_members_up", "Tile.cs", Tile, "class Til", new { target = "IShape<int>", members = new[] { "Area" } }));
+        Assert.Equal(["Contracts.cs changed"], Files(shaped));
+        JsonElement labelled = await Call(client, McpTools.Refactor, Place("pull_members_up", "Tile.cs", Tile, "class Til", new { target = "Base<string>", members = new[] { "Label" } }));
+        Assert.Equal(["Contracts.cs changed", "Tile.cs changed"], Files(labelled));
+        JsonElement kept = await Call(client, McpTools.Refactor, Place("pull_members_up", "Box.cs", Box, "class Bo", new { target = "Base<U>", members = new[] { "Kept" } }));
+        Assert.Equal(["Box.cs changed", "Contracts.cs changed"], Files(kept));
+        JsonElement measured = await Call(client, McpTools.Refactor, Place("pull_members_up", "Box.cs", File.ReadAllText(PathOf("Box.cs")), "class Bo",
+            new { target = "IMeasured<U>", members = new[] { "Measure" } }));
+        Assert.Equal(["Contracts.cs changed"], Files(measured));
+        string contracts = File.ReadAllText(PathOf("Contracts.cs"));
+        string pulled = Contracts.Replace("IShape<T>\n{\n}", "IShape<T>\n{\n    int Area();\n}", StringComparison.Ordinal)
+            .Replace("IMeasured<T>\n{\n}", "IMeasured<T>\n{\n    T Measure();\n}", StringComparison.Ordinal)
+            .Replace("Base<T>\n{\n}", "Base<T>\n{\n    public string Label(string name) => name.ToUpperInvariant();\n\n    public T Kept(T value) => value;\n}", StringComparison.Ordinal);
+        Assert.True(contracts == pulled, $"Pulling members up to IShape<int>, Base<string>, Base<U> and IMeasured<U> left Contracts.cs so:\n{contracts}");
+        await Compiles(client, "members were pulled up to generic bases");
+    }
+
     /// <summary>Pull Members Up of an abstract member into a class that is not abstract, or Push Members Down of one kept
     /// abstract there, is refused where code makes that class, naming each member that does, nothing changed.</summary>
     [Fact]
