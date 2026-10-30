@@ -412,7 +412,8 @@ site-shots` retakes its images.
 - **A variable taken out of a process's own environment goes through `OwnEnvironment.Set`**: on macOS and Linux .NET's
   `SetEnvironmentVariable` never changes the process's own, from which Porta.Pty forks the terminal's shell; Porta.Pty also
   drops an empty value, so a terminal run's removed variable, and an outer tmux's or screen's
-  (`TerminalSession.WithoutOuterTerminal`), is unset through `env -u` (`TerminalSession.Unsetting`).
+  (`TerminalSession.WithoutOuterTerminal`), is unset through `env -u` (`TerminalSession.Unsetting`), which on macOS loses `DYLD_*`
+  (System Integrity Protection), so they go under `TerminalSession.KeptPrefix` for sh to set again, never as env operands.
 - **The carried schemas hold Passenger's patches** (`WebServers/schemas`, MSBuild's xsd), listed in THIRD_PARTY_NOTICES.md
   and each file's `$comment`: a fresh upstream copy loses them (CarriedSchemasTests checks defaults).
 - **The terminal reuses a line** once it leaves the screen and a full scrollback (`TerminalLine.Reuse`): nothing keeps a
