@@ -7,9 +7,9 @@ using Passenger.Editor;
 
 namespace Passenger.Tests;
 
-/// <summary>The schemas Passenger carries reach the files they are for that name none themselves, through the JSON server,
-/// and what the tools they describe take is never marked; on files of a folder of the test's own with no C# language
-/// server; a test that cannot find Node.js skips, saying so.</summary>
+/// <summary>The schemas Passenger carries reach the files they are for that name none themselves, through the JSON server
+/// (a compose file through the YAML server), and what the tools they describe take is never marked; on files of a folder
+/// of the test's own with no C# language server; a test that cannot find Node.js skips, saying so.</summary>
 public sealed class JsonSchemaTests
 {
     /// <summary>A file-based program's app.run.json beside its app.cs, naming no schema, takes the launch settings' schema a
@@ -247,6 +247,30 @@ public sealed class JsonSchemaTests
 
             """, "\"yes\"");
         Assert.True(marked.Count == 0, $"Overrides stylelint applies are marked as wrong, where the file has {Said(marked)}");
+    }
+
+    /// <summary>Compose replaces a variable in a value before it reads the value, so a compose file marks none where a
+    /// field takes only certain words (pull_policy, cgroup, a dependency's condition) and still marks a word it has not.</summary>
+    [AvaloniaFact]
+    public void A_compose_file_takes_a_variable_where_a_field_takes_certain_words_as_compose_replaces_it_first()
+    {
+        DockerFilesTests.Shop.SkipWithoutNode(yaml: true);
+        List<(string Text, string Message)> marked = Marked("compose.yaml", """
+            services:
+              web:
+                image: nginx
+                pull_policy: ${PULL_POLICY:-always}
+                cgroup: ${CGROUP:-host}
+                init: [true]
+                depends_on:
+                  db:
+                    condition: ${DB_CONDITION:-service_started}
+              db:
+                image: postgres
+                pull_policy: sometimes
+
+            """, "[true]");
+        Assert.True(marked.Count == 1 && marked[0].Text == "sometimes", $"Values Compose replaces are marked as wrong, or a policy it has not is not, where the file has {Said(marked)}");
     }
 
     /// <summary>The file written alone in a folder of its own and opened with no C# server, read once its server has checked

@@ -95,6 +95,11 @@
   },
   "additionalProperties": false,
   "$defs": {
+    "interpolated": {
+      "type": "string",
+      "description": "A value holding a variable ($VAR or ${VAR}, a default or a requirement with it), which Compose replaces before it reads the value.",
+      "pattern": "(^|[^$])(\\$\\$)*\\$(\\{|[A-Za-z_])"
+    },
     "container_spec": {
       "type": "object",
       "description": "Attributes of a container specification shared by anything that runs a container: services, jobs, and run-to-completion init containers (pre_start hooks).",
@@ -169,9 +174,16 @@
         },
         "cgroup": {
           "type": "string",
-          "enum": [
-            "host",
-            "private"
+          "anyOf": [
+            {
+              "enum": [
+                "host",
+                "private"
+              ]
+            },
+            {
+              "$ref": "#/$defs/interpolated"
+            }
           ],
           "description": "Specify the cgroup namespace to join. Use 'host' to use the host's cgroup namespace, or 'private' to use a private cgroup namespace."
         },
@@ -622,7 +634,14 @@
         },
         "pull_policy": {
           "type": "string",
-          "pattern": "^(always|never|build|if_not_present|missing|refresh|daily|weekly|every_([0-9]+[wdhms])+)$",
+          "anyOf": [
+            {
+              "pattern": "^(always|never|build|if_not_present|missing|refresh|daily|weekly|every_([0-9]+[wdhms])+)$"
+            },
+            {
+              "$ref": "#/$defs/interpolated"
+            }
+          ],
           "description": "Policy for pulling images. Options include: 'always', 'never', 'if_not_present', 'missing', 'build', or time-based refresh policies."
         },
         "pull_refresh_after": {
@@ -715,13 +734,20 @@
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "bind",
-                      "volume",
-                      "tmpfs",
-                      "cluster",
-                      "npipe",
-                      "image"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "bind",
+                          "volume",
+                          "tmpfs",
+                          "cluster",
+                          "npipe",
+                          "image"
+                        ]
+                      },
+                      {
+                        "$ref": "#/$defs/interpolated"
+                      }
                     ],
                     "description": "The mount type: bind for mounting host directories, volume for named volumes, tmpfs for temporary filesystems, cluster for cluster volumes, npipe for named pipes, or image for mounting from an image."
                   },
@@ -761,19 +787,33 @@
                       },
                       "recursive": {
                         "type": "string",
-                        "enum": [
-                          "enabled",
-                          "disabled",
-                          "writable",
-                          "readonly"
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "enabled",
+                              "disabled",
+                              "writable",
+                              "readonly"
+                            ]
+                          },
+                          {
+                            "$ref": "#/$defs/interpolated"
+                          }
                         ],
                         "description": "Recursively mount the source directory."
                       },
                       "selinux": {
                         "type": "string",
-                        "enum": [
-                          "z",
-                          "Z"
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "z",
+                              "Z"
+                            ]
+                          },
+                          {
+                            "$ref": "#/$defs/interpolated"
+                          }
                         ],
                         "description": "SELinux relabeling options: 'z' for shared content, 'Z' for private unshared content."
                       }
@@ -1112,17 +1152,31 @@
         },
         "concurrency": {
           "type": "string",
-          "enum": [
-            "forbid",
-            "queue"
+          "anyOf": [
+            {
+              "enum": [
+                "forbid",
+                "queue"
+              ]
+            },
+            {
+              "$ref": "#/$defs/interpolated"
+            }
           ],
           "description": "Policy applied when the schedule fires while a previous run is still in progress: prevent the new run ('forbid', the default) or queue it ('queue')."
         },
         "missed_fires": {
           "type": "string",
-          "enum": [
-            "one",
-            "skip"
+          "anyOf": [
+            {
+              "enum": [
+                "one",
+                "skip"
+              ]
+            },
+            {
+              "$ref": "#/$defs/interpolated"
+            }
           ],
           "description": "Policy applied to fires missed while the platform was unavailable: run a single catch-up ('one', the default) or skip them ('skip')."
         }
@@ -1217,12 +1271,19 @@
               },
               "action": {
                 "type": "string",
-                "enum": [
-                  "rebuild",
-                  "sync",
-                  "restart",
-                  "sync+restart",
-                  "sync+exec"
+                "anyOf": [
+                  {
+                    "enum": [
+                      "rebuild",
+                      "sync",
+                      "restart",
+                      "sync+restart",
+                      "sync+exec"
+                    ]
+                  },
+                  {
+                    "$ref": "#/$defs/interpolated"
+                  }
                 ],
                 "description": "Action to take when a change is detected: rebuild the container, sync files, restart the container, sync and restart, or sync and execute a command."
               },
@@ -1309,9 +1370,16 @@
             },
             "order": {
               "type": "string",
-              "enum": [
-                "start-first",
-                "stop-first"
+              "anyOf": [
+                {
+                  "enum": [
+                    "start-first",
+                    "stop-first"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/interpolated"
+                }
               ],
               "description": "Order of operations during rollbacks: 'stop-first' (default) or 'start-first'."
             }
@@ -1353,9 +1421,16 @@
             },
             "order": {
               "type": "string",
-              "enum": [
-                "start-first",
-                "stop-first"
+              "anyOf": [
+                {
+                  "enum": [
+                    "start-first",
+                    "stop-first"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/interpolated"
+                }
               ],
               "description": "Order of operations during updates: 'stop-first' (default) or 'start-first'."
             }
@@ -1585,8 +1660,15 @@
       "oneOf": [
         {
           "type": "string",
-          "enum": [
-            "all"
+          "anyOf": [
+            {
+              "enum": [
+                "all"
+              ]
+            },
+            {
+              "$ref": "#/$defs/interpolated"
+            }
           ],
           "description": "Use all available GPUs."
         },
@@ -2532,10 +2614,17 @@
                     },
                     "condition": {
                       "type": "string",
-                      "enum": [
-                        "service_started",
-                        "service_healthy",
-                        "service_completed_successfully"
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "service_started",
+                            "service_healthy",
+                            "service_completed_successfully"
+                          ]
+                        },
+                        {
+                          "$ref": "#/$defs/interpolated"
+                        }
                       ],
                       "description": "Condition to wait for. 'service_started' waits until the service has started, 'service_healthy' waits until the service is healthy (as defined by its healthcheck), 'service_completed_successfully' waits until the service has completed successfully."
                     }

@@ -871,8 +871,8 @@ limitations under the License.
 ## SchemaStore's JSON schemas
 
 `src/Passenger.Lsp/WebServers/schemas/` holds JSON schemas of the JSON Schema Store
-(https://github.com/SchemaStore/schemastore, `src/schemas/json/` at commit 5661ee1b), modified as listed below, carried under
-`web/schemas/`: those the JSON language server checks and completes package.json, tsconfig.json, jsconfig.json,
+(https://github.com/SchemaStore/schemastore, `src/schemas/json/` at commit 5661ee1b), modified as listed below, carried
+under `web/schemas/`: those the JSON language server checks and completes package.json, tsconfig.json, jsconfig.json,
 appsettings.json, launchSettings.json and global.json by (`package.json`, `tsconfig.json`, `jsconfig.json`,
 `appsettings.json`, `launchsettings.json`, `global.json`), and those they refer to (`eslintrc.json`, `prettierrc.json`,
 `stylelintrc.json`, `ava.json`, `semantic-release.json`, `jscpd.json`, `madge.json`, `nodemon.json`, `quikrun.json`,
@@ -886,37 +886,42 @@ Copyright 2015-Current Mads Kristensen and Contributors
 
 Passenger's changes, each where a schema refused what the tool it describes takes or offered what it refuses:
 
-- `appsettings.json`, `launchsettings.json`, `prettierrc.json`: NLog's `internalLogToConsole`, `internalLogToConsoleError`
-  and `autoShutdown` default to the booleans their strings named; the defaults their own schema refuses are left out
-  (NLog's `targetDefaultWrapper`, rule and filter `{}`, launch settings' `commandName` `""` and `ancmHostingModel`
-  `false`, Prettier's `rangeEnd` `null`).
-- `appsettings.json`: keys are taken in any case, as .NET's configuration reads them: Serilog's (its section's, a minimum
-  level's and a method call's) each also under a pattern of its name that ignores case, and a required key (Serilog's
-  `Name`, Kestrel's `Url`, NLog's `type` and `logger`, elmah.io's `ApiKey` and `LogId`) required only where no key is
-  it in another case.
+- `appsettings.json`, `launchsettings.json`, `prettierrc.json`: NLog's `internalLogToConsole`,
+  `internalLogToConsoleError` and `autoShutdown` default to the booleans their strings named; the defaults their own
+  schema refuses are left out (NLog's `targetDefaultWrapper`, rule and filter `{}`, launch settings' `commandName` `""`
+  and `ancmHostingModel` `false`, Prettier's `rangeEnd` `null`).
+- `appsettings.json`: keys are taken in any case, as .NET's configuration reads them: Serilog's (its section's, a
+  minimum level's and a method call's) each also under a pattern of its name that ignores case, and a required key
+  (Serilog's `Name`, Kestrel's `Url`, NLog's `type` and `logger`, elmah.io's `ApiKey` and `LogId`) required only where
+  no key is it in another case.
 - `partial-eslint-plugins.json`: the rules of eslint-plugin-import, eslint-plugin-unicorn and eslint-plugin-vue are
-  named by the plugin's short name (`import/no-unresolved`), as ESLint names them, where the package's name led them;
-  a rule's array form takes its severity alone, where it had to hold an option too;
+  named by the plugin's short name (`import/no-unresolved`), as ESLint names them, where the package's name led them; a
+  rule's array form takes its severity alone, where it had to hold an option too;
   `@typescript-eslint/consistent-generic-constructors` takes `constructor` or `type-annotation` as its option, and the
   68 other rules whose option was an object of no properties take options of any kind and number.
-- `package.json`: an export or import condition is any name but one starting with a dot or an array index, where it
-  took no digit or dot.
+- `package.json`: an export or import condition is any name but one starting with a dot or an array index, where it took
+  no digit or dot.
 - `stylelintrc.json`: a rule that takes a number takes it first in its array form, where the number had to be one of an
   enum holding only `{}`; an override's `files` is one glob or a list of them, where it had to be a list.
-- `tsconfig.json`, `jsconfig.json`: a compiler option's named value is taken in any case, as TypeScript reads it
-  (`jsx`, `moduleResolution`, `newLine`, `moduleDetection`, `importsNotUsedAsValues`, `fallbackPolling`,
-  `watchDirectory`, `watchFile`), each enum beside a pattern of its values that ignores case.
+- `tsconfig.json`, `jsconfig.json`: a compiler option's named value is taken in any case, as TypeScript reads it (`jsx`,
+  `moduleResolution`, `newLine`, `moduleDetection`, `importsNotUsedAsValues`, `fallbackPolling`, `watchDirectory`,
+  `watchFile`), each enum beside a pattern of its values that ignores case.
 - `tsconfig.json`: ts-node's `scopeDir` has no default, the sentence that stood as one now its description.
 
 ## The Compose specification's schema
 
 `src/Passenger.Lsp/WebServers/schemas/compose-spec.json` is the Compose specification's JSON schema
-(https://github.com/compose-spec/compose-spec, `schema/compose-spec.json` at commit 914ec15d), unchanged, carried under
-`web/schemas/`: the YAML language server checks and completes compose files (`compose.yaml`, `docker-compose.yml` and
-their variants) by it, under the Apache License 2.0 given under TextMate grammars above, with the Compose
-Specification's NOTICE:
+(https://github.com/compose-spec/compose-spec, `schema/compose-spec.json` at commit 914ec15d), modified as below,
+carried under `web/schemas/`: the YAML language server checks and completes compose files (`compose.yaml`,
+`docker-compose.yml` and their variants) by it, under the Apache License 2.0 given under TextMate grammars above, with
+the Compose Specification's NOTICE:
 
 ```
 The Compose Specification
 Copyright 2020 The Compose Specification Authors
 ```
+
+Passenger's change: a field that takes only certain words (`pull_policy`'s pattern, and the enums of `cgroup`, a
+volume's `type`, a bind's `recursive` and `selinux`, a schedule's `concurrency` and `missed_fires`, a watch's `action`,
+an update's and a rollback's `order`, `gpus`' `all` and a dependency's `condition`) also takes a value holding a
+variable, which Compose replaces before it reads it (`$defs/interpolated`, added).
