@@ -426,6 +426,13 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return RefactorOutcome.Refused($"Rename was not applied: {unloaded}");
         }
+        // A named element's field is made from its XAML, so it is renamed as the element is, there and in the code-behind.
+        if (document.Language == Languages.Language.CSharp
+            && await context.Languages.Xaml.NamedElementOfAsync(document, await context.Now(document).DefinitionAsync(at.Offset), at.Offset) is { Path: { } elementFile } element)
+        {
+            return element.Name == name ? new RefactorOutcome($"{name} is its name already", null, [], [])
+                : await context.Languages.Xaml.XamlRenameAsync(elementFile, element.Name, name) ?? RefactorOutcome.Refused($"{Path.GetFileName(elementFile)} is not XAML Passenger reads");
+        }
         // A component's file at its start is the class Razor makes of it, which the server takes in the C# made of the file.
         TypeRename.Component? component = context.WebOf(document) is null
             ? await TypeRename.ComponentAtAsync(context.CSharp?.Session, document.Path, document.Text.Snapshot, at.Offset) : null;

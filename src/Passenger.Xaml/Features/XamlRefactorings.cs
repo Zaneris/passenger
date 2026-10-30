@@ -102,6 +102,33 @@ public static partial class XamlRefactorings
         return Reached(file).Any(r => r.Key == key) ? "Resource with the same name already exists" : null;
     }
 
+    /// <summary>Why the elements named <paramref name="old"/> cannot be named <paramref name="name"/>: another element of
+    /// their name scope has that name, or, for one in the file's own scope (whose field the code-behind's class is given),
+    /// that class or a member it declares has; null when nothing does.</summary>
+    public static string? ElementNameProblem(XamlFile file, string old, string name)
+    {
+        if (name == old)
+        {
+            return null;
+        }
+        List<XmlAttribute> names = [.. file.Tree.Elements.Select(XamlFile.NameAttribute).OfType<XmlAttribute>().Where(a => a.IsValueClosed)];
+        HashSet<XmlElement?> scopes = [.. names.Where(a => a.Value == old).Select(a => XamlNavigation.NameScopeOf(a.Owner))];
+        if (names.FirstOrDefault(a => a.Value == name && scopes.Contains(XamlNavigation.NameScopeOf(a.Owner))) is { } other)
+        {
+            return $"'{name}' names another element already, on line {file.Text.AsSpan(0, other.ValueStart).Count('\n') + 1}";
+        }
+        if (!scopes.Contains(null) || file.ClassType is not { } owner)
+        {
+            return null;
+        }
+        if (owner.Name == name)
+        {
+            return $"'{name}' names the code-behind's class itself";
+        }
+        return owner.Members.FirstOrDefault(m => m.Name == name && m.Kind != MemberKind.Constructor) is { } member
+            ? $"'{name}' names a {member.Kind.ToString().ToLowerInvariant()} of {owner.Name} already" : null;
+    }
+
     /// <summary>Where a new resource (or, for Avalonia's styles, a style) of the file can go: its own resources (or
     /// styles), the application's, and the resource dictionaries (or style files) the file reaches.</summary>
     public static IReadOnlyList<ResourcePlace> Places(XamlFile file, bool styles, Func<string, string?> textOf)

@@ -1482,6 +1482,67 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>An element renamed to another element's name, or to the name of its Click's handler in the code-behind, is
+    /// refused, saying what has the name, and neither file changes: the window would throw as it loads, its two names
+    /// registered once, and the generated field would clash with the handler.</summary>
+    [AvaloniaFact]
+    public void An_elements_name_is_not_renamed_to_another_elements_or_its_handlers_and_its_files_are_left_as_they_were()
+    {
+        string handled = Gallery.Handled(Gallery.Window);
+        app.Rewrite("MainWindow.axaml", handled);
+        app.Rewrite("MainWindow.axaml.cs", Gallery.HandlingCodeBehind);
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
+        OpenDocument behind = window.EditorArea.Active!;
+        window.OpenFile(app.PathOf("MainWindow.axaml"));
+        Ui.Settle();
+        OpenDocument view = window.EditorArea.Active!;
+        foreach ((string name, string said) in ((string, string)[])[("Title", "'Title' names another element already, on line 11"), ("OnGo", "'OnGo' names a method of MainWindow already")])
+        {
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "<Button Name=\"G");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "Go", "the rename box on the button's name");
+            window.KeyTextInput(name);
+            Ui.Press(window, "ENTER");
+            Ui.Settle();
+            Assert.Equal(said, window.Status);
+            Assert.True(view.Text.Snapshot.ToString() == handled && behind.Text.Snapshot.ToString() == Gallery.HandlingCodeBehind,
+                $"The rename to {name} changed the files, so two of the window's names are {name}:\n{view.Text.Snapshot}\n{behind.Text.Snapshot}");
+        }
+        window.Close();
+    }
+
+    /// <summary>Rename on a named element's field in the code-behind renames the element: its name in the XAML, which is not
+    /// open, the XAML's use of it and the code-behind's, as one command undone whole.</summary>
+    [AvaloniaFact]
+    public void An_elements_field_renamed_from_the_code_behind_renames_the_element_in_its_xaml_and_every_use()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
+        OpenDocument behind = window.EditorArea.Active!;
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "        G");
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.Renaming == "Go", "the rename box on the field's name");
+        window.KeyTextInput("Start");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => window.Status?.Contains("ename", StringComparison.Ordinal) == true, () => $"the rename's word, the status saying {window.Status}");
+        Ui.Settle();
+        string view = File.ReadAllText(app.PathOf("MainWindow.axaml"));
+        Assert.True(window.Status == "Renamed in 2 files" && behind.Text.Snapshot.ToString() == Gallery.CodeBehind.Replace("Go.Content", "Start.Content", StringComparison.Ordinal)
+            && view == Gallery.Window.Replace("Name=\"Go\"", "Name=\"Start\"", StringComparison.Ordinal).Replace("#Go.", "#Start.", StringComparison.Ordinal),
+            $"The field's rename from the code-behind said {window.Status}, leaving the code-behind\n{behind.Text.Snapshot}\nand the XAML\n{view}");
+
+        List<string> asked = [];
+        window.Confirm = (title, text, _) =>
+        {
+            asked.Add(text);
+            return Task.FromResult(true);
+        };
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.True(behind.Text.Snapshot.ToString() == Gallery.CodeBehind && File.ReadAllText(app.PathOf("MainWindow.axaml")) == Gallery.Window,
+            $"Undo of the rename ({string.Join(" | ", asked)}) did not put both files back:\n{behind.Text.Snapshot}\n{File.ReadAllText(app.PathOf("MainWindow.axaml"))}");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_key_one_theme_variant_lacks_is_warned_of_where_defined_and_used_and_the_fix_adds_it_to_that_variant()
     {

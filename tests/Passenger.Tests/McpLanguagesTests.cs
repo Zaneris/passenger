@@ -100,10 +100,19 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         Assert.True(window.Contains("<Thickness x:Key=\"PanelMargin\">12</Thickness>", StringComparison.Ordinal)
             && window.Contains("<StackPanel Margin=\"{StaticResource PanelMargin}\"", StringComparison.Ordinal), $"Extract Resource did not reach the file on disk:\n{window}");
 
+        CallToolResult taken = await Result(client, McpTools.Rename, new(At(window, "MainWindow.axaml", "Name=\"G")) { ["newName"] = "OnGo" });
+        Assert.True(taken.IsError == true && Text(taken).Contains("'OnGo' names a method of MainWindow already", StringComparison.Ordinal),
+            $"Renaming the button to its handler's name answered: {Text(taken)}");
         string renamed = (await Call(client, McpTools.Rename, new(At(window, "MainWindow.axaml", "Name=\"G")) { ["newName"] = "Start" })).GetString()!;
         Assert.Equal("Renamed Go to Start in 2 files: MainWindow.axaml, MainWindow.axaml.cs", renamed);
         Assert.Contains("Start.Content = \"Start\";", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml.cs")), StringComparison.Ordinal);
         Assert.Contains("{Binding #Start.Content}", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), StringComparison.Ordinal);
+        // The element's field renamed from the code-behind renames the element.
+        string fromCode = (await Call(client, McpTools.Rename, new(At(File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml.cs")), "MainWindow.axaml.cs", "        Sta"))
+            { ["newName"] = "Begin" })).GetString()!;
+        Assert.Equal("Renamed in 2 files: MainWindow.axaml, MainWindow.axaml.cs", fromCode);
+        Assert.Contains("Begin.Content = \"Start\";", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml.cs")), StringComparison.Ordinal);
+        Assert.Contains("<Button Name=\"Begin\"", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), StringComparison.Ordinal);
         await client.DisposeAsync();
 
         // A second session, as after a restart: the same version's file, not decompiled again.

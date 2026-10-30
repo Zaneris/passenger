@@ -680,31 +680,35 @@ internal sealed partial class XamlAssist : LanguageAssist
             {
                 return;
             }
-            if (await XamlRenameAsync(xaml, old, name) is { } renamed)
+            if (await XamlRenameAsync(xaml.Document.Path, old, name) is { } renamed)
             {
-                context.Say(renamed.Said);
+                context.Say(renamed.Problem ?? renamed.Said);
             }
         });
     }
 
-    /// <summary>An element's name renamed where the file names it and where its code-behind uses its field, as one command
-    /// undone whole: the files it changed, once written (none where the name cannot be a field's, a C# keyword among them,
-    /// or a file could not be written), and the words for it; null when the project's XAML is not read.</summary>
-    internal async Task<(IReadOnlyList<string> Files, string Said)?> XamlRenameAsync(XamlDocument xaml, string old, string name)
+    /// <summary>An element's name renamed where its XAML file (<paramref name="path"/>, open or not) names it and where its
+    /// code-behind uses its field, as one command undone whole: the files it changed, once written, and the words for it;
+    /// refused where the name cannot be the field's (a C# keyword, another element's of its name scope, or what the
+    /// code-behind's class declares) or a file could not be written; null when the project's XAML is not read.</summary>
+    internal async Task<RefactorOutcome?> XamlRenameAsync(string path, string old, string name)
     {
         if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name))
         {
-            return ([], $"'{name}' cannot name a field in the code-behind");
+            return RefactorOutcome.Refused($"'{name}' cannot name a field in the code-behind");
         }
         if (Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetKeywordKind(name) != Microsoft.CodeAnalysis.CSharp.SyntaxKind.None)
         {
-            return ([], $"'{name}' is a C# keyword, not a name for the code-behind's field");
+            return RefactorOutcome.Refused($"'{name}' is a C# keyword, not a name for the code-behind's field");
         }
         using Asked asked = WorkspaceEdits.Track(context.Editors);
-        XamlFile? file = await xaml.FileAsync();
-        if (file is null)
+        if (context.Xaml?.Invoke() is not { } service || await service.FileAsync(path) is not { } file)
         {
             return null;
+        }
+        if (XamlRefactorings.ElementNameProblem(file, old, name) is { } taken)
+        {
+            return RefactorOutcome.Refused(taken);
         }
         Dictionary<string, (int? Version, List<LspTextEdit> Edits)> changes = new(StringComparer.Ordinal);
         void Add(LspLocation place, int? version)
@@ -742,10 +746,11 @@ internal sealed partial class XamlAssist : LanguageAssist
         }
         catch (WorkspaceEditFailed failed)
         {
-            return ([], $"Rename failed: {failed.Message}");
+            return RefactorOutcome.Refused($"Rename failed: {failed.Message}");
         }
-        return ([.. changes.Keys.Select(DocumentUris.ToPath)], dropped.Count > 0 ? $"Renamed, but not in {string.Join(", ", dropped)}: it was edited meanwhile"
-            : files > 1 ? $"Renamed in {files} files" : "Renamed");
+        return new RefactorOutcome(dropped.Count > 0 ? $"Renamed, but not in {string.Join(", ", dropped)}: it was edited meanwhile"
+            : files > 1 ? $"Renamed in {files} files" : "Renamed", null, [.. changes.Keys.Select(DocumentUris.ToPath)
+                .Where(p => !(context.Editors.Find(p) is { } open && dropped.Contains(open.Name))).Select(p => new RefactoredFile(p, "changed", []))], dropped);
     }
 
     /// <summary>Show Context Actions in XAML: the fixes of the problems on the caret's line, the file checked as it stands,

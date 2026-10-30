@@ -111,6 +111,25 @@ public sealed class XamlService : IDisposable
 
     public IReadOnlyCollection<XamlDocument> Documents => documents.Values;
 
+    /// <summary>A XAML file read as the editor has it, else as on disk, against its project as it stands (an open file's
+    /// own read, <see cref="XamlDocument.FileAsync"/>); null for a file of no C# project, or of one whose XAML Passenger
+    /// does not read.</summary>
+    public async Task<XamlFile?> FileAsync(string path)
+    {
+        UiThread.Check();
+        if (documents.Values.FirstOrDefault(d => PathNames.Same(d.Document.Path, path)) is { } open)
+        {
+            return await open.FileAsync();
+        }
+        if (disposed || !IsXaml(path) || ProjectOf(path) is not { } loading || await loading.Builder is not { } builder || await loading.Loaded is null)
+        {
+            return null;
+        }
+        XamlProject project = builder.Current;
+        Func<string, TextSnapshot?> texts = OpenSnapshots();
+        return await BackgroundWork.Run(() => (texts(path) ?? EditorArea.Read(path)) is { } text ? XamlDocument.Read(path, text.ToString(), project, null) : null);
+    }
+
     /// <summary>An open XAML file's text as it stands, by its path; null when it is not open.</summary>
     public TextSnapshot? OpenText(string path)
     {

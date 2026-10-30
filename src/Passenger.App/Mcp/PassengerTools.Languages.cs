@@ -248,16 +248,16 @@ public sealed partial class PassengerTools
         {
             return $"{newName} is its name already";
         }
-        if (await window.Assist.Languages.Xaml.XamlRenameAsync(xaml.Xaml, named.Value, newName) is not { } renamed)
+        if (await window.Assist.Languages.Xaml.XamlRenameAsync(xaml.Document.Path, named.Value, newName) is not { } renamed)
         {
             throw new InvalidOperationException($"{Path.GetFileName(xaml.Document.Path)} is no longer XAML Passenger reads");
         }
-        if (renamed.Files.Count == 0)
+        if (renamed.Problem is { } refused)
         {
-            throw new InvalidOperationException(renamed.Said);
+            throw new InvalidOperationException(refused);
         }
         await SaveLandedAsync(cancel);
-        return $"Renamed {named.Value} to {newName} in {Plural.Of(renamed.Files.Count, "file")}: {string.Join(", ", renamed.Files.Select(Relative))}";
+        return $"Renamed {named.Value} to {newName} in {Plural.Of(renamed.Files.Count, "file")}: {string.Join(", ", renamed.Files.Select(f => Relative(f.Path)))}";
     }
 
     /// <summary>A XAML file's elements, indented, each with what names it (x:Class, x:Name, x:Key, a style's selector or

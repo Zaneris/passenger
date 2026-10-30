@@ -130,8 +130,7 @@ public static class XamlDiagnostics
     }
 
     /// <summary>Whether an element is inside a template, whose names are a namescope of their own.</summary>
-    private static bool InTemplate(XmlElement element) =>
-        element.Ancestors().Any(a => !a.IsPropertyElement && a.LocalName.EndsWith("Template", StringComparison.Ordinal));
+    private static bool InTemplate(XmlElement element) => XamlNavigation.NameScopeOf(element) is not null;
 
     private static void PropertyElement(XamlFile file, XmlElement element, List<XamlDiagnostic> found)
     {

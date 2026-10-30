@@ -459,6 +459,10 @@ public static class XamlNavigation
         }
     }
 
+    /// <summary>The template whose name scope an element's name is in: the nearest it is inside; null for the file's own.</summary>
+    public static XmlElement? NameScopeOf(XmlElement element) =>
+        element.Ancestors().FirstOrDefault(a => !a.IsPropertyElement && a.LocalName.EndsWith("Template", StringComparison.Ordinal));
+
     /// <summary>Whether an attribute's value is an element's name: WPF's setter <c>TargetName</c>, a trigger's
     /// <c>SourceName</c>, an animation's <c>Storyboard.TargetName</c>.</summary>
     private static bool IsNameReference(XmlAttribute attribute) =>
