@@ -73,9 +73,11 @@
     <Compile Include="../../src/Passenger.Roslyn.Extension/Messages.cs" Link="App/RoslynMessages.cs" />
   </ItemGroup>
 
-  <!-- Where a launch profile's browser opens, read from its URLs alone, compiled in since its project is the app's. -->
+  <!-- Where a launch profile's browser opens, read from its URLs alone, and the Node.js versions a package.json's engines
+       range takes, read from its text alone, compiled in since their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Run/LaunchProfile.cs" Link="App/LaunchProfile.cs" />
+    <Compile Include="../../src/Passenger.App/Web/NpmRange.cs" Link="App/NpmRange.cs" />
   </ItemGroup>
 
   <ItemGroup>

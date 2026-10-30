@@ -55,7 +55,7 @@ public sealed partial record NodeRuntime(string? Path, Version? Version, string?
             using JsonDocument read = JsonDocument.Parse(File.ReadAllText(package));
             if (read.RootElement.TryGetProperty("engines", out JsonElement engines) && engines.ValueKind == JsonValueKind.Object
                 && engines.TryGetProperty("node", out JsonElement range) && range.ValueKind == JsonValueKind.String
-                && range.GetString() is { } needs && !Meets(version, needs))
+                && range.GetString() is { } needs && !NpmRange.Meets(version, needs))
             {
                 string wanted = Least().Match(needs) is { Success: true } least && least.Value.Trim() == needs.Trim() && Version.TryParse(Padded(least.Groups[1].Value), out Version? minimum)
                     ? $"{minimum} or later" : needs.Trim();
@@ -67,36 +67,6 @@ public sealed partial record NodeRuntime(string? Path, Version? Version, string?
             // A package.json that does not read says nothing of what it needs.
         }
         return null;
-    }
-
-    /// <summary>Whether a version is in a semver range of npm's: any of its alternatives (between "||"), each every one of
-    /// its parts (&gt;=, &gt;, &lt;=, &lt;, ^ a major's from there, ~ a minor's from there, a version alone, x or * any).
-    /// A part this cannot read is taken as met, so only a range that says so turns a Node.js away.</summary>
-    private static bool Meets(Version version, string range) =>
-        range.Split("||").Any(alternative => alternative.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(part => MeetsPart(version, part)));
-
-    private static bool MeetsPart(Version version, string part)
-    {
-        Match read = Comparator().Match(part);
-        if (!read.Success || read.Groups[2].Value is "x" or "X" or "*" || !Version.TryParse(Padded(read.Groups[2].Value), out Version? bound))
-        {
-            return true;
-        }
-        return read.Groups[1].Value switch
-        {
-            ">=" => version >= bound,
-            ">" => version > bound,
-            "<=" => version <= bound,
-            "<" => version < bound,
-            "^" => version >= bound && version.Major == bound.Major,
-            "~" => version >= bound && version.Major == bound.Major && version.Minor == bound.Minor,
-            _ => read.Groups[2].Value.Count(c => c == '.') switch
-            {
-                0 => version.Major == bound.Major,
-                1 => version.Major == bound.Major && version.Minor == bound.Minor,
-                _ => version == bound,
-            },
-        };
     }
 
     private static string Padded(string version) => version.Count(c => c == '.') switch
@@ -111,7 +81,4 @@ public sealed partial record NodeRuntime(string? Path, Version? Version, string?
 
     [GeneratedRegex(@">=\s*v?(\d+(?:\.\d+){0,2})")]
     private static partial Regex Least();
-
-    [GeneratedRegex(@"^(>=|<=|>|<|\^|~|=)?\s*v?(\d+(?:\.\d+){0,2}|[xX*])(?:\.[xX*])*$")]
-    private static partial Regex Comparator();
 }
