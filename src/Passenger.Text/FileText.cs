@@ -10,7 +10,7 @@ namespace Passenger.Text;
 public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool CrBreaks = false, bool IsBinary = false)
 {
     /// <summary>How much of a file is checked for a NUL byte before it is called binary.</summary>
-    private const int BinaryProbe = 8000;
+    public const int BinaryProbe = 8000;
 
     /// <summary>Windows' ERROR_SHARING_VIOLATION and ERROR_LOCK_VIOLATION as an IOException's HResult.</summary>
     private const int SharingViolation = unchecked((int)0x80070020);

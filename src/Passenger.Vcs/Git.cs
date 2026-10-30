@@ -407,7 +407,8 @@ public sealed class Git
     /// <summary>Whether each blob a conflict's stages name is binary, by the blob's hash, which names those bytes for good.</summary>
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> binaryBlobs = new(StringComparer.Ordinal);
 
-    /// <summary>Reads, by one git, each of these blobs not read before, and keeps whether it is binary.</summary>
+    /// <summary>Reads, by one git, the first bytes of each of these blobs not read before (<see cref="BlobProbe"/>), and
+    /// keeps whether it is binary.</summary>
     private async Task BinaryBlobsAsync(IEnumerable<string> blobs)
     {
         string[] unread = [.. blobs.Distinct(StringComparer.Ordinal).Where(b => !binaryBlobs.ContainsKey(b))];
@@ -415,25 +416,53 @@ public sealed class Git
         {
             return;
         }
-        (_, byte[] output) = await ExchangeAsync(Root, ["cat-file", "--batch"], Encoding.ASCII.GetBytes(string.Concat(unread.Select(b => $"{b}\n"))));
-        int at = 0;
-        foreach (string blob in unread)
+        using IDisposable held = BackgroundWork.Scope();
+        if (await StartAsync(Root, ["cat-file", "--batch"]) is not { } start)
         {
-            // "<object> blob <size>", the object's bytes and a line break; or "<object> missing" (a submodule's commit).
-            int end = Array.IndexOf(output, (byte)'\n', at);
-            string[] header = end < 0 ? [] : Encoding.ASCII.GetString(output, at, end - at).Split(' ');
-            if (header is [_, "missing"])
+            return;
+        }
+        start.RedirectStandardInput = true;
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        try
+        {
+            using Process process = await ChildProcesses.StartAsync(start);
+            Task<string> error = process.StandardError.ReadToEndAsync();
+            // Asked off this thread, so a list longer than the pipe holds never waits on the answers read here.
+            Task asked = BackgroundWork.Run(() => AskAsync(process.StandardInput, unread));
+            Stream output = process.StandardOutput.BaseStream;
+            try
             {
-                binaryBlobs[blob] = false;
-                at = end + 1;
-                continue;
+                foreach ((string blob, bool binary) in await BlobProbe.ReadAsync(output, unread, FileText.LooksBinary))
+                {
+                    binaryBlobs[blob] = binary;
+                }
+                // Past an answer the probe could not read, git still writes the rest.
+                await output.CopyToAsync(Stream.Null);
             }
-            if (header is not [_, "blob", { } length] || !int.TryParse(length, System.Globalization.CultureInfo.InvariantCulture, out int size) || size > output.Length - end - 1)
+            finally
             {
-                break;
+                await asked;
             }
-            binaryBlobs[blob] = FileText.LooksBinary(output.AsSpan(end + 1, size));
-            at = end + 1 + size + 1;
+            await process.WaitForExitAsync();
+            await error;
+        }
+        catch (Exception failed) when (failed is System.ComponentModel.Win32Exception or IOException)
+        {
+            // Those not read are read again by the next status.
+        }
+
+        static async Task AskAsync(StreamWriter input, string[] blobs)
+        {
+            try
+            {
+                await input.BaseStream.WriteAsync(Encoding.ASCII.GetBytes(string.Concat(blobs.Select(b => $"{b}\n"))));
+                input.Close();
+            }
+            catch (IOException)
+            {
+                // It ended before reading all it was given: what it answered says how far it went.
+            }
         }
     }
 
