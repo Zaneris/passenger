@@ -1093,9 +1093,11 @@ public sealed class OpenDocument : Observable
 
     /// <summary>Whether the editor shows it read-only, under a bar that says why: decompiled, the licence, notices or release
     /// notes the app carries, a workbook, an asset preview, a binary file shown as its bytes, or an MSBuild file of the .NET
-    /// SDK or a package that Go to Declaration went into, or a copy of a container's file or of what the engine says of one.</summary>
+    /// SDK or a package that Go to Declaration went into, a copy of a container's file or of what the engine says of one, or
+    /// a copy of a source generator's code.</summary>
     public bool IsReadOnly => Asset is not null || IsDecompiled || IsWorkbook || IsBinary || Product.Carries(Path) || IsReleaseNotes
-        || MSBuild.MSBuildFiles.IsInstalled(Path) || Containers.ContainerFilesPane.IsCopy(Path) || Endpoints.RequestLog.IsCommandCopy(Path);
+        || MSBuild.MSBuildFiles.IsInstalled(Path) || Containers.ContainerFilesPane.IsCopy(Path) || Endpoints.RequestLog.IsCommandCopy(Path)
+        || CSharp.GeneratedCode.IsCopy(Path);
 
     /// <summary>The text refuses every change while the file is read-only, whatever asks it: the one place that holds it so.</summary>
     private void FollowReadOnly() => Text.IsReadOnly = IsReadOnly;
@@ -1130,6 +1132,7 @@ public sealed class OpenDocument : Observable
         : MSBuild.MSBuildFiles.IsInstalled(Path) ? "An MSBuild file of the .NET SDK or a package, as installed, read-only"
         : Containers.ContainerFilesPane.IsCopy(Path) ? "A copy of what a container holds, or of what the engine says of it, read-only"
         : Endpoints.RequestLog.IsCommandCopy(Path) ? "SQL a running app issued, or an EF Core query's the debugger read, copied to read, read-only"
+        : CSharp.GeneratedCode.IsCopy(Path) ? "Code a source generator made, as the C# language server has it, read-only"
         : Path.Contains("SourceLink", StringComparison.OrdinalIgnoreCase) || Path.Contains("Embedded", StringComparison.OrdinalIgnoreCase)
         ? "Source from the library's Source Link or PDB, read-only"
         : "Decompiled code: the language server made this from the assembly, so it is read-only";

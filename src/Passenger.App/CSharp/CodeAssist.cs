@@ -422,9 +422,10 @@ public sealed class CodeAssist
         : action.Editor.IsReadOnly ? "The file is read-only"
         : null;
 
-    /// <summary>Why an action cannot run: no file; for one that asks the server, none for the file; for one that edits by
-    /// the file's syntax, a file not C# or one that cannot be edited. One that also edits XAML (<paramref name="markup"/>)
-    /// takes any XAML file that can be edited; XAML and MSBuild files answer those they say they do.</summary>
+    /// <summary>Why an action cannot run: no file; for one that asks the server, none for the file (a source generator's
+    /// code copied, which it has not); for one that edits by the file's syntax, a file not C# or one that cannot be edited.
+    /// One that also edits XAML (<paramref name="markup"/>) takes any XAML file that can be edited; XAML and MSBuild files
+    /// answer those they say they do.</summary>
     private string? WhyNot(ActionContext action, bool server, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false) =>
         action.File is null ? Refusals.NoFile
         : markup && XamlService.IsXaml(action.File.Path) ? (action.Editor.IsReadOnly ? "The file is read-only" : null)
@@ -434,6 +435,7 @@ public sealed class CodeAssist
         : syntax && action.Editor.IsReadOnly ? "The file is read-only"
         : !server || context.Current is not null ? null
         : context.CSharp is null ? Refusals.NoCSharp
+        : GeneratedCode.IsCopy(action.File.Path) ? Refusals.Generated(action.File.Name)
         : "The file is not C#";
 
     internal IReadOnlyList<EditorFix> OwnFixes(OpenDocument? file, int offset) => actions.OwnFixes(file, offset);

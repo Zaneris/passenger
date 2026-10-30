@@ -84,7 +84,8 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
     }
 
     /// <summary>Aspire's, a configuration read's and a localized key's places first; then the server's, where a Dockerfile's
-    /// FROM that names no stage goes to its image's registry page and a XAML element's generated field to its name.</summary>
+    /// FROM that names no stage goes to its image's registry page, a XAML element's generated field to its name, and any other
+    /// place in a source generator's code to its copy (<see cref="GeneratedCode"/>).</summary>
     public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
     {
         if (context.ServerOf(document)?.Lsp is not { } lsp)
@@ -104,7 +105,7 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         {
             return new Declared(Declared.Served([place], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration);
         }
-        return new Declared(found, Refusals.NoDeclaration);
+        return new Declared(context.CSharp is { } csharp ? await csharp.Generated.CopiedAsync(found) : found, Refusals.NoDeclaration);
     }
 
     public override async Task<bool> UsagesAsync(int offset)

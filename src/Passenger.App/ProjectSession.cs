@@ -350,9 +350,10 @@ public sealed class ProjectSession : IAsyncDisposable
         return [.. Projects.Select(ConfigurationOf).Where(c => c.SecretsIn(EditorArea.ReadText) is { } own && PathNames.Same(own, secrets))];
     }
 
-    /// <summary>The name of the project a file belongs to, as Find and Problems group by it; outside them all,
-    /// Miscellaneous Files.</summary>
-    public string ProjectNameOf(string path) => ProjectOf(path) is { } owner ? Path.GetFileNameWithoutExtension(owner.Path) : "Miscellaneous Files";
+    /// <summary>The name of the project a file belongs to, as Find and Problems group by it, a generator's code copied by
+    /// the project it was made for; outside them all, Miscellaneous Files.</summary>
+    public string ProjectNameOf(string path) => ProjectOf(path) is { } owner ? Path.GetFileNameWithoutExtension(owner.Path)
+        : GeneratedCopies.ProjectNameOf(GeneratedCode.Folder, path) ?? "Miscellaneous Files";
 
     /// <summary>The read of the folder under way, done once it has landed: a folder without a solution is walked for its
     /// projects on a worker, which an agent's Open waits for before it says what the workspace holds.</summary>

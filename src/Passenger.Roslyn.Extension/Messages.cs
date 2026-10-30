@@ -31,13 +31,14 @@ public static class Handlers
     public const string SymbolAt = "Passenger.Roslyn.Extension.SymbolAt";
     public const string WrittenPlaces = "Passenger.Roslyn.Extension.WrittenPlaces";
     public const string ComponentClass = "Passenger.Roslyn.Extension.ComponentClass";
+    public const string GeneratedTexts = "Passenger.Roslyn.Extension.GeneratedTexts";
 
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
-        ComponentClass,
+        ComponentClass, GeneratedTexts,
     ];
 }
 
@@ -94,6 +95,28 @@ public sealed record UriSpan(
 /// <summary>Spans whose places in the files their code was written in are asked for, and the answer: each in order, a
 /// generated document's in the file its generator wrote it from, any other as it was.</summary>
 public sealed record WrittenSpans([property: JsonPropertyName("spans")] IReadOnlyList<UriSpan> Spans);
+
+/// <summary>Documents source generators made, whose texts are asked for.</summary>
+public sealed record GeneratedAsked([property: JsonPropertyName("documents")] IReadOnlyList<GeneratedSource> Documents);
+
+/// <summary>A source generator's document by its URI, and its project's file and name as an earlier answer gave them (or
+/// nulls), by which a server started since, whose projects the URI no longer names, finds it by its generator and hint name.</summary>
+public sealed record GeneratedSource(
+    [property: JsonPropertyName("uri")] string Uri,
+    [property: JsonPropertyName("projectPath")] string? ProjectPath,
+    [property: JsonPropertyName("projectName")] string? ProjectName);
+
+/// <summary>Each document asked for, in order, or null for one no generator makes now.</summary>
+public sealed record GeneratedFound([property: JsonPropertyName("texts")] IReadOnlyList<GeneratedText?> Texts);
+
+/// <summary>A source generator's document as the server holds it now: its URI, its text, its project's file and name, and
+/// its generator's type.</summary>
+public sealed record GeneratedText(
+    [property: JsonPropertyName("uri")] string Uri,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("projectPath")] string ProjectPath,
+    [property: JsonPropertyName("projectName")] string ProjectName,
+    [property: JsonPropertyName("generator")] string Generator);
 
 /// <summary>A Razor component's file, whose class is asked for.</summary>
 public sealed record ComponentAsked([property: JsonPropertyName("path")] string Path);

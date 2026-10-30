@@ -72,7 +72,11 @@ public sealed partial class CSharpService : IAsyncDisposable
     {
         this.warm = warm;
         this.headStart = headStart;
+        Generated = new GeneratedCode(() => session);
     }
+
+    /// <summary>The code source generators made, copied where places lead into it and shown read-only.</summary>
+    public GeneratedCode Generated { get; }
 
     /// <summary>The projects a starting server opens before the rest, asked on the UI thread as it is ready to open them:
     /// the file shown's and those it references, so that file's answers come first.</summary>
@@ -733,12 +737,18 @@ public sealed partial class CSharpService : IAsyncDisposable
     }
 
     /// <summary>Gives an open document its C# features, now or once the server is ready: a C# file, or a Razor file
-    /// (.razor, .cshtml), which the server's Razor answers for, the C# in it included.</summary>
+    /// (.razor, .cshtml), which the server's Razor answers for, the C# in it included. A generator's code copied is followed
+    /// instead (<see cref="Generated"/>): opened in the server, it would be one of its Miscellaneous Files.</summary>
     public void Attach(OpenDocument document)
     {
         UiThread.Check();
         if (document.Language.Service != Languages.LanguageService.CSharp || documents.ContainsKey(document))
         {
+            return;
+        }
+        if (GeneratedCode.IsCopy(document.Path))
+        {
+            Generated.Opened(document);
             return;
         }
         CSharpDocument features = new(this, document);
@@ -808,6 +818,7 @@ public sealed partial class CSharpService : IAsyncDisposable
     public void Detach(OpenDocument document)
     {
         UiThread.Check();
+        Generated.Closed(document);
         if (documents.Remove(document, out CSharpDocument? features))
         {
             features.Dispose();
@@ -828,6 +839,7 @@ public sealed partial class CSharpService : IAsyncDisposable
     {
         UiThread.Check();
         disposed = true;
+        Generated.Stop();
         analysing?.Cancel();
         starting?.Cancel();
         HoldBack(null);
@@ -968,12 +980,21 @@ public sealed partial class CSharpService : IAsyncDisposable
             TaskCompletionSource loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource gone = new(TaskCreationOptions.RunContinuationsAsynchronously);
             EventHandler onLoaded = (_, _) => loaded.TrySetResult();
-            EventHandler onColours = (_, _) => UiThread.Post(() => Each(document => document.ColoursMoved()));
-            EventHandler onDiagnostics = (_, _) => UiThread.Post(() => Each(document => document.RefreshDiagnostics()));
+            EventHandler onColours = (_, _) => UiThread.Post(() =>
+            {
+                Each(document => document.ColoursMoved());
+                Generated.Changed();
+            });
+            EventHandler onDiagnostics = (_, _) => UiThread.Post(() =>
+            {
+                Each(document => document.RefreshDiagnostics());
+                Generated.Changed();
+            });
             // Projects loaded (the file shown's first, then the rest, or one loaded again): the files' projects may be others.
             EventHandler onProjects = (_, _) => UiThread.Post(() =>
             {
                 Each(document => document.FindContexts());
+                Generated.Changed();
                 ProjectsLoaded?.Invoke(this, EventArgs.Empty);
             });
             EventHandler<ProjectGiven> onGiven = (_, built) => OnProjectGiven(started.Server, built);

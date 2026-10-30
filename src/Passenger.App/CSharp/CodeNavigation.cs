@@ -30,7 +30,7 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
             }
             try
             {
-                Go(await lsp.ImplementationAsync(offset), offset, "Implementations", "No implementations found");
+                Go(await CopiedAsync(await lsp.ImplementationAsync(offset)), offset, "Implementations", "No implementations found");
             }
             catch (LanguageServerFailed failed)
             {
@@ -58,10 +58,11 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
                 TextDocument asked = Editor.Document;
                 string name = context.NameAt(offset);
                 IReadOnlyList<Target> found = await find(lsp, offset);
+                IReadOnlyList<LspLocation> places = await CopiedAsync([.. found.Select(t => t.Location)]);
                 // The editor shows another file now: the places were for the one it showed.
                 if (Editor.Document == asked)
                 {
-                    Go([.. found.Select(t => t.Location)], offset, name.Length > 0 ? $"{what} of {name}" : what, none, [.. found.Select(t => t.Name)]);
+                    Go(places, offset, name.Length > 0 ? $"{what} of {name}" : what, none, [.. found.Select(t => t.Name)]);
                 }
             }
         }
@@ -275,8 +276,18 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
         });
     }
 
+    /// <summary>Places the server named, each in a source generator's code taken to its copy (<see cref="GeneratedCode"/>).</summary>
+    private async Task<IReadOnlyList<LspLocation>> CopiedAsync(IReadOnlyList<LspLocation> places) =>
+        context.CSharp is { } csharp ? await csharp.Generated.CopiedAsync(places) : places;
+
+    /// <summary>Opens a place, a source generator's code that could not be copied said to be so.</summary>
     public void Arrive(LspLocation location)
     {
+        if (DocumentUris.GeneratedName(location.Uri) is { } generated)
+        {
+            context.Say($"{generated} is code a source generator made, which the C# language server did not give");
+            return;
+        }
         string path = DocumentUris.ToPath(location.Uri);
         context.Navigate((path, ServerPlaces.PositionOf(context.Editors, path, location.Range.Start)));
     }

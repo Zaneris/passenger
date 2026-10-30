@@ -313,6 +313,14 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
         return all;
     }
 
+    /// <summary>The texts of documents source generators made, with each one's project and generator (Passenger's
+    /// extension's <see cref="Roslyn.Extension.GeneratedAsked"/>), in order, null for one no generator makes now; null
+    /// when the server has no extension to ask.</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.GeneratedText?>?> GeneratedAsync(IReadOnlyList<Roslyn.Extension.GeneratedSource> documents, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.GeneratedFound>(Roslyn.Extension.Handlers.GeneratedTexts, new Roslyn.Extension.GeneratedAsked(documents), cancel).ConfigureAwait(false)).Texts
+            : null;
+
     /// <summary>The class a Razor component's file makes, and where the server takes it (Passenger's extension's
     /// <see cref="Roslyn.Extension.ComponentAsked"/>); null when the server has no extension to ask.</summary>
     public async Task<Roslyn.Extension.ComponentFound?> ComponentAsync(string path, CancellationToken cancel = default) =>

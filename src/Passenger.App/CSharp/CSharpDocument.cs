@@ -191,6 +191,7 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         // The problems a fix asked for at the caret reads, where the text carried their ranges.
         diagnostics.Moved();
         Pull(Pause);
+        service.Generated.Changed();
         // An AppHost's edit may change what its services are told is missing; any other file's changes only its own.
         if (AspireRole == Aspire.AspireRole.AppHost)
         {

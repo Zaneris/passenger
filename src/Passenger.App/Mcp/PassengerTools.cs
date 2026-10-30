@@ -904,9 +904,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     private static readonly (string Written, char Meant)[] Entities = [("&nbsp;", ' '), ("&lt;", '<'), ("&gt;", '>'), ("&amp;", '&'), ("&quot;", '"'), ("&#39;", '\'')];
 
-    /// <summary>Usages in the order an agent reads them: by file, then line and column, a source generator's files last.</summary>
+    /// <summary>Usages in the order an agent reads them: by file, then line and column, a source generator's files (their
+    /// copies, <see cref="GeneratedCode"/>) last.</summary>
     private static IReadOnlyList<Place> Sorted(IReadOnlyList<Place> places) =>
-        [.. places.OrderBy(p => p.Text.Length == 0 && p.Path.EndsWith(" (generated)", StringComparison.Ordinal)).ThenBy(p => p.Path, StringComparer.Ordinal)
+        [.. places.OrderBy(p => (p.Text.Length == 0 && p.Path.EndsWith(" (generated)", StringComparison.Ordinal)) || GeneratedCode.IsCopy(p.Path)).ThenBy(p => p.Path, StringComparer.Ordinal)
             .ThenBy(p => p.Line).ThenBy(p => p.Column)];
 
     /// <summary>The offset a C# code tool asks about: the place given when a symbol is there (its hover says what one), else
@@ -2364,8 +2365,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }
 
     /// <summary>The places the language server names, in its lines, as an agent reads them (<see cref="Lines"/>).</summary>
-    private Task<IReadOnlyList<Place>> Places(IReadOnlyList<LspLocation> locations, CancellationToken cancel) =>
-        Lines([.. locations.Select(l => (l.Uri, l.Range.Start, true))], cancel);
+    private async Task<IReadOnlyList<Place>> Places(IReadOnlyList<LspLocation> locations, CancellationToken cancel)
+    {
+        IReadOnlyList<LspLocation> copied = Session.CSharp is { } csharp ? await csharp.Generated.CopiedAsync(locations, cancel) : locations;
+        return await Lines([.. copied.Select(l => (l.Uri, l.Range.Start, true))], cancel);
+    }
 
     /// <summary>Each place's path as the agent is shown it, its line and column in the editor's lines and that line's text,
     /// trimmed: one the server names (<paramref name="places"/>' Server) read in its file's text, as the server's lines

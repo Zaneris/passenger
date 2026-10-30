@@ -67,10 +67,15 @@ public partial class MainWindow
     private void ShowUsages(string title, IReadOnlyList<LspLocation> locations, string? note) => IdeErrors.Observe(ShowUsagesAsync(title, locations, note));
 
     /// <summary>The usages under what each does there, read from each file's syntax off the UI thread: an open file's
-    /// shared parse as it stands, a file not open read from disk and parsed there; with what the search went without.</summary>
+    /// shared parse as it stands, a file not open read from disk and parsed there, a source generator's code in its copy
+    /// (<see cref="GeneratedCode"/>); with what the search went without.</summary>
     private async Task ShowUsagesAsync(string title, IReadOnlyList<LspLocation> locations, string? note)
     {
         int search = ++usageSearches;
+        if (session.CSharp is { } csharp)
+        {
+            locations = await csharp.Generated.CopiedAsync(locations);
+        }
         // Each file's path made canonical once, not once a usage: that asks the disk.
         Dictionary<string, string> paths = locations.Select(l => l.Uri).Distinct(StringComparer.Ordinal).ToDictionary(u => u, DocumentUris.ToPath, StringComparer.Ordinal);
         List<(string Path, TextSnapshot? Open, ParsedText? Syntax, CSharpParseOptions Parse, string Project, List<LspLocation> Here)> files =

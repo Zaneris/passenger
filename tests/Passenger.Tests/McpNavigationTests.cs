@@ -6,11 +6,12 @@ using Passenger.App.Mcp;
 namespace Passenger.Tests;
 
 /// <summary>An agent with no window (<c>--mcp</c>) finding its way through C# code: the solution's own symbols found
-/// without a source generator's, the name itself first, usages read by file with the symbol the place took and a
-/// generator's place named for what it is, a place with no symbol said to be one, or the symbol its line declares taken;
-/// symbols named rather than placed, found exactly, each overload told apart by its documentation id, an indexer by this[]
-/// or Item; a hover card as plain text, and a fix's Suppress and Configure choices counted until asked for; and calls on
-/// many files leaving open, in the IDE and the language server, only the file the agent opened and the one it left unsaved.</summary>
+/// without a source generator's, the name itself first, usages read by file with the symbol the place took, a generator's
+/// place (a usage, a declaration) in a copy of its code with its line's text, a place with no symbol said to be one, or
+/// the symbol its line declares taken; symbols named rather than placed, found exactly, each overload told apart by its
+/// documentation id, an indexer by this[] or Item; a hover card as plain text, and a fix's Suppress and Configure choices
+/// counted until asked for; and calls on many files leaving open, in the IDE and the language server, only the file the
+/// agent opened and the one it left unsaved.</summary>
 public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
 {
     public McpNavigationTests(RestoredFolders folders)
@@ -23,6 +24,9 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         + "    public static int Count(string text) => Word().Count(text);\n\n"
         + "    public static int Count(string text, int from) => Word().Count(text[from..]);\n}\n";
 
+    private const string Shapes = "using System.Text.Json.Serialization;\n\n[JsonSerializable(typeof(int))]\npartial class ShapeContext : JsonSerializerContext\n{\n}\n\n"
+        + "static class UsesContext\n{\n    public static object Info => ShapeContext.Default.Int32;\n}\n";
+
     private const string Tally = "static class Tally\n{\n    public static int Of(string text) => Words.Count(text) + Words.Count(text, 1);\n\n"
         + "    public static int CountAll(string[] texts) => texts.Sum(Words.Count);\n}\n";
 
@@ -32,6 +36,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         await TakeFolderAsync();
         Write("Words.cs", Words);
         Write("Aaa.cs", Tally);
+        Write("Shapes.cs", Shapes);
         await using McpClient client = await Start(["--mcp", Folder]);
 
         // The regex generator declares Words and Word again in a file on no disk, which the agent could never open.
@@ -40,9 +45,17 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             $"find_symbol Word answered places beyond the solution's own files: {string.Join(", ", found.Select(s => s.GetRawText()))}");
 
         JsonElement used = await Call(client, McpTools.Usages, new() { ["path"] = "Words.cs", ["line"] = 6, ["column"] = 34 });
-        Assert.Equal(["Words.cs:6", "Words.cs:8", "Words.cs:10", "RegexGenerator.g.cs (generated):"],
-            Used(used).Select(u => $"{u.Path}:{(u.Path.EndsWith("(generated)", StringComparison.Ordinal) ? "" : u.Line)}"));
+        (string Path, int Line, int Column, string Text)[] uses = [.. Used(used)];
+        Assert.Equal(["Words.cs:6", "Words.cs:8", "Words.cs:10"], uses.Take(3).Select(u => $"{u.Path}:{u.Line}"));
+        // The generator's declaration last, in a copy of its code the agent can read, at its line with that line's code.
+        Assert.True(uses.Length == 4 && uses[3].Path.EndsWith($"{Path.DirectorySeparatorChar}RegexGenerator.g.cs", StringComparison.Ordinal)
+            && uses[3].Text.Contains("Regex Word()", StringComparison.Ordinal) && File.ReadAllLines(uses[3].Path)[uses[3].Line - 1].Contains("Regex Word()", StringComparison.Ordinal),
+            $"usages of a GeneratedRegex method answered no readable place in the generator's code: {string.Join(", ", uses.Select(u => $"{u.Path}:{u.Line} {u.Text}"))}");
         Assert.Equal("Words.Word() (method)", used.GetProperty("symbol").GetString());
+        JsonElement made = Assert.Single((await Call(client, McpTools.Definition, new() { ["path"] = "Shapes.cs", ["line"] = 10, ["column"] = 48 })).EnumerateArray());
+        Assert.True(made.GetProperty("path").GetString()!.EndsWith($"{Path.DirectorySeparatorChar}ShapeContext.g.cs", StringComparison.Ordinal)
+            && made.GetProperty("text").GetString()!.Contains(" Default ", StringComparison.Ordinal),
+            $"definition of a JSON context's Default answered no place in the generator's code with its text: {made.GetRawText()}");
 
         // By file, each named once, then line, whichever the server found first, after the symbol the place took.
         JsonElement counted = await Call(client, McpTools.Usages, new() { ["path"] = "Words.cs", ["line"] = 8, ["column"] = 23 });

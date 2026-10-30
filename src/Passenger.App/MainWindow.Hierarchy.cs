@@ -109,6 +109,10 @@ public partial class MainWindow
     private async Task<IReadOnlyList<HierarchyNode>> NodesAsync(IReadOnlyList<(HierarchyItem Item, LspRange At)> found)
     {
         IReadOnlyList<LspLocation> places = await Running().WrittenAsync([.. found.Select(f => new LspLocation(f.Item.Uri, f.At))]);
+        if (session.CSharp is { } csharp)
+        {
+            places = await csharp.Generated.CopiedAsync(places);
+        }
         Func<string, TextSnapshot?> texts = ServerPlaces.Texts(Editors);
         return [.. found.Select((f, i) =>
         {
