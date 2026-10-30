@@ -1402,6 +1402,51 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
+    /// <summary>A HashSet's element, shown through the debugger's copy, has Set Value greyed saying why, F2 opening nothing,
+    /// while Add to Watches and Inspect stay offered; a nullable struct's member under its Value, added to Watches from its
+    /// row, evaluates there and takes a value set in its row, which the program goes on with.</summary>
+    [AvaloniaFact]
+    public void A_hashset_elements_set_value_is_greyed_saying_why_and_a_nullable_structs_member_is_watched_and_set()
+    {
+        Write("Program.cs", "HashSet<int> set = [7, 9];\nSpot? place = new Spot(3, 4);\nConsole.WriteLine($\"place {set.Count} {place?.X}\");\n\n"
+            + "record struct Spot(int X, int Y);\n");
+        MainWindow window = Open();
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(2, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        WaitDebugging(window, () => Row(window, "place") is not null, "the stop before the line that writes the place");
+
+        VariableNode element = Opened(window, "set", "[0]");
+        window.DebugWindow.VariablesList.SelectedItem = element;
+        ContextMenu menu = window.DebugWindow.VariablesList.ContextMenu ?? throw new InvalidOperationException("The set's element has no menu");
+        window.DebugWindow.VariablesList.RaiseEvent(new ContextRequestedEventArgs());
+        Ui.Settle();
+        MenuItem[] items = [.. menu.Items.OfType<MenuItem>().Where(item => item.Header is "Set Value…" or "Add to Watches" or "Inspect")];
+        menu.Close();
+        Ui.Settle();
+        Assert.True(items is [{ IsEnabled: false } setValue, { IsEnabled: true }, { IsEnabled: true }] && ToolTip.GetTip(setValue) is string why && why == element.NoSetting && why.Length > 0,
+            $"The set's element has {string.Join(", ", items.Select(item => $"{item.Header} {(item.IsEnabled ? "enabled" : "greyed")} saying {ToolTip.GetTip(item) ?? "nothing"}"))}, where Set Value is to be greyed saying why and the others offered");
+        Ui.Click(Ui.Row(window.DebugWindow.VariablesList, element), settle: false);
+        Ui.Press(window, "F2");
+        Assert.False(element.IsEditing, "F2 on the set's element opened its value for editing, where a value set there changes only the debugger's copy");
+
+        VariableNode member = Opened(window, "place", "Value", "X");
+        string expression = member.Expression ?? throw new InvalidOperationException($"place > Value > X has no expression: {member.NoExpression}");
+        window.DebugWindow.VariablesList.SelectedItem = member;
+        Ui.ChooseFromMenu(window.DebugWindow.VariablesList, "Add to Watches");
+        Ui.WaitFor(() => window.BottomPanel.Debug.Tree.Rows.Any(r => r.Role == VariableRole.Watch && r.Name == expression), $"the watch of {expression}");
+        VariableNode watch = window.BottomPanel.Debug.Tree.Rows.First(r => r.Role == VariableRole.Watch && r.Name == expression);
+        Assert.True(watch.Value == "3", $"place > Value > X added to Watches as {expression}, which evaluates to {watch.Value}, not 3");
+        SetInRow(window, Opened(window, "place", "Value", "X"), "10");
+        Assert.True(window.Status?.StartsWith("Could not set", StringComparison.Ordinal) != true, $"Set Value on {expression} was refused: {window.Status}");
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("place ", StringComparison.Ordinal), "the program to write the place");
+        Assert.True(window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("place 2 10", StringComparison.Ordinal),
+            $"The program wrote {window.BottomPanel.Debug.Console.Document.Snapshot}, where place's X set to 10 writes place 2 10");
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+    }
+
     /// <summary>The row reached by opening the frame's value named first, then each row named after it under the one before.</summary>
     private static VariableNode Opened(MainWindow window, params string[] path)
     {

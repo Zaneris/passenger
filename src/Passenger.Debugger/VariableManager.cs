@@ -45,9 +45,10 @@ public readonly record struct FrameStackDepth
 };
 /// <summary>What a reference names (<see cref="ReferenceKind"/>): its value, where it was read, and, where known, the type the
 /// value's variable is declared as (<see cref="Declared"/>) and the C# that reaches the value (<see cref="Expression"/>), which
-/// its rows' expressions are made from.</summary>
+/// its rows' expressions are made from; whether that value lies in a copy the debugger made to show it (<see cref="Copied"/>,
+/// a struct a debugger view holds), so a value set in its rows would leave the program's own unchanged.</summary>
 public record struct VariablesReference(StoredReferenceKind ReferenceKind, ICorDebugValue? ObjectValue, ThreadId ThreadId, FrameStackDepth FrameStackDepth, ICorDebugValue? DebuggerProxyInstance, uint[]? ArrayIndices = null, uint? ArrayStartOffset = null, uint? ArrayCount = null, string? Name = null, DeclaredType? Declared = null,
-    string? Expression = null);
+    string? Expression = null, bool Copied = false);
 /// <summary>The references of a stop's scopes and values. Each is numbered above every one before it in the session, and a
 /// stop's are let go when the program goes on, so one from an earlier stop is refused rather than naming whatever value
 /// took its number at this one.</summary>
@@ -96,6 +97,18 @@ public class VariableManager
             if (_references.TryGetValue(reference, out VariablesReference held))
             {
                 _references[reference] = held with { Expression = expression };
+            }
+        }
+    }
+
+    /// <summary>Says a reference's value lies in a copy the debugger made, known once the row opening it is found in one.</summary>
+    public void Copy(int reference)
+    {
+        lock (_lock)
+        {
+            if (_references.TryGetValue(reference, out VariablesReference held))
+            {
+                _references[reference] = held with { Copied = true };
             }
         }
     }

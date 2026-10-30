@@ -153,6 +153,10 @@ file static class TestExtensions
     }
 
     private static readonly DapPresentationHint _arrayElementPresentationHint = new("data");
+
+    /// <summary>A debugger view's element and member, each the view's copy, which a value set would change alone.</summary>
+    private static readonly DapPresentationHint _viewedElementPresentationHint = new("data", ["readOnly"]);
+    private static readonly DapPresentationHint _viewedPresentationHint = new(Attributes: ["readOnly"]);
     public static async Task AssertIntArrayVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
@@ -196,9 +200,9 @@ file static class TestExtensions
     {
         List<DapVariable> expectedVariables =
         [
-            new() { Name = "[5]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[0]", Value = "50", Type = "System.Collections.Generic.DebugViewDictionaryItem<int, int>", VariablesReference = 30, PresentationHint = _arrayElementPresentationHint },
-            new() { Name = "[10]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[1]", Value = "100", Type = "System.Collections.Generic.DebugViewDictionaryItem<int, int>", VariablesReference = 31, PresentationHint = _arrayElementPresentationHint },
-            new() { Name = "[15]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[2]", Value = "150", Type = "System.Collections.Generic.DebugViewDictionaryItem<int, int>", VariablesReference = 32, PresentationHint = _arrayElementPresentationHint },
+            new() { Name = "[5]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[0]", Value = "50", Type = "System.Collections.Generic.DebugViewDictionaryItem<int, int>", VariablesReference = 30, PresentationHint = _viewedElementPresentationHint },
+            new() { Name = "[10]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[1]", Value = "100", Type = "System.Collections.Generic.DebugViewDictionaryItem<int, int>", VariablesReference = 31, PresentationHint = _viewedElementPresentationHint },
+            new() { Name = "[15]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[2]", Value = "150", Type = "System.Collections.Generic.DebugViewDictionaryItem<int, int>", VariablesReference = 32, PresentationHint = _viewedElementPresentationHint },
             new() { Name = "Raw View", Value = "", Type = "", VariablesReference = 33, PresentationHint = new DapPresentationHint("class") },
         ];
         List<DapVariable>? dictionaryVariables = await debugProtocolHost.VariablesAsync(variablesReference);
@@ -235,11 +239,11 @@ file static class TestExtensions
     {
         List<DapVariable> expectedVariables =
         [
-            new() { Name = "IntPropertyViaDebugView", EvaluateName = "(new DebuggableConsoleApp.ClassWithDebugDisplayDebugView(this._classWithDebugDisplay)).IntPropertyViaDebugView", Value = "14", Type = "int" },
-            new() { Name = "[0]", EvaluateName = "(new DebuggableConsoleApp.ClassWithDebugDisplayDebugView(this._classWithDebugDisplay)).Items[0]", Value = "2", Type = "int", PresentationHint = _arrayElementPresentationHint },
-            new() { Name = "[1]", EvaluateName = "(new DebuggableConsoleApp.ClassWithDebugDisplayDebugView(this._classWithDebugDisplay)).Items[1]", Value = "3", Type = "int", PresentationHint = _arrayElementPresentationHint },
-            new() { Name = "[2]", EvaluateName = "(new DebuggableConsoleApp.ClassWithDebugDisplayDebugView(this._classWithDebugDisplay)).Items[2]", Value = "5", Type = "int", PresentationHint = _arrayElementPresentationHint },
-            new() { Name = "[3]", EvaluateName = "(new DebuggableConsoleApp.ClassWithDebugDisplayDebugView(this._classWithDebugDisplay)).Items[3]", Value = "7", Type = "int", PresentationHint = _arrayElementPresentationHint },
+            new() { Name = "IntPropertyViaDebugView", EvaluateName = "(new DebuggableConsoleApp.ClassWithDebugDisplayDebugView(this._classWithDebugDisplay)).IntPropertyViaDebugView", Value = "14", Type = "int", PresentationHint = _viewedPresentationHint },
+            new() { Name = "[0]", EvaluateName = "(new DebuggableConsoleApp.ClassWithDebugDisplayDebugView(this._classWithDebugDisplay)).Items[0]", Value = "2", Type = "int", PresentationHint = _viewedElementPresentationHint },
+            new() { Name = "[1]", EvaluateName = "(new DebuggableConsoleApp.ClassWithDebugDisplayDebugView(this._classWithDebugDisplay)).Items[1]", Value = "3", Type = "int", PresentationHint = _viewedElementPresentationHint },
+            new() { Name = "[2]", EvaluateName = "(new DebuggableConsoleApp.ClassWithDebugDisplayDebugView(this._classWithDebugDisplay)).Items[2]", Value = "5", Type = "int", PresentationHint = _viewedElementPresentationHint },
+            new() { Name = "[3]", EvaluateName = "(new DebuggableConsoleApp.ClassWithDebugDisplayDebugView(this._classWithDebugDisplay)).Items[3]", Value = "7", Type = "int", PresentationHint = _viewedElementPresentationHint },
             new() { Name = "Raw View", Value = "", Type = "", VariablesReference = 26, PresentationHint = new DapPresentationHint("class") },
         ];
         List<DapVariable>? classWithDebuggerTypeProxyVariables = await debugProtocolHost.VariablesAsync(variablesReference);

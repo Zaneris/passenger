@@ -3,8 +3,8 @@ using Passenger.Tests.Debugging.Helpers;
 
 namespace Passenger.Tests.Debugging;
 
-/// <summary>The rows a stop's values list in PassengerCases' rows case: what a value opens to and what a frame lists as its
-/// variables.</summary>
+/// <summary>The rows a stop's values list in PassengerCases' rows case: what a value opens to, what a frame lists as its
+/// variables, and which rows reach only the debugger's copies.</summary>
 [Collection(DebugSession.Collection)]
 public class VariablesRowsTests(ITestOutputHelper testOutputHelper)
 {
@@ -109,6 +109,55 @@ public class VariablesRowsTests(ITestOutputHelper testOutputHelper)
         Assert.True(raw.EvaluateName is null, $"Raw View, a row the debugger adds, is given the expression {raw.EvaluateName}");
 
         async Task<List<DapVariable>> Opened(string local) => await host.VariablesAsync(Assert.Single(locals, v => v.Name == local).VariablesReference);
+    }
+
+    /// <summary>The rows a debugger view shows a collection by, a HashSet's elements and a dictionary's entry with its Key
+    /// and Value, say they are read-only, being the view's copies; a list's elements, reached by their index in it, and the
+    /// members of a HashSet's raw view, its own, do not.</summary>
+    [Fact]
+    public async Task A_collections_rows_through_its_view_are_read_only_and_a_lists_elements_and_raw_members_are_not()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await Launch(host, "Console.WriteLine($\"rows {shelf[0]}");
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        List<DapVariable> locals = await host.LocalsAsync(stop);
+
+        List<DapVariable> set = await Opened("set");
+        DapVariable entry = Assert.Single(await Opened("ages"), row => row.Name != "Raw View");
+        List<DapVariable> copies = [.. set.Where(row => row.Name != "Raw View"), entry, .. await host.VariablesAsync(entry.VariablesReference)];
+        List<DapVariable> names = await Opened("names");
+        List<DapVariable> own = [.. names.Where(row => row.Name != "Raw View"), .. await host.VariablesAsync(Assert.Single(set, row => row.Name == "Raw View").VariablesReference)];
+        Assert.True(copies.Count == 5 && copies.All(ReadOnly), $"The view's rows are {Listed(copies)}, where the set's two elements and the entry with its Key and Value are each to be read-only");
+        Assert.True(own.Count > 2 && !own.Any(ReadOnly), $"The list's elements and the set's raw members are {Listed(own)}, where none is to be read-only");
+
+        async Task<List<DapVariable>> Opened(string local) => await host.VariablesAsync(Assert.Single(locals, v => v.Name == local).VariablesReference);
+
+        static bool ReadOnly(DapVariable row) => row.PresentationHint?.Attributes?.Contains("readOnly") == true;
+
+        static string Listed(List<DapVariable> rows) => string.Join(", ", rows.Select(row => $"{row.Name} = {row.Value}{(ReadOnly(row) ? " (read-only)" : "")}"));
+    }
+
+    /// <summary>A nullable struct's member under its Value reads by its evaluate name, through the Value, and takes a value
+    /// set there, which the program goes on with.</summary>
+    [Fact]
+    public async Task A_nullable_structs_member_under_its_value_reads_by_its_evaluate_name_and_takes_a_value()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await Launch(host, "Console.WriteLine($\"rows {shelf[0]}");
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+        List<DapVariable> locals = await host.LocalsAsync(stop);
+
+        DapVariable held = Assert.Single(await host.VariablesAsync(Assert.Single(locals, v => v.Name == "place").VariablesReference), row => row.Name == "Value");
+        DapVariable x = Assert.Single(await host.VariablesAsync(held.VariablesReference), row => row.Name == "X");
+        Assert.Equal(("place.Value.X", "3"), (x.EvaluateName, x.Value));
+        Assert.Equal("3", (await host.EvaluateAsync(frame, x.EvaluateName!)).Result);
+        Assert.Equal("10", (await host.RequestAsync<SetExpressionResponse>(DapCommands.SetExpression, new SetExpressionArguments(x.EvaluateName!, "10", frame))).Value);
+        Assert.True((await host.EvaluateAsync(frame, "place.Value.X + place.Value.Y")).Result == "14", $"place.Value.X = 10 left place {(await host.EvaluateAsync(frame, "place")).Result}");
+
+        await host.ContinueAsync();
+        (string output, _) = await host.WaitForEnd();
+        Assert.Contains("rows a 2 2 1 (1, one) 10", output, StringComparison.Ordinal);
     }
 
     /// <summary>PassengerCases launched on its rows case, stopping at the lines with this code on them.</summary>

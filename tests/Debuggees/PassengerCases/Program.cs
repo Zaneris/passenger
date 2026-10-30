@@ -418,8 +418,8 @@ internal class Valued<T>
 
 internal sealed class Tagged<TTag, TValue> : Valued<TValue> { public TTag? Tag; }
 
-// The rows of a stop's values: a class with an indexer beside collections and a tuple, a local only a local function
-// captures, read in the frame declaring it and in the local function's, and an iterator's frame.
+// The rows of a stop's values: a class with an indexer beside collections, a tuple and a nullable struct, a local only a
+// local function captures, read in the frame declaring it and in the local function's, and an iterator's frame.
 internal static class Rows
 {
 	public static void Run()
@@ -429,7 +429,8 @@ internal static class Rows
 		HashSet<int> set = [7, 9];
 		Dictionary<string, int> ages = new() { ["Ada"] = 36 };
 		(int, string) pair = (1, "one");
-		Console.WriteLine($"rows {shelf[0]} {names.Count} {set.Count} {ages.Count} {pair}");
+		Spot? place = new Spot(3, 4);
+		Console.WriteLine($"rows {shelf[0]} {names.Count} {set.Count} {ages.Count} {pair} {place?.X}");
 		int captive = 5;
 		int Call(int x)
 		{

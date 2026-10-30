@@ -728,6 +728,7 @@ public sealed class DebugAdapter
         {
             null or AttributesValue.None => null,
             AttributesValue.FailedEvaluation => ["failedEvaluation"],
+            AttributesValue.ReadOnly => ["readOnly"],
             _ => throw new ArgumentOutOfRangeException(nameof(hint), h.Attributes, null),
         };
         return new DapPresentationHint(kind, attributes, Lazy: h.Lazy);

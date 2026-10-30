@@ -7,7 +7,7 @@ namespace Passenger.UnitTests.Debugger;
 
 /// <summary>Types as C# names them in an expression, read from this assembly's own metadata as Set Value reads a target's:
 /// with a type parameter's own name for the cast a value takes (a nullable spelled out), and with the type a frame runs it
-/// as for the value's conversion; an assignment's readonly target in forms that write where it refers to.</summary>
+/// as for the value's conversion.</summary>
 public class CSharpTypeNamesTests
 {
     private const string Here = "Passenger.UnitTests.Debugger.CSharpTypeNamesTests";
@@ -42,17 +42,6 @@ public class CSharpTypeNamesTests
     [InlineData("System.Collections.Generic.List<int[]>", "System.Collections.Generic.List<int[]>[]")]
     public void An_array_of_an_array_takes_its_rank_before_its_elements(string element, string array) =>
         Assert.Equal(array, CSharpTypeNames.ArrayOf(element, "[]"));
-
-    [Fact]
-    public void A_readonly_target_is_written_through_each_variable_it_is_reached_by_the_first_first()
-    {
-        const string AsRef = "System.Runtime.CompilerServices.Unsafe.AsRef";
-        Assert.Equal([$"{AsRef}(in value)"], WritableTargets.Of("value"));
-        Assert.Equal([$"{AsRef}(in iv).X", $"{AsRef}(in iv.X)"], WritableTargets.Of("iv.X"));
-        Assert.Equal([$"{AsRef}(in span)[0].X", $"{AsRef}(in span[0]).X", $"{AsRef}(in span[0].X)"], WritableTargets.Of(" span[0].X "));
-        Assert.Equal([$"{AsRef}(in (iv)).X", $"{AsRef}(in (iv).X)"], WritableTargets.Of("(iv).X"));
-        Assert.Empty(WritableTargets.Of("iv."));
-    }
 
     /// <summary>A field of <see cref="Holder{T}"/> named by <paramref name="names"/>, with T as <paramref name="parameter"/>.</summary>
     private static string? FieldType(string field, string? parameter, CSharpTypeNames names)

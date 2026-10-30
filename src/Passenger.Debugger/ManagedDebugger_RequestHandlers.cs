@@ -926,8 +926,13 @@ public partial class ManagedDebugger
                     string? listed = expression is not null && variablesReference.ObjectValue!.UnwrapDebugValueToObjectOrNull() is { } viewedValue && IsList(viewedValue.ExactType) ? expression : null;
                     await AddMembersAndStaticPseudoVariable(variablesReference.DebuggerProxyInstance, objectValue.ExactType, variablesReference.ThreadId, variablesReference.FrameStackDepth, result, false,
                         owner: viewed, listed: listed);
+                    if (listed is null || variablesReference.Copied)
+                    {
+                        // What the view holds it made itself, but for a list's elements, each the list's own.
+                        Copies(result);
+                    }
                     int rawValueVariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.RawView, variablesReference.ObjectValue, variablesReference.ThreadId, variablesReference.FrameStackDepth, null,
-                        Declared: variablesReference.Declared, Expression: expression));
+                        Declared: variablesReference.Declared, Expression: expression, Copied: variablesReference.Copied));
                     VariableInfo rawValuePseudoVariable = new VariableInfo
                     {
                         Name = "Raw View",
@@ -996,6 +1001,10 @@ public partial class ManagedDebugger
                 await AddArrayElements(arrayValue, variablesReference.ThreadId, variablesReference.FrameStackDepth, result, variablesReference.ArrayIndices, variablesReference.ArrayStartOffset, variablesReference.ArrayCount, variablesReference.ObjectValue,
                     variablesReference.Declared, variablesReference.Expression);
             }
+            if (variablesReference.Copied)
+            {
+                Copies(result);
+            }
         }
         catch (Exception ex)
         {
@@ -1012,10 +1021,10 @@ public partial class ManagedDebugger
         Evaluate(expression, frameId, expression.Trim(), implicitly);
 
     /// <summary>Set Value: what an expression names takes a value, by their assignment's one evaluation, whose own value is
-    /// the answer, so the target (an index that moves on, a call) runs once. A real number with no suffix, as a float's or
-    /// a decimal's value is shown, takes the one its target's type needs, read from the target's compile alone. A variable
-    /// typed by type parameters (T, List&lt;T&gt;) takes a value that fits the type its frame runs them as; one C# keeps
-    /// readonly (an in parameter, a ref readonly local, a member of either) is written through the location it refers to.</summary>
+    /// the answer, so the target runs once. A real number with no suffix, as a float's or a decimal's is shown, takes the one
+    /// its target's type needs. A variable typed by type parameters (T, List&lt;T&gt;) takes a value fitting the types its
+    /// frame runs them as; one C# keeps readonly (an in parameter, a ref readonly local, a member of either) or reaches
+    /// through a nullable's Value is written through the location it refers to (<see cref="WritableTargets"/>).</summary>
     public async Task<VariableInfo> Assign(string target, string value, int? frameId)
     {
         ArgumentNullException.ThrowIfNull(_expressionEvaluator);
@@ -1038,16 +1047,17 @@ public partial class ManagedDebugger
                 : $"({parameterized.Cast})(object)({value})";
         }
         string assignment = $"{target} = {value}";
-        if (_expressionEvaluator.FailsWith(assignment, context, ReadOnlyAssigned))
+        if (_expressionEvaluator.FailsWith(assignment, context, NotWritable))
         {
-            assignment = WritableTargets.Of(target).Select(writable => $"{writable} = {value}").FirstOrDefault(writable => _expressionEvaluator.Compiles(writable, context))
-                ?? assignment;
+            assignment = WritableTargets.Of(target, receiver => _expressionEvaluator.TypeOf(receiver, context)?.StartsWith("System.Nullable`1<", StringComparison.Ordinal) == true)
+                .Select(writable => $"{writable} = {value}").FirstOrDefault(writable => _expressionEvaluator.Compiles(writable, context)) ?? assignment;
         }
         return await Evaluate(assignment, frameId, target.Trim(), implicitly: false);
     }
 
-    /// <summary>The compiler's errors for an assignment to a variable it keeps readonly, and to a member of one.</summary>
-    private static readonly string[] ReadOnlyAssigned = ["CS8331", "CS8332"];
+    /// <summary>The compiler's errors for an assignment to a variable it keeps readonly, to a member of one, and to a member
+    /// of the copy a property gives (a nullable's Value).</summary>
+    private static readonly string[] NotWritable = ["CS8331", "CS8332", "CS1612"];
 
     /// <summary>A real number as the debugger shows a float's, a double's or a decimal's: a point or an exponent, no suffix.</summary>
     [System.Text.RegularExpressions.GeneratedRegex(@"^-?\d+(\.\d+([eE][+-]?\d+)?|[eE][+-]?\d+)$")]

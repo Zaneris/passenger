@@ -111,7 +111,7 @@ public sealed class VariablesList : ListBox
     /// <summary>Starts typing over the selected row's value, as F2 does (Set Value).</summary>
     public bool EditSelectedValue()
     {
-        if (SelectedItem is not VariableNode { Expression: not null } node)
+        if (SelectedItem is not VariableNode { Settable: not null } node)
         {
             return false;
         }
@@ -164,7 +164,7 @@ public sealed class VariablesList : ListBox
                 WatchRemoved?.Invoke(this, node.Name);
                 e.Handled = true;
                 break;
-            case Key.F2 when node.Expression is not null:
+            case Key.F2 when node.Settable is not null:
                 node.IsEditing = true;
                 e.Handled = true;
                 break;
@@ -183,12 +183,12 @@ public sealed class VariablesList : ListBox
         List<Control> items = node.IsQueryText ? [ListMenus.Item(OpenInEditor, "Enter", () => TextOpened?.Invoke(this, node)), new Separator()] : [];
         items.AddRange(
         [
-            Reaching(ListMenus.Item("Set Value…", "F2", () => EditSelectedValue(), node.Expression is not null), node),
+            Saying(ListMenus.Item("Set Value…", "F2", () => EditSelectedValue(), node.Settable is not null), node.NoSetting),
             ListMenus.Item("Copy Value", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, node.Value))),
             ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, node.Name))),
             new Separator(),
-            Reaching(ListMenus.Item("Add to Watches", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, true)), node.Expression is not null && node.Role != VariableRole.Watch), node),
-            Reaching(ListMenus.Item("Inspect", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, false)), node.Expression is not null), node),
+            Saying(ListMenus.Item("Add to Watches", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, true)), node.Expression is not null && node.Role != VariableRole.Watch), node.NoExpression),
+            Saying(ListMenus.Item("Inspect", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, false)), node.Expression is not null), node.NoExpression),
         ]);
         if (node.Role == VariableRole.Watch)
         {
@@ -207,10 +207,10 @@ public sealed class VariablesList : ListBox
         return items;
     }
 
-    /// <summary>An item that needs the row's expression, saying why it is greyed where none reaches the row's value.</summary>
-    private static MenuItem Reaching(MenuItem item, VariableNode node)
+    /// <summary>An item greyed where the row's value cannot take it, saying why (<paramref name="why"/>).</summary>
+    private static MenuItem Saying(MenuItem item, string? why)
     {
-        if (node.NoExpression is { } why)
+        if (why is not null)
         {
             ToolTip.SetTip(item, why);
         }

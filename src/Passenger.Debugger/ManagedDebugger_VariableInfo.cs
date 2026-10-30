@@ -536,6 +536,26 @@ public partial class ManagedDebugger
         }
     }
 
+    /// <summary>Marks rows lying in a copy the debugger made to show a value (a debugger view's): each says it is read-only,
+    /// and one holding its value in place (a struct, a range of the copy's elements) opens to rows of the copy too, where one
+    /// holding a reference opens to the program's own object.</summary>
+    private void Copies(List<VariableInfo> rows)
+    {
+        foreach (VariableInfo row in rows)
+        {
+            if (row.PresentationHint?.Attributes is AttributesValue.FailedEvaluation)
+            {
+                continue;
+            }
+            row.PresentationHint = (row.PresentationHint ?? new VariablePresentationHint()) with { Attributes = AttributesValue.ReadOnly };
+            if (row.VariablesReference > 0 && _variableManager.GetReference(row.VariablesReference) is { } opened
+                && (opened.ReferenceKind is StoredReferenceKind.ArrayRange || opened is { ReferenceKind: StoredReferenceKind.StackVariable, ObjectValue: not ICorDebugReferenceValue }))
+            {
+                _variableManager.Copy(row.VariablesReference);
+            }
+        }
+    }
+
     private async Task AddStaticMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result)
     {
         ICorDebugClass corDebugClass = corDebugType.Class;

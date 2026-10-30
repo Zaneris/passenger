@@ -64,6 +64,18 @@ public sealed class VariableNode(string name, string value, string? type, int re
         : IsVirtual || Name is "Raw View" or "Static members" or "Results" ? "The debugger adds this row to group the values under it, and no expression reaches it"
         : "No C# expression reaches this value from the frame";
 
+    /// <summary>The debugger says this row's expression reaches only a copy it made to show the value (an element of a
+    /// HashSet, through its debugger view): one set there would leave the program's own as it was.</summary>
+    public bool IsCopy { get; init; }
+
+    /// <summary>The C# that Set Value writes the value through: its expression, null where it reaches none or only a copy
+    /// (<see cref="NoSetting"/> says why).</summary>
+    public string? Settable => NoSetting is null ? Expression : null;
+
+    /// <summary>Why this row's value cannot be set; null where it can.</summary>
+    public string? NoSetting =>
+        NoExpression ?? (IsCopy ? "The debugger shows this value from a copy it made, so a value set here would leave the program's own unchanged" : null);
+
     /// <summary>Its value is being typed over, in its row (Set Value, F2).</summary>
     public bool IsEditing
     {
@@ -113,6 +125,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
             Parent = parent,
             EvaluateName = variable.EvaluateName is { Length: > 0 } named ? named : null,
             IsVirtual = variable.PresentationHint?.Kind == "virtual",
+            IsCopy = variable.PresentationHint?.Attributes?.Contains("readOnly") == true,
             IsLazy = variable.PresentationHint?.Lazy == true && variable.VariablesReference > 0,
         };
 
@@ -124,6 +137,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
             Parent = lazy.Parent,
             EvaluateName = lazy.EvaluateName,
             IsVirtual = lazy.IsVirtual,
+            IsCopy = lazy.IsCopy,
             WasRead = true,
         };
 }

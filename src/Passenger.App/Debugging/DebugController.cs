@@ -2460,7 +2460,7 @@ public sealed class DebugController : IDisposable
     {
         UiThread.Check();
         node.IsEditing = false;
-        if (Session is not { State: DebugState.Paused } session || (within ?? frame) is not { } current || node.Expression is not { } expression)
+        if (Session is not { State: DebugState.Paused } session || (within ?? frame) is not { } current || node.Settable is not { } expression)
         {
             return false;
         }

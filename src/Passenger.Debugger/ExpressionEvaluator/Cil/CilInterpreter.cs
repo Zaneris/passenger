@@ -1868,9 +1868,9 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
     };
 
     // The calls run here rather than in the program, which cannot run them: those of DefaultInterpolatedStringHandler
-    // that interpolated strings are lowered to, and Unsafe.AsRef of a reference, which the program could only be lent a
-    // copy of. Pointer and span arithmetic (the rest of Unsafe, MemoryMarshal, span-based String.Join) is not modelled,
-    // so such an expression fails rather than give a wrong value.
+    // that interpolated strings are lowered to, and Unsafe.AsRef and Nullable.GetValueRefOrDefaultRef of a reference,
+    // which the program could only be lent a copy of. Pointer and span arithmetic (the rest of Unsafe, MemoryMarshal,
+    // span-based String.Join) is not modelled, so such an expression fails rather than give a wrong value.
     private async Task<(bool Handled, CilValue? Result)> TryExecuteIntrinsicCallAsync(
         ResolvedRuntimeMethod method,
         CilValue? receiver,
@@ -1885,6 +1885,13 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         {
             // A readonly reference made writable is the very location it was.
             return (true, readOnly);
+        }
+        if (declaringType == "System.Nullable" && method.Name == "GetValueRefOrDefaultRef" && arguments is [{ Location: not null } nullable])
+        {
+            // Where the nullable keeps its value, which a write through the reference changes.
+            ICorDebugObjectValue held = GetFieldReceiver(nullable);
+            mdFieldDef value = held.Class.Module.GetMetaDataInterface<IMetaDataImport>().FindField(held.Class.Token, "value", 0, 0);
+            return (true, CilValue.FromLocation(new CorDebugLocation(held.GetFieldValue(held.Class, value))));
         }
         if (declaringType != "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler")
         {
