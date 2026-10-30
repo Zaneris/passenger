@@ -154,8 +154,9 @@ public sealed class NuGetView : DockPanel
     /// <summary>The folder's packages the window shows, its session's.</summary>
     public FolderPackages Packages => model;
 
-    /// <summary>Shows another folder's packages from now on, its session's in place of the last's; its sources read if the
-    /// last folder's had been, so the feeds offered are its own.</summary>
+    /// <summary>Shows another folder's packages from now on, its session's in place of the last's: the last folder's rows
+    /// and words cleared at once, and its own listed while the window is shown (again as its projects are evaluated), else
+    /// as it is next shown; its sources read if the last folder's had been, so the feeds offered are its own.</summary>
     public void Bind(FolderPackages next)
     {
         if (next == model)
@@ -168,13 +169,23 @@ public sealed class NuGetView : DockPanel
         model.ChangeBegun -= OnChangeBegun;
         model.Changed -= OnChanged;
         model = next;
+        asking?.Cancel();
+        List([], null);
+        Tell(string.Empty);
         Hold(null);
         Follow(next);
-        if (next.Sources == PackageSourceSet.None && read)
+        if (IsShown)
+        {
+            IdeErrors.Observe(Shown());
+        }
+        else if (next.Sources == PackageSourceSet.None && read)
         {
             IdeErrors.Observe(ReloadSourcesAsync(list: false));
         }
     }
+
+    /// <summary>Whether the window is shown, so a list it reads is seen.</summary>
+    public bool IsShown => TopLevel.GetTopLevel(this) is not null;
 
     /// <summary>Hears what the folder's packages say, and offers their feeds when they are read already.</summary>
     private void Follow(FolderPackages packages)
@@ -743,6 +754,16 @@ public sealed class NuGetView : DockPanel
         }
     }
 
+    /// <summary>What a project's button for the chosen version says: Update or Downgrade, a downgrade naming the frameworks
+    /// that go down where another does not, as every framework's reference moves together.</summary>
+    private static string Moved(PackageMove move, string version, IReadOnlyList<InstalledVersion> at)
+    {
+        IReadOnlyList<InstalledVersion> lowered = InstalledVersion.Lowered(version, at);
+        return move == PackageMove.Update || (move == PackageMove.Downgrade && lowered.Count == at.Count)
+            ? move.ToString()
+            : $"Downgrade {string.Join(", ", lowered.Select(v => v.Framework ?? "it"))}";
+    }
+
     /// <summary>A project's versions of a package as its line says them: each once, in its frameworks' order.</summary>
     private static string Shown(IReadOnlyList<InstalledVersion> at) =>
         string.Join(", ", at.Select(v => v.Shown ?? "installed").Distinct(StringComparer.OrdinalIgnoreCase));
@@ -754,16 +775,6 @@ public sealed class NuGetView : DockPanel
         bool ranged = at.Any(v => v.Given is { } given && given != v.Shown);
         return at.Count > 1 || ranged
             ? string.Join("\n", at.Select(v => (at.Count > 1 ? $"{v.Framework}: " : string.Empty) + (v.Shown ?? "installed")
-    /// <summary>What a project's button for the chosen version says: Update or Downgrade, a downgrade naming the frameworks
-    /// that go down where another does not, as every framework's reference moves together.</summary>
-    private static string Moved(PackageMove move, string version, IReadOnlyList<InstalledVersion> at)
-    {
-        IReadOnlyList<InstalledVersion> lowered = InstalledVersion.Lowered(version, at);
-        return move == PackageMove.Update || (move == PackageMove.Downgrade && lowered.Count == at.Count)
-            ? move.ToString()
-            : $"Downgrade {string.Join(", ", lowered.Select(v => v.Framework ?? "it"))}";
-    }
-
                 + (v.Given is { } given && given != v.Shown ? $", given as {given}" : string.Empty)))
             : null;
     }

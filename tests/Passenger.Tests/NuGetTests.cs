@@ -198,6 +198,39 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Another folder opened in the window while the NuGet window is shown has that folder's packages listed in
+    /// place of the last folder's, whose rows never stay to be acted on against the new folder's projects.</summary>
+    [AvaloniaFact]
+    public void Another_folder_opened_with_the_nuget_window_shown_lists_that_folders_packages()
+    {
+        const string Other = "Passenger.Other";
+        feed.Add(Other, "2.0.0");
+        Project("Lib", TestProjects.Framework, $"  <ItemGroup>\n    <PackageReference Include=\"{Id}\" Version=\"1.0.1\" />\n  </ItemGroup>\n");
+        string second = TestFolders.Create("nuget-other-");
+        try
+        {
+            File.Copy(Path.Combine(folder, "nuget.config"), Path.Combine(second, "nuget.config"));
+            Directory.CreateDirectory(Path.Combine(second, "Tool"));
+            File.WriteAllText(Path.Combine(second, "Tool", "Tool.csproj"), $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n"
+                + $"  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\"{Other}\" Version=\"2.0.0\" />\n  </ItemGroup>\n</Project>\n");
+            MainWindow window = Open();
+            NuGetView nuget = window.NuGet;
+            Ui.Landed(() => nuget.Rows is [{ Id: Id }], $"{Id}, the first folder's package, listed");
+
+            window.OpenFolder(second);
+            Ui.Settle();
+            Assert.True(window.NuGet == nuget && nuget.Rows is [{ Id: Other }] && nuget.Status == "1 package installed",
+                $"With the other folder open the NuGet window lists [{string.Join(", ", nuget.Rows.Select(r => r.Id))}] saying \"{nuget.Status}\", not {Other}, its own package");
+            Assert.True(ShownVersion(nuget, "Tool") == "2.0.0" && Line(nuget, "Lib") is null,
+                $"{Other}'s projects are listed as Tool at {ShownVersion(nuget, "Tool") ?? "nothing"}{(Line(nuget, "Lib") is null ? string.Empty : " and the last folder's Lib")}");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(second);
+        }
+    }
+
     /// <summary>A change refused because an open file would not save (Windows refuses a write to a file another program
     /// holds, stood in for here) says why in the window's status, never "Working…" left unexplained, and leaves the
     /// projects' actions enabled and the project as it was.</summary>

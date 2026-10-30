@@ -373,8 +373,8 @@ public partial class MainWindow
                 {
                     FindTests();
                 }
-                // A package installed, updated or removed shows so in the NuGet window once the project's evaluation says so.
-                if (evaluated.PackagesChanged && nuget is { Rows.Count: > 0 })
+                // A package installed, updated or removed, or a folder's projects come, show in the NuGet window once evaluated.
+                if (evaluated.PackagesChanged && nuget is { } shown && (shown.Rows.Count > 0 || shown.IsShown))
                 {
                     IdeErrors.Observe(nuget.RefreshAsync());
                 }
