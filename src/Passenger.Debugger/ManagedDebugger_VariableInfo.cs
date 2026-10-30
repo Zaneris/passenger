@@ -418,7 +418,7 @@ public partial class ManagedDebugger
 
         await AddFields(nonStaticFieldDefs, metadataImport, corDebugType, corDebugValue, result, threadId, stackDepth);
         // The reference itself, not unwrapped: the getters are called on it.
-        await AddProperties(nonStaticProperties, metadataImport, corDebugClass, threadId, stackDepth, corDebugValue, result);
+        await AddProperties(nonStaticProperties, metadataImport, corDebugType, threadId, stackDepth, corDebugValue, result);
         if (derived is not null)
         {
             foreach (VariableInfo hidden in result.Skip(first).Where(member => derived.Contains(member.Name)))
@@ -455,7 +455,7 @@ public partial class ManagedDebugger
 
         await AddFields(staticFieldDefs, metadataImport, corDebugType, corDebugValue, result, threadId, stackDepth);
         // The reference itself, not unwrapped: the getters are called on it.
-        await AddProperties(staticProperties, metadataImport, corDebugClass, threadId, stackDepth, corDebugValue, result);
+        await AddProperties(staticProperties, metadataImport, corDebugType, threadId, stackDepth, corDebugValue, result);
 
         ICorDebugType? baseType = corDebugType.Base;
         if (baseType is null)
@@ -610,8 +610,11 @@ public partial class ManagedDebugger
         };
     }
 
-    private async Task AddProperties(mdProperty[] mdProperties, IMetaDataImport metadataImport, ICorDebugClass corDebugClass, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue corDebugValue, List<VariableInfo> result)
+    /// <summary>The properties <paramref name="declaringType"/> declares, each read by its getter called with the type
+    /// arguments the value's type gives that type (a closed generic base's own), never the value's type's.</summary>
+    private async Task AddProperties(mdProperty[] mdProperties, IMetaDataImport metadataImport, ICorDebugType declaringType, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue corDebugValue, List<VariableInfo> result)
     {
+        ICorDebugClass corDebugClass = declaringType.Class;
         foreach (mdProperty mdProperty in mdProperties)
         {
             (string szProperty, mdTypeDef pClass, CorPropertyAttr pdwPropFlags, nint ppvSig, int pbSig, CorElementType pdwCPlusTypeFlag, nint ppDefaultValue, int pcchDefaultValue, mdMethodDef pmdSetter, mdMethodDef pmdGetter, mdMethodDef rmdOtherMethod, int pcOtherMethod) propertyProps = metadataImport.GetPropertyProps(mdProperty);
@@ -656,9 +659,7 @@ public partial class ManagedDebugger
                 ICorDebugFunction getMethod = corDebugClass.Module.GetFunctionFromToken(getMethodDef);
                 ICorDebugEval eval = variablesReferenceIlFrame.Chain.Thread.CreateEval();
 
-                ICorDebugType parameterizedContainingType = corDebugValue.ExactType;
-
-                ICorDebugType[] typeParameterTypes = parameterizedContainingType.TypeParameters;
+                ICorDebugType[] typeParameterTypes = declaringType.TypeParameters;
 
                 ICorDebugValue[] corDebugValues = isStatic ? [] : [corDebugValue];
 

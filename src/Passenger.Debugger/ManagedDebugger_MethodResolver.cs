@@ -7,6 +7,21 @@ namespace Passenger.Debugger;
 
 public partial class ManagedDebugger
 {
+    /// <summary>The type in a type's chain of bases that declares a function, as the type instantiates it: the type
+    /// arguments a call of the function takes are its own, a closed generic base's where the function is the base's.</summary>
+    internal static ICorDebugType DeclaringTypeOf(ICorDebugType type, ICorDebugFunction function)
+    {
+        ICorDebugClass declaring = function.Class;
+        for (ICorDebugType? current = type; current is not null; current = current.Base)
+        {
+            if (current.Class.Token == declaring.Token && current.Class.Module.BaseAddress == declaring.Module.BaseAddress)
+            {
+                return current;
+            }
+        }
+        return type;
+    }
+
     internal ICorDebugFunction? FindMethodOnType(
         ICorDebugType type,
         string methodName,

@@ -317,12 +317,26 @@ internal static class Reckoning
 		Wide wide = Wide.Low | Wide.Big;
 		Wide big = Wide.Big;
 		DateTime date = new(2026, 10, 30, 13, 45, 0);
+		Names names = new();
 		Console.WriteLine("reckoning");
-		Console.WriteLine($"reckoned {wide & big}, {date:yyyy-MM}");
+		Console.WriteLine($"reckoned {wide & big}, {date:yyyy-MM}, {names.First}");
 	}
 }
 
 [Flags] internal enum Wide : long { Low = 1, Big = 1L << 41 }
+
+internal class Listed<T>
+{
+	private readonly List<T> _items = [];
+	public int Count => _items.Count;
+	public T? First => _items.Count > 0 ? _items[0] : default;
+	public void Add(T item) => _items.Add(item);
+}
+
+internal sealed class Names : Listed<string>
+{
+	public Names() => Add("Ada");
+}
 
 
 // What an evaluation reads and leaves as it was: a record struct and a tuple a with copies, a char joined to a string,

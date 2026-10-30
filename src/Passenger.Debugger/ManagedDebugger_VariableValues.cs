@@ -75,7 +75,7 @@ public partial class ManagedDebugger
             // Fast path to avoid EE, which is far slower
             ICorDebugFunction toStringFunction = FindMethodOnType(valueToFormat.ExactType, "ToString", [], false, false) ?? throw new InvalidOperationException($"Could not find ToString on {friendlyTypeName}");
             ICorDebugThread thread = _process!.GetThread(threadId.Value);
-            ICorDebugType[] typeParameters = valueToFormat.ExactType.TypeParameters;
+            ICorDebugType[] typeParameters = DeclaringTypeOf(valueToFormat.ExactType, toStringFunction).TypeParameters;
             ICorDebugValue result;
             try
             {

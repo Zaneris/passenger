@@ -44,6 +44,19 @@ public class ReckoningTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("\"[  2026-10]\"", await Evaluate(host, frame, "$\"[{date,9:yyyy-MM}]\""));
     }
 
+    [Fact]
+    public async Task A_property_a_class_takes_from_a_closed_generic_base_is_read()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        (StoppedEvent stop, _) = await StoppedAtReckoningAsync(host);
+
+        DapVariable names = Assert.Single(await host.LocalsAsync(stop), v => v.Name == "names");
+        List<DapVariable> members = await host.VariablesAsync(names.VariablesReference);
+        DapVariable first = Assert.Single(members, v => v.Name == "First");
+        Assert.True(first.Value == "\"Ada\"", $"Names : Listed<string> shows its First as {first.Value}, not the base's getter's \"Ada\"");
+        Assert.Equal("1", Assert.Single(members, v => v.Name == "Count").Value);
+    }
+
     /// <summary>The program launched to Reckoning.Run's stop, and its top frame.</summary>
     private static async Task<(StoppedEvent Stop, int Frame)> StoppedAtReckoningAsync(DebugSession host)
     {
