@@ -415,12 +415,14 @@ public static class ContainerPlans
 
     /// <summary>A Dockerfile or SDK container configuration as a compose file of one service: its image built from the
     /// project's Dockerfile and context (the project's DockerfileFile and DockerfileContext, else the configuration's, else
-    /// the Dockerfile beside it and the solution's folder), or the SDK's base image, with the configuration's environment
-    /// and <c>docker run</c> words (ports, env files, volumes, variables).</summary>
+    /// the Dockerfile beside it and the solution's folder) given the nuget.configs it mounts as build secrets
+    /// (<see cref="DockerFiles.NuGetSecrets"/>), or the SDK's base image, with the configuration's environment and
+    /// <c>docker run</c> words (ports, env files, volumes, variables).</summary>
     private static JsonObject SingleService(RunConfiguration configuration, ProjectModel project, IReadOnlyDictionary<string, string> properties, string name,
         WorkspaceModel workspace, ContainerMode mode, string? framework)
     {
         JsonObject service = [];
+        JsonObject secrets = [];
         List<int> exposed = [];
         if (configuration.Kind == RunKind.Dockerfile)
         {
@@ -445,12 +447,23 @@ public static class ContainerPlans
             {
                 build["args"] = args;
             }
+            string written = File.Exists(dockerfile) ? File.ReadAllText(dockerfile) : string.Empty;
+            JsonArray mounted = [];
+            foreach ((string id, string config) in DockerFiles.Mounted(dockerfile, DockerFiles.NuGetSecrets(context, DockerFiles.Describe(project, workspace.Projects))))
+            {
+                mounted.Add(id);
+                secrets[id] = new JsonObject { ["file"] = config };
+            }
+            if (mounted.Count > 0)
+            {
+                build["secrets"] = mounted;
+            }
             service["build"] = build;
             if (properties.GetValueOrDefault("DockerfileTag") is { Length: > 0 } tag && mode == ContainerMode.Images)
             {
                 service["image"] = tag;
             }
-            DockerfileStages stages = DockerfileStages.Read(File.Exists(dockerfile) ? File.ReadAllText(dockerfile) : string.Empty);
+            DockerfileStages stages = DockerfileStages.Read(written);
             DockerfileStage? running = mode == ContainerMode.Fast ? stages.FastStage(properties.GetValueOrDefault("DockerfileFastModeStage")) : stages.Final;
             exposed.AddRange(running is null ? [] : stages.Lineage(running).SelectMany(s => s.Exposed));
         }
@@ -530,7 +543,12 @@ public static class ContainerPlans
         {
             service["environment"] = environment;
         }
-        return new JsonObject { ["name"] = $"passenger-{Slug(configuration.Name)}-{ContainerLabels.FolderValue(workspace.Folder)[..8]}", ["services"] = new JsonObject { [name] = service } };
+        JsonObject composed = new() { ["name"] = $"passenger-{Slug(configuration.Name)}-{ContainerLabels.FolderValue(workspace.Folder)[..8]}", ["services"] = new JsonObject { [name] = service } };
+        if (secrets.Count > 0)
+        {
+            composed["secrets"] = secrets;
+        }
+        return composed;
     }
 
     /// <summary>The image tag of the .NET a project runs for (10.0 of net10.0): the framework given, else its newest, else 10.0.</summary>

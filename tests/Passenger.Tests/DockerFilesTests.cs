@@ -681,17 +681,56 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     }
 
     /// <summary>A project at its build's context's root, beside its solution or opened on its own, is copied into the
-    /// build's work folder (./), and its NuGet.config by the name the disk gives it, since the image's file system tells
-    /// letter case apart.</summary>
+    /// build's work folder (./), and its NuGet.config mounted there by the name the disk gives it, since the image's file
+    /// system tells letter case apart.</summary>
     [AvaloniaFact]
-    public void Add_docker_support_on_a_project_at_its_contexts_root_copies_it_and_its_nuget_config_as_named_into_the_work_folder()
+    public void Add_docker_support_on_a_project_at_its_contexts_root_copies_it_and_mounts_its_nuget_config_as_named_in_the_work_folder()
     {
         foreach (bool solution in (bool[])[true, false])
         {
             string written = File.ReadAllText(DockerSupportAtRoot(solution));
-            Assert.True(written.Contains("COPY [\"NuGet.config\", \"./\"]\nCOPY [\"Tiny.csproj\", \"./\"]\nRUN dotnet restore \"./Tiny.csproj\"\n", StringComparison.Ordinal),
+            Assert.True(written.Contains("COPY [\"Tiny.csproj\", \"./\"]\n# nuget.config, which may hold a feed's password, is mounted for each restore as a secret, so no layer keeps it.\n"
+                + "RUN --mount=type=secret,id=nugetconfig,target=/src/NuGet.config,required=true dotnet restore \"./Tiny.csproj\"\n", StringComparison.Ordinal),
                 $"Opened as {(solution ? "Tiny.slnx" : "Tiny.csproj")}, the project at the context's root was not copied into the work folder as it is named:\n{written}");
         }
+    }
+
+    /// <summary>A context's nuget.configs, which may hold a feed's password, reach the restore, build and publish as build
+    /// secrets mounted where they stand, never copied into a layer: no COPY names one, the .dockerignore keeps them out of
+    /// <c>COPY . .</c>, the Dockerfile says how to build with them, and compose.yaml gives them, added to a file declaring
+    /// other secrets too.</summary>
+    [Fact]
+    public void A_dockerfiles_restore_reads_the_contexts_nuget_configs_through_secret_mounts_and_no_layer_copies_them()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("docker-secrets-"));
+        TestFolders.Write(folder, "NuGet.Config", Shop.NuGetConfig);
+        TestFolders.Write(folder, "Web/nuget.config", Shop.NuGetConfig);
+        TestFolders.Write(folder, "Web/Web.csproj", WebProject);
+        string project = Path.Combine(folder, "Web", "Web.csproj");
+        DockerProject web = new(project, "Web", "Web", "net10.0", true, [5000], [project]);
+        string dockerfile = DockerFiles.Dockerfile(web, folder);
+        Assert.True(!dockerfile.Split('\n').Any(l => l.StartsWith("COPY", StringComparison.Ordinal) && l.Contains("nuget.config", StringComparison.OrdinalIgnoreCase)),
+            $"The Dockerfile copies a nuget.config into a layer:\n{dockerfile}");
+        const string Mounts = "--mount=type=secret,id=nugetconfig,target=/src/NuGet.Config,required=true "
+            + "--mount=type=secret,id=nugetconfig-web,target=/src/Web/nuget.config,required=true ";
+        foreach (string run in (string[])[$"RUN {Mounts}dotnet restore \"./Web/Web.csproj\"\n", $"RUN {Mounts}dotnet build ", $"RUN {Mounts}dotnet publish "])
+        {
+            Assert.True(dockerfile.Contains(run, StringComparison.Ordinal), $"The Dockerfile does not run {run.Trim()}:\n{dockerfile}");
+        }
+        Assert.StartsWith("# Built from the solution's folder: docker build -f Web/Dockerfile --secret id=nugetconfig,src=NuGet.Config "
+            + "--secret id=nugetconfig-web,src=Web/nuget.config .\n", dockerfile, StringComparison.Ordinal);
+        Assert.Contains("\n**/[Nn][Uu][Gg][Ee][Tt].[Cc][Oo][Nn][Ff][Ii][Gg]\n", DockerFiles.Ignore, StringComparison.Ordinal);
+
+        string compose = DockerFiles.Compose(folder, [(web, null, new Passenger.Workspace.BackingNeeds([], []))]);
+        Assert.Contains("      dockerfile: Web/Dockerfile\n      secrets:\n        - nugetconfig\n        - nugetconfig-web\n", compose, StringComparison.Ordinal);
+        const string Declared = "secrets:\n  nugetconfig:\n    file: NuGet.Config\n  nugetconfig-web:\n    file: Web/nuget.config\n";
+        Assert.EndsWith($"\n\n{Declared}", compose, StringComparison.Ordinal);
+        (string? added, string? refused) = DockerFiles.WithService("services:\n    db:\n        image: postgres:17\nsecrets:\n    token:\n        file: ./token.txt\n", "web", compose);
+        Assert.True(refused is null, refused);
+        Assert.StartsWith("services:\n    db:\n        image: postgres:17\n    web:\n      build:\n", added, StringComparison.Ordinal);
+        Assert.EndsWith("secrets:\n    token:\n        file: ./token.txt\n    nugetconfig:\n      file: NuGet.Config\n    nugetconfig-web:\n      file: Web/nuget.config\n",
+            added, StringComparison.Ordinal);
+        Assert.EndsWith($"\n\n{Declared}", DockerFiles.WithService("services:\n  db:\n    image: postgres:17\n", "web", compose).Text, StringComparison.Ordinal);
     }
 
     /// <summary>Where a Linux engine runs and holds the images it builds on (never pulled by a test: the SDK's is about
@@ -709,7 +748,8 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         string folder = Path.GetDirectoryName(dockerfile)!;
         string image = $"ptest{Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)}tiny";
         Passenger.Core.ChildResult built = Ui.AwaitPumped(Waiting.Apart(() => Passenger.App.Containers.ContainerEngine.Shared.RunAsync(
-            ["build", "--pull=false", "--label", Docker.RunLabel, "-t", image, "-f", dockerfile, folder], TimeSpan.FromMinutes(10).Scaled())), "the Dockerfile's build",
+            ["build", "--pull=false", "--label", Docker.RunLabel, "--secret", $"id=nugetconfig,src={Path.Combine(folder, "NuGet.config")}", "-t", image, "-f", dockerfile, folder],
+            TimeSpan.FromMinutes(10).Scaled())), "the Dockerfile's build",
             TimeSpan.FromMinutes(10) + TestFolders.Spare);
         try
         {
@@ -742,7 +782,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// <summary>Add Docker Compose builds a project's own Dockerfile as that Dockerfile is written: from the project's
     /// folder when its COPY lines read the project's files there, from the solution's when they read them from it, on the
     /// ports it sets (ASPNETCORE_HTTP_PORTS, else ASP.NET Core's 8080), never its launch profiles'; Passenger's own new
-    /// Dockerfile, from the solution's folder on the launch profiles' port.</summary>
+    /// Dockerfile, from the solution's folder on the launch profiles' port, given the nuget.config it mounts as a secret.</summary>
     [AvaloniaFact]
     public void Add_docker_compose_builds_a_projects_own_dockerfile_from_the_folder_it_copies_from_on_the_ports_it_sets()
     {
@@ -767,8 +807,9 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             string compose = File.ReadAllText(Path.Combine(folder, "compose.yaml"));
             Assert.Equal("services:\n"
                 + "  api:\n    build:\n      context: Api\n      dockerfile: Dockerfile\n    image: api\n    ports:\n      - \"5000:5000\"\n"
-                + "  shop:\n    build:\n      context: .\n      dockerfile: Shop/Dockerfile\n    image: shop\n    ports:\n      - \"5080:5080\"\n"
-                + "  web:\n    build:\n      context: .\n      dockerfile: Web/Dockerfile\n    image: web\n    ports:\n      - \"8080:8080\"\n", compose);
+                + "  shop:\n    build:\n      context: .\n      dockerfile: Shop/Dockerfile\n      secrets:\n        - nugetconfig\n    image: shop\n    ports:\n      - \"5080:5080\"\n"
+                + "  web:\n    build:\n      context: .\n      dockerfile: Web/Dockerfile\n    image: web\n    ports:\n      - \"8080:8080\"\n"
+                + "\nsecrets:\n  nugetconfig:\n    file: nuget.config\n", compose);
             Assert.True(File.Exists(Path.Combine(folder, "Shop", "Dockerfile")), "Shop, with no Dockerfile, was given none");
             if (Docker.WhyNot is null)
             {
@@ -1090,19 +1131,23 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             + "COPY --from=build /app/publish .\nENTRYPOINT [\"dotnet\", \"Api.dll\"]\n";
 
         /// <summary>What Add > Docker Support writes for Api.</summary>
-        public const string Dockerfile = "# Built from the solution's folder: docker build -f Api/Dockerfile .\nFROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base\nUSER $APP_UID\n"
+        public const string Dockerfile = "# Built from the solution's folder: docker build -f Api/Dockerfile --secret id=nugetconfig,src=nuget.config .\n"
+            + "FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base\nUSER $APP_UID\n"
             + "WORKDIR /app\nENV ASPNETCORE_HTTP_PORTS=5080\nEXPOSE 5080\n\nFROM mcr.microsoft.com/dotnet/sdk:10.0 AS build\nARG BUILD_CONFIGURATION=Release\nWORKDIR /src\n"
-            + "COPY [\"nuget.config\", \"./\"]\nCOPY [\"Api/Api.csproj\", \"Api/\"]\nCOPY [\"Lib/Lib.csproj\", \"Lib/\"]\nRUN dotnet restore \"./Api/Api.csproj\"\nCOPY . .\n"
-            + "WORKDIR \"/src/Api\"\nRUN dotnet build \"./Api.csproj\" -c $BUILD_CONFIGURATION -o /app/build\n\nFROM build AS publish\nARG BUILD_CONFIGURATION=Release\n"
-            + "RUN dotnet publish \"./Api.csproj\" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false\n\nFROM base AS final\nWORKDIR /app\n"
+            + "COPY [\"Api/Api.csproj\", \"Api/\"]\nCOPY [\"Lib/Lib.csproj\", \"Lib/\"]\n"
+            + "# nuget.config, which may hold a feed's password, is mounted for each restore as a secret, so no layer keeps it.\n"
+            + "RUN --mount=type=secret,id=nugetconfig,target=/src/nuget.config,required=true dotnet restore \"./Api/Api.csproj\"\nCOPY . .\n"
+            + "WORKDIR \"/src/Api\"\nRUN --mount=type=secret,id=nugetconfig,target=/src/nuget.config,required=true dotnet build \"./Api.csproj\" -c $BUILD_CONFIGURATION -o /app/build\n\nFROM build AS publish\nARG BUILD_CONFIGURATION=Release\n"
+            + "RUN --mount=type=secret,id=nugetconfig,target=/src/nuget.config,required=true dotnet publish \"./Api.csproj\" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false\n\nFROM base AS final\nWORKDIR /app\n"
             + "COPY --from=publish /app/publish .\nENTRYPOINT [\"dotnet\", \"Api.dll\"]\n";
 
         /// <summary>What Add > Docker Compose writes for Api alone.</summary>
-        public const string Compose = "services:\n  api:\n    build:\n      context: .\n      dockerfile: Api/Dockerfile\n    image: api\n    ports:\n      - \"5080:5080\"\n"
+        public const string Compose = "services:\n  api:\n    build:\n      context: .\n      dockerfile: Api/Dockerfile\n      secrets:\n        - nugetconfig\n    image: api\n    ports:\n      - \"5080:5080\"\n"
             + "    environment:\n      ConnectionStrings__Shop: \"Host=postgres;Port=5432;Database=shop;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}\"\n"
             + "    depends_on:\n      postgres:\n        condition: service_healthy\n  postgres:\n    image: postgres:17\n    environment:\n"
             + "      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}\n      POSTGRES_DB: shop\n    volumes:\n      - postgres-data:/var/lib/postgresql/data\n    healthcheck:\n"
-            + "      test: [\"CMD-SHELL\", \"pg_isready -U postgres\"]\n      interval: 5s\n      timeout: 5s\n      retries: 10\n\nvolumes:\n  postgres-data:\n";
+            + "      test: [\"CMD-SHELL\", \"pg_isready -U postgres\"]\n      interval: 5s\n      timeout: 5s\n      retries: 10\n\nvolumes:\n  postgres-data:\n"
+            + "\nsecrets:\n  nugetconfig:\n    file: nuget.config\n";
 
         private static readonly (string Path, string Text)[] Files =
         [

@@ -106,7 +106,8 @@ public static class DockerFiles
     /// <summary>A project's Dockerfile, its build's context the folder given (the solution's): the runtime stage it runs in
     /// (aspnet for an ASP.NET Core app, else runtime, at its framework's version, as its own unprivileged user, listening
     /// on its launch profiles' HTTP ports), the SDK stage that restores from the project files alone first (so a change of
-    /// code reuses the restore's layer) and builds, a publish stage, and the final one.</summary>
+    /// code reuses the restore's layer) and builds, a publish stage, and the final one. Each nuget.config is a secret
+    /// mounted where it stands for the commands that restore (<see cref="NuGetSecrets"/>), never copied into a layer.</summary>
     public static string Dockerfile(DockerProject project, string context)
     {
         string tag = Tag(project.Framework) ?? "10.0";
@@ -114,8 +115,16 @@ public static class DockerFiles
         string relative = Relative(context, project.Path);
         string folder = Relative(context, project.Folder);
         string file = System.IO.Path.GetFileName(project.Path);
+        IReadOnlyList<string> shared = Shared(context, project);
+        IReadOnlyList<(string Id, string File)> secrets = NuGetSecrets(context, shared);
+        string mounts = string.Concat(secrets.Select(s => $"--mount=type=secret,id={s.Id},target=/src/{Relative(context, s.File)},required=true "));
         StringBuilder text = new();
-        text.Append("# Built from the solution's folder: docker build -f ").Append(Relative(context, project.Dockerfile)).Append(" .\n");
+        text.Append("# Built from the solution's folder: docker build -f ").Append(Relative(context, project.Dockerfile));
+        foreach ((string id, string config) in secrets)
+        {
+            text.Append(" --secret id=").Append(id).Append(",src=").Append(Relative(context, config));
+        }
+        text.Append(" .\n");
         text.Append("FROM mcr.microsoft.com/dotnet/").Append(project.Web ? "aspnet" : "runtime").Append(':').Append(tag).Append(" AS base\n");
         if (major >= 8)
         {
@@ -138,17 +147,21 @@ public static class DockerFiles
         text.Append("\nFROM mcr.microsoft.com/dotnet/sdk:").Append(tag).Append(" AS build\n");
         text.Append("ARG BUILD_CONFIGURATION=Release\n");
         text.Append("WORKDIR /src\n");
-        foreach (string copied in Shared(context, project).Concat(project.Restores))
+        foreach (string copied in shared.Where(f => !IsNuGetConfig(f)).Concat(project.Restores))
         {
             text.Append("COPY [\"").Append(Relative(context, copied)).Append("\", \"").Append(Into(Relative(context, System.IO.Path.GetDirectoryName(copied)!))).Append("\"]\n");
         }
-        text.Append("RUN dotnet restore \"./").Append(relative).Append("\"\n");
+        if (secrets.Count > 0)
+        {
+            text.Append("# nuget.config, which may hold a feed's password, is mounted for each restore as a secret, so no layer keeps it.\n");
+        }
+        text.Append("RUN ").Append(mounts).Append("dotnet restore \"./").Append(relative).Append("\"\n");
         text.Append("COPY . .\n");
         text.Append("WORKDIR \"/src/").Append(folder).Append("\"\n");
-        text.Append("RUN dotnet build \"./").Append(file).Append("\" -c $BUILD_CONFIGURATION -o /app/build\n");
+        text.Append("RUN ").Append(mounts).Append("dotnet build \"./").Append(file).Append("\" -c $BUILD_CONFIGURATION -o /app/build\n");
         text.Append("\nFROM build AS publish\n");
         text.Append("ARG BUILD_CONFIGURATION=Release\n");
-        text.Append("RUN dotnet publish \"./").Append(file).Append("\" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false\n");
+        text.Append("RUN ").Append(mounts).Append("dotnet publish \"./").Append(file).Append("\" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false\n");
         text.Append("\nFROM base AS final\n");
         text.Append("WORKDIR /app\n");
         text.Append("COPY --from=publish /app/publish .\n");
@@ -197,6 +210,36 @@ public static class DockerFiles
         return [.. found.OrderBy(f => f.Count(c => c is '/' or '\\')).ThenBy(f => f, StringComparer.Ordinal)];
     }
 
+    /// <summary>The nuget.configs a project's restore reads in its build's context (<see cref="Shared"/>), each with the id
+    /// of the build secret Passenger's Dockerfile mounts it as: <c>nugetconfig</c> for the context's own, and after it the
+    /// folder it is in for a deeper one (<c>nugetconfig-web</c>).</summary>
+    public static IReadOnlyList<(string Id, string File)> NuGetSecrets(string context, DockerProject project) => NuGetSecrets(context, Shared(context, project));
+
+    private static IReadOnlyList<(string Id, string File)> NuGetSecrets(string context, IReadOnlyList<string> shared) =>
+        [.. shared.Where(IsNuGetConfig).Select(f => (Relative(context, System.IO.Path.GetDirectoryName(f)!) is { Length: > 0 } folder
+            ? $"nugetconfig-{ServiceName(folder)}" : "nugetconfig", f))];
+
+    /// <summary>The secrets of those given a Dockerfile there mounts (one Passenger wrote before).</summary>
+    public static IReadOnlyList<(string Id, string File)> Mounted(string dockerfile, IReadOnlyList<(string Id, string File)> secrets)
+    {
+        if (secrets.Count == 0)
+        {
+            return [];
+        }
+        string text;
+        try
+        {
+            text = FileText.Load(dockerfile)?.Text ?? string.Empty;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            text = string.Empty;
+        }
+        return [.. secrets.Where(s => text.Contains($"type=secret,id={s.Id},", StringComparison.Ordinal))];
+    }
+
+    private static bool IsNuGetConfig(string file) => System.IO.Path.GetFileName(file).Equals("nuget.config", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>A path from the build's context, with '/' as the Dockerfile writes it.</summary>
     public static string Relative(string context, string path)
     {
@@ -205,11 +248,13 @@ public static class DockerFiles
     }
 
     /// <summary>What a build's context leaves out of the image: build output, the IDEs' and Git's folders, packages a
-    /// restore makes again, secrets, and the Docker files themselves.</summary>
+    /// restore makes again, secrets (nuget.config in any letter case, which the Dockerfile mounts as one), and the Docker
+    /// files themselves.</summary>
     public const string Ignore =
         "# Kept out of the build's context, so a change to them never rebuilds an image.\n"
         + "**/bin\n**/obj\nartifacts/\n**/.git\n**/.gitignore\n**/.vs\n**/.vscode\n**/.idea\n**/*.user\n**/node_modules\n**/npm-debug.log\n"
-        + "**/.env\n**/secrets.json\n**/.dockerignore\n**/Dockerfile*\n**/compose*.y*ml\n**/docker-compose*\nLICENSE\nREADME.md\n";
+        + "**/.env\n**/secrets.json\n**/[Nn][Uu][Gg][Ee][Tt].[Cc][Oo][Nn][Ff][Ii][Gg]\n"
+        + "**/.dockerignore\n**/Dockerfile*\n**/compose*.y*ml\n**/docker-compose*\nLICENSE\nREADME.md\n";
 
     /// <summary>A compose service's name from a project's: lowercase, every run of other characters a dash.</summary>
     public static string ServiceName(string name)
@@ -310,10 +355,10 @@ public static class DockerFiles
     });
 
     /// <summary>A solution's compose.yaml: a service for each project, built from its Dockerfile (<see cref="BuildFor"/>:
-    /// <c>Existing</c> the one it had, null for Passenger's own) and published on its HTTP ports, given its connection
-    /// strings to the backing services its packages point to (<see cref="BackingService.Needs"/>, the databases they name
-    /// kept), which it waits for until their healthchecks pass; and each backing service with its healthcheck and data
-    /// volume, made with the first database or virtual host the apps name.</summary>
+    /// <c>Existing</c> the one it had, null for Passenger's own) given the nuget.configs it mounts (<see cref="NuGetSecrets"/>),
+    /// published on its HTTP ports, given its connection strings to the backing services its packages point to (<see
+    /// cref="BackingService.Needs"/>, the databases they name kept), which it waits for until their healthchecks pass; and
+    /// each backing service with its healthcheck and data volume, made with the first database or virtual host named.</summary>
     public static string Compose(string context, IReadOnlyList<(DockerProject Project, string? Existing, BackingNeeds Needs)> projects)
     {
         List<BackingService> backing = [.. BackingService.Known.Where(k => projects.Any(p => p.Needs.Services.Contains(k)))];
@@ -321,6 +366,7 @@ public static class DockerFiles
             [.. projects.Select(p => (p.Project, p.Existing, p.Needs.Services, p.Needs.Connections))];
         Dictionary<BackingService, List<string>> databases = backing.ToDictionary(b => b, b => made.SelectMany(m => m.Reached)
             .Where(r => r.To == b).Select(r => b.Database(r.Name, r.Value)).OfType<string>().Distinct(StringComparer.Ordinal).ToList());
+        Dictionary<string, string> secrets = new(StringComparer.Ordinal);
         StringBuilder text = new();
         foreach (BackingService service in backing.Where(b => b.Note is not null))
         {
@@ -332,6 +378,16 @@ public static class DockerFiles
             (string from, string dockerfile, IReadOnlyList<int> ports) = BuildFor(project, existing, context);
             text.Append("  ").Append(project.Service).Append(":\n");
             text.Append("    build:\n      context: ").Append(from).Append("\n      dockerfile: ").Append(dockerfile).Append('\n');
+            IReadOnlyList<(string Id, string File)> mounted = existing is null ? NuGetSecrets(context, project) : Mounted(existing, NuGetSecrets(context, project));
+            if (mounted.Count > 0)
+            {
+                text.Append("      secrets:\n");
+                foreach ((string id, string config) in mounted)
+                {
+                    text.Append("        - ").Append(id).Append('\n');
+                    secrets[id] = Relative(context, config);
+                }
+            }
             text.Append("    image: ").Append(project.Service).Append('\n');
             if (ports.Count > 0)
             {
@@ -386,26 +442,64 @@ public static class DockerFiles
                 text.Append("  ").Append(volume).Append(":\n");
             }
         }
+        if (secrets.Count > 0)
+        {
+            text.Append('\n').Append(Secrets(secrets));
+        }
         return text.ToString();
     }
 
+    /// <summary>A compose file's top-level secrets: each by its id, read from its file.</summary>
+    private static string Secrets(IEnumerable<KeyValuePair<string, string>> secrets) =>
+        "secrets:\n" + string.Concat(secrets.Select(s => $"  {s.Key}:\n    file: {s.Value}\n"));
+
     /// <summary>A compose file's text with a service's lines (those under <c>services:</c> of a file <see cref="Compose"/>
-    /// wrote for it) after the last line of its services, indented as its services are, every other character as it was;
-    /// null with why when it has no block of services or one of that name.</summary>
+    /// wrote for it) after the last line of its services, indented as its services are, and the build secrets they name
+    /// that it does not declare after the last of its own (a block of them begun at its end where it has none), every
+    /// other character as it was; null with why when it has no block of services or one of that name.</summary>
     public static (string? Text, string? Problem) WithService(string text, string service, string made)
     {
         if (ComposeText.Of(text).Entries.Any(e => e.Path.Count == 2 && e.Path[0] == "services" && e.Path[1] == service))
         {
             return (null, $"it has a service named {service} already");
         }
-        int begins = made.IndexOf("services:\n", StringComparison.Ordinal);
-        string[] lines = made[(begins + "services:\n".Length)..].Split('\n');
         string newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        string[] have = text.Split('\n');
-        int at = Array.FindIndex(have, l => l.TrimEnd('\r').TrimEnd() == "services:");
-        if (at < 0)
+        if (Inserted(text, "services", Block(made, "services"), newline) is not { } added)
         {
             return (null, "it has no block of services");
+        }
+        HashSet<string> declared = [.. ComposeText.Of(text).Entries.Where(e => e.Path.Count == 2 && e.Path[0] == "secrets").Select(e => e.Path[1])];
+        string[] secrets = Block(made, "secrets");
+        // Each secret is its id's line and its file's after it.
+        string[] lacking = [.. secrets.Chunk(2).Where(s => !declared.Contains(s[0].Trim().TrimEnd(':'))).SelectMany(s => s)];
+        if (lacking.Length == 0)
+        {
+            return (added, null);
+        }
+        return (Inserted(added, "secrets", lacking, newline)
+            ?? $"{added}{(added.EndsWith('\n') ? string.Empty : newline)}{newline}secrets:{newline}{string.Concat(lacking.Select(l => l + newline))}", null);
+    }
+
+    /// <summary>The lines of a top-level block of a file <see cref="Compose"/> wrote (<c>services:</c>, <c>secrets:</c>),
+    /// as written there; none where it has no such block.</summary>
+    private static string[] Block(string made, string name)
+    {
+        string header = $"{name}:\n";
+        int begins = made.StartsWith(header, StringComparison.Ordinal) ? 0
+            : made.IndexOf($"\n{header}", StringComparison.Ordinal) is int found and >= 0 ? found + 1 : -1;
+        return begins < 0 ? []
+            : [.. made[(begins + header.Length)..].Split('\n').TakeWhile(l => l.Length == 0 || char.IsWhiteSpace(l[0])).Where(l => l.Length > 0)];
+    }
+
+    /// <summary>A compose file's text with lines added after the last line of a top-level block, indented as its entries
+    /// are; null when it has no such block.</summary>
+    private static string? Inserted(string text, string name, IEnumerable<string> lines, string newline)
+    {
+        string[] have = text.Split('\n');
+        int at = Array.FindIndex(have, l => l.TrimEnd('\r').TrimEnd() == $"{name}:");
+        if (at < 0)
+        {
+            return null;
         }
         int last = at;
         int indent = -1;
@@ -420,18 +514,17 @@ public static class DockerFiles
             {
                 break;
             }
-            // A comment indented under the services is theirs, though its column sets none.
+            // A comment indented under the block is its own, though its column sets none.
             indent = indent < 0 && !line.TrimStart().StartsWith('#') ? line.Length - line.TrimStart().Length : indent;
             last = i;
         }
         string shift = new(' ', Math.Max(0, (indent < 0 ? 2 : indent) - 2));
-        IEnumerable<string> added = lines.TakeWhile(l => l.Length == 0 || char.IsWhiteSpace(l[0])).Where(l => l.Length > 0).Select(l => shift + l);
         int end = 0;
         for (int i = 0; i <= last; i++)
         {
             end += have[i].Length + 1;
         }
         string before = end > text.Length ? text + newline : text[..end];
-        return (before + string.Concat(added.Select(l => l + newline)) + (end > text.Length ? string.Empty : text[end..]), null);
+        return before + string.Concat(lines.Select(l => shift + l + newline)) + (end > text.Length ? string.Empty : text[end..]);
     }
 }
