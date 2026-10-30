@@ -77,7 +77,7 @@ public static class ShellEnvironment
             ChildResult read = await ChildProcesses.RunAsync(start, limit: Limit);
             if (!read.Succeeded)
             {
-                Unread(shell, $"it exited with {read.ExitCode}{Said(errors)}");
+                Unread(shell, $"it exited with {read.ExitCode}", errors);
                 return;
             }
             foreach (string pair in (await File.ReadAllTextAsync(file)).Split('\0', StringSplitOptions.RemoveEmptyEntries))
@@ -91,11 +91,11 @@ public static class ShellEnvironment
         }
         catch (TimeoutException)
         {
-            Unread(shell, $"it had not ended after {Limit.TotalSeconds:0} s{(errors is null ? string.Empty : Said(errors))}");
+            Unread(shell, $"it had not ended after {Limit.TotalSeconds:0} s", errors);
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or UnauthorizedAccessException)
         {
-            Unread(shell, error.Message);
+            Unread(shell, error.Message, null);
         }
         finally
         {
@@ -118,21 +118,34 @@ public static class ShellEnvironment
         }
     }
 
-    /// <summary>The log's word on a read that gave nothing: the shell, why, and the PATH programs are then looked for on.</summary>
-    private static void Unread(string shell, string why) =>
-        PassengerLog.Write($"The login shell's environment was not read, so programs are looked for on the PATH Passenger was given "
-            + $"({Environment.GetEnvironmentVariable("PATH")}): {shell} -l -i: {why}");
+    /// <summary>The log's word on a read that gave nothing: the shell, why, the PATH programs are then looked for on, and
+    /// the end of what the shell wrote to its errors (a file, null for none) on one line after ": ", each of its lines
+    /// masked first, since a profile may print its exports (traced, or echoed).</summary>
+    private static void Unread(string shell, string why, string? errors)
+    {
+        string said = errors is null ? string.Empty : Said(errors);
+        string path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        PassengerLog.WriteMasked(mask =>
+        {
+            string line = string.Join(' ', mask(said).Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+            return $"The login shell's environment was not read, so programs are looked for on the PATH Passenger was given ({path}): "
+                + $"{shell} -l -i: {why}{(line.Length == 0 ? string.Empty : $": {line}")}";
+        });
+    }
 
-    /// <summary>What the shell wrote to its errors, the end of it on one line after ": ", or nothing when it wrote none.</summary>
+    /// <summary>The end of what the shell wrote to its errors, as it wrote it, from a line's start (a line cut short could
+    /// not be told a secret's); nothing when it wrote none.</summary>
     private static string Said(string errors)
     {
         try
         {
             using FileStream read = new(errors, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            bool cut = read.Length > QuotedErrors;
             read.Seek(Math.Max(0, read.Length - QuotedErrors), SeekOrigin.Begin);
             using StreamReader text = new(read);
-            string said = string.Join(' ', text.ReadToEnd().Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
-            return said.Length == 0 ? string.Empty : $": {said}";
+            string said = text.ReadToEnd();
+            int first = said.IndexOf('\n', StringComparison.Ordinal);
+            return !cut ? said : first < 0 ? string.Empty : said[(first + 1)..];
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

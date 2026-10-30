@@ -248,6 +248,43 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    /// <summary>A login shell whose profile traces itself and then fails, as one may where Passenger starts from the Finder
+    /// or the Dock with no terminal: the log's line saying why its environment was not read quotes what it printed with
+    /// the secrets it exported masked, so a log attached to an issue holds none.</summary>
+    [Fact]
+    public async Task A_login_shell_that_fails_is_logged_with_the_secrets_its_profile_printed_masked()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Windows gives a program the user's whole environment, so no login shell is read there");
+            return;
+        }
+        const string Token = "ghp_PassengerTraced0123456789";
+        const string Key = "PassengerTracedAwsSecret0123";
+        string shell = Path.Combine(folder, "traced-shell");
+        await File.WriteAllTextAsync(shell, $"""
+            #!/bin/sh
+            echo "+/home/someone/.zprofile:3> export GITHUB_TOKEN={Token}" >&2
+            echo "+/home/someone/.zprofile:4> export AWS_SECRET_ACCESS_KEY={Key}" >&2
+            exit 1
+            """, TestContext.Current.CancellationToken);
+        File.SetUnixFileMode(shell, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        string state = TestFolders.Create("shell-state-");
+
+        // Started with no terminal, as from the Finder: only then is the login shell read.
+        (int code, string error) = await Run([".", "--size", "800x500", "--scale", "1", "--screenshot", "out.png"], state,
+            new Dictionary<string, string> { ["SHELL"] = shell }, unset: ["TERM"]);
+        Assert.True(code == 0, $"The screenshot with the failing login shell was not taken: exit code {code}\n{error}");
+        string log = await File.ReadAllTextAsync(Path.Combine(state, "logs", "passenger.log"), TestContext.Current.CancellationToken);
+        string? unread = log.Split('\n').FirstOrDefault(l => l.Contains("The login shell's environment was not read", StringComparison.Ordinal));
+        Assert.True(unread?.Contains($"{shell} -l -i: it exited with 1", StringComparison.Ordinal) == true,
+            $"The log does not say the login shell's environment was not read for its exit code 1:\n{log}");
+        string masked = global::Passenger.App.Containers.ContainerSecrets.Masked;
+        Assert.True(!log.Contains(Token, StringComparison.Ordinal) && !log.Contains(Key, StringComparison.Ordinal)
+            && unread.Contains($"GITHUB_TOKEN={masked}", StringComparison.Ordinal) && unread.Contains($"AWS_SECRET_ACCESS_KEY={masked}", StringComparison.Ordinal),
+            $"The log quotes the secrets the profile printed, for anyone the log is sent to:\n{unread}");
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_solution_or_project_given_as_a_double_click_gives_it_opens_as_the_workspace_and_neither_as_text()
@@ -280,8 +317,9 @@ public sealed class CommandLineTests : IDisposable
     private Task<(int Code, string Error)> Run(string arguments) => Run(arguments.Split(' '), settings);
 
     /// <summary>Passenger run in the test's folder with these arguments and its state in a folder of their own, with these
-    /// variables in its environment over the run's.</summary>
-    private async Task<(int Code, string Error)> Run(IReadOnlyList<string> arguments, string state, IReadOnlyDictionary<string, string>? environment = null)
+    /// variables in its environment over the run's, and those unset taken out of it.</summary>
+    private async Task<(int Code, string Error)> Run(IReadOnlyList<string> arguments, string state, IReadOnlyDictionary<string, string>? environment = null,
+        IReadOnlyList<string>? unset = null)
     {
         ProcessStartInfo start = new(Passenger)
         {
@@ -298,6 +336,10 @@ public sealed class CommandLineTests : IDisposable
         foreach ((string variable, string value) in environment ?? new Dictionary<string, string>())
         {
             start.Environment[variable] = value;
+        }
+        foreach (string variable in unset ?? [])
+        {
+            start.Environment.Remove(variable);
         }
         using Process process = Process.Start(start)!;
         process.StandardInput.Close();

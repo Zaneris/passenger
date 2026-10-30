@@ -102,7 +102,8 @@ public static class IdeErrors
             Flush();
         };
         Logger.Sink = new Sink();
-        Core.PassengerLog.Install(Write, Report);
+        // What a program said that a line quotes is masked by the one rule, however early the line was written.
+        Core.PassengerLog.Install(Write, Report, said => Containers.ContainerSecrets.InSaid(said));
         Core.UnawaitedWork.Install(Report);
         // No program's secret reaches the log or a console's echo of its command line, whoever started it.
         Core.ChildProcesses.Shown = Containers.ContainerSecrets.CommandLine;
