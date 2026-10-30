@@ -304,6 +304,49 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "the members moved");
     }
 
+    /// <summary>Pull Members Up of an override of the base's abstract member puts it in place of that declaration, made
+    /// virtual, the other class's override standing; one the base declares with a body of its own, or one using what stays
+    /// below, is refused with why, nothing changed, and goes once pulled up with what it uses, the project building.</summary>
+    [Fact]
+    public async Task An_agent_pulling_up_an_override_or_a_member_using_one_left_behind_finds_it_in_place_or_refused()
+    {
+        await TakeFolderAsync();
+        const string Shape = "namespace Shop;\n\npublic abstract class Shape\n{\n    public abstract string Label();\n\n    public virtual string Kind() => \"shape\";\n}\n";
+        const string Square = "namespace Shop;\n\npublic class Square : Shape\n{\n    public double Side { get; set; }\n\n    /// <summary>The square's label.</summary>\n"
+            + "    public override string Label() => \"square\";\n\n    public override string Kind() => \"square\";\n\n    public double Half() => Side / 2;\n}\n";
+        const string Circle = "namespace Shop;\n\npublic class Circle : Shape\n{\n    public override string Label() => \"circle\";\n}\n";
+        Shop(("Shape.cs", Shape), ("Square.cs", Square), ("Circle.cs", Circle));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        foreach ((string member, string said) in new[]
+        {
+            ("Kind", "'Shape' already declares Kind(): string"),
+            ("Half", "'Half' uses 'Side', which stays in 'Square': pull it up with 'Half'"),
+        })
+        {
+            CallToolResult refused = await Result(client, McpTools.Refactor, Place("pull_members_up", "Square.cs", Square, "class Squ", new { members = new[] { member } }));
+            Assert.True(refused.IsError == true && Text(refused).Contains(said, StringComparison.Ordinal), $"Pulling {member} up into Shape answered: {Text(refused)}");
+            Assert.Equal(Shape, File.ReadAllText(PathOf("Shape.cs")));
+            Assert.Equal(Square, File.ReadAllText(PathOf("Square.cs")));
+        }
+
+        JsonElement replaced = await Call(client, McpTools.Refactor, Place("pull_members_up", "Square.cs", Square, "class Squ", new { members = new[] { "Label" } }));
+        Assert.Equal(["Shape.cs changed", "Square.cs changed"], Files(replaced));
+        string shape = File.ReadAllText(PathOf("Shape.cs"));
+        string square = File.ReadAllText(PathOf("Square.cs"));
+        Assert.True(shape == Shape.Replace("    public abstract string Label();", "    /// <summary>The square's label.</summary>\n    public virtual string Label() => \"square\";", StringComparison.Ordinal)
+            && square == Square.Replace("    /// <summary>The square's label.</summary>\n    public override string Label() => \"square\";\n\n", string.Empty, StringComparison.Ordinal),
+            $"Pulling up Square's override of the abstract Label left Shape.cs so:\n{shape}\nand Square.cs so:\n{square}");
+
+        JsonElement pulled = await Call(client, McpTools.Refactor, Place("pull_members_up", "Square.cs", square, "class Squ", new { members = new[] { "Side", "Half" } }));
+        Assert.Equal(["Shape.cs changed", "Square.cs changed"], Files(pulled));
+        shape = File.ReadAllText(PathOf("Shape.cs"));
+        square = File.ReadAllText(PathOf("Square.cs"));
+        Assert.True(shape.Contains("    public double Side { get; set; }\n", StringComparison.Ordinal) && shape.Contains("    public double Half() => Side / 2;\n", StringComparison.Ordinal)
+            && !square.Contains("Side", StringComparison.Ordinal), $"Pulling Half up with the Side it uses left Shape.cs so:\n{shape}\nand Square.cs so:\n{square}");
+        await Compiles(client, "an override and a member with what it uses were pulled up");
+    }
+
     /// <summary>Extract Interface from a class whose type parameter a member uses is constrained by another the members do
     /// not name: the interface declares both, so the constraint it copies names a type parameter of its own.</summary>
     [Fact]
@@ -358,6 +401,55 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         (int line, int column) = LineColumn(counting, "Add(total, 3)", counting.IndexOf("Add(total, 3)", StringComparison.Ordinal));
         Assert.Equal([$"Counting.cs:{line}:{column}: a call of Tally.Add whose argument 3 cannot be passed by ref to 'amount', so it was left as it is"],
             byRef.GetProperty("notApplied").EnumerateArray().Select(n => n.GetString()));
+    }
+
+    /// <summary>Change Signature of an out parameter to ref or by value: a call passing a local with a value follows, and
+    /// one passing a local that may have none yet, which the new passing would read, is left as it was and named among
+    /// the uses left; once the agent gives each such local a value, the project builds.</summary>
+    [Fact]
+    public async Task An_agent_making_an_out_parameter_ref_or_by_value_hears_of_each_call_whose_local_may_have_no_value_yet()
+    {
+        await TakeFolderAsync();
+        const string Meter = "namespace Shop;\n\npublic static class Meter\n{\n    public static void Read(out int steps) => steps = 3;\n\n    public static void Count(out int steps) => steps = 4;\n}\n";
+        const string Reading = "namespace Shop;\n\npublic static class Reading\n{\n    public static int Run(bool twice)\n    {\n        int counted = 1;\n        Meter.Read(out counted);\n"
+            + "        int fresh;\n        Meter.Read(out fresh);\n        int maybe;\n        if (twice)\n        {\n            maybe = 2;\n        }\n        Meter.Count(out maybe);\n"
+            + "        Meter.Count(out counted);\n        return counted + fresh + maybe;\n    }\n}\n";
+        Shop(("Meter.cs", Meter), ("Reading.cs", Reading));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        string meter = Meter;
+        string reading = Reading;
+        foreach ((string method, string modifier, string was, string followed, string left, string passing) in new[]
+        {
+            ("void Rea", "ref", "Meter.Read(out counted)", "Meter.Read(ref counted)", "Read(out fresh)", "by ref"),
+            ("void Cou", "", "Meter.Count(out counted)", "Meter.Count(counted)", "Count(out maybe)", "by value"),
+        })
+        {
+            JsonElement changed = await Call(client, McpTools.Refactor, Place("change_signature", "Meter.cs", meter, method, new
+            {
+                parameters = new object[] { new { from = "steps", modifier } },
+            }));
+            string name = left[..left.IndexOf('(', StringComparison.Ordinal)];
+            string local = left[(left.IndexOf(' ', StringComparison.Ordinal) + 1)..^1];
+            (int line, int column) = LineColumn(reading, left, reading.IndexOf(left, StringComparison.Ordinal));
+            Assert.Equal([$"Reading.cs:{line}:{column}: a call of Meter.{name} whose argument {local} may have no value yet, which 'steps' passed {passing} would read, so it was left as it is"],
+                changed.GetProperty("notApplied").EnumerateArray().Select(n => n.GetString()));
+            reading = reading.Replace(was, followed, StringComparison.Ordinal);
+            Assert.Equal(reading, File.ReadAllText(PathOf("Reading.cs")));
+            meter = File.ReadAllText(PathOf("Meter.cs"));
+        }
+        Assert.Equal(Meter.Replace("Read(out int steps)", "Read(ref int steps)", StringComparison.Ordinal).Replace("Count(out int steps)", "Count(int steps)", StringComparison.Ordinal), meter);
+
+        foreach ((string oldText, string newText) in new[]
+        {
+            ("int fresh;\n        Meter.Read(out fresh);", "int fresh = 0;\n        Meter.Read(ref fresh);"),
+            ("int maybe;", "int maybe = 0;"),
+            ("Meter.Count(out maybe);", "Meter.Count(maybe);"),
+        })
+        {
+            await Call(client, McpTools.Edit, new() { ["path"] = "Reading.cs", ["oldText"] = oldText, ["newText"] = newText });
+        }
+        await Compiles(client, "out was made ref and by value, and each local left was given a value");
     }
 
     /// <summary>Change Signature swapping two parameters of a method called with a call for each, and with plain values:

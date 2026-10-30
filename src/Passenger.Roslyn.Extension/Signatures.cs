@@ -714,6 +714,10 @@ internal static class Signatures
                     {
                         return (null, $"whose argument {argument.Expression} cannot be passed {Passing(passing)} to '{parameter.Name}'");
                     }
+                    if (passing != RefKind.Out && method.Parameters[parameter.From].RefKind == RefKind.Out && Unassigned(model, argument.Expression, cancel))
+                    {
+                        return (null, $"whose argument {argument.Expression} may have no value yet, which '{parameter.Name}' passed {Passing(passing)} would read");
+                    }
                     keyword = given;
                 }
                 foreach (int index in passed)
@@ -831,6 +835,19 @@ internal static class Signatures
         IPropertyReferenceOperation property => property.Property.ReturnsByRef || (!written && property.Property.ReturnsByRefReadonly),
         _ => false,
     };
+
+    /// <summary>Whether an argument is a local or parameter not definitely assigned where the call passes it, which only an
+    /// out parameter may take.</summary>
+    private static bool Unassigned(SemanticModel model, ExpressionSyntax expression, CancellationToken cancel)
+    {
+        ISymbol? variable = model.GetOperation(expression, cancel) switch
+        {
+            ILocalReferenceOperation local => local.Local,
+            IParameterReferenceOperation parameter => parameter.Parameter,
+            _ => null,
+        };
+        return variable is not null && model.AnalyzeDataFlow(expression) is { Succeeded: true } flow && !flow.DefinitelyAssignedOnEntry.Contains(variable, SymbolEqualityComparer.Default);
+    }
 
     private static BaseArgumentListSyntax? ArgumentsOf(SyntaxNode call) => call switch
     {
