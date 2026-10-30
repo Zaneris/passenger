@@ -1417,6 +1417,29 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>An element renamed to a C# keyword is refused, saying why, and neither the XAML nor the code-behind's use of
+    /// its field changes: the generated field and that use would not be C#.</summary>
+    [AvaloniaFact]
+    public void An_elements_name_is_not_renamed_to_a_csharp_keyword_and_its_files_are_left_as_they_were()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
+        OpenDocument behind = window.EditorArea.Active!;
+        window.OpenFile(app.PathOf("MainWindow.axaml"));
+        Ui.Settle();
+        OpenDocument view = window.EditorArea.Active!;
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "<Button Name=\"G");
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.Renaming == "Go", "the rename box on the button's name");
+        window.KeyTextInput("class");
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+
+        Assert.Equal("'class' is a C# keyword, not a name for the code-behind's field", window.Status);
+        Assert.True(view.Text.Snapshot.ToString() == Gallery.Window && behind.Text.Snapshot.ToString() == Gallery.CodeBehind,
+            $"The rename to class changed the files, so the code-behind writes class.Content, which is not C#:\n{view.Text.Snapshot}\n{behind.Text.Snapshot}");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_key_one_theme_variant_lacks_is_warned_of_where_defined_and_used_and_the_fix_adds_it_to_that_variant()
     {

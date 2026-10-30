@@ -687,13 +687,17 @@ internal sealed partial class XamlAssist : LanguageAssist
     }
 
     /// <summary>An element's name renamed where the file names it and where its code-behind uses its field, as one command
-    /// undone whole: the files it changed, once written (none where the name cannot be a field's or a file could not be
-    /// written), and the words for it; null when the project's XAML is not read.</summary>
+    /// undone whole: the files it changed, once written (none where the name cannot be a field's, a C# keyword among them,
+    /// or a file could not be written), and the words for it; null when the project's XAML is not read.</summary>
     internal async Task<(IReadOnlyList<string> Files, string Said)?> XamlRenameAsync(XamlDocument xaml, string old, string name)
     {
         if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name))
         {
             return ([], $"'{name}' cannot name a field in the code-behind");
+        }
+        if (Microsoft.CodeAnalysis.CSharp.SyntaxFacts.GetKeywordKind(name) != Microsoft.CodeAnalysis.CSharp.SyntaxKind.None)
+        {
+            return ([], $"'{name}' is a C# keyword, not a name for the code-behind's field");
         }
         using Asked asked = WorkspaceEdits.Track(context.Editors);
         XamlFile? file = await xaml.FileAsync();
