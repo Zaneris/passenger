@@ -1,11 +1,12 @@
 using System.Globalization;
 using System.IO.Compression;
+using System.Text;
 using Passenger.App.Tables;
 
 namespace Passenger.UnitTests.Tables;
 
 /// <summary>A workbook's sheet read for the table view: a date written as one shown as the date it is in either date
-/// system and whatever its style.</summary>
+/// system and whatever its style, and a sheet's cells kept at their columns, the empty ones between made only as drawn.</summary>
 public class WorkbookTests
 {
     private const string Ns = "xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"";
@@ -34,6 +35,40 @@ public class WorkbookTests
         Table sheet = Sheet(Book("<row r=\"1\"><c r=\"A1\" t=\"d\" s=\"1\"><v>2023-03-15</v></c><c r=\"B1\" t=\"d\"><v>2023-03-15</v></c></row>", date1904: false, DateStyles));
         Assert.Equal("2023-03-15", sheet.Cell(0, 0));
         Assert.Equal(new DateTime(2023, 3, 15).ToString("d", CultureInfo.CurrentCulture), sheet.Cell(0, 1));
+    }
+
+    [Fact]
+    public void A_small_workbook_holding_a_cell_at_the_last_column_of_each_row_reads_in_a_few_megabytes()
+    {
+        StringBuilder rows = new();
+        for (int row = 1; row <= 200; row++)
+        {
+            rows.Append(CultureInfo.InvariantCulture, $"<row r=\"{row}\"><c r=\"XFD{row}\"><v>{row}</v></c></row>");
+        }
+        byte[] book = Book(rows.ToString());
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Table sheet = Sheet(book);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(allocated < 4 << 20,
+            $"Reading a {book.Length} byte workbook of 200 cells allocated {allocated >> 20} MB: such a file shared to a person would take the window's memory");
+        Assert.Equal((200, 16384), (sheet.RowCount, sheet.ColumnCount));
+        Assert.Equal("200", sheet.Cell(199, 16383));
+        Assert.Equal(string.Empty, sheet.Cell(199, 16382));
+        Assert.False(sheet.IsNumber(0, 0), "A column a row has no cell in should be empty");
+    }
+
+    [Fact]
+    public void A_rows_cells_show_at_their_columns_with_the_gaps_between_empty_and_one_out_of_order_left_out()
+    {
+        Table sheet = Sheet(Book("<row r=\"1\"><c r=\"B1\" t=\"inlineStr\"><is><t>b</t></is></c><c r=\"D1\"><v>4</v></c><c><v>5</v></c><c r=\"C1\"><v>3</v></c></row>"
+            + "<row r=\"3\"><c><v>1</v></c><c><v>2</v></c><c r=\"F3\"/></row>"));
+
+        Assert.Equal((3, 6), (sheet.RowCount, sheet.ColumnCount));
+        Assert.Equal(["", "b", "", "4", "5", ""], Enumerable.Range(0, 6).Select(c => sheet.Cell(0, c)));
+        Assert.Equal(["", "", "", "", "", ""], Enumerable.Range(0, 6).Select(c => sheet.Cell(1, c)));
+        Assert.Equal(["1", "2", "", "", "", ""], Enumerable.Range(0, 6).Select(c => sheet.Cell(2, c)));
+        Assert.True(sheet.IsNumber(0, 3) && !sheet.IsNumber(0, 2) && !sheet.IsNumber(0, 1), "Only the numbers' cells should be drawn as numbers");
     }
 
     private static Table Sheet(byte[] book) => Workbook.Read("book.xlsx", () => new MemoryStream(book, writable: false)).ReadSheet(0);

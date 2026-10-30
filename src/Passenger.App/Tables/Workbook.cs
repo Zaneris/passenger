@@ -92,7 +92,7 @@ public sealed class Workbook
         return new Workbook(name, open, sheets, strings, formats, from1904);
     }
 
-    /// <summary>One sheet's cells, from A1 to the last cell it has.</summary>
+    /// <summary>One sheet's cells, from A1 to the last cell it has, each row holding only the cells it has.</summary>
     public SheetTable ReadSheet(int index)
     {
         using ZipArchive zip = Zip(open);
@@ -133,20 +133,15 @@ public sealed class Workbook
             else if (reader.LocalName == "c" && inRow)
             {
                 column = reader.GetAttribute("r") is { } at ? ColumnOf(at) : column + 1;
-                if (column is < 0 or >= LastColumn)
+                // Cells come in order; one at or before the row's last, or past Excel's last column, is no cell of the row.
+                if (column is < 0 or >= LastColumn || (cells.Count > rows[row] && cells[^1].Column >= column))
                 {
                     continue;
                 }
                 string? type = reader.GetAttribute("t");
                 // Held at the styles' count, so a damaged file's vast style never overflows a cell's kind.
                 int style = int.TryParse(reader.GetAttribute("s"), NumberStyles.None, CultureInfo.InvariantCulture, out int s) ? Math.Min(s, formats.Length) : 0;
-                SheetCell cell = Cell(reader, type, style);
-                int start = rows[row];
-                while (cells.Count - start < column)
-                {
-                    cells.Add(default);
-                }
-                cells.Add(cell);
+                cells.Add(Cell(reader, column, type, style));
                 columns = Math.Max(columns, column + 1);
             }
         }
@@ -160,11 +155,11 @@ public sealed class Workbook
     }
 
     /// <summary>A cell's value as its type says, read from the reader on its <c>c</c> element.</summary>
-    private SheetCell Cell(XmlReader reader, string? type, int style)
+    private SheetCell Cell(XmlReader reader, int column, string? type, int style)
     {
         if (reader.IsEmptyElement)
         {
-            return default;
+            return SheetCell.Of(column, null);
         }
         string? value = null;
         StringBuilder? inline = null;
@@ -192,13 +187,13 @@ public sealed class Workbook
         }
         return type switch
         {
-            "s" => int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int index) && index < strings.Length ? SheetCell.Of(strings[index]) : default,
-            "inlineStr" => SheetCell.Of(inline?.ToString()),
-            "str" or "e" => SheetCell.Of(value),
-            "b" => SheetCell.Of(value is null ? null : value == "1" ? "TRUE" : "FALSE"),
+            "s" => SheetCell.Of(column, int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int index) && index < strings.Length ? strings[index] : null),
+            "inlineStr" => SheetCell.Of(column, inline?.ToString()),
+            "str" or "e" => SheetCell.Of(column, value),
+            "b" => SheetCell.Of(column, value is null ? null : value == "1" ? "TRUE" : "FALSE"),
             "d" => DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime date)
-                ? SheetCell.Date(date.ToOADate() - (from1904 ? CellFormat.Day1904 : 0), style) : SheetCell.Of(value),
-            _ => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) ? SheetCell.Number(number, style) : SheetCell.Of(value),
+                ? SheetCell.Date(column, date.ToOADate() - (from1904 ? CellFormat.Day1904 : 0), style) : SheetCell.Of(column, value),
+            _ => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) ? SheetCell.Number(column, number, style) : SheetCell.Of(column, value),
         };
     }
 
@@ -319,9 +314,9 @@ public sealed class Workbook
         XmlReader.Create(entry.Open(), new XmlReaderSettings { IgnoreComments = true, IgnoreWhitespace = true, DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, CloseInput = true });
 }
 
-/// <summary>A sheet's cell: nothing (the default), its text, or a number with the cell style that formats it, which may
-/// be a date written as one (its serial in the workbook's date system).</summary>
-public readonly record struct SheetCell(string? Text, double Value, int Kind)
+/// <summary>A sheet's cell at its column: nothing, its text, or a number with the cell style that formats it, which may be
+/// a date written as one (its serial in the workbook's date system).</summary>
+public readonly record struct SheetCell(int Column, string? Text, double Value, int Kind)
 {
     /// <summary>A text cell's <see cref="Kind"/>; a number's is its style plus one, a date's its style plus two negated,
     /// and an empty cell's 0.</summary>
@@ -334,14 +329,15 @@ public readonly record struct SheetCell(string? Text, double Value, int Kind)
 
     public int Style => IsDate ? -Kind - 2 : Kind - 1;
 
-    public static SheetCell Of(string? text) => text is null ? default : new SheetCell(text, 0, TextKind);
+    public static SheetCell Of(int column, string? text) => new(column, text, 0, text is null ? 0 : TextKind);
 
-    public static SheetCell Number(double value, int style) => new(null, value, style + 1);
+    public static SheetCell Number(int column, double value, int style) => new(column, null, value, style + 1);
 
-    public static SheetCell Date(double serial, int style) => new(null, serial, -style - 2);
+    public static SheetCell Date(int column, double serial, int style) => new(column, null, serial, -style - 2);
 }
 
-/// <summary>A sheet's cells as rows, each row's cells in one array; a number formatted only when it is drawn.</summary>
+/// <summary>A sheet's cells as rows, each row's cells in one array in their columns' order, so a row costs the cells it has
+/// and a column it has none in is empty only as it is drawn; a number formatted only when it is drawn.</summary>
 public sealed class SheetTable(Workbook book, SheetCell[] cells, int[] rows, int columns) : Table
 {
     public override int RowCount => rows.Length - 1;
@@ -350,8 +346,8 @@ public sealed class SheetTable(Workbook book, SheetCell[] cells, int[] rows, int
 
     public override string Cell(int row, int column)
     {
-        int at = rows[row] + column;
-        if (at >= rows[row + 1])
+        int at = At(row, column);
+        if (at < 0)
         {
             return string.Empty;
         }
@@ -361,7 +357,38 @@ public sealed class SheetTable(Workbook book, SheetCell[] cells, int[] rows, int
 
     public override bool IsNumber(int row, int column)
     {
-        int at = rows[row] + column;
-        return at < rows[row + 1] && cells[at].IsNumber;
+        int at = At(row, column);
+        return at >= 0 && cells[at].IsNumber;
+    }
+
+    /// <summary>Where a row's cell in a column is among the cells, or -1 where the row has none there.</summary>
+    private int At(int row, int column)
+    {
+        int low = rows[row];
+        int high = rows[row + 1] - 1;
+        // A row with no gap before the column holds it at its own place.
+        int direct = low + column;
+        if (direct <= high && cells[direct].Column == column)
+        {
+            return direct;
+        }
+        while (low <= high)
+        {
+            int middle = low + ((high - low) / 2);
+            int found = cells[middle].Column;
+            if (found == column)
+            {
+                return middle;
+            }
+            if (found < column)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle - 1;
+            }
+        }
+        return -1;
     }
 }
