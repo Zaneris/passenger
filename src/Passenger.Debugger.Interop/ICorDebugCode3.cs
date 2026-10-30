@@ -24,7 +24,7 @@ public partial interface ICorDebugCode3
     /// <para>The IL offset. It must be a function call site or the function call will fail.</para>
     /// </param>
     /// <param name="bufferSize">
-    /// <para>The number of bytes available to store <c>pOffsets</c>.</para>
+    /// <para>The number of offsets <c>pOffsets</c> holds: its length in elements, not in bytes.</para>
     /// </param>
     /// <param name="pFetched">
     /// <para>A pointer to the number of offsets actually returned. Usually, its value is 1, but a single IL instruction can map to multiple <c>CALL</c> assembly instructions.</para>
