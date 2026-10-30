@@ -370,7 +370,7 @@ public static class ContainerTools
         foreach (string folder in (string[])[Mounted, CopiedInto.GetValueOrDefault(container) ?? Copied])
         {
             string executable = $"{folder}/{Executable}";
-            ChildResult said = await engine.RunAsync(["exec", .. Unheld, container, executable, "version"], cancel: cancel).ConfigureAwait(false);
+            ChildResult said = await engine.RunAsync(["exec", .. Unheld, container, executable, Profiler.ContainerToolsWords.Version], cancel: cancel).ConfigureAwait(false);
             if (said.Succeeded && said.Output.Trim() == Product.Version)
             {
                 return executable;
@@ -395,7 +395,7 @@ public static class ContainerTools
             throw new ContainerToolsException($"Could not copy Passenger's container tools into {container}: {ContainerEngine.Said(copied)}");
         }
         string executable = $"{Copied}/{Executable}";
-        ChildResult said = await engine.RunAsync(["exec", .. Unheld, container, executable, "version"], cancel: cancel).ConfigureAwait(false);
+        ChildResult said = await engine.RunAsync(["exec", .. Unheld, container, executable, Profiler.ContainerToolsWords.Version], cancel: cancel).ConfigureAwait(false);
         if (said.Output.Trim() != version)
         {
             throw new ContainerToolsException(said.Succeeded ? Mismatch(folder, said.Output.Trim())
@@ -421,7 +421,7 @@ public static class ContainerTools
         ChildResult listed;
         try
         {
-            listed = await engine.RunAsync(["exec", .. Unheld, container, executable, "processes"], cancel: cancel, mostOutput: MostProcesses).ConfigureAwait(false);
+            listed = await engine.RunAsync(["exec", .. Unheld, container, executable, Profiler.ContainerToolsWords.Processes], cancel: cancel, mostOutput: MostProcesses).ConfigureAwait(false);
         }
         catch (ChildOutputException overran)
         {
@@ -475,7 +475,7 @@ public static class ContainerTools
         {
             words.AddRange(["-e", $"{Dap.AdapterEnvironment.EvaluationTimeoutVariable}={limit}"]);
         }
-        return [.. words, container, executable, "dap", .. adapterArguments];
+        return [.. words, container, executable, Profiler.ContainerToolsWords.Dap, .. adapterArguments];
     }
 
     /// <summary>A mode of the tools in a container, over docker exec's standard input and output: the profiler's

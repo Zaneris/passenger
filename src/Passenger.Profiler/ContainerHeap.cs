@@ -6,7 +6,7 @@ using Passenger.Core;
 
 namespace Passenger.Profiler;
 
-/// <summary>A run's memory snapshots of a program in a container, taken there by Passenger's tools (<c>heap</c>,
+/// <summary>A run's memory snapshots of a program in a container, taken there by Passenger's tools (<see cref="ContainerToolsWords.Heap"/>,
 /// started with the first snapshot and kept for the run), since only there does the container's own DAC load; each
 /// comes back whole over docker exec (<see cref="HeapWire"/>). One at a time; its end ends the tools there.</summary>
 internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncDisposable
@@ -122,7 +122,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
         // A snapshot of the tools started again follows none of those before: numbered after them, compared with none.
         before = last;
         Volatile.Write(ref lastError, null);
-        ProcessStartInfo start = place.Tools(["heap", "--pid", processId.ToString(CultureInfo.InvariantCulture)]);
+        ProcessStartInfo start = place.Tools([ContainerToolsWords.Heap, ContainerToolsWords.Pid, processId.ToString(CultureInfo.InvariantCulture)]);
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
@@ -135,14 +135,13 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
             throw new InvalidOperationException($"Could not start Passenger's tools in {place.Where} for a memory snapshot: {error.Message}", error);
         }
         Process started = tools;
-        // Not held: read for as long as the tools run.
-        errorsRead = BackgroundWork.Unheld(() => ErrorLines.ReadAsync(started.StandardError, line =>
+        errorsRead = ErrorLines.Hear(started, line =>
         {
             if (line.Trim() is { Length: > 0 } said)
             {
                 Volatile.Write(ref lastError, said);
             }
-        }));
+        });
         return started;
     }
 
@@ -199,46 +198,14 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
     }
 }
 
-/// <summary>What Passenger's tools in a container write to their errors, read line by line as it comes, each line cut at
-/// <see cref="Longest"/> characters: a container writes there what it likes, and the IDE keeps a line of it at most.</summary>
+/// <summary>What Passenger's tools in a container write to their errors, heard a line at a time as it comes, each line cut
+/// at <see cref="Longest"/> characters: a container writes there what it likes, and the IDE keeps a line of it at most.</summary>
 internal static class ErrorLines
 {
     public const int Longest = 2048;
 
-    /// <summary>Reads every line to the end, giving each to <paramref name="line"/>, its line break taken off.</summary>
-    public static async Task ReadAsync(TextReader errors, Action<string> line)
-    {
-        char[] buffer = new char[4096];
-        StringBuilder current = new();
-        try
-        {
-            int read;
-            while ((read = await errors.ReadAsync(buffer).ConfigureAwait(false)) > 0)
-            {
-                for (int i = 0; i < read; i++)
-                {
-                    char c = buffer[i];
-                    if (c == '\n')
-                    {
-                        line(current.ToString().TrimEnd('\r'));
-                        current.Clear();
-                    }
-                    else if (current.Length < Longest)
-                    {
-                        current.Append(c);
-                    }
-                }
-            }
-        }
-        catch (Exception gone) when (gone is IOException or ObjectDisposedException)
-        {
-            // The tools were ended under the read.
-        }
-        if (current.Length > 0)
-        {
-            line(current.ToString().TrimEnd('\r'));
-        }
-    }
+    /// <summary>Hears the tools' errors to their end, each line given to <paramref name="line"/>, its end taken off.</summary>
+    public static Task Hear(Process tools, Action<string> line) => ChildProcesses.Hear(tools, errors: line, longest: Longest);
 
     /// <summary>The last line of a text that says something, cut at <see cref="Longest"/>; null for none.</summary>
     public static string? Last(string text) =>

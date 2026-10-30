@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Net.Sockets;
 using Microsoft.Diagnostics.NETCore.Client;
 using Passenger.Core;
 
@@ -45,8 +44,7 @@ public static class InContainer
                 await HeldStart.AtPortAsync(process, async client => session = await StartAsync(client).ConfigureAwait(false)).ConfigureAwait(false);
             }
         }
-        catch (Exception error) when (error is DiagnosticsClientException or IOException or UnauthorizedAccessException or SocketException or TimeoutException
-            or PlatformNotSupportedException or ArgumentException or InvalidOperationException)
+        catch (Exception error) when (DiagnosticsFailures.Of(error))
         {
             await said.WriteLineAsync(Unreachable(processId, error)).ConfigureAwait(false);
             return 1;
@@ -69,15 +67,7 @@ public static class InContainer
             Task ended = EndOfAsync(input);
             if (await Task.WhenAny(copying, ended).ConfigureAwait(false) == ended)
             {
-                using CancellationTokenSource limit = new(TimeSpan.FromSeconds(30));
-                try
-                {
-                    await session.StopAsync(limit.Token).ConfigureAwait(false);
-                }
-                catch (Exception error) when (error is ServerNotAvailableException or IOException or TimeoutException or OperationCanceledException)
-                {
-                    // The program ended as the run did; its stream is closed anyway.
-                }
+                await EventPipeStops.StopAsync(session, TimeSpan.FromSeconds(30)).ConfigureAwait(false);
                 if (await Task.WhenAny(copying, Task.Delay(TimeSpan.FromSeconds(60))).ConfigureAwait(false) != copying)
                 {
                     await said.WriteLineAsync("The program's runtime did not finish the run's rundown in 60 s: the trace may name fewer methods").ConfigureAwait(false);
@@ -157,8 +147,7 @@ public static class InContainer
             {
                 HeapWire.WriteIntoOutput(output, only.Message);
             }
-            catch (Exception error) when (error is InvalidOperationException or IOException or ServerNotAvailableException or DiagnosticsClientException
-                or TimeoutException or HeapUnreadableException or UnauthorizedAccessException or SocketException)
+            catch (Exception error) when (error is HeapUnreadableException || DiagnosticsFailures.Of(error))
             {
                 HeapWire.WriteFailure(output, error is ServerNotAvailableException ? Unreachable(processId, error) : error.Message);
             }

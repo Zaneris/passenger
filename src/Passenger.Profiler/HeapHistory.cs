@@ -154,14 +154,17 @@ internal sealed class HeapHistory : IAsyncDisposable
         }
         finally
         {
-            try
+            // A stop not taken (the program gone) leaves no samples to wait for: the dump is placed by the collections alone.
+            if (await EventPipeStops.StopAsync(sampling, TimeSpan.FromSeconds(30)))
             {
-                await sampling.StopAsync(CancellationToken.None);
-                await reading.WaitAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
-            }
-            catch (Exception error) when (error is ServerNotAvailableException or IOException or TimeoutException)
-            {
-                // The program ended, or its samples never came: the dump is placed by the collections alone.
+                try
+                {
+                    await reading.WaitAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
+                }
+                catch (Exception error) when (error is IOException or TimeoutException)
+                {
+                    // Its samples never came: the dump is placed by the collections alone.
+                }
             }
             sampling.Dispose();
         }
@@ -441,14 +444,7 @@ internal sealed class HeapHistory : IAsyncDisposable
     {
         if (session is { } listened)
         {
-            try
-            {
-                await listened.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
-            }
-            catch (Exception error) when (error is ServerNotAvailableException or IOException or TimeoutException or ObjectDisposedException)
-            {
-                // The program has ended, and the session with it.
-            }
+            await EventPipeStops.StopAsync(listened, TimeSpan.FromSeconds(5));
             listened.Dispose();
         }
         if (listening is not null)

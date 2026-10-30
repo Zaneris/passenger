@@ -1,8 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.Tracing;
-using System.Globalization;
-using System.Net.Sockets;
 using Microsoft.Diagnostics.NETCore.Client;
 using Passenger.Core;
 
@@ -176,8 +174,8 @@ public sealed class ProfilingSession : IAsyncDisposable
         catch (OperationCanceledException)
         {
         }
-        // ArgumentException: a port's path past what a Unix socket's address holds (104 bytes on macOS).
-        catch (Exception error) when (error is IOException or SocketException or DiagnosticsClientException or UnauthorizedAccessException or ArgumentException)
+        // ArgumentException among them: a port's path past what a Unix socket's address holds (104 bytes on macOS).
+        catch (Exception error) when (DiagnosticsFailures.Of(error))
         {
             await FailAsync();
             throw new ProfilingException($"The profiler could not listen for {target.Name}: {error.Message}", error);
@@ -203,7 +201,7 @@ public sealed class ProfilingSession : IAsyncDisposable
             client.ResumeRuntime();
             return new ProfilingSession(process, connector, session, copying, reading, trace, port);
         }
-        catch (Exception error) when (error is DiagnosticsClientException or IOException or UnauthorizedAccessException or SocketException or TimeoutException)
+        catch (Exception error) when (DiagnosticsFailures.Of(error))
         {
             string? said = await SaidLastAsync();
             string why = process.HasExited
@@ -288,9 +286,9 @@ public sealed class ProfilingSession : IAsyncDisposable
             }
             return new ProfilingSession(process, null, session, Copy(session, trace), Task.CompletedTask, trace, null);
         }
-        catch (Exception error) when (error is DiagnosticsClientException or IOException or UnauthorizedAccessException or SocketException or TimeoutException)
+        catch (Exception error) when (DiagnosticsFailures.Of(error))
         {
-            bool gone = process.HasExited;
+            bool gone = !DotnetProcesses.Runs(processId);
             bool reached = session is not null;
             session?.Dispose();
             process.Dispose();
@@ -325,45 +323,17 @@ public sealed class ProfilingSession : IAsyncDisposable
         {
             throw new ProfilingException($"Could not profile {name}: no snapshot can be written in {folder}: {error.Message}", error);
         }
-        List<string> words = ["trace", "--pid", processId.ToString(CultureInfo.InvariantCulture)];
-        if (resume)
-        {
-            words.Add("--resume");
-        }
-        Process tools;
+        ContainerTrace recording;
         try
         {
-            ProcessStartInfo start = place.Tools(words);
-            start.RedirectStandardInput = true;
-            start.RedirectStandardOutput = true;
-            start.RedirectStandardError = true;
-            tools = ChildProcesses.Start(start);
-        }
-        catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException)
-        {
-            Unmade(file, trace);
-            throw new ProfilingException($"Could not start Passenger's tools in {place.Where} to profile {name}: {error.Message}", error);
+            recording = await ContainerTrace.StartAsync(place, processId, resume, requests: false, $"profile {name}", $"recording {name}", cancellation).ConfigureAwait(false);
         }
         catch
         {
             Unmade(file, trace);
             throw;
         }
-        TaskCompletionSource recording = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        // The last line the tools said, all that is kept of what a container writes there.
-        string? said = null;
-        // Not held: read for as long as the tools run.
-        Task reading = BackgroundWork.Unheld(() => ErrorLines.ReadAsync(tools.StandardError, line =>
-        {
-            if (line.Trim() == InContainer.Recording)
-            {
-                recording.TrySetResult();
-            }
-            else if (line.Trim() is { Length: > 0 } words)
-            {
-                Volatile.Write(ref said, words);
-            }
-        }), CancellationToken.None);
+        Process tools = recording.Tools;
         // Not held: copied for as long as the recording lasts.
         Task copying = BackgroundWork.Unheld(async () =>
         {
@@ -379,30 +349,7 @@ public sealed class ProfilingSession : IAsyncDisposable
                 }
             }
         }, CancellationToken.None);
-        using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        limit.CancelAfter(TimeSpan.FromSeconds(30));
-        Task waited = await Task.WhenAny(recording.Task, tools.WaitForExitAsync(CancellationToken.None), Task.Delay(Timeout.Infinite, limit.Token)).ConfigureAwait(false);
-        if (waited == recording.Task)
-        {
-            return new ProfilingSession(tools, null, null, copying, reading, trace, null, processId, place);
-        }
-        bool ended = tools.HasExited;
-        ChildProcesses.Kill(tools);
-        await Task.WhenAny(Task.WhenAll(reading, copying), Task.Delay(TimeSpan.FromSeconds(2))).ConfigureAwait(false);
-        tools.Dispose();
-        try
-        {
-            // Nothing was recorded: no snapshot to list.
-            File.Delete(trace);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-        }
-        cancellation.ThrowIfCancellationRequested();
-        string? why = Volatile.Read(ref said);
-        throw new ProfilingException(ended
-            ? why ?? $"Passenger's tools in {place.Where} could not profile {name}"
-            : $"Passenger's tools in {place.Where} did not begin recording {name} in 30 s");
+        return new ProfilingSession(tools, null, null, copying, recording.Heard, trace, null, processId, place);
     }
 
     /// <summary>A trace's file let go and deleted, its recording never begun: no snapshot to list.</summary>
@@ -464,8 +411,7 @@ public sealed class ProfilingSession : IAsyncDisposable
                 await late.DisposeAsync();
             }
         }
-        catch (Exception error) when (error is OperationCanceledException or IOException or SocketException or DiagnosticsClientException or ObjectDisposedException
-            or ArgumentException)
+        catch (Exception error) when (error is OperationCanceledException || DiagnosticsFailures.Of(error))
         {
             // What failed was the listening itself: there is nothing more of it to end.
         }
@@ -501,16 +447,7 @@ public sealed class ProfilingSession : IAsyncDisposable
             }
             else
             {
-                // A program gone mid-request would leave the port's endpoint waiting for its runtime for good.
-                using CancellationTokenSource limit = new(TimeSpan.FromSeconds(10));
-                try
-                {
-                    await session.StopAsync(limit.Token);
-                }
-                catch (Exception error) when (error is ServerNotAvailableException or IOException or TimeoutException or OperationCanceledException)
-                {
-                    // The program ended as the run did; its stream is closed anyway.
-                }
+                await EventPipeStops.StopAsync(session, TimeSpan.FromSeconds(10));
             }
         }
         try

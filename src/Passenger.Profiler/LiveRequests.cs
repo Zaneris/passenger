@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.Tracing;
 using System.Globalization;
@@ -117,68 +116,25 @@ public sealed class LiveRequests : IAsyncDisposable
         {
             session = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(Providers, requestRundown: false, circularBufferMB: 64, cancel);
         }
-        catch (Exception error) when (error is DiagnosticsClientException or IOException or UnauthorizedAccessException or System.Net.Sockets.SocketException or TimeoutException)
+        catch (Exception error) when (DiagnosticsFailures.Of(error))
         {
             throw new ProfilingException($"Its requests could not be followed: {error.Message}", error);
         }
         return Hear(session.EventStream, heard, async () =>
         {
-            try
-            {
-                await session.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
-            }
-            catch (Exception error) when (error is DiagnosticsClientException or IOException or ObjectDisposedException or TimeoutException or ServerNotAvailableException)
-            {
-                // A program gone has nothing left to stop.
-            }
+            await EventPipeStops.StopAsync(session, TimeSpan.FromSeconds(5));
             session.Dispose();
         });
     }
 
-    /// <summary>Starts hearing a program in a container (<paramref name="place"/>) through Passenger's tools there
-    /// (<c>trace --requests</c>, the same session at the program's own diagnostic port, its stream on their output).
-    /// Tools that cannot start or reach it are a <see cref="ProfilingException"/> with their last word.</summary>
+    /// <summary>Starts hearing a program in a container (<paramref name="place"/>) through Passenger's tools there (their
+    /// <see cref="ContainerToolsWords.Trace"/> with <see cref="ContainerToolsWords.Requests"/>: the same session at the
+    /// program's own diagnostic port, its stream on their output). Tools that cannot start or reach it are a
+    /// <see cref="ProfilingException"/> with their last word.</summary>
     public static async Task<LiveRequests> AttachAsync(int processId, ProfilePlace place, Action<WebEvent> heard, CancellationToken cancel = default)
     {
-        Process tools;
-        try
-        {
-            ProcessStartInfo start = place.Tools(["trace", "--pid", processId.ToString(CultureInfo.InvariantCulture), "--requests"]);
-            start.RedirectStandardInput = true;
-            start.RedirectStandardOutput = true;
-            start.RedirectStandardError = true;
-            tools = ChildProcesses.Start(start);
-        }
-        catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException)
-        {
-            throw new ProfilingException($"Could not start Passenger's tools in {place.Where} to follow its requests: {error.Message}", error);
-        }
-        TaskCompletionSource recording = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        string? said = null;
-        // Not held: read for as long as the tools run.
-        Task reading = BackgroundWork.Unheld(() => ErrorLines.ReadAsync(tools.StandardError, line =>
-        {
-            if (line.Trim() == InContainer.Recording)
-            {
-                recording.TrySetResult();
-            }
-            else if (line.Trim() is { Length: > 0 } words)
-            {
-                Volatile.Write(ref said, words);
-            }
-        }), CancellationToken.None);
-        using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(cancel);
-        limit.CancelAfter(TimeSpan.FromSeconds(30));
-        if (await Task.WhenAny(recording.Task, tools.WaitForExitAsync(CancellationToken.None), Task.Delay(Timeout.Infinite, limit.Token)) != recording.Task)
-        {
-            bool ended = tools.HasExited;
-            ChildProcesses.Kill(tools);
-            tools.Dispose();
-            cancel.ThrowIfCancellationRequested();
-            throw new ProfilingException(ended
-                ? Volatile.Read(ref said) ?? $"Passenger's tools in {place.Where} could not follow its requests"
-                : $"Passenger's tools in {place.Where} did not begin following its requests in 30 s");
-        }
+        ContainerTrace recording = await ContainerTrace.StartAsync(place, processId, resume: false, requests: true, "follow its requests", "following its requests", cancel);
+        Process tools = recording.Tools;
         return Hear(tools.StandardOutput.BaseStream, heard, async () =>
         {
             // Their input's end stops the session there; tools that do not end are ended.
@@ -194,7 +150,7 @@ public sealed class LiveRequests : IAsyncDisposable
             {
                 ChildProcesses.Kill(tools);
             }
-            await Task.WhenAny(reading, Task.Delay(TimeSpan.FromSeconds(2)));
+            await Task.WhenAny(recording.Heard, Task.Delay(TimeSpan.FromSeconds(2)));
             tools.Dispose();
         });
     }

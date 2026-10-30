@@ -905,6 +905,38 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         }
     }
 
+    /// <summary>Get Snapshot of a program attached to whose runtime answers the stop with an error (of the diagnostics
+    /// library's, not the program gone) still reads the run and lets it go: the snapshot shows, the recording ended, the
+    /// program running, and nothing of the profiler's left connected to its port.</summary>
+    [AvaloniaFact]
+    public void Get_Snapshot_of_a_program_whose_runtime_refuses_the_stop_still_reads_the_run_and_lets_it_go()
+    {
+        string pids = TestFolders.Create("pids-");
+        MainWindow window = OpenWaits("Refused", pids);
+        try
+        {
+            Ui.Launched(window, window.RunAsync(), "the program", TimeSpan.FromMinutes(3));
+            Passenger.App.ToolWindows.OutputView run = window.BottomPanel.Run;
+            Ui.WaitFor(() => Shows(run, "waiting"), "the program to start");
+            using StopRefusingPort port = new(Started(pids, "the program to write its id"));
+            Assert.Null(Ui.Await(window.AttachProfilerAsync(), "Attach Profiler's answer"));
+            Ui.WaitFor(() => Shows(run, "frames Enable"), "the recording to begin in the program");
+
+            Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the snapshot", TimeSpan.FromMinutes(2));
+            Assert.Equal(1, port.Refused);
+            Assert.True(read.Snapshot is not null, $"The run whose stop was refused was not read: {read.Message}");
+            Assert.Null(window.Profiling);
+            Ui.WaitFor(() => Shows(run, "frames Disable"), "the recording in the program to end");
+            Ui.WaitFor(() => port.Open == 0, () => $"the profiler's {port.Open} connections to the program's port to close");
+            Assert.True(window.Runner.IsRunning, "The program ended with its snapshot");
+        }
+        finally
+        {
+            Ui.Run(window, AppActions.Stop);
+            window.Close();
+        }
+    }
+
     /// <summary>Attach Profiler profiles the program the person runs wherever Run started it: one in a tab of the terminal,
     /// and under Hot Reload the app dotnet watch started, never dotnet watch's own process.</summary>
     [AvaloniaFact]
