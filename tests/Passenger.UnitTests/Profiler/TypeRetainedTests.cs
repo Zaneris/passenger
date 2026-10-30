@@ -4,7 +4,8 @@ namespace Passenger.UnitTests.Profiler;
 
 /// <summary>A type's retained bytes are what would be freed with all its objects: their own retained bytes, and those of
 /// each object several of them keep alive together and nothing else reaches, however deep under them, whichever roots
-/// hold them, and when what they keep refers back to itself.</summary>
+/// hold them, and when what they keep refers back to itself; found in steps that grow with the heap, whatever its shape,
+/// and stopped at once by Stop.</summary>
 public sealed class TypeRetainedTests
 {
     private const int Holder = 0;
@@ -62,8 +63,69 @@ public sealed class TypeRetainedTests
         Assert.Equal(500 + 700, retained[Payload]);
     }
 
+    [Fact]
+    public void A_long_chain_sharing_an_object_another_root_holds_is_walked_in_steps_that_grow_with_its_length()
+    {
+        (long half, long[] _) = Chain(50_000, new HeapGraph.Steps(TestContext.Current.CancellationToken));
+        (long walked, long[] retained) = Chain(100_000, new HeapGraph.Steps(TestContext.Current.CancellationToken));
+
+        // The entries retain themselves alone: the payload they all refer to is held by the second root too.
+        Assert.Equal(100_000 * 24, retained[Entry]);
+        Assert.True(walked <= half * 21 / 10 && walked < 20L * 100_000,
+            $"A 100,000-node chain took {walked:N0} steps to a 50,000-node one's {half:N0}: a snapshot of a long list held from outside "
+            + "too takes minutes to find its types' retained sizes");
+    }
+
+    [Fact]
+    public void Stop_heard_while_a_pass_walks_ends_it_at_that_check()
+    {
+        (long whole, long[] _) = Chain(100_000, new HeapGraph.Steps(TestContext.Current.CancellationToken));
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        long heardAt = 0;
+        HeapGraph.Steps steps = new(stop.Token)
+        {
+            Hearing = walked =>
+            {
+                if (walked > whole / 4 && heardAt == 0)
+                {
+                    heardAt = walked;
+                    stop.Cancel();
+                }
+            },
+        };
+
+        Assert.Throws<OperationCanceledException>(() => Chain(100_000, steps));
+        Assert.True(heardAt > 0 && steps.Count == heardAt,
+            $"Stop asked {heardAt:N0} steps into a walk of {whole:N0} ended it at {steps.Count:N0}: Stop leaves a snapshot's analysis running on");
+    }
+
+    /// <summary>A chain of entries under a holder, each referring to one payload that a second root holds too: the steps
+    /// its types' retained bytes took, and those bytes.</summary>
+    private static (long Steps, long[] Retained) Chain(int length, HeapGraph.Steps steps)
+    {
+        // The holder (0), the entries (1 to length), the payload and the second root.
+        int payload = length + 1;
+        int count = length + 3;
+        List<(int From, int To)> edges = [(0, 1)];
+        for (int i = 1; i <= length; i++)
+        {
+            if (i < length)
+            {
+                edges.Add((i, i + 1));
+            }
+            edges.Add((i, payload));
+        }
+        edges.Add((payload + 1, payload));
+        int[] types = new int[count];
+        Array.Fill(types, Entry, 1, length);
+        types[payload] = Payload;
+        types[payload + 1] = Wrapper;
+        long[] retained = TypeRetained(count, [.. edges], [0, payload + 1], types, [.. Enumerable.Repeat(24L, count)], steps);
+        return (steps.Count, retained);
+    }
+
     /// <summary>Each type's retained bytes in a graph of these edges, root objects, types and sizes.</summary>
-    private static long[] TypeRetained(int count, (int From, int To)[] edges, int[] roots, int[] types, long[] sizes)
+    private static long[] TypeRetained(int count, (int From, int To)[] edges, int[] roots, int[] types, long[] sizes, HeapGraph.Steps? steps = null)
     {
         int[] edgeStart = new int[count + 1];
         foreach ((int from, int _) in edges)
@@ -80,6 +142,6 @@ public sealed class TypeRetainedTests
         {
             edgeTarget[edgeStart[from] + filled[from]++] = to;
         }
-        return HeapGraph.Dominators.Of(count, edgeStart, edgeTarget, roots, sizes, types, 4, CancellationToken.None).TypeRetained;
+        return HeapGraph.Dominators.Of(count, edgeStart, edgeTarget, roots, sizes, types, 4, CancellationToken.None, steps).TypeRetained;
     }
 }

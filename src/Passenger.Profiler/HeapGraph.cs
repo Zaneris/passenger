@@ -597,8 +597,10 @@ internal sealed class HeapGraph
         public required int[] Leave { get; init; }
         public required long[] TypeRetained { get; init; }
 
-        public static Dominators Of(int count, int[] edgeStart, int[] edgeTarget, int[] rootObjects, long[] size, int[] type, int typeCount, CancellationToken cancel)
+        public static Dominators Of(int count, int[] edgeStart, int[] edgeTarget, int[] rootObjects, long[] size, int[] type, int typeCount, CancellationToken cancel,
+            Steps? steps = null)
         {
+            steps ??= new Steps(cancel);
             int nodes = count + 1;
             int top = count;
             // Successors of the root of its own are the root objects; predecessors are counted from both.
@@ -630,12 +632,14 @@ internal sealed class HeapGraph
                 predecessors[predecessorStart[r] + filled[r]++] = top;
             }
 
-            // Depth-first numbering from the root of its own.
+            // Depth-first numbering from the root of its own, and the order the walk leaves the objects in.
             int[] number = new int[nodes];
             Array.Fill(number, -1);
             int[] vertex = new int[nodes];
             int[] dfsParent = new int[nodes];
+            int[] finished = new int[nodes];
             int numbered = 0;
+            int left = 0;
             int[] stack = new int[nodes];
             int[] next = new int[nodes];
             int sp = 0;
@@ -665,6 +669,7 @@ internal sealed class HeapGraph
                 }
                 if (successor < 0)
                 {
+                    finished[left++] = v;
                     sp--;
                     continue;
                 }
@@ -763,12 +768,16 @@ internal sealed class HeapGraph
             {
                 childStart[i + 1] += childStart[i];
             }
+            // Siblings in reverse of the order the numbering walk left them, so those referring to an object mostly come before it.
             int[] children = new int[childStart[nodes]];
             Array.Clear(filled);
-            for (int i = 1; i < numbered; i++)
+            for (int i = left - 1; i >= 0; i--)
             {
-                int n = vertex[i];
-                children[childStart[idom[n]] + filled[idom[n]]++] = n;
+                int n = finished[i];
+                if (n != top)
+                {
+                    children[childStart[idom[n]] + filled[idom[n]]++] = n;
+                }
             }
             // The root of its own enters first and leaves last, its span kept nowhere.
             int[] enter = new int[count];
@@ -796,7 +805,8 @@ internal sealed class HeapGraph
             cancel.ThrowIfCancellationRequested();
 
             // Each type's retained bytes: those of its outermost objects, and of each object only its objects together keep.
-            Dictionary<int, int[]> together = Together(count, idom, predecessorStart, predecessors, enter, leave, edgeStart, edgeTarget, rootObjects, type, typeCount, cancel);
+            Dictionary<int, int[]> together = Together(count, idom, childStart, children, predecessorStart, predecessors, enter, leave, edgeStart, edgeTarget,
+                type, typeCount, stack, next, steps);
             long[] typeRetained = new long[typeCount];
             int[] open = new int[typeCount];
             Array.Clear(next);
@@ -868,125 +878,244 @@ internal sealed class HeapGraph
 
         /// <summary>The types whose objects together, and none alone, keep an object alive, by object (only those with any):
         /// every path from the roots to it passes one of them. An object is so kept by a type when each object referring to
-        /// it (but those it dominates) is of the type or so kept, down the dominator tree to its own dominator; found for
-        /// each object referred to from more than its dominator, the shallowest first, then again until nothing changes,
-        /// since objects referring to each other settle together.</summary>
-        private static Dictionary<int, int[]> Together(int count, int[] idom, int[] predecessorStart, int[] predecessors, int[] enter, int[] leave,
-            int[] edgeStart, int[] edgeTarget, int[] rootObjects, int[] type, int typeCount, CancellationToken cancel)
+        /// it (but those it dominates) is of the type or so kept, down the dominator tree to its own dominator. Found in walks
+        /// of the dominator tree holding each type's deepest object on the way, until nothing changes; an object not yet found
+        /// counts as kept by every type, so each settles on the most types it can be kept by.</summary>
+        private static Dictionary<int, int[]> Together(int count, int[] idom, int[] childStart, int[] children, int[] predecessorStart, int[] predecessors,
+            int[] enter, int[] leave, int[] edgeStart, int[] edgeTarget, int[] type, int typeCount, int[] stack, int[] next, Steps steps)
         {
-            // Breadth first from the roots, so the objects that first reach one are settled before it.
-            int[] order = new int[count];
-            bool[] settled = new bool[count];
-            int tail = 0;
-            foreach (int r in rootObjects)
+            const byte Held = 0;
+            const byte Found = 1;
+            const byte Unfound = 2;
+            int top = count;
+            // Only an object no edge from its dominator reaches can be kept by objects together; the rest are held.
+            byte[] shared = new byte[count];
+            bool any = false;
+            for (int v = 0; v < count; v++)
             {
-                if (!settled[r])
-                {
-                    settled[r] = true;
-                    order[tail++] = r;
-                }
-            }
-            for (int head = 0; head < tail; head++)
-            {
-                int from = order[head];
-                for (int e = edgeStart[from]; e < edgeStart[from + 1]; e++)
-                {
-                    if (!settled[edgeTarget[e]])
-                    {
-                        settled[edgeTarget[e]] = true;
-                        order[tail++] = edgeTarget[e];
-                    }
-                }
-            }
-            // Only an object no edge from its dominator reaches can be kept by objects together; the rest are settled.
-            List<int> shared = [];
-            for (int i = 0; i < tail; i++)
-            {
-                int v = order[i];
-                bool fromDominator = false;
+                bool fromDominator = enter[v] == 0;
                 for (int k = predecessorStart[v]; k < predecessorStart[v + 1] && !fromDominator; k++)
                 {
                     fromDominator = predecessors[k] == idom[v];
                 }
-                settled[v] = fromDominator;
-                if (!fromDominator)
-                {
-                    shared.Add(v);
-                }
+                shared[v] = fromDominator ? Held : Unfound;
+                any |= !fromDominator;
+                steps.Take(1 + predecessorStart[v + 1] - predecessorStart[v]);
             }
+
             Dictionary<int, int[]> together = [];
-            int[] mark = new int[typeCount];
-            int stamp = 0;
+            // Per type, its deepest object on the way down; the types with one, deepest first, linked around head.
+            int[] near = new int[typeCount];
+            Array.Fill(near, -1);
+            int head = typeCount;
+            int[] previous = new int[typeCount + 1];
+            int[] following = new int[typeCount + 1];
+            previous[head] = head;
+            following[head] = head;
+            // What each object on the way down changed, after a mark (Type -1) holding the deepest unfound object above it.
+            List<(int Type, int Near, int Previous, int Following)> undo = [];
+            int unfound = -1;
+            // Per shared object, its references not walked this pass, and where kept holds its types so far (-1, none).
+            int[] remaining = new int[count];
+            int[] keptAt = new int[count];
             List<int> kept = [];
-            List<int> segment = [];
-            bool changed = true;
+            bool changed = any;
             while (changed)
             {
                 changed = false;
-                foreach (int v in shared)
+                kept.Clear();
+                for (int v = 0; v < count; v++)
                 {
-                    int dominator = idom[v];
-                    bool bounded = false;
-                    kept.Clear();
-                    for (int k = predecessorStart[v]; k < predecessorStart[v + 1] && (!bounded || kept.Count > 0); k++)
+                    if (shared[v] != Held)
                     {
-                        int p = predecessors[k];
-                        // An object it dominates reaches it only through itself.
-                        if (enter[v] <= enter[p] && leave[p] <= leave[v])
+                        keptAt[v] = -1;
+                        remaining[v] = 0;
+                        for (int k = predecessorStart[v]; k < predecessorStart[v + 1]; k++)
                         {
-                            continue;
-                        }
-                        // The types from the referrer up to the dominator: each object's own and those keeping it together.
-                        stamp++;
-                        segment.Clear();
-                        int at = p;
-                        for (; at != dominator && settled[at]; at = idom[at])
-                        {
-                            Mark(type[at]);
-                            foreach (int t in together.GetValueOrDefault(at, []))
+                            int p = predecessors[k];
+                            if (p != top && enter[p] > 0 && !Dominates(v, p))
                             {
-                                Mark(t);
+                                remaining[v]++;
                             }
                         }
-                        if (at != dominator)
-                        {
-                            // An object on the way not yet settled: this referrer bounds nothing yet.
-                            continue;
-                        }
-                        if (bounded)
-                        {
-                            kept.RemoveAll(t => mark[t] != stamp);
-                        }
-                        else
-                        {
-                            bounded = true;
-                            kept.AddRange(segment);
-                        }
+                        steps.Take(1 + predecessorStart[v + 1] - predecessorStart[v]);
                     }
-                    kept.Remove(type[v]);
-                    int before = together.TryGetValue(v, out int[]? had) ? had.Length : 0;
-                    if (kept.Count == 0)
-                    {
-                        together.Remove(v);
-                    }
-                    else
-                    {
-                        together[v] = [.. kept];
-                    }
-                    changed |= !settled[v] || before != kept.Count;
-                    settled[v] = true;
                 }
-                cancel.ThrowIfCancellationRequested();
+                Array.Clear(next);
+                int sp = 0;
+                stack[sp++] = top;
+                while (sp > 0)
+                {
+                    int v = stack[sp - 1];
+                    if (childStart[v] + next[v] < childStart[v + 1])
+                    {
+                        int child = children[childStart[v] + next[v]++];
+                        stack[sp++] = child;
+                        Enter(child);
+                        continue;
+                    }
+                    if (v != top)
+                    {
+                        Leave();
+                    }
+                    sp--;
+                }
             }
             return together;
 
-            void Mark(int t)
+            bool Dominates(int v, int p) => enter[v] <= enter[p] && leave[p] <= leave[v];
+
+            void Enter(int a)
             {
-                if (mark[t] != stamp)
+                undo.Add((-1, unfound, 0, 0));
+                Touch(type[a], a);
+                int walked = 2;
+                if (shared[a] == Unfound)
                 {
-                    mark[t] = stamp;
-                    segment.Add(t);
+                    unfound = a;
                 }
+                else if (together.TryGetValue(a, out int[]? types))
+                {
+                    foreach (int t in types)
+                    {
+                        Touch(t, a);
+                    }
+                    walked += types.Length;
+                }
+                for (int e = edgeStart[a]; e < edgeStart[a + 1]; e++)
+                {
+                    int w = edgeTarget[e];
+                    if (shared[w] != Held && !Dominates(w, a))
+                    {
+                        Reach(w);
+                    }
+                }
+                steps.Take(walked + edgeStart[a + 1] - edgeStart[a]);
+            }
+
+            void Leave()
+            {
+                int walked = 0;
+                while (undo[^1] is var (t, wasNear, wasPrevious, wasFollowing) && t >= 0)
+                {
+                    undo.RemoveAt(undo.Count - 1);
+                    following[head] = following[t];
+                    previous[following[t]] = head;
+                    if (wasNear >= 0)
+                    {
+                        previous[t] = wasPrevious;
+                        following[t] = wasFollowing;
+                        following[wasPrevious] = t;
+                        previous[wasFollowing] = t;
+                    }
+                    near[t] = wasNear;
+                    walked++;
+                }
+                unfound = undo[^1].Near;
+                undo.RemoveAt(undo.Count - 1);
+                steps.Take(walked + 1);
+            }
+
+            // The type's deepest object on the way down is now a, first in the list.
+            void Touch(int t, int a)
+            {
+                undo.Add((t, near[t], previous[t], following[t]));
+                if (near[t] >= 0)
+                {
+                    following[previous[t]] = following[t];
+                    previous[following[t]] = previous[t];
+                }
+                previous[t] = head;
+                following[t] = following[head];
+                previous[following[head]] = t;
+                following[head] = t;
+                near[t] = a;
+            }
+
+            // A reference from the object entered last to a shared one: the types between them and its dominator bound it.
+            void Reach(int w)
+            {
+                int floor = idom[w] == top ? 0 : enter[idom[w]];
+                if (unfound < 0 || enter[unfound] <= floor)
+                {
+                    if (keptAt[w] < 0)
+                    {
+                        keptAt[w] = kept.Count;
+                        kept.Add(0);
+                        for (int t = following[head]; t != head && enter[near[t]] > floor; t = following[t])
+                        {
+                            kept.Add(t);
+                        }
+                        kept[keptAt[w]] = kept.Count - keptAt[w] - 1;
+                    }
+                    else
+                    {
+                        int at = keptAt[w];
+                        int had = kept[at];
+                        int still = 0;
+                        for (int i = 1; i <= had; i++)
+                        {
+                            int t = kept[at + i];
+                            if (near[t] >= 0 && enter[near[t]] > floor)
+                            {
+                                kept[at + 1 + still++] = t;
+                            }
+                        }
+                        kept[at] = still;
+                        steps.Take(had);
+                    }
+                    steps.Take(1 + kept[keptAt[w]]);
+                }
+                if (--remaining[w] == 0 && keptAt[w] >= 0)
+                {
+                    Find(w);
+                }
+            }
+
+            // Every reference to the shared object walked: its types are those all of them passed, but its own.
+            void Find(int w)
+            {
+                int at = keptAt[w];
+                List<int> types = [];
+                for (int i = 1; i <= kept[at]; i++)
+                {
+                    if (kept[at + i] != type[w])
+                    {
+                        types.Add(kept[at + i]);
+                    }
+                }
+                int before = shared[w] == Unfound ? -1 : together.TryGetValue(w, out int[]? had) ? had.Length : 0;
+                changed |= before != types.Count;
+                shared[w] = Found;
+                if (types.Count == 0)
+                {
+                    together.Remove(w);
+                }
+                else
+                {
+                    together[w] = [.. types];
+                }
+            }
+        }
+    }
+
+    /// <summary>The steps a retained-size pass walks, counted so its cost is held by a count rather than a clock, and
+    /// Stop, heard every 4096th step.</summary>
+    internal sealed class Steps(CancellationToken cancel)
+    {
+        public long Count { get; private set; }
+
+        /// <summary>Told the steps walked each time Stop is heard, before it is: what a test stops a pass under way with.</summary>
+        public Action<long>? Hearing { get; init; }
+
+        public void Take(long steps)
+        {
+            long was = Count;
+            Count += steps;
+            if (was >> 12 != Count >> 12)
+            {
+                Hearing?.Invoke(Count);
+                cancel.ThrowIfCancellationRequested();
             }
         }
     }
