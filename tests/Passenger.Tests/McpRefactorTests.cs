@@ -516,6 +516,27 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "overrides of an abstract member were pushed down");
     }
 
+    /// <summary>Pull Members Up of an override of an abstract member, kept abstract in a class between, declares it there
+    /// as an abstract override, the class below keeping its body, and the project builds.</summary>
+    [Fact]
+    public async Task An_agent_pulling_up_an_override_kept_abstract_finds_it_still_an_override_and_the_project_building()
+    {
+        await TakeFolderAsync();
+        const string Shape = "namespace Shop;\n\npublic abstract class Shape\n{\n    public abstract double Area();\n}\n";
+        const string Polygon = "namespace Shop;\n\npublic abstract class Polygon : Shape\n{\n}\n\npublic class Square : Polygon\n{\n    public override double Area() => 4;\n}\n";
+        Shop(("Shape.cs", Shape), ("Polygon.cs", Polygon));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        JsonElement pulled = await Call(client, McpTools.Refactor, Place("pull_members_up", "Polygon.cs", Polygon, "class Squ",
+            new { target = "Polygon", members = new[] { "Area" }, @abstract = new[] { "Area" } }));
+        Assert.Equal(["Polygon.cs changed"], Files(pulled));
+        string polygon = File.ReadAllText(PathOf("Polygon.cs"));
+        Assert.True(polygon == Polygon.Replace("Shape\n{\n}", "Shape\n{\n    public abstract override double Area();\n}", StringComparison.Ordinal),
+            $"Pulling Square's override of Shape's abstract Area up to Polygon kept abstract left Polygon.cs so:\n{polygon}");
+        Assert.Equal(Shape, File.ReadAllText(PathOf("Shape.cs")));
+        await Compiles(client, "an override was pulled up kept abstract");
+    }
+
     /// <summary>Extract Interface from a class whose type parameter a member uses is constrained by another the members do
     /// not name: the interface declares both, so the constraint it copies names a type parameter of its own.</summary>
     [Fact]

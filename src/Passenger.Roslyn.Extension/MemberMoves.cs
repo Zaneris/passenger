@@ -84,7 +84,7 @@ internal static class MemberMoves
             if (makeAbstract)
             {
                 needsAbstract = true;
-                editors.AddMember(targetEditor, into, Abstract(targetEditor.Generator, declared, overrides: false));
+                editors.AddMember(targetEditor, into, Abstract(targetEditor.Generator, declared, member.IsOverride));
                 sourceEditor.ReplaceNode(declared, (current, generator) => generator.WithModifiers(current, generator.GetModifiers(current).WithIsAbstract(false).WithIsVirtual(false).WithIsOverride(true)));
                 continue;
             }
