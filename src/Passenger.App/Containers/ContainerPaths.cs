@@ -36,7 +36,7 @@ public sealed class ContainerPaths
         {
             foreach ((string source, string target) in stage.Copies)
             {
-                string from = source.Replace('\\', '/').TrimStart('.', '/');
+                string from = FromContext(source.Replace('\\', '/'));
                 bool folder = source is "." or "./" || source.EndsWith('/') || Directory.Exists(Path.Combine(context, from));
                 if (folder)
                 {
@@ -50,6 +50,27 @@ public sealed class ContainerPaths
             }
         }
         return new ContainerPaths(found);
+    }
+
+    /// <summary>A COPY source as a path from the context: its leading <c>./</c> and <c>/</c> taken off, the context itself
+    /// empty, a name beginning with a dot (<c>.config/</c>) kept whole.</summary>
+    private static string FromContext(string source)
+    {
+        while (true)
+        {
+            if (source.StartsWith("./", StringComparison.Ordinal))
+            {
+                source = source[2..];
+            }
+            else if (source.StartsWith('/'))
+            {
+                source = source[1..];
+            }
+            else
+            {
+                return source == "." ? string.Empty : source;
+            }
+        }
     }
 
     /// <summary>This map with another's pairs: a Compose application's images together.</summary>
