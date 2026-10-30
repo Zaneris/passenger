@@ -14,7 +14,7 @@ namespace Passenger.App.CSharp;
 public abstract class RefactoringDialog : IdeWindow
 {
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
-    private readonly Border body = new() { Padding = new Thickness(20, 14, 20, 16) };
+    private readonly Decorator body = new();
     private bool running;
 
     protected RefactoringDialog(string title, string page, string description, double width = 560)
@@ -25,36 +25,11 @@ public abstract class RefactoringDialog : IdeWindow
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        NextButton = new Button { Content = "Next", IsDefault = true, Classes = { "primary" } };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
+        NextButton = DialogFooter.Default("Next");
         NextButton.Click += (_, _) => IdeErrors.Observe(Next());
-        cancel.Click += (_, _) => Close(false);
         problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
-
-        StackPanel header = new()
-        {
-            Margin = new Thickness(20, 16, 20, 12),
-            Spacing = 4,
-            Children =
-            {
-                new TextBlock { Text = page, FontWeight = FontWeight.SemiBold },
-                new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap, Classes = { "muted" } },
-            },
-        };
-        Border top = new() { BorderThickness = new Thickness(0, 0, 0, 1), Child = header };
-        top.Bind(Border.BorderBrushProperty, top.GetResourceObservable(TokenKeys.Divider));
-
-        Border bottom = DialogFooter.Bar(DialogFooter.Of(NextButton, cancel), problem);
-        // Inset as the page above it is, so Next ends where its fields do and a problem starts where its labels do.
-        bottom.Padding = new Thickness(20, 10);
-
-        DockPanel root = new();
-        DockPanel.SetDock(top, Dock.Top);
-        DockPanel.SetDock(bottom, Dock.Bottom);
-        root.Children.Add(top);
-        root.Children.Add(bottom);
-        root.Children.Add(body);
-        Content = root;
+        TextBlock about = new() { Text = description, TextWrapping = TextWrapping.Wrap, Classes = { "muted" } };
+        Content = DialogFooter.Headed(page, about, body, DialogFooter.OkCancel(NextButton, () => Close(false), problem));
     }
 
     /// <summary>Makes the refactoring with the options as they stand.</summary>

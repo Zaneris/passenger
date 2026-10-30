@@ -41,13 +41,11 @@ public sealed class MigrationScriptDialog : IdeWindow
         To[Grid.RowProperty] = 1;
         choices.Children.Add(To);
 
-        Button script = new() { Content = "Script", IsDefault = true, Classes = { "primary" } };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
+        Button script = DialogFooter.Default("Script");
         script.Click += (_, _) => Close(new MigrationScript(
             From.SelectedIndex <= 0 ? null : names[From.SelectedIndex - 1],
             To.SelectedIndex < 0 || To.SelectedIndex >= names.Length ? null : names[To.SelectedIndex],
             Idempotent.IsChecked == true));
-        cancel.Click += (_, _) => Close(null);
         Content = DialogFooter.Page(new StackPanel
         {
             Margin = new Thickness(20),
@@ -58,7 +56,7 @@ public sealed class MigrationScriptDialog : IdeWindow
                 choices,
                 Idempotent,
             },
-        }, DialogFooter.Bar(DialogFooter.Of(script, cancel)));
+        }, DialogFooter.OkCancel(script, () => Close(null)));
     }
 
     public ComboBox From { get; }

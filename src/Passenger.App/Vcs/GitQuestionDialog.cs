@@ -46,9 +46,8 @@ public sealed class GitQuestionDialog : IdeWindow
         }
 
         Button ok = new() { Content = yesNo ? "Yes" : question.Kind == GitQuestionKind.User ? "Sign In" : "OK", IsDefault = agent is null, Classes = { "primary" } };
-        Button cancel = new() { Content = yesNo ? "No" : "Cancel", IsCancel = true };
+        Button cancel = DialogFooter.Cancel(Decline, yesNo ? "No" : "Cancel");
         ok.Click += (_, _) => Accept();
-        cancel.Click += (_, _) => Decline();
         List<Control> paragraphs = [DialogFooter.Paragraph(Said(question))];
         if (fields.Children.Count > 0)
         {

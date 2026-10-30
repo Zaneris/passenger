@@ -47,12 +47,10 @@ public sealed class DockerSupportDialog : IdeWindow
             choice.HorizontalAlignment = HorizontalAlignment.Stretch;
         }
         TextBlock heading = new() { Text = $"How {project}'s image is built", FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 10) };
-        Button ok = new() { Content = "OK", IsDefault = true, Classes = { "primary" } };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
+        Button ok = DialogFooter.Default();
         ok.Click += (_, _) => Accept();
-        cancel.Click += (_, _) => Close(null);
         StackPanel page = new() { Margin = new Thickness(16), Children = { heading, dockerfile, sdk } };
-        Content = DialogFooter.Page(page, DialogFooter.Bar(DialogFooter.Of(ok, cancel)));
+        Content = DialogFooter.Page(page, DialogFooter.OkCancel(ok, () => Close(null)));
     }
 
     /// <summary>The way chosen now.</summary>
@@ -103,10 +101,8 @@ public sealed class DockerComposeDialog : IdeWindow
         MinWidth = 380;
         MinHeight = 300;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Button ok = new() { Content = "OK", IsDefault = true, Classes = { "primary" } };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
+        Button ok = DialogFooter.Default();
         ok.Click += (_, _) => Close((bool?)true);
-        cancel.Click += (_, _) => Close(null);
         Grid page = new() { Margin = new Thickness(16), RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto") };
         page.Children.Add(Heading($"The services of {solution}'s compose.yaml", 0));
         page.Children.Add(List(projects, 1));
@@ -116,7 +112,7 @@ public sealed class DockerComposeDialog : IdeWindow
             : List(services, 3);
         Grid.SetRow(backing, 3);
         page.Children.Add(backing);
-        Content = DialogFooter.Page(page, DialogFooter.Bar(DialogFooter.Of(ok, cancel)));
+        Content = DialogFooter.Page(page, DialogFooter.OkCancel(ok, () => Close(null)));
     }
 
     public IReadOnlyList<ComposeChoice> Projects { get; }

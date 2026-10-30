@@ -96,7 +96,7 @@ public sealed partial class SettingsDialog : IdeWindow
     private readonly Decorator pageTop = new();
 
     /// <summary>OK and Apply, which put the options in force: greyed while an option holds a value Settings refuses.</summary>
-    private readonly Button ok = new() { Content = "OK", IsDefault = true, Classes = { "primary" } };
+    private readonly Button ok = DialogFooter.Default();
     private readonly Button applyButton = new() { Content = "Apply" };
 
     /// <param name="agents">The agents' setup the MCP Server page shows: this copy's, and the window's folder.</param>
@@ -122,9 +122,7 @@ public sealed partial class SettingsDialog : IdeWindow
         body = new StackPanel { Spacing = 12 };
         nothing = new TextBlock { Classes = { "muted" }, Text = "Nothing matches", IsVisible = false, Margin = new Thickness(21, 4) };
 
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
         ok.Click += (_, _) => Ok();
-        cancel.Click += (_, _) => Close(false);
         applyButton.Click += (_, _) => Apply();
 
         DockPanel left = new() { Width = 240 };
@@ -133,22 +131,14 @@ public sealed partial class SettingsDialog : IdeWindow
         left.Children.Add(new Panel { Children = { pages, nothing } });
         Border leftPane = new() { BorderThickness = new Thickness(0, 0, 1, 0), Child = left };
         leftPane.Bind(Border.BorderBrushProperty, leftPane.GetResourceObservable(TokenKeys.Divider));
-        Border bottom = DialogFooter.Bar(DialogFooter.Of(ok, cancel, applyButton));
         DockPanel right = new() { Margin = new Thickness(20, 16, 20, 0) };
         DockPanel.SetDock(heading, Dock.Top);
         DockPanel.SetDock(pageTop, Dock.Top);
         right.Children.Add(heading);
         right.Children.Add(pageTop);
         right.Children.Add(new ScrollViewer { Content = body });
-        Border editorPane = new() { Child = right };
-
-        DockPanel root = new();
-        DockPanel.SetDock(bottom, Dock.Bottom);
         DockPanel.SetDock(leftPane, Dock.Left);
-        root.Children.Add(bottom);
-        root.Children.Add(leftPane);
-        root.Children.Add(editorPane);
-        Content = root;
+        Content = DialogFooter.Page(new DockPanel { Children = { leftPane, right } }, DialogFooter.OkCancel(ok, () => Close(false), more: applyButton));
         Filter();
         Opened += (_, _) => Dispatcher.UIThread.Post(() => search.Focus(), DispatcherPriority.Loaded);
     }

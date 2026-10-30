@@ -42,8 +42,8 @@ public sealed class AspireOrchestrationDialog : IdeWindow
             SelectedIndex = 0,
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        Add = new Button { Content = "Add", IsDefault = true, IsEnabled = false, Classes = { "primary" } };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
+        Add = DialogFooter.Default("Add");
+        Add.IsEnabled = false;
         InstallTemplates = new Button { Content = "Install Aspire templates…" };
         Problem = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
         foreach ((ProjectModel _, CheckBox check) in choices)
@@ -53,7 +53,6 @@ public sealed class AspireOrchestrationDialog : IdeWindow
         Add.Click += (_, _) => Close(new AspireOrchestrationChoice(
             [.. choices.Where(c => c.Check.IsChecked == true).Select(c => c.Project)],
             hosts[AppHost.SelectedIndex], defaults[ServiceDefaults.SelectedIndex]));
-        cancel.Click += (_, _) => Close(null);
         StackPanel options = new()
         {
             Spacing = 8,
@@ -72,7 +71,7 @@ public sealed class AspireOrchestrationDialog : IdeWindow
         {
             Margin = new Thickness(16),
             Children = { heading, options, rows },
-        }, DialogFooter.Bar(DialogFooter.Of(Add, cancel)));
+        }, DialogFooter.OkCancel(Add, () => Close(null)));
         if (choices.Count == 0)
         {
             Problem.Text = "No C# project runs as a service: test projects and AppHosts are not services";

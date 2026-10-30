@@ -1880,6 +1880,20 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + string.Join("\n", found));
     }
 
+    /// <summary>A dialog's OK and Cancel are made one way, by DialogFooter (Default, Cancel, OkCancel, Popup), so each
+    /// stands in the platform's order and Cancel takes Escape where it should: a button worded OK or Cancel made anywhere
+    /// else fails here, naming its line.</summary>
+    [Fact]
+    public void A_dialogs_OK_and_Cancel_are_made_by_DialogFooter()
+    {
+        Regex byHand = new(@"\bContent\s*=\s*""(?:OK|Cancel)""");
+        string[] found = [.. UiFiles().Where(f => !f.Path.EndsWith("/DialogFooter.cs", StringComparison.Ordinal))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}")];
+        Assert.True(found.Length == 0, $"{found.Length} OK or Cancel buttons are made by hand, so their order and keys drift from every other dialog's: "
+            + $"make each with DialogFooter (Default, Cancel, OkCancel, or Popup in a popup):\n{string.Join("\n", found)}");
+    }
+
     /// <summary>Every tool window's bars are the shared pieces, ToolBars.Top along its top and ToolBars.Side down its left,
     /// so each is one height, one width and one rule, and a banner over what it speaks of is Banner: a bar built by hand (a
     /// fixed height over a rule or docked at the top, a strip down the left beside one, a ToolColumn of its own) fails here,

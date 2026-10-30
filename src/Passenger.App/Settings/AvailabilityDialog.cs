@@ -28,18 +28,9 @@ public sealed class AvailabilityDialog : IdeWindow
             boxes[place] = box;
             places.Children.Add(box);
         }
-        OkButton = new Button { Content = "OK", IsDefault = true, Classes = { "primary" } };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
+        OkButton = DialogFooter.Default();
         OkButton.Click += (_, _) => Close(true);
-        cancel.Click += (_, _) => Close(false);
-        StackPanel buttons = DialogFooter.Of(OkButton, cancel);
-        Border bottom = DialogFooter.Bar(buttons);
-        DockPanel root = new();
-        DockPanel.SetDock(bottom, Dock.Bottom);
-        root.Children.Add(bottom);
-        root.Children.Add(new ScrollViewer { Content = places });
-        Border page = new() { Child = root };
-        Content = page;
+        Content = DialogFooter.Page(new ScrollViewer { Content = places }, DialogFooter.OkCancel(OkButton, () => Close(false)));
     }
 
     public Button OkButton { get; }

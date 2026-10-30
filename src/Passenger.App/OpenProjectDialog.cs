@@ -15,10 +15,9 @@ public sealed class OpenProjectDialog : IdeWindow
     public OpenProjectDialog(string name)
     {
         Question = $"Where would you like to open the solution '{name}'?";
-        Button here = new() { Content = ThisWindow, IsDefault = true, Classes = { "primary" } };
+        Button here = DialogFooter.Default(ThisWindow);
         Button apart = new() { Content = NewWindow };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
-        cancel.Click += (_, _) => Close();
+        Button cancel = DialogFooter.Cancel(Close);
         here.Click += (_, _) => Choose(OpenTarget.ThisWindow);
         apart.Click += (_, _) => Choose(OpenTarget.NewWindow);
         DialogFooter.Question(this, "Open Solution", [DialogFooter.Paragraph(Question)], DialogFooter.Answers(here, apart, cancel), remember);

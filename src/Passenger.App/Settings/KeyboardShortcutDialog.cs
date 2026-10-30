@@ -28,8 +28,8 @@ public sealed class KeyboardShortcutDialog : IdeWindow
 
         Keys = new ShortcutPanel("Second stroke:");
         Keys.Changed += (_, _) => Update();
-        OkButton = new Button { Content = "OK", IsDefault = true, Classes = { "primary" }, IsEnabled = false };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
+        OkButton = DialogFooter.Default();
+        OkButton.IsEnabled = false;
         OkButton.Click += (_, _) =>
         {
             if (Keys.Shortcut is { } shortcut)
@@ -37,7 +37,6 @@ public sealed class KeyboardShortcutDialog : IdeWindow
                 Close(shortcut);
             }
         };
-        cancel.Click += (_, _) => Close(null);
 
         PathIcon warning = new() { VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 1, 8, 0) };
         warning.Bind(PathIcon.DataProperty, warning.GetResourceObservable(IconKeys.Problems));
@@ -62,7 +61,7 @@ public sealed class KeyboardShortcutDialog : IdeWindow
                 Keys,
                 conflictsPanel,
             },
-        }, DialogFooter.Bar(DialogFooter.Of(OkButton, cancel)));
+        }, DialogFooter.OkCancel(OkButton, () => Close(null)));
         Opened += (_, _) => Dispatcher.UIThread.Post(() => Keys.First.Focus(), DispatcherPriority.Loaded);
     }
 

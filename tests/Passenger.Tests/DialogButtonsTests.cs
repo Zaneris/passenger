@@ -7,17 +7,19 @@ using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.Editors;
 using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.App.Templates;
+using Passenger.Editor;
 
 namespace Passenger.Tests;
 
 /// <summary>A dialog's buttons as a person sees them: each one's words centred in it, unless it reads as text (a link,
 /// a crumb); a dialog's text buttons, the default among them, one height and one corner radius; the default button and
-/// Cancel in the platform's order, the default rightmost on macOS and first elsewhere. <see cref="Check"/> is the rule,
-/// which the tests that open the other dialogs (a refactoring's, Conflicts, a feed's) hold their dialogs to as
-/// well.</summary>
+/// Cancel in the platform's order, the default rightmost on macOS and first elsewhere, a popup's as a dialog's.
+/// <see cref="Check"/> is the rule, which the tests that open the other dialogs (a refactoring's, Conflicts, a feed's)
+/// hold their dialogs to as well.</summary>
 public sealed class DialogButtonsTests : IDisposable
 {
     /// <summary>The buttons that read as text, whose words stand at their left as a line of text's do.</summary>
@@ -54,6 +56,13 @@ public sealed class DialogButtonsTests : IDisposable
             Ui.ChooseFromMenu(settings.KeymapRow(AppActions.SplitRight), "Add Keyboard Shortcut");
             Ui.WaitFor(() => settings.OwnedWindows.OfType<KeyboardShortcutDialog>().Any(w => w.IsVisible), "the Keyboard Shortcut dialog");
             Check(settings.OwnedWindows.OfType<KeyboardShortcutDialog>().Single(w => w.IsVisible)).Close();
+            Ui.Settle();
+            settings.Page = SettingsDialog.LiveTemplatesPage;
+            Ui.Settle();
+            Assert.True(settings.Templates.Choose("cw"), "The Live Templates page does not list cw");
+            Ui.Click(settings.Templates.AvailabilityButton);
+            Ui.WaitFor(() => settings.OwnedWindows.OfType<AvailabilityDialog>().Any(w => w.IsVisible), "the Availability configuration dialog");
+            Check(settings.OwnedWindows.OfType<AvailabilityDialog>().Single(w => w.IsVisible)).Close();
             Ui.Settle();
             Check(settings).Close();
             Ui.Settle();
@@ -129,11 +138,7 @@ public sealed class DialogButtonsTests : IDisposable
 
         if (shown.FirstOrDefault(b => b.IsDefault) is { } chosen && shown.FirstOrDefault(b => b.IsCancel && !b.IsDefault) is { } cancel)
         {
-            double chosenAt = chosen.TranslatePoint(default, dialog)!.Value.X;
-            double cancelAt = cancel.TranslatePoint(default, dialog)!.Value.X;
-            Assert.True(OperatingSystem.IsMacOS() ? chosenAt > cancelAt : chosenAt < cancelAt,
-                $"In {title}, {Name(chosen)} stands {(chosenAt > cancelAt ? "right" : "left")} of {Name(cancel)}, where Rider puts the default "
-                + (OperatingSystem.IsMacOS() ? "rightmost, after Cancel" : "first, before Cancel"));
+            InPlatformOrder(dialog, title, chosen, cancel);
         }
 
         // A plain button: its own ground (white in light) inside a field's edge.
@@ -211,6 +216,53 @@ public sealed class DialogButtonsTests : IDisposable
         }
         return dialog;
     }
+
+    /// <summary>A popup's default button and Cancel stand as a dialog's do: Add CLR Exception Breakpoints' Add and the
+    /// colour picker's Choose after Cancel on macOS, before it on Windows and Linux.</summary>
+    [AvaloniaFact]
+    public void A_popups_default_and_Cancel_stand_in_the_platforms_order_as_a_dialogs_do()
+    {
+        string palette = TestFolders.Write(folder, "Palette.cs", "class Palette\n{\n    static object Brand = Avalonia.Media.Color.FromRgb(0x33, 0x66, 0x99);\n}\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.Run(window, AppActions.ViewBreakpoints);
+            BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
+            Ui.Click(breakpoints.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Add CLR Exception Breakpoints"));
+            InPlatformOrder(window, "Add CLR Exception Breakpoints", Shown(breakpoints, "Add"), Shown(breakpoints, "Cancel"));
+            breakpoints.Close();
+            Ui.Settle();
+
+            window.OpenFile(palette);
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.WaitFor(() => window.EditorArea.Active?.ColourMarks.Any(m => m.Line == 2) == true, "the swatch of the colour FromRgb makes");
+            Ui.Click(editor, editor.GutterColumnPoint(editor.Gutter!.Marks, 2));
+            Assert.True(window.PickingColour is not null, "A click on the swatch opened no colour picker");
+            InPlatformOrder(window, "The colour picker", Shown(window, "Choose"), Shown(window, "Cancel"));
+            Ui.Press(window, "ESCAPE");
+            Assert.Null(window.PickingColour);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Holds a default button and Cancel to the platform's order: the default rightmost on macOS, first
+    /// elsewhere.</summary>
+    private static void InPlatformOrder(Visual within, string title, Button chosen, Button cancel)
+    {
+        double chosenAt = chosen.TranslatePoint(default, within)!.Value.X;
+        double cancelAt = cancel.TranslatePoint(default, within)!.Value.X;
+        Assert.True(OperatingSystem.IsMacOS() ? chosenAt > cancelAt : chosenAt < cancelAt,
+            $"In {title}, {Name(chosen)} stands {(chosenAt > cancelAt ? "right" : "left")} of {Name(cancel)}, where Rider puts the default "
+            + (OperatingSystem.IsMacOS() ? "rightmost, after Cancel" : "first, before Cancel"));
+    }
+
+    /// <summary>The button shown with these words.</summary>
+    private static Button Shown(Visual within, string words) =>
+        within.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.Content as string == words && b.IsEffectivelyVisible)
+            ?? throw new Xunit.Sdk.XunitException($"No button '{words}' is shown");
 
     private static Color Token(Window dialog, string key) =>
         dialog.TryFindResource(key, dialog.ActualThemeVariant, out object? found) && found is ISolidColorBrush brush ? brush.Color : default;

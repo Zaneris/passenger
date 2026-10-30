@@ -173,11 +173,9 @@ public sealed class RunConfigurationsDialog : IdeWindow
         BuildArgumentsBox.TextChanged += (_, _) => Edit(c => c with { BuildArguments = BuildArgumentsBox.Text ?? string.Empty });
         RunArgumentsBox.TextChanged += (_, _) => Edit(c => c with { RunArguments = RunArgumentsBox.Text ?? string.Empty });
 
-        OkButton = new Button { Content = "OK", IsDefault = true, Classes = { "primary" } };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
+        OkButton = DialogFooter.Default();
         Button applyButton = new() { Content = "Apply" };
         OkButton.Click += (_, _) => Ok();
-        cancel.Click += (_, _) => Close(false);
         applyButton.Click += (_, _) => Apply();
         problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
 
@@ -240,20 +238,9 @@ public sealed class RunConfigurationsDialog : IdeWindow
             rows.Children.Add(row);
         }
         form = rows;
-        Border editorPane = new()
-        {
-            Child = new ScrollViewer { Content = new Panel { Margin = new Thickness(20, 16, 20, 16), Children = { form, nothing } } },
-        };
-
-        Border bottom = DialogFooter.Bar(DialogFooter.Of(OkButton, cancel, applyButton), problem);
-
-        DockPanel root = new();
-        DockPanel.SetDock(bottom, Dock.Bottom);
+        ScrollViewer editorPane = new() { Content = new Panel { Margin = new Thickness(20, 16, 20, 16), Children = { form, nothing } } };
         DockPanel.SetDock(leftPane, Dock.Left);
-        root.Children.Add(bottom);
-        root.Children.Add(leftPane);
-        root.Children.Add(editorPane);
-        Content = root;
+        Content = DialogFooter.Page(new DockPanel { Children = { leftPane, editorPane } }, DialogFooter.OkCancel(OkButton, () => Close(false), problem, applyButton));
         Closed += (_, _) =>
         {
             aspireClosed = true;

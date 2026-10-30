@@ -11,11 +11,10 @@ public sealed class ConfirmDialog : IdeWindow
 
     public ConfirmDialog(string title, string text, string yes, string no = "Cancel", Control? detail = null)
     {
-        confirm = new() { Content = yes, IsDefault = true, Classes = { "primary" } };
-        Button cancel = new() { Content = no, IsCancel = true };
+        confirm = DialogFooter.Default(yes);
         confirm.Click += (_, _) => Answer(true);
-        cancel.Click += (_, _) => Answer(false);
-        DialogFooter.Question(this, title, [DialogFooter.Paragraph(text), .. detail is null ? [] : new[] { detail }], DialogFooter.Of(confirm, cancel));
+        DialogFooter.Question(this, title, [DialogFooter.Paragraph(text), .. detail is null ? [] : new[] { detail }],
+            DialogFooter.Of(confirm, DialogFooter.Cancel(() => Answer(false), no)));
     }
 
     /// <summary>Whether Enter agrees, as it does to a question the person's own action asked; never to one that came on

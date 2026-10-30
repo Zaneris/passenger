@@ -17,8 +17,8 @@ public sealed class ChoiceDialog : IdeWindow
             button.Click += (_, _) => Close(choice);
             answers.Add(button);
         }
-        Button cancel = new() { Content = "Cancel", IsCancel = true, IsDefault = chosen is null };
-        cancel.Click += (_, _) => Close(null);
+        Button cancel = DialogFooter.Cancel(() => Close(null));
+        cancel.IsDefault = chosen is null;
         answers.Add(cancel);
         foreach (Button button in answers.Where(b => b.IsDefault))
         {

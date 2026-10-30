@@ -49,9 +49,9 @@ internal sealed class ColourPicker : Border
         hex = new TextBox { Classes = { "search" }, FontFamily = new FontFamily("avares://Passenger.Editor/Fonts#JetBrains Mono") };
         Button choose = new() { Content = "Choose", Classes = { "primary" }, IsDefault = chooses, IsEnabled = chooses };
         ToolTip.SetTip(choose, unchangeable);
-        Button cancel = new() { Content = "Cancel" };
         choose.Click += (_, _) => Chosen?.Invoke(this, Colour);
-        cancel.Click += (_, _) => Chosen?.Invoke(this, null);
+        StackPanel answers = DialogFooter.Popup(choose, () => Chosen?.Invoke(this, null));
+        DockPanel.SetDock(answers, Dock.Right);
         hex.TextChanged += (_, _) => FromHex();
         Child = new StackPanel
         {
@@ -67,7 +67,7 @@ internal sealed class ColourPicker : Border
                     Children =
                     {
                         new StackPanel { [DockPanel.DockProperty] = Dock.Left, Orientation = Orientation.Horizontal, Children = { before, after } },
-                        new StackPanel { [DockPanel.DockProperty] = Dock.Right, Orientation = Orientation.Horizontal, Spacing = 8, Children = { cancel, choose } },
+                        answers,
                         new Panel { Margin = new Thickness(8, 0), Children = { hex } },
                     },
                 },

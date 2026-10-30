@@ -88,7 +88,7 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly TextBlock progress = new() { Classes = { "muted" }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
     private readonly StackPanel working;
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
-    private readonly Button create = new() { Content = "Create", IsDefault = true, Classes = { "primary" }, IsEnabled = false };
+    private readonly Button create = DialogFooter.Default("Create");
     private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(8, 0, 0, 0) };
     private readonly ComboBox setup = new() { Classes = { "form" } };
     private readonly ComboBoxItem[] setups = [.. Enum.GetValues<ProjectSetup>().Select(s => new ComboBoxItem { Content = SetupName(s) })];
@@ -139,6 +139,7 @@ public sealed class NewProjectDialog : IdeWindow
     /// <param name="containers">Why no container can be set up here, asked off the window's thread; null for no question.</param>
     public NewProjectDialog(string folder, ProjectTarget? target, Task<string?>? containers = null)
     {
+        create.IsEnabled = false;
         FormRows.Scope(this);
         this.target = target;
         Title = target is null ? "New Solution" : "New Project";
@@ -252,8 +253,6 @@ public sealed class NewProjectDialog : IdeWindow
 
         problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
         working = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, IsVisible = false, Children = { bar, progress } };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
-        cancel.Click += (_, _) => Cancel();
         create.Click += (_, _) => IdeErrors.Observe(CreateAsync());
         Closing += (_, _) =>
         {
@@ -264,15 +263,8 @@ public sealed class NewProjectDialog : IdeWindow
         Action changed = () => IdeErrors.Observe(RefreshAsync());
         ProjectTemplates.Changed += changed;
         Closed += (_, _) => ProjectTemplates.Changed -= changed;
-        Border bottom = DialogFooter.Bar(DialogFooter.Of(create, cancel), new Panel { Children = { problem, working } });
-
-        DockPanel root = new();
-        DockPanel.SetDock(bottom, Dock.Bottom);
         DockPanel.SetDock(left, Dock.Left);
-        root.Children.Add(bottom);
-        root.Children.Add(left);
-        root.Children.Add(rightPane);
-        Content = root;
+        Content = DialogFooter.Page(new DockPanel { Children = { left, rightPane } }, DialogFooter.OkCancel(create, Cancel, new Panel { Children = { problem, working } }));
         ShowTemplate(null);
         typeRow.IsVisible = false;
         readFrom = target is null ? folder : Path.GetDirectoryName(target.Solution)!;

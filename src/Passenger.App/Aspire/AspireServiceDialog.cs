@@ -19,11 +19,10 @@ public sealed class AspireServiceDialog : IdeWindow
             TextBlock name = new() { TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
             return name.Showing<AspireSelection>(selection => name.Text = selection.Resource.ToString());
         });
-        Profile = new Button { Content = "Profile", IsDefault = true, IsEnabled = false, Classes = { "primary" } };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
+        Profile = DialogFooter.Default("Profile");
+        Profile.IsEnabled = false;
         Services.SelectionChanged += (_, _) => Profile.IsEnabled = Services.SelectedItem is AspireSelection;
         Profile.Click += (_, _) => Close(Services.SelectedItem as AspireSelection);
-        cancel.Click += (_, _) => Close(null);
         StackPanel heading = new()
         {
             Spacing = 8,
@@ -34,7 +33,7 @@ public sealed class AspireServiceDialog : IdeWindow
         DockPanel.SetDock(heading, Dock.Top);
         page.Children.Add(heading);
         page.Children.Add(new Border { Classes = { "framed" }, Margin = new Thickness(20, 0, 20, 16), Child = Services });
-        Content = DialogFooter.Page(page, DialogFooter.Bar(DialogFooter.Of(Profile, cancel)));
+        Content = DialogFooter.Page(page, DialogFooter.OkCancel(Profile, () => Close(null)));
         Services.SelectedIndex = services.Count > 0 ? 0 : -1;
     }
 

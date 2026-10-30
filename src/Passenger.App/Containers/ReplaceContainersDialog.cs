@@ -12,10 +12,9 @@ public sealed class ReplaceContainersDialog : IdeWindow
 
     public ReplaceContainersDialog(string configuration, string project, IReadOnlyList<string> containers)
     {
-        ReplaceButton = new Button { Content = Replace, IsDefault = true, Classes = { "primary" } };
-        CancelButton = new Button { Content = "Cancel", IsCancel = true };
+        ReplaceButton = DialogFooter.Default(Replace);
+        CancelButton = DialogFooter.Cancel(() => Close(false));
         ReplaceButton.Click += (_, _) => Close(true);
-        CancelButton.Click += (_, _) => Close(false);
 
         bool one = containers.Count == 1;
         DialogFooter.Question(this, one ? "A container Passenger did not make" : "Containers Passenger did not make",

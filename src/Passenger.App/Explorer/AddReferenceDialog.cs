@@ -53,10 +53,8 @@ public sealed class AddReferenceDialog : IdeWindow
         list.AddHandler(KeyDownEvent, OnListKeyDown, RoutingStrategies.Tunnel);
         Border rows = new() { Classes = { "framed" }, Child = list };
 
-        Button ok = new() { Content = "OK", IsDefault = true, Classes = { "primary" } };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
+        Button ok = DialogFooter.Default();
         ok.Click += (_, _) => Accept();
-        cancel.Click += (_, _) => Close(null);
         TextBlock heading = new()
         {
             [DockPanel.DockProperty] = Dock.Top,
@@ -64,7 +62,7 @@ public sealed class AddReferenceDialog : IdeWindow
             FontWeight = FontWeight.SemiBold,
             Margin = new Thickness(0, 0, 0, 10),
         };
-        Content = DialogFooter.Page(new DockPanel { Margin = new Thickness(16), Children = { heading, rows } }, DialogFooter.Bar(DialogFooter.Of(ok, cancel)));
+        Content = DialogFooter.Page(new DockPanel { Margin = new Thickness(16), Children = { heading, rows } }, DialogFooter.OkCancel(ok, () => Close(null)));
         Opened += (_, _) => Dispatcher.UIThread.Post(FocusChosen, DispatcherPriority.Loaded);
     }
 

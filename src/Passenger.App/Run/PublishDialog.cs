@@ -47,7 +47,7 @@ public sealed class PublishDialog : IdeWindow
     private readonly CheckBox trimBox = new() { Content = "Trim unused code" };
     private readonly TextBlock command = new() { Classes = { "muted" }, TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-    private readonly Button publish = new() { Content = "Publish", IsDefault = true, Classes = { "primary" } };
+    private readonly Button publish = DialogFooter.Default("Publish");
     private readonly Button saveButton = new() { Content = "Save" };
 
     private IReadOnlyList<PublishProfileFile> profiles = [];
@@ -89,8 +89,6 @@ public sealed class PublishDialog : IdeWindow
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
 
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
-        cancel.Click += (_, _) => Close(null);
         publish.Click += (_, _) => IdeErrors.Observe(PublishAsync());
         saveButton.Click += (_, _) => IdeErrors.Observe(SaveAsync());
         browse.Click += (_, _) => IdeErrors.Observe(BrowseAsync());
@@ -119,28 +117,7 @@ public sealed class PublishDialog : IdeWindow
         fields.Children.Add(new StackPanel { Children = { Row("Output folder:", BrowseRow.Of(folderBox, browse)), FormRows.Of(null, destination), FormRows.Of(null, copied) } });
         fields.Children.Add(Row("Options:", options, top: true));
 
-        StackPanel header = new()
-        {
-            Margin = new Thickness(20, 16, 20, 12),
-            Spacing = 4,
-            Children =
-            {
-                new TextBlock { Text = $"Publish {name} to a folder", FontWeight = FontWeight.SemiBold },
-                command,
-            },
-        };
-        Border top = new() { BorderThickness = new Thickness(0, 0, 0, 1), Child = header };
-        top.Bind(Border.BorderBrushProperty, top.GetResourceObservable(TokenKeys.Divider));
-        Border bottom = DialogFooter.Bar(DialogFooter.Of(publish, cancel, saveButton), problem);
-        // Inset as the page above it is, so Publish ends where its fields do and a problem starts where its labels do.
-        bottom.Padding = new Thickness(20, 10);
-        DockPanel root = new();
-        DockPanel.SetDock(top, Dock.Top);
-        DockPanel.SetDock(bottom, Dock.Bottom);
-        root.Children.Add(top);
-        root.Children.Add(bottom);
-        root.Children.Add(new Border { Padding = new Thickness(20, 14, 20, 16), Child = fields });
-        Content = root;
+        Content = DialogFooter.Headed($"Publish {name} to a folder", command, fields, DialogFooter.OkCancel(publish, () => Close(null), problem, saveButton));
 
         profileBox.SelectionChanged += (_, _) =>
         {

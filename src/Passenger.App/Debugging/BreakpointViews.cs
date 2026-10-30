@@ -320,9 +320,9 @@ public sealed class BreakpointsWindow : UserControl
         typed.AddHandler(KeyDownEvent, OnTypedKeyDown, RoutingStrategies.Tunnel);
         found.DoubleTapped += (_, _) => AddChosenType();
         Button addType = new() { Content = "Add", Classes = { "primary" } };
-        Button cancel = new() { Content = "Cancel" };
         addType.Click += (_, _) => AddChosenType();
-        cancel.Click += (_, _) => ShowChosen();
+        StackPanel answers = DialogFooter.Popup(addType, ShowChosen);
+        answers.HorizontalAlignment = HorizontalAlignment.Right;
         addPane = new StackPanel
         {
             Spacing = 8,
@@ -332,7 +332,7 @@ public sealed class BreakpointsWindow : UserControl
                 new TextBlock { Text = "Add CLR Exception Breakpoints", FontWeight = FontWeight.SemiBold },
                 typed,
                 Framed(found),
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { cancel, addType } },
+                answers,
             },
         };
         chosenPane = new StackPanel { Spacing = 10, Children = { title, properties } };

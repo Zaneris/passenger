@@ -49,10 +49,8 @@ public sealed partial class CloneDialog : IdeWindow
         problem = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false };
         problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
 
-        clone = new Button { Content = "Clone", IsDefault = true, Classes = { "primary" } };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
+        clone = DialogFooter.Default("Clone");
         clone.Click += (_, _) => IdeErrors.Observe(CloneAsync());
-        cancel.Click += (_, _) => Cancel();
         Closing += (_, _) => cloning?.Cancel();
 
         Grid fields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto,Auto") };
@@ -75,7 +73,7 @@ public sealed partial class CloneDialog : IdeWindow
                 working,
                 problem,
             },
-        }, DialogFooter.Bar(DialogFooter.Of(clone, cancel)));
+        }, DialogFooter.OkCancel(clone, Cancel));
         ShowDestination();
         Opened += (_, _) => Dispatcher.UIThread.Post(() => url.Focus(), DispatcherPriority.Loaded);
     }

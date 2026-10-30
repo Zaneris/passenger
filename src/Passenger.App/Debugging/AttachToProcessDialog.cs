@@ -89,10 +89,8 @@ public sealed class AttachToProcessDialog : IdeWindow
         };
 
         attach = new Button { Content = purpose == AttachPurpose.Profiler ? "Attach Profiler" : "Attach with .NET Debugger", Classes = { "primary" }, IsEnabled = false };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
         attach.Click += (_, _) => Attach();
-        cancel.Click += (_, _) => Close(null);
-        Content = DialogFooter.Page(new DockPanel { Margin = new Thickness(16), Children = { top, table } }, DialogFooter.Bar(DialogFooter.Of(attach, cancel)));
+        Content = DialogFooter.Page(new DockPanel { Margin = new Thickness(16), Children = { top, table } }, DialogFooter.OkCancel(attach, () => Close(null)));
         Opened += (_, _) => Dispatcher.UIThread.Post(() =>
         {
             Search.Focus();

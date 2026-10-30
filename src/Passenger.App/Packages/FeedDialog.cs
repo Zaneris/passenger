@@ -60,10 +60,8 @@ public sealed class FeedDialog : IdeWindow
                 + (OperatingSystem.IsWindows() ? string.Empty : ", the password in clear text: NuGet encrypts passwords only on Windows"),
         };
 
-        Button ok = new() { Content = "OK", IsDefault = true, Classes = { "primary" } };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
+        Button ok = DialogFooter.Default();
         ok.Click += (_, _) => Accept();
-        cancel.Click += (_, _) => Close(false);
         Content = DialogFooter.Page(new StackPanel
         {
             Margin = new Thickness(20),
@@ -75,7 +73,7 @@ public sealed class FeedDialog : IdeWindow
                 saved,
                 problem,
             },
-        }, DialogFooter.Bar(DialogFooter.Of(ok, cancel)));
+        }, DialogFooter.OkCancel(ok, () => Close(false)));
         Opened += (_, _) => Dispatcher.UIThread.Post(() => (feed is null ? url : name).Focus(), DispatcherPriority.Loaded);
     }
 

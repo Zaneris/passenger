@@ -41,7 +41,7 @@ public sealed class TemplateVariablesDialog : IdeWindow
         EditableBox.IsCheckedChanged += (_, _) => Edit(v => v with { Editable = EditableBox.IsChecked == true });
         ChangeMacroButton = new Button { Content = "Change macro" };
         ChangeMacroButton.Click += (_, _) => IdeErrors.Observe(ChangeMacro());
-        DoneButton = new Button { Content = "Done", IsDefault = true, Classes = { "primary" } };
+        DoneButton = DialogFooter.Default("Done");
         DoneButton.Click += (_, _) => Close(true);
 
         parameterRow = new DockPanel { Children = { parameterName, ParameterBox } };
@@ -62,14 +62,7 @@ public sealed class TemplateVariablesDialog : IdeWindow
         DockPanel.SetDock(left, Dock.Left);
         body.Children.Add(left);
         body.Children.Add(chosen);
-        StackPanel buttons = DialogFooter.Of(DoneButton, null);
-        Border bottom = DialogFooter.Bar(buttons);
-        DockPanel root = new();
-        DockPanel.SetDock(bottom, Dock.Bottom);
-        root.Children.Add(bottom);
-        root.Children.Add(body);
-        Border page = new() { Child = root };
-        Content = page;
+        Content = DialogFooter.Page(body, DialogFooter.Bar(DialogFooter.Of(DoneButton, null)));
         List();
         names.SelectedIndex = 0;
     }
@@ -176,18 +169,9 @@ public sealed class ChooseMacroDialog : IdeWindow
         list.ItemsSource = (string[])[NoMacro, .. LiveTemplates.Macros.Select(m => m.Description)];
         list.SelectedIndex = LiveTemplates.Macros.ToList().FindIndex(m => m.Name == current) + 1;
         list.DoubleTapped += (_, _) => Close(true);
-        OkButton = new Button { Content = "OK", IsDefault = true, Classes = { "primary" } };
-        Button cancel = new() { Content = "Cancel", IsCancel = true };
+        OkButton = DialogFooter.Default();
         OkButton.Click += (_, _) => Close(true);
-        cancel.Click += (_, _) => Close(false);
-        StackPanel buttons = DialogFooter.Of(OkButton, cancel);
-        Border bottom = DialogFooter.Bar(buttons);
-        DockPanel root = new();
-        DockPanel.SetDock(bottom, Dock.Bottom);
-        root.Children.Add(bottom);
-        root.Children.Add(new Border { Classes = { "framed" }, Margin = new Thickness(12), Child = list });
-        Border page = new() { Child = root };
-        Content = page;
+        Content = DialogFooter.Page(new Border { Classes = { "framed" }, Margin = new Thickness(12), Child = list }, DialogFooter.OkCancel(OkButton, () => Close(false)));
     }
 
     public Button OkButton { get; }
