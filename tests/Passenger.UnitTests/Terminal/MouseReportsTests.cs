@@ -3,7 +3,7 @@ using Passenger.Terminal;
 namespace Passenger.UnitTests.Terminal;
 
 /// <summary>A mouse report's bytes as the program reads them: the original form's place a byte each, one past 127
-/// written as it is, and SGR's in its digits.</summary>
+/// written as it is, SGR's in its digits, and a move's button 32 past the one held.</summary>
 public class MouseReportsTests
 {
     [Fact]
@@ -28,6 +28,15 @@ public class MouseReportsTests
     {
         Assert.Equal("\e[<0;300;2M", System.Text.Encoding.ASCII.GetString(MouseReports.Of(0, 300, 2, release: false, sgr: true)!));
         Assert.Equal("\e[<2;5;7m", System.Text.Encoding.ASCII.GetString(MouseReports.Of(2, 5, 7, release: true, sgr: true)!));
+    }
+
+    [Fact]
+    public void A_move_adds_32_to_the_button_held_or_to_3_with_none()
+    {
+        Assert.Equal("\e[<32;4;2M", System.Text.Encoding.ASCII.GetString(MouseReports.Of(0 + MouseReports.Motion, 4, 2, release: false, sgr: true)!));
+        Assert.Equal("\e[<35;4;2M", System.Text.Encoding.ASCII.GetString(MouseReports.Of(MouseReports.NoButton + MouseReports.Motion, 4, 2, release: false, sgr: true)!));
+        byte[]? original = MouseReports.Of(2 + MouseReports.Motion, 4, 2, release: false, sgr: false);
+        Assert.True(original is [0x1b, 0x5b, 0x4d, 0x42, 0x24, 0x22], $"A drag with the right button held at column 4, row 2 was written {Hex(original)}");
     }
 
     private static string Hex(byte[]? bytes) => bytes is null ? "nothing" : Convert.ToHexString(bytes);

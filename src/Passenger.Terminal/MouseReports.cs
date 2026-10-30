@@ -9,14 +9,17 @@ namespace Passenger.Terminal;
 /// they are: a byte past 127 is a place, never a character to encode.</summary>
 public static class MouseReports
 {
-    /// <summary>The original form's button of every release, which names none.</summary>
-    private const int NoButton = 3;
+    /// <summary>What a move adds to its report's button: the button held's, or <see cref="NoButton"/>'s.</summary>
+    public const int Motion = 32;
+
+    /// <summary>The button of a move with none held, and the original form's of every release, which names none.</summary>
+    public const int NoButton = 3;
 
     /// <summary>The furthest column or row the original form names: a byte holds 255, 32 past it.</summary>
     private const int OriginalLimit = 255 - 32;
 
-    /// <summary>The report of a button (0 left, 1 middle, 2 right, 64 and 65 the wheel) at a column and row counted
-    /// from 1; null in the original form past the column or row it names.</summary>
+    /// <summary>The report of a button (0 left, 1 middle, 2 right, 64 and 65 the wheel, <see cref="Motion"/> added for a
+    /// move) at a column and row counted from 1; null in the original form past the column or row it names.</summary>
     public static byte[]? Of(int button, int column, int row, bool release, bool sgr)
     {
         if (sgr)

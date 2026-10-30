@@ -63,6 +63,26 @@ switch (args)
             Write("\e[?1l");
         }
         break;
+    case ["mouse", .. string[] modes]:
+        // The mouse reports as read, in SGR's form (1006) after the modes asked for (1002, 1003), each on a line of its
+        // own as cat -v shows it, until Ctrl+C; the modes put back after.
+        Write(string.Concat(modes.Select(mode => $"\e[?{mode}h")) + "\e[?1006h");
+        using (Terminal.Raw())
+        {
+            Write("mouse?\r\n");
+            StringBuilder report = new();
+            for (int b = input.ReadByte(); b is >= 0 and not 3; b = input.ReadByte())
+            {
+                report.Append(b < 32 ? $"^{(char)(b + 64)}" : ((char)b).ToString());
+                if (b is 'M' or 'm')
+                {
+                    Write($"{report}\r\n");
+                    report.Clear();
+                }
+            }
+        }
+        Write("\e[?1006l" + string.Concat(modes.Select(mode => $"\e[?{mode}l")));
+        break;
     case ["lines", string from, string to]:
         Lines(long.Parse(from), long.Parse(to));
         break;

@@ -52,6 +52,9 @@ public sealed partial class TerminalView : Control
     /// <summary>The link a plain press began on, which its release opens if nothing was dragged.</summary>
     private TerminalLink? pressedLink;
 
+    /// <summary>The cell (counted from 1) the last mouse report named, so a move within it reports nothing.</summary>
+    private (int Column, int Row)? reported;
+
     public TerminalView()
     {
         Focusable = true;
@@ -469,7 +472,30 @@ public sealed partial class TerminalView : Control
             active = CellAt(e.GetPosition(this));
             InvalidateVisual();
         }
+        else if (session is not null)
+        {
+            ReportMove(e);
+        }
         HoverLink(e.KeyModifiers);
+    }
+
+    /// <summary>A move reported as the program asked: with a button held under 1002 (drags), with or without one under
+    /// 1003 (every move), once as the pointer comes into another cell; Shift keeps it the person's, as for a press.</summary>
+    private void ReportMove(PointerEventArgs e)
+    {
+        MouseTracking tracking = session!.Screen.MouseTracking;
+        PointerPointProperties held = e.GetCurrentPoint(this).Properties;
+        int? button = held.IsLeftButtonPressed ? 0 : held.IsMiddleButtonPressed ? 1 : held.IsRightButtonPressed ? 2 : null;
+        if (tracking is not (MouseTracking.Drag or MouseTracking.Any) || (button is null && tracking != MouseTracking.Any)
+            || e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            return;
+        }
+        Point at = e.GetPosition(this);
+        if (ReportedCell(at) != reported)
+        {
+            SendMouse(at, (button ?? MouseReports.NoButton) + MouseReports.Motion, release: false);
+        }
     }
 
     protected override void OnPointerExited(PointerEventArgs e)
@@ -490,7 +516,7 @@ public sealed partial class TerminalView : Control
         base.OnPointerReleased(e);
         if (session is not null && session.Screen.MouseTracking != MouseTracking.None && !selecting)
         {
-            SendMouse(e.GetPosition(this), 0, release: true);
+            SendMouse(e.GetPosition(this), e.InitialPressMouseButton switch { MouseButton.Middle => 1, MouseButton.Right => 2, _ => 0 }, release: true);
         }
         selecting = false;
         e.Pointer.Capture(null);
@@ -538,13 +564,19 @@ public sealed partial class TerminalView : Control
     /// <summary>A mouse report in the form the program asked for: SGR's (1006), else the original's.</summary>
     private void SendMouse(Point at, int button, bool release)
     {
-        TerminalScreen screen = session!.Screen;
-        int column = Math.Clamp((int)((at.X - Pad) / cellWidth), 0, screen.Columns - 1) + 1;
-        int row = Math.Clamp((int)((at.Y - Pad) / cellHeight), 0, screen.Rows - 1) + 1;
-        if (MouseReports.Of(button, column, row, release, screen.SgrMouse) is { } report)
+        (int column, int row) = ReportedCell(at);
+        reported = (column, row);
+        if (MouseReports.Of(button, column, row, release, session!.Screen.SgrMouse) is { } report)
         {
             session.Write(report);
         }
+    }
+
+    /// <summary>The cell under a point as a mouse report names it, its column and row counted from 1.</summary>
+    private (int Column, int Row) ReportedCell(Point at)
+    {
+        TerminalScreen screen = session!.Screen;
+        return (Math.Clamp((int)((at.X - Pad) / cellWidth), 0, screen.Columns - 1) + 1, Math.Clamp((int)((at.Y - Pad) / cellHeight), 0, screen.Rows - 1) + 1);
     }
 
     private void SelectWord(long line, int column)

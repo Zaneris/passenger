@@ -92,6 +92,33 @@ public sealed class TerminalTests
         window.Close();
     }
 
+    /// <summary>A program that asks for the mouse's moves reads each move into another cell as xterm reports it: under 1002
+    /// (drags) a drag's press, its moves with the button held and its release, and nothing of a move with no button; under
+    /// 1003 (every move) a move with no button too.</summary>
+    [AvaloniaFact]
+    public void A_program_asking_for_drags_or_every_move_reads_each_move_into_another_cell()
+    {
+        (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
+        TerminalView view = window.TerminalPanel.View;
+        RunCase(window, "mouse", "1002");
+        WaitForScreen(window, shell, s => s.MouseTracking == MouseTracking.Drag && s.SgrMouse && Lines(s).Contains("mouse?"), "the program to ask for drags");
+        // On the screen's second row: a move with no button over cells 2 to 4 (from 0), then a drag from 2 to 6.
+        Hover(window, view.TopLine + 1, 2, 4);
+        Drag(window, view.TopLine + 1, 2, view.TopLine + 1, 6);
+        WaitForLine(shell, "^[[<0;7;2m", "the drag's release as the program read it");
+        Assert.Equal(["^[[<0;3;2M", "^[[<32;4;2M", "^[[<32;5;2M", "^[[<32;6;2M", "^[[<32;7;2M", "^[[<0;7;2m"], Reports(shell.Screen, 1));
+        Ui.Press(window, "control C");
+        WaitForScreen(window, shell, s => s.MouseTracking == MouseTracking.None && !s.SgrMouse, "the program to give the mouse back as it ends");
+
+        RunCase(window, "mouse", "1003");
+        WaitForScreen(window, shell, s => s.MouseTracking == MouseTracking.Any && Lines(s).Count(l => l == "mouse?") == 2, "the program to ask for every move");
+        Hover(window, view.TopLine + 1, 2, 4);
+        WaitForLine(shell, "^[[<35;5;2M", "the last move as the program read it");
+        Assert.Equal(["^[[<35;3;2M", "^[[<35;4;2M", "^[[<35;5;2M"], Reports(shell.Screen, 2));
+        Ui.Press(window, "control C");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void Output_past_the_screen_goes_to_the_scrollback_and_clear_buffer_leaves_only_the_prompt_at_the_top()
     {
@@ -854,6 +881,29 @@ public sealed class TerminalTests
         Point from = view.TranslatePoint(view.PointOf(fromLine, fromColumn), window)!.Value;
         Point to = view.TranslatePoint(view.PointOf(toLine, toColumn), window)!.Value;
         Ui.Drag(window, from, to);
+    }
+
+    /// <summary>The pointer moved with no button held along a line from one cell to another, a quarter of a cell at a time.</summary>
+    private static void Hover(MainWindow window, long line, int fromColumn, int toColumn)
+    {
+        TerminalView view = window.TerminalPanel.View;
+        Point from = view.TranslatePoint(view.PointOf(line, fromColumn), window)!.Value;
+        Point to = view.TranslatePoint(view.PointOf(line, toColumn), window)!.Value;
+        int steps = Math.Max(1, Math.Abs(toColumn - fromColumn) * 4);
+        for (int step = 0; step <= steps; step++)
+        {
+            window.MouseMove(from + ((to - from) * ((double)step / steps)), RawInputModifiers.None);
+        }
+        Ui.Settle();
+    }
+
+    /// <summary>The mouse reports the TerminalCases program read in its given run (from 1), in order: the lines after that
+    /// run's "mouse?".</summary>
+    private static List<string> Reports(TerminalScreen screen, int run)
+    {
+        List<string> lines = Lines(screen);
+        int asked = lines.Select((line, at) => (line, at)).Where(l => l.line == "mouse?").Select(l => l.at).ElementAt(run - 1);
+        return [.. lines.Skip(asked + 1).TakeWhile(l => l.StartsWith("^[[<", StringComparison.Ordinal))];
     }
 
     /// <summary>The window over a folder, its Terminal open on the system's plain shell (cmd.exe on Windows, sh elsewhere).</summary>
