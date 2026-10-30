@@ -10,6 +10,7 @@ using Passenger.Workspace;
 using Passenger.Xaml;
 using Passenger.Xaml.Features;
 using Passenger.Xaml.Projects;
+using Passenger.Xaml.Syntax;
 
 namespace Passenger.App.Xaml;
 
@@ -554,29 +555,34 @@ public sealed class XamlService : IDisposable
     public async Task<string?> ClassFileAsync(string className, string near)
     {
         UiThread.Check();
-        string declared = $"Class=\"{className}\"";
         foreach (XamlDocument document in documents.Values)
         {
-            if (document.Document.Text.Snapshot.ToString().Contains(declared, StringComparison.Ordinal))
+            if (Declares(document.Document.Text.Snapshot.ToString(), className))
             {
                 return document.Document.Path;
             }
         }
         return await BackgroundWork.Run(() => ProjectFile(near) is { } project
-            ? FolderWalk.Files(Path.GetDirectoryName(project)!, built: true).Where(IsXaml).FirstOrDefault(file => Declares(file, declared))
+            ? FolderWalk.Files(Path.GetDirectoryName(project)!, built: true).Where(IsXaml).FirstOrDefault(file => ReadXaml(file) is { } text && Declares(text, className))
             : null);
     }
 
-    private static bool Declares(string file, string declared)
+    /// <summary>Whether a XAML file's root names a class in its <c>x:Class</c>, as XAML reads the attribute however it is
+    /// written (its prefix, quotes and spacing).</summary>
+    private static bool Declares(string text, string className) =>
+        text.Contains(className, StringComparison.Ordinal) && XamlFile.ClassAttribute(XmlTree.Parse(text)) is { IsValueClosed: true } declared
+        && declared.Value == className;
+
+    private static string? ReadXaml(string file)
     {
         try
         {
-            return File.ReadAllText(file).Contains(declared, StringComparison.Ordinal);
+            return File.ReadAllText(file);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             // Gone, or not readable: no XAML to go to.
-            return false;
+            return null;
         }
     }
 

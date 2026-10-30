@@ -171,6 +171,36 @@ public sealed class CodeBehindRenameTests : McpRig
         }
     }
 
+    /// <summary>A window's class renamed from its code-behind, its XAML writing x:Class in single quotes with spaces about
+    /// its equals sign as XAML allows, changes that x:Class too and renames the .axaml with the code-behind, and the app
+    /// builds.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_windows_class_changes_its_x_class_written_in_single_quotes_and_spaced()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("xaml-quoted-rename-"));
+        string quoted = Window.Replace("x:Class=\"Gallery.MainWindow\"", "x:Class = 'Gallery.MainWindow'", StringComparison.Ordinal);
+        TestFolders.Write(folder, "Gallery.csproj", AvaloniaApp.HeadlessProject());
+        TestFolders.Write(folder, "Program.cs", "namespace Gallery;\n\npublic static class Program\n{\n    public static void Main()\n    {\n    }\n}\n");
+        TestFolders.Write(folder, "App.axaml", App);
+        TestFolders.Write(folder, "App.axaml.cs", AppCode);
+        TestFolders.Write(folder, "MainWindow.axaml", quoted);
+        TestFolders.Write(folder, "MainWindow.axaml.cs", WindowCode);
+        Restore.Run(folder);
+        MainWindow window = Opened(folder, "MainWindow.axaml.cs");
+        try
+        {
+            RenameAt(window, "class MainWin", "MainView");
+            Assert.True(Names(folder, "*.axaml*").SequenceEqual(["App.axaml", "App.axaml.cs", "MainView.axaml", "MainView.axaml.cs"]),
+                $"The window's files after its class was renamed from its code-behind: [{string.Join(", ", Names(folder, "*.axaml*"))}], {window.Status}");
+            Assert.Equal(quoted.Replace("'Gallery.MainWindow'", "'Gallery.MainView'", StringComparison.Ordinal), File.ReadAllText(Path.Combine(folder, "MainView.axaml")));
+            Builds(window, folder, "the class of a window whose x:Class is single-quoted was renamed");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A component's .razor file renamed in the Solution view offers to rename its class with it, as a C# file named
     /// after its type does: taken, the code-behind's partial class, the tag and the typeof that use it follow, the
     /// code-behind and the scoped style are renamed with it, and the app builds; one Undo puts all of it back.</summary>
