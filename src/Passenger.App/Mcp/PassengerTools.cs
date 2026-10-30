@@ -1263,13 +1263,22 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>How long tests_list waits for the tests to be found from the test projects' code.</summary>
     private static readonly TimeSpan TestsLookLimit = TimeSpan.FromSeconds(60);
 
-    /// <summary>The last run's tally and its failures, of the tests it ran alone, each message and stack whole and its
-    /// output's last lines.</summary>
+    /// <summary>The last run's tally and its failures, of the tests it ran alone as it told them (a test renamed as it ran
+    /// still told), a method's results together, each message and stack whole and its output's last lines.</summary>
     private TestRunInfo TestInfo(Testing.TestController tests)
     {
-        List<Testing.TestNode> failed = [.. tests.RunMethods.Where(m => m.State == Testing.TestState.Failed)];
-        return new TestRunInfo(tests.Summary, [.. failed.Select(m => new TestFailure(TestName(m), m.Path is { } at ? $"{Relative(at)}:{m.Line}" : null,
-            Testing.TestNode.DetailsOf(m.Results, FailureOutputLines)))]);
+        List<TestFailure> failures = [];
+        foreach (IGrouping<(string, string, string?), Testing.TestOutcome> method in tests.RunOutcomes
+            .GroupBy(o => (o.Test.Project, o.Test.Method, o.Test.Framework)).Where(m => m.Any(o => o.State == Testing.TestState.Failed)))
+        {
+            Testing.TestItem test = method.First().Test;
+            Testing.TestNode? shown = tests.Tree.Node(test) is { } node ? node.Kind == Testing.TestNodeKind.Row ? node.Parent : node : null;
+            bool several = shown?.Framework is not null || tests.RunOutcomes.Any(o => o.Test.Project == test.Project && o.Test.Method == test.Method && o.Test.Framework != test.Framework);
+            string? place = shown?.Path is { } at ? $"{Relative(at)}:{shown.Line}" : test.Path is { } found ? $"{Relative(found)}:{test.Line}" : null;
+            failures.Add(new TestFailure(shown is null ? $"{test.Method}{(several ? $" ({test.Framework})" : string.Empty)}" : TestName(shown), place,
+                Testing.TestNode.DetailsOf([.. method], FailureOutputLines)));
+        }
+        return new TestRunInfo(tests.Summary, failures);
     }
 
     /// <summary>How many of a failure's last lines of output an answer gives: an agent's answer holds no test's every line.</summary>

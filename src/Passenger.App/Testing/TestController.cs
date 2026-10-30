@@ -97,9 +97,12 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>The last run's tally, for the window's status line.</summary>
     public string Summary { get; private set; } = string.Empty;
 
-    /// <summary>The methods the last run ran, or the run under way runs: those its tally counts, each holding that run's
-    /// results alone.</summary>
+    /// <summary>The methods the last run ran, or the run under way runs, each holding that run's results alone.</summary>
     public IReadOnlyList<TestNode> RunMethods { get; private set; } = [];
+
+    /// <summary>Every outcome the last run told, which its tally counts whatever the tree shows meanwhile (a test renamed
+    /// as it ran leaves the tree, its result with it); none while a run is under way.</summary>
+    public IReadOnlyList<TestOutcome> RunOutcomes { get; private set; } = [];
 
     /// <summary>Tests were found or results came in: the gutter's marks follow.</summary>
     public event EventHandler? Changed;
@@ -286,6 +289,7 @@ public sealed class TestController : IAsyncDisposable
             }
             lastRun = chosen ?? [];
             RunMethods = methods;
+            RunOutcomes = [];
             working?.Say($"{prefix}Running {Plural.Of(tests.Count, "test")}…");
             Tree.Begin(tests);
             RunSummary? summary = null;
@@ -344,7 +348,8 @@ public sealed class TestController : IAsyncDisposable
                 Tree.End();
                 await Task.WhenAll(aspireRuns.Select(aspire => aspire.DisposeAsync().AsTask()));
             }
-            Summary = prefix + Tally(methods, summary);
+            RunOutcomes = summary.Outcomes;
+            Summary = prefix + Tally(summary);
             Message?.Invoke(this, Summary);
             if (!summary.Canceled)
             {
@@ -630,9 +635,9 @@ public sealed class TestController : IAsyncDisposable
         return new Dictionary<string, string>(environment) { ["DOCKER_HOST"] = host };
     }
 
-    private static string Tally(IReadOnlyList<TestNode> methods, RunSummary summary)
+    private static string Tally(RunSummary summary)
     {
-        List<TestOutcome> results = [.. methods.SelectMany(m => m.Results)];
+        IReadOnlyList<TestOutcome> results = summary.Outcomes;
         int passed = results.Count(r => r.State == TestState.Passed);
         int failed = results.Count(r => r.State == TestState.Failed);
         int skipped = results.Count(r => r.State == TestState.Skipped);

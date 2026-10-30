@@ -440,6 +440,41 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>A test renamed on disk while its run is under way has its failure counted in the run's tally, though its
+    /// row left the tree with its old name; and a test file deleted after a run takes the tests a runner found in it out of
+    /// the Unit Tests window.</summary>
+    [AvaloniaFact]
+    public void A_test_renamed_as_it_runs_is_counted_in_the_tally_and_a_deleted_files_tests_leave_the_window()
+    {
+        string started = Path.Combine(Folder, "started.txt");
+        string go = Path.Combine(Folder, "go.txt");
+        string renamed = Write("RenamedTests.cs",
+            "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class RenamedTests\n{\n    [Fact]\n    public void Before_its_rename()\n    {\n" +
+            $"        File.WriteAllText(@\"{started}\", Environment.ProcessId.ToString());\n" +
+            $"        for (int i = 0; i < 1200 && !File.Exists(@\"{go}\"); i++)\n        {{\n            Thread.Sleep(100);\n        }}\n" +
+            "        Assert.Fail(\"failed after its rename\");\n    }\n}\n");
+        string doomed = Write("DoomedTests.cs", "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class DoomedTests\n{\n    [Fact]\n    public void Deleted_soon() { }\n}\n");
+        MainWindow window = Open();
+        Tree(window);
+        Ui.WaitFor(() => Method(window, "Before_its_rename") is not null, "the test from its code");
+        Task<string?> run = window.Tests.RunAsync(window.Folder!, [Method(window, "Before_its_rename")!]);
+        Processes.WrittenId(started, "the test host running the test to be renamed");
+        File.WriteAllText(renamed, File.ReadAllText(renamed).Replace("Before_its_rename", "After_its_rename", StringComparison.Ordinal));
+        // The run holds the window busy until the test ends, which waits for the rename to be seen.
+        Ui.PumpUntil(() => Method(window, "After_its_rename") is not null && Method(window, "Before_its_rename") is null, "the renamed test in the tree by its new name");
+        File.WriteAllText(go, "go");
+        Ui.Launched(window, run, "the run of the renamed test", TimeSpan.FromSeconds(120));
+        Assert.True(window.Tests.Summary.StartsWith("Tests passed: 0, failed: 1 of 1", StringComparison.Ordinal),
+            $"The run of a test renamed as it ran did not count its failure: '{window.Tests.Summary}'");
+
+        Assert.True(window.Perform(AppActions.RunAllTests));
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Deleted_soon")?.State == TestState.Passed, "the run of every test", TimeSpan.FromSeconds(120));
+        File.Delete(doomed);
+        Ui.WaitFor(() => Method(window, "Deleted_soon") is null && !Shown(window).Any(r => r.Contains("DoomedTests", StringComparison.Ordinal)),
+            () => $"the deleted file's test to leave the Unit Tests window, which shows [{string.Join(", ", Shown(window))}]");
+        window.Close();
+    }
+
     /// <summary>A run broken off by its test host's crash, a test calling Environment.Exit(3), says why in its tally, which
     /// an agent's tests_run answers with, in the Unit Tests window and on the status bar: the crash as VSTest tells it, and
     /// the test running then.</summary>

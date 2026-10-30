@@ -44,6 +44,12 @@ public sealed class TestFinder
 
     private static readonly IReadOnlySet<string> NoAttributes = new HashSet<string>(StringComparer.Ordinal);
 
+    /// <summary>Every file each test project's tests were told from, by its path: one no longer among them was deleted or
+    /// moved, and a runner's tests of it are gone too.</summary>
+    private readonly Dictionary<string, HashSet<string>> toldFrom = new(StringComparer.Ordinal);
+
+    private static readonly IReadOnlySet<string> NoMethods = new HashSet<string>(StringComparer.Ordinal);
+
     private IReadOnlyList<ProjectModel> every = [];
     private int asks;
     private int listings;
@@ -91,6 +97,7 @@ public sealed class TestFinder
             told.Clear();
             readWith.Clear();
             own.Clear();
+            toldFrom.Clear();
         }
         every = projects;
         Projects = [.. projects.Where(HoldsTests)];
@@ -112,6 +119,7 @@ public sealed class TestFinder
             told.Remove(gone);
             listed.Remove(gone);
             own.Remove(gone);
+            toldFrom.Remove(gone);
         }
         Read(Projects, timed: true);
     }
@@ -340,7 +348,14 @@ public sealed class TestFinder
                     Cases = t.Cases,
                 }));
             }
-            told[project.Path] = new(new CodeTests(tests, files.ToDictionary(f => f.Key, f => f.Value.Methods, StringComparer.Ordinal)), files, tests, starts);
+            // A file told from before and gone since declares no method: a runner's tests found there leave with it.
+            if (!toldFrom.TryGetValue(project.Path, out HashSet<string>? before))
+            {
+                toldFrom[project.Path] = before = new(StringComparer.Ordinal);
+            }
+            before.UnionWith(files.Keys);
+            Dictionary<string, IReadOnlySet<string>> methods = before.ToDictionary(f => f, f => files.TryGetValue(f, out FileTests? read) ? read.Methods : NoMethods, StringComparer.Ordinal);
+            told[project.Path] = new(new CodeTests(tests, methods), files, tests, starts);
             changed = true;
         }
         if (changed || always)
