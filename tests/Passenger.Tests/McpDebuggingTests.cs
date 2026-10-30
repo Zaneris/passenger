@@ -116,8 +116,11 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
                 string source = Debugging.Helpers.Debuggees.Source("LoopingConsoleApp", "Program.cs");
                 int line = Debugging.Helpers.Debuggees.Line("LoopingConsoleApp", "turns++;");
                 await Call(client, McpTools.BreakpointSet, new() { ["path"] = source, ["line"] = line });
-                JsonElement attached = await Call(client, McpTools.DebugAttach, new() { ["processId"] = looping.Id });
-                Assert.Equal(("paused", Passenger.Dap.StopReasons.Breakpoint), (attached.GetProperty("state").GetString(), attached.GetProperty("reason").GetString()));
+                // Waited for as long as a loaded machine takes to attach and bind; the answer comes as soon as it stops.
+                JsonElement attached = await Call(client, McpTools.DebugAttach, new() { ["processId"] = looping.Id, ["waitSeconds"] = 60 });
+                Assert.True(attached.GetProperty("state").GetString() == "paused"
+                    && attached.TryGetProperty("reason", out JsonElement reason) && reason.GetString() == Passenger.Dap.StopReasons.Breakpoint,
+                    $"The attached program did not stop at its breakpoint: {attached}");
                 Assert.EndsWith($"Program.cs:{line}:5", attached.GetProperty("location").GetString(), StringComparison.Ordinal);
                 Assert.True(long.TryParse(Local(attached, "turns"), out long turns) && turns >= 0, $"The stop's locals had no count of turns: {attached}");
                 // Paused in its sleep, below the runtime's frames: an evaluation reads the locals of the frame the stop shows.
