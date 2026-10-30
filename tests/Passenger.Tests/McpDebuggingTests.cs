@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Passenger.App.Mcp;
@@ -353,6 +354,32 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             $"Refused breakpoints were kept: {kept}");
         JsonElement set = Assert.Single((await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 3 })).EnumerateArray());
         Assert.Equal(3, set.GetProperty("line").GetInt32());
+    }
+
+    /// <summary>An agent's debug_start of a web app, which serves until it is stopped, answers once the app's host has
+    /// started, running and saying where it listens, rather than waiting out its time for a stop or an end that never
+    /// comes; the app answers there.</summary>
+    [Fact]
+    public async Task An_agents_debug_start_of_a_web_app_answers_once_it_serves_saying_where_it_listens()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-web-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
+        TestFolders.Write(folder, "Program.cs", "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/\", () => \"served\");\napp.Run();\n");
+        // Port 0: where it listens is the port the app took, which only its own words tell.
+        TestFolders.Write(folder, "Properties/launchSettings.json",
+            "{\n  \"profiles\": {\n    \"Serve\": { \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:0\" }\n  }\n}\n");
+        await Restore.RunAsync(Path.Combine(folder, "Web.csproj"));
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        // Far longer than the app takes to start, which the answer is not to wait out.
+        JsonElement started = await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Web: Serve", ["waitSeconds"] = 600 });
+        Match listening = Regex.Match(started.GetProperty("status").GetString() ?? string.Empty, @"listening at (http://127\.0\.0\.1:\d+)");
+        Assert.True(started.GetProperty("state").GetString() == "running" && listening.Success, $"debug_start of a web app answered: {started.GetRawText()}");
+        using (System.Net.Http.HttpClient http = new())
+        {
+            Assert.Equal("served", await http.GetStringAsync(new Uri(listening.Groups[1].Value), TestContext.Current.CancellationToken));
+        }
+        await Call(client, McpTools.Stop);
     }
 
     /// <summary>A call that takes a while tells an agent that asked for progress what it is doing as it goes (the run's

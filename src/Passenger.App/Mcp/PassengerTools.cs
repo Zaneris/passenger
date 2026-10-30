@@ -1511,8 +1511,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         OnUi(cancel, () => Task.FromResult<IReadOnlyList<BreakpointInfo>>([.. Breakpoints(null), .. DataBreakpoints(), .. ExceptionBreakpoints()]));
 
     [McpServerTool(Name = McpTools.DebugStart, Title = "Debug a configuration", Destructive = true), Description(
-        "Builds and launches a configuration under the debugger, as Debug does, and waits for a stop, its end or an Avalonia " +
-        "or WPF app's UI. Returns where it is. With resource, that one alone, restarted.")]
+        "Builds and launches a configuration under the debugger, as Debug does, and waits for a stop, its end, an Avalonia " +
+        "or WPF app's UI or its host's start (where it listens). Returns where it is. With resource, that one alone, restarted.")]
     public Task<DebugSnapshot> DebugStart(
         string? configuration = null,
         string? arguments = null,
@@ -1588,24 +1588,95 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private static TimeSpan Min(TimeSpan one, TimeSpan other) => one < other ? one : other;
 
     /// <summary>Where a program just launched under the debugger is once it stops or ends, or, for an app with a window,
-    /// which runs until it is closed, once its UI is up, saying so: an agent waits for no more than it needs.</summary>
+    /// which runs until it is closed, once its UI is up, and for a host that serves until it is stopped, once it has
+    /// started, saying so and where it listens: an agent waits for no more than it needs.</summary>
     private async Task<DebugSnapshot> AfterLaunch(TimeSpan limit, CancellationToken cancel)
     {
         LiveTree.LiveApp? app = Session.LiveApp;
         DateTime until = DateTime.UtcNow + limit;
-        AgentCall.Say($"Debugging: waiting up to {limit.TotalSeconds:0} s for a stop, the program's end or its UI");
+        AgentCall.Say($"Debugging: waiting up to {limit.TotalSeconds:0} s for a stop, the program's end, its UI or its host's start");
         Func<bool> going = () => Session.Debug.Session is { State: DebugState.Running or DebugState.Starting };
+        HeardServing serving = new(Session.Debug);
         // Looked at every 50 ms: the session the launch makes can come after the wait begins, and the debugger tells of none.
-        await Until(() => !going() || app is { State: not LiveTree.LiveAppState.Waiting }, limit, cancel);
+        await Until(() => !going() || app is { State: not LiveTree.LiveAppState.Waiting } || serving.Serves(), limit, cancel);
         if (going() && app is { State: LiveTree.LiveAppState.Connected })
         {
             // A stop in the first layout, just after the inspector's hello, is waited for too; looked at every 50 ms.
             await Until(() => !going(), Min(LaunchSettle, until - DateTime.UtcNow), cancel);
         }
         DebugSnapshot started = await AfterResume(TimeSpan.Zero, cancel);
-        return started.Debugged == DebugState.Running && app is { State: LiveTree.LiveAppState.Connected }
-            ? started with { Status = $"{started.Status}, its UI up: app_windows, app_screenshot and app_click look at it and use it" }
+        return started.Debugged != DebugState.Running ? started
+            : app is { State: LiveTree.LiveAppState.Connected } ? started with { Status = $"{started.Status}, its UI up: app_windows, app_screenshot and app_click look at it and use it" }
+            : serving.Said is { } said ? started with { Status = $"{started.Status}, {said}" }
             : started;
+    }
+
+    /// <summary>The debugged program's output heard as it comes, each line once it is whole, from its Debug console or its
+    /// terminal tab, for the words its host says as it starts serving (<see cref="ListeningLines"/>).</summary>
+    private sealed class HeardServing(DebugController debugger)
+    {
+        /// <summary>How long more addresses are listened for after the first, where the host never says it started.</summary>
+        private static readonly TimeSpan MoreAddresses = TimeSpan.FromSeconds(1);
+
+        private DebugSession? session;
+        private ListeningLines lines = new();
+        private int consoleNext;
+        private long terminalNext;
+        private long firstAddress;
+
+        /// <summary>Whether the program serves now: its host said it started, or an address was heard a moment ago.</summary>
+        public bool Serves()
+        {
+            Hear();
+            return lines.HostStarted || lines.Addresses.Count > 0 && System.Diagnostics.Stopwatch.GetElapsedTime(firstAddress) >= MoreAddresses;
+        }
+
+        /// <summary>Where the program serves, in an agent's words, once it has said; else null.</summary>
+        public string? Said => lines.Addresses.Count > 0 ? $"listening at {string.Join(", ", lines.Addresses)}"
+            : lines.HostStarted ? "its host started" : null;
+
+        private void Hear()
+        {
+            if (debugger.Session is not { } now)
+            {
+                return;
+            }
+            if (now != session)
+            {
+                session = now;
+                lines = new ListeningLines();
+                consoleNext = 0;
+                terminalNext = 0;
+            }
+            int had = lines.Addresses.Count;
+            if (now.Terminal is { } inTerminal)
+            {
+                global::Passenger.Terminal.TerminalScreen screen = inTerminal.Session.Screen;
+                // The cursor's line may still be written; those above it are whole.
+                long whole = screen.ScreenTop + screen.CursorRow;
+                for (long line = Math.Max(terminalNext, screen.FirstLine); line < whole; line++)
+                {
+                    lines.Hear(screen.LineAt(line).Text());
+                }
+                terminalNext = Math.Max(terminalNext, whole);
+            }
+            else
+            {
+                TextSnapshot text = debugger.Output(now);
+                // The last line has no break yet; a console that dropped its oldest lines is read again from its first.
+                int whole = text.LineCount - 1;
+                consoleNext = whole < consoleNext ? 0 : consoleNext;
+                for (int line = consoleNext; line < whole; line++)
+                {
+                    lines.Hear(text.GetLineText(line));
+                }
+                consoleNext = whole;
+            }
+            if (had == 0 && lines.Addresses.Count > 0)
+            {
+                firstAddress = System.Diagnostics.Stopwatch.GetTimestamp();
+            }
+        }
     }
 
     /// <summary>The programs the debugger can attach to, each command line's secrets masked as Attach to Process shows them.</summary>
