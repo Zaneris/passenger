@@ -110,8 +110,11 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>Something for the status bar.</summary>
     public event EventHandler<string>? Message;
 
-    /// <summary>A run of tests ended, whether every test passed.</summary>
-    public event EventHandler<bool>? Ran;
+    /// <summary>A run of tests ended, not stopped: how it ended.</summary>
+    public event EventHandler<RunSummary>? Ran;
+
+    /// <summary>How the last run ended; null while one is under way, or when the last was stopped or refused.</summary>
+    private RunSummary? ended;
 
     /// <summary>Asks the container engine before a run of a project that references Testcontainers: why it cannot serve
     /// (not running, no CLI), or the <c>DOCKER_HOST</c> of its current context, for a test host that has none set.</summary>
@@ -216,6 +219,11 @@ public sealed class TestController : IAsyncDisposable
                 Message?.Invoke(this, $"{failed.Name} failed on run {run}");
                 return null;
             }
+            if (ended is { Aborted: true } broken)
+            {
+                Message?.Invoke(this, $"Run {run} broke off{(broken.Error is { } why ? $": {why}" : string.Empty)}");
+                return null;
+            }
             if (stopRequested)
             {
                 Message?.Invoke(this, $"Stopped after {Plural.Of(run, "run")}; none failed");
@@ -254,6 +262,7 @@ public sealed class TestController : IAsyncDisposable
         IsBusy = true;
         BackgroundWork.Begin();
         holdingWork = true;
+        ended = null;
         using CancellationTokenSource stop = Begin();
         working = Work?.Begin(AppActions.RunTests, build ? "Building the test projects…" : "Finding the tests…");
         using CancellationTokenRegistration stopped = working?.Stopping.Register(stop.Cancel) ?? default;
@@ -353,7 +362,8 @@ public sealed class TestController : IAsyncDisposable
             Message?.Invoke(this, Summary);
             if (!summary.Canceled)
             {
-                Ran?.Invoke(this, FirstFailed(methods) is null);
+                ended = summary;
+                Ran?.Invoke(this, summary);
             }
             return null;
         }

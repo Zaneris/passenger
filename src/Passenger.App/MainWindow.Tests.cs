@@ -100,12 +100,13 @@ public partial class MainWindow
                 testHosts.Remove(tab);
             }
         }
-        // A test run's end, a label in Local History.
-        tests.Ran += (_, passed) =>
+        // A test run's end, a label in Local History: passed, failed, or broken off (its test host ended mid-run).
+        tests.Ran += (_, ended) =>
         {
             if (session == next && !next.IsEnded)
             {
-                next.LocalHistory?.Label(passed ? "Tests Passed" : "Tests Failed", system: true);
+                string label = ended.Aborted ? "Tests Broken Off" : ended.Outcomes.Any(o => o.State == Testing.TestState.Failed) ? "Tests Failed" : "Tests Passed";
+                next.LocalHistory?.Label(label, system: true);
             }
         };
     }

@@ -520,6 +520,39 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>A run broken off by its test host's crash, no test having failed, is labelled Tests Broken Off in Local
+    /// History, never Tests Passed; and Run Until Failure of its test stops after that run, saying it broke off.</summary>
+    [AvaloniaFact]
+    public void A_run_whose_test_host_crashes_is_no_pass_in_local_history_and_ends_run_until_failure()
+    {
+        Write("ExitingTests.cs",
+            "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class ExitingTests\n{\n    [Fact]\n    public void Exits() => Environment.Exit(3);\n}\n");
+        MainWindow window = Open();
+        ListBox tree = Tree(window);
+        Ui.WaitFor(() => Method(window, "Exits") is not null, "the exiting test in the Unit Tests window");
+        Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [Method(window, "Exits")!]), "the run of the test that exits", TimeSpan.FromSeconds(120));
+        Assert.Contains(", broken off: ", window.Tests.Summary, StringComparison.Ordinal);
+        Ui.WaitFor(() => Labels().Count > 0, "Local History's label of the run");
+        Assert.True(Labels() is ["Tests Broken Off"], $"Local History labelled a run its test host's crash broke off [{string.Join(", ", Labels())}]");
+
+        if (window.Tests.Tree.Rows.First(r => r.Name == "ExitingTests") is { IsExpanded: false } exiting)
+        {
+            window.Tests.Tree.Toggle(exiting);
+        }
+        tree.SelectedItem = Method(window, "Exits");
+        Ui.ChooseFromMenu(tree, "Run Until Failure");
+        Ui.WaitFor(() => window.Status?.StartsWith("Run 1 broke off: ", StringComparison.Ordinal) == true || window.Tests.Runs > 1,
+            () => $"Run Until Failure to stop after its run broken off; it says '{window.Status}'", TimeSpan.FromSeconds(120));
+        Assert.True(window.Tests.Runs == 1, $"Run Until Failure went on to run {window.Tests.Runs} after its first run broke off");
+        Ui.WaitFor(() => !window.Tests.IsBusy, "Run Until Failure to end");
+        Assert.Contains("while Sums.Tests.ExitingTests.Exits ran", window.Status ?? string.Empty, StringComparison.Ordinal);
+        Assert.DoesNotContain("Tests Passed", Labels());
+        window.Close();
+
+        List<string> Labels() => [.. window.LocalHistory!.Snapshot().Events
+            .Where(e => e is { Kind: Passenger.App.History.HistoryKind.Label, System: true }).Select(e => e.Name ?? string.Empty)];
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Typing_in_one_file_among_many_open_reads_and_marks_that_files_tests_and_no_others()
