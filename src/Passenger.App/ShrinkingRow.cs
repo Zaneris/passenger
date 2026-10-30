@@ -12,6 +12,23 @@ public sealed class ShrinkingRow : Panel
 {
     private double[] widths = [];
 
+    /// <summary>The room between two children shown.</summary>
+    public static readonly StyledProperty<double> SpacingProperty = AvaloniaProperty.Register<ShrinkingRow, double>(nameof(Spacing));
+
+    public double Spacing
+    {
+        get => GetValue(SpacingProperty);
+        set => SetValue(SpacingProperty, value);
+    }
+
+    /// <summary>The least the row gives way to, its children each at its least, known once it has been measured.</summary>
+    public double LeastWidth { get; private set; }
+
+    static ShrinkingRow()
+    {
+        AffectsMeasure<ShrinkingRow>(SpacingProperty);
+    }
+
     protected override Size MeasureOverride(Size availableSize)
     {
         widths = new double[Children.Count];
@@ -23,10 +40,14 @@ public sealed class ShrinkingRow : Panel
             widths[i] = child.IsVisible ? child.DesiredSize.Width : 0;
             total += widths[i];
         }
-        double excess = double.IsInfinity(availableSize.Width) ? 0 : total - availableSize.Width;
+        double gaps = Spacing * Math.Max(0, Children.Count(c => c.IsVisible) - 1);
+        LeastWidth = gaps + Children.Select((c, i) => !c.IsVisible ? 0
+            : c is IGivesWayFirst first ? Math.Min(widths[i], first.LeastWidth + c.Margin.Left + c.Margin.Right) : Math.Min(widths[i], Least(c, i))).Sum();
+        double room = Math.Max(0, availableSize.Width - gaps);
+        double excess = double.IsInfinity(room) ? 0 : total - room;
         // One that gives way first does so before any other gives a pixel, and before the row takes the room it frees.
         double free = Children.OfType<IGivesWayFirst>().Sum(c => c.LeavesFree);
-        double before = double.IsInfinity(availableSize.Width) ? 0 : total - Math.Max(0, availableSize.Width - free);
+        double before = double.IsInfinity(room) ? 0 : total - Math.Max(0, room - free);
         for (int i = Children.Count - 1; i >= 0 && before > 0; i--)
         {
             if (Children[i] is IGivesWayFirst first)
@@ -48,7 +69,7 @@ public sealed class ShrinkingRow : Panel
             excess -= give;
         }
         // Told the room left over too, so a child that grows by itself (a tab strip) is measured again within it.
-        double slack = double.IsInfinity(availableSize.Width) ? 0 : Math.Max(0, availableSize.Width - widths.Sum());
+        double slack = double.IsInfinity(room) ? 0 : Math.Max(0, room - widths.Sum());
         double height = 0;
         for (int i = 0; i < Children.Count; i++)
         {
@@ -60,7 +81,7 @@ public sealed class ShrinkingRow : Panel
                 widths[i] = Math.Min(widths[i], Children[i].DesiredSize.Width);
             }
         }
-        return new Size(widths.Sum(), height);
+        return new Size(widths.Sum() + gaps, height);
     }
 
     /// <summary>The least a child gives way to in a row, past its MinWidth, which leaves it as it is anywhere else: a closable
@@ -80,7 +101,7 @@ public sealed class ShrinkingRow : Panel
         for (int i = 0; i < Children.Count && i < widths.Length; i++)
         {
             Children[i].Arrange(new Rect(x, 0, widths[i], finalSize.Height));
-            x += widths[i];
+            x += widths[i] + (Children[i].IsVisible ? Spacing : 0);
         }
         return finalSize;
     }

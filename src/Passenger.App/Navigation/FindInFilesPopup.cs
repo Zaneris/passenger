@@ -158,7 +158,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         results = new ListBox
         {
             Classes = { "tree" },
-            Height = ListRow.Height * 10,
+            Height = ResultsHeight,
         };
         ReusedRows.Use(results, () => Row(ligatures));
         results.SelectionChanged += (_, _) => ShowPreview();
@@ -169,7 +169,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             ToolWindows.ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ToolWindows.ListMenus.CopyAsync(this, chosen.Path))),
             ToolWindows.ListMenus.Item("Copy Line", null, () => IdeErrors.Observe(ToolWindows.ListMenus.CopyAsync(this, chosen.LineText.Trim()))),
         ]);
-        preview = new CodeEditor { IsReadOnly = true, ShowErrorStripe = false, Height = 180, Focusable = false, Ligatures = ligatures };
+        preview = new CodeEditor { IsReadOnly = true, ShowErrorStripe = false, Height = PreviewHeight, Focusable = false, Ligatures = ligatures };
         // Clear of the frame's rounded foot, which the editor's square corners would cover.
         Border previewFrame = new() { BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(0, 0, 0, 8), Child = preview };
         previewFrame.Bind(Border.BorderBrushProperty, previewFrame.GetResourceObservable(TokenKeys.Divider));
@@ -348,6 +348,33 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         {
             ReplaceRequested?.Invoke(this, (Query, Replacement, found));
         }
+    }
+
+    /// <summary>The results' height and the preview's with room for them.</summary>
+    private const double ResultsHeight = ListRow.Height * 10;
+
+    private const double PreviewHeight = 180;
+
+    /// <summary>The least each gives way to: three results and three lines of the one chosen.</summary>
+    private const double LeastResults = ListRow.Height * 3;
+
+    private const double LeastPreview = 60;
+
+    /// <summary>Short of the room its parts take (a short window, which the popup is fitted inside), the results and the
+    /// preview give way together, each down to its least, so the popup stays whole above the window's foot.</summary>
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        Size laid = base.MeasureOverride(availableSize.WithHeight(double.PositiveInfinity));
+        double whole = laid.Height + (ResultsHeight - results.Height) + (PreviewHeight - preview.Height);
+        double give = Math.Clamp((whole - availableSize.Height) / (ResultsHeight - LeastResults + PreviewHeight - LeastPreview), 0, 1);
+        double resultsHeight = Math.Round(ResultsHeight - (give * (ResultsHeight - LeastResults)));
+        double previewHeight = Math.Round(PreviewHeight - (give * (PreviewHeight - LeastPreview)));
+        // Set only as they change, so a layout pass that finds the same heights invalidates nothing.
+        if (resultsHeight != results.Height || previewHeight != preview.Height)
+        {
+            (results.Height, preview.Height) = (resultsHeight, previewHeight);
+        }
+        return base.MeasureOverride(availableSize);
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)

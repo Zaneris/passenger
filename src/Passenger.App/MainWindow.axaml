@@ -28,7 +28,7 @@
         <!-- The toolbar, which is the window's title bar too (MainWindow.TitleBar.cs): its empty space moves the window and
              a double click on it maximizes, while what is on it takes its own clicks (the role User, where Windows asks). -->
         <Border Name="Toolbar" Classes="titleBar" Grid.Row="0" Height="40" PointerPressed="OnToolbarPressed">
-            <DockPanel Name="ToolbarContent" Margin="8,0">
+            <app:ToolbarRow Name="ToolbarContent" Margin="8,0">
                 <!-- The window's buttons at the bar's right on Windows and Linux; macOS's own stand at its left. Their
                      roles make Windows treat them as its caption buttons (its snap layouts on the maximize one). -->
                 <StackPanel Name="WindowButtons" DockPanel.Dock="Right" Orientation="Horizontal" Margin="10,0,0,0" IsVisible="False">
@@ -46,20 +46,20 @@
                     </Button>
                 </StackPanel>
 
-                <!-- The run widget and the icons at the right keep their room as the window narrows: the project's and
-                     branch's names give way first, ending in an ellipsis (the end group is laid out before the start
-                     one). -->
-                <StackPanel Name="ToolbarEnd" DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center"
+                <!-- The run widget and the icons at the right keep their room as the window narrows: the branch's and
+                     project's names give way first, then the run configuration's, each ending in an ellipsis
+                     (ToolbarRow). -->
+                <app:ShrinkingRow Name="ToolbarEnd" DockPanel.Dock="Right" Spacing="2" VerticalAlignment="Center"
                             WindowDecorationProperties.ElementRole="User">
                     <Button Name="BuildButton" Classes="tool" ToolTip.Tip="Build solution">
                         <PathIcon Data="{StaticResource Icon.Build}" />
                     </Button>
-                    <Button Name="RunConfigButton" Classes="widget" ToolTip.Tip="Run configuration" Click="OnRunConfigClicked">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button Name="RunConfigButton" Classes="widget" MinWidth="52" ToolTip.Tip="Run configuration" Click="OnRunConfigClicked">
+                        <DockPanel>
+                            <PathIcon DockPanel.Dock="Right" Margin="6,0,0,0" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
                             <TextBlock Name="RunConfigName" Text="No configurations" VerticalAlignment="Center"
                                        MaxWidth="200" TextTrimming="CharacterEllipsis" />
-                            <PathIcon Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
-                        </StackPanel>
+                        </DockPanel>
                     </Button>
                     <Button Name="RunButton" Classes="tool" ToolTip.Tip="Run">
                         <PathIcon Classes="toolbarRun" Data="{StaticResource Icon.Run}" />
@@ -83,7 +83,7 @@
                     <Button Name="SettingsButton" Classes="tool" ToolTip.Tip="Settings">
                         <PathIcon Data="{StaticResource Icon.Settings}" />
                     </Button>
-                </StackPanel>
+                </app:ShrinkingRow>
 
                 <app:ShrinkingRow Name="ToolbarStart" DockPanel.Dock="Left" HorizontalAlignment="Left" VerticalAlignment="Center"
                            WindowDecorationProperties.ElementRole="User">
@@ -96,7 +96,7 @@
                             <PathIcon Data="{StaticResource Icon.Menu}" />
                         </Button>
                     </app:MainMenuPlace>
-                    <Button Name="ProjectButton" Classes="widget" Margin="0,0,2,0" MinWidth="60" ToolTip.Tip="Open a solution, project or folder" Click="OnProjectClicked">
+                    <Button Name="ProjectButton" Classes="widget" Margin="0,0,2,0" MinWidth="80" ToolTip.Tip="Open a solution, project or folder" Click="OnProjectClicked">
                         <DockPanel>
                             <Border Name="ProjectBadge" Classes="projectBadge" DockPanel.Dock="Left" Margin="0,0,7,0" IsVisible="False" Width="20" Height="20">
                                 <TextBlock Name="ProjectBadgeText" Classes="projectBadgeText" HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -106,7 +106,7 @@
                                        MaxWidth="240" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
                     </Button>
-                    <Button Name="BranchButton" Classes="widget" MinWidth="54" ToolTip.Tip="Version control" Click="OnBranchClicked">
+                    <Button Name="BranchButton" Classes="widget" MinWidth="76" ToolTip.Tip="Version control" Click="OnBranchClicked">
                         <DockPanel>
                             <PathIcon DockPanel.Dock="Left" Margin="0,0,6,0" Data="{StaticResource Icon.Branch}" />
                             <PathIcon DockPanel.Dock="Right" Margin="6,0,0,0" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
@@ -114,7 +114,7 @@
                         </DockPanel>
                     </Button>
                 </app:ShrinkingRow>
-            </DockPanel>
+            </app:ToolbarRow>
         </Border>
 
         <!-- Tool windows round the editor: stripes of their buttons down both edges. -->
@@ -175,17 +175,20 @@
                     </Button>
                     <TextBlock Name="LanguageText" Classes="status" />
                 </StackPanel>
-                <!-- Cut where the widgets begin, so a deep file's path never runs on under them. -->
-                <StackPanel Name="BreadcrumbHost" DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True" />
-                <!-- What the status bar says, with whether it is an error or a warning (a project's load) while it says it;
-                     a link to where it has more to see while it has a place (StatusBar.Say), its whole text on hover. -->
-                <Button Name="StatusMessage" Classes="statusMessage">
-                    <DockPanel>
-                        <PathIcon Name="StatusIcon" DockPanel.Dock="Left" Width="14" Height="14" Margin="0,0,6,0" IsVisible="False" VerticalAlignment="Center" />
-                        <app:WorkingRing Name="StatusWorking" DockPanel.Dock="Left" Width="14" Height="14" Margin="0,0,6,0" IsVisible="False" VerticalAlignment="Center" />
-                        <TextBlock Name="StatusText" Classes="status" Text="No solution" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                    </DockPanel>
-                </Button>
+                <app:StatusLine>
+                    <!-- Cut where the widgets begin, so a deep file's path never runs on under them, and where what the
+                         bar says begins, which takes its room first. -->
+                    <StackPanel Name="BreadcrumbHost" Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True" />
+                    <!-- What the status bar says, with whether it is an error or a warning (a project's load) while it says it;
+                         a link to where it has more to see while it has a place (StatusBar.Say), its whole text on hover. -->
+                    <Button Name="StatusMessage" Classes="statusMessage">
+                        <DockPanel>
+                            <PathIcon Name="StatusIcon" DockPanel.Dock="Left" Width="14" Height="14" Margin="0,0,6,0" IsVisible="False" VerticalAlignment="Center" />
+                            <app:WorkingRing Name="StatusWorking" DockPanel.Dock="Left" Width="14" Height="14" Margin="0,0,6,0" IsVisible="False" VerticalAlignment="Center" />
+                            <TextBlock Name="StatusText" Classes="status" Text="No solution" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        </DockPanel>
+                    </Button>
+                </app:StatusLine>
             </DockPanel>
         </Border>
     </Grid>

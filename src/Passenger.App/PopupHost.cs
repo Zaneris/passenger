@@ -125,17 +125,26 @@ public sealed class PopupHost
         Show(shown, at);
     }
 
-    /// <summary>A popup no wider than the window it is over, its frame's shadow inside it, so one over a window
-    /// narrower than the popups' widths (a floating tool window, an editor window) shows its frame whole; as the window
-    /// is resized, it follows. Its height stays its own: a popup's list is as tall as its rows.</summary>
+    /// <summary>A popup no wider than the window it is over, its frame's shadow inside it, and no taller than the room
+    /// from where it opens to a gap above the window's foot, the shadow under its frame free to run past: so one over a
+    /// window narrower or shorter than the popups' sizes (a floating tool window, the smallest window) shows its frame
+    /// whole, its list or preview giving way; as the window is resized, it follows.</summary>
     private static void Fit(Control popup, ContentControl host, Size room)
     {
+        Thickness outside = popup is TemplatedControl ? default : host.Padding;
         if (room.Width > 0)
         {
-            Thickness outside = popup is TemplatedControl ? default : host.Padding;
             popup.MaxWidth = Math.Max(0, room.Width - outside.Left - outside.Right);
         }
+        if (room.Height > 0)
+        {
+            Thickness inside = popup is TemplatedControl framed ? framed.Padding : default;
+            popup.MaxHeight = Math.Max(0, room.Height - host.Margin.Top - outside.Top - Gap + inside.Bottom);
+        }
     }
+
+    /// <summary>The least room between a popup's frame and the edge of the window it is over.</summary>
+    private const double Gap = 8;
 
     /// <summary>A layer's popup fitted again to the window it is over, resized.</summary>
     private static void Refit(Panel layer, ContentControl host)

@@ -1090,6 +1090,7 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="TextBlock.welcomeTitle">
+        <Setter Property="TextWrapping" Value="WrapWithOverflow" />
         <Setter Property="FontSize" Value="30" />
         <Setter Property="FontWeight" Value="Bold" />
         <Setter Property="Margin" Value="0,0,0,4" />
@@ -1149,6 +1150,10 @@
         <Setter Property="MaxWidth" Value="280" />
         <Setter Property="Margin" Value="16,0,0,0" />
         <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+    <!-- The recent ones keep room for a few rows, or the words for none, on the shortest page: the page scrolls first. -->
+    <Style Selector="Border.welcomeRecent">
+        <Setter Property="MinHeight" Value="140" />
     </Style>
     <Style Selector="ListBox.welcomeList">
         <Setter Property="Padding" Value="0" />

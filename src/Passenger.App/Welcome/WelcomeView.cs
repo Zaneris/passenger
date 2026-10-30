@@ -39,6 +39,8 @@ public sealed class WelcomeView : UserControl
             TextWrapping = TextWrapping.Wrap,
         };
         Grid hero = new() { Classes = { "welcomeHero" }, ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        // The mark gives its room to the words in a narrow page, where beside them it would break the title mid-word.
+        hero.SizeChanged += (_, e) => mark.IsVisible = e.NewSize.Width >= NarrowHero;
         hero.Children.Add(mark);
         hero.Children.Add(new StackPanel { [Grid.ColumnProperty] = 1, VerticalAlignment = VerticalAlignment.Center, Children = { title, subtitle } });
 
@@ -84,16 +86,60 @@ public sealed class WelcomeView : UserControl
         ]);
         empty = new TextBlock { Classes = { "emptyText", "welcomeEmpty" } };
 
-        DockPanel page = new() { Classes = { "welcomePage" } };
+        Page page = new() { Classes = { "welcomePage" } };
         foreach (Control top in (Control[])[hero, actions, bar, notice])
         {
             DockPanel.SetDock(top, Dock.Top);
             page.Children.Add(top);
         }
         page.Children.Add(new Border { Classes = { "welcomeRecent" }, Child = new Panel { Children = { list, empty } } });
-        Content = page;
+        ScrollViewer scroller = new() { Content = page };
+        scroller.SizeChanged += (_, e) => page.View = e.NewSize.Height - page.Margin.Top - page.Margin.Bottom;
+        Content = scroller;
         Filter();
     }
+
+    /// <summary>The page in its scroller: as tall as the view, the recent ones' list filling what the parts above it leave
+    /// and scrolling itself, while that is at least the list's least (Shell.axaml's <c>Border.welcomeRecent</c>); on a
+    /// shorter view, as tall as its parts with the list at its least, the view scrolling them.</summary>
+    private sealed class Page : DockPanel
+    {
+        private double view;
+
+        /// <summary>The height the page has in its scroller's view.</summary>
+        public double View
+        {
+            get => view;
+            set
+            {
+                if (Math.Abs(value - view) > 0.5)
+                {
+                    view = value;
+                    InvalidateMeasure();
+                }
+            }
+        }
+
+        protected override Type StyleKeyOverride => typeof(DockPanel);
+
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            // The parts above the list each as tall as it wants (one given less cuts its lines), the list at its least.
+            Control[] shown = [.. Children.Where(c => c.IsVisible)];
+            double least = 0;
+            foreach (Control part in shown.SkipLast(1))
+            {
+                part.Measure(availableSize.WithHeight(double.PositiveInfinity));
+                least += part.DesiredSize.Height;
+            }
+            least += shown.LastOrDefault() is { } list ? list.MinHeight + list.Margin.Top + list.Margin.Bottom : 0;
+            double height = Math.Max(least, View);
+            return base.MeasureOverride(availableSize.WithHeight(height)).WithHeight(height);
+        }
+    }
+
+    /// <summary>The narrowest the hero is with the mark beside its words.</summary>
+    private const double NarrowHero = 360;
 
     /// <summary>The narrowest an action's tile is before the tiles go two or one across.</summary>
     private const double ActionWidth = 160;
