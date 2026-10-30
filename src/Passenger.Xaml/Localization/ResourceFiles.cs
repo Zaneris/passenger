@@ -208,7 +208,7 @@ public static class ResourceFiles
         foreach (string sub in FoldersIn(folder))
         {
             string[] parts = Identifier(Path.GetFileName(sub)).Split('.');
-            if (parts.Length < segments.Length - at && parts.Select((p, i) => p == segments[at + i]).All(same => same))
+            if (parts.Length < segments.Length - at && parts.Select((p, i) => p == segments[at + i]).All(same => same) && !ProjectFolders.HoldsProject(sub))
             {
                 Walk(sub, segments, at + parts.Length, found, depth + 1);
             }
@@ -309,7 +309,7 @@ public static class ResourceFiles
     {
         TextRange content = element.Content;
         string raw = text.Substring(content.Start, Math.Min(content.Length, text.Length - content.Start));
-        return raw.StartsWith("<![CDATA[", StringComparison.Ordinal) && raw.EndsWith("]]>", StringComparison.Ordinal) ? raw[9..^3] : XmlEntities.Decode(raw);
+        return XmlEntities.DecodeText(raw);
     }
 
     /// <summary>A .resx's text with a key given a value: a new <c>&lt;data&gt;</c> after its last string's, written as that one is
@@ -326,7 +326,7 @@ public static class ResourceFiles
         }
         string newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         string name = XmlEntities.Encode(key, '"');
-        string written = Escaped(value);
+        string written = XmlEntities.Encode(value);
         XmlElement? last = root.Children.LastOrDefault(c => c.Name == "data" && c.Attribute("name") is { HasValue: true } && c.Attribute("type") is null
             && c.Attribute("mimetype") is null && c.Children.Any(v => v.Name == "value") && c.IsClosed);
         if (last is not null)
@@ -363,7 +363,7 @@ public static class ResourceFiles
     {
         XmlTree tree = XmlTree.Parse(text);
         string newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        string written = Escaped(value);
+        string written = XmlEntities.Encode(value);
         XmlElement[] units = [.. tree.Elements.Where(e => e.Name == "trans-unit" && e.Attribute("id") is { HasValue: true })];
         if (units.FirstOrDefault(u => u.Attribute("id")!.Value == key) is { } unit)
         {
@@ -388,8 +388,8 @@ public static class ResourceFiles
         XmlElement? model = neighbour ?? units.LastOrDefault();
         string outer = model is null ? "      " : IndentOf(text, model.Start, "      ");
         string inner = model?.Children.FirstOrDefault() is { } child ? IndentOf(text, child.Start, outer + "  ") : outer + "  ";
-        string made = $"{outer}<trans-unit id=\"{XmlEntities.Encode(key, '"')}\">{newline}{inner}<source>{Escaped(source)}</source>{newline}"
-            + $"{inner}<target state=\"translated\">{written}</target>{newline}{inner}{(note is { Length: > 0 } said ? $"<note>{Escaped(said)}</note>" : "<note />")}{newline}{outer}</trans-unit>";
+        string made = $"{outer}<trans-unit id=\"{XmlEntities.Encode(key, '"')}\">{newline}{inner}<source>{XmlEntities.Encode(source)}</source>{newline}"
+            + $"{inner}<target state=\"translated\">{written}</target>{newline}{inner}{(note is { Length: > 0 } said ? $"<note>{XmlEntities.Encode(said)}</note>" : "<note />")}{newline}{outer}</trans-unit>";
         if (neighbour is not null)
         {
             int lineStart = text.LastIndexOf('\n', Math.Max(0, neighbour.Start - 1)) + 1;
@@ -411,10 +411,6 @@ public static class ResourceFiles
             : text[..bodyEnd] + newline + made + newline + text[bodyEnd..];
     }
 
-    /// <summary>A value as an element's content holds it: <c>&amp;</c>, <c>&lt;</c> and <c>&gt;</c> escaped.</summary>
-    private static string Escaped(string value) =>
-        value.Replace("&", "&amp;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal).Replace(">", "&gt;", StringComparison.Ordinal);
-
     /// <summary>The white space an element's line starts with up to it, else the indentation given.</summary>
     private static string IndentOf(string text, int start, string otherwise)
     {
@@ -434,12 +430,14 @@ public static class ResourceFiles
         }
     }
 
+    /// <summary>A folder's folders the project's wildcards enter (<see cref="ProjectFolders.Enters"/>), but for xlf, where a
+    /// .resx's translations lie.</summary>
     private static IEnumerable<string> FoldersIn(string folder)
     {
         try
         {
             return Directory.Exists(folder)
-                ? [.. Directory.EnumerateDirectories(folder).Where(d => Path.GetFileName(d) is not ("bin" or "obj" or "node_modules" or ".git" or "xlf"))]
+                ? [.. Directory.EnumerateDirectories(folder).Where(d => Path.GetFileName(d) != "xlf" && ProjectFolders.Enters(d))]
                 : [];
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

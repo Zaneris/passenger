@@ -232,7 +232,7 @@ public sealed class LiveApp : IDisposable
         string config = Path.ChangeExtension(built, ".runtimeconfig.json");
         try
         {
-            if (!File.Exists(built) || !File.Exists(config) || !File.ReadAllText(config).Contains("Microsoft.WindowsDesktop.App", StringComparison.Ordinal))
+            if (!File.Exists(built) || !File.Exists(config) || !File.ReadAllText(config).Contains(FrameworkNames.WindowsDesktop, StringComparison.Ordinal))
             {
                 return false;
             }

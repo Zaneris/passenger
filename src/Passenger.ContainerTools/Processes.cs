@@ -32,7 +32,7 @@ public static class Processes
             listed.Add(process.Id);
             found.Add(new ContainerProcess(process.Id, process.Name, process.CommandLine, process.User,
                 Variable(process.Id, RuntimeVariables.ModifiableAssemblies) is { } modifiable && modifiable.Equals("debug", StringComparison.OrdinalIgnoreCase),
-                Optimized(process.Id, process.CommandLine), null));
+                Optimized(process), null));
         }
         foreach (int id in Running())
         {
@@ -46,7 +46,7 @@ public static class Processes
             found.Add(new ContainerProcess(process.Id, process.Name, process.CommandLine, process.User,
                 held && debuggerOff is null && Variable(id, RuntimeVariables.ModifiableAssemblies) is { } modifiable
                     && modifiable.Equals("debug", StringComparison.OrdinalIgnoreCase),
-                Optimized(process.Id, process.CommandLine), debuggerOff ?? (held ? null : WhyUnreachable(id))));
+                Optimized(process), debuggerOff ?? (held ? null : WhyUnreachable(id))));
         }
         return found;
     }
@@ -94,25 +94,17 @@ public static class Processes
         }
     }
 
-    /// <summary>Whether the program's own assembly was built optimized (a Release build): its DebuggableAttribute leaves the
-    /// JIT's optimizations on. The .dll the dotnet host runs, else the one beside its apphost; false when unreadable.</summary>
-    private static bool Optimized(int id, string commandLine)
+    /// <summary>Whether the program's own assembly (<see cref="DotnetProcess.Assembly"/>) was built optimized (a Release
+    /// build): its DebuggableAttribute leaves the JIT's optimizations on. False when unreadable.</summary>
+    private static bool Optimized(DotnetProcess process)
     {
         try
         {
-            string[] words = commandLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (words.Length == 0)
+            if (process.Assembly is not { } assembly)
             {
                 return false;
             }
-            string? assembly = Path.GetFileName(words[0]) == "dotnet"
-                ? words.Skip(1).FirstOrDefault(w => w.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-                : words[0] + ".dll";
-            if (assembly is null)
-            {
-                return false;
-            }
-            string path = Path.IsPathRooted(assembly) ? assembly : Path.Combine(new DirectoryInfo($"/proc/{id}/cwd").ResolveLinkTarget(true)?.FullName ?? "/", assembly);
+            string path = Path.IsPathRooted(assembly) ? assembly : Path.Combine(new DirectoryInfo($"/proc/{process.Id}/cwd").ResolveLinkTarget(true)?.FullName ?? "/", assembly);
             return AssemblyFacts.Read(path) is { Optimized: true };
         }
         catch (Exception unreadable) when (unreadable is IOException or UnauthorizedAccessException)

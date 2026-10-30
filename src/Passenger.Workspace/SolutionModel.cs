@@ -378,19 +378,14 @@ public sealed record ProjectModel(
 
     /// <summary>The Windows desktop UI a framework's references name: WindowsDesktop's WPF or Windows Forms profile, or
     /// the whole of it (both, as UseWPF with UseWindowsForms references it); null for none.</summary>
-    private static string? Desktop(IReadOnlyList<string> references)
-    {
-        bool whole = references.Contains("Microsoft.WindowsDesktop.App", StringComparer.OrdinalIgnoreCase);
-        bool wpf = whole || references.Contains("Microsoft.WindowsDesktop.App.WPF", StringComparer.OrdinalIgnoreCase);
-        bool forms = whole || references.Contains("Microsoft.WindowsDesktop.App.WindowsForms", StringComparer.OrdinalIgnoreCase);
-        return (wpf, forms) switch
+    private static string? Desktop(IReadOnlyList<string> references) =>
+        (FrameworkNames.UsesWpf(references), FrameworkNames.UsesWindowsForms(references)) switch
         {
             (true, true) => "WPF and Windows Forms",
             (true, false) => "WPF",
             (false, true) => "Windows Forms",
             _ => null,
         };
-    }
 
     /// <summary>The project a file or folder belongs to: a file-based program whose files it is (<see cref="Holds"/>), else
     /// of the projects whose folders hold it, the one nearest it, as a nested project's files are its own; null when none
@@ -518,11 +513,7 @@ internal static class SharedRead
     public static System.Text.Json.JsonDocument Json(string path)
     {
         using FileStream stream = Open(path);
-        return System.Text.Json.JsonDocument.Parse(stream, new System.Text.Json.JsonDocumentOptions
-        {
-            CommentHandling = System.Text.Json.JsonCommentHandling.Skip,
-            AllowTrailingCommas = true,
-        });
+        return System.Text.Json.JsonDocument.Parse(stream, JsonText.Lenient);
     }
 
     public static IEnumerable<string> Lines(string path)

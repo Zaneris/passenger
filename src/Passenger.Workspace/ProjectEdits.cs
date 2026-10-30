@@ -25,7 +25,7 @@ public static class ProjectEdits
             return $"{Path.GetFileNameWithoutExtension(project)} already references {Path.GetFileNameWithoutExtension(referenced)}";
         }
         string include = Path.GetRelativePath(Path.GetDirectoryName(project)!, referenced).Replace('/', '\\');
-        string element = $"<ProjectReference Include=\"{XmlText.Quoted(include, '"')}\" />";
+        string element = $"<ProjectReference Include=\"{XmlEntities.Encode(include, '"')}\" />";
         if (References(xml, project).LastOrDefault(r => r.Element.Parent is { } group && IsItemGroup(group) && !Conditioned(group)).Element is { } last)
         {
             xml.After(last, element);
@@ -46,8 +46,8 @@ public static class ProjectEdits
         {
             return $"{Path.GetFileNameWithoutExtension(project)} already references {id}";
         }
-        string include = XmlText.Quoted(id, '"');
-        string element = version is null ? $"<PackageReference Include=\"{include}\" />" : $"<PackageReference Include=\"{include}\" Version=\"{XmlText.Quoted(version, '"')}\" />";
+        string include = XmlEntities.Encode(id, '"');
+        string element = version is null ? $"<PackageReference Include=\"{include}\" />" : $"<PackageReference Include=\"{include}\" Version=\"{XmlEntities.Encode(version, '"')}\" />";
         if (references.LastOrDefault(Unconditioned) is { } last)
         {
             xml.After(last, element);
@@ -107,7 +107,7 @@ public static class ProjectEdits
             {
                 if (overriding)
                 {
-                    xml.Replace(element, $"<VersionOverride>{XmlText.Quoted(version)}</VersionOverride>");
+                    xml.Replace(element, $"<VersionOverride>{XmlEntities.Encode(version)}</VersionOverride>");
                 }
                 else
                 {
@@ -162,7 +162,7 @@ public static class ProjectEdits
         {
             return (null, $"{Path.GetFileName(project)} is not a project file");
         }
-        string written = System.Security.SecurityElement.Escape(value);
+        string written = XmlEntities.Encode(value);
         List<XElement> groups = PropertyGroups(xml);
         foreach (XElement group in groups)
         {
@@ -240,7 +240,7 @@ public static class ProjectEdits
                 {
                     continue;
                 }
-                string items = XmlText.Unquoted(xml.Written(span));
+                string items = XmlEntities.DecodeText(xml.Written(span));
                 own ??= kind is "Include" or "Update" && OneFile(items) ? items : null;
                 Follow(span);
             }
@@ -259,11 +259,11 @@ public static class ProjectEdits
                 {
                     continue;
                 }
-                string value = XmlText.Unquoted(xml.Written(span));
+                string value = XmlEntities.DecodeText(xml.Written(span));
                 string target = Moved(Full(was, value.Trim()));
                 if (value.Trim().Length > 0 && !PathNames.Same(Full(at, value.Trim()), target))
                 {
-                    edits.Add((span.Start, span.Length, XmlText.Quoted(Written(Path.GetRelativePath(at, target), value), quote ?? xml.Text[span.Start - 1])));
+                    edits.Add((span.Start, span.Length, XmlEntities.Encode(Written(Path.GetRelativePath(at, target), value), quote ?? xml.Text[span.Start - 1])));
                 }
             }
         }
@@ -285,7 +285,7 @@ public static class ProjectEdits
             string raw = xml.Written(span);
             string written = raw.Trim();
             int start = span.Start + raw.Length - raw.TrimStart().Length;
-            string items = XmlText.Unquoted(written);
+            string items = XmlEntities.DecodeText(written);
             int wild = items.IndexOfAny(['*', '?']);
             string path = (wild < 0 ? items : items[..Math.Max(0, items.LastIndexOfAny(['\\', '/'], wild))]).TrimEnd('\\', '/');
             if (path.Length == 0 || items.IndexOfAny([';', '$', '@', '%']) >= 0)
@@ -296,7 +296,7 @@ public static class ProjectEdits
             if (!PathNames.Same(Full(folder, path), now))
             {
                 string moved = Written(Path.GetRelativePath(folder, now), path) + items[path.Length..];
-                edits.Add((start, written.Length, XmlText.Quoted(moved, quote ?? xml.Text[span.Start - 1])));
+                edits.Add((start, written.Length, XmlEntities.Encode(moved, quote ?? xml.Text[span.Start - 1])));
             }
         }
 

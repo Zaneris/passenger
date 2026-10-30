@@ -1,6 +1,6 @@
-using System.Security;
 using System.Xml;
 using System.Xml.Linq;
+using Passenger.Text;
 
 namespace Passenger.Workspace;
 
@@ -34,9 +34,6 @@ internal sealed class XmlText
 
     /// <summary>The root's child of a name, whatever namespace the file gives its elements.</summary>
     public XElement? Section(string name) => root.Elements().FirstOrDefault(e => e.Name.LocalName == name);
-
-    /// <summary>A value as an attribute's quotes hold it.</summary>
-    public static string Escape(string value) => SecurityElement.Escape(value);
 
     /// <summary>The indent a section's children have: its last child's, else one step in from the section.</summary>
     public string ChildIndent(string section) => Section(section) is not { } found
@@ -121,7 +118,7 @@ internal sealed class XmlText
     {
         if (ValueOf(element, name) is { } written)
         {
-            Splice(written.Start, written.Length, Quoted(value, Text[written.Start - 1]));
+            Splice(written.Start, written.Length, XmlEntities.Encode(value, Text[written.Start - 1]));
             return;
         }
         int start = Span(element).Start;
@@ -131,7 +128,7 @@ internal sealed class XmlText
         {
             end--;
         }
-        Splice(end, 0, $" {name}=\"{Quoted(value, '"')}\"");
+        Splice(end, 0, $" {name}=\"{XmlEntities.Encode(value, '"')}\"");
     }
 
     /// <summary>Where an attribute's value is in an element's start tag, inside its quotes, as written; null when the tag
@@ -248,36 +245,6 @@ internal sealed class XmlText
         }
         Text = changed.ToString();
         Parse();
-    }
-
-    /// <summary>A value as quotes of a kind hold it, or text between tags (no quote): only what XML needs escaped is.</summary>
-    public static string Quoted(string value, char quote = '\0')
-    {
-        string escaped = value.Replace("&", "&amp;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal);
-        return quote switch
-        {
-            '"' => escaped.Replace("\"", "&quot;", StringComparison.Ordinal),
-            '\'' => escaped.Replace("'", "&apos;", StringComparison.Ordinal),
-            _ => escaped,
-        };
-    }
-
-    /// <summary>What a value as the file writes it says (between quotes or tags): its entities and character references
-    /// read as the characters they stand for.</summary>
-    public static string Unquoted(string written)
-    {
-        if (!written.Contains('&', StringComparison.Ordinal))
-        {
-            return written;
-        }
-        try
-        {
-            return XElement.Parse($"<v>{written}</v>").Value;
-        }
-        catch (XmlException)
-        {
-            return written;
-        }
     }
 
     /// <summary>Takes an element out, with its line when it stands on one of its own, and then with a blank line after it

@@ -11,8 +11,6 @@ namespace Passenger.Lsp;
 /// lines (<see cref="OfXml"/>) are kept the same way.</summary>
 public sealed class ServerLines
 {
-    private static readonly SearchValues<char> Breaks = SearchValues.Create("\r\u0085\u2028\u2029");
-
     /// <summary>What ends a line for an XML reader and not for the editor: a lone '\r' alone, as XML 1.0 reads breaks.</summary>
     private static readonly SearchValues<char> XmlBreaks = SearchValues.Create("\r");
 
@@ -73,7 +71,7 @@ public sealed class ServerLines
     }
 
     /// <summary>The lines of a snapshot, found once and kept with it; safe from any thread.</summary>
-    public static ServerLines Of(TextSnapshot text) => Known.GetValue(text, static text => Find(text, Breaks));
+    public static ServerLines Of(TextSnapshot text) => Known.GetValue(text, static text => Find(text, RoslynLines.Breaks));
 
     /// <summary>The lines of a snapshot as an XML reader counts them, which Avalonia's and WPF's XAML compilers write into a
     /// PDB and an element's place: a lone '\r' ends a line, U+0085, U+2028 and U+2029 do not. Found once and kept with it;

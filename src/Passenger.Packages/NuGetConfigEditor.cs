@@ -74,7 +74,7 @@ public static class NuGetConfigEditor
         }
         else if (!enabled && disabled is null)
         {
-            text.AddChild(Disabled, $"<add key=\"{Escape(name)}\" value=\"true\" />");
+            text.AddChild(Disabled, $"<add key=\"{XmlEntities.Encode(name, '"')}\" value=\"true\" />");
         }
     }
 
@@ -109,14 +109,14 @@ public static class NuGetConfigEditor
         }
         string indent = text.ChildIndent(Credentials);
         string name = XmlConvert.EncodeLocalName(feed.Name);
-        List<string> values = [$"<add key=\"Username\" value=\"{Escape(feed.Username)}\" />"];
+        List<string> values = [$"<add key=\"Username\" value=\"{XmlEntities.Encode(feed.Username, '"')}\" />"];
         if (password is { } secretValue)
         {
-            values.Add($"<add key=\"{secretValue.Key}\" value=\"{Escape(secretValue.Value)}\" />");
+            values.Add($"<add key=\"{secretValue.Key}\" value=\"{XmlEntities.Encode(secretValue.Value, '"')}\" />");
         }
         foreach (XElement other in held?.Elements("add").Where(a => (string?)a.Attribute("key") is not ("Username" or "Password" or "ClearTextPassword")) ?? [])
         {
-            values.Add($"<add key=\"{Escape((string?)other.Attribute("key") ?? string.Empty)}\" value=\"{Escape((string?)other.Attribute("value") ?? string.Empty)}\" />");
+            values.Add($"<add key=\"{XmlEntities.Encode((string?)other.Attribute("key") ?? string.Empty, '"')}\" value=\"{XmlEntities.Encode((string?)other.Attribute("value") ?? string.Empty, '"')}\" />");
         }
         string element = $"<{name}>{string.Concat(values.Select(v => text.NewLine + indent + text.Unit + v))}{text.NewLine}{indent}</{name}>";
         if (held is not null)
@@ -132,10 +132,10 @@ public static class NuGetConfigEditor
     /// <summary>A feed's add element: its key and value, what else the element had, and its insecure switch.</summary>
     private static string FeedElement(FeedEdit feed, XElement? was)
     {
-        StringBuilder element = new($"<add key=\"{Escape(feed.Name)}\" value=\"{Escape(feed.Url)}\"");
+        StringBuilder element = new($"<add key=\"{XmlEntities.Encode(feed.Name, '"')}\" value=\"{XmlEntities.Encode(feed.Url, '"')}\"");
         foreach (XAttribute other in was?.Attributes().Where(a => a.Name.LocalName is not ("key" or "value" or "allowInsecureConnections")) ?? [])
         {
-            element.Append($" {other.Name.LocalName}=\"{Escape(other.Value)}\"");
+            element.Append($" {other.Name.LocalName}=\"{XmlEntities.Encode(other.Value, '"')}\"");
         }
         if (feed.AllowInsecure)
         {
@@ -143,8 +143,6 @@ public static class NuGetConfigEditor
         }
         return element.Append(" />").ToString();
     }
-
-    private static string Escape(string value) => XmlText.Escape(value);
 
     /// <summary>Reads the file, makes the changes on its text, and writes it back as it came (<see cref="FileText.SaveOver"/>).
     /// A file not there yet, or empty, is made with NuGet's empty configuration, one not there as its .editorconfig asks

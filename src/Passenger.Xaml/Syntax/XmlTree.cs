@@ -1,4 +1,3 @@
-using System.Text;
 using Passenger.Text;
 
 namespace Passenger.Xaml.Syntax;
@@ -650,68 +649,3 @@ public enum XmlPlaceKind
 }
 
 public readonly record struct XmlPlace(XmlPlaceKind Kind, XmlElement? Element, XmlAttribute? Attribute);
-
-/// <summary>XML's character references, as values and text are read.</summary>
-public static class XmlEntities
-{
-    public static string Decode(string raw)
-    {
-        int amp = raw.IndexOf('&');
-        if (amp < 0)
-        {
-            return raw;
-        }
-        StringBuilder decoded = new(raw.Length);
-        decoded.Append(raw, 0, amp);
-        int i = amp;
-        while (i < raw.Length)
-        {
-            char c = raw[i];
-            int semicolon = c == '&' ? raw.IndexOf(';', i) : -1;
-            if (semicolon > i && semicolon - i <= 10 && Entity(raw.AsSpan(i + 1, semicolon - i - 1)) is { } replaced)
-            {
-                decoded.Append(replaced);
-                i = semicolon + 1;
-                continue;
-            }
-            decoded.Append(c);
-            i++;
-        }
-        return decoded.ToString();
-    }
-
-    /// <summary>What a value of an element's means as written in a file: <c>&lt;</c>, <c>&gt;</c>, <c>&amp;</c> and the
-    /// quote it is between escaped.</summary>
-    public static string Encode(string value, char quote) =>
-        value.Replace("&", "&amp;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal)
-            .Replace(quote.ToString(), quote == '"' ? "&quot;" : "&apos;", StringComparison.Ordinal);
-
-    private static string? Entity(ReadOnlySpan<char> name)
-    {
-        switch (name)
-        {
-            case "lt":
-                return "<";
-            case "gt":
-                return ">";
-            case "amp":
-                return "&";
-            case "quot":
-                return "\"";
-            case "apos":
-                return "'";
-        }
-        if (name.Length > 1 && name[0] == '#')
-        {
-            bool hex = name[1] is 'x' or 'X';
-            ReadOnlySpan<char> digits = hex ? name[2..] : name[1..];
-            // A surrogate's reference (an emoji written as two, &#xD83D;&#xDE00;) is no character XML allows: left as written.
-            if (int.TryParse(digits, hex ? System.Globalization.NumberStyles.HexNumber : System.Globalization.NumberStyles.None,
-                System.Globalization.CultureInfo.InvariantCulture, out int code) && code is > 0 and <= 0x10FFFF and not (>= 0xD800 and <= 0xDFFF))
-            {
-                return char.ConvertFromUtf32(code);
-            }
-        }
-        return null;
-    }
-}

@@ -307,7 +307,7 @@ public sealed record ProjectInputs(
             {
                 return null;
             }
-            string framework = Shorten(target.Name);
+            string framework = FrameworkNames.Short(target.Name);
             string[] packageFolders = root.TryGetProperty("packageFolders", out JsonElement folders) ? [.. folders.EnumerateObject().Select(f => f.Name)] : [];
             List<string> compile = [];
             List<string> projects = [];
@@ -393,21 +393,13 @@ public sealed record ProjectInputs(
         }
     }
 
-    /// <summary>A target's short name (<c>net10.0</c>) from the assets file's long one (<c>.NETCoreApp,Version=v10.0</c>),
-    /// which older restores wrote.</summary>
-    private static string Shorten(string target)
-    {
-        Match version = Regex.Match(target, @"^\.NETCoreApp,Version=v(\d+\.\d+)$");
-        return version.Success ? $"net{version.Groups[1].Value}" : target;
-    }
-
     /// <summary>A framework's reference assemblies: the pack the restore downloaded into a package folder, else the SDK's
     /// own (<c>packs/Microsoft.NETCore.App.Ref/10.0.x/ref/net10.0/</c>), the newest of the target's major version, else the
     /// newest of any. A profile shares its framework's pack (<c>Microsoft.WindowsDesktop.App.WPF</c>'s is
     /// <c>Microsoft.WindowsDesktop.App.Ref</c>), and a target's platform is not part of the pack's folder.</summary>
     private static IEnumerable<string> FrameworkAssemblies(string? dotnetRoot, Assets read, string framework)
     {
-        string pack = (framework.StartsWith("Microsoft.WindowsDesktop.App", StringComparison.Ordinal) ? "Microsoft.WindowsDesktop.App" : framework) + ".Ref";
+        string pack = (FrameworkNames.IsWindowsDesktop(framework) ? FrameworkNames.WindowsDesktop : framework) + ".Ref";
         string target = Regex.Match(read.Framework, @"^net\d+\.\d+").Value is { Length: > 0 } bare ? bare : read.Framework;
         foreach ((string id, string version) in read.Downloads.Where(d => string.Equals(d.Id, pack, StringComparison.OrdinalIgnoreCase)))
         {
@@ -449,46 +441,10 @@ public sealed record ProjectInputs(
     }
 
     /// <summary>Whether a C# file is one of the project's own, as <see cref="SourceFiles"/> reads them, there now or not.</summary>
-    public bool Compiles(string path)
-    {
-        if (!path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) || !PathNames.Within(path, Folder))
-        {
-            return false;
-        }
-        string top = Folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        for (string? at = Path.GetDirectoryName(path); at is not null && at.Length > top.Length; at = Path.GetDirectoryName(at))
-        {
-            string name = Path.GetFileName(at);
-            if (name is "bin" or "obj" or "node_modules" || name.StartsWith('.') || HasProject(at))
-            {
-                return false;
-            }
-        }
-        return true;
+    public bool Compiles(string path) => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) && ProjectFolders.Holds(Folder, path);
 
-        static bool HasProject(string folder)
-        {
-            try
-            {
-                return Directory.Exists(folder) && Directory.EnumerateFiles(folder, "*.csproj").Any();
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                return false;
-            }
-        }
-    }
-
-    /// <summary>The project's own C# files: under its folder, but for bin, obj, hidden folders and another project's.</summary>
-    private static List<string> SourceFilesOf(string folder) => [.. OwnFolders(folder).SelectMany(f => FilesIn(f, "*.cs"))];
-
-    /// <summary>A project's own folders: its folder and those under it but bin, obj, node_modules, hidden folders and another
-    /// project's (<see cref="PathNames.FoldersUnder"/>).</summary>
-    internal static IEnumerable<string> OwnFolders(string folder) => PathNames.FoldersUnder(folder, sub =>
-    {
-        string name = Path.GetFileName(sub);
-        return name is not ("bin" or "obj" or "node_modules") && !name.StartsWith('.') && !Directory.EnumerateFiles(sub, "*.csproj").Any();
-    });
+    /// <summary>The project's own C# files: those in its own folders (<see cref="ProjectFolders.Under"/>).</summary>
+    private static List<string> SourceFilesOf(string folder) => [.. ProjectFolders.Under(folder).SelectMany(f => FilesIn(f, "*.cs"))];
 
     /// <summary>A folder's files a pattern names, none for a folder that cannot be read.</summary>
     internal static IReadOnlyList<string> FilesIn(string folder, string pattern)

@@ -22,10 +22,11 @@ public static class IgnoredFolders
     /// a package's folder and then writes its .nupkg in it, which changes that folder's time, not the packages folder's.</summary>
     private static readonly TimeSpan Settling = TimeSpan.FromSeconds(2);
 
-    /// <summary>The names passed over wherever they are, whatever they hold.</summary>
+    /// <summary>The names passed over wherever they are, whatever they hold: a project's build output and dependencies
+    /// (<see cref="ProjectFolders.Passed"/>) among them.</summary>
     public static IReadOnlySet<string> Names => Named;
 
-    private static readonly HashSet<string> Named = [".git", ".hg", ".svn", "bin", "obj", "artifacts", "node_modules", ".vs", ".idea", "TestResults"];
+    private static readonly HashSet<string> Named = [.. ProjectFolders.Passed, ".git", ".hg", ".svn", "artifacts", ".vs", ".idea", "TestResults"];
 
     /// <summary><see cref="Names"/> asked of a name inside a path, which takes no string of it.</summary>
     private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> NamedIn = Named.GetAlternateLookup<ReadOnlySpan<char>>();

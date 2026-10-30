@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Passenger.Text;
 using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Features;
 using Passenger.Xaml.Metadata;

@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Text;
 
 /// <summary>A stretch where two texts' lines differ: lines from <see cref="OldStart"/> of the first replaced by
@@ -200,7 +202,7 @@ public static class LineDiff
         {
             ("", _) => $"{c.To} added at the end",
             (_, "") => $"{c.From} removed from the end",
-            _ => $"{c.Lines} {(c.Lines == 1 ? "line" : "lines")} from {c.From} to {c.To}",
+            _ => $"{Plural.Of(c.Lines, "line")} from {c.From} to {c.To}",
         }));
     }
 

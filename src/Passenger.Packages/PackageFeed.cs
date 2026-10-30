@@ -40,7 +40,7 @@ public sealed record PackageDependencies(IReadOnlyList<DependencyGroup> Groups)
     public string? RangeOf(string id, string? framework = null)
     {
         DependencyGroup? own = framework is null ? null : Groups.FirstOrDefault(g => string.Equals(g.Framework, framework, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(Short(g.Framework), framework, StringComparison.OrdinalIgnoreCase));
+            || g.Framework is { } named && string.Equals(FrameworkNames.Short(named), framework, StringComparison.OrdinalIgnoreCase));
         return (own is null ? Groups : [own, .. Groups]).SelectMany(g => g.Packages)
             .FirstOrDefault(p => p.Id.Equals(id, StringComparison.OrdinalIgnoreCase)).Range;
     }
@@ -58,18 +58,6 @@ public sealed record PackageDependencies(IReadOnlyList<DependencyGroup> Groups)
             ? new PackageDependencies([new DependencyGroup(null, [.. dependencies.Elements().Where(e => e.Name.LocalName == "dependency").Select(Dependency)])])
             : new PackageDependencies([.. groups.Select(g => new DependencyGroup((string?)g.Attribute("targetFramework"),
                 [.. g.Elements().Where(e => e.Name.LocalName == "dependency").Select(Dependency)]))]);
-    }
-
-    /// <summary>A framework as a project names it: net10.0 for .NETCoreApp10.0, .NETCoreApp,Version=v10.0 or net10.0.</summary>
-    private static string? Short(string? framework)
-    {
-        const string Core = ".NETCoreApp";
-        if (framework is null || !framework.StartsWith(Core, StringComparison.OrdinalIgnoreCase))
-        {
-            return framework;
-        }
-        string version = framework[Core.Length..].Replace(",Version=v", string.Empty, StringComparison.OrdinalIgnoreCase).Trim();
-        return $"net{version}";
     }
 }
 

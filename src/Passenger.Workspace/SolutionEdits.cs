@@ -680,7 +680,7 @@ public static class SolutionEdits
             // A .slnx names each folder by its whole path, so the folders inside it are renamed too.
             xml.Apply([.. Folders().Where(f => f.Path.StartsWith(folder, StringComparison.Ordinal))
                 .Select(f => (xml.ValueOf(f.Element, "Name")!.Value, renamed + f.Path[folder.Length..]))
-                .Select(v => (v.Value.Start, v.Value.Length, XmlText.Quoted(v.Item2, xml.Text[v.Value.Start - 1])))]);
+                .Select(v => (v.Value.Start, v.Value.Length, XmlEntities.Encode(v.Item2, xml.Text[v.Value.Start - 1])))]);
             return null;
         }
 
@@ -716,7 +716,7 @@ public static class SolutionEdits
                 return $"A project named {NameOf(project)} is in {where} already, which can hold only one of a name: put it in another solution folder";
             }
             XElement into = folder is null ? Solution : Element(folder);
-            string added = $"<Project Path=\"{XmlText.Quoted(Relative(project).Replace('\\', '/'), '"')}\" />";
+            string added = $"<Project Path=\"{XmlEntities.Encode(Relative(project).Replace('\\', '/'), '"')}\" />";
             if (into.Elements().LastOrDefault(e => e.Name.LocalName == "Project") is { } last)
             {
                 xml.After(last, added);
@@ -747,7 +747,7 @@ public static class SolutionEdits
                 string was = Resolve(attribute.Value);
                 if (moved(was) is var now && now != was)
                 {
-                    edits.Add((span.Start, span.Length, XmlText.Quoted(Followed(attribute.Value, now, '/'), xml.Text[span.Start - 1])));
+                    edits.Add((span.Start, span.Length, XmlEntities.Encode(Followed(attribute.Value, now, '/'), xml.Text[span.Start - 1])));
                 }
             }
             if (edits.Count == 0)
@@ -780,7 +780,7 @@ public static class SolutionEdits
                 return $"{Path.GetFileName(path)} is already in {folder.Split('/', StringSplitOptions.RemoveEmptyEntries)[^1]}";
             }
             // Files come before projects in a folder, as Visual Studio writes them.
-            string added = $"<File Path=\"{XmlText.Quoted(Relative(path).Replace('\\', '/'), '"')}\" />";
+            string added = $"<File Path=\"{XmlEntities.Encode(Relative(path).Replace('\\', '/'), '"')}\" />";
             if (into.Elements().LastOrDefault(e => e.Name.LocalName == "File") is { } last)
             {
                 xml.After(last, added);
@@ -821,7 +821,7 @@ public static class SolutionEdits
             {
                 return written;
             }
-            string made = $"<Folder Name=\"{XmlText.Quoted(folder, '"')}\" />";
+            string made = $"<Folder Name=\"{XmlEntities.Encode(folder, '"')}\" />";
             if (Folders().FirstOrDefault(f => string.Compare(f.Path, folder, StringComparison.OrdinalIgnoreCase) > 0).Element is { } next)
             {
                 xml.Before(next, made);

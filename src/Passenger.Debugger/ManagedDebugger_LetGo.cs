@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using Passenger.Core;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -168,7 +169,7 @@ public partial class ManagedDebugger
                 }
             }
             _logger?.Invoke(left.Count == 0 ? "Letting go: the evaluations given up have ended"
-                : $"Letting go: {left.Count} evaluation{(left.Count == 1 ? string.Empty : "s")} given up had not ended after {since.Elapsed.TotalSeconds:0.0} s, their time up");
+                : $"Letting go: {Plural.Of(left.Count, "evaluation")} given up had not ended after {since.Elapsed.TotalSeconds:0.0} s, their time up");
             if (!_exited.IsSet)
             {
                 process.TryStop(0);

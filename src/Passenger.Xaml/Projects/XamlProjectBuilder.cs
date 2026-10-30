@@ -73,14 +73,14 @@ public sealed class XamlProjectBuilder
         {
             return AvaloniaDialect.Instance;
         }
-        bool wpf = inputs.FrameworkReferences.Any(f => f is "Microsoft.WindowsDesktop.App.WPF" or "Microsoft.WindowsDesktop.App")
+        bool wpf = FrameworkNames.UsesWpf(inputs.FrameworkReferences)
             || string.Equals(inputs.PropertyValue("UseWPF"), "true", StringComparison.OrdinalIgnoreCase);
         return wpf ? WpfDialect.Instance : null;
     }
 
     /// <summary>Whether a file is one of the project's XAML files.</summary>
     public bool Owns(string path) =>
-        Dialect.Extensions.Contains(Path.GetExtension(path).ToLowerInvariant()) && PathNames.Within(path, Folder) && !InBuildOutput(path);
+        Dialect.Extensions.Contains(Path.GetExtension(path).ToLowerInvariant()) && ProjectFolders.Holds(Folder, path);
 
     /// <summary>Reads everything: the assemblies, every C# and XAML file (an open file's text from <paramref name="open"/>
     /// rather than disk), the assets.</summary>
@@ -299,7 +299,7 @@ public sealed class XamlProjectBuilder
     public static (bool Holds, int Walked) HoldsXaml(string projectPath)
     {
         int walked = 0;
-        foreach (string file in ProjectInputs.OwnFolders(Path.GetDirectoryName(projectPath)!).SelectMany(f => ProjectInputs.FilesIn(f, "*")))
+        foreach (string file in ProjectFolders.Under(Path.GetDirectoryName(projectPath)!).SelectMany(f => ProjectInputs.FilesIn(f, "*")))
         {
             walked++;
             if (AvaloniaDialect.Instance.Extensions.Concat(WpfDialect.Instance.Extensions).Contains(Path.GetExtension(file).ToLowerInvariant()))
@@ -310,15 +310,9 @@ public sealed class XamlProjectBuilder
         return (false, walked);
     }
 
-    /// <summary>The project's own XAML files: under its folder, but for bin, obj, hidden folders and another project's.</summary>
+    /// <summary>The project's own XAML files: those in its own folders (<see cref="ProjectFolders.Under"/>).</summary>
     private IEnumerable<string> XamlFilesUnder(string folder) =>
-        ProjectInputs.OwnFolders(folder).SelectMany(f => ProjectInputs.FilesIn(f, "*")).Where(f => Dialect.Extensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
-
-    private bool InBuildOutput(string path)
-    {
-        string relative = Path.GetRelativePath(inputs.Folder, path).Replace('\\', '/');
-        return relative.StartsWith("bin/", StringComparison.Ordinal) || relative.StartsWith("obj/", StringComparison.Ordinal);
-    }
+        ProjectFolders.Under(folder).SelectMany(f => ProjectInputs.FilesIn(f, "*")).Where(f => Dialect.Extensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
 
     private static string ReadText(string path)
     {

@@ -277,7 +277,7 @@ internal sealed class MSBuildAssist : LanguageAssist
             return null;
         }
         string eol = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        string line = $"<PackageVersion Include=\"{Passenger.Workspace.XmlText.Quoted(package.Id, '"')}\" Version=\"{Passenger.Workspace.XmlText.Quoted(package.Version, '"')}\" />";
+        string line = $"<PackageVersion Include=\"{XmlEntities.Encode(package.Id, '"')}\" Version=\"{XmlEntities.Encode(package.Version, '"')}\" />";
         if (versions.Count > 0)
         {
             List<XmlElement> siblings = [.. versions.GroupBy(v => v.Parent).MaxBy(g => g.Count())!];

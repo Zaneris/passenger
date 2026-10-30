@@ -9,7 +9,7 @@ namespace Passenger.Core;
 
 /// <summary>A .NET program a debugger can attach to: its process, its executable's name, its command line, and the user it
 /// runs as, <see cref="IsMine"/> when that is the person running Passenger.</summary>
-public sealed partial record DotnetProcess(int Id, string Name, string CommandLine, string User, bool IsMine)
+public sealed record DotnetProcess(int Id, string Name, string CommandLine, string User, bool IsMine)
 {
     /// <summary>The container it runs in, by name, or null for a program of this machine. Its <see cref="Id"/> is then the
     /// container's own, and 0 until Passenger's tools in the container have said which it is.</summary>
@@ -27,12 +27,28 @@ public sealed partial record DotnetProcess(int Id, string Name, string CommandLi
 
     /// <summary>What the program is to a person: the .dll the dotnet host runs ("Shop.Api" for "dotnet Shop.Api.dll"),
     /// else the executable's name without its extension.</summary>
-    public string Program => Hosted().Match(CommandLine) is { Success: true } dll && Executable.Equals("dotnet", StringComparison.OrdinalIgnoreCase)
-        ? dll.Groups["name"].Value
-        : Executable;
+    public string Program => IsHosted && Assembly is { } dll ? dll[(dll.LastIndexOfAny(['/', '\\']) + 1)..^4] : Executable;
+
+    /// <summary>The program's own assembly as its command line names it, a path or a name in its working folder: the
+    /// first .dll after the dotnet host, else the .dll beside its apphost; null where the dotnet host names none.</summary>
+    public string? Assembly
+    {
+        get
+        {
+            List<string> words = Words(CommandLine);
+            if (IsHosted)
+            {
+                return words.Skip(1).FirstOrDefault(word => word.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
+            }
+            return words.Count == 0 ? null : (words[0].EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? words[0][..^4] : words[0]) + ".dll";
+        }
+    }
 
     /// <summary>The name without Windows' .exe; any other dot is the name's own ("Passenger.Tests").</summary>
     private string Executable => Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? Name[..^4] : Name;
+
+    /// <summary>Whether the dotnet host runs it, the program's .dll among its arguments.</summary>
+    private bool IsHosted => Executable.Equals("dotnet", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Whether a search typed into Attach to Process finds it: in its name, its process id, its user, its command
     /// line or its container's name.</summary>
@@ -43,8 +59,49 @@ public sealed partial record DotnetProcess(int Id, string Name, string CommandLi
         || User.Contains(search, StringComparison.OrdinalIgnoreCase)
         || CommandLine.Contains(search, StringComparison.OrdinalIgnoreCase);
 
-    [GeneratedRegex("""(?<name>[^\\/"\s]+)\.dll(?=["\s]|$)""", RegexOptions.IgnoreCase)]
-    private static partial Regex Hosted();
+    /// <summary>A command line's words as one is joined (<see cref="ChildProcesses.Quote"/>, or Windows' own): apart by
+    /// white space, a stretch in double quotes held in its word, a quote escaped by a backslash.</summary>
+    private static List<string> Words(string commandLine)
+    {
+        List<string> words = [];
+        StringBuilder word = new();
+        bool quoted = false;
+        bool any = false;
+        for (int i = 0; i < commandLine.Length; i++)
+        {
+            char c = commandLine[i];
+            if (c == '\\' && i + 1 < commandLine.Length && commandLine[i + 1] == '"')
+            {
+                word.Append('"');
+                any = true;
+                i++;
+            }
+            else if (c == '"')
+            {
+                quoted = !quoted;
+                any = true;
+            }
+            else if (char.IsWhiteSpace(c) && !quoted)
+            {
+                if (any)
+                {
+                    words.Add(word.ToString());
+                    word.Clear();
+                    any = false;
+                }
+            }
+            else
+            {
+                word.Append(c);
+                any = true;
+            }
+        }
+        if (any)
+        {
+            words.Add(word.ToString());
+        }
+        return words;
+    }
 }
 
 /// <summary>The .NET programs on this machine a debugger can attach to: CoreCLR's alone, found by what their runtime

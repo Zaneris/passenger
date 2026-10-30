@@ -68,7 +68,7 @@ public sealed partial record BackingService(string Service, string Image, string
             {
                 return [];
             }
-            using JsonDocument read = JsonDocument.Parse(file.Text, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+            using JsonDocument read = JsonDocument.Parse(file.Text, JsonText.Lenient);
             return read.RootElement.ValueKind == JsonValueKind.Object && read.RootElement.TryGetProperty("ConnectionStrings", out JsonElement strings)
                 && strings.ValueKind == JsonValueKind.Object
                 ? [.. strings.EnumerateObject().Select(s => (s.Name, s.Value.ValueKind == JsonValueKind.String ? s.Value.GetString() ?? string.Empty : string.Empty))]

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Passenger.Core;
+using Passenger.Text;
 
 namespace Passenger.App.Run;
 
@@ -50,7 +51,7 @@ public sealed record TogetherBuild(string Project, IReadOnlyList<string> Project
     private static string Text(IReadOnlyList<string> projects) => $"""
         <Project DefaultTargets="Build">
           <PropertyGroup>
-            <RestoreGraphProjectInput>{System.Security.SecurityElement.Escape(string.Join(';', projects.Select(Escaped)))}</RestoreGraphProjectInput>
+            <RestoreGraphProjectInput>{XmlEntities.Encode(string.Join(';', projects.Select(Escaped)))}</RestoreGraphProjectInput>
           </PropertyGroup>
           <ItemGroup>
             <Together Include="$(RestoreGraphProjectInput)" />
