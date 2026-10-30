@@ -297,7 +297,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// which Reformat Code lays out Avalonia's and WPF's XAML by, a file's .editorconfig over it.</summary>
     public Passenger.Xaml.Features.XamlFormatSettings XamlFormat { get; init; } = new();
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DiscordOnNamingNothing];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DiscordKeptAsItWas];
 
     /// <summary><see cref="AgentFolders"/> is a set: a folder let in always from one window while another's Settings takes
     /// back a different one stays let in.</summary>
@@ -326,16 +326,15 @@ public sealed record AppSettings : IStateDocument<AppSettings>
         }
     }
 
-    /// <summary>Version 1 to 2, Discord's activity on at first and naming nothing of the work: a file whose activity was not
-    /// turned on holds the old defaults (off, the solution and the file), written with whatever else was changed, so it
-    /// comes up on, naming only Passenger; one the person had turned on keeps what they chose.</summary>
-    private static void DiscordOnNamingNothing(JsonObject settings)
+    /// <summary>Version 1 to 2: Discord's activity stays as version 1 had it, off at first there. Off stays off, naming only
+    /// Passenger should the person turn it on; one the person had turned on keeps what they chose.</summary>
+    private static void DiscordKeptAsItWas(JsonObject settings)
     {
         if (settings["showInDiscord"] is JsonValue shown && shown.TryGetValue(out bool on) && on)
         {
             return;
         }
-        settings["showInDiscord"] = true;
+        settings["showInDiscord"] = false;
         settings["discordShows"] = nameof(DiscordShown.PassengerOnly);
     }
 

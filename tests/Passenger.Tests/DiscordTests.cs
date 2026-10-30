@@ -243,19 +243,19 @@ public sealed class DiscordTests : DiscordFolders
     }
 
     /// <summary>A settings.json an older Passenger wrote holds its defaults, the activity off and the solution and the file
-    /// to be named: one never turned on comes up on, naming only Passenger; one the person had turned on keeps their choice.</summary>
+    /// to be named: one never turned on stays off, Discord told nothing, naming only Passenger should the person turn it on;
+    /// one the person had turned on keeps their choice.</summary>
     [AvaloniaFact]
-    public void An_older_settings_file_never_turned_on_comes_up_naming_only_Passenger_and_one_turned_on_keeps_its_choice()
+    public void An_older_settings_file_never_turned_on_stays_off_and_one_turned_on_keeps_its_choice()
     {
         discord.Start();
         File.WriteAllText(Path.Combine(settings, "settings.json"),
             "{\n  \"version\": 1,\n  \"editorFontSize\": 15,\n  \"showInDiscord\": false,\n  \"discordShows\": \"SolutionAndFile\"\n}\n");
         MainWindow window = Started();
-        Assert.True(window.Settings is { ShowInDiscord: true, DiscordShows: DiscordShown.PassengerOnly, EditorFontSize: 15 },
+        Assert.True(window.Settings is { ShowInDiscord: false, DiscordShows: DiscordShown.PassengerOnly, EditorFontSize: 15 },
             $"An older Passenger's settings, Discord never turned on, came up as {window.Settings.ShowInDiscord}, {window.Settings.DiscordShows}, font {window.Settings.EditorFontSize}");
-        JsonObject activity = WaitForActivity(a => a is not null, "the activity of a Passenger an older one had left off");
-        Assert.True((string?)activity["details"] == "An IDE for C# and .NET" && !activity.ToJsonString().Contains("Shop", StringComparison.Ordinal),
-            $"Upgraded from settings that never turned Discord on, the activity names the work: {activity.ToJsonString()}");
+        Wait(TimeSpan.FromSeconds(1));
+        Assert.True(discord.Connections == 0, "Upgraded from settings that never turned Discord on, Passenger reached Discord");
         window.Close();
 
         string chosen = TestFolders.Create("dc-chosen-");
