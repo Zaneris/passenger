@@ -45,6 +45,9 @@ public partial class ModuleMetadataReader
         /// <summary>Each method's new IL body, by its token.</summary>
         public Dictionary<int, byte[]> IL { get; } = [];
 
+        /// <summary>Each new body's local variables' signature, by its method's token.</summary>
+        public Dictionary<int, StandaloneSignatureHandle> Locals { get; } = [];
+
         /// <summary>Lines moved with no change to their code, by document name: from each old line (from zero) on, lines
         /// move to the new line's, up to the next.</summary>
         public Dictionary<string, (int Old, int New)[]> Lines { get; } = new(StringComparer.Ordinal);
@@ -102,7 +105,8 @@ public partial class ModuleMetadataReader
                 int rva = reader.GetMethodDefinition(MetadataTokens.MethodDefinitionHandle(row++)).RelativeVirtualAddress;
                 if (rva > 0 && rva < ilDelta.Length && Body(ilDelta, rva) is { } body)
                 {
-                    generation.IL[MetadataTokens.GetToken(handle)] = body;
+                    generation.IL[MetadataTokens.GetToken(handle)] = body.IL;
+                    generation.Locals[MetadataTokens.GetToken(handle)] = body.Locals;
                 }
             }
         }
@@ -136,14 +140,16 @@ public partial class ModuleMetadataReader
         _hidden = null;
     }
 
-    /// <summary>A method body's IL at an offset of an IL delta, or null when it does not read as one.</summary>
-    private static unsafe byte[]? Body(byte[] il, int rva)
+    /// <summary>A method body's IL and local variables' signature at an offset of an IL delta, or null when it does not read
+    /// as one.</summary>
+    private static unsafe (byte[] IL, StandaloneSignatureHandle Locals)? Body(byte[] il, int rva)
     {
         try
         {
             fixed (byte* start = il)
             {
-                return MethodBodyBlock.Create(new BlobReader(start + rva, il.Length - rva)).GetILBytes();
+                MethodBodyBlock body = MethodBodyBlock.Create(new BlobReader(start + rva, il.Length - rva));
+                return body.GetILBytes() is { } bytes ? (bytes, body.LocalSignature) : null;
             }
         }
         catch (BadImageFormatException)
@@ -429,6 +435,36 @@ public partial class ModuleMetadataReader
         }
         MethodDefinition method = _imageMetadataReader.GetMethodDefinition(handle);
         return method.RelativeVirtualAddress == 0 ? null : _peReader.GetMethodBody(method.RelativeVirtualAddress).GetILBytes();
+    }
+
+    /// <summary>The types a method's local variables are declared as at a version (the newest without one), by their slots:
+    /// its body's signature, the update's that last changed it, else the image's, read in the metadata the updates made.
+    /// Empty where the body is not read (a module with no image) or its signature is not in that metadata.</summary>
+    internal ImmutableArray<DeclaredType?> LocalTypes(int methodToken, int? version = null)
+    {
+        int generation = GenerationOf(methodToken, version);
+        StandaloneSignatureHandle locals = default;
+        if (generation > 0)
+        {
+            _generations[generation - 1].Locals.TryGetValue(methodToken, out locals);
+        }
+        else if (_peReader is not null && MetadataTokens.GetRowNumber(MetadataTokens.MethodDefinitionHandle(methodToken)) <= _imageMetadataReader.GetTableRowCount(TableIndex.MethodDef)
+            && _imageMetadataReader.GetMethodDefinition(MetadataTokens.MethodDefinitionHandle(methodToken)).RelativeVirtualAddress is int rva and not 0)
+        {
+            locals = _peReader.GetMethodBody(rva).LocalSignature;
+        }
+        if (locals.IsNil || MetadataTokens.GetRowNumber(locals) > _peMetadataReader.GetTableRowCount(TableIndex.StandAloneSig))
+        {
+            return [];
+        }
+        try
+        {
+            return _peMetadataReader.GetStandaloneSignature(locals).DecodeLocalSignature(DeclaredTypeProvider.Instance, null);
+        }
+        catch (BadImageFormatException)
+        {
+            return [];
+        }
     }
 
     /// <summary>Whether an IL offset of a method at a version lies in one of its catch, finally, fault or filter blocks,

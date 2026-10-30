@@ -43,7 +43,9 @@ public readonly record struct FrameStackDepth
         Value = value;
     }
 };
-public record struct VariablesReference(StoredReferenceKind ReferenceKind, ICorDebugValue? ObjectValue, ThreadId ThreadId, FrameStackDepth FrameStackDepth, ICorDebugValue? DebuggerProxyInstance, uint[]? ArrayIndices = null, uint? ArrayStartOffset = null, uint? ArrayCount = null, string? Name = null);
+/// <summary>What a reference names (<see cref="ReferenceKind"/>): its value, where it was read, and, where known, the type the
+/// value's variable is declared as (<see cref="Declared"/>), which its members' expressions reach them through.</summary>
+public record struct VariablesReference(StoredReferenceKind ReferenceKind, ICorDebugValue? ObjectValue, ThreadId ThreadId, FrameStackDepth FrameStackDepth, ICorDebugValue? DebuggerProxyInstance, uint[]? ArrayIndices = null, uint? ArrayStartOffset = null, uint? ArrayCount = null, string? Name = null, DeclaredType? Declared = null);
 /// <summary>The references of a stop's scopes and values. Each is numbered above every one before it in the session, and a
 /// stop's are let go when the program goes on, so one from an earlier stop is refused rather than naming whatever value
 /// took its number at this one.</summary>

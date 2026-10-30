@@ -1302,6 +1302,48 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
+    /// <summary>Under a Base local holding a Derived, a member only Derived declares, a Derived field hiding a base one and
+    /// the base's field each take a value set in their own rows, which reach the first two through a cast to Derived.</summary>
+    [AvaloniaFact]
+    public void Values_set_on_a_derived_objects_own_members_under_a_base_variable_change_those_members()
+    {
+        Write("Program.cs", "Base item = new Derived();\nConsole.WriteLine($\"members {((Derived)item).extra} {((Derived)item).count} {item.count}\");\n\n"
+            + "class Base\n{\n    public int count = 1;\n}\n\nclass Derived : Base\n{\n    public int extra = 3;\n    public new int count = 2;\n}\n");
+        MainWindow window = Open();
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(1, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        WaitDebugging(window, () => Row(window, "item") is not null, "the stop before the line that writes the members");
+
+        (string Name, int Index, string Expression, string Value)[] rows =
+            [("extra", 0, "((Derived)item).extra", "7"), ("count", 0, "((Derived)item).count", "5"), ("count", 1, "item.count", "9")];
+        foreach ((string name, int index, string expression, string value) in rows)
+        {
+            VariableNode member = Member(window, name, index);
+            Assert.True(member.Expression == expression, $"{name}'s row reaches it as {member.Expression}, where a Base variable reaches it as {expression}");
+            SetInRow(window, member, value);
+            Assert.True(window.Status?.StartsWith("Could not set", StringComparison.Ordinal) != true, $"Set Value on {member.Expression} was refused: {window.Status}");
+        }
+        Ui.Run(window, AppActions.Resume);
+        WaitDebugging(window, () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("members ", StringComparison.Ordinal),
+            "the program to write the members");
+        Assert.True(window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("members 7 5 9", StringComparison.Ordinal),
+            $"The program wrote {window.BottomPanel.Debug.Console.Document.Snapshot}, where extra set to 7, Derived's count to 5 and the base's to 9 write 7 5 9");
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+    }
+
+    /// <summary>The <paramref name="index"/>th row named <paramref name="name"/> under item, its rows read afresh.</summary>
+    private static VariableNode Member(MainWindow window, string name, int index)
+    {
+        VariableNode item = Row(window, "item")!;
+        Task opened = window.BottomPanel.Debug.Tree.Expand(item);
+        Ui.WaitFor(() => opened.IsCompleted, "item's rows");
+        VariableNode[] named = [.. (item.Children ?? []).Where(c => c.Name == name)];
+        Assert.True(named.Length > index, $"item lists {string.Join(", ", (item.Children ?? []).Select(c => c.Name))}, without a {name} at {index}");
+        return named[index];
+    }
+
     /// <summary>The value under a pointer's row, what it points at, takes a value set in that row.</summary>
     [AvaloniaFact]
     public void A_value_set_on_what_a_pointer_points_at_is_the_one_the_program_goes_on_with()

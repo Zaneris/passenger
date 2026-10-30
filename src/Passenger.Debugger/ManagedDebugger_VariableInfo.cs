@@ -29,6 +29,7 @@ public partial class ManagedDebugger
         }
 
         int currentIlOffset = corDebugIlFrame.IP.pnOffset;
+        ImmutableArray<DeclaredType?> declared = DeclaredLocals(module, corDebugIlFrame);
         foreach ((int index, ICorDebugValue? localVariableCorDebugValue) in corDebugIlFrame.LocalVariables.Index())
         {
             string? localVariableName = module.MetadataReader.GetLocalVariableName(corDebugFunction.Token, index, currentIlOffset, ModuleMetadataReader.VersionOf(corDebugIlFrame));
@@ -52,7 +53,8 @@ public partial class ManagedDebugger
                     Value = value,
                     Type = friendlyTypeName,
                     PresentationHint = variablePresentationHint,
-                    VariablesReference = GetVariablesReference(localVariableCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, localVariableName)
+                    VariablesReference = GetVariablesReference(localVariableCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, localVariableName,
+                        index < declared.Length ? declared[index] : null)
                 });
             });
         }
@@ -141,6 +143,7 @@ public partial class ManagedDebugger
             }
             if (implicitThisValue is not null)
             {
+                DeclaredType? declaredThis = DeclaredThis(module, corDebugFunction, generated: classContainingHoistedLocalsValue is not null);
                 await WithFailureHandling(result, "this", async () =>
                 {
                     (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError) = await GetValueForCorDebugValueAsync(implicitThisValue, threadId, stackDepth, true);
@@ -151,12 +154,13 @@ public partial class ManagedDebugger
                         Value = value,
                         Type = friendlyTypeName,
                         PresentationHint = variablePresentationHint,
-                        VariablesReference = GetVariablesReference(implicitThisValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance)
+                        VariablesReference = GetVariablesReference(implicitThisValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, declared: declaredThis)
                     });
                 });
             }
         }
         int skipCount = isStatic ? 0 : 1; // Skip 'this' for instance methods, as we already handled it
+        ImmutableArray<DeclaredType?> declared = DeclaredParameters(module, corDebugFunction);
         foreach ((int index, ICorDebugValue? argumentCorDebugValue) in arguments.Skip(skipCount).Index())
         {
             // Index 0 is the return value; a parameter without a row (emitted code) is named by its place.
@@ -178,7 +182,8 @@ public partial class ManagedDebugger
                     Value = value,
                     Type = friendlyTypeName,
                     PresentationHint = variablePresentationHint,
-                    VariablesReference = GetVariablesReference(argumentCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, argumentName)
+                    VariablesReference = GetVariablesReference(argumentCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, argumentName,
+                        index < declared.Length ? declared[index] : null)
                 });
             });
         }
@@ -209,8 +214,10 @@ public partial class ManagedDebugger
     }
 
     /// <summary>The reference a value's row opens by, 0 for one that opens to nothing: a union opens to the value it holds,
-    /// and a pointer (<paramref name="name"/> its row's) to the value it points at.</summary>
-    private int GetVariablesReference(ICorDebugValue corDebugValue, string friendlyTypeName, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance, string? name = null)
+    /// and a pointer (<paramref name="name"/> its row's) to the value it points at. It keeps the type the value's variable is
+    /// declared as, where known (<paramref name="declared"/>), for its members' expressions.</summary>
+    private int GetVariablesReference(ICorDebugValue corDebugValue, string friendlyTypeName, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance, string? name = null,
+        DeclaredType? declared = null)
     {
         if (corDebugValue is ICorDebugReferenceValue { Type: CorElementType.PTR } pointer)
         {
@@ -224,6 +231,7 @@ public partial class ManagedDebugger
                 return 0;
             }
             corDebugValue = held;
+            declared = null;
         }
         ICorDebugValue unwrappedDebugValue = corDebugValue.UnwrapDebugValue();
         if (unwrappedDebugValue is ICorDebugArrayValue arrayValue)
@@ -233,7 +241,7 @@ public partial class ManagedDebugger
                 return 0;
             }
 
-            return GenerateUniqueVariableReference(corDebugValue, threadId, stackDepth, debuggerProxyInstance);
+            return GenerateUniqueVariableReference(corDebugValue, threadId, stackDepth, debuggerProxyInstance, declared);
         }
         else if (unwrappedDebugValue is ICorDebugObjectValue objectValue)
         {
@@ -271,7 +279,7 @@ public partial class ManagedDebugger
 
             if (type is CorElementType.CLASS or CorElementType.VALUETYPE or CorElementType.SZARRAY or CorElementType.ARRAY)
             {
-                return GenerateUniqueVariableReference(corDebugValue, threadId, stackDepth, debuggerProxyInstance);
+                return GenerateUniqueVariableReference(corDebugValue, threadId, stackDepth, debuggerProxyInstance, declared);
             }
         }
         return 0;
@@ -296,16 +304,17 @@ public partial class ManagedDebugger
         });
     }
 
-    private int GenerateUniqueVariableReference(ICorDebugValue value, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance)
+    private int GenerateUniqueVariableReference(ICorDebugValue value, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance, DeclaredType? declared)
     {
-        VariablesReference variablesReference = new VariablesReference(StoredReferenceKind.StackVariable, value, threadId, stackDepth, debuggerProxyInstance);
+        VariablesReference variablesReference = new VariablesReference(StoredReferenceKind.StackVariable, value, threadId, stackDepth, debuggerProxyInstance, Declared: declared);
         int reference = _variableManager.CreateReference(variablesReference);
         return reference;
     }
 
-    private async Task AddMembersAndStaticPseudoVariable(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, bool includeNonPublicMembers = true)
+    private async Task AddMembersAndStaticPseudoVariable(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, bool includeNonPublicMembers = true,
+        DeclaredType? declared = null)
     {
-        bool requiresStaticPseudoVariable = await AddMembers(corDebugValue, corDebugType, threadId, stackDepth, result, includeNonPublicMembers);
+        bool requiresStaticPseudoVariable = await AddMembers(corDebugValue, corDebugType, threadId, stackDepth, result, includeNonPublicMembers, declared);
         if (requiresStaticPseudoVariable)
         {
             VariableInfo variableInfo = new VariableInfo
@@ -395,9 +404,18 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>A type's members and then its base types', each base's member that one derived from it hides by its name
-    /// (<paramref name="derived"/>, the names they took) saying its type; true where a Static members row is needed.</summary>
-    private async Task<bool> AddMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, bool includeNonPublicMembers = true, HashSet<string>? derived = null)
+    /// <summary>A type's members and then its base types'; true where a Static members row is needed. Each member an
+    /// expression of the value's variable, declared as <paramref name="declared"/> (where unknown, as the value's own type),
+    /// reaches only through a cast says the type declaring it: one of a type below the declared one, or one that a type
+    /// between the declared one and its own hides by its name.</summary>
+    private Task<bool> AddMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, bool includeNonPublicMembers = true,
+        DeclaredType? declared = null) =>
+        AddMembers(corDebugValue, corDebugType, threadId, stackDepth, result, includeNonPublicMembers, Below(corDebugType, declared), new HashSet<string>(StringComparer.Ordinal));
+
+    /// <summary>A type's members and then its base types', each saying its type where it lies <paramref name="below"/> the
+    /// declared type (more than none) or a type between the declared one and its own took its name (<paramref name="hidden"/>).</summary>
+    private async Task<bool> AddMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, bool includeNonPublicMembers,
+        int below, HashSet<string> hidden)
     {
         int first = result.Count;
         bool hasStaticMembers = false;
@@ -419,11 +437,11 @@ public partial class ManagedDebugger
         await AddFields(nonStaticFieldDefs, metadataImport, corDebugType, corDebugValue, result, threadId, stackDepth);
         // The reference itself, not unwrapped: the getters are called on it.
         await AddProperties(nonStaticProperties, metadataImport, corDebugType, threadId, stackDepth, corDebugValue, result);
-        if (derived is not null)
+        if (below > 0 || hidden.Count > 0)
         {
-            foreach (VariableInfo hidden in result.Skip(first).Where(member => derived.Contains(member.Name)))
+            foreach (VariableInfo cast in result.Skip(first).Where(member => below > 0 || hidden.Contains(member.Name)))
             {
-                hidden.DeclaringType = GetCorDebugTypeFriendlyName(corDebugType);
+                cast.DeclaringType = GetCorDebugTypeFriendlyName(corDebugType);
             }
         }
 
@@ -439,9 +457,13 @@ public partial class ManagedDebugger
             return hasStaticMembers;
         }
 
-        HashSet<string> taken = derived is null ? new(StringComparer.Ordinal) : new(derived, StringComparer.Ordinal);
-        taken.UnionWith(result.Skip(first).Select(member => member.Name));
-        return hasStaticMembers | await AddMembers(corDebugValue, baseType, threadId, stackDepth, result, derived: taken);
+        // Only the declared type and those above it hide a name from its variable's expression.
+        HashSet<string> taken = new(hidden, StringComparer.Ordinal);
+        if (below <= 0)
+        {
+            taken.UnionWith(result.Skip(first).Select(member => member.Name));
+        }
+        return hasStaticMembers | await AddMembers(corDebugValue, baseType, threadId, stackDepth, result, true, below - 1, taken);
     }
 
     private async Task AddStaticMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result)
@@ -567,7 +589,7 @@ public partial class ManagedDebugger
                     Value = value,
                     Type = friendlyTypeName,
                     PresentationHint = variablePresentationHint,
-                    VariablesReference = GetVariablesReference(fieldCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, fieldName)
+                    VariablesReference = GetVariablesReference(fieldCorDebugValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, fieldName, DeclaredField(corDebugClass, mdFieldDef))
                 };
                 result.Add(variableInfo);
             });
@@ -691,7 +713,7 @@ public partial class ManagedDebugger
                     }
                     (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError, string? displayName) = await GetDisplayedValueAsync(returnValue, threadId, stackDepth, true);
                     VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : null;
-                    int variablesReference = GetVariablesReference(returnValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance);
+                    int variablesReference = GetVariablesReference(returnValue, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, declared: DeclaredProperty(corDebugClass, mdProperty));
                     VariableInfo variableInfo = new VariableInfo
                     {
                         Name = displayName ?? propertyName,
@@ -731,9 +753,11 @@ public partial class ManagedDebugger
 
     /// <summary>An array's rows under <paramref name="indexPrefix"/>, the indices of its outer dimensions opened so far: a
     /// dimension over 100 long in ranges of 100 (<paramref name="startOffset"/> and <paramref name="count"/> one of them
-    /// opened), an outer dimension's indices each opening to the next, the last's elements. True when the rows open
-    /// through the array, which is then kept.</summary>
-    private async Task<bool> AddArrayElements(ICorDebugArrayValue arrayValue, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, uint[]? indexPrefix = null, uint? startOffset = null, uint? count = null, ICorDebugValue? referenceValue = null)
+    /// opened), an outer dimension's indices each opening to the next, the last's elements, declared as the element type of
+    /// <paramref name="declared"/> (the array's variable's, else the array's own). True when the rows open through the
+    /// array, which is then kept.</summary>
+    private async Task<bool> AddArrayElements(ICorDebugArrayValue arrayValue, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, uint[]? indexPrefix = null, uint? startOffset = null, uint? count = null, ICorDebugValue? referenceValue = null,
+        DeclaredType? declared = null)
     {
         int rank = arrayValue.Rank;
         indexPrefix ??= [];
@@ -758,7 +782,7 @@ public partial class ManagedDebugger
                     Value = "",
                     Type = "",
                     PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Class },
-                    VariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.ArrayRange, referenceValue ?? arrayValue, threadId, stackDepth, null, indexPrefix, rangeStart, rangeCount))
+                    VariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.ArrayRange, referenceValue ?? arrayValue, threadId, stackDepth, null, indexPrefix, rangeStart, rangeCount, Declared: declared))
                 });
             }
             return true;
@@ -776,13 +800,14 @@ public partial class ManagedDebugger
                     Value = "",
                     Type = "",
                     PresentationHint = new VariablePresentationHint { Kind = PresentationHintKind.Class },
-                    VariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.ArrayRange, referenceValue ?? arrayValue, threadId, stackDepth, null, indices))
+                    VariablesReference = _variableManager.CreateReference(new VariablesReference(StoredReferenceKind.ArrayRange, referenceValue ?? arrayValue, threadId, stackDepth, null, indices, Declared: declared))
                 });
             }
             return true;
         }
 
         // The elements first: an evaluation below may neuter the array value.
+        DeclaredType? elementDeclared = declared?.Element ?? DeclaredAs(arrayValue.ExactType.FirstTypeParameter);
         uint elementCount = count ?? currentDimensionLength;
         (uint[] Indices, ICorDebugValue Element)[] elements = ValueEnumerable.Range(0, checked((int)elementCount))
             .Select(offset =>
@@ -798,7 +823,7 @@ public partial class ManagedDebugger
             {
                 (string? friendlyTypeName, string? value, ICorDebugValue? debuggerProxyInstance, bool resultIsError, string? displayName) = await GetDisplayedValueAsync(element, threadId, stackDepth, true);
                 VariablePresentationHint? variablePresentationHint = resultIsError ? new VariablePresentationHint { Attributes = AttributesValue.FailedEvaluation } : new VariablePresentationHint { Kind = PresentationHintKind.Data };
-                int variableReference = GetVariablesReference(element, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance);
+                int variableReference = GetVariablesReference(element, friendlyTypeName, threadId, stackDepth, debuggerProxyInstance, declared: elementDeclared);
                 VariableInfo variableInfo = new VariableInfo
                 {
                     Name = displayName ?? name,

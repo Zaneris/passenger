@@ -42,7 +42,7 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
 
             Lazy<DelegateMaterializerAssembly> delegateMaterializer = new Lazy<DelegateMaterializerAssembly>(() => _compiler.GetDelegateMaterializer(context));
             CilInterpretationResult interpretationResult = await _interpreter.InterpretAsync(compiled, context, delegateMaterializer);
-            return new EvaluationResult { Value = interpretationResult.Value, OwnedResultHandle = interpretationResult.OwnedResultHandle };
+            return new EvaluationResult { Value = interpretationResult.Value, OwnedResultHandle = interpretationResult.OwnedResultHandle, Declared = DeclaredOf(compiled) };
         }
         catch (Exception ex)
         {
@@ -59,6 +59,10 @@ internal sealed class CilExpressionEvaluator(RuntimeAssemblyPrimitiveTypeClasses
         _compiler.TryCompile(expression, context, out _) is { } compiled
             ? compiled.MetadataReader.GetMethodDefinition(compiled.EntryMethod).DecodeSignature(SignatureKeyProvider.Dotted, null).ReturnType
             : null;
+
+    /// <summary>The type an expression's value is as it compiles, which its members' expressions reach them through.</summary>
+    private static DeclaredType? DeclaredOf(CompiledEvaluationMethod compiled) =>
+        compiled.MetadataReader.GetMethodDefinition(compiled.EntryMethod).DecodeSignature(DeclaredTypeProvider.Instance, null).ReturnType;
 
     /// <summary>Loads into the program the assemblies an expression needs and it has not loaded (a program that has
     /// called no LINQ method has no System.Linq). Whether each loaded, the runtime's module load having added it to
@@ -82,6 +86,9 @@ internal sealed class EvaluationResult : IDisposable
     private ICorDebugHandleValue? _ownedResultHandle;
 
     public ICorDebugValue? Value { get; init; }
+
+    /// <summary>The type the expression's value is as it compiles; null where none is known (the debugger's own names).</summary>
+    public DeclaredType? Declared { get; init; }
     public string? Error { get; init; }
     public ICorDebugHandleValue? OwnedResultHandle
     {
