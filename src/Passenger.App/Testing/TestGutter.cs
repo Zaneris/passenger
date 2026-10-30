@@ -80,6 +80,11 @@ public sealed class TestGutter
     /// <summary>The test attributes a file's project derives from a framework's, which its methods are tests by too.</summary>
     public Func<string, IReadOnlySet<string>>? OwnAttributes { get; set; }
 
+    /// <summary>The test projects a file is one of (<see cref="TestFinder.ProjectsOf"/>), whose tests alone its names mark.</summary>
+    public Func<string, IReadOnlySet<string>>? ProjectsOf { get; set; }
+
+    private static readonly IReadOnlySet<string> NoProjects = new HashSet<string>();
+
     /// <summary>Reads every open file's tests again: the attributes their projects derive changed.</summary>
     public void ReadAgain()
     {
@@ -165,7 +170,8 @@ public sealed class TestGutter
     }
 
     /// <summary>A mark beside each type and method the file declares a test of, or a runner found tests of: by the type's or
-    /// method's name, or by the file and line the runner gave them (a base type's tests, run as each derived type's).</summary>
+    /// method's name in the file's projects, or by the file and line the runner gave them (a base type's tests, run as each
+    /// derived type's).</summary>
     private void Colour(OpenDocument document, Declared file)
     {
         if (document.Syntax is null)
@@ -176,11 +182,22 @@ public sealed class TestGutter
         HashSet<int> testLines = [.. file.Tests.Tests.Select(t => t.Line), .. file.Tests.Types.Select(t => t.Line)];
         List<(int Line, TestNode Method)> found = byFile.GetValueOrDefault(document.Path) ?? [];
         List<TestMark> marks = new(file.Tests.Types.Count + file.Tests.Tests.Count);
+        IReadOnlySet<string>? projects = null;
         foreach (DeclaredPlace place in (IEnumerable<DeclaredPlace>)[.. file.Places.Types, .. file.Places.Methods])
         {
             string name = place.Method is null ? place.Type.Replace('+', '.') : $"{place.Type.Replace('+', '.')}.{place.Method}";
             HashSet<TestNode> methods = new(ReferenceEqualityComparer.Instance);
-            methods.UnionWith((place.Method is null ? byType : byMethod).GetValueOrDefault(name) ?? []);
+            if ((place.Method is null ? byType : byMethod).TryGetValue(name, out HashSet<TestNode>? named))
+            {
+                projects ??= ProjectsOf?.Invoke(document.Path) ?? NoProjects;
+                foreach (TestNode each in named)
+                {
+                    if (TestFinder.IsOf(each, projects))
+                    {
+                        methods.Add(each);
+                    }
+                }
+            }
             methods.UnionWith(found.Where(f => place.Holds(f.Line)).Select(f => f.Method));
             if (methods.Count > 0 || testLines.Contains(place.Line))
             {

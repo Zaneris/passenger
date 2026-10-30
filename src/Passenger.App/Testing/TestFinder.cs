@@ -213,6 +213,31 @@ public sealed class TestFinder
         }
     }
 
+    /// <summary>The test projects a file is one of, by their paths: those it was last listed in (projects sharing a folder
+    /// share its files), else the test project it belongs to; none when it is no test project's.</summary>
+    public IReadOnlySet<string> ProjectsOf(string path)
+    {
+        UiThread.Check();
+        HashSet<string> holding = new(PathNames.Comparer);
+        foreach (ProjectModel project in Projects)
+        {
+            if (listed.TryGetValue(project.Path, out IReadOnlyList<string>? files) && files.Contains(path, PathNames.Comparer))
+            {
+                holding.Add(project.Path);
+            }
+        }
+        if (holding.Count == 0 && Owner(path) is { } owner)
+        {
+            holding.Add(owner.Path);
+        }
+        return holding;
+    }
+
+    /// <summary>Whether a method the tree shows is one of these projects' (<see cref="ProjectsOf"/> a file), or they are
+    /// none: a test of the same name in another project is not the file's.</summary>
+    public static bool IsOf(TestNode method, IReadOnlySet<string> projects) =>
+        projects.Count == 0 || method.ProjectPath is not { } project || projects.Contains(project);
+
     /// <summary>The test project a file belongs to: of the projects holding it, the nearest, when that one holds tests.</summary>
     private ProjectModel? Owner(string path) => ProjectModel.Owning(every, path) is { } owner && Projects.Contains(owner) ? owner : null;
 

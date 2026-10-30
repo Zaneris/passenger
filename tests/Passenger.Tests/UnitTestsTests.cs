@@ -589,6 +589,41 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         TestNode Row(string name) => Method(window, "Even")!.Children.Single(r => r.Name == name);
     }
 
+    /// <summary>A test run from its run icon in one project's file runs in that project alone where another project declares
+    /// a test of the same name, and the icon takes that project's result alone.</summary>
+    [AvaloniaFact]
+    public void A_test_run_from_its_run_icon_runs_in_its_files_project_alone_where_another_declares_the_same_name()
+    {
+        string solution = NewFolder();
+        Write(solution, "Parser.Tests/Parser.Tests.csproj", TestProject(TestProjects.Framework));
+        string file = Write(solution, "Parser.Tests/ParserTests.cs",
+            "using Xunit;\n\nnamespace Tests;\n\npublic class ParserTests\n{\n    [Fact]\n    public void Parses() { }\n}\n");
+        Write(solution, "Parser.Tests.Copy/Parser.Tests.Copy.csproj", TestProject(TestProjects.Framework));
+        Write(solution, "Parser.Tests.Copy/ParserTests.cs",
+            "using Xunit;\n\nnamespace Tests;\n\npublic class ParserTests\n{\n    [Fact]\n    public void Parses() => Assert.Fail(\"the copy's Parses ran\");\n}\n");
+        Write(solution, "Parsers.slnx", "<Solution>\n  <Project Path=\"Parser.Tests/Parser.Tests.csproj\" />\n  <Project Path=\"Parser.Tests.Copy/Parser.Tests.Copy.csproj\" />\n</Solution>\n");
+        Restore.Run(Path.Combine(solution, "Parsers.slnx"));
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        Tree(window);
+        Ui.WaitFor(() => window.Tests.Tree.Methods.Count(m => m.Name == "Parses") == 2, "both projects' Parses from their code");
+
+        const string Line = "    public void Parses() { }";
+        Assert.Contains("Run 'Parses'", TestMarkMenu(window, file, Line).Select(i => i.Header as string));
+        Ui.Choose(window.TestMarkMenu, "Run 'Parses'");
+        Ui.WaitFor(() => !window.Tests.IsBusy, () => $"the run from the run icon: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(180));
+        Assert.True(Of("Parser.Tests.Copy").State == TestState.NotRun,
+            $"Run 'Parses' from Parser.Tests' file ran the copy's test of the same name too, saying '{window.BottomPanel.Tests.Status}'");
+        Assert.Equal(TestState.Passed, Of("Parser.Tests").State);
+        Assert.StartsWith("Tests passed: 1, failed: 0 of 1", window.BottomPanel.Tests.Status, StringComparison.Ordinal);
+        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
+        int at = Array.IndexOf(document.Text.Snapshot.ToString().Split('\n'), Line);
+        Ui.WaitFor(() => document.TestMarks.Contains(new TestMark(at, TestMarkKind.Passed)),
+            () => $"the run icon to take Parser.Tests' result alone; the file's icons are [{string.Join(", ", document.TestMarks)}]");
+        window.Close();
+
+        TestNode Of(string project) => window.Tests.Tree.Methods.Single(m => m.Name == "Parses" && Path.GetFileNameWithoutExtension(m.ProjectPath) == project);
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Typing_in_one_file_among_many_open_reads_and_marks_that_files_tests_and_no_others()

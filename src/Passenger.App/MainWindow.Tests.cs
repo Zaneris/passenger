@@ -25,6 +25,7 @@ public partial class MainWindow
         // The gutter reads each open file's tests from its parse; the tree takes the same read.
         testGutter.Read += (_, read) => session.Tests.Finder.OpenRead(read.Document.Path, read.Tests);
         testGutter.OwnAttributes = path => session.Tests.Finder.AttributesOf(path);
+        testGutter.ProjectsOf = path => session.Tests.Finder.ProjectsOf(path);
         Editors.Opened += (_, document) => testGutter.Watch(document);
         Editors.Closed += (_, document) =>
         {
@@ -245,9 +246,10 @@ public partial class MainWindow
         });
     }
 
-    /// <summary>Runs (or debugs) a test method, or every test of a type, as the tree has them once the run's build has
-    /// ended and its tests are found: a test only a runner finds (an attribute of the project's own) runs with them, and a
-    /// base type's tests as every derived type's, which the runner says are on its lines of the file.</summary>
+    /// <summary>Runs (or debugs) a test method, or every test of a type, of the projects the file is in, as the tree has
+    /// them once the run's build has ended and its tests are found: a test only a runner finds (an attribute of the
+    /// project's own) runs with them, and a base type's tests as every derived type's, which the runner says are on its
+    /// lines of the file.</summary>
     private void RunTestsAt(Testing.DeclaredPlace place, string path, bool debug, bool untilFailure = false)
     {
         (string type, string? method) = (place.Type, place.Method);
@@ -258,6 +260,7 @@ public partial class MainWindow
         ProjectSession running = session;
         string workspace = Folder;
         string none = $"No test of {method ?? type} was found; is the project a test project?";
+        IReadOnlySet<string>? projects = null;
         RunTests(async () =>
         {
             if (!untilFailure)
@@ -272,7 +275,9 @@ public partial class MainWindow
             return stopped;
         });
 
-        bool Matches(Testing.TestNode test) => (test.FullName is { } name && Testing.TestsAtCaret.Matches(name, type, method))
+        bool Matches(Testing.TestNode test) =>
+            (test.FullName is { } name && Testing.TestsAtCaret.Matches(name, type, method)
+                && Testing.TestFinder.IsOf(test, projects ??= running.Tests.Finder.ProjectsOf(path)))
             || test.Items.Any(item => item is { Path: { } at, Line: > 0 } && PathNames.Same(at, path) && place.Holds(item.Line));
     }
 
