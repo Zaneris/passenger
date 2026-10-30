@@ -94,15 +94,39 @@ public sealed record Snippet(string Text, IReadOnlyList<IReadOnlyList<TextRange>
     /// <summary>The language server protocol's snippet syntax, as a completion's text gives it: <c>$1</c> and
     /// <c>${1:placeholder}</c> each a stop (a number's places one field, Tab visiting them by number), <c>${1|a,b|}</c> its
     /// first choice, <c>$0</c> where the caret ends, a variable its default or nothing, and a backslash escaping
-    /// <c>$</c>, <c>}</c>, <c>\</c>, <c>,</c> and <c>|</c>.</summary>
+    /// <c>$</c>, <c>}</c>, <c>\</c>, <c>,</c> and <c>|</c>. A stop's every place starts with its placeholder.</summary>
     public static Snippet FromProtocol(string snippet)
+    {
+        (string text, SortedDictionary<int, List<TextRange>> stops) = Expand(snippet, new Dictionary<int, string>());
+        Dictionary<int, string> placeholders = [];
+        foreach ((int number, List<TextRange> places) in stops)
+        {
+            foreach (TextRange place in places)
+            {
+                if (place.Length > 0)
+                {
+                    placeholders[number] = text.Substring(place.Start, place.Length);
+                    break;
+                }
+            }
+        }
+        if (placeholders.Count > 0)
+        {
+            (text, stops) = Expand(snippet, placeholders);
+        }
+        TextRange end = stops.Remove(0, out List<TextRange>? final) ? final[0] : new TextRange(text.Length, 0);
+        return new Snippet(text, [.. stops.Values], end);
+    }
+
+    /// <summary>The protocol's snippet as text and each stop's places, a stop written bare given its text in
+    /// <paramref name="placeholders"/>.</summary>
+    private static (string Text, SortedDictionary<int, List<TextRange>> Stops) Expand(string snippet, IReadOnlyDictionary<int, string> placeholders)
     {
         StringBuilder text = new();
         SortedDictionary<int, List<TextRange>> stops = [];
         int at = 0;
         Read(null);
-        TextRange end = stops.Remove(0, out List<TextRange>? final) ? final[0] : new TextRange(text.Length, 0);
-        return new Snippet(text.ToString(), [.. stops.Values], end);
+        return (text.ToString(), stops);
 
         // Reads to the end, or to the '}' closing a placeholder, which it passes.
         void Read(char? until)
@@ -148,11 +172,13 @@ public sealed record Snippet(string Text, IReadOnlyList<IReadOnlyList<TextRange>
             }
             string name = snippet[from..at];
             int start = text.Length;
+            bool bare = true;
             if (braced && at < snippet.Length)
             {
                 if (snippet[at] == ':')
                 {
                     at++;
+                    bare = false;
                     Read('}');
                 }
                 else if (snippet[at] == '|')
@@ -160,6 +186,7 @@ public sealed record Snippet(string Text, IReadOnlyList<IReadOnlyList<TextRange>
                     int choices = snippet.IndexOf("|}", at + 1, StringComparison.Ordinal);
                     string first = snippet[(at + 1)..(choices < 0 ? snippet.Length : choices)].Split(',')[0];
                     text.Append(first);
+                    bare = false;
                     at = choices < 0 ? snippet.Length : choices + 2;
                 }
                 else if (snippet[at] == '}')
@@ -169,6 +196,10 @@ public sealed record Snippet(string Text, IReadOnlyList<IReadOnlyList<TextRange>
             }
             if (int.TryParse(name, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int number))
             {
+                if (bare && placeholders.TryGetValue(number, out string? placeholder))
+                {
+                    text.Append(placeholder);
+                }
                 if (!stops.TryGetValue(number, out List<TextRange>? places))
                 {
                     stops[number] = places = [];
