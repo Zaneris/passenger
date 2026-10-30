@@ -973,6 +973,66 @@ public sealed class SolutionViewTests : IDisposable
         }
     }
 
+    /// <summary>The Explorer's keys go on from the files chosen however rows came above or among them by code (#721): a folder
+    /// opened above a file, pushing it out of sight, and a file written above it in its own folder, Left then choosing the
+    /// file's folder with the keys on it and Left again closing that folder; and a file written inside a range chosen up
+    /// with Shift, Shift+Down then taking the range from the file it was begun on.</summary>
+    [AvaloniaFact]
+    public void The_explorers_keys_go_on_from_the_files_chosen_however_rows_came_above_or_among_them()
+    {
+        for (int i = 0; i < 40; i++)
+        {
+            Write($"Shop.App/Models/Lines/Line{i:00}.cs", $"namespace Shop.App.Models.Lines;\n\npublic class Line{i:00}\n{{\n}}\n");
+        }
+        for (int i = 0; i < 30; i++)
+        {
+            Write($"Shop.Core/Catalog/Item{i:00}.cs", $"namespace Shop.Core.Catalog;\n\npublic class Item{i:00}\n{{\n}}\n");
+        }
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        ExplorerView explorer = window.ExplorerView;
+        ListBox list = explorer.Rows();
+        string catalog = Path.Combine(folder, "Shop.Core", "Catalog");
+        ExplorerNode lines = Show(window, Path.Combine(folder, "Shop.App", "Models", "Lines"));
+        explorer.Tree.Collapse(lines);
+        ExplorerNode item = Show(window, Path.Combine(catalog, "Item20.cs"));
+        Ui.ClickRow(window, item);
+
+        explorer.Tree.Expand(lines);
+        Write("Shop.Core/Catalog/Aaa.cs", "namespace Shop.Core.Catalog;\n\npublic class Aaa\n{\n}\n");
+        Ui.WaitFor(() => explorer.Tree.Rows.Any(r => r.Name == "Aaa.cs"), "the Explorer to show Aaa.cs, written on disk above Item20.cs");
+        Ui.Settle();
+        Assert.True(list.SelectedItem == item && list.SelectedIndex == explorer.Tree.Rows.IndexOf(item),
+            $"After Lines opened and Aaa.cs written above Item20.cs, the Explorer's chosen row is {(list.SelectedItem as ExplorerNode)?.Name} at {list.SelectedIndex}, "
+            + $"where Item20.cs is at {explorer.Tree.Rows.IndexOf(item)}: its keys act on another row");
+        Ui.Press(window, "LEFT");
+        Assert.True(explorer.SelectedNodes is [{ Name: "Catalog" } up] && up.Path == catalog && Keys() == "Catalog" && up.IsExpanded,
+            $"Left on Item20.cs, with rows come above it, chose [{string.Join(", ", explorer.SelectedNodes.Select(n => n.Name))}], the keys with {Keys()}, "
+            + "where its folder Catalog, still open, is the row it sits under");
+        Ui.Press(window, "LEFT");
+        Assert.True(explorer.SelectedNodes is [{ Name: "Catalog", IsExpanded: false }] && Keys() == "Catalog" && !explorer.Tree.Rows.Contains(item) && lines.IsExpanded,
+            $"Left on the open Catalog left [{string.Join(", ", explorer.SelectedNodes.Select(n => $"{n.Name} {(n.IsExpanded ? "open" : "closed")}"))}] chosen, "
+            + $"the keys with {Keys()}, Item20.cs {(explorer.Tree.Rows.Contains(item) ? "still shown" : "gone")} and Lines {(lines.IsExpanded ? "open" : "closed")}: "
+            + "Left closed another row than Catalog");
+
+        Ui.Press(window, "RIGHT");
+        Ui.ClickRow(window, item);
+        Ui.Press(window, "shift+UP");
+        Ui.Press(window, "shift+UP");
+        Ui.Press(window, "shift+UP");
+        Write("Shop.Core/Catalog/Item18a.cs", "namespace Shop.Core.Catalog;\n\npublic class Item18a\n{\n}\n");
+        Ui.WaitFor(() => explorer.Tree.Rows.Any(r => r.Name == "Item18a.cs"), "the Explorer to show Item18a.cs, written on disk among Item17.cs to Item20.cs chosen");
+        Ui.Settle();
+        Ui.Press(window, "shift+DOWN");
+        Assert.True(Chosen() == "Item18.cs, Item18a.cs, Item19.cs, Item20.cs" && Keys() == "Item18.cs",
+            $"Shift+Down on Item17.cs, in the range begun on Item20.cs with Item18a.cs come among it, chose [{Chosen()}] with the keys on {Keys()}, "
+            + "where the range runs from Item20.cs up to Item18.cs: the range was taken from another file");
+        window.Close();
+
+        string Keys() => window.FocusManager?.GetFocusedElement() is Control { DataContext: ExplorerNode row } ? row.Name : "something else";
+
+        string Chosen() => string.Join(", ", explorer.SelectedNodes.Select(n => n.Name).Order(StringComparer.Ordinal));
+    }
+
     /// <summary>A solution filter naming one project of the solution, opened: its solution with that project alone loaded,
     /// the other shown unloaded, Build building the one and the language server loading the one; the filter changed on
     /// disk to name the other swaps them, and Reload Project loads the one it left out, none of which the folder keeps

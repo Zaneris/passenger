@@ -443,6 +443,58 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         };
     }
 
+    /// <summary>Left on a test goes up to its own class however rows came above it by code (#721): the projects above it
+    /// opened down to a test of theirs, Left then choosing the test's class with the keys on it, and Left again closing it.</summary>
+    [AvaloniaFact]
+    public void Left_on_a_test_goes_up_to_its_own_class_and_closes_it_however_rows_came_above_it()
+    {
+        string solution = NewFolder();
+        StringBuilder listed = new("<Solution>\n");
+        foreach (string name in (string[])["Alpha", "Beta", "Gamma"])
+        {
+            Write(solution, $"{name}.Tests/{name}.Tests.csproj", TestProject(TestProjects.Framework));
+            for (int i = 0; i < 6; i++)
+            {
+                Write(solution, $"{name}.Tests/Case{i}Tests.cs",
+                    $"using Xunit;\n\nnamespace {name};\n\npublic class Case{i}Tests\n{{\n    [Fact]\n    public void First() {{ }}\n\n    [Fact]\n    public void Second() {{ }}\n}}\n");
+            }
+            listed.Append($"  <Project Path=\"{name}.Tests/{name}.Tests.csproj\" />\n");
+        }
+        Write(solution, "Tests.slnx", listed.Append("</Solution>\n").ToString());
+        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
+        ListBox tree = Tree(window);
+        TestTree model = window.Tests.Tree;
+        Ui.WaitFor(() => model.Rows.Count(r => r.Kind == TestNodeKind.Method) == 36, () => $"the tests from their code, the window listing [{string.Join(", ", Shown(window))}]");
+        Ui.Click(HeaderButton(window, AppActions.CollapseAll));
+        TestNode test = Under(model.Roots.Single(r => r.Name == "Gamma.Tests")).Last(n => n.Kind == TestNodeKind.Method);
+        TestNode holder = test.Parent!;
+        model.Reveal(test);
+        Ui.Settle();
+        tree.ScrollIntoView(test);
+        Ui.Settle();
+        Ui.Click(tree.ContainerFromItem(test)!);
+
+        model.Reveal(Under(model.Roots.Single(r => r.Name == "Alpha.Tests")).First(n => n.Kind == TestNodeKind.Method));
+        model.Reveal(Under(model.Roots.Single(r => r.Name == "Beta.Tests")).First(n => n.Kind == TestNodeKind.Method));
+        Ui.Settle();
+        Assert.True(tree.SelectedItem == test && tree.SelectedIndex == model.Rows.IndexOf(test),
+            $"After Alpha.Tests and Beta.Tests opened above {holder.Name}.{test.Name}, the window's chosen row is {(tree.SelectedItem as TestNode)?.Name} at {tree.SelectedIndex}, "
+            + $"where the test is at {model.Rows.IndexOf(test)}: its keys act on another row");
+        Ui.Press(window, "LEFT");
+        Assert.True(tree.SelectedItems is [TestNode up] && up == holder && Keys() == holder.Name && holder.IsExpanded,
+            $"Left on {holder.Name}.{test.Name}, with rows come above it, chose [{string.Join(", ", tree.SelectedItems!.OfType<TestNode>().Select(n => n.Name))}], "
+            + $"the keys with {Keys()}, where its class {holder.Name}, still open, is the row it sits under");
+        Ui.Press(window, "LEFT");
+        Assert.True(tree.SelectedItems is [TestNode closed] && closed == holder && !holder.IsExpanded && Keys() == holder.Name && !model.Rows.Contains(test),
+            $"Left on the open {holder.Name} left [{string.Join(", ", tree.SelectedItems!.OfType<TestNode>().Select(n => $"{n.Name} {(n.IsExpanded ? "open" : "closed")}"))}] chosen, "
+            + $"the keys with {Keys()} and {test.Name} {(model.Rows.Contains(test) ? "still shown" : "gone")}: Left closed another row than {holder.Name}");
+        window.Close();
+
+        static IEnumerable<TestNode> Under(TestNode node) => node.Children.SelectMany(child => (TestNode[])[child, .. Under(child)]);
+
+        string Keys() => window.FocusManager?.GetFocusedElement() is Control { DataContext: TestNode row } ? row.Name : "something else";
+    }
+
     /// <summary>A button in the Unit Tests window's header.</summary>
     private static Button HeaderButton(MainWindow window, string action) =>
         window.BottomPanel.Tests.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains("toolPane"))
