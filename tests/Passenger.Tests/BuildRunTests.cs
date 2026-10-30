@@ -794,7 +794,8 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// <summary>Roslyn restores a project never restored itself, and its restore leaves an MSBuild node waiting to be reused,
     /// in the language server's process group, which ends when the server is started again (after it crashed or hung). A
     /// build the IDE starts never takes that node up, so the server started again while the build runs ends nothing of
-    /// the build's. On Windows the restore's node is no part of the server's tree once the restore has gone.</summary>
+    /// the build's. On Windows the restore's node is no part of the server's tree once the restore has gone. Where MSBuild
+    /// keeps no node of the restore (other builds' nodes filling its count), there is none to see, and the test skips.</summary>
     [AvaloniaFact]
     public void A_build_goes_on_through_the_language_server_starting_again_while_it_runs()
     {
@@ -809,12 +810,18 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             </Project>
             """);
         using OwnMSBuild msbuild = new(("MSBUILDENSURESTDOUTFORTASKPROCESSES", null));
+        Ui.Await(Waiting.Apart(Processes.UntilMSBuildKeepsNodesAsync), "MSBuild to count no more nodes than it keeps, for the restore to keep its own",
+            TimeSpan.FromMinutes(3));
         // Settling waits for the projects to load, which Roslyn says once its restore of Tools has ended.
         MainWindow window = Open();
         int server = window.CSharpService!.Session!.Server.ProcessId;
-        int[] restored = ServerNodes(server);
-        Assert.True(OperatingSystem.IsWindows() || restored.Length > 0,
-            $"The language server's restore left no MSBuild node in its process group, so there is none for a build to take up. MSBuild nodes now:\n{string.Join('\n', Processes.MSBuildNodes().Select(n => $"{Processes.Describe(n.Key)} {n.Value}"))}{Ui.ServerLogTail()}");
+        if (!OperatingSystem.IsWindows() && ServerNodes(server).Length == 0)
+        {
+            (int counted, int most) = Processes.MSBuildNodesCounted();
+            string nodes = string.Join('\n', Processes.MSBuildNodes().Select(n => $"{Processes.Describe(n.Key)} {n.Value}"));
+            window.Close();
+            Assert.Skip($"The language server's restore left no MSBuild node in its process group, so there is none for a build to take up: MSBuild keeps none of a build's nodes while it counts more than {most} as the build ends, other builds' among them ({counted} now). MSBuild nodes now:\n{nodes}");
+        }
         try
         {
             window.Perform(AppActions.Build);

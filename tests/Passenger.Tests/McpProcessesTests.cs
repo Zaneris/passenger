@@ -329,7 +329,7 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
             client = await Connect(passenger, ["--mcp", two]);
             for (int build = 1; left.Count == 0; build++)
             {
-                await UntilMSBuildKeepsNodes();
+                await Processes.UntilMSBuildKeepsNodesAsync();
                 // The ids a build's steps write are that build's, so what the test sees running is too.
                 File.Delete(Path.Combine(two, "A", "step.pid"));
                 File.Delete(Path.Combine(two, "B", "step.pid"));
@@ -382,17 +382,6 @@ public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>The builds the test makes for one to leave a node: rarely, on a loaded machine, MSBuild ends a node it meant
     /// to keep, and the next build starts one again.</summary>
     private const int NodeBuilds = 3;
-
-    /// <summary>Waits, before a build, until MSBuild would keep its node: while it counts more nodes than it keeps (<see
-    /// cref="Processes.MSBuildNodesCounted"/>), for other builds to end. One that stays over skips the test, saying why:
-    /// no build could leave a node to see end.</summary>
-    private static async Task UntilMSBuildKeepsNodes()
-    {
-        (int counted, int most) = (0, 0);
-        await Waiting.UntilAsync(() => ((counted, most) = Processes.MSBuildNodesCounted()).counted <= most, TimeSpan.FromMinutes(2), every: TimeSpan.FromMilliseconds(500));
-        Assert.SkipWhen(counted > most,
-            $"MSBuild keeps no node for the next build while it counts more than {most} nodes (the MSBuild executable's, which its server starts), and {counted} still ran after two minutes");
-    }
 
     /// <summary>Why the last build may have left no node, for its failure to say: what it ran (id, parent, nice value,
     /// command) and Passenger's MSBuild nodes now, with their MSBuild variables.</summary>

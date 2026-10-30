@@ -2420,6 +2420,17 @@ public static partial class Processes
         return (counted, Math.Max(1, Environment.ProcessorCount * 3 / 2));
     }
 
+    /// <summary>Waits, before a build whose nodes are to stay for the next, until MSBuild would keep them: while it counts
+    /// more nodes than it keeps (<see cref="MSBuildNodesCounted"/>), for other builds' to end. One that stays over skips
+    /// the test, saying why: no build could leave a node to see.</summary>
+    public static async Task UntilMSBuildKeepsNodesAsync()
+    {
+        (int counted, int most) = (0, 0);
+        await Waiting.UntilAsync(() => ((counted, most) = MSBuildNodesCounted()).counted <= most, TimeSpan.FromMinutes(2), every: TimeSpan.FromMilliseconds(500));
+        Assert.SkipWhen(counted > most,
+            $"MSBuild keeps no node for the next build while it counts more than {most} nodes (the MSBuild executable's, which its server starts), and {counted} still ran after two minutes");
+    }
+
     /// <summary>The lines ps lists for these arguments, each trimmed (macOS and Linux).</summary>
     public static string[] Ps(params string[] arguments)
     {
