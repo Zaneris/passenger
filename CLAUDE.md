@@ -364,10 +364,10 @@ site-shots` retakes its images.
   (`PinnedArrayOfOneAsync`), or the evaluation refuses; a struct the evaluation stores is its own copy (`OwnAsync`),
   never the frame's.
 - **Hot Reload** drives the server's `EditAndContinueService` from the extension; CoreCLR lets no debugger go once Edit
-  and Continue changed a program, so a detached program Hot Reload changed takes no debugger again
-  (`DebugController.ChangedBy`), and a build's edits are kept for each program it starts later (`Kept`/`Copied`); a session takes edits only for the
-  projects of modules its program has loaded (others frozen), and `StaleCallers` blocks an update that leaves loaded code
-  calling a deleted body. The runtime offers a frame left in old code a remap at every statement, unstoppable: a running
+  and Continue changed a program, so the debugger never lets go of a program Hot Reload changed
+  (`DebugController.LetsNoDebuggerGo`; Detach refused, such a service restarted), and a build's edits are kept for each
+  program it starts later (`Kept`/`Copied`); a session takes edits only for the projects of modules its program has
+  loaded (others frozen), and `StaleCallers` blocks an update that leaves loaded code calling a deleted body. The runtime offers a frame left in old code a remap at every statement, unstoppable: a running
   program is held through an update so Roslyn maps its frames, which move only at a statement's start (`RemapTarget`).
 - **dotnet watch takes Ctrl+R only from a console's keys**, never from redirected input: the Run window's restart under it
   is Rerun, and when it waits after the program ends it says so (`BuildRunController.WatchedEnd`).
