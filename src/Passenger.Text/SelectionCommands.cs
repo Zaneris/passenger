@@ -28,7 +28,7 @@ public static class SelectionCommands
 
     /// <summary>Select All Occurrences (Alt+Shift+;): a selection on every copy of the primary selection, or of the word
     /// under the caret, the first <see cref="SelectionSet.MaxCount"/> of them (<paramref name="limited"/> past that),
-    /// the one the caret was on always among them.</summary>
+    /// the one the caret was on always among them and copies overlapping it left out.</summary>
     public static SelectionSet SelectAllOccurrences(TextSnapshot text, SelectionSet selections, out bool limited)
     {
         limited = false;
@@ -41,7 +41,7 @@ public static class SelectionCommands
         string needle = text.GetText(range);
         List<Selection> all = [];
         int primaryIndex = -1;
-        foreach (int at in text.Occurrences(needle))
+        foreach (int at in OccurrencesAround(text, needle, range))
         {
             if (all.Count == SelectionSet.MaxCount)
             {
@@ -60,6 +60,25 @@ public static class SelectionCommands
             primaryIndex = all.Count - 1;
         }
         return SelectionSet.Create(all, Math.Max(0, primaryIndex));
+    }
+
+    /// <summary>The copies of <paramref name="needle"/> apart from each other, in order: those wholly before
+    /// <paramref name="range"/>, its own start, then those after it.</summary>
+    private static IEnumerable<int> OccurrencesAround(TextSnapshot text, string needle, TextRange range)
+    {
+        foreach (int at in text.Occurrences(needle))
+        {
+            if (at + needle.Length > range.Start)
+            {
+                break;
+            }
+            yield return at;
+        }
+        yield return range.Start;
+        foreach (int at in text.Occurrences(needle, range.End))
+        {
+            yield return at;
+        }
     }
 
     /// <summary>Unselect Occurrence (Alt+Shift+,): drops the primary caret, the last added, if there
