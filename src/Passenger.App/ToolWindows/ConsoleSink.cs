@@ -169,6 +169,11 @@ public sealed class ConsoleSink
         }
         if (prefixed is not null)
         {
+            // The console's state for the stream is every source's in the merged log: its last line let out, not ended.
+            if (prefixed.Rest() is { Length: > 0 } last)
+            {
+                Write(last, stream, streams[(int)stream], letGo);
+            }
             return;
         }
         if (held?.Rest() is { } rest)
@@ -222,39 +227,24 @@ public sealed class ConsoleSink
         }
     }
 
-    /// <summary>A stream's whole lines, each ending at its '\n', written under a prefix with the '\r's before that
-    /// dropped (a container's in a merged log); what follows a read's last '\n' waits for the next, and is dropped at
-    /// the end.</summary>
+    /// <summary>A stream's lines, each ending at its '\n', written under a prefix with the '\r's before that dropped (a
+    /// container's in a merged log): what follows a read's last '\n' waits for the next, a line past <see cref="LongestLine"/>
+    /// let out in pieces of that length, and what still waits let out at the end (<see cref="Rest"/>).</summary>
     private sealed class Prefixed(string prefix)
     {
         private char[] line = new char[256];
         private int length;
         private char[] written = new char[1024];
+        private int count;
 
-        /// <summary>The lines a read ends, with what waited before the first, each under the prefix; empty when it ends
-        /// none.</summary>
+        /// <summary>The lines a read ends, with what waited before the first, and the pieces of a line grown past the
+        /// longest, each under the prefix; empty when it lets out none.</summary>
         public ReadOnlySpan<char> Lines(ReadOnlySpan<char> came)
         {
-            int count = 0;
+            count = 0;
             for (int end = came.IndexOf('\n'); end >= 0; end = came.IndexOf('\n'))
             {
-                int needed = count + prefix.Length + length + end + 1;
-                if (needed > written.Length)
-                {
-                    Array.Resize(ref written, Math.Max(2 * written.Length, needed));
-                }
-                prefix.CopyTo(written.AsSpan(count));
-                count += prefix.Length;
-                int start = count;
-                line.AsSpan(0, length).CopyTo(written.AsSpan(count));
-                count += length;
-                came[..end].CopyTo(written.AsSpan(count));
-                count += end;
-                while (count > start && written[count - 1] == '\r')
-                {
-                    count--;
-                }
-                written[count++] = '\n';
+                Put(line.AsSpan(0, length), came[..end], ended: true);
                 length = 0;
                 came = came[(end + 1)..];
             }
@@ -264,7 +254,52 @@ public sealed class ConsoleSink
             }
             came.CopyTo(line.AsSpan(length));
             length += came.Length;
+            int from = 0;
+            for (; length - from >= LongestLine; from += LongestLine)
+            {
+                Put(line.AsSpan(from, LongestLine), [], ended: false);
+            }
+            if (from > 0)
+            {
+                line.AsSpan(from, length - from).CopyTo(line);
+                length -= from;
+            }
             return written.AsSpan(0, count);
+        }
+
+        /// <summary>What waits at the stream's end as its last line under the prefix; empty when nothing does.</summary>
+        public ReadOnlySpan<char> Rest()
+        {
+            count = 0;
+            if (length > 0)
+            {
+                Put(line.AsSpan(0, length), [], ended: true);
+                length = 0;
+            }
+            return written.AsSpan(0, count);
+        }
+
+        /// <summary>A line written under the prefix, from what waited and what came, its '\r's at its end dropped where it
+        /// <paramref name="ended"/> (a piece of a longer line keeps them).</summary>
+        private void Put(ReadOnlySpan<char> waited, ReadOnlySpan<char> rest, bool ended)
+        {
+            int needed = count + prefix.Length + waited.Length + rest.Length + 1;
+            if (needed > written.Length)
+            {
+                Array.Resize(ref written, Math.Max(2 * written.Length, needed));
+            }
+            prefix.CopyTo(written.AsSpan(count));
+            count += prefix.Length;
+            int start = count;
+            waited.CopyTo(written.AsSpan(count));
+            count += waited.Length;
+            rest.CopyTo(written.AsSpan(count));
+            count += rest.Length;
+            while (ended && count > start && written[count - 1] == '\r')
+            {
+                count--;
+            }
+            written[count++] = '\n';
         }
     }
 
