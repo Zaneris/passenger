@@ -398,7 +398,9 @@ site-shots` retakes its images.
   `TextLine` until what it says or its width changes.
 - **EventPipe from a program's start**: .NET 10's LoggingEventSource misreads the `FilterSpecs` it is made with, so a
   category takes no `:Level` there or none of its logs come (`LiveRequests.LogsSpec`). Its sampler takes a thread only
-  where it can stop it, so a test program's method that must own its samples spins in a loop that calls nothing.
+  where it can stop it, so a test program's method that must own its samples spins in a loop that calls nothing. A
+  program the debugger holds answers no session's start or stop and gives no heap, so the profiler refuses it
+  (`Refusals.PausedInDebugger`, `DebugController.Debugging`).
 
 ## Tests
 
