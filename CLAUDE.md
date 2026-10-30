@@ -164,11 +164,12 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   Find Action, context menus and MCP's `ide_action` all run it, `WhyNot` greys it with why, titles come from the
   registry (`TitleWhere`), a title that asks more ends in "…", and what's missing is said in `Refusals`' words. Anything
   that takes a while holds a `Working` (`ActionWork.Begin`) from its first moment to its hand-over, saying each stage
-  and honouring `Stopping`; toolbar buttons bind with `ActionButtons.Bind`. An agent's run
-  (`ActionRegistry.RunForAgent`, `ActionContext.ByAgent`) never takes the person's keys or brings a window forward
-  (`DockHost.ShowBehind`); an attached agent's flow is marked by `AgentAsks`, whose `Install` cancels its focus moves
-  and refuses its popups and modal dialogs (`Refusals.AsksThePerson`; a popup host asks `AgentAsks.Refused`/`Popup`),
-  and a file it opens comes in a tab behind (`EditorArea.Activate`).
+  and honouring `Stopping`, and tells what it came to (`Working.Tell`, `ActionWork.Tell`), which `ide_action` answers;
+  toolbar buttons bind with `ActionButtons.Bind`. An agent's run (`ActionRegistry.RunForAgent`, `ActionContext.ByAgent`)
+  never takes the person's keys or brings a window forward (`DockHost.ShowBehind`); an attached agent's flow is marked
+  by `AgentAsks`, whose `Install` cancels its focus moves and refuses its popups and modal dialogs
+  (`Refusals.AsksThePerson`; a popup host asks `AgentAsks.Refused`/`Popup`), and a file it opens comes in a tab behind
+  (`EditorArea.Activate`).
 - **One way out to the system:** a browser only through `MainWindow.Browse`, the file manager only through
   `ShowInFileManager` (both recorded for tests).
 - **Shortcuts follow Rider's**: its Visual Studio (Windows) or Visual Studio OSX (macOS) keymap, and its VS Code keymaps
