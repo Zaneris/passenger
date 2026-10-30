@@ -24,9 +24,9 @@ public partial class MainWindow
             status.Text = $"{Path.GetFileName(project)} is not one of the solution's projects";
             return null;
         }
-        if (Unread([model]) is { } unread)
+        if (DockerSupportWhyNot(project) is { } refused)
         {
-            status.Text = unread;
+            status.Text = refused;
             return null;
         }
         DockerProject described = DockerFiles.Describe(model, session.Workspace?.Projects ?? []);
@@ -365,6 +365,15 @@ public partial class MainWindow
     private static string? ComposeFileIn(string folder) => Containers.ComposeFiles.In(folder);
 
     private ProjectModel? SolutionProject(string project) => session.Workspace?.Projects.FirstOrDefault(p => PathNames.Same(p.Path, project));
+
+    /// <summary>Why Add Docker Support is greyed on a project of the solution: it is still being read, or it is no service,
+    /// making no program to run (a library, a test project); null for one that runs, or one MSBuild could not read.</summary>
+    private string? DockerSupportWhyNot(string project) => SolutionProject(project) switch
+    {
+        { } model when Unread([model]) is { } unread => unread,
+        { IsEvaluated: true, IsRunnable: false } model => $"{model.Name} is not a service: it makes no program to run in a container",
+        _ => null,
+    };
 
     /// <summary>Why the files cannot be written yet: a project MSBuild is still evaluating, which has yet to say its image
     /// (aspnet or runtime), framework and assembly; null once every one has been (or could not be).</summary>

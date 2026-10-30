@@ -187,6 +187,16 @@ public sealed class DialogButtonsTests : IDisposable
             Assert.True(other is null, $"In {title}, drop-downs of one column are {first.Bounds.Width:0.#} and {other?.Bounds.Width:0.#} px wide, where a form's are one width");
         }
 
+        // A choice's words stand whole, wrapped within the dialog where they need more than a line.
+        foreach (TextBlock words in dialog.GetVisualDescendants().OfType<RadioButton>().Where(r => r.IsEffectivelyVisible)
+            .SelectMany(r => r.GetVisualDescendants().OfType<TextBlock>()).Where(t => t.IsEffectivelyVisible && t.Bounds.Width >= 1 && t.Text is { Length: > 0 }))
+        {
+            double room = words.Bounds.Width - words.Padding.Left - words.Padding.Right;
+            Rect laid = new(words.TranslatePoint(default, dialog)!.Value, words.Bounds.Size);
+            Assert.True(words.TextLayout.Width <= room + 0.5 && words.TextLayout.TextLines.All(l => !l.HasCollapsed) && laid.Right <= dialog.Bounds.Width + 0.5,
+                $"In {title}, the choice '{words.Text}' is cut to {room:0.#} px of its {words.TextLayout.Width:0.#}, where a choice's words wrap whole within the dialog");
+        }
+
         // Don't ask again stands at the footer's left, beside the buttons.
         foreach (CheckBox ask in dialog.GetVisualDescendants().OfType<CheckBox>().Where(c => c.IsEffectivelyVisible && c.Content is string words
             && (words.StartsWith("Don't ask", StringComparison.Ordinal) || words.StartsWith("Do not ask", StringComparison.Ordinal))))

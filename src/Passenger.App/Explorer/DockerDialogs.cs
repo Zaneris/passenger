@@ -32,13 +32,13 @@ public sealed class DockerSupportDialog : IdeWindow
             GroupName = "kind",
             IsChecked = !hasDockerfile,
             IsEnabled = !hasDockerfile,
-            Content = hasDockerfile ? $"A Dockerfile ({project} has one already)" : "A Dockerfile beside the project, and a .dockerignore at the solution's folder",
+            Content = Words(hasDockerfile ? $"A Dockerfile ({project} has one already)" : "A Dockerfile beside the project, and a .dockerignore at the solution's folder"),
         };
         sdk = new RadioButton
         {
             GroupName = "kind",
             IsChecked = hasDockerfile,
-            Content = "The .NET SDK's container support: dotnet publish /t:PublishContainer builds the image, with no Dockerfile",
+            Content = Words("The .NET SDK's container support: dotnet publish /t:PublishContainer builds the image, with no Dockerfile"),
         };
         foreach (RadioButton choice in new[] { dockerfile, sdk })
         {
@@ -63,6 +63,9 @@ public sealed class DockerSupportDialog : IdeWindow
 
     /// <summary>Closes as OK does, with the way chosen.</summary>
     public void Accept() => Close((DockerSupportKind?)Chosen);
+
+    /// <summary>A choice's words, wrapped within the dialog where they need more than a line.</summary>
+    private static TextBlock Words(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };
 }
 
 /// <summary>A project or a backing service Add > Docker Compose offers, checked while it is to be in compose.yaml.</summary>

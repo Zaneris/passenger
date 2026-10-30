@@ -562,6 +562,48 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         }
     }
 
+    /// <summary>Add > Docker Support is greyed on the class library, which makes no program to run, saying it is no service,
+    /// and offered on the worker, a program; its dialog on the web app shows each way of building the image whole, its
+    /// words wrapped within the dialog.</summary>
+    [AvaloniaFact]
+    public void Add_docker_support_is_greyed_on_a_class_library_saying_why_and_its_dialog_shows_each_choice_whole()
+    {
+        MainWindow window = app.Open(null);
+        try
+        {
+            AwaitEvaluated(window);
+            window.ExplorerView.Reveal(app.PathOf("Lib/Prices.cs"));
+            window.ExplorerView.Reveal(app.PathOf("Worker/Program.cs"));
+            Ui.Settle();
+            MenuItem lib = DockerSupportItem(window, "Lib");
+            Assert.False(lib.IsEnabled, "Add > Docker Support is offered on a class library, whose Dockerfile could run nothing");
+            Assert.Equal("Lib is not a service: it makes no program to run in a container", ToolTip.GetTip(lib));
+            Assert.True(DockerSupportItem(window, "Worker").IsEnabled, "Add > Docker Support is greyed on the worker, which is a program");
+
+            Ui.ChooseFromRowMenu(window, Row(window, NodeKind.Project, "Api"), "Add", "Docker Support…");
+            DockerSupportDialog dialog = DialogButtonsTests.Check(Assert.Single(window.OwnedWindows.OfType<DockerSupportDialog>()));
+            dialog.Close();
+            Ui.Settle();
+            Assert.False(File.Exists(app.PathOf("Api/Dockerfile")), "Closing Add Docker Support's dialog wrote a Dockerfile");
+        }
+        finally
+        {
+            window.Close();
+            app.Reset();
+        }
+    }
+
+    /// <summary>A project's Add > Docker Support item, as its row's menu shows it, the menu closed again.</summary>
+    private static MenuItem DockerSupportItem(MainWindow window, string project)
+    {
+        Ui.RightClick(Ui.Row(window.ExplorerView, Row(window, NodeKind.Project, project)));
+        ContextMenu menu = window.ExplorerView.OpenMenu ?? throw new Xunit.Sdk.XunitException($"A right-click on {project} opened no menu");
+        MenuItem item = menu.Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Add").Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Docker Support…");
+        menu.Close();
+        Ui.Settle();
+        return item;
+    }
+
     /// <summary>A .dockerignore the context has already, keeping a nuget.config Add Docker Support's Dockerfile mounts as a
     /// secret (its line leaves out the lower-case spelling alone), is given the line leaving every spelling out, in its own
     /// line breaks, the rest of it as it was; Undo takes the line back with the Dockerfile. One that leaves every spelling
