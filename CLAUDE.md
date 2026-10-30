@@ -165,7 +165,8 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   that takes a while holds a `Working` (`ActionWork.Begin`) from its first moment to its hand-over, saying each stage
   and honouring `Stopping`; toolbar buttons bind with `ActionButtons.Bind`. An agent's run
   (`ActionRegistry.RunForAgent`, `ActionContext.ByAgent`) never takes the person's keys or brings a window forward
-  (`DockHost.ShowBehind`).
+  (`DockHost.ShowBehind`); an attached agent's flow is marked by `AgentAsks`, so a popup or dialog it would open is
+  refused (`Refusals.AsksThePerson`) or comes without the keys.
 - **One way out to the system:** a browser only through `MainWindow.Browse`, the file manager only through
   `ShowInFileManager` (both recorded for tests).
 - **Shortcuts follow Rider's**: its Visual Studio (Windows) or Visual Studio OSX (macOS) keymap, and its VS Code keymaps
