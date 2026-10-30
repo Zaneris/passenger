@@ -1331,7 +1331,9 @@ public sealed partial class BuildRunController
                 {
                     return Said(problem);
                 }
-                AspireAppRun[] started = session.Aspire.Apps.Where(app => !app.IsTest).ToArray();
+                // This start's AppHosts alone, one group: another configuration's running on is no part of its end.
+                string? own = session.Aspire.Apps.LastOrDefault(app => !app.IsTest && PathNames.Same(app.Configuration.Project, configuration.Project))?.Group;
+                AspireAppRun[] started = [.. session.Aspire.Apps.Where(app => !app.IsTest && app.Group == own)];
                 aspireEnd = Ended(started);
                 parts.Say(AspireStarted(configuration, mode, started) + (https.OverHttp is { } overHttp ? $" ({overHttp})" : string.Empty),
                     StatusPlace.Window(parts.Dock, ToolWindowIds.Aspire));

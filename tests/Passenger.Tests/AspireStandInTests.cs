@@ -993,6 +993,58 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A run of an AppHost ends with its own AppHosts, whatever another configuration's still runs: with the stand-in
+    /// AppHost running, Run of a second AppHost of the folder, whose program then ends, ends that run (what an agent's run
+    /// waits on), the first running on.</summary>
+    [AvaloniaFact]
+    public void A_run_of_an_AppHost_ends_with_its_own_AppHosts_while_another_configurations_runs_on()
+    {
+        project.Reset();
+        File.Delete(project.KeyFile);
+        string secondKey = project.PathOf("second-resource-service.key");
+        File.Delete(secondKey);
+        AspireInteractionHost first = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        AspireInteractionHost second = Ui.Await(AspireInteractionHost.StartAsync(secondKey), "the second stand-in resource service");
+        const string Second = "Second.AppHost";
+        Directory.CreateDirectory(project.PathOf($"{Second}/Properties"));
+        project.Write([
+            ($"{Second}/{Second}.csproj", File.ReadAllText(project.ProjectFile)),
+            ($"{Second}/Program.cs", File.ReadAllText(project.Program)),
+            ($"{Second}/Properties/launchSettings.json", JsonSerializer.Serialize(new { profiles = new { http = new { commandName = "Project", environmentVariables = new Dictionary<string, string>
+            {
+                ["PASSENGER_STAND_IN_KEY"] = secondKey,
+                ["ASPIRE_ALLOW_UNSECURED_TRANSPORT"] = "true",
+                ["ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL"] = second.Endpoint.AbsoluteUri,
+            } } } })),
+            ("StandIn.slnx", $"<Solution>\n  <Project Path=\"{StandInAppHost.Name}/{StandInAppHost.Name}.csproj\" />\n  <Project Path=\"{StandInAppHost.Api}/{StandInAppHost.Api}.csproj\" />\n" +
+                $"  <Project Path=\"{Second}/{Second}.csproj\" />\n</Solution>\n"),
+        ]);
+        MainWindow window = OpenRunning(first);
+        try
+        {
+            AspireAppRun running = Assert.Single(window.AspireRuntime.Apps);
+            string configuration = $"Aspire: {Second}: http";
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == configuration), "the second AppHost's Aspire configuration");
+            Assert.True(window.SelectConfiguration(configuration));
+            Ui.Run(window, AppActions.RunProgram);
+            Ui.WaitFor(() => second.Connected.Task.IsCompleted && window.AspireRuntime.Apps.Count == 2,
+                $"the window to connect to the second AppHost's resource service ({window.Status})", TimeSpan.FromMinutes(3));
+            AspireAppRun started = window.AspireRuntime.Apps.Single(app => app != running);
+            Task<int> ended = window.RunEnd;
+            Assert.False(ended.IsCompleted, "The second AppHost's run ended as it started");
+
+            Processes.Kill(started.ProcessId!.Value);
+            Ui.WaitFor(() => ended.IsCompleted, () => $"the second AppHost's run to end with its program, the first AppHost still running ({window.Status})");
+            Assert.True(running.Runner.IsRunning && window.AspireRuntime.Apps.Contains(running), "The first AppHost, another configuration's run, ended with the second's");
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(second.DisposeAsync().AsTask()), "the second stand-in resource service to stop");
+            Ui.Await(Complete(first.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>A restart that fails is said as the restart's refusal, in words, whoever asked for it: Rerun after the API's
     /// code changed has its AppHost stop it (the stand-in's stop command ends its program), builds it, and finds the resource
     /// to start again made anew under another identity, which it says rather than a sequence's raw complaint.</summary>
