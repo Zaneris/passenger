@@ -3,11 +3,13 @@
 (https://github.com/file-icons) draws with: its own icons (ISC), MFixx (MIT) and GitHub's Octicons (MIT), plus the few
 drawn here.
 
-Each SVG is fetched once into artifacts/file-icons/ and kept there; the list below is the only place a shape is named.
+Each SVG is fetched once into artifacts/file-icons/ and kept there under its set's pinned URL; the list below is the only
+place a shape is named.
 
 The icons are drawn at one weight, Octicons' outline: a logo that is a solid badge (a block, shield or disc with its
 letters cut out of it, OUTLINED) keeps its outer edge as a ring and its letters filled, so it reads as light as the rest.
 """
+import hashlib
 import math
 import os
 import re
@@ -438,7 +440,9 @@ def figures(svg):
 
 
 def fetch(source, name, cache):
-    path = os.path.join(cache, source, re.sub(r"[^\w.+#-]", "_", name) + ".svg")
+    # Kept by the URL it came from, so a set whose pin moves is fetched again.
+    pinned = hashlib.sha256(SETS[source].encode()).hexdigest()[:16]
+    path = os.path.join(cache, f"{source}-{pinned}", re.sub(r"[^\w.+#-]", "_", name) + ".svg")
     if not os.path.exists(path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with urllib.request.urlopen(SETS[source].format(urllib.parse.quote(name))) as response:
