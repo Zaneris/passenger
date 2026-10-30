@@ -890,6 +890,10 @@ Passenger's changes, each where a schema refused what the tool it describes take
   and `autoShutdown` default to the booleans their strings named; the defaults their own schema refuses are left out
   (NLog's `targetDefaultWrapper`, rule and filter `{}`, launch settings' `commandName` `""` and `ancmHostingModel`
   `false`, Prettier's `rangeEnd` `null`).
+- `appsettings.json`: keys are taken in any case, as .NET's configuration reads them: Serilog's (its section's, a minimum
+  level's and a method call's) each also under a pattern of its name that ignores case, and a required key (Serilog's
+  `Name`, Kestrel's `Url`, NLog's `type` and `logger`, elmah.io's `ApiKey` and `LogId`) required only where no key is
+  it in another case.
 - `tsconfig.json`: ts-node's `scopeDir` has no default, the sentence that stood as one now its description.
 
 ## The Compose specification's schema
