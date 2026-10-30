@@ -406,6 +406,8 @@ site-shots` retakes its images.
   earlier spelling and NuGet home into the next build. It keeps no idle node unless the process's nice value is 0.
 - **Local History's `changes.log` is shared by every Passenger on the same state**: a store takes in the others' lines
   under `Hold` before it keeps anything, and a change logged twice (named by its maker, heard by another) lists once.
+- **A variable taken out of a process's own environment goes through `OwnEnvironment.Set`**: on macOS and Linux .NET's
+  `SetEnvironmentVariable` never changes the process's own, from which Porta.Pty forks the terminal's shell.
 - **The terminal reuses a line** once it leaves the screen and a full scrollback (`TerminalLine.Reuse`): nothing keeps a
   `TerminalLine` past its line number. A line's cells are written only through `TerminalLine.Writing()`: the view draws
   a line as it kept it while its `Writes` stand. A pseudo-terminal's close on macOS waits for a write still in flight,
