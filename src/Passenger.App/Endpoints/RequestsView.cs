@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 
 namespace Passenger.App.Endpoints;
 
@@ -268,8 +269,8 @@ public sealed class RequestsView : DockPanel
 
         public void Show(LiveCommand command)
         {
-            string rows = command.Rows is { } count and >= 0 ? $"{count} {(count == 1 ? "row" : "rows")} changed  "
-                : command.Reads is { } reads ? $"{reads} {(reads == 1 ? "read" : "reads")}  " : string.Empty;
+            string rows = command.Rows is { } count and >= 0 ? $"{Plural.Of(count, "row")} changed  "
+                : command.Reads is { } reads ? $"{Plural.Of(reads, "read")}  " : string.Empty;
             outcome.Text = command.Error ?? string.Create(CultureInfo.InvariantCulture, $"{rows}{command.Milliseconds:0.#} ms");
             slow.IsVisible = command.Slow;
             repeated.IsVisible = command.Repeated;

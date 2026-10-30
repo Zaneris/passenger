@@ -45,7 +45,7 @@ public partial class MainWindow
         {
             await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard, text);
         }
-        status.Text = $"{(cut ? "Cut" : "Copied")} {Together([.. paths.Select(Path.GetFileName).OfType<string>()])}";
+        status.Text = $"{(cut ? "Cut" : "Copied")} {Plural.Listed([.. paths.Select(Path.GetFileName).OfType<string>()])}";
     }
 
     /// <summary>Paste on a row: what was cut or copied goes into the folder the row stands for (<see cref="ExplorerNode.Into"/>).</summary>
@@ -109,7 +109,7 @@ public partial class MainWindow
         IReadOnlyDictionary<string, IReadOnlyList<string>> following = DependentsOf(paths);
         HashSet<string> dependents = [.. following.Values.SelectMany(d => d)];
         using CommandHistory.Recording? recording = copy ? null
-            : Editors.Commands.RecordWrites($"Move {Together([.. paths.Where(p => !dependents.Contains(p)).Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
+            : Editors.Commands.RecordWrites($"Move {Plural.Listed([.. paths.Where(p => !dependents.Contains(p)).Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
         List<string> put = [];
         List<(string From, string To)> moved = [];
         // The ends of the moves, followed with the copies once all are put.
@@ -175,7 +175,7 @@ public partial class MainWindow
             Explorer.Reveal(put[^1]);
             // The keys go with the choice to the row revealed, for the next Paste.
             Explorer.FocusRows();
-            refused.Insert(0, $"{(copy ? "Copied" : "Moved")} {Together([.. put.Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
+            refused.Insert(0, $"{(copy ? "Copied" : "Moved")} {Plural.Listed([.. put.Select(Path.GetFileName).OfType<string>()])} to {Path.GetFileName(into)}");
         }
         status.Text = string.Join("; ", refused);
         return put;
@@ -458,7 +458,7 @@ public partial class MainWindow
             .Concat(command.Moves.Select(m => redo ? m.From : m.To))
             .Concat(command.Created.Select(c => c.Path))
             .Concat(command.Deleted.Select(d => d.Path));
-        if (!await Confirm(verb, $"{verb} {command.Name}? It changes {Together([.. files.Select(Path.GetFileName).OfType<string>().Distinct(), .. command.Parts.Select(p => p.Name)])}.", verb))
+        if (!await Confirm(verb, $"{verb} {command.Name}? It changes {Plural.Listed([.. files.Select(Path.GetFileName).OfType<string>().Distinct(), .. command.Parts.Select(p => p.Name)])}.", verb))
         {
             return;
         }

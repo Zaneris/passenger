@@ -1,4 +1,5 @@
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 
 namespace Passenger.App;
 
@@ -97,7 +98,7 @@ public partial class MainWindow
     /// <summary>What <paramref name="leaving"/> would do to programs Hot Reload changed (<see cref="HeldByLeaving"/>).</summary>
     private static string HeldWords(IReadOnlyList<DebugTab> held, string leaving)
     {
-        string names = held.Count == 1 ? held[0].Name : $"{string.Join(", ", held.SkipLast(1).Select(t => t.Name))} and {held[^1].Name}";
+        string names = Plural.Listed([.. held.Select(t => t.Name)]);
         return held.Count == 1
             ? $"Hot Reload changed the code of {names}, after which its runtime lets no debugger go, so {leaving} would stop it rather than leave it frozen"
             : $"Hot Reload changed the code of {names}, after which their runtimes let no debugger go, so {leaving} would stop them rather than leave them frozen";

@@ -76,7 +76,7 @@ public partial class MainWindow
         Name(under.OfType<SolutionItem>(), "file");
         string question = going.Count == 0
             ? $"Remove the empty solution folder {removing.Name} from {solution.Name}?"
-            : $"Remove the solution folder {removing.Name} from {solution.Name}, and with it {Together(going)}? Their files stay on disk.";
+            : $"Remove the solution folder {removing.Name} from {solution.Name}, and with it {Plural.Listed(going)}? Their files stay on disk.";
         if (!await Confirm("Remove Solution Folder", question, "Remove"))
         {
             return false;
@@ -89,7 +89,7 @@ public partial class MainWindow
             List<string> names = [.. entries.Select(e => e.Name).Order(StringComparer.OrdinalIgnoreCase)];
             if (names.Count > 0)
             {
-                going.Add($"the {Plural.Noun(names.Count, kind)} {Together(names)}");
+                going.Add($"the {Plural.Noun(names.Count, kind)} {Plural.Listed(names)}");
             }
         }
     }
@@ -116,7 +116,7 @@ public partial class MainWindow
         {
             return;
         }
-        using CommandHistory.Recording recording = Editors.Commands.RecordWrites($"Add Existing Project {Together([.. picked.Select(Path.GetFileNameWithoutExtension).OfType<string>()])}");
+        using CommandHistory.Recording recording = Editors.Commands.RecordWrites($"Add Existing Project {Plural.Listed([.. picked.Select(Path.GetFileNameWithoutExtension).OfType<string>()])}");
         if (await AddEachAsync(picked, (solution, project) => SolutionEdits.AddProject(solution, into, project), Path.GetFileNameWithoutExtension, recording, projects: true) is { } last)
         {
             Reveal(into, last);
@@ -173,7 +173,7 @@ public partial class MainWindow
         if (added.Count > 0)
         {
             ReloadSolution();
-            refused.Insert(0, $"Added {Together([.. added.Select(named)])} to {solution.Name}{(besides is null ? string.Empty : $"; {besides}")}");
+            refused.Insert(0, $"Added {Plural.Listed([.. added.Select(named)])} to {solution.Name}{(besides is null ? string.Empty : $"; {besides}")}");
         }
         status.Text = string.Join("; ", refused);
         return added.LastOrDefault();
@@ -263,7 +263,4 @@ public partial class MainWindow
 
     /// <summary>A solution folder's own name, from its path in the solution.</summary>
     private static string FolderName(string path) => path.Split('/', StringSplitOptions.RemoveEmptyEntries)[^1];
-
-    private static string Together(IReadOnlyList<string> names) =>
-        names.Count == 1 ? names[0] : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
 }

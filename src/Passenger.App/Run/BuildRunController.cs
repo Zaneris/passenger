@@ -608,12 +608,8 @@ public sealed partial class BuildRunController
     private string FailedIn(IEnumerable<Problem> problems) =>
         together is not null && problems.Where(p => p.Severity == ProblemSeverity.Error && p.Project is not null).Select(p => p.Project!)
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList() is { Count: > 0 } named
-            ? $" in {Listed(named)}"
+            ? $" in {Plural.Listed(named)}"
             : string.Empty;
-
-    /// <summary>Names as a sentence lists them: "Web", "Api and Web", "Api, Web and Worker".</summary>
-    private static string Listed(IReadOnlyList<string> names) =>
-        names.Count == 1 ? names[0] : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
 
     /// <summary>Whether a build of these projects needs EnableWindowsTargeting, one of them or a project it references needing it.</summary>
     private bool WindowsTargeting(IReadOnlyList<string> projects) => projects.Any(p => BuildOutput.WindowsTargeting(p, session.Projects));
@@ -751,7 +747,7 @@ public sealed partial class BuildRunController
 
     /// <summary>What a start says of projects it did not build, one or several.</summary>
     public static string UpToDateSaid(IReadOnlyList<string> projects) => projects.Count == 1 ? UpToDateSaid(projects[0])
-        : $"{Listed(projects)} are up to date: nothing their builds read has changed since they were built, so they were not built again";
+        : $"{Plural.Listed(projects)} are up to date: nothing their builds read has changed since they were built, so they were not built again";
 
     /// <summary>A start's build of its projects (<see cref="BuildForAsync(BuildStep, CancellationToken)"/>), several side by
     /// side in one dotnet build (<see cref="TogetherBuild"/>), after any build under way: none is built when the last build

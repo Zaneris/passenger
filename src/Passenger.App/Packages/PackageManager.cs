@@ -50,12 +50,7 @@ public sealed record PackageOutcome(bool Done, IReadOnlyList<string> Changed, IR
     }
 
     /// <summary>Files by their names, "Shop.csproj and packages.lock.json".</summary>
-    public static string Named(IReadOnlyList<string> files) => files.Count switch
-    {
-        0 => "no file",
-        1 => Path.GetFileName(files[0]),
-        _ => $"{string.Join(", ", files.SkipLast(1).Select(Path.GetFileName))} and {Path.GetFileName(files[^1])}",
-    };
+    public static string Named(IReadOnlyList<string> files) => files.Count == 0 ? "no file" : Plural.Listed([.. files.Select(file => Path.GetFileName(file))]);
 }
 
 /// <summary>Adds, updates and removes a project's packages through dotnet add and remove package, so the SDK checks the

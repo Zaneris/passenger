@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Text;
 using Passenger.Xaml.Syntax;
 
@@ -28,7 +29,7 @@ public static class ThemeVariants
                 }
                 List<string> defined = [.. inGroup.Where(r => r.Key == definition.Key).Select(r => r.Variant).OfType<string>().Distinct()];
                 yield return new XamlDiagnostic(definition.KeyRange, XamlSeverity.Warning,
-                    $"'{definition.Key}' is defined for {Together(defined)} but not for {Together(missing)}")
+                    $"'{definition.Key}' is defined for {Plural.Listed(defined)} but not for {Plural.Listed(missing)}")
                 {
                     Fixes = [.. missing.Select(v => Fix(file.Path, definition.Key, v))],
                 };
@@ -44,7 +45,7 @@ public static class ThemeVariants
         {
             return null;
         }
-        return new XamlDiagnostic(range, XamlSeverity.Warning, $"'{key}' is not defined for {Together([.. missing.Select(m => m.Missing).Distinct()])}")
+        return new XamlDiagnostic(range, XamlSeverity.Warning, $"'{key}' is not defined for {Plural.Listed([.. missing.Select(m => m.Missing).Distinct()])}")
         {
             Fixes = [.. missing.Select(m => Fix(m.Defined.Path, key, m.Missing))],
         };
@@ -52,9 +53,6 @@ public static class ThemeVariants
 
     private static XamlFix Fix(string path, string key, string variant) =>
         new($"Add '{key}' to {variant}", path, text => AddTo(text, key, variant));
-
-    private static string Together(IReadOnlyList<string> names) =>
-        names.Count <= 1 ? string.Concat(names) : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
 
     /// <summary>The edit that copies a key's definition from the variant that has it into a variant's dictionary of the
     /// same group, after its last entry and indented as that is; none when the file no longer has them.</summary>

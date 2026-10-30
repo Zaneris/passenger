@@ -107,7 +107,7 @@ public sealed partial class CSharpDocument
                     Range = new LspRange(new LspPosition(read.At.Line, read.At.Character), new LspPosition(read.End.Line, read.End.Character)),
                     Severity = DiagnosticSeverity.Warning,
                     Source = LocalizationDiagnosticSource,
-                    Message = $"No .resx gives {resource.Type}'s strings, so each shows as written: {Together([.. near.Files.Select(f => f.Name)])} "
+                    Message = $"No .resx gives {resource.Type}'s strings, so each shows as written: {Plural.Listed([.. near.Files.Select(f => f.Name)])} "
                         + $"{(near.Files.Count == 1 ? "is" : "are")} named for {near.Name}, not {resource.Name.Split('.')[^1]}",
                 });
             }
@@ -135,8 +135,6 @@ public sealed partial class CSharpDocument
             }
         }
         return found;
-
-        static string Together(IReadOnlyList<string> names) => names.Count == 1 ? names[0] : string.Join(", ", names.Take(names.Count - 1)) + " and " + names[^1];
     }
 
     /// <summary>Whether the file's text names any of some words: looked through a piece at a time, never copied whole.</summary>

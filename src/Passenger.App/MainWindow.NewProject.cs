@@ -143,11 +143,11 @@ public partial class MainWindow
         List<string> said = [];
         if (madeThere.Count > 0)
         {
-            said.Add($"made {Together(madeThere)}");
+            said.Add($"made {Plural.Listed(madeThere)}");
         }
         if (changed.Count > 0)
         {
-            said.Add($"changed {Together(changed)}");
+            said.Add($"changed {Plural.Listed(changed)}");
         }
         return said.Count == 0 ? null : $"its template {string.Join(" and ", said)}";
     }
