@@ -429,10 +429,11 @@ public static partial class CommandParameters
         return line < 0 ? [] : logged.AsSpan(line + 1);
     }
 
-    /// <summary>The column each parameter of a command's text fills or meets, by the parameter's name: an INSERT's column
-    /// list against each row of its VALUES (SQL Server's MERGE of several rows against the columns its source's alias
-    /// names), and a <c>column = @p</c> or <c>@p = column</c> (a SET's, a WHERE's; <c>&lt;&gt;</c>, <c>LIKE</c> and the
-    /// rest of the comparisons too), the column the last name of a qualified one (<c>"c"."Password"</c>).</summary>
+    /// <summary>The column each parameter of a command's text fills or meets, by the parameter's name, a secret's where any
+    /// it meets is one: an INSERT's column list against each row of its VALUES (SQL Server's MERGE of several rows against
+    /// the columns its source's alias names), a <c>column = @p</c> or <c>@p = column</c> (a SET's, a WHERE's; <c>&lt;&gt;</c>,
+    /// <c>LIKE</c> and the rest of the comparisons too), a <c>column = ANY (@p)</c>, and each parameter inside a
+    /// <c>column [NOT] IN (…)</c>'s list or query, the column the last name of a qualified one (<c>"c"."Password"</c>).</summary>
     private static Dictionary<string, string> Columns(ReadOnlySpan<char> sql)
     {
         Dictionary<string, string> columns = new(StringComparer.OrdinalIgnoreCase);
@@ -458,6 +459,23 @@ public static partial class CommandParameters
                             last += 2;
                         }
                         Add(columns, tokens, i, last);
+                    }
+                    else if (i >= 4 && tokens.Is(i - 1, "(") && (tokens.Is(i - 2, "ANY") || tokens.Is(i - 2, "ALL") || tokens.Is(i - 2, "SOME"))
+                        && Compares(tokens, i - 3) && tokens.IsName(i - 4))
+                    {
+                        Add(columns, tokens, i, i - 4);
+                    }
+                }
+                else if (tokens.Is(i, "IN") && Listed(tokens, i) is int column and >= 0)
+                {
+                    // A query's or a call's inside the list too (SQLite's json_each(@p), SQL Server's OPENJSON(@p)).
+                    for (int at = i + 2, depth = 1; at < tokens.Count && depth > 0; at++)
+                    {
+                        depth += tokens.Is(at, "(") ? 1 : tokens.Is(at, ")") ? -1 : 0;
+                        if (tokens[at].Kind == SqlKind.Parameter)
+                        {
+                            Add(columns, tokens, at, column);
+                        }
                     }
                 }
                 else if (tokens.Is(i, ";"))
@@ -500,13 +518,30 @@ public static partial class CommandParameters
         return columns;
     }
 
-    /// <summary>A parameter's column, unless it has one already: the two made strings only then.</summary>
+    /// <summary>A parameter's column, unless it has one already that is a secret's or this one is not: the strings made
+    /// only then.</summary>
     private static void Add(Dictionary<string, string> columns, SqlTokens tokens, int parameter, int column)
     {
-        if (!columns.GetAlternateLookup<ReadOnlySpan<char>>().ContainsKey(tokens.Span(parameter)))
+        Dictionary<string, string>.AlternateLookup<ReadOnlySpan<char>> named = columns.GetAlternateLookup<ReadOnlySpan<char>>();
+        if (!named.TryGetValue(tokens.Span(parameter), out string? met))
         {
             columns.Add(tokens.Text(parameter), tokens.Text(column));
         }
+        else if (!ContainerSecrets.Secret(met) && ContainerSecrets.Secret(tokens.Span(column)))
+        {
+            named[tokens.Span(parameter)] = tokens.Text(column);
+        }
+    }
+
+    /// <summary>The column an IN at a token compares its list with (<c>column IN (</c>, <c>column NOT IN (</c>), or -1.</summary>
+    private static int Listed(SqlTokens tokens, int at)
+    {
+        if (at + 1 >= tokens.Count || !tokens.Is(at + 1, "("))
+        {
+            return -1;
+        }
+        int column = at >= 2 && tokens.Is(at - 1, "NOT") ? at - 2 : at - 1;
+        return column >= 0 && tokens.IsName(column) && !tokens.Is(column, "NOT") ? column : -1;
     }
 
     /// <summary>Whether a token compares what stands on either side of it.</summary>

@@ -1,9 +1,11 @@
 using Passenger.App.Containers;
+using Passenger.App.Endpoints;
 
 namespace Passenger.Tests;
 
 /// <summary>Values shown to a person or an agent through the one mask (<see cref="ContainerSecrets"/>): what a program
-/// says in its logs and failures, a variable's value and a URL, each secret in them masked whole.</summary>
+/// says in its logs and failures, a variable's value, a URL and a database command's parameters, each secret in them
+/// masked whole.</summary>
 [Collection(Beside.Name)]
 public sealed class SecretValuesTests
 {
@@ -51,5 +53,24 @@ public sealed class SecretValuesTests
         Assert.Equal($"BlobEndpoint=https://shop.blob.core.windows.net/;SharedAccessSignature={Masked}",
             ContainerSecrets.InValue("BlobEndpoint=https://shop.blob.core.windows.net/;SharedAccessSignature=sv=2025-01-05&sig=SasSig0123"));
         Assert.Equal(Masked, ContainerSecrets.Shown("AZURE_STORAGE_SAS_SIGNATURE", "SasSig0123"));
+    }
+
+    /// <summary>A command's parameter is masked in the Requests window and an agent's answer when any column it meets is a
+    /// secret's, not only the first: one compared with a name and then a password, each of an IN list's, one inside an IN's
+    /// query (EF Core's Contains on SQLite) and an ANY's array (on PostgreSQL); one meeting no secret's column shows.</summary>
+    [Fact]
+    public void A_commands_parameter_meeting_a_secrets_column_anywhere_in_it_is_masked()
+    {
+        Assert.Equal("@p0='••••••'", Parameters("@p0='hunter22' (Size = 8)", "SELECT * FROM \"Users\" WHERE \"Name\" = @p0 OR \"Password\" = @p0"));
+        Assert.Equal("@p0='••••••', @p1='••••••', @p2='Ada' (Size = 3)",
+            Parameters("@p0='hunter22' (Size = 8), @p1='swordfish' (Size = 9), @p2='Ada' (Size = 3)",
+                "SELECT * FROM [Users] AS [u] WHERE [u].[Password] IN (@p0, @p1) AND [u].[Name] NOT IN (@p2)"));
+        Assert.Equal("@p0='••••••', @p1='Ada' (Size = 3)",
+            Parameters("@p0='hunter22' (Size = 8), @p1='Ada' (Size = 3)",
+                "SELECT * FROM \"Users\" AS \"u\" WHERE \"u\".\"Password\" IN (SELECT \"p\".\"value\" FROM json_each(@p0) AS \"p\") AND \"u\".\"Name\" = @p1"));
+        Assert.Equal("@p0='••••••'", Parameters("@p0='[\"hunter22\"]'", "SELECT * FROM \"Users\" AS u WHERE u.\"Password\" = ANY (@p0)"));
+
+        static string Parameters(string listed, string sql) =>
+            CommandParameters.Of($"Executed DbCommand (1ms) [Parameters=[{listed}], CommandType='Text', CommandTimeout='30']\n{sql}");
     }
 }
