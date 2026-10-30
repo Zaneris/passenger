@@ -390,6 +390,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         IdeErrors.Observe(OfferFileRenames(box, document, word.Start));
     }
 
+    /// <summary>Whether a name can be written as a C# identifier: as it is, or after an @ (a keyword's name).</summary>
+    private static bool IsCSharpName(string name) => Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name.StartsWith('@') ? name[1..] : name);
+
     /// <summary>A place in an open file a rename starts from, held on its name through what is typed until the server is
     /// asked: what is typed at the name's start goes before it, and at its end or inside after it. Its holder removes it.</summary>
     internal Anchor HeldAt(OpenDocument document, int offset) =>
@@ -441,6 +444,10 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             ? await TypeRename.NamedAsync(context.Editors, folder, context.Now(document), at.Offset) : null);
         TextSnapshot text = document.Text.Snapshot;
         string old = component?.Type.Type ?? text.GetText(RenamedAt(document, text, at.Offset));
+        if (context.WebOf(document) is null && !IsCSharpName(name))
+        {
+            return RefactorOutcome.Refused($"'{name}' is not a C# identifier, so {old} keeps its name");
+        }
         // The open files as the request went: what is typed meanwhile carries the answer on.
         using Asked asked = WorkspaceEdits.Track(context.Editors);
         // Asked of the server running now: one there before may have been started again since.
@@ -545,11 +552,22 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// the file has closed.</summary>
     internal async Task<Reformatted?> ReformatAsync(OpenDocument document, TextRange? within, Func<LspDocument?> server)
     {
+        within = within is { } range ? WholeLines(document.Text.Snapshot, range) : null;
         if (await context.Languages.FormatAsync(document, within) is { } done)
         {
             return done;
         }
         return server() is { } lsp ? await ServerFormatAsync(lsp, document, "Reformat Code", within) : null;
+    }
+
+    /// <summary>A selection ending at a line's start, as one of whole lines does, kept to the lines before it: the line it
+    /// ends at is not among those to lay out.</summary>
+    private static TextRange WholeLines(TextSnapshot text, TextRange range)
+    {
+        int line = text.GetLineFromOffset(range.End);
+        return line > 0 && range.End == text.GetLineStart(line) && text.GetLine(line - 1).End > range.Start
+            ? TextRange.FromBounds(range.Start, text.GetLine(line - 1).End)
+            : range;
     }
 
     /// <summary>The language server's formatting of a file, or of <paramref name="within"/> where the server formats a
@@ -566,7 +584,13 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return null;
         }
-        if (WorkspaceEdits.Carried(asked, answer, document.Indentation.Options) is not { } edits)
+        List<TextEdit> laid = WorkspaceEdits.Convert(asked.Snapshot, answer, asked.Document.LineEnding, document.Indentation.Options);
+        if (within is { } kept && !whole)
+        {
+            // Only the selection's own lines are laid out: the line after it keeps its indentation.
+            laid.RemoveAll(e => e.Start >= kept.End);
+        }
+        if (asked.Map(laid) is not { } edits)
         {
             return new Reformatted(false, false, $"{what} was not applied: the code it changes was edited meanwhile");
         }

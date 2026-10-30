@@ -285,7 +285,7 @@ public sealed partial class PassengerTools
             if (uses.Count > 0 && !anyway)
             {
                 throw new InvalidOperationException($"Safe Delete left {what} where it is: it has {Plural.Of(uses.Count, "usage")} that would no longer compile "
-                    + $"once it is deleted ({string.Join("; ", uses.Select(u => $"{u.Path}:{u.Line}: {u.Text}"))}). Fix them first, or give deleteAnyway true");
+                    + $"once it is deleted ({string.Join("; ", uses.Select(u => $"{u.Path}:{u.Line}: {u.Text}"))}). Fix them first, or give options {{\"deleteAnyway\": true}}");
             }
             return Applied("safe_delete", await window.Assist.Actions.DeleteAsync(doomed)) with { Usages = uses.Count > 0 ? uses : null };
         }

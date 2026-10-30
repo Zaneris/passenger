@@ -126,7 +126,7 @@ internal static class HotReload
         }
 
         List<HotReloadProblem> problems = [.. results.GetAllDiagnostics().Select(d => Problem(d, results.Solution))];
-        IReadOnlyList<string> changed = Changed(session.Committed, results.Solution ?? solution, scope);
+        IReadOnlyList<string> changed = await ChangedAsync(session.Committed, results.Solution ?? solution, scope, cancel).ConfigureAwait(false);
         if (results.ModuleUpdates.Status == ModuleUpdateStatus.None)
         {
             // Nothing to apply: the service has taken the solution as it is as committed.
@@ -312,14 +312,23 @@ internal static class HotReload
     }
 
     /// <summary>The files whose text differs between two snapshots, or which one has and the other not, in the program's
-    /// projects (<paramref name="scope"/>, every one when null).</summary>
-    private static IReadOnlyList<string> Changed(Solution before, Solution after, IReadOnlySet<ProjectId>? scope)
+    /// projects (<paramref name="scope"/>, every one when null): a document whose text was read again as it was (a file
+    /// saved) is not one.</summary>
+    private static async Task<IReadOnlyList<string>> ChangedAsync(Solution before, Solution after, IReadOnlySet<ProjectId>? scope, CancellationToken cancel)
     {
         HashSet<string> paths = new(StringComparer.Ordinal);
         SolutionChanges changes = after.GetChanges(before);
         foreach (Microsoft.CodeAnalysis.ProjectChanges project in changes.GetProjectChanges().Where(p => scope?.Contains(p.ProjectId) != false))
         {
-            foreach (DocumentId id in project.GetChangedDocuments(onlyGetDocumentsWithTextChanges: true).Concat(project.GetAddedDocuments()))
+            foreach (DocumentId id in project.GetChangedDocuments(onlyGetDocumentsWithTextChanges: true))
+            {
+                if (after.GetDocument(id) is { FilePath: { } path } now && before.GetDocument(id) is { } was
+                    && !(await was.GetTextAsync(cancel).ConfigureAwait(false)).ContentEquals(await now.GetTextAsync(cancel).ConfigureAwait(false)))
+                {
+                    paths.Add(path);
+                }
+            }
+            foreach (DocumentId id in project.GetAddedDocuments())
             {
                 if (after.GetDocument(id)?.FilePath is { } path)
                 {

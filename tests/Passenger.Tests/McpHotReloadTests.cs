@@ -88,6 +88,33 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
         await Call(client, McpTools.Stop);
     }
 
+    /// <summary>Two applies, each of an edit to another file, answer each with the file it sent alone: the second names
+    /// only its own file, not the one the first already sent.</summary>
+    [Fact]
+    public async Task An_agents_second_hot_reload_names_only_the_file_it_sent()
+    {
+        await TakeFolderAsync();
+        Write("Program.cs", "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += Helper.Twice(i) + Other.Half(i);\n}\nConsole.WriteLine($\"total {total}\");\n");
+        Write("Helper.cs", "static class Helper\n{\n    public static int Twice(int value)\n    {\n        return value * 2;\n    }\n}\n");
+        Write("Other.cs", "static class Other\n{\n    public static int Half(int value)\n    {\n        return value / 2;\n    }\n}\n");
+        await using McpClient client = await Start(["--mcp", Folder]);
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 4 });
+        Assert.StartsWith("Program.cs:4:", (await Call(client, McpTools.DebugStart)).GetProperty("location").GetString(), StringComparison.Ordinal);
+
+        foreach (string file in new[] { "Helper.cs", "Other.cs" })
+        {
+            string body = file == "Helper.cs" ? "value * 2" : "value / 2";
+            await Call(client, McpTools.Edit, new() { ["path"] = file, ["oldText"] = body, ["newText"] = body + " + 1" });
+            JsonElement applied = await Call(client, McpTools.HotReload);
+            string said = applied.GetProperty("said").GetString()!;
+            Assert.True(applied.GetProperty("result").GetString() == "applied" && applied.GetProperty("files").EnumerateArray().Select(f => f.GetString()).SequenceEqual([file])
+                && said.EndsWith($": {file} (1 method updated)", StringComparison.Ordinal),
+                $"Hot Reload of an edit to {file} alone answered: {applied}");
+            await Call(client, McpTools.DebugContinue);
+        }
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>An agent's hot_reload on the person's window is the window's own Apply Hot Reload Changes: it shows as that
     /// action's work while it applies, and its outcome is the window's last apply.</summary>
     [AvaloniaFact]

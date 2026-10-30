@@ -166,11 +166,12 @@ internal static class Interfaces
     /// <summary>The members an interface of a type can have: its public instance methods, properties, indexers and events,
     /// in their order.</summary>
     private static IEnumerable<ISymbol> Candidates(INamedTypeSymbol type) => type.GetMembers().Where(m =>
-        m.DeclaredAccessibility == Accessibility.Public && !m.IsStatic && !m.IsImplicitlyDeclared && m.CanBeReferencedByName
+        m.DeclaredAccessibility == Accessibility.Public && !m.IsStatic && !m.IsImplicitlyDeclared
         && m switch
         {
-            IMethodSymbol method => method.MethodKind == MethodKind.Ordinary,
-            IPropertySymbol or IEventSymbol => true,
+            IMethodSymbol method => method.MethodKind == MethodKind.Ordinary && method.CanBeReferencedByName,
+            IPropertySymbol { IsIndexer: true } => true,
+            IPropertySymbol or IEventSymbol => m.CanBeReferencedByName,
             _ => false,
         });
 

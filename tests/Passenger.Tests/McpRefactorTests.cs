@@ -145,7 +145,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
             Press(Question(window, "the question for the agent's refactoring"), "Allow");
             CallToolResult refused = Await(refusing, "Safe Delete of a used method");
             Assert.True(refused.IsError == true && Text(refused).Contains("has 3 usages that would no longer compile", StringComparison.Ordinal)
-                && Text(refused).Contains("Till.cs:5: public static int Total()", StringComparison.Ordinal) && Text(refused).Contains("deleteAnyway", StringComparison.Ordinal),
+                && Text(refused).Contains("Till.cs:5: public static int Total()", StringComparison.Ordinal) && Text(refused).Contains("give options {\"deleteAnyway\": true}", StringComparison.Ordinal),
                 $"Safe Delete of a used method answered: {Text(refused)}");
             Assert.Equal(Calc, File.ReadAllText(PathOf("Calc.cs")));
             JsonElement usages = Refactor(client, Place("safe_delete", "Calc.cs", Calc, "int Sca"), describe: true).GetProperty("usages");
@@ -447,6 +447,32 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("namespace Shop;\n\npublic interface IHolder<T, U> where T : U\n{\n    T Keep(T value);\n}\n", File.ReadAllText(PathOf("IHolder.cs")).ReplaceLineEndings("\n"));
         Assert.Equal(Holder.Replace("Holder<T, U, V> where", "Holder<T, U, V> : IHolder<T, U> where", StringComparison.Ordinal), File.ReadAllText(PathOf("Holder.cs")));
         await Compiles(client, "the interface was extracted");
+    }
+
+    /// <summary>Extract Interface offers a class's indexer among its members and declares it in the interface, the project
+    /// building; and a rename to a name that is no C# identifier is refused, saying so, the file unchanged.</summary>
+    [Fact]
+    public async Task An_agent_extracts_an_indexer_into_an_interface_and_is_told_a_name_with_a_space_is_no_identifier()
+    {
+        await TakeFolderAsync();
+        const string Shelf = "namespace Shop;\n\npublic class Shelf\n{\n    private readonly string[] items = [\"a\", \"b\"];\n\n"
+            + "    public string this[int index] => items[index];\n\n    public int Count => items.Length;\n}\n";
+        Shop(("Shelf.cs", Shelf));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        JsonElement dialog = (await Call(client, McpTools.Refactor, Place("extract_interface", "Shelf.cs", Shelf, "class She"))).GetProperty("dialog");
+        Assert.Equal(["this[int]: string", "Count: int"], dialog.GetProperty("members").EnumerateArray().Select(m => m.GetProperty("text").GetString()));
+        JsonElement extracted = await Call(client, McpTools.Refactor, Place("extract_interface", "Shelf.cs", Shelf, "class She", new { members = new[] { "this[int]: string" } }));
+        Assert.Equal(["IShelf.cs created", "Shelf.cs changed"], Files(extracted));
+        Assert.Equal("namespace Shop;\n\npublic interface IShelf\n{\n    string this[int index] { get; }\n}\n", File.ReadAllText(PathOf("IShelf.cs")).ReplaceLineEndings("\n"));
+        await Compiles(client, "an interface of the indexer was extracted");
+
+        string shelf = File.ReadAllText(PathOf("Shelf.cs"));
+        (int line, int column) = LineColumn(shelf, "Count", shelf.IndexOf("Count", StringComparison.Ordinal));
+        CallToolResult renaming = await Result(client, McpTools.Rename, new() { ["path"] = "Shelf.cs", ["line"] = line, ["column"] = column, ["newName"] = "Bad Name" });
+        Assert.True(renaming.IsError == true && Text(renaming).Contains("'Bad Name' is not a C# identifier", StringComparison.Ordinal),
+            $"Renaming Count to 'Bad Name' answered: {Text(renaming)}");
+        Assert.Equal(shelf, File.ReadAllText(PathOf("Shelf.cs")));
     }
 
     /// <summary>Change Signature of a parameter's ref kind gives each call's argument the keyword it now takes: ref to in,

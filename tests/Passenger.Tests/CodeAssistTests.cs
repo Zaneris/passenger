@@ -1291,6 +1291,25 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>Reformat Code of a selection of whole lines, which ends at the start of the line after them, lays out those
+    /// lines and leaves that line, and the member it begins, as they were.</summary>
+    [AvaloniaFact]
+    public void Reformat_code_of_whole_lines_selected_leaves_the_line_the_selection_ends_at_the_start_of()
+    {
+        MainWindow window = project.Open("Selected.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string text = editor.Document.Snapshot.ToString();
+        int start = text.IndexOf("    public static int First", StringComparison.Ordinal);
+        int end = text.IndexOf("\n\n", start, StringComparison.Ordinal) + 1;
+        editor.Selections = SelectionSet.Single(new Selection(start, end));
+        Ui.Run(window, AppActions.Reformat);
+        Ui.WaitFor(() => window.Status is "Reformatted" or "Already formatted", () => $"the reformat; the status says '{window.Status}'");
+        string formatted = editor.Document.Snapshot.ToString();
+        Assert.True(formatted == SelectedLines.Replace("First( int a,int b )", "First(int a, int b)", StringComparison.Ordinal).Replace("a+b", "a + b", StringComparison.Ordinal),
+            $"Reformat Code of First's lines, the selection ending at the start of the blank line after them, left the file as:\n{formatted}");
+        window.Close();
+    }
+
     /// <summary>Reformat Code on a file whose own lines indent in sixes lays its ragged line out in sixes and says so; asked
     /// again, with nothing left to change, it changes nothing and says the file was formatted already.</summary>
     [AvaloniaFact]
@@ -2432,6 +2451,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         return (items, key);
     }
 
+    /// <summary>Two methods laid out wrongly, the second's first line indented two spaces too far.</summary>
+    private const string SelectedLines = "static class Selected\n{\n    public static int First( int a,int b )\n    {\n        return a+b;\n    }\n\n"
+        + "      public static int Second(int a, int b)\n    {\n        return a * b;\n    }\n}\n";
+
     /// <summary>A method with a line indented a level too far, in six spaces as the file has them.</summary>
     private const string Sixes = "static class Sixes\n{\n      public static int Value()\n      {\n            int total = 1;\n                  return total;\n      }\n}\n";
 
@@ -2452,6 +2475,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Shapes.cs"), "interface IShape\n{\n    int Sides { get; }\n}\n\nclass Square : IShape\n{\n    public int Sides => 4;\n}\n");
             File.WriteAllText(PathOf("Area.cs"), "static class Area\n{\n    public static int Of(int width, int height) => width * height;\n    public static int Room() => Of(3, 4);\n}\n");
             File.WriteAllText(PathOf("Point.cs"), "class Point\n{\n    public int X { get; }\n    public int Y { get; }\n}\n");
+            File.WriteAllText(PathOf("Selected.cs"), SelectedLines);
             File.WriteAllText(PathOf("Figures.cs"), "class Figure\n{\n    public virtual double Perimeter() => 0;\n    public virtual string Describe(string prefix) => prefix;\n}\n\n"
                 + "class Disc : Figure\n{\n    public double Radius { get; set; }\n}\n");
             File.WriteAllText(PathOf("Loop.cs"), "static class Loop\n{\n    public static int Sum()\n    {\n        int total = 0;\n        for (int i = 0; i < 10; i++)\n        {\n            total += i * 2;\n        }\n        return total;\n    }\n}\n");
