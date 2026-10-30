@@ -288,8 +288,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   environment only; Endpoints sends nothing but on Test or Send, and a send taking the person's environment asks first.
   `ResourceFiles` is the one reader of `.resx` and `xlf/*.xlf`.
 - **Debugging.** `DebugController` (a `DebugTab` per session, several at once), `DebugSession`, `BreakpointStore`;
-  Variables and the hover card are one list. A C# breakpoint inside a lambda on its statement's line keeps the lambda's
-  column (`LambdaBreakpoints`).
+  Variables and the hover card are one list; a member row's cast comes from the declared type read from metadata
+  (`DeclaredType`). A session's built lines and Hot Reload begin at its build's save (`DebugController.Building`,
+  `BuiltEdits`). A C# breakpoint inside a lambda on its statement's line keeps the lambda's column
+  (`LambdaBreakpoints`).
 - **Tests window.** `TestFinder` (tests from code before any build), `TestRunners`; `VsTestRunner` is the only file that
   knows VSTest's object model. A run from the editor, a filter or the Explorer chooses its tests once its build has
   ended (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and line
