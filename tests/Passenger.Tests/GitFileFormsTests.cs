@@ -121,6 +121,31 @@ public sealed class GitFileFormsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>On macOS a committed file whose name holds an accented letter decomposed (as the Finder writes it), edited
+    /// since: git names it composed, yet it shows its change bar and the Explorer's colour of a modified file as any other
+    /// changed file does, and is listed by the name the disk has.</summary>
+    [AvaloniaFact]
+    public void A_changed_file_named_with_a_decomposed_accent_shows_its_change_bar_and_its_explorer_colour()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's git composes the names its volumes keep decomposed");
+        string path = Path.Combine(folder, "cafe\u0301.txt");
+        File.WriteAllText(path, "one\ntwo\nthree\n");
+        Git("add", "-A");
+        Git("commit", "-q", "-m", "Café");
+        File.WriteAllText(path, "one\nTWO\nthree\n");
+
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile(path);
+        Ui.Settle();
+        OpenDocument file = window.EditorArea.Active!;
+        Assert.Equal("cafe\u0301.txt", file.Name);
+        Ui.Landed(() => file.ChangeMarks.Any(m => m.Line == 1 && m.Kind == ChangeMarkKind.Modified), "a change bar on café.txt's second line");
+        Assert.Equal([file.Path], window.Vcs.Changes.Select(c => c.Path));
+        Passenger.App.Explorer.ExplorerNode row = window.ExplorerView.Tree.Rows.First(r => r.Path == file.Path);
+        Assert.True(row.Change == ChangeKind.Modified, $"The Explorer's café.txt is coloured as {row.Change?.ToString() ?? "unchanged"}");
+        window.Close();
+    }
+
     private static string Changed(MainWindow window, string name) => window.Vcs.Changes.Single(c => c.Name == name).Path;
 
     private string Git(params string[] arguments) => TestGit.Run(folder, arguments);

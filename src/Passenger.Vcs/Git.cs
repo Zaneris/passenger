@@ -314,6 +314,7 @@ public sealed class Git
         List<FileChange> changes = [];
         List<GitConflict> conflicts = [];
         List<string[]> stages = [];
+        DiskNames names = new(Root);
         string[] entries = status.Output.Split('\0');
         for (int i = 0; i < entries.Length; i++)
         {
@@ -333,17 +334,17 @@ public sealed class Git
                 case '1':
                     // "1 XY sub mH mI mW hH hI path"
                     string[] ordinary = entry.Split(' ', 9);
-                    changes.Add(new FileChange(Full(ordinary[8]), Kind(ordinary[1]), Submodule: Submodule(ordinary[1], ordinary[2]), Mode: Mode(ordinary[3], ordinary[5])));
+                    changes.Add(new FileChange(names.Full(ordinary[8]), Kind(ordinary[1]), Submodule: Submodule(ordinary[1], ordinary[2]), Mode: Mode(ordinary[3], ordinary[5])));
                     break;
                 case '2':
                     // "2 XY sub mH mI mW hH hI Xscore path", then the path it came from as its own entry.
                     string[] renamed = entry.Split(' ', 10);
-                    changes.Add(new FileChange(Full(renamed[9]), ChangeKind.Renamed, Full(entries[++i]), Mode: Mode(renamed[3], renamed[5])));
+                    changes.Add(new FileChange(names.Full(renamed[9]), ChangeKind.Renamed, names.Full(entries[++i]), Mode: Mode(renamed[3], renamed[5])));
                     break;
                 case 'u':
                     // "u XY sub m1 m2 m3 mW h1 h2 h3 path": a stage git has no version at has the mode 000000.
                     string[] unmerged = entry.Split(' ', 11);
-                    string path = Full(unmerged[10]);
+                    string path = names.Full(unmerged[10]);
                     changes.Add(new FileChange(path, ChangeKind.Conflicted));
                     conflicts.Add(new GitConflict(path, Staged(unmerged[3]), Staged(unmerged[4]), Staged(unmerged[5])));
                     stages.Add([.. Enumerable.Range(3, 3).Where(i => Staged(unmerged[i])).Select(i => unmerged[i + 4])]);
@@ -352,7 +353,7 @@ public sealed class Git
                 case '?' when FileText.IsSaving(entry):
                     break;
                 case '?':
-                    changes.Add(new FileChange(Full(entry[2..]), ChangeKind.Unversioned));
+                    changes.Add(new FileChange(names.Full(entry[2..]), ChangeKind.Unversioned));
                     break;
             }
         }
@@ -892,6 +893,8 @@ public sealed class Git
     /// <summary>Files as --name-status -z lists them: a status, then the path, or a rename's or copy's two.</summary>
     private List<FileChange> NameStatus(string output)
     {
+        DiskNames names = new(Root);
+        string Full(string relative) => names.Full(relative);
         List<FileChange> changes = [];
         string[] parts = output.Split('\0');
         for (int i = 0; i + 1 < parts.Length; i++)
@@ -1112,6 +1115,8 @@ public sealed class Git
         {
             return read;
         }
+        bool composed = batched.Any(b => !Ascii.IsValid(b.Name)) && await ComposesAsync();
+        batched = [.. batched.Select(b => (b.Path, GitForm(b.Name, composed)))];
         // Each blob by its name first: a filtered batch takes an object and a path, parted at the first space.
         (_, byte[] checks) = await ExchangeAsync(Root, ["cat-file", "--batch-check"], Encoding.UTF8.GetBytes(string.Concat(batched.Select(b => $"{revision}:{b.Name}\n"))));
         string[] found = Encoding.UTF8.GetString(checks).Split('\n');
@@ -1199,6 +1204,9 @@ public sealed class Git
         }
         string source = Relative(from);
         string target = Relative(to);
+        target = GitForm(target, !Ascii.IsValid(target) && await ComposesAsync());
+        // The index's names below the source, in the index's form, keep what follows its own names.
+        int below = source.Split('/').Length;
         GitResult staged = await RunAsync(Root, ["ls-files", "--stage", "-z", "--", Literal(source)]);
         if (!staged.Succeeded)
         {
@@ -1221,7 +1229,9 @@ public sealed class Git
             }
             // Mode 0 takes the old path out of the index, as update-index --index-info reads it.
             moves.Append(System.Globalization.CultureInfo.InvariantCulture, $"0 {new string('0', fields[1].Length)}\t{path}\0");
-            moves.Append(System.Globalization.CultureInfo.InvariantCulture, $"{fields[0]} {fields[1]}\t{target}{path[source.Length..]}\0");
+            string[] names = path.Split('/');
+            string rest = string.Concat(names.Skip(below).Select(n => "/" + n));
+            moves.Append(System.Globalization.CultureInfo.InvariantCulture, $"{fields[0]} {fields[1]}\t{target}{rest}\0");
         }
         return moves.Length == 0 ? staged : await RunAsync(Root, ["update-index", "-z", "--index-info"], moves.ToString());
     }
@@ -1539,7 +1549,63 @@ public sealed class Git
     /// a name starting ":" pathspec magic. (The environment's GIT_LITERAL_PATHSPECS would also stop a stash's own magic.)</summary>
     private static string Literal(string relative) => $":(literal){relative}";
 
-    private string Full(string relative) => System.IO.Path.GetFullPath(System.IO.Path.Combine(Root, relative));
+    private string Full(string relative) => new DiskNames(Root).Full(relative);
+
+    /// <summary>Paths git names, as the disk names them. On macOS git gives each name composed (core.precomposeunicode),
+    /// where the disk may hold it decomposed, as the Finder writes it, and the volume takes either: so a name with a
+    /// letter beyond ASCII is looked for in its folder, each folder listed once.</summary>
+    private sealed class DiskNames(string root)
+    {
+        private readonly Dictionary<string, Dictionary<string, string>> folders = new(StringComparer.Ordinal);
+
+        public string Full(string relative)
+        {
+            if (!OperatingSystem.IsMacOS() || Ascii.IsValid(relative))
+            {
+                return System.IO.Path.GetFullPath(System.IO.Path.Combine(root, relative));
+            }
+            string at = root;
+            foreach (string name in relative.Split('/', StringSplitOptions.RemoveEmptyEntries))
+            {
+                at = System.IO.Path.Combine(at, !Ascii.IsValid(name) && Listed(at).TryGetValue(name.Normalize(NormalizationForm.FormC), out string? stored) ? stored : name);
+            }
+            return at;
+        }
+
+        /// <summary>A folder's names by their composed form; none where it cannot be listed (a file deleted with it).</summary>
+        private Dictionary<string, string> Listed(string folder)
+        {
+            if (!folders.TryGetValue(folder, out Dictionary<string, string>? names))
+            {
+                names = new(StringComparer.Ordinal);
+                try
+                {
+                    foreach (string entry in Directory.EnumerateFileSystemEntries(folder))
+                    {
+                        string name = System.IO.Path.GetFileName(entry);
+                        names.TryAdd(name.Normalize(NormalizationForm.FormC), name);
+                    }
+                }
+                catch (Exception unlisted) when (unlisted is IOException or UnauthorizedAccessException)
+                {
+                }
+                folders[folder] = names;
+            }
+            return names;
+        }
+    }
+
+    /// <summary>Whether git takes names composed (core.precomposeunicode, which git init sets on macOS): it composes those
+    /// on its command line itself, but not those it reads from its input, which are given it composed. Asked once.</summary>
+    private Task<bool> ComposesAsync() => composes ??= OperatingSystem.IsMacOS() ? ComposedAsync() : Task.FromResult(false);
+
+    private Task<bool>? composes;
+
+    private async Task<bool> ComposedAsync() =>
+        (await RunAsync(Root, ["config", "--type=bool", "core.precomposeunicode"], answers: [1])).Output.Trim() == "true";
+
+    /// <summary>A name as git takes it from its input: composed where it composes names.</summary>
+    private static string GitForm(string relative, bool composed) => composed ? relative.Normalize(NormalizationForm.FormC) : relative;
 
     private static async Task<GitResult> RunAsync(string folder, IReadOnlyList<string> arguments, string? input = null, IReadOnlyDictionary<string, string>? environment = null,
         IReadOnlyCollection<int>? answers = null)
