@@ -16,7 +16,12 @@ public static class SourcePaths
 {
     public const int Same = int.MaxValue;
 
-    private static readonly ConcurrentDictionary<string, string?> Canonicals = new();
+    /// <summary>How many files' canonical names are kept before all are let go.</summary>
+    private const int Kept = 10_000;
+
+    /// <summary>The canonical names of files found, by the name asked. A name with no file is not kept, so a file written
+    /// since its first look (a generated file, a checkout) is found by its canonical name.</summary>
+    private static readonly ConcurrentDictionary<string, string> Canonicals = new();
 
     public static int Match(string requested, string document) => Match(requested, document, PathNames.Comparer, Path.Exists);
 
@@ -75,6 +80,20 @@ public static class SourcePaths
 
     /// <summary>A file on this disk as the file system names it, as the IDE names the breakpoints' paths it sends
     /// (<see cref="PathNames.Canonical"/>); null when there is no such file.</summary>
-    private static string? Canonical(string path) => Canonicals.GetOrAdd(path, static p =>
-        Path.IsPathFullyQualified(p) && File.Exists(p) ? PathNames.Canonical(p).Replace('\\', '/') : null);
+    private static string? Canonical(string path)
+    {
+        if (Canonicals.TryGetValue(path, out string? known))
+        {
+            return known;
+        }
+        if (!Path.IsPathFullyQualified(path) || !File.Exists(path))
+        {
+            return null;
+        }
+        if (Canonicals.Count >= Kept)
+        {
+            Canonicals.Clear();
+        }
+        return Canonicals[path] = PathNames.Canonical(path).Replace('\\', '/');
+    }
 }
