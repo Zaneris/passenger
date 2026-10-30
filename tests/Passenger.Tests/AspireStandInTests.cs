@@ -1013,8 +1013,8 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             ($"{Second}/Properties/launchSettings.json", JsonSerializer.Serialize(new { profiles = new { http = new { commandName = "Project", environmentVariables = new Dictionary<string, string>
             {
                 ["PASSENGER_STAND_IN_KEY"] = secondKey,
-                ["ASPIRE_ALLOW_UNSECURED_TRANSPORT"] = "true",
-                ["ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL"] = second.Endpoint.AbsoluteUri,
+                [AspireVariables.AllowUnsecuredTransport] = "true",
+                [AspireVariables.ResourceServiceEndpoint] = second.Endpoint.AbsoluteUri,
             } } } })),
             ("StandIn.slnx", $"<Solution>\n  <Project Path=\"{StandInAppHost.Name}/{StandInAppHost.Name}.csproj\" />\n  <Project Path=\"{StandInAppHost.Api}/{StandInAppHost.Api}.csproj\" />\n" +
                 $"  <Project Path=\"{Second}/{Second}.csproj\" />\n</Solution>\n"),
@@ -1472,11 +1472,11 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         public System.Collections.Concurrent.ConcurrentDictionary<string, string[]> Arguments { get; } = new(StringComparer.Ordinal);
 
         /// <summary>What DCP tells a replica's start of its instance.</summary>
-        private static Dictionary<string, string> Told(string instance) => new() { ["OTEL_RESOURCE_ATTRIBUTES"] = $"service.instance.id={instance}" };
+        private static Dictionary<string, string> Told(string instance) => new() { [OtelVariables.ResourceAttributes] = $"service.instance.id={instance}" };
 
         /// <summary>The starts of a replica the IDE runs now.</summary>
         public AspireResourceRun[] Of(string instance) => [.. window.AspireRuntime.Apps.Single().Services
-            .Where(service => service.Plan.Environment.GetValueOrDefault("OTEL_RESOURCE_ATTRIBUTES") == $"service.instance.id={instance}")];
+            .Where(service => service.Plan.Environment.GetValueOrDefault(OtelVariables.ResourceAttributes) == $"service.instance.id={instance}")];
 
         /// <summary>Each replica's one program running, as the IDE started it.</summary>
         public Dictionary<string, int> Programs()
@@ -3151,7 +3151,7 @@ public sealed class StandInAppHost : SharedProject
             Content = new StringContent(JsonSerializer.Serialize(new
             {
                 launch_configurations = new[] { new { type = "project", project_path = projectPath ?? ApiProject, mode } },
-                env = new[] { new { name = "OTEL_SERVICE_NAME", value = resource } }
+                env = new[] { new { name = OtelVariables.ServiceName, value = resource } }
                     .Concat((environment ?? new Dictionary<string, string>()).Select(variable => new { name = variable.Key, value = variable.Value })).ToArray(),
                 args = arguments ?? [],
             }), System.Text.Encoding.UTF8, "application/json"),
@@ -3225,15 +3225,15 @@ public sealed class StandInAppHost : SharedProject
         };
         if (https is null)
         {
-            environment["ASPIRE_ALLOW_UNSECURED_TRANSPORT"] = "true";
+            environment[AspireVariables.AllowUnsecuredTransport] = "true";
         }
         else
         {
-            environment["ASPNETCORE_URLS"] = https;
+            environment[AspNetCoreVariables.Urls] = https;
         }
         if (resourceService is not null)
         {
-            environment["ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL"] = resourceService.AbsoluteUri;
+            environment[AspireVariables.ResourceServiceEndpoint] = resourceService.AbsoluteUri;
         }
         return applicationUrl is null
             ? JsonSerializer.Serialize(new { profiles = new { http = new { commandName = "Project", environmentVariables = environment } } })

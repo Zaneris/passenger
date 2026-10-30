@@ -125,7 +125,7 @@ public static class ContainerConfigurations
         Dictionary<string, string> environment = new(profile.EnvironmentVariables);
         if (profile.UseSsl)
         {
-            environment.TryAdd("ASPNETCORE_HTTPS_PORTS", "8081");
+            environment.TryAdd(AspNetCoreVariables.HttpsPorts, "8081");
         }
         string url = profile.LaunchUrl is { Length: > 0 } launch
             ? launch.Contains('{', StringComparison.Ordinal) || Uri.TryCreate(launch, UriKind.Absolute, out _) ? launch : $"{ServiceUrl}/{launch.TrimStart('/')}"

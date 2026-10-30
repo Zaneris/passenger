@@ -195,9 +195,9 @@ public sealed class AspireApp : SharedProject
         JsonObject http = launch["profiles"]!["http"]!.AsObject();
         http["launchBrowser"] = false;
         http["applicationUrl"] = $"http://localhost:{FreePort()}";
-        http["environmentVariables"]!["ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL"] = $"http://localhost:{FreePort()}";
-        http["environmentVariables"]!["ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL"] = $"http://localhost:{FreePort()}";
-        http["environmentVariables"]!["ASPIRE_ALLOW_UNSECURED_TRANSPORT"] = "true";
+        http["environmentVariables"]![AspireVariables.DashboardOtlpEndpoint] = $"http://localhost:{FreePort()}";
+        http["environmentVariables"]![AspireVariables.ResourceServiceEndpoint] = $"http://localhost:{FreePort()}";
+        http["environmentVariables"]![AspireVariables.AllowUnsecuredTransport] = "true";
         http["environmentVariables"]!["ASPIRE_VERSION_CHECK_DISABLED"] = "true";
         // Where the AppHost keeps its record of running AppHosts (aspire ps's), the run's own, never the person's ~/.aspire.
         http["environmentVariables"]!["HOME"] = AspireCli.Home;

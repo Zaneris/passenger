@@ -216,7 +216,7 @@ public sealed class AspireContainersTests : IClassFixture<AspireApp>
         System.Text.Json.Nodes.JsonObject launch = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(settings))!.AsObject();
         System.Text.Json.Nodes.JsonNode variables = launch["profiles"]!["http"]!["environmentVariables"]!;
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        variables["ASPIRE_CONTAINER_RUNTIME"] = "podman";
+        variables[AspireVariables.ContainerRuntime] = "podman";
         variables["XDG_DATA_HOME"] = Environment.GetEnvironmentVariable("XDG_DATA_HOME") is { Length: > 0 } data ? data : Path.Combine(home, ".local", "share");
         variables["XDG_CONFIG_HOME"] = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME") is { Length: > 0 } config ? config : Path.Combine(home, ".config");
         write(settings, launch.ToJsonString());

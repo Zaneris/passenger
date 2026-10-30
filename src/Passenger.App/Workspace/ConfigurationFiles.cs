@@ -72,15 +72,14 @@ public static partial class ConfigurationFiles
         return PathNames.Same(PathNames.Canonical(root), PathNames.Canonical(UserSecrets.Root)) ? Path.GetFileName(folder) : null;
     }
 
-    /// <summary>The environments a project runs in from its launch profiles (ASPNETCORE_ENVIRONMENT, DOTNET_ENVIRONMENT),
-    /// Development for a profile that names none, or where it has none.</summary>
+    /// <summary>The environments a project runs in from its launch profiles, as ASP.NET Core reads each
+    /// (<see cref="AspNetCoreVariables.EnvironmentOf"/>), Development for a profile that names none, or where it has none.</summary>
     public static IReadOnlyList<string> Environments(ConfigurationProject project, Func<string, string?> text)
     {
         HashSet<string> found = new(StringComparer.OrdinalIgnoreCase);
         foreach (Run.LaunchProfile profile in Run.LaunchProfile.Parse(text(project.LaunchSettings)))
         {
-            string? named = profile.EnvironmentVariables.FirstOrDefault(variable => variable.Key is "ASPNETCORE_ENVIRONMENT" or "DOTNET_ENVIRONMENT").Value;
-            found.Add(string.IsNullOrWhiteSpace(named) ? "Development" : named);
+            found.Add(AspNetCoreVariables.EnvironmentOf(profile.EnvironmentVariables.GetValueOrDefault, "Development"));
         }
         return found.Count == 0 ? ["Development"] : [.. found];
     }

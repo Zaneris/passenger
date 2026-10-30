@@ -565,10 +565,10 @@ public static class ContainerPlans
                             (JsonNode)Port(p, ComposeModel.HostPort(p.Published) is null ? pinned.Of(service.Name, i, p) : null))]);
                     }
                     volumes.Add(new JsonObject { ["type"] = "bind", ["source"] = built.Output, ["target"] = AppFolder, ["read_only"] = true });
-                    if (!service.Environment.ContainsKey("ASPNETCORE_ENVIRONMENT") && !service.Environment.ContainsKey("DOTNET_ENVIRONMENT"))
+                    if (!service.Environment.ContainsKey(AspNetCoreVariables.AspNetCoreEnvironment) && !service.Environment.ContainsKey(AspNetCoreVariables.DotnetEnvironment))
                     {
-                        environment["ASPNETCORE_ENVIRONMENT"] = "Development";
-                        environment["DOTNET_ENVIRONMENT"] = "Development";
+                        environment[AspNetCoreVariables.AspNetCoreEnvironment] = "Development";
+                        environment[AspNetCoreVariables.DotnetEnvironment] = "Development";
                     }
                     if (development && StaticWebAssets(built, state, $"{model.Name}-{service.Name}") is { } assets)
                     {
@@ -576,7 +576,7 @@ public static class ContainerPlans
                         {
                             volumes.Add(new JsonObject { ["type"] = "bind", ["source"] = source, ["target"] = target, ["read_only"] = true });
                         }
-                        environment["ASPNETCORE_STATICWEBASSETS"] = assets.Manifest;
+                        environment[AspNetCoreVariables.StaticWebAssets] = assets.Manifest;
                     }
                 }
                 else if (service.DockerfilePath is { } dockerfile && File.Exists(dockerfile) && DockerfileStages.Read(File.ReadAllText(dockerfile)).Declares("BUILD_CONFIGURATION"))
@@ -601,8 +601,8 @@ public static class ContainerPlans
                 {
                     volumes.Add(new JsonObject { ["type"] = "bind", ["source"] = exported.Folder, ["target"] = "/https", ["read_only"] = true });
                     // PEM, its key unencrypted in the folder only the person enters, mounted read-only: no password anywhere.
-                    environment["ASPNETCORE_Kestrel__Certificates__Default__Path"] = $"/https/{Path.GetFileName(exported.Certificate)}";
-                    environment["ASPNETCORE_Kestrel__Certificates__Default__KeyPath"] = $"/https/{Path.GetFileName(exported.Key)}";
+                    environment[AspNetCoreVariables.CertificatePath] = $"/https/{Path.GetFileName(exported.Certificate)}";
+                    environment[AspNetCoreVariables.CertificateKeyPath] = $"/https/{Path.GetFileName(exported.Key)}";
                 }
                 else if (Serves(service))
                 {
@@ -768,17 +768,17 @@ public static class ContainerPlans
         }
     }
 
-    /// <summary>Whether a service runs in Development (as its files say, in any letter case as .NET reads the name, or with
-    /// nothing said, as Passenger runs it), where it reads its user secrets and static web assets.</summary>
+    /// <summary>Whether a service runs in Development (as its files say, read as ASP.NET Core reads them and in any letter
+    /// case, or with nothing said, as Passenger runs it), where it reads its user secrets and static web assets.</summary>
     private static bool Development(ComposeService service) =>
-        !service.Environment.ContainsKey("ASPNETCORE_ENVIRONMENT") && !service.Environment.ContainsKey("DOTNET_ENVIRONMENT")
-        || string.Equals(service.Environment.GetValueOrDefault("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(service.Environment.GetValueOrDefault("DOTNET_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
+        string.Equals(AspNetCoreVariables.EnvironmentOf(service.Environment.GetValueOrDefault, "Development"), "Development", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Whether a service serves HTTPS: Kestrel told an https address or an HTTPS port, or a port of HTTPS's.</summary>
-    private static bool Serves(ComposeService service) =>
-        service.Environment.GetValueOrDefault("ASPNETCORE_URLS")?.Contains("https:", StringComparison.OrdinalIgnoreCase) == true
-        || service.Environment.ContainsKey("ASPNETCORE_HTTPS_PORTS") || service.Ports.Any(p => p.Target is 443 or 8081);
+    /// <summary>Whether a service serves HTTPS: Kestrel told so (<see cref="AspNetCoreVariables.ServesHttps"/>), or a port of
+    /// HTTPS's.</summary>
+    private static bool Serves(ComposeService service) => AspNetCoreVariables.ServesHttps(service.Environment) || service.Ports.Any(p => HttpsPort(p.Target));
+
+    /// <summary>Whether a container's port is one an ASP.NET Core app serves HTTPS on in its container.</summary>
+    internal static bool HttpsPort(int port) => port is 443 or 8081;
 
     /// <summary>Where a .NET service in its container finds its user secrets: APPDATA, which Passenger sets there.</summary>
     public const string AppData = "/passenger/appdata";
@@ -1602,7 +1602,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         {
             return null;
         }
-        string scheme = port is 443 or 8081 || url.StartsWith("https", StringComparison.OrdinalIgnoreCase) ? "https" : "http";
+        string scheme = ContainerPlans.HttpsPort(port) || url.StartsWith("https", StringComparison.OrdinalIgnoreCase) ? "https" : "http";
         string host = new ContainerPort(answer[(colon + 1)..], port.ToString(CultureInfo.InvariantCulture), "tcp").LinkOn((await engine.StateAsync(cancel: cancel)).Endpoint)?.Host
             ?? "localhost";
         return url.Replace("{Scheme}", scheme, StringComparison.OrdinalIgnoreCase)

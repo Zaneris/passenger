@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Tests.Debugging.Helpers;
 
@@ -85,7 +86,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
     {
         // Held at its start until the attach lets it go, so it cannot end before the debugger has it; its output is read.
         ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(Debuggees.Apphost("PassengerCases"), ["flood"]);
-        start.Environment["DOTNET_DefaultDiagnosticPortSuspend"] = "1";
+        start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
         start.RedirectStandardOutput = true;
         Process program = Passenger.Core.ChildProcesses.Start(start);
         _ = program.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
@@ -110,7 +111,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
     public async Task A_program_held_at_its_start_runs_on_when_its_attach_ends_before_taking_hold_of_it()
     {
         ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(Debuggees.Apphost("PassengerCases"), ["child"]);
-        start.Environment["DOTNET_DefaultDiagnosticPortSuspend"] = "1";
+        start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
         start.RedirectStandardOutput = true;
         using Process program = Passenger.Core.ChildProcesses.Start(start);
         Task<string> written = program.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
@@ -134,7 +135,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows has no exec: a program a shell starts late has an id of its own, not the shell's attached to");
         // The shell becomes the program a second after it starts, keeping its id, so the attach ends before the runtime is there.
         ProcessStartInfo start = Passenger.Core.ChildProcesses.Command("/bin/sh", ["-c", "sleep 1 && exec \"$0\" child", Debuggees.Apphost("PassengerCases")]);
-        start.Environment["DOTNET_DefaultDiagnosticPortSuspend"] = "1";
+        start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
         start.RedirectStandardOutput = true;
         using Process program = Passenger.Core.ChildProcesses.Start(start);
         Task<string> written = program.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
@@ -157,7 +158,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows has no exec: a program a shell starts late has an id of its own, not the shell's attached to");
         ProcessStartInfo start = Passenger.Core.ChildProcesses.Command("/bin/sh", ["-c", "sleep 30 && exec \"$0\" child", Debuggees.Apphost("PassengerCases")]);
-        start.Environment["DOTNET_DefaultDiagnosticPortSuspend"] = "1";
+        start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
         using Process program = Passenger.Core.ChildProcesses.Start(start);
         try
         {

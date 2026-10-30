@@ -289,8 +289,8 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             window.Debugger.Breakpoints.Toggle(main, 3);
 
             ProcessStartInfo start = ChildProcesses.Command(built, []);
-            start.Environment["DOTNET_DefaultDiagnosticPortSuspend"] = "1";
-            start.Environment["DOTNET_MODIFIABLE_ASSEMBLIES"] = "debug";
+            start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
+            start.Environment[RuntimeVariables.ModifiableAssemblies] = "debug";
             start.RedirectStandardOutput = true;
             program = ChildProcesses.Start(start);
             Task<string> output = program.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
@@ -337,8 +337,8 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Assert.True(File.Exists(built), $"The build made no {built}: {Ui.Said(window)}");
             window.Debugger.Breakpoints.Toggle(Counter, Pair.Next);
             ProcessStartInfo start = ChildProcesses.Command(built, []);
-            start.Environment["DOTNET_DefaultDiagnosticPortSuspend"] = "1";
-            start.Environment["DOTNET_MODIFIABLE_ASSEMBLIES"] = "debug";
+            start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
+            start.Environment[RuntimeVariables.ModifiableAssemblies] = "debug";
             start.RedirectStandardOutput = true;
             program = ChildProcesses.Start(start);
             Assert.Null(Ui.Await(window.Debugger.AttachAsync(program.Id, "First", hotReload: true), "the debugger to attach"));

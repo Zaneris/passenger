@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Pipes;
 using System.Net.Sockets;
+using Passenger.Core;
 
 namespace Passenger.Tests.Debugging.Helpers;
 
@@ -31,7 +32,7 @@ public sealed class StartHold : IDisposable
     }
 
     /// <summary>What sends the program's runtime here, to wait.</summary>
-    public IReadOnlyDictionary<string, string> Environment => new Dictionary<string, string> { ["DOTNET_DiagnosticPorts"] = $"{address},connect,suspend" };
+    public IReadOnlyDictionary<string, string> Environment => new Dictionary<string, string> { [RuntimeVariables.DiagnosticPorts] = $"{address},connect,suspend" };
 
     /// <summary>The process whose runtime has come and waits, once it has, within a minute or the time given.</summary>
     public async Task<int> Held(TimeSpan? within = null)

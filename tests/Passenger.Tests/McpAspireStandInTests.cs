@@ -324,7 +324,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             File.Delete(told);
             (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode answer) = await project.StartApiAsync("apiservice", environment: new Dictionary<string, string>
             {
-                ["OTEL_RESOURCE_ATTRIBUTES"] = $"service.instance.id={instance}",
+                [OtelVariables.ResourceAttributes] = $"service.instance.id={instance}",
                 ["STAND_IN_PID_FILE"] = told,
             }, subscribe: subscribe);
             sockets.Add(notified);

@@ -39,7 +39,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                     {
                         string said = $"{app.Configuration.Name}'s orchestrator made {Plural.Of(made.Containers, "container")} on an engine Passenger reaches "
                             + "neither through docker nor through the runtime it was told or would find (docker, podman), so Passenger cannot list, "
-                            + "follow or remove them: set ASPIRE_CONTAINER_RUNTIME to the engine docker or podman reaches, or docker's context to DCP's";
+                            + $"follow or remove them: set {AspireVariables.ContainerRuntime} to the engine docker or podman reaches, or docker's context to DCP's";
                         app.Console.Append(said + "\n", error: true);
                         ContainersElsewhere?.Invoke(this, said);
                     }
@@ -223,8 +223,8 @@ public sealed partial class AspireController(ProjectSession workspace, string st
 
     /// <summary>The AppHost's own addresses, as its launch profile gives them, that its dashboard, telemetry and resource
     /// service serve on, which over HTTP serve HTTP.</summary>
-    private static readonly string[] AppHostAddresses = ["ASPNETCORE_URLS", "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL", "ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL",
-        "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL", "DOTNET_DASHBOARD_OTLP_ENDPOINT_URL", "DOTNET_DASHBOARD_OTLP_HTTP_ENDPOINT_URL", "DOTNET_RESOURCE_SERVICE_ENDPOINT_URL"];
+    private static readonly string[] AppHostAddresses = [AspNetCoreVariables.Urls, AspireVariables.DashboardOtlpEndpoint, AspireVariables.DashboardOtlpHttpEndpoint,
+        AspireVariables.ResourceServiceEndpoint, AspireVariables.DotnetDashboardOtlpEndpoint, AspireVariables.DotnetDashboardOtlpHttpEndpoint, AspireVariables.DotnetResourceServiceEndpoint];
 
     /// <summary>The AppHosts of an Aspire configuration (it and those it links) that serve HTTPS on this machine, by name, as
     /// their launch profiles say: what the development certificate is checked for before any of them starts. Throws a
@@ -407,32 +407,32 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 // Its dashboard, telemetry and resource service serve HTTP for this run, which Aspire takes once told it may.
                 foreach (string address in AppHostAddresses)
                 {
-                    if (environment.GetValueOrDefault(address) is { } urls && urls.Contains("https:", StringComparison.OrdinalIgnoreCase))
+                    if (environment.GetValueOrDefault(address) is { } urls && AspNetCoreVariables.HttpsIn(urls))
                     {
-                        environment[address] = urls.Replace("https:", "http:", StringComparison.OrdinalIgnoreCase);
+                        environment[address] = AspNetCoreVariables.AsHttp(urls);
                     }
                 }
                 foreach ((string name, string value) in DevelopmentCertificate.OverHttp(environment))
                 {
                     environment[name] = value;
                 }
-                environment["ASPIRE_ALLOW_UNSECURED_TRANSPORT"] = "true";
+                environment[AspireVariables.AllowUnsecuredTransport] = "true";
             }
             foreach ((string name, string value) in execution.Environment)
             {
                 environment[name] = value;
             }
-            environment.Remove("DEBUG_SESSION_SERVER_CERTIFICATE");
-            environment["DEBUG_SESSION_RUN_MODE"] = mode == RunStart.Debug ? "Debug" : "NoDebug";
+            environment.Remove(AspireVariables.DebugSessionCertificate);
+            environment[AspireVariables.DebugSessionRunMode] = mode == RunStart.Debug ? "Debug" : "NoDebug";
             environment["AppHost__FilePath"] = configuration.Project;
-            environment["ASPIRE_CLI_TELEMETRY_OPTOUT"] = "1";
+            environment[AspireVariables.TelemetryOptOut] = "1";
             ConfigureResourceService(app, environment);
             ConfigureDashboard(app, environment);
             app.Runner.Exited += (_, _) => BackgroundWork.Track(StopAppAsync(app));
             ProcessStartInfo hostStart = ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory);
-            hostStart.Environment.Remove("DEBUG_SESSION_SERVER_CERTIFICATE");
+            hostStart.Environment.Remove(AspireVariables.DebugSessionCertificate);
             // The runtime its orchestrator is told, where its containers are looked for first when Passenger's docker lacks them.
-            app.ContainerRuntime = ((string[])["ASPIRE_CONTAINER_RUNTIME", "DOTNET_ASPIRE_CONTAINER_RUNTIME"])
+            app.ContainerRuntime = ((string[])[AspireVariables.ContainerRuntime, AspireVariables.DotnetContainerRuntime])
                 .Select(name => environment.GetValueOrDefault(name) ?? (hostStart.Environment.TryGetValue(name, out string? inherited) ? inherited : null))
                 .FirstOrDefault(told => told is { Length: > 0 });
             if (await app.Runner.StartAsync(hostStart, environment) is { } refused)
@@ -538,7 +538,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     private static void ConfigureResourceService(AspireAppRun app, IDictionary<string, string> environment)
     {
         Uri? endpoint = null;
-        if (environment.TryGetValue("ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL", out string? configured))
+        if (environment.TryGetValue(AspireVariables.ResourceServiceEndpoint, out string? configured))
         {
             Uri.TryCreate(configured.Split(';')[0], UriKind.Absolute, out endpoint);
         }
@@ -547,10 +547,10 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             using TcpListener port = new(IPAddress.Loopback, 0);
             port.Start();
             int number = ((IPEndPoint)port.LocalEndpoint).Port;
-            bool allowHttp = environment.TryGetValue("ASPIRE_ALLOW_UNSECURED_TRANSPORT", out string? allowed)
+            bool allowHttp = environment.TryGetValue(AspireVariables.AllowUnsecuredTransport, out string? allowed)
                 && bool.TryParse(allowed, out bool unsecured) && unsecured;
             endpoint = new Uri($"{(allowHttp ? "http" : "https")}://localhost:{number}");
-            environment["ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL"] = endpoint.AbsoluteUri;
+            environment[AspireVariables.ResourceServiceEndpoint] = endpoint.AbsoluteUri;
         }
         if (!endpoint.IsLoopback || endpoint.Scheme is not ("http" or "https"))
         {
@@ -558,13 +558,13 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         app.ResourceServiceEndpoint = endpoint;
         app.ResourceServiceKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-        environment["ASPIRE_DASHBOARD_RESOURCESERVICE_APIKEY"] = app.ResourceServiceKey;
+        environment[AspireVariables.DashboardResourceServiceKey] = app.ResourceServiceKey;
     }
 
     private static void ConfigureDashboard(AspireAppRun app, IDictionary<string, string> environment)
     {
-        string urls = environment.TryGetValue("ASPNETCORE_URLS", out string? configured) ? configured
-            : Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? string.Empty;
+        string urls = environment.TryGetValue(AspNetCoreVariables.Urls, out string? configured) ? configured
+            : Environment.GetEnvironmentVariable(AspNetCoreVariables.Urls) ?? string.Empty;
         Uri? existing = DashboardAddress.FromUrls(urls);
         using TcpListener port = new(IPAddress.Loopback, 0);
         if (existing is null)
@@ -576,7 +576,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         environment["AppHost__DashboardApiKey"] = app.DashboardApiKey;
         if (existing is null)
         {
-            environment["ASPNETCORE_URLS"] = string.IsNullOrWhiteSpace(urls) ? app.DashboardEndpoint.AbsoluteUri
+            environment[AspNetCoreVariables.Urls] = string.IsNullOrWhiteSpace(urls) ? app.DashboardEndpoint.AbsoluteUri
                 : $"{urls.TrimEnd(';')};{app.DashboardEndpoint.AbsoluteUri}";
         }
     }
@@ -803,7 +803,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     private bool ClaimsProfile(AspireAppRun app, AspireProjectLaunch request)
     {
         string path = PathNames.Canonical(request.ProjectPath);
-        string? name = request.Environment.FirstOrDefault(variable => variable.Name == "OTEL_SERVICE_NAME")?.Value;
+        string? name = request.Environment.FirstOrDefault(variable => variable.Name == OtelVariables.ServiceName)?.Value;
         if (app.Mode != RunStart.Profile || apps.Any(candidate => candidate.Group == app.Group && candidate.ProfileClaimed)
             || app.ProfileTarget is { } selected && !(PathNames.Same(selected.AppHost, app.Configuration.Project) && name == selected.Name
                 && app.Configuration.ServiceProjects.TryGetValue(selected.Name, out string? selectedProject) && PathNames.Same(selectedProject, path)))
@@ -882,7 +882,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             throw new LaunchException("The Aspire application ended or reached its service limit during launch");
         }
         AspireResourceRun resource = new(request.SessionId, request.DcpInstanceId, path, plan) { BuiltStamp = stamp };
-        resource.ResourceName = request.Environment.FirstOrDefault(variable => variable.Name == "OTEL_SERVICE_NAME")?.Value;
+        resource.ResourceName = request.Environment.FirstOrDefault(variable => variable.Name == OtelVariables.ServiceName)?.Value;
         string serviceName = ((IRunService)resource).Name;
         if (app.LeftUnstarted(serviceName, ResourceAction(app.Configuration, resource) == ServiceStart.DontStart))
         {
@@ -1693,12 +1693,12 @@ public sealed class AspireResourceRun(string id, string instanceId, string proje
         BuiltStamp != ReadBuiltStamp(Plan) || BuiltInputs.ChangedSince(Project, since, projects);
 
     public string? ResourceName { get; internal set; }
-    internal string IdentityKey => Plan.Environment.GetValueOrDefault("OTEL_RESOURCE_ATTRIBUTES") is { Length: > 0 } attributes
+    internal string IdentityKey => Plan.Environment.GetValueOrDefault(OtelVariables.ResourceAttributes) is { Length: > 0 } attributes
         ? $"{Project}\n{attributes}" : ResourceName ?? Project;
 
     /// <summary>The replica its start is, as DCP told it (<c>service.instance.id</c> in OTEL_RESOURCE_ATTRIBUTES, which its
     /// restarts keep): DCP's name for its resource, or that name's suffix after the service's name; null where none is told.</summary>
-    internal string? Instance => Plan.Environment.GetValueOrDefault("OTEL_RESOURCE_ATTRIBUTES")?.Split(',').Select(attribute => attribute.Split('=', 2))
+    internal string? Instance => Plan.Environment.GetValueOrDefault(OtelVariables.ResourceAttributes)?.Split(',').Select(attribute => attribute.Split('=', 2))
         .FirstOrDefault(pair => pair.Length == 2 && pair[0].Trim() == "service.instance.id")?[1].Trim() is { Length: > 0 } instance ? instance : null;
 
     /// <summary>Its resource among its AppHost's: the one of its project and name, or of several (replicas, which share the

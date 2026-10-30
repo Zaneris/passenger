@@ -30,10 +30,10 @@ public sealed class AspireContainerRecoveryTests
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in container engine uses a Unix shell script");
         string state = TestFolders.Create("aspire-recovery-state-");
         string folder = TestFolders.Create("aspire-recovery-engine-");
-        string endpoint = Environment.GetEnvironmentVariable("DOCKER_HOST") is { Length: > 0 } host
+        string endpoint = Environment.GetEnvironmentVariable(EngineVariables.DockerHost) is { Length: > 0 } host
             ? host : "unix:///nowhere/aspire-recovery.sock";
         string cli = StandInEngine(folder, endpoint, scenario);
-        string environment = string.Join('\n', new[] { "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "DOCKER_TLS" }
+        string environment = string.Join('\n', new[] { EngineVariables.DockerConfig, EngineVariables.DockerTlsVerify, EngineVariables.DockerCertPath, EngineVariables.DockerTls }
             .Select(variable => $"{variable}={Environment.GetEnvironmentVariable(variable)}"));
         string fingerprint = Hash($"{Path.GetFullPath(cli)}\n{Context}\n{endpoint}\n{environment}");
         string deadOwner = ContainerLabels.Of(Environment.ProcessId, 1);

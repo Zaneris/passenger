@@ -264,6 +264,42 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
         }
     }
 
+    /// <summary>A launch profile that lists DOTNET_ENVIRONMENT Development before ASPNETCORE_ENVIRONMENT Staging runs the app in
+    /// Staging, as ASP.NET Core reads ASPNETCORE_ENVIRONMENT first, so a key appsettings.Staging.json gives is not warned of.</summary>
+    [AvaloniaFact]
+    public void A_key_the_settings_of_the_environment_ASPNETCORE_ENVIRONMENT_names_gives_is_not_warned_of_whatever_DOTNET_ENVIRONMENT_says()
+    {
+        project.Write([
+            ("Shop/appsettings.Staging.json", "{\n  \"Shop\": {\n    \"Banner\": \"staged\"\n  }\n}\n"),
+            ("Shop/Properties/launchSettings.json", """
+                {
+                  "profiles": {
+                    "http": {
+                      "commandName": "Project",
+                      "applicationUrl": "http://localhost:5180",
+                      "environmentVariables": {
+                        "DOTNET_ENVIRONMENT": "Development",
+                        "ASPNETCORE_ENVIRONMENT": "Staging",
+                        "Shop__Theme": "dark"
+                      }
+                    }
+                  }
+                }
+
+                """),
+        ]);
+        MainWindow window = project.Open(project.PathOf("Shop/Program.cs"));
+        try
+        {
+            Ui.WaitFor(() => Missing(window).SetEquals(["Payments:ApiKey"]),
+                () => $"Shop:Banner, which appsettings.Staging.json gives, not to be warned of, the profile running in Staging: {string.Join(", ", Missing(window))} warned of");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Manage_User_Secrets_gives_the_project_its_secrets_and_opens_them()
     {

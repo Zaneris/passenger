@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Passenger.Core;
 
 namespace Passenger.App.Migrations;
 
@@ -49,8 +50,8 @@ public static class EfTemplates
                     {
                         return given;
                     }
-                    string environment = System.Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
-                        ?? System.Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
+                    string environment = System.Environment.GetEnvironmentVariable("{{AspNetCoreVariables.AspNetCoreEnvironment}}")
+                        ?? System.Environment.GetEnvironmentVariable("{{AspNetCoreVariables.DotnetEnvironment}}") ?? "Production";
                     foreach (string file in new[] { $"appsettings.{environment}.json", "appsettings.json" })
                     {
                         string path = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), file);

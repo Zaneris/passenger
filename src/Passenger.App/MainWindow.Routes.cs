@@ -416,7 +416,7 @@ public partial class MainWindow
         }
         return null;
 
-        static string? AddressOf(LaunchPlan plan) => RouteRequests.AddressOf(plan.Environment.GetValueOrDefault("ASPNETCORE_URLS"))
+        static string? AddressOf(LaunchPlan plan) => RouteRequests.AddressOf(plan.Environment.GetValueOrDefault(AspNetCoreVariables.Urls))
             ?? (Uri.TryCreate(plan.BrowserUrl, UriKind.Absolute, out Uri? browsed) ? browsed.GetLeftPart(UriPartial.Authority) : null);
     }
 

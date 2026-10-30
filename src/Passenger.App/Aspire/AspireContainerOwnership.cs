@@ -583,7 +583,7 @@ internal sealed class AspireContainerOwnership
         {
             return null;
         }
-        if (!current.PodmanCli && Environment.GetEnvironmentVariable("DOCKER_HOST") is { Length: > 0 } host && host != endpoint)
+        if (!current.PodmanCli && Environment.GetEnvironmentVariable(EngineVariables.DockerHost) is { Length: > 0 } host && host != endpoint)
         {
             return null;
         }
@@ -598,8 +598,8 @@ internal sealed class AspireContainerOwnership
                 return null;
             }
         }
-        string environment = string.Join('\n', new[] { "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "DOCKER_TLS" }
-            .Concat(current.PodmanCli ? ["CONTAINER_HOST", "CONTAINER_CONNECTION"] : [])
+        string environment = string.Join('\n', new[] { EngineVariables.DockerConfig, EngineVariables.DockerTlsVerify, EngineVariables.DockerCertPath, EngineVariables.DockerTls }
+            .Concat(current.PodmanCli ? [EngineVariables.PodmanHost, EngineVariables.PodmanConnection] : [])
             .Select(variable => $"{variable}={Environment.GetEnvironmentVariable(variable)}"));
         return new(Hash($"{Path.GetFullPath(cli)}\n{current.Context}\n{endpoint}\n{environment}"), arguments, Path.GetFullPath(cli));
     }

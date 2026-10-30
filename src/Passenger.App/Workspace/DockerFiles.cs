@@ -135,7 +135,7 @@ public static class DockerFiles
         text.Append("WORKDIR /app\n");
         if (project.Web && project.HttpPorts.Count > 0)
         {
-            text.Append("ENV ASPNETCORE_HTTP_PORTS=").Append(string.Join(';', project.HttpPorts)).Append('\n');
+            text.Append($"ENV {AspNetCoreVariables.HttpPorts}=").Append(string.Join(';', project.HttpPorts)).Append('\n');
             foreach (int port in project.HttpPorts)
             {
                 text.Append("EXPOSE ").Append(port).Append('\n');
@@ -421,12 +421,12 @@ public static class DockerFiles
         {
             DockerfileStage[] lineage = [.. stages.Lineage(final)];
             string? Variable(string name) => lineage.Select(s => s.Environment.GetValueOrDefault(name)).FirstOrDefault(v => v is not null);
-            if (Variable("ASPNETCORE_HTTP_PORTS") is { } http)
+            if (Variable(AspNetCoreVariables.HttpPorts) is { } http)
             {
                 ports.AddRange(http.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .Select(p => int.TryParse(p, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int n) ? n : 0).Where(n => n > 0));
             }
-            else if (Variable("ASPNETCORE_URLS") is { } urls)
+            else if (Variable(AspNetCoreVariables.Urls) is { } urls)
             {
                 ports.AddRange(urls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .Select(u => Uri.TryCreate(u.Replace("*", "localhost", StringComparison.Ordinal).Replace("+", "localhost", StringComparison.Ordinal), UriKind.Absolute, out Uri? url)

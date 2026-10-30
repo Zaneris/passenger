@@ -288,7 +288,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
 
         await using McpClient client = await Start(["--mcp", starter], environment: new()
         {
-            ["DEBUG_SESSION_SERVER_CERTIFICATE"] = "not-a-certificate",
+            [AspireVariables.DebugSessionCertificate] = "not-a-certificate",
         });
         string configuration = $"Aspire: {AspireApp.Name}.AppHost: http";
         Assert.True(await Waiting.UntilAsync(async () =>

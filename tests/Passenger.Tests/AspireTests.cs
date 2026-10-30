@@ -498,7 +498,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
                     commandName = "Project",
                     environmentVariables = new Dictionary<string, string>
                     {
-                        ["ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL"] = "not-an-endpoint",
+                        [AspireVariables.ResourceServiceEndpoint] = "not-an-endpoint",
                     },
                 },
                 ["selected-http"] = new
@@ -511,12 +511,12 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
                     {
                         // A number, which dotnet run passes as its JSON.
                         ["PASSENGER_PROFILE_PORT"] = 5000,
-                        ["ASPNETCORE_ENVIRONMENT"] = "Development",
-                        ["DOTNET_ENVIRONMENT"] = "Development",
-                        ["ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL"] = $"http://localhost:{AspireApp.FreePort()}",
-                        ["ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL"] = $"http://localhost:{AspireApp.FreePort()}",
-                        ["ASPIRE_DASHBOARD_RESOURCESERVICE_APIKEY"] = "passenger-single-file-profile-key",
-                        ["ASPIRE_ALLOW_UNSECURED_TRANSPORT"] = "true",
+                        [AspNetCoreVariables.AspNetCoreEnvironment] = "Development",
+                        [AspNetCoreVariables.DotnetEnvironment] = "Development",
+                        [AspireVariables.DashboardOtlpEndpoint] = $"http://localhost:{AspireApp.FreePort()}",
+                        [AspireVariables.ResourceServiceEndpoint] = $"http://localhost:{AspireApp.FreePort()}",
+                        [AspireVariables.DashboardResourceServiceKey] = "passenger-single-file-profile-key",
+                        [AspireVariables.AllowUnsecuredTransport] = "true",
                         ["ASPIRE_VERSION_CHECK_DISABLED"] = "true",
                         ["ASPIRE_DASHBOARD_DATA_DIRECTORY"] = project.PathOf("single-file-dashboard"),
                         ["HOME"] = AspireCli.Home,
@@ -545,8 +545,8 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
                 Generated = false,
                 Environment = new Dictionary<string, string>
                 {
-                    ["ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL"] = $"http://localhost:{AspireApp.FreePort()}",
-                    ["ASPIRE_ALLOW_UNSECURED_TRANSPORT"] = "true",
+                    [AspireVariables.ResourceServiceEndpoint] = $"http://localhost:{AspireApp.FreePort()}",
+                    [AspireVariables.AllowUnsecuredTransport] = "true",
                     ["ASPIRE_VERSION_CHECK_DISABLED"] = "true",
                 },
             };
@@ -717,7 +717,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
 
         using JsonDocument launchSettings = JsonDocument.Parse(File.ReadAllText(Path.Combine(Path.GetDirectoryName(project.Host)!, "Properties", "launchSettings.json")));
         string resourceEndpoint = launchSettings.RootElement.GetProperty("profiles").GetProperty("http")
-            .GetProperty("environmentVariables").GetProperty("ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL").GetString()!;
+            .GetProperty("environmentVariables").GetProperty(AspireVariables.ResourceServiceEndpoint).GetString()!;
         using GrpcChannel resourceChannel = GrpcChannel.ForAddress(resourceEndpoint);
         DashboardService.DashboardServiceClient resourceClient = new(resourceChannel);
         Task<ApplicationInformationResponse> deniedResource = resourceClient.GetApplicationInformationAsync(new ApplicationInformationRequest(),
@@ -790,7 +790,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
                 JsonSerializer.Serialize(new
                 {
                     launch_configurations = new[] { new { type = "project", project_path = project.ApiProject, mode = "NoDebug", disable_launch_profile = true } },
-                    env = new[] { new { name = "ASPNETCORE_URLS", value = address.ToString() }, new { name = "DOTNET_ENVIRONMENT", value = "Development" } },
+                    env = new[] { new { name = AspNetCoreVariables.Urls, value = address.ToString() }, new { name = AspNetCoreVariables.DotnetEnvironment, value = "Development" } },
                 }));
             Assert.Equal(HttpStatusCode.Created, created.StatusCode);
             Assert.NotNull(created.Headers.Location);
@@ -818,9 +818,9 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             launch_configurations = new[] { new { type = "project", project_path = project.ApiProject, mode = "NoDebug", disable_launch_profile = true } },
             env = new[]
             {
-                new { name = "OTEL_SERVICE_NAME", value = "canceled-at-boundary" },
-                new { name = "ASPNETCORE_URLS", value = serviceAddress.ToString() },
-                new { name = "DOTNET_ENVIRONMENT", value = "Development" },
+                new { name = OtelVariables.ServiceName, value = "canceled-at-boundary" },
+                new { name = AspNetCoreVariables.Urls, value = serviceAddress.ToString() },
+                new { name = AspNetCoreVariables.DotnetEnvironment, value = "Development" },
                 new { name = "PASSENGER_CANCELED_DCP_PID", value = marker },
             },
         });

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Passenger.Core;
 using Passenger.Workspace;
 
 namespace Passenger.App.Run;
@@ -86,6 +87,7 @@ public sealed partial record LaunchProfile(
     public const string SettingsFile = "launchSettings.json";
 
     /// <summary>The variable a program run from a launch profile is told the profile's name in, as dotnet run tells it.</summary>
+    [IdentifierHome]
     public const string NameVariable = "DOTNET_LAUNCH_PROFILE";
 
     /// <summary>The file a project's launch profiles are in; a file-based program's, as <see cref="FileSettingsPath"/> finds it.</summary>
@@ -251,9 +253,9 @@ public sealed partial record LaunchProfile(
     public Dictionary<string, string> Environment()
     {
         Dictionary<string, string> environment = new(EnvironmentVariables);
-        if (RunsProject && !string.IsNullOrWhiteSpace(ApplicationUrl) && !environment.ContainsKey("ASPNETCORE_URLS"))
+        if (RunsProject && !string.IsNullOrWhiteSpace(ApplicationUrl) && !environment.ContainsKey(AspNetCoreVariables.Urls))
         {
-            environment["ASPNETCORE_URLS"] = ApplicationUrl;
+            environment[AspNetCoreVariables.Urls] = ApplicationUrl;
         }
         return environment;
     }

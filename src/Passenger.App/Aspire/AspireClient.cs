@@ -127,7 +127,7 @@ public sealed class AspireClient(string? program = null)
             {
                 throw new IOException($"The Aspire {SupportedVersion} dashboard did not expose its authenticated resource-service connection");
             }
-            string? address = AspireJson.String(environment, "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL");
+            string? address = AspireJson.String(environment, AspireVariables.ResourceServiceEndpoint);
             string? apiKey = AspireJson.String(environment, "DASHBOARD__RESOURCESERVICECLIENT__APIKEY");
             string? authMode = AspireJson.String(environment, "DASHBOARD__RESOURCESERVICECLIENT__AUTHMODE");
             if (string.IsNullOrWhiteSpace(apiKey) || !string.Equals(authMode, "ApiKey", StringComparison.OrdinalIgnoreCase))
@@ -265,7 +265,7 @@ public sealed class AspireClient(string? program = null)
             command.AddRange(["--apphost", appHost]);
         }
         ProcessStartInfo start = ChildProcesses.Command(executable, command, appHost is null ? null : Path.GetDirectoryName(appHost));
-        start.Environment["ASPIRE_CLI_TELEMETRY_OPTOUT"] = "1";
+        start.Environment[AspireVariables.TelemetryOptOut] = "1";
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         start.StandardOutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);

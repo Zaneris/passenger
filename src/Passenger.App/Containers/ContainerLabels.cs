@@ -15,18 +15,14 @@ namespace Passenger.App.Containers;
 /// however it ends (the watchdog's last command, <see cref="ChildProcesses.AtIdeEnd"/>), and at the next start, which
 /// removes those of this state and machine whose process is gone (<see cref="RemoveLeftoversAsync"/>). What is made for
 /// Passenger without its labels is recorded with the same three and ended by the same rules (<see cref="IsLeftover"/>,
-/// <see cref="MadeUnlabelled"/>).</summary>
+/// <see cref="MadeUnlabelled"/>). The watchdog's command is given the CLIs' variables (<see cref="EngineVariables"/>) as
+/// the IDE has them.</summary>
 public static partial class ContainerLabels
 {
     public const string State = "net.passenger-ide.state";
     public const string Process = "net.passenger-ide.process";
     public const string Folder = "net.passenger-ide.folder";
     public const string Machine = "net.passenger-ide.machine";
-
-    /// <summary>The variables the CLI reads its engine from (Docker's, and Podman's own command's), which the watchdog's
-    /// command is given as the IDE's had them.</summary>
-    private static readonly string[] EngineVariables = ["DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "DOCKER_TLS",
-        "CONTAINER_HOST", "CONTAINER_CONNECTION", "CONTAINERS_CONF"];
 
     /// <summary>The last command the watchdog was given, told again when the engine it reaches or what it removes changes.</summary>
     private static string? toldWatchdog;
@@ -197,7 +193,7 @@ public static partial class ContainerLabels
     private static string? EndCommand()
     {
         StringBuilder command = new();
-        foreach (string variable in EngineVariables)
+        foreach (string variable in EngineVariables.All)
         {
             if (Environment.GetEnvironmentVariable(variable) is { Length: > 0 } value)
             {

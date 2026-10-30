@@ -3,6 +3,7 @@ namespace Passenger.Core;
 /// <summary>The environment variables of .NET's runtime, its host and WPF that Passenger sets or reads in the programs it
 /// starts, each named once. Framework-free, since it is linked into what Passenger puts inside another program, which
 /// never loads Passenger's own assemblies.</summary>
+[IdentifierHome]
 public static class RuntimeVariables
 {
     /// <summary>The runtime's list of startup hooks, each an assembly it calls before the program's Main; Passenger's own

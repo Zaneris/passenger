@@ -6,6 +6,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using Passenger.App.Aspire;
+using Passenger.Core;
 
 namespace Passenger.Tests;
 
@@ -108,7 +109,7 @@ public sealed class AspireExecutionServerTests
         ConcurrentQueue<string> stopped = new();
         await using AspireExecutionServer server = await AspireExecutionServer.StartAsync(async (launch, token) =>
         {
-            string service = launch.Environment.Single(variable => variable.Name == "OTEL_SERVICE_NAME").Value;
+            string service = launch.Environment.Single(variable => variable.Name == OtelVariables.ServiceName).Value;
             if (service.StartsWith("slow", StringComparison.Ordinal))
             {
                 if (Interlocked.Increment(ref begun) == together)
@@ -179,7 +180,7 @@ public sealed class AspireExecutionServerTests
         static string Of(string service) => JsonSerializer.Serialize(new
         {
             launch_configurations = new[] { new { type = "project", project_path = Path.GetFullPath("Wire.csproj"), mode = "NoDebug" } },
-            env = new[] { new { name = "OTEL_SERVICE_NAME", value = service } },
+            env = new[] { new { name = OtelVariables.ServiceName, value = service } },
         });
     }
 
@@ -440,12 +441,12 @@ public sealed class AspireExecutionServerTests
 
     private static string Version(AspireExecutionServer server)
     {
-        using JsonDocument info = JsonDocument.Parse(server.Environment["DEBUG_SESSION_INFO"]);
+        using JsonDocument info = JsonDocument.Parse(server.Environment[AspireVariables.DebugSessionInfo]);
         return info.RootElement.GetProperty("protocols_supported")[0].GetString()!;
     }
 
     private static string Head(AspireExecutionServer server, string method, string path, string headers, string instance = Instance) =>
-        $"{method} {path} HTTP/1.1\r\nHost: localhost:{server.Port}\r\nAuthorization: Bearer {server.Environment["DEBUG_SESSION_TOKEN"]}\r\n{InstanceHeader}: {instance}\r\n{headers}\r\n";
+        $"{method} {path} HTTP/1.1\r\nHost: localhost:{server.Port}\r\nAuthorization: Bearer {server.Environment[AspireVariables.DebugSessionToken]}\r\n{InstanceHeader}: {instance}\r\n{headers}\r\n";
 
     private static string Request(AspireExecutionServer server, string body, string instance = Instance) =>
         Head(server, "PUT", $"/run_session?api-version={Version(server)}", $"Content-Type: application/json\r\nContent-Length: {Encoding.UTF8.GetByteCount(body)}\r\n", instance) + body;

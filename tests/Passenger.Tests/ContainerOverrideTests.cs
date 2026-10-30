@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Passenger.App.Containers;
 using Passenger.App.Run;
+using Passenger.Core;
 using Passenger.Workspace;
 
 namespace Passenger.Tests;
@@ -32,7 +33,7 @@ public sealed class ContainerOverrideTests : IDisposable
         {
             foreach (ContainerMode mode in (ContainerMode[])[ContainerMode.Fast, ContainerMode.Images])
             {
-                JsonObject web = await WebAsync(engine, owner, mode, new Dictionary<string, string> { ["ASPNETCORE_HTTPS_PORTS"] = "8081" });
+                JsonObject web = await WebAsync(engine, owner, mode, new Dictionary<string, string> { [AspNetCoreVariables.HttpsPorts] = "8081" });
                 string on = $"{engine.EngineName}{(engine.Rootless ? " rootless" : string.Empty)} with {owner ?? "no owner"} in {mode} mode";
                 Assert.True(user == web["user"]?.GetValue<string>(), $"On {on} web was to run as {user ?? "its image's user"}, but the override said {web.ToJsonString()}");
                 Assert.True(web["userns_mode"] is null, $"On {on} web was given a user namespace of its own: {web.ToJsonString()}");
@@ -46,28 +47,64 @@ public sealed class ContainerOverrideTests : IDisposable
     [Fact]
     public async Task A_service_whose_environment_is_development_in_lower_case_has_its_user_secrets_mounted()
     {
+        await WithSecretsAsync(async id =>
+        {
+            foreach ((string variable, string environment, bool reads) in ((string, string, bool)[])[
+                (AspNetCoreVariables.AspNetCoreEnvironment, "development", true), (AspNetCoreVariables.DotnetEnvironment, "DEVELOPMENT", true), (AspNetCoreVariables.AspNetCoreEnvironment, "Production", false)])
+            {
+                await AssertSecretsAsync(id, new Dictionary<string, string> { [variable] = environment }, reads, $"{variable}: {environment}");
+            }
+        });
+    }
+
+    /// <summary>A service whose files set ASPNETCORE_ENVIRONMENT Staging and DOTNET_ENVIRONMENT Development runs in Staging,
+    /// as ASP.NET Core reads ASPNETCORE_ENVIRONMENT first, so the user secrets only Development reads are not mounted; the
+    /// other way round it runs in Development and they are.</summary>
+    [Fact]
+    public async Task A_service_whose_ASPNETCORE_ENVIRONMENT_is_Staging_runs_in_Staging_whatever_DOTNET_ENVIRONMENT_says()
+    {
+        await WithSecretsAsync(async id =>
+        {
+            foreach ((string aspNetCore, string dotnet, bool reads) in ((string, string, bool)[])[("Staging", "Development", false), ("Development", "Staging", true)])
+            {
+                Dictionary<string, string> environment = new()
+                {
+                    [AspNetCoreVariables.DotnetEnvironment] = dotnet,
+                    [AspNetCoreVariables.AspNetCoreEnvironment] = aspNetCore,
+                };
+                await AssertSecretsAsync(id, environment, reads, $"ASPNETCORE_ENVIRONMENT: {aspNetCore} and DOTNET_ENVIRONMENT: {dotnet}");
+            }
+        });
+    }
+
+    /// <summary>Runs <paramref name="test"/> with user secrets of an id of its own in the run's folder, deleted after.</summary>
+    private static async Task WithSecretsAsync(Func<string, Task> test)
+    {
         string id = $"passenger-test-override-{Guid.NewGuid():N}";
         string secrets = TestFolders.Write(TestRun.UserSecrets, $"{id}/secrets.json", "{ \"Greeting\": \"from secrets\" }\n");
         try
         {
-            string mounted = $"{ContainerPlans.AppData}/Microsoft/UserSecrets/{id}";
-            foreach ((string variable, string environment, bool reads) in ((string, string, bool)[])[
-                ("ASPNETCORE_ENVIRONMENT", "development", true), ("DOTNET_ENVIRONMENT", "DEVELOPMENT", true), ("ASPNETCORE_ENVIRONMENT", "Production", false)])
-            {
-                foreach (ContainerMode mode in (ContainerMode[])[ContainerMode.Fast, ContainerMode.Images])
-                {
-                    JsonObject web = await WebAsync(Engine(podman: false, rootless: false), Owner, mode, new Dictionary<string, string> { [variable] = environment }, id);
-                    string[] targets = [.. (web["volumes"] as JsonArray ?? []).Select(v => v?["target"]?.GetValue<string>() ?? string.Empty)];
-                    Assert.True(reads == targets.Contains(mounted),
-                        $"With {variable}: {environment} in {mode} mode web's user secrets were {(reads ? string.Empty : "not ")}to be mounted at {mounted}: {web.ToJsonString()}");
-                    Assert.True(reads == (web["environment"]?["APPDATA"]?.GetValue<string>() == ContainerPlans.AppData),
-                        $"With {variable}: {environment} in {mode} mode web was {(reads ? string.Empty : "not ")}to read its user secrets from APPDATA: {web.ToJsonString()}");
-                }
-            }
+            await test(id);
         }
         finally
         {
             TestFolders.Delete(Path.GetDirectoryName(secrets)!);
+        }
+    }
+
+    /// <summary>Whether web, given the environment, has its user secrets mounted where it reads them and APPDATA set to find
+    /// them, in fast mode and as deployed, as <paramref name="reads"/> says.</summary>
+    private async Task AssertSecretsAsync(string id, IReadOnlyDictionary<string, string> environment, bool reads, string given)
+    {
+        string mounted = $"{ContainerPlans.AppData}/Microsoft/UserSecrets/{id}";
+        foreach (ContainerMode mode in (ContainerMode[])[ContainerMode.Fast, ContainerMode.Images])
+        {
+            JsonObject web = await WebAsync(Engine(podman: false, rootless: false), Owner, mode, environment, id);
+            string[] targets = [.. (web["volumes"] as JsonArray ?? []).Select(v => v?["target"]?.GetValue<string>() ?? string.Empty)];
+            Assert.True(reads == targets.Contains(mounted),
+                $"With {given} in {mode} mode web's user secrets were {(reads ? string.Empty : "not ")}to be mounted at {mounted}: {web.ToJsonString()}");
+            Assert.True(reads == (web["environment"]?["APPDATA"]?.GetValue<string>() == ContainerPlans.AppData),
+                $"With {given} in {mode} mode web was {(reads ? string.Empty : "not ")}to read its user secrets from APPDATA: {web.ToJsonString()}");
         }
     }
 

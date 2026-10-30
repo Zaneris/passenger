@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using Passenger.App.Run;
+using Passenger.Core;
 
 namespace Passenger.App.Aspire;
 
@@ -56,9 +57,9 @@ public sealed class AspireExecutionServer : IAsyncDisposable
 
     public ImmutableDictionary<string, string> Environment => new Dictionary<string, string>
     {
-        ["DEBUG_SESSION_PORT"] = $"localhost:{Port.ToString(CultureInfo.InvariantCulture)}",
-        ["DEBUG_SESSION_TOKEN"] = Token,
-        ["DEBUG_SESSION_INFO"] = SessionInfo
+        [AspireVariables.DebugSessionPort] = $"localhost:{Port.ToString(CultureInfo.InvariantCulture)}",
+        [AspireVariables.DebugSessionToken] = Token,
+        [AspireVariables.DebugSessionInfo] = SessionInfo
     }.ToImmutableDictionary(StringComparer.Ordinal);
 
     /// <summary>Callbacks marshal to the UI if needed and must observe cancellation. A failed creation must clean up its own
@@ -444,7 +445,7 @@ public sealed class AspireExecutionServer : IAsyncDisposable
     /// restart's stop before its start, a resource's replicas one after another): its name, as DCP tells a service it, else
     /// its project.</summary>
     private static string ResourceOf(AspireProjectLaunch launch) =>
-        launch.Environment.FirstOrDefault(variable => variable.Name == "OTEL_SERVICE_NAME")?.Value is { Length: > 0 } name ? name : launch.ProjectPath;
+        launch.Environment.FirstOrDefault(variable => variable.Name == OtelVariables.ServiceName)?.Value is { Length: > 0 } name ? name : launch.ProjectPath;
 
     private void End(Instance instance, Operation operation)
     {

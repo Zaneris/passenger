@@ -110,8 +110,7 @@ internal static class ComposeConnections
             }
             ProjectModel? runs = code.Projects.FirstOrDefault(p => PathNames.Same(p.Path, project));
             // The settings files the app reads in its container, by the environment it runs in there.
-            string environmentName = new[] { "ASPNETCORE_ENVIRONMENT", "DOTNET_ENVIRONMENT" }
-                .Select(key => environment.GetValueOrDefault(key)).FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? "Development";
+            string environmentName = AspNetCoreVariables.EnvironmentOf(environment.GetValueOrDefault, "Development");
             TextRange range = ComposeFixes.KeyName(written, entry);
             string projectName = Path.GetFileNameWithoutExtension(project);
             foreach (string name in reads.Reads.Where(r => PathNames.Same(r.Project, project)).Select(r => r.Name).Distinct(StringComparer.OrdinalIgnoreCase))

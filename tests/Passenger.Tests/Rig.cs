@@ -161,7 +161,7 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable("AVALONIA_TELEMETRY_OPTOUT", "1");
         // Nor Aspire's: an aspire CLI or AppHost the run starts keeps its settings and first-run sentinel in the run's home.
         Environment.SetEnvironmentVariable("ASPIRE_HOME", Path.Combine(Root, "aspire-home"));
-        Environment.SetEnvironmentVariable("ASPIRE_CLI_TELEMETRY_OPTOUT", "1");
+        Environment.SetEnvironmentVariable(AspireVariables.TelemetryOptOut, "1");
         Environment.SetEnvironmentVariable("features__updateNotificationsEnabled", "false");
         Environment.SetEnvironmentVariable("ASPIRE_VERSION_CHECK_DISABLED", "true");
         // Nor the person's aspire CLI: the run's own is the only one on its PATH (AspireCli), and makes no certificate.

@@ -32,16 +32,16 @@ public static partial class DevelopmentCertificate
     public static Dictionary<string, string> OverHttp(IReadOnlyDictionary<string, string> environment)
     {
         Dictionary<string, string> changed = new(StringComparer.Ordinal);
-        if (environment.GetValueOrDefault("ASPNETCORE_URLS") is { } urls && urls.Contains("https:", StringComparison.OrdinalIgnoreCase))
+        if (environment.GetValueOrDefault(AspNetCoreVariables.Urls) is { } urls && AspNetCoreVariables.HttpsIn(urls))
         {
-            changed["ASPNETCORE_URLS"] = urls.Replace("https:", "http:", StringComparison.OrdinalIgnoreCase);
+            changed[AspNetCoreVariables.Urls] = AspNetCoreVariables.AsHttp(urls);
         }
-        if (environment.GetValueOrDefault("ASPNETCORE_HTTPS_PORTS") is { Length: > 0 } https)
+        if (environment.GetValueOrDefault(AspNetCoreVariables.HttpsPorts) is { Length: > 0 } https)
         {
-            string http = environment.GetValueOrDefault("ASPNETCORE_HTTP_PORTS") ?? string.Empty;
-            changed["ASPNETCORE_HTTP_PORTS"] = string.Join(';', (http + ";" + https).Split([';', ','],
+            string http = environment.GetValueOrDefault(AspNetCoreVariables.HttpPorts) ?? string.Empty;
+            changed[AspNetCoreVariables.HttpPorts] = string.Join(';', (http + ";" + https).Split([';', ','],
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct());
-            changed["ASPNETCORE_HTTPS_PORTS"] = string.Empty;
+            changed[AspNetCoreVariables.HttpsPorts] = string.Empty;
         }
         return changed;
     }

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Passenger.App.Telemetry;
+using Passenger.Core;
 
 namespace Passenger.App.Containers;
 
@@ -61,17 +62,17 @@ public sealed record ContainerTelemetry(string OtlpKey, string ApiKey)
     /// dashboard, which it depends on, so nothing it sends as it starts is lost.</summary>
     public bool Tell(ComposeService service, JsonObject entry, JsonObject environment)
     {
-        if (service.Environment.ContainsKey("OTEL_EXPORTER_OTLP_ENDPOINT"))
+        if (service.Environment.ContainsKey(OtelVariables.ExporterEndpoint))
         {
             return false;
         }
-        bool http = service.Environment.TryGetValue("OTEL_EXPORTER_OTLP_PROTOCOL", out string? protocol) && protocol.StartsWith("http", StringComparison.OrdinalIgnoreCase);
-        environment["OTEL_EXPORTER_OTLP_ENDPOINT"] = string.Create(CultureInfo.InvariantCulture, $"http://{Service}:{(http ? OtlpHttpPort : OtlpPort)}");
+        bool http = service.Environment.TryGetValue(OtelVariables.ExporterProtocol, out string? protocol) && protocol.StartsWith("http", StringComparison.OrdinalIgnoreCase);
+        environment[OtelVariables.ExporterEndpoint] = string.Create(CultureInfo.InvariantCulture, $"http://{Service}:{(http ? OtlpHttpPort : OtlpPort)}");
         string header = $"x-otlp-api-key={OtlpKey}";
-        environment["OTEL_EXPORTER_OTLP_HEADERS"] = service.Environment.TryGetValue("OTEL_EXPORTER_OTLP_HEADERS", out string? headers) && headers.Length > 0
+        environment[OtelVariables.ExporterHeaders] = service.Environment.TryGetValue(OtelVariables.ExporterHeaders, out string? headers) && headers.Length > 0
             ? $"{headers},{header}" : header;
-        foreach ((string name, string value) in (ReadOnlySpan<(string, string)>)[("OTEL_SERVICE_NAME", service.Name), ("OTEL_BLRP_SCHEDULE_DELAY", "1000"),
-            ("OTEL_BSP_SCHEDULE_DELAY", "1000"), ("OTEL_METRIC_EXPORT_INTERVAL", "1000")])
+        foreach ((string name, string value) in (ReadOnlySpan<(string, string)>)[(OtelVariables.ServiceName, service.Name), (OtelVariables.LogsDelay, "1000"),
+            (OtelVariables.SpansDelay, "1000"), (OtelVariables.MetricsInterval, "1000")])
         {
             if (!service.Environment.ContainsKey(name))
             {

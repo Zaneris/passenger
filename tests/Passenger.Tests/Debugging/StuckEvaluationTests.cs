@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Tests.Debugging.Helpers;
 
@@ -91,7 +92,7 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
     public async Task A_detach_just_after_an_evaluation_began_waits_for_its_end_alone_and_the_program_runs_on()
     {
         ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(Debuggees.Apphost("PassengerCases"), ["lets go"]);
-        start.Environment["DOTNET_DefaultDiagnosticPortSuspend"] = "1";
+        start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
         start.RedirectStandardOutput = true;
         using Process program = Passenger.Core.ChildProcesses.Start(start);
         TaskCompletionSource evaluating = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -137,7 +138,7 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
     public async Task A_detach_after_an_evaluation_that_could_not_be_stopped_is_answered()
     {
         ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(Debuggees.Apphost("PassengerCases"), ["reads"]);
-        start.Environment["DOTNET_DefaultDiagnosticPortSuspend"] = "1";
+        start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
         // An input kept open with nothing in it: the evaluation's read waits on it for good.
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;

@@ -68,7 +68,7 @@ public sealed class McpSessionsTests : McpRig
             second = DebugSessionsTests.Debug(window, "Second");
             string built = Path.Combine(pair, "First", "bin", "Debug", TestProjects.Framework, OperatingSystem.IsWindows() ? "First.exe" : "First");
             System.Diagnostics.ProcessStartInfo start = ChildProcesses.Command(built, []);
-            start.Environment["DOTNET_DefaultDiagnosticPortSuspend"] = "1";
+            start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
             start.RedirectStandardOutput = true;
             program = ChildProcesses.Start(start);
             Task<string> written = program.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);

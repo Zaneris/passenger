@@ -1,4 +1,5 @@
 using Passenger.App.Aspire;
+using Passenger.App.Containers;
 using Passenger.Core;
 using Passenger.Workspace;
 
@@ -117,7 +118,7 @@ public sealed class TestController : IAsyncDisposable
     private RunSummary? ended;
 
     /// <summary>Asks the container engine before a run of a project that references Testcontainers: why it cannot serve
-    /// (not running, no CLI), or the <c>DOCKER_HOST</c> of its current context, for a test host that has none set.</summary>
+    /// (not running, no CLI), or the <see cref="EngineVariables.DockerHost"/> of its current context, for a test host that has none set.</summary>
     public Func<CancellationToken, Task<(string? Problem, string? DockerHost)>>? ContainerEngine { get; set; }
 
     /// <summary>A test to debug: the debugger launches the test host the runner gives and says what process it is.</summary>
@@ -321,7 +322,7 @@ public sealed class TestController : IAsyncDisposable
                         {
                             aspireRuns.Add(aspire);
                             Dictionary<string, string> environment = new(environments[path], StringComparer.Ordinal);
-                            environment.Remove("DEBUG_SESSION_SERVER_CERTIFICATE");
+                            environment.Remove(AspireVariables.DebugSessionCertificate);
                             foreach ((string name, string value) in aspire.Environment)
                             {
                                 environment[name] = value;
@@ -634,15 +635,15 @@ public sealed class TestController : IAsyncDisposable
         return its.Any(a => TestFrames.Draws(a.Path)) ? TestFrames.With(environment) : environment;
     }
 
-    /// <summary>A Testcontainers project's environment with the engine's context's endpoint as <c>DOCKER_HOST</c>, unless its
+    /// <summary>A Testcontainers project's environment with the engine's context's endpoint as <see cref="EngineVariables.DockerHost"/>, unless its
     /// profile or the IDE's environment sets one: Testcontainers reads no Docker context of its own.</summary>
     private static IReadOnlyDictionary<string, string> WithDockerHost(IReadOnlyDictionary<string, string> environment, string? host)
     {
-        if (host is null || environment.ContainsKey("DOCKER_HOST") || Environment.GetEnvironmentVariable("DOCKER_HOST") is { Length: > 0 })
+        if (host is null || environment.ContainsKey(EngineVariables.DockerHost) || Environment.GetEnvironmentVariable(EngineVariables.DockerHost) is { Length: > 0 })
         {
             return environment;
         }
-        return new Dictionary<string, string>(environment) { ["DOCKER_HOST"] = host };
+        return new Dictionary<string, string>(environment) { [EngineVariables.DockerHost] = host };
     }
 
     private static string Tally(RunSummary summary)

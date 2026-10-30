@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Passenger.Core;
 using Passenger.Text;
 using Passenger.Workspace;
 
@@ -128,7 +129,7 @@ public static class LaunchSettingsEdits
         {
             profile["workingDirectory"] = folder;
         }
-        string? urls = project && configuration.BrowserUrl.Length > 0 && configuration.Environment.GetValueOrDefault("ASPNETCORE_URLS") is { } given
+        string? urls = project && configuration.BrowserUrl.Length > 0 && configuration.Environment.GetValueOrDefault(AspNetCoreVariables.Urls) is { } given
             && !string.IsNullOrWhiteSpace(given) ? given : null;
         if (configuration.LaunchBrowser)
         {
@@ -143,7 +144,7 @@ public static class LaunchSettingsEdits
         {
             profile["applicationUrl"] = urls;
         }
-        IEnumerable<KeyValuePair<string, string>> variables = configuration.Environment.Where(v => urls is null || v.Key != "ASPNETCORE_URLS");
+        IEnumerable<KeyValuePair<string, string>> variables = configuration.Environment.Where(v => urls is null || v.Key != AspNetCoreVariables.Urls);
         if (variables.Any())
         {
             profile["environmentVariables"] = new JsonObject(variables.Select(v => KeyValuePair.Create(v.Key, (JsonNode?)JsonValue.Create(v.Value))));
