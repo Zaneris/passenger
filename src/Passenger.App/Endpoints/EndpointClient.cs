@@ -174,7 +174,7 @@ public static class EndpointClient
         string body = call.Body;
         if (call.BodyFile is { } file)
         {
-            // Not held, on a thread of its own: opening a FIFO nothing writes, or a file of a share that never answers, waits for good.
+            // Not held, on a thread of its own: opening or reading a file of a share that never answers waits for good.
             Task<(string? Text, string? Error)> reading = BackgroundWork.UnheldThread(() => ReadText(file));
             try
             {
@@ -316,13 +316,28 @@ public static class EndpointClient
             ? next
             : null;
 
-    /// <summary>A body's file as text, or why it could not be read: past <see cref="MostSent"/> characters too.</summary>
+    /// <summary>A body's file as text, or why it could not be read: past <see cref="MostSent"/> characters, or at once,
+    /// unopened, a FIFO, a device or a socket, whose open or reading may never end.</summary>
     private static (string? Text, string? Error) ReadText(string file)
     {
+        if (FileKinds.Of(file) is { } kind && kind is not (FileKind.File or FileKind.Folder))
+        {
+            return (null, kind switch
+            {
+                FileKind.Fifo => "it is a FIFO, not a regular file",
+                FileKind.Device => "it is a device, not a regular file",
+                FileKind.Socket => "it is a socket, not a regular file",
+                _ => "it is not a regular file",
+            });
+        }
         try
         {
-            using StreamReader reader = new(file, Encoding.UTF8, detectEncodingFromByteOrderMarks: true,
-                new FileStreamOptions { Access = FileAccess.Read, Share = FileShare.ReadWrite | FileShare.Delete });
+            using FileStream stream = new(file, new FileStreamOptions { Access = FileAccess.Read, Share = FileShare.ReadWrite | FileShare.Delete });
+            if (!stream.CanSeek)
+            {
+                return (null, "it is a pipe or a device, not a regular file");
+            }
+            using StreamReader reader = new(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
             StringBuilder text = new();
             char[] chunk = new char[64 * 1024];
             int count;

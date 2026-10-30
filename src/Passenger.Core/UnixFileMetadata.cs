@@ -10,13 +10,15 @@ internal readonly record struct UnixFile(uint Owner, uint Group, uint Links);
 /// <summary>What a macOS or Linux file keeps beside its bytes and mode, given to the file written to take its place as an
 /// edit in place would have kept it: its owner and group where the process may set them (another user's owner only for
 /// root, a group only one the person is in), and its extended attributes and access control list as far as the volume
-/// holds them (macOS's copyfile(3); on Linux each attribute, the ACL being system.posix_acl_access). None of these calls
-/// is variadic, so arm64 macOS passes each argument where its fixed signature says.</summary>
+/// holds them (macOS's copyfile(3); on Linux each attribute, the ACL being system.posix_acl_access); and the type of
+/// what a path names, which no .NET call tells. None of these calls is variadic, so arm64 macOS passes each argument
+/// where its fixed signature says.</summary>
 internal static unsafe partial class UnixFileMetadata
 {
     private const int AtWorkingFolder = -100;
     private const int NoFollow = 0x100;
     private const uint WantedStatus = 0x1 | 0x2 | 0x4 | 0x8 | 0x10;
+    private const uint WantedType = 0x1;
     private const int TypeBits = 0xF000;
     private const int RegularFile = 0x8000;
 
@@ -55,6 +57,32 @@ internal static unsafe partial class UnixFileMetadata
             return null;
         }
         return new UnixFile(*(uint*)(status + 16), *(uint*)(status + 20), *(ushort*)(status + 6));
+    }
+
+    /// <summary>The type bits (S_IFMT's) of what a path names, links followed, read without opening it; null where nothing
+    /// is there, on Windows, and on a Linux whose C library has no statx.</summary>
+    public static int? TypeOf(string path)
+    {
+        byte* status = stackalloc byte[256];
+        if (OperatingSystem.IsLinux())
+        {
+            try
+            {
+                return StatX(AtWorkingFolder, path, 0, WantedType, status) == 0 && (*(uint*)status & WantedType) != 0
+                    ? *(ushort*)(status + 28) & TypeBits
+                    : null;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                return null;
+            }
+        }
+        if (!OperatingSystem.IsMacOS())
+        {
+            return null;
+        }
+        int read = RuntimeInformation.ProcessArchitecture == Architecture.X64 ? MacFollowedStatusX64(path, status) : MacFollowedStatus(path, status);
+        return read == 0 ? *(ushort*)(status + 4) & TypeBits : null;
     }
 
     /// <summary>Gives the file being written, open as <paramref name="written"/> at <paramref name="writtenPath"/>, what the
@@ -152,6 +180,12 @@ internal static unsafe partial class UnixFileMetadata
 
     [LibraryImport("libc", EntryPoint = "lstat$INODE64", StringMarshalling = StringMarshalling.Utf8)]
     private static partial int MacStatusX64(string path, byte* status);
+
+    [LibraryImport("libc", EntryPoint = "stat", StringMarshalling = StringMarshalling.Utf8)]
+    private static partial int MacFollowedStatus(string path, byte* status);
+
+    [LibraryImport("libc", EntryPoint = "stat$INODE64", StringMarshalling = StringMarshalling.Utf8)]
+    private static partial int MacFollowedStatusX64(string path, byte* status);
 
     [LibraryImport("libc", EntryPoint = "fchown")]
     private static partial int ChangeOwner(int descriptor, uint owner, uint group);
