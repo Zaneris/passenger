@@ -10,6 +10,8 @@ namespace Passenger.App.CSharp;
 /// type pulled up to, or the class pushed down from), none of them chosen at first.</summary>
 public sealed class MembersMoveDialog : RefactoringDialog
 {
+    private const string Columns = "*,120";
+
     private readonly bool up;
     private readonly Hierarchy hierarchy;
     private readonly Func<string, IReadOnlyList<string>, IReadOnlyList<string>, Task<string?>> make;
@@ -53,12 +55,7 @@ public sealed class MembersMoveDialog : RefactoringDialog
             options.Children.Add(new Border { Padding = new Thickness(8, 0), Child = list });
         }
 
-        Grid header = Table();
-        header.Children.Add(Muted("Members", 0));
-        header.Children.Add(Muted("Make abstract", 1));
-        Border headerFrame = new() { Child = header, BorderThickness = new Thickness(0, 0, 0, 1) };
-        headerFrame.Bind(Border.BorderBrushProperty, headerFrame.GetResourceObservable(TokenKeys.Separator));
-        DockPanel.SetDock(headerFrame, Dock.Top);
+        ColumnTitles titles = ColumnTitles.Of(Columns, ["Members", "Make abstract"]);
         StackPanel rows = new() { Margin = new Thickness(0, 4) };
         foreach (Member member in hierarchy.Members)
         {
@@ -67,7 +64,7 @@ public sealed class MembersMoveDialog : RefactoringDialog
             moved.IsCheckedChanged += (_, _) => Changed();
             made.IsCheckedChanged += (_, _) => Changed();
             Grid.SetColumn(made, 1);
-            Grid row = Table();
+            Grid row = new() { ColumnDefinitions = new ColumnDefinitions(Columns) };
             row.Children.Add(moved);
             row.Children.Add(made);
             members.Add((member, moved, made));
@@ -77,7 +74,7 @@ public sealed class MembersMoveDialog : RefactoringDialog
         {
             Classes = { "framed" },
             ClipToBounds = true,
-            Child = new DockPanel { Children = { headerFrame, new ScrollViewer { Content = rows, MaxHeight = 260, MinHeight = 100 } } },
+            Child = new DockPanel { Children = { titles, new ScrollViewer { Content = rows, MaxHeight = 260, MinHeight = 100 } } },
         };
         options.Children.Add(new TextBlock { Text = up ? "Members to pull up:" : "Members to push down:" });
         options.Children.Add(tableFrame);
@@ -125,15 +122,5 @@ public sealed class MembersMoveDialog : RefactoringDialog
             : string.Join("\n", inheritors.Where(i => i.Box.IsChecked == true).Select(i => i.Type.Id));
         return make(target, [.. members.Where(m => m.Moved.IsChecked == true).Select(m => m.Member.Id)],
             [.. members.Where(m => m.Moved.IsChecked == true && m.Abstract.IsChecked == true).Select(m => m.Member.Id)]);
-    }
-
-    private static Grid Table() => new() { ColumnDefinitions = new ColumnDefinitions("*,120") };
-
-    private static TextBlock Muted(string text, int column)
-    {
-        TextBlock block = MutedText.Of(text);
-        block.Margin = new Thickness(8, 5);
-        Grid.SetColumn(block, column);
-        return block;
     }
 }

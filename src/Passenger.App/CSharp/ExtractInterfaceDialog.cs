@@ -50,15 +50,11 @@ public sealed class ExtractInterfaceDialog : RefactoringDialog
         SelectAllButton.Click += (_, _) => Check(true);
         SelectNoneButton.Click += (_, _) => Check(false);
 
-        TextBlock membersTitle = new() { Text = "Members", Classes = { "muted" }, Margin = new Thickness(8, 5) };
-        Border titleFrame = new() { Child = membersTitle, BorderThickness = new Thickness(0, 0, 0, 1) };
-        titleFrame.Bind(Border.BorderBrushProperty, titleFrame.GetResourceObservable(TokenKeys.Separator));
-        DockPanel.SetDock(titleFrame, Dock.Top);
         Border listFrame = new()
         {
             Classes = { "framed" },
             ClipToBounds = true,
-            Child = new DockPanel { Children = { titleFrame, new ScrollViewer { Content = list, MaxHeight = 240, MinHeight = 100 } } },
+            Child = new DockPanel { Children = { ColumnTitles.Of("*", ["Members"]), new ScrollViewer { Content = list, MaxHeight = 240, MinHeight = 100 } } },
         };
 
         Options = new StackPanel

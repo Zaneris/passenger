@@ -22,29 +22,21 @@ public sealed class TableViewer
 
     public TableViewer()
     {
-        Bar = new Border
+        Bar = ToolWindows.ToolBars.OverEditor(new DockPanel
         {
-            [DockPanel.DockProperty] = Dock.Top,
-            Height = 32,
-            Padding = new Thickness(8, 0),
-            IsVisible = false,
-            Child = new DockPanel
+            Margin = new Thickness(8, 0),
+            Children =
             {
-                Children =
+                new Border { [DockPanel.DockProperty] = Dock.Right, Child = size, Margin = new Thickness(12, 0, 0, 0) },
+                new ScrollViewer
                 {
-                    new Border { [DockPanel.DockProperty] = Dock.Right, Child = size, Margin = new Thickness(12, 0, 0, 0) },
-                    new ScrollViewer
-                    {
-                        HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,
-                        VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                        Content = new StackPanel { Orientation = Orientation.Horizontal, Children = { choices, header } },
-                    },
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    Content = new StackPanel { Orientation = Orientation.Horizontal, Children = { choices, header } },
                 },
             },
-        };
-        Bar.Bind(Border.BackgroundProperty, Bar.GetResourceObservable(TokenKeys.Panel));
-        Bar.Bind(Border.BorderBrushProperty, Bar.GetResourceObservable(TokenKeys.Divider));
-        Bar.BorderThickness = new Thickness(0, 0, 0, 1);
+        });
+        Bar.IsVisible = false;
         header.IsCheckedChanged += (_, _) =>
         {
             if (!painting && file is not null)

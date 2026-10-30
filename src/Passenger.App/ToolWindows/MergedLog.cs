@@ -28,10 +28,7 @@ public sealed class MergedLog : DockPanel
         {
             right.Children.Add(control);
         }
-        DockPanel bar = new() { [DockProperty] = Dock.Top, Height = 32, Margin = new Thickness(8, 0) };
-        bar.Children.Add(right);
-        bar.Children.Add(sources);
-        Children.Add(bar);
+        Children.Add(ToolBars.Top(new DockPanel { Margin = new Thickness(8, 0), Children = { right, sources } }));
         Children.Add(Console);
     }
 

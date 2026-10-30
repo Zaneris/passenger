@@ -605,14 +605,14 @@ public sealed class TelemetryView : IDisposable
     }
 
     /// <summary>A page's bar: what it says, its buttons at the right.</summary>
-    private static DockPanel PageBar(TextBlock said, params Button[] buttons)
+    private static Border PageBar(TextBlock said, params Button[] buttons)
     {
         StackPanel right = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, [DockPanel.DockProperty] = Dock.Right };
         foreach (Button button in buttons)
         {
             right.Children.Add(button);
         }
-        return new DockPanel { Height = 32, Margin = new Thickness(8, 0), Children = { right, said } };
+        return ToolBars.Top(new DockPanel { Margin = new Thickness(8, 0), Children = { right, said } });
     }
 
     private static ListBox List<T>(ObservableCollection<RunItem<T>> items, Func<T, string> text, string name)

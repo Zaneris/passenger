@@ -119,15 +119,14 @@ public sealed class MemoryView : DockPanel
 
         crumbs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
         actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, [DockProperty] = Dock.Right };
-        DockPanel head = new() { Margin = new Thickness(12, 4, 8, 0), Height = 30 };
-        head.Children.Add(actions);
-        head.Children.Add(crumbs);
+        // The trail and its actions a bar's height, what the page shows under them.
+        DockPanel head = new() { Margin = new Thickness(12, 0, 8, 0), MinHeight = ToolBars.Height, Children = { actions, crumbs } };
         summary = Muted(string.Empty);
         summary.Margin = new Thickness(12, 0, 12, 6);
         summary.TextWrapping = TextWrapping.Wrap;
-        StackPanel top = new() { [DockProperty] = Dock.Top, Children = { head, summary } };
+        Border top = ToolBars.Top(new StackPanel { Children = { head, summary } });
 
-        Table typeTable = new(("Type", 0), ("Objects", NumberWidth), ("Bytes", NumberWidth), ("Retained bytes", NumberWidth + 16));
+        ColumnTitles typeTable = ColumnTitles.OfNumbers(("Type", 0), ("Objects", NumberWidth), ("Bytes", NumberWidth), ("Retained bytes", NumberWidth + 16));
         types = List(() =>
         {
             (TextBlock name, TextBlock[] numbers) = (Cell(), Numbers(3));
@@ -138,9 +137,9 @@ public sealed class MemoryView : DockPanel
             });
         });
         OnEnter(types, OpenType);
-        typePage = Framed(typeTable.Header(SortTypes), types);
+        typePage = Framed(typeTable.Sorting(SortTypes), types);
 
-        Table deltaTable = new(("Type", 0), ("Objects delta", NumberWidth), ("Bytes delta", NumberWidth), ("New objects", NumberWidth),
+        ColumnTitles deltaTable = ColumnTitles.OfNumbers(("Type", 0), ("Objects delta", NumberWidth), ("Bytes delta", NumberWidth), ("New objects", NumberWidth),
             ("New bytes", NumberWidth), ("Dead objects", NumberWidth), ("Dead bytes", NumberWidth), ("Survived objects", NumberWidth + 16));
         deltas = List(() =>
         {
@@ -153,9 +152,9 @@ public sealed class MemoryView : DockPanel
             });
         });
         OnEnter(deltas, () => OpenDelta(Kind.New));
-        deltaPage = Framed(deltaTable.Header(SortDeltas), deltas);
+        deltaPage = Framed(deltaTable.Sorting(SortDeltas), deltas);
 
-        Table objectTable = new(("Object", 0), ("Bytes", NumberWidth), ("Retained bytes", NumberWidth + 16));
+        ColumnTitles objectTable = ColumnTitles.OfNumbers(("Object", 0), ("Bytes", NumberWidth), ("Retained bytes", NumberWidth + 16));
         objects = List(() =>
         {
             Avalonia.Controls.Documents.Run type = new();
@@ -174,9 +173,9 @@ public sealed class MemoryView : DockPanel
             });
         });
         OnEnter(objects, OpenObject);
-        objectsPage = Framed(objectTable.Header(null), objects);
+        objectsPage = Framed(objectTable, objects);
 
-        Table pathTable = new(("Path", 0), ("Objects", NumberWidth), ("Retained bytes", NumberWidth + 16));
+        ColumnTitles pathTable = ColumnTitles.OfNumbers(("Path", 0), ("Objects", NumberWidth), ("Retained bytes", NumberWidth + 16));
         paths = List(() =>
         {
             TextBlock[] numbers = Numbers(2);
@@ -184,9 +183,9 @@ public sealed class MemoryView : DockPanel
         });
         paths.ItemsSource = pathRows;
         TreeKeys.Attach<RetentionRow>(paths, Toggle);
-        pathsPage = Framed(pathTable.Header(null), paths);
+        pathsPage = Framed(pathTable, paths);
 
-        Table keyTable = new(("Key retention path", 0), ("Objects", NumberWidth), ("Retained bytes", NumberWidth + 16));
+        ColumnTitles keyTable = ColumnTitles.OfNumbers(("Key retention path", 0), ("Objects", NumberWidth), ("Retained bytes", NumberWidth + 16));
         keyPaths = List(() =>
         {
             (TextBlock name, TextBlock[] numbers) = (Cell(), Numbers(2));
@@ -196,7 +195,7 @@ public sealed class MemoryView : DockPanel
                 Put(numbers, $"{path.Objects:N0}", Size(path.RetainedBytes));
             });
         });
-        keyPathsPage = Framed(keyTable.Header(null), keyPaths);
+        keyPathsPage = Framed(keyTable, keyPaths);
 
         setTabs = [Tab("Objects", 0), Tab("Shortest Paths to Roots", 1), Tab("Key Retention Paths", 2)];
         StackPanel tabs = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 0, 8, 4), [DockProperty] = Dock.Top };
@@ -651,12 +650,7 @@ public sealed class MemoryView : DockPanel
         return list;
     }
 
-    private static DockPanel Framed(Control header, ListBox list)
-    {
-        Border band = new() { [DockProperty] = Dock.Top, BorderThickness = new Thickness(0, 0, 0, 1), Child = header, Padding = new Thickness(0, 0, 0, 3) };
-        band.Bind(Border.BorderBrushProperty, band.GetResourceObservable(TokenKeys.Divider));
-        return new DockPanel { Children = { band, list } };
-    }
+    private static DockPanel Framed(ColumnTitles titles, ListBox list) => new() { Children = { titles, list } };
 
     /// <summary>A step of the paths for whichever row the list hands its container: its chevron, and what it is (a root's
     /// kind strong before its name).</summary>
@@ -766,46 +760,6 @@ public sealed class MemoryView : DockPanel
         < 0 => $"−{format(-value)}",
         _ => "0",
     };
-
-    /// <summary>A list's columns: the first takes what the others leave.</summary>
-    private sealed class Table(params (string Title, double Width)[] columns)
-    {
-        private ColumnDefinitions Definitions() => new(string.Join(",", columns.Select(c => c.Width == 0 ? "*" : $"{c.Width}")));
-
-        public Control Header(Action<int>? sort)
-        {
-            // The list's padding and its rows', so the titles stand over their columns.
-            Grid header = new() { ColumnDefinitions = Definitions(), Margin = new Thickness(10, 0) };
-            for (int i = 0; i < columns.Length; i++)
-            {
-                TextBlock title = Muted(columns[i].Title);
-                title.TextAlignment = i == 0 ? TextAlignment.Left : TextAlignment.Right;
-                title.HorizontalAlignment = i == 0 ? HorizontalAlignment.Left : HorizontalAlignment.Right;
-                Control cell = title;
-                if (sort is not null)
-                {
-                    int column = i;
-                    Button button = new() { Classes = { "crumb" }, Content = title, HorizontalAlignment = title.HorizontalAlignment, Padding = new Thickness(0) };
-                    button.Click += (_, _) => sort(column);
-                    cell = button;
-                }
-                Grid.SetColumn(cell, i);
-                header.Children.Add(cell);
-            }
-            return header;
-        }
-
-        public Grid Row(params Control[] cells)
-        {
-            Grid row = new() { ColumnDefinitions = Definitions(), Height = ListRow.Height };
-            for (int i = 0; i < cells.Length; i++)
-            {
-                Grid.SetColumn(cells[i], i);
-                row.Children.Add(cells[i]);
-            }
-            return row;
-        }
-    }
 
     private abstract record Page(string Crumb)
     {

@@ -1876,8 +1876,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     }
 
     /// <summary>Every tool window's bars are the shared pieces, ToolBars.Top along its top and ToolBars.Side down its left,
-    /// so each is one height, one width and one rule: a bar built by hand (a fixed height over a rule, a strip down the left
-    /// beside one, a ToolColumn of its own) fails here, naming its line.</summary>
+    /// so each is one height, one width and one rule, and a banner over what it speaks of is Banner: a bar built by hand (a
+    /// fixed height over a rule or docked at the top, a strip down the left beside one, a ToolColumn of its own) fails here,
+    /// naming its line.</summary>
     [Gate]
     [Fact]
     public void Every_tool_windows_bars_are_the_shared_top_and_side_bars()
@@ -1897,9 +1898,11 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 string own = Initializer(text, match.Index + match.Length);
                 Match width = Regex.Match(own, @"\bWidth\s*=\s*(\d+)\b");
                 bool narrow = !width.Success || int.Parse(width.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) <= 48;
-                // Over a rule with a height of its own, or docked at the top with no padding (a table's header band has some).
-                bool top = own.Contains("Thickness(0, 0, 0, 1)", StringComparison.Ordinal)
-                    && (Regex.IsMatch(own, @"\bHeight\s*=\s*\d") || (own.Contains("Dock.Top", StringComparison.Ordinal) && !own.Contains("Padding", StringComparison.Ordinal)));
+                // Over a rule with a height or docked with no padding (a table's band has some), or docked with a height of its own.
+                bool docked = own.Contains("Dock.Top", StringComparison.Ordinal);
+                bool high = Regex.IsMatch(own, @"\bHeight\s*=\s*\d");
+                bool top = (own.Contains("Thickness(0, 0, 0, 1)", StringComparison.Ordinal) && (high || (docked && !own.Contains("Padding", StringComparison.Ordinal))))
+                    || (docked && high && !DiffsBar(path));
                 bool side = own.Contains("Dock.Left", StringComparison.Ordinal) && narrow
                     && (own.Contains("Thickness(0, 0, 1, 0)", StringComparison.Ordinal) || (width.Success && own.Contains("Child", StringComparison.Ordinal)));
                 if (top || side)
@@ -1913,26 +1916,64 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             }
         }
         Assert.True(found.Count == 0, $"{found.Count} tool window bars are built by hand, so their heights, widths and rules drift apart: make each with "
-            + $"ToolBars.Top or ToolBars.Side:\n{string.Join("\n", found)}");
+            + $"ToolBars.Top or ToolBars.Side (ToolBars.OverEditor over an editor, Banner for a line of words on the banner's tint):\n{string.Join("\n", found)}");
 
-        // An object initializer's own settings, from after its brace to its end, less the initializers inside it.
-        static string Initializer(string text, int from)
+        // The diff window's bar over its two editors, a height of its own, not yet ToolBars.OverEditor.
+        static bool DiffsBar(string path) => path.EndsWith("Vcs/DiffLines.cs", StringComparison.Ordinal);
+    }
+
+    /// <summary>A table's column titles are one piece, ColumnTitles, so every table's are one size and height over one rule:
+    /// a grid of titles or a title docked at a table's top over a rule of its own fails here, naming its line.</summary>
+    [Gate]
+    [Fact]
+    public void Every_tables_column_titles_are_ColumnTitles()
+    {
+        Regex made = new(@"\bnew(?:\s+Border)?\s*(?:\(\))?\s*\{");
+        List<string> found = [];
+        foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal) && !f.Path.EndsWith("/ColumnTitles.cs", StringComparison.Ordinal)))
         {
-            System.Text.StringBuilder own = new();
-            int depth = 1;
-            for (int i = from; i < text.Length && depth > 0; i++)
+            foreach (Match match in made.Matches(text))
             {
-                depth += text[i] switch { '{' => 1, '}' => -1, _ => 0 };
-                if (depth == 1 && text[i] != '}')
+                string own = Initializer(text, match.Index + match.Length);
+                if (!own.Contains("Thickness(0, 0, 0, 1)", StringComparison.Ordinal) || Regex.Match(own, @"\bChild\s*=\s*(\w+)") is not { Success: true } child)
                 {
-                    own.Append(text[i]);
+                    continue;
+                }
+                // What it holds is titles: a Grid or a TextBlock, made there or declared before it.
+                string held = child.Groups[1].Value;
+                bool titles = Regex.IsMatch(own, @"\bChild\s*=\s*new\s+(?:Grid|TextBlock)\b")
+                    || Regex.IsMatch(text, $@"\b(?:Grid|TextBlock)\s+{Regex.Escape(held)}\s*=");
+                // Docked at the top there, or by its name after.
+                Match named = Regex.Match(text[..match.Index], @"(\w+)\s*=\s*$");
+                bool docked = own.Contains("Dock.Top", StringComparison.Ordinal)
+                    || (named.Success && Regex.IsMatch(text, $@"(?:SetDock|Docked)\(\s*{Regex.Escape(named.Groups[1].Value)}\s*,\s*Dock\.Top\)"));
+                if (titles && docked)
+                {
+                    found.Add($"{path}:{LineOf(text, match.Index)}");
                 }
             }
-            return own.ToString();
         }
-
-        static int LineOf(string text, int at) => text.AsSpan(0, at).Count('\n') + 1;
+        Assert.True(found.Count == 0, $"{found.Count} tables' column titles are built by hand over a rule, so their sizes, heights and rules drift apart: "
+            + $"make each with ColumnTitles.Of:\n{string.Join("\n", found)}");
     }
+
+    /// <summary>An object initializer's own settings, from after its brace to its end, less the initializers inside it.</summary>
+    private static string Initializer(string text, int from)
+    {
+        System.Text.StringBuilder own = new();
+        int depth = 1;
+        for (int i = from; i < text.Length && depth > 0; i++)
+        {
+            depth += text[i] switch { '{' => 1, '}' => -1, _ => 0 };
+            if (depth == 1 && text[i] != '}')
+            {
+                own.Append(text[i]);
+            }
+        }
+        return own.ToString();
+    }
+
+    private static int LineOf(string text, int at) => text.AsSpan(0, at).Count('\n') + 1;
 
     /// <summary>A colour that is the content's own, not the window's, so no look has a token for it.</summary>
     private static bool ContentsColour(string path, string match) => (path, match) switch

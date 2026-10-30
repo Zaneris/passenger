@@ -165,9 +165,7 @@ public sealed class OutputView : DockPanel
 
     /// <summary>The bar over the console saying why its program is not running though its run goes on, and its words; made
     /// the first time it is shown.</summary>
-    private Border? waiting;
-
-    private TextBlock? waitingWords;
+    private Banner? waiting;
 
     private Button? waitingRerun;
 
@@ -178,54 +176,22 @@ public sealed class OutputView : DockPanel
         UiThread.Check();
         if (said is null)
         {
-            if (waiting is not null)
-            {
-                waiting.IsVisible = false;
-            }
+            waiting?.Say(null);
             return;
         }
-        if (waiting is null || waitingWords is null || waitingRerun is null)
+        if (waiting is null || waitingRerun is null)
         {
-            waitingWords = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
-            waitingRerun = Link("Rerun", () => RerunClicked);
-            waiting = new Border
-            {
-                [DockProperty] = Dock.Top,
-                Height = 28,
-                Child = new DockPanel { Children = { Link("Stop", () => StopClicked), waitingRerun, waitingWords } },
-            };
-            // Its own tint tells it from the output under it, with no rule between.
-            waiting.Bind(Border.BackgroundProperty, waiting.GetResourceObservable(TokenKeys.Banner));
+            waiting = new Banner();
+            waiting.Link("Stop", () => StopClicked?.Invoke(this, EventArgs.Empty));
+            waitingRerun = waiting.Link("Rerun", () => RerunClicked?.Invoke(this, EventArgs.Empty));
             Children.Insert(Children.IndexOf(body), waiting);
         }
-        waitingWords.Text = said;
-        // Narrower than its words, the bar shows the rest when the pointer rests on them.
-        ToolTip.SetTip(waitingWords, said);
+        waiting.Say(said);
         waitingRerun.IsVisible = rerun;
-        waiting.IsVisible = true;
-
-        Button Link(string words, Func<EventHandler?> clicked)
-        {
-            Button link = new()
-            {
-                Classes = { "link" },
-                Content = words,
-                FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 12, 0),
-                [DockProperty] = Dock.Right,
-            };
-            link.Click += (_, e) =>
-            {
-                e.Handled = true;
-                clicked()?.Invoke(this, EventArgs.Empty);
-            };
-            return link;
-        }
     }
 
     /// <summary>What the bar over the console says of its program, null while it shows none.</summary>
-    public string? Waiting => waiting is { IsVisible: true } ? waitingWords?.Text : null;
+    public string? Waiting => waiting?.Said;
 
     /// <summary>A program's text as it reached the console, its colour codes gone, a batch at a time.</summary>
     public event EventHandler<string>? Written;

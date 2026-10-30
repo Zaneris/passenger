@@ -25,6 +25,12 @@ public sealed class ConflictsDialog : IdeWindow
 {
     private const double StatusWidth = 170;
 
+    /// <summary>The name's column, then yours and theirs.</summary>
+    private static readonly string ColumnWidths = $"*,{StatusWidth},{StatusWidth}";
+
+    /// <summary>Where a cell's words start in its column.</summary>
+    private const double CellInset = 8;
+
     private readonly VcsController vcs;
     private readonly Func<GitConflict, Task> merge;
     private readonly ObservableCollection<ConflictRow> rows = [];
@@ -49,19 +55,9 @@ public sealed class ConflictsDialog : IdeWindow
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
         description = new TextBlock { [DockPanel.DockProperty] = Avalonia.Controls.Dock.Top, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10) };
-        yoursColumn = Column(string.Empty, 1);
-        theirsColumn = Column(string.Empty, 2);
-        Grid header = new()
-        {
-            [DockPanel.DockProperty] = Avalonia.Controls.Dock.Top,
-            ColumnDefinitions = new ColumnDefinitions($"*,{StatusWidth},{StatusWidth}"),
-            Height = ListRow.Height,
-            // Level with the rows, which the list and its items pad.
-            Margin = new Thickness(10, 0),
-            Children = { Column("Name", 0), yoursColumn, theirsColumn },
-        };
-        Border underHeader = new() { Child = header, BorderThickness = new Thickness(0, 0, 0, 1), [DockPanel.DockProperty] = Avalonia.Controls.Dock.Top };
-        underHeader.Bind(Border.BorderBrushProperty, underHeader.GetResourceObservable(TokenKeys.Separator));
+        ColumnTitles titles = ColumnTitles.Of(ColumnWidths, ["Name", string.Empty, string.Empty], ColumnTitles.OverList, CellInset);
+        yoursColumn = titles.Titles[1];
+        theirsColumn = titles.Titles[2];
         list = new ListBox
         {
             Classes = { "tree" },
@@ -83,7 +79,7 @@ public sealed class ConflictsDialog : IdeWindow
         {
             Classes = { "framed" },
             ClipToBounds = true,
-            Child = new DockPanel { Children = { underHeader, list } },
+            Child = new DockPanel { Children = { titles, list } },
         };
 
         acceptYours = ActionButton("Accept Yours", () => AcceptAsync(yours: true));
@@ -210,10 +206,10 @@ public sealed class ConflictsDialog : IdeWindow
         name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(TokenKeys.Vcs_File_Conflicted));
         TextBlock folder = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
         folder.Classes.Add("muted");
-        StackPanel file = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 0, 0, 0), Children = { icon, name, folder } };
+        StackPanel file = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(CellInset, 0, 0, 0), Children = { icon, name, folder } };
         TextBlock yours = Status(1);
         TextBlock theirs = Status(2);
-        Grid line = new() { ColumnDefinitions = new ColumnDefinitions($"*,{StatusWidth},{StatusWidth}"), Height = ListRow.Height, Children = { file, yours, theirs } };
+        Grid line = new() { ColumnDefinitions = new ColumnDefinitions(ColumnWidths), Height = ListRow.Height, Children = { file, yours, theirs } };
         return line.Showing<ConflictRow>(row =>
         {
             icon.Data = Explorer.FileIcons.ForFile(row.Conflict.Path);
@@ -226,17 +222,10 @@ public sealed class ConflictsDialog : IdeWindow
 
         static TextBlock Status(int column)
         {
-            TextBlock status = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+            TextBlock status = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(CellInset, 0, 0, 0) };
             Grid.SetColumn(status, column);
             return status;
         }
-    }
-
-    private static TextBlock Column(string text, int column)
-    {
-        TextBlock title = new() { Text = text, FontWeight = FontWeight.SemiBold, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(column == 0 ? 6 : 8, 0, 0, 0) };
-        Grid.SetColumn(title, column);
-        return title;
     }
 
     private static Button ActionButton(string label, Func<Task> run)

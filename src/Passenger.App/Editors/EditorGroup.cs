@@ -54,8 +54,7 @@ public sealed class EditorGroup : DockPanel
     private readonly Grid body;
     private HairlineDivider? divider;
     private Control? side;
-    private readonly Border banner;
-    private readonly TextBlock bannerText;
+    private readonly Banner banner = new();
     private readonly Button bannerLink;
     private EditorTab? active;
 
@@ -104,34 +103,9 @@ public sealed class EditorGroup : DockPanel
                 },
             },
         };
-        bannerText = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
-        bannerLink = new Button
-        {
-            Name = "BannerLink",
-            Classes = { "link" },
-            FontSize = 12,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 12, 0),
-            IsVisible = false,
-            [DockProperty] = Dock.Right,
-        };
-        bannerLink.Click += (_, e) =>
-        {
-            e.Handled = true;
-            if (active?.Document.NoticeAction is { } action)
-            {
-                action.Run();
-            }
-        };
-        banner = new Border
-        {
-            [DockProperty] = Dock.Top,
-            Height = 28,
-            IsVisible = false,
-            Child = new DockPanel { Children = { bannerLink, bannerText } },
-        };
-        // Its own tint tells it from the editor under it, with no rule between.
-        banner.Bind(Border.BackgroundProperty, banner.GetResourceObservable(TokenKeys.Banner));
+        bannerLink = banner.Link(null, () => active?.Document.NoticeAction?.Run());
+        bannerLink.Name = "BannerLink";
+        bannerLink.IsVisible = false;
         Children.Add(tabBar);
         Children.Add(banner);
         Children.Add(Find);
@@ -454,16 +428,13 @@ public sealed class EditorGroup : DockPanel
     private void ShowBanner(OpenDocument document)
     {
         string[] said = [.. new[] { document.IsReadOnly ? document.Origin : null, document.Notice, document.EncodingWarning }.OfType<string>()];
-        banner.IsVisible = said.Length > 0;
-        bannerText.Text = string.Join("  ·  ", said);
-        // Narrower than the banner's words, the editor shows the rest when the pointer rests on it.
-        ToolTip.SetTip(bannerText, said.Length > 0 ? bannerText.Text : null);
+        banner.Say(said.Length > 0 ? string.Join("  ·  ", said) : null);
         bannerLink.IsVisible = document.Notice is not null && document.NoticeAction is not null;
         bannerLink.Content = document.NoticeAction?.Text;
     }
 
     /// <summary>What the banner over the file shown says, null while it shows none.</summary>
-    public string? BannerText => banner.IsVisible ? bannerText.Text : null;
+    public string? BannerText => banner.Said;
 
     /// <summary>The link the banner offers after what it says, null while it offers none.</summary>
     public string? BannerLink => banner.IsVisible && bannerLink.IsVisible ? bannerLink.Content as string : null;

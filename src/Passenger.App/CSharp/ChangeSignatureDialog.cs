@@ -47,21 +47,14 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         UpButton.Click += (_, _) => Shift(-1);
         DownButton.Click += (_, _) => Shift(1);
 
-        Grid header = new() { ColumnDefinitions = new ColumnDefinitions(Columns), Margin = new Thickness(0, 0, 0, 1) };
-        string[] titles = ["Modifier", "Type", "Name", "Default value"];
-        for (int i = 0; i < titles.Length; i++)
-        {
-            TextBlock title = new() { Text = titles[i], Classes = { "muted" }, Margin = new Thickness(8, 5) };
-            Grid.SetColumn(title, i);
-            header.Children.Add(title);
-        }
-        Border headerFrame = new() { Child = header, BorderThickness = new Thickness(0, 0, 0, 1) };
-        headerFrame.Bind(Border.BorderBrushProperty, headerFrame.GetResourceObservable(TokenKeys.Separator));
         Border tableFrame = new()
         {
             Classes = { "framed" },
             ClipToBounds = true,
-            Child = new DockPanel { Children = { Docked(headerFrame, Dock.Top), new ScrollViewer { Content = table, MaxHeight = 220, MinHeight = 120 } } },
+            Child = new DockPanel
+            {
+                Children = { ColumnTitles.Of(Columns, ["Modifier", "Type", "Name", "Default value"]), new ScrollViewer { Content = table, MaxHeight = 220, MinHeight = 120 } },
+            },
         };
 
         Border previewFrame = new() { Classes = { "framed" }, Padding = new Thickness(10, 8), Child = preview };

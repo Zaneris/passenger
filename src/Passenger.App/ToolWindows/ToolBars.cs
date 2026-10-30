@@ -24,6 +24,15 @@ public static class ToolBars
         return bar;
     }
 
+    /// <summary>A top bar over an editor (a table's, a XAML preview's), on a tool window's ground, which tells it from the
+    /// editor's by shade.</summary>
+    public static Border OverEditor(Control content)
+    {
+        Border bar = Top(content);
+        bar.Bind(Border.BackgroundProperty, bar.GetResourceObservable(TokenKeys.Panel));
+        return bar;
+    }
+
     /// <summary>A bar down a window's left, docked there, its buttons from the top and those with no room behind More
     /// (<see cref="ToolColumn"/>), its rule at its right.</summary>
     public static Border Side(params Control[] buttons)

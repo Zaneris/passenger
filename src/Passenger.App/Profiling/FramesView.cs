@@ -78,25 +78,21 @@ public sealed class FramesView : DockPanel
         };
         band.Bind(Border.BorderBrushProperty, band.GetResourceObservable(TokenKeys.Divider));
 
-        (string Title, double Width)[] columns = [("Control", 0), ("Own time", NumberWidth), ("Measures", NumberWidth), ("Measure time", NumberWidth),
-            ("Arranges", NumberWidth), ("Arrange time", NumberWidth + 16)];
-        Grid header = Row(columns, [.. columns.Select((c, i) => (Control)Title(c.Title, i == 0))]);
-        header.Margin = new Thickness(10, 4, 10, 0);
-        Border heading = new() { [DockProperty] = Dock.Top, BorderThickness = new Thickness(0, 0, 0, 1), Child = header, Padding = new Thickness(0, 0, 0, 3) };
-        heading.Bind(Border.BorderBrushProperty, heading.GetResourceObservable(TokenKeys.Divider));
+        ColumnTitles titles = ColumnTitles.OfNumbers(("Control", 0), ("Own time", NumberWidth), ("Measures", NumberWidth), ("Measure time", NumberWidth),
+            ("Arranges", NumberWidth), ("Arrange time", NumberWidth + 16));
         table = new ListBox
         {
             Classes = { "tree" },
             ItemsSource = rows,
         };
-        ReusedRows.Use(table, () => RowOf(columns));
+        ReusedRows.Use(table, () => RowOf(titles));
         table.Styles.Add(new Style(x => x.OfType<ListBoxItem>())
         {
             Setters = { new Setter(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch) },
         });
         table.DoubleTapped += (_, _) => Open();
         TreeKeys.Attach<LayoutRow>(table, Toggle, OpenControl);
-        shown = new DockPanel { Children = { band, heading, table } };
+        shown = new DockPanel { Children = { band, titles, table } };
         placeholder = Muted(NoFrames);
         placeholder.HorizontalAlignment = HorizontalAlignment.Center;
         placeholder.VerticalAlignment = VerticalAlignment.Center;
@@ -225,14 +221,14 @@ public sealed class FramesView : DockPanel
 
     /// <summary>A row for whichever control or type the list hands its container: its chevron and name, and its layout's
     /// time and counts in their columns.</summary>
-    private Control RowOf((string Title, double Width)[] columns)
+    private Control RowOf(ColumnTitles titles)
     {
         RowIcon chevron = RowIcon.Chevron();
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         StackPanel named = new() { Orientation = Orientation.Horizontal, Children = { toggle, name } };
         TextBlock[] numbers = [Number(), Number(), Number(), Number(), Number()];
-        Grid row = Row(columns, [named, .. numbers]);
+        Grid row = titles.Row([named, .. numbers]);
         toggle.PointerPressed += (_, e) =>
         {
             if (row.DataContext is LayoutRow shown)
@@ -258,25 +254,6 @@ public sealed class FramesView : DockPanel
             Put(numbers[3], $"{work.Arranges:N0}");
             Put(numbers[4], $"{work.ArrangeMs:N1} ms");
         });
-    }
-
-    private static Grid Row((string Title, double Width)[] columns, Control[] cells)
-    {
-        Grid row = new() { ColumnDefinitions = new ColumnDefinitions(string.Join(",", columns.Select(c => c.Width == 0 ? "*" : $"{c.Width}"))), MinHeight = ListRow.Height };
-        for (int i = 0; i < cells.Length; i++)
-        {
-            Grid.SetColumn(cells[i], i);
-            row.Children.Add(cells[i]);
-        }
-        return row;
-    }
-
-    private static TextBlock Title(string text, bool first)
-    {
-        TextBlock title = Muted(text);
-        title.TextAlignment = first ? TextAlignment.Left : TextAlignment.Right;
-        title.HorizontalAlignment = first ? HorizontalAlignment.Left : HorizontalAlignment.Right;
-        return title;
     }
 
     private static TextBlock Number() =>

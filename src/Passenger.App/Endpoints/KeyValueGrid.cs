@@ -29,18 +29,7 @@ public sealed class KeyValueGrid : Border
         this.valueHint = valueHint;
         Classes.Add("framed");
         ClipToBounds = true;
-        Grid header = new() { ColumnDefinitions = new ColumnDefinitions(Columns) };
-        string[] titles = ["", "Key", "Value"];
-        for (int i = 0; i < titles.Length; i++)
-        {
-            TextBlock title = new() { Text = titles[i], Classes = { "muted" }, Margin = new Thickness(8, 5) };
-            Grid.SetColumn(title, i);
-            header.Children.Add(title);
-        }
-        Border headerFrame = new() { Child = header, BorderThickness = new Thickness(0, 0, 0, 1) };
-        headerFrame.Bind(BorderBrushProperty, headerFrame.GetResourceObservable(TokenKeys.Separator));
-        DockPanel.SetDock(headerFrame, Dock.Top);
-        Child = new DockPanel { Children = { headerFrame, new ScrollViewer { Content = table } } };
+        Child = new DockPanel { Children = { ColumnTitles.Of(Columns, ["", "Key", "Value"]), new ScrollViewer { Content = table } } };
         AddEmpty();
     }
 

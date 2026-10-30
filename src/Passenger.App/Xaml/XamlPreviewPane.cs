@@ -28,22 +28,15 @@ public sealed class XamlPreviewPane : DockPanel
     {
         this.preview = preview;
         status = new TextBlock { Classes = { "muted" }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        Border header = new()
+        Border header = ToolWindows.ToolBars.OverEditor(new DockPanel
         {
-            [DockProperty] = Dock.Top,
-            Height = 28,
-            Padding = new Thickness(10, 0),
-            Child = new DockPanel
+            Margin = new Thickness(10, 0),
+            Children =
             {
-                Children =
-                {
-                    new TextBlock { Text = "Preview", FontWeight = FontWeight.SemiBold, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) },
-                    status,
-                },
+                new TextBlock { Text = "Preview", FontWeight = FontWeight.SemiBold, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) },
+                status,
             },
-        };
-        // A tool window's ground over the preview's, told apart by shade.
-        header.Bind(Border.BackgroundProperty, header.GetResourceObservable(TokenKeys.Panel));
+        });
         error = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         error.Bind(TextBlock.ForegroundProperty, error.GetResourceObservable(TokenKeys.Error));
         errorBar = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(10, 6), IsVisible = false, Child = error };

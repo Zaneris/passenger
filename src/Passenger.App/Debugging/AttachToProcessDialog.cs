@@ -33,6 +33,9 @@ public sealed class AttachToProcessDialog : IdeWindow
 {
     private const string Columns = "220,90,110,*";
 
+    /// <summary>Where a cell's words start in its column.</summary>
+    private const double CellInset = 4;
+
     private readonly Func<Task<IReadOnlyList<DotnetProcess>>> list;
     private readonly Func<DotnetProcess, bool> recent;
     private readonly ListBox rows;
@@ -62,15 +65,7 @@ public sealed class AttachToProcessDialog : IdeWindow
         DockPanel.SetDock(refresh, Dock.Right);
         DockPanel top = new() { [DockPanel.DockProperty] = Dock.Top, Margin = new Thickness(0, 0, 0, 10), Children = { refresh, Search } };
 
-        // Inset as the list's rows are, by its padding and theirs, so each title stands over its column.
-        Grid header = new() { ColumnDefinitions = new ColumnDefinitions(Columns), Margin = new Thickness(10, 0) };
-        string[] titles = ["Executable", "Process ID", "User", "Command Line"];
-        for (int column = 0; column < titles.Length; column++)
-        {
-            header.Children.Add(new TextBlock { [Grid.ColumnProperty] = column, Text = titles[column], Classes = { "muted" }, Margin = new Thickness(4, 5, 10, 5) });
-        }
-        Border headerFrame = new() { [DockPanel.DockProperty] = Dock.Top, Child = header, BorderThickness = new Thickness(0, 0, 0, 1) };
-        headerFrame.Bind(Border.BorderBrushProperty, headerFrame.GetResourceObservable(TokenKeys.Separator));
+        ColumnTitles titles = ColumnTitles.Of(Columns, ["Executable", "Process ID", "User", "Command Line"], ColumnTitles.OverList, CellInset);
 
         rows = new ListBox { Classes = { "tree" } };
         ReusedRows.Use(rows, Row);
@@ -90,7 +85,7 @@ public sealed class AttachToProcessDialog : IdeWindow
         {
             Classes = { "framed" },
             ClipToBounds = true,
-            Child = new DockPanel { Children = { headerFrame, new Panel { Children = { rows, empty } } } },
+            Child = new DockPanel { Children = { titles, new Panel { Children = { rows, empty } } } },
         };
 
         attach = new Button { Content = purpose == AttachPurpose.Profiler ? "Attach Profiler" : "Attach with .NET Debugger", Classes = { "primary" }, IsEnabled = false };
@@ -257,7 +252,7 @@ public sealed class AttachToProcessDialog : IdeWindow
         TextBlock cell = new()
         {
             [Grid.ColumnProperty] = column,
-            Margin = new Thickness(4, 0, 10, 0),
+            Margin = new Thickness(CellInset, 0, 10, 0),
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };

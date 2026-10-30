@@ -41,18 +41,7 @@ public sealed class ComposeServicesTable : Border
     {
         Classes.Add("framed");
         ClipToBounds = true;
-        Grid header = new() { ColumnDefinitions = new ColumnDefinitions(Columns) };
-        string[] titles = [named, "Project", "Run does"];
-        for (int i = 0; i < titles.Length; i++)
-        {
-            TextBlock title = new() { Text = titles[i], Classes = { "muted" }, Margin = new Thickness(8, 5) };
-            Grid.SetColumn(title, i);
-            header.Children.Add(title);
-        }
-        Border headerFrame = new() { Child = header, BorderThickness = new Thickness(0, 0, 0, 1) };
-        headerFrame.Bind(BorderBrushProperty, headerFrame.GetResourceObservable(TokenKeys.Separator));
-        DockPanel.SetDock(headerFrame, Dock.Top);
-        Child = new DockPanel { Children = { headerFrame, new StackPanel { Children = { table, said } } } };
+        Child = new DockPanel { Children = { ColumnTitles.Of(Columns, [named, "Project", "Run does"]), new StackPanel { Children = { table, said } } } };
     }
 
     /// <summary>A row's project or action changed.</summary>

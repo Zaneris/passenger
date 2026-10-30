@@ -92,12 +92,13 @@ public sealed class HistoryTab : DockPanel
             ReusedRows.Use(fileList, FileRow);
             fileList.SelectionChanged += (_, _) => IdeErrors.Observe(ShowFileAsync());
             ListMenus.Attach(fileList, () => fileList.SelectedItems?.Count > 0 ? [ListMenus.Item("Revert Selection", null, () => IdeErrors.Observe(RevertSelectionAsync()))] : []);
-            Border fileBar = new()
+            Border fileBar = ToolBars.Top(new StackPanel
             {
-                [DockProperty] = Dock.Top,
-                Height = 30,
-                Child = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 0), Children = { ToolButtons.Of(IconKeys.Rollback, "Revert Selection", () => IdeErrors.Observe(RevertSelectionAsync())) } },
-            };
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(4, 0),
+                Children = { ToolButtons.Of(IconKeys.Rollback, "Revert Selection", () => IdeErrors.Observe(RevertSelectionAsync())) },
+            });
             Grid split = new() { RowDefinitions = new RowDefinitions("*,1,2*") };
             DockPanel changes = new() { Children = { fileBar, fileList } };
             HairlineDivider between = new(GridResizeDirection.Rows) { [Grid.RowProperty] = 1 };
