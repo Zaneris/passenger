@@ -456,13 +456,15 @@ public partial class MainWindow
         // Named as they are now: after the command's moves for an undo, before them for a redo.
         IEnumerable<string> files = command.Texts.Select(t => t.Document?.Path ?? (redo ? t.Path : command.Moved(t.Path)))
             .Concat(command.Moves.Select(m => redo ? m.From : m.To))
-            .Concat(command.Created.Select(c => c.Path));
+            .Concat(command.Created.Select(c => c.Path))
+            .Concat(command.Deleted.Select(d => d.Path));
         if (!await Confirm(verb, $"{verb} {command.Name}? It changes {Together([.. files.Select(Path.GetFileName).OfType<string>().Distinct(), .. command.Parts.Select(p => p.Name)])}.", verb))
         {
             return;
         }
         // What may come or go, with the folders over it, as they stand before: a part may make or take away a folder.
-        Dictionary<string, bool> stood = Standing(command.Moves.SelectMany(m => new[] { m.From, m.To }).Concat(command.Created.Select(c => c.Path)));
+        Dictionary<string, bool> stood = Standing(command.Moves.SelectMany(m => new[] { m.From, m.To }).Concat(command.Created.Select(c => c.Path))
+            .Concat(command.Deleted.Select(d => d.Path)));
         List<string> moved = [];
         IReadOnlyList<string> written = Editors.Commands.Writes(command, redo);
         bool rereads = command.Texts.Any(t => WorkspaceModel.IsSolution(t.Path))

@@ -287,7 +287,7 @@ public sealed class CommandHistory
     /// <summary>The files not open that taking a command back (or making it again, given true) writes, whose saves may
     /// still be landing once it returns (<see cref="EditorArea.LandedAsync(IEnumerable{string}, Action{string}?)"/>).</summary>
     public IReadOnlyList<string> Writes(Command command, bool redo) =>
-        [.. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => t.Path), .. redo ? command.Created.Select(c => c.Path) : []];
+        [.. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => t.Path), .. redo ? command.Created.Select(c => c.Path) : command.Deleted.Select(d => d.Path)];
 
     /// <summary>Why a command cannot be taken back (or made again) now, from what the window holds and where its files are:
     /// its files not open as <paramref name="looks"/> found them, one not looked at counting as changed; with no look, no
@@ -305,9 +305,18 @@ public sealed class CommandHistory
             {
                 return $"{Path.GetFileName(there)} is no longer there";
             }
-            if (Exists(free) && !PathNames.Same(free, there))
+            // A file the command deleted to take its place is deleted again first.
+            if (Exists(free) && !PathNames.Same(free, there) && !(redo && command.Deleted.Any(d => PathNames.Same(d.Path, free))))
             {
                 return $"{Path.GetFileName(free)} is already there";
+            }
+        }
+        foreach (Deletion deleted in command.Deleted)
+        {
+            if (redo ? editors.Find(deleted.Path) is { IsModified: true }
+                : Exists(deleted.Path) && !command.Moves.Any(m => PathNames.Same(m.To, deleted.Path)))
+            {
+                return $"{Path.GetFileName(deleted.Path)} {(redo ? "has edits not saved" : "is already there")}";
             }
         }
         foreach (Creation made in command.Created)
@@ -365,7 +374,11 @@ public sealed class CommandHistory
             return unput;
         }
         List<Func<Task<string?>>> done = [() => Task.FromResult(Unput(FirstParts(command, redo: false), redo: false))];
-        List<FilePut> writes = [.. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => Text(t.Path, t.Before, t.After, looks[command.Moved(t.Path)]))];
+        List<FilePut> writes =
+        [
+            .. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => Text(t.Path, t.Before, t.After, looks[command.Moved(t.Path)])),
+            .. command.Deleted.Select(Restored),
+        ];
         string? unmoved = moving(() =>
         {
             foreach ((string from, string to) in command.Moves.Reverse())
@@ -423,12 +436,17 @@ public sealed class CommandHistory
         [
             .. command.Created.Select(c => Text(c.Path, c.Text, null, null)),
             .. command.Texts.Where(t => !IsOpen(t.Document)).Select(t => Text(t.Path, t.After, t.Before, looks[t.Path])),
+            .. command.Deleted.Select(DeletedAgain),
         ];
         Step(command, redo: true);
         done.Add(() => Task.FromResult(Restep(command, redo: false)));
         if (await PutFilesAsync($"Redo {command.Name}", writes, done) is { } unwritten)
         {
             return await TakenBackAsync(unwritten, done);
+        }
+        foreach (OpenDocument document in editors.Documents.Where(d => !d.IsModified && command.Deleted.Any(g => PathNames.Same(g.Path, d.Path)) && !File.Exists(d.Path)).ToList())
+        {
+            editors.CloseDeleted(document);
         }
         string? unmoved = moving(() =>
         {
@@ -635,6 +653,31 @@ public sealed class CommandHistory
     private static string? Saved(string path, TextSnapshot text, Look? stored) => OnDisk(path, "written", () =>
         FileText.Save(path, text.ToString(), stored?.Encoding ?? new UTF8Encoding(false), stored?.HasBom ?? false, stored?.CrBreaks ?? false));
 
+    /// <summary>A file a command deleted written back as it was, taken back by deleting it again.</summary>
+    private static FilePut Restored(Deletion deleted) => new(deleted.Path,
+        () => Exists(deleted.Path) ? $"{Path.GetFileName(deleted.Path)} is already there" : OnDisk(deleted.Path, "written", () => FileText.Restore(deleted.Path, deleted.Bytes)),
+        () => OnDisk(deleted.Path, "deleted", () => File.Delete(deleted.Path)));
+
+    /// <summary>A file a command deleted deleted again, only while it holds the bytes it held then; taken back by writing them
+    /// back, where it was there to delete.</summary>
+    private static FilePut DeletedAgain(Deletion deleted)
+    {
+        bool gone = false;
+        return new FilePut(deleted.Path, () => OnDisk(deleted.Path, "deleted", () =>
+        {
+            if (!File.Exists(deleted.Path))
+            {
+                return;
+            }
+            if (!FileText.Read(deleted.Path).AsSpan().SequenceEqual(deleted.Bytes))
+            {
+                throw new IOException("it has been changed since");
+            }
+            File.Delete(deleted.Path);
+            gone = true;
+        }), () => gone ? OnDisk(deleted.Path, "written", () => FileText.Restore(deleted.Path, deleted.Bytes)) : null);
+    }
+
     /// <summary>A change of a file on disk: why the disk refused it, null once made.</summary>
     private static string? OnDisk(string path, string made, Action change)
     {
@@ -739,12 +782,14 @@ public sealed class CommandHistory
     private sealed record Look(long Length, DateTime Written, Encoding Encoding, bool HasBom, bool CrBreaks);
 
     /// <summary>What a command did: its name ("Rename Foo to Bar"), each file's text before and after it (at the path the
-    /// file had then; an open file's with the undo step that made it), the files it moved, in order, the files it made, and
-    /// what else it changed.</summary>
+    /// file had then; an open file's with the undo step that made it), the files it moved, in order, the files it made, the
+    /// files it deleted, and what else it changed.</summary>
     public sealed class Command(string name, IReadOnlyList<TextChange> texts, IReadOnlyList<(string From, string To)> moves, IReadOnlyList<Creation>? created = null,
-        IReadOnlyList<Part>? parts = null)
+        IReadOnlyList<Part>? parts = null, IReadOnlyList<Deletion>? deleted = null)
     {
         public IReadOnlyList<Creation> Created { get; } = created ?? [];
+
+        public IReadOnlyList<Deletion> Deleted { get; } = deleted ?? [];
 
         public IReadOnlyList<Part> Parts { get; } = parts ?? [];
 
@@ -767,6 +812,10 @@ public sealed class CommandHistory
 
     /// <summary>A file a command made, with the text it wrote there.</summary>
     public sealed record Creation(string Path, TextSnapshot Text);
+
+    /// <summary>A file a command deleted (one a rename moved another over), at its path as the command began, with the bytes
+    /// it held: its Undo writes them back once the moves are taken back, and its Redo deletes it again before they are made.</summary>
+    public sealed record Deletion(string Path, byte[] Bytes);
 
     /// <summary>Something besides files a command changed (a run configuration's changes kept with the folder), named as the
     /// question before Undo names it: why it cannot be taken back (or made again, given true) now, null when it can; and
@@ -819,6 +868,7 @@ public sealed class CommandHistory
         private readonly List<LocalHistory.Activity> naming = [];
         private readonly TaskCompletionSource ending = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly List<(string From, string To)> moves = [];
+        private readonly List<Deletion> deletions = [];
         private readonly List<Part> parts = [];
         private List<TextChange>? openTaken;
         // Whether it has said it writes a file since the open files were last taken.
@@ -851,7 +901,7 @@ public sealed class CommandHistory
         {
             if (document is null)
             {
-                return moves.Count > 0 || closed.Count > 0 || queued.Count > 0 || madeAt.Count > 0 || parts.Count > 0
+                return moves.Count > 0 || closed.Count > 0 || queued.Count > 0 || madeAt.Count > 0 || parts.Count > 0 || deletions.Count > 0
                     || (ownWrites ? wrote.Count > 0 || writing.Any(w => w.Key.Text.NextUndo != w.Value.Step) : Steps().Count > 0);
             }
             object? next = document.Text.NextUndo;
@@ -900,6 +950,15 @@ public sealed class CommandHistory
             return failed;
         }
 
+        /// <summary>A file the command deleted (one a rename moves another over), at its path now, with the bytes it held,
+        /// which its Undo writes back: no text of it is kept besides.</summary>
+        public void Deleted(string path, byte[] bytes)
+        {
+            string began = Began(path);
+            closed.Remove(began);
+            deletions.Add(new Deletion(began, bytes));
+        }
+
         /// <summary>A file not open that the command, or its language server a moment before, made empty for the command to
         /// fill (TypeScript's Move to a new file): one the command made, which its Undo takes away.</summary>
         public void Made(string path) => closed.TryAdd(Began(path), (null, null));
@@ -936,6 +995,7 @@ public sealed class CommandHistory
                 closed.Remove(path);
             }
             queued.RemoveAll(q => PathNames.IsUnder(q.Began, folder));
+            deletions.RemoveAll(d => PathNames.IsUnder(d.Path, folder));
             foreach (OpenDocument document in writing.Keys.Concat(wrote.Keys).Where(d => PathNames.IsUnder(d.Path, folder)).ToList())
             {
                 writing.Remove(document);
@@ -1096,9 +1156,9 @@ public sealed class CommandHistory
                     texts.Add(new TextChange(null, path, before, TextSnapshot.From(after), null));
                 }
             }
-            if (texts.Count > 1 || texts.Any(t => t.Document is null) || moves.Count > 0 || created.Count > 0 || parts.Count > 0)
+            if (texts.Count > 1 || texts.Any(t => t.Document is null) || moves.Count > 0 || created.Count > 0 || parts.Count > 0 || deletions.Count > 0)
             {
-                history.Keep(new Command(name, texts, made.Moves, created, [.. parts]));
+                history.Keep(new Command(name, texts, made.Moves, created, [.. parts], [.. deletions]));
             }
         }
 

@@ -284,7 +284,8 @@ public static class WorkspaceEdits
     }
 
     /// <summary>Why an edit's file operations cannot all be made, found before any is: each is played over what the
-    /// ones before it leave. The open files a rename moves are saved now, so one that cannot be stops it here too.</summary>
+    /// ones before it leave. The open files a rename moves, writes over or a delete takes are saved now, so their edits are
+    /// what Undo puts back, and one that cannot be stops it here too; a read-only file is never written over.</summary>
     private static string? Refusal(EditorArea editors, IReadOnlyList<FileEdits> changes)
     {
         // A read-only file would be refused halfway through, the files before it already changed.
@@ -307,7 +308,8 @@ public static class WorkspaceEdits
             switch (resource.Kind)
             {
                 case "create" when overwrite && FileText.IsReadOnly(resource.Path):
-                    return $"{Path.GetFileName(resource.Path)} is read-only";
+                case "rename" when taken && overwrite && FileText.IsReadOnly(resource.To!):
+                    return $"{Path.GetFileName(resource.To ?? resource.Path)} is read-only";
                 case "create" when Exists(resource.Path) && !overwrite && !ignored:
                 case "rename" when taken && !ignored && (!overwrite || Directory.Exists(resource.To)):
                     return $"{Path.GetFileName(resource.To ?? resource.Path)} is already there";
@@ -320,17 +322,32 @@ public static class WorkspaceEdits
                 case "rename" when !(taken && ignored):
                     there[resource.Path] = false;
                     there[resource.To!] = true;
-                    foreach (OpenDocument document in editors.Documents.Where(d => d.IsModified && PathNames.Within(d.Path, resource.Path)))
+                    if ((Unsaved(editors, resource.Path, "moved") ?? (taken ? Unsaved(editors, resource.To!, "was written over") : null)) is { } moving)
                     {
-                        if (!editors.Save(document))
-                        {
-                            return $"{document.Name} could not be saved before it moved";
-                        }
+                        return moving;
                     }
                     break;
                 case "delete":
                     there[resource.Path] = false;
+                    if (Unsaved(editors, resource.Path, "was deleted") is { } deleting)
+                    {
+                        return deleting;
+                    }
                     break;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Saves the open files with edits under a path a file operation takes: why one could not be, before it
+    /// <paramref name="went"/>, else null.</summary>
+    private static string? Unsaved(EditorArea editors, string path, string went)
+    {
+        foreach (OpenDocument document in editors.Documents.Where(d => d.IsModified && PathNames.Within(d.Path, path)).ToList())
+        {
+            if (!editors.Save(document))
+            {
+                return $"{document.Name} could not be saved before it {went}";
             }
         }
         return null;
@@ -371,7 +388,7 @@ public static class WorkspaceEdits
                     {
                         return;
                     }
-                    Delete(editors, to, recursive: false);
+                    Delete(editors, to, recursive: false, recording);
                 }
                 Directory.CreateDirectory(Path.GetDirectoryName(to)!);
                 if (recording.Move(resource.Path, to) is { } failed)
@@ -380,13 +397,14 @@ public static class WorkspaceEdits
                 }
                 break;
             case "delete" when exists:
-                Delete(editors, resource.Path, resource.Option("recursive"));
+                Delete(editors, resource.Path, resource.Option("recursive"), recording);
                 break;
         }
     }
 
-    /// <summary>Deletes a file or folder, closing the open files that went with it.</summary>
-    private static void Delete(EditorArea editors, string path, bool recursive)
+    /// <summary>Deletes a file or folder, closing the open files that went with it (saved before, <see cref="Refusal"/>); a
+    /// file's bytes go to the recording, which its Undo writes back.</summary>
+    private static void Delete(EditorArea editors, string path, bool recursive, CommandHistory.Recording recording)
     {
         if (Directory.Exists(path))
         {
@@ -394,7 +412,9 @@ public static class WorkspaceEdits
         }
         else
         {
+            byte[] held = FileText.Read(path);
             File.Delete(path);
+            recording.Deleted(path, held);
         }
         foreach (OpenDocument document in editors.Documents.Where(d => PathNames.Within(d.Path, path)).ToList())
         {

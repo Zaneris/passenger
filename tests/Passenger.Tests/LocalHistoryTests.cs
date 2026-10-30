@@ -596,6 +596,48 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A language server's rename of one file over another that is open with edits not saved: the file written over
+    /// is saved first, so its edits are kept, and Undo moves the renamed file back and writes the one written over back as
+    /// it was, edits and all; Redo makes the rename again.</summary>
+    [AvaloniaFact]
+    public void A_servers_rename_over_an_open_file_with_edits_keeps_them_and_undo_writes_that_file_back()
+    {
+        const string Renamed = "class A\n{\n}\n";
+        string a = Write("A.cs", Renamed);
+        string b = Write("B.cs", "class B\n{\n}\n");
+        MainWindow window = Open("B.cs");
+        window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);
+        window.KeyTextInput("sealed ");
+        Ui.Settle();
+        string edited = window.EditorArea.CodeEditor.Document.Snapshot.ToString();
+        Assert.Equal("sealed class B\n{\n}\n", edited);
+        System.Text.Json.JsonElement edit = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            documentChanges = new object[]
+            {
+                new { kind = "rename", oldUri = Passenger.Lsp.DocumentUris.FromPath(a), newUri = Passenger.Lsp.DocumentUris.FromPath(b), options = new { overwrite = true } },
+            },
+        });
+        MoveToFile(window, edit);
+        Assert.True(!File.Exists(a) && File.ReadAllText(b) == Renamed, $"The rename left A.cs {(File.Exists(a) ? "there" : "gone")} and B.cs reading '{File.ReadAllText(b)}'");
+
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        Ui.ClickRow(window, Show(window, b));
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => window.Status?.StartsWith("Undone", StringComparison.Ordinal) == true || window.Status?.StartsWith("Cannot", StringComparison.Ordinal) == true,
+            () => $"the Undo's end; the status says '{window.Status}'");
+        Assert.True(File.Exists(a) && File.ReadAllText(a) == Renamed, $"Undo left A.cs {(File.Exists(a) ? $"reading '{File.ReadAllText(a)}'" : "gone")}: {window.Status}");
+        Assert.True(File.Exists(b) && File.ReadAllText(b) == edited,
+            $"Undo left B.cs, written over by the rename, {(File.Exists(b) ? $"reading '{File.ReadAllText(b)}'" : "gone")}, not with its edits: {window.Status}");
+
+        Ui.ClickRow(window, Show(window, b));
+        Ui.Run(window, EditorActions.Redo);
+        Ui.WaitFor(() => window.Status?.StartsWith("Redone", StringComparison.Ordinal) == true || window.Status?.StartsWith("Cannot", StringComparison.Ordinal) == true,
+            () => $"the Redo's end; the status says '{window.Status}'");
+        Assert.True(!File.Exists(a) && File.ReadAllText(b) == Renamed, $"Redo left A.cs {(File.Exists(a) ? "there" : "gone")} and B.cs reading '{File.ReadAllText(b)}': {window.Status}");
+        window.Close();
+    }
+
     /// <summary>A server's edit applied as Move to File applies its own: one command of Undo, its files written.</summary>
     private static void MoveToFile(MainWindow window, System.Text.Json.JsonElement edit)
     {
