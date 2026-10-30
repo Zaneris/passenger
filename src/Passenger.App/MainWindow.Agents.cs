@@ -162,7 +162,7 @@ public partial class MainWindow
         string? folder = Folder;
         AgentAdmissionDialog dialog = new(agent, folder);
         IdeErrors.Write($"Agents: {agent} asks to work in the window on {folder ?? "no folder"}");
-        Admission said = await AskForAgentAsync(dialog, Admission.NotAllowed, $"{agent} waits for you: let it in?", takenAway) ?? Admission.Unanswered;
+        Admission said = await AskForAgentAsync(dialog, () => dialog.Answered, Admission.NotAllowed, $"{agent} waits for you: let it in?", takenAway) ?? Admission.Unanswered;
         if (said == Admission.Allowed && dialog.Always && folder is not null && !LetsIn(settings, folder))
         {
             // Settings' list, which every window over the folder follows and the person's settings keep.
@@ -183,8 +183,11 @@ public partial class MainWindow
     {
         UiThread.Check();
         string name = Path.GetFileName(opening.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        ConfirmDialog dialog = new($"Open {name} here?", $"{agent} wants to open {opening} here, replacing {replacing}.", AgentAdmissionDialog.Allow, AgentAdmissionDialog.DontAllow);
-        return Answered(await AskForAgentAsync(dialog, false, $"{agent} waits for you: open {name} here?", cancel));
+        ConfirmDialog dialog = new($"Open {name} here?", $"{agent} wants to open {opening} here, replacing {replacing}.", AgentAdmissionDialog.Allow, AgentAdmissionDialog.DontAllow)
+        {
+            EnterAgrees = false,
+        };
+        return Answered(await AskForAgentAsync(dialog, () => dialog.Answered, false, $"{agent} waits for you: open {name} here?", cancel));
     }
 
     /// <summary>Asks the person whether an agent may use a tool that changes something, showing what it asked with: no
@@ -195,9 +198,12 @@ public partial class MainWindow
         string what = char.ToLowerInvariant(title[0]) + title[1..];
         ConfirmDialog dialog = new($"Allow {tool}?",
             $"{agent}, connected through Passenger's MCP server, wants to {what} (its {tool} tool). Once allowed, it may use that tool again without asking in this folder until it disconnects.",
-            "Allow", "Deny", arguments.Count == 0 ? null : AgentArguments(arguments));
+            "Allow", "Deny", arguments.Count == 0 ? null : AgentArguments(arguments))
+        {
+            EnterAgrees = false,
+        };
         IdeErrors.Write($"Agents: {agent} asks to use {tool} in the window on {Folder ?? "no folder"}");
-        Admission said = Answered(await AskForAgentAsync(dialog, false, $"{agent} waits for you: allow {tool}?", cancel));
+        Admission said = Answered(await AskForAgentAsync(dialog, () => dialog.Answered, false, $"{agent} waits for you: allow {tool}?", cancel));
         IdeErrors.Write($"Agents: {agent} {(said switch
         {
             Admission.Allowed => "allowed",
@@ -214,11 +220,11 @@ public partial class MainWindow
         null => Admission.Unanswered,
     };
 
-    /// <summary>A question an agent's call waits on, put to the person: the window brought forward (the system asked for
-    /// their attention where it cannot be) and the status bar saying who waits on what, until they answer, closing the
-    /// dialog answers <paramref name="no"/>, and <paramref name="cancel"/> or <see cref="AgentAnswerLimit"/> takes it
-    /// away unanswered (null).</summary>
-    private async Task<T?> AskForAgentAsync<T>(Window dialog, T no, string waiting, CancellationToken cancel) where T : struct
+    /// <summary>A question an agent's call waits on, put to the person: shown over the window with the keys left where they
+    /// are, the system asked for their attention and the status bar saying who waits on what, until they answer
+    /// (<paramref name="answered"/>, read as it closes); closing the dialog answers <paramref name="no"/>, and
+    /// <paramref name="cancel"/> or <see cref="AgentAnswerLimit"/> takes it away unanswered (null).</summary>
+    private async Task<T?> AskForAgentAsync<T>(Window dialog, Func<T?> answered, T no, string waiting, CancellationToken cancel) where T : struct
     {
         UiThread.Check();
         bool takenAway = false;
@@ -233,22 +239,32 @@ public partial class MainWindow
                 dialog.Close();
             }
         }));
+        TaskCompletionSource closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool hadKeys = false;
+        dialog.Closing += (_, _) => hadKeys = dialog.IsActive || dialog.IsKeyboardFocusWithin;
+        dialog.Closed += (_, _) => closed.TrySetResult();
         agentQuestions.Add(waiting);
         agentDialogs.Add(dialog);
         ShowAgents();
-        // The agent's call waits on the person, who may be in another window or program.
-        PassengerApp.BringForward(this);
+        // It comes whenever the agent calls, so what the person types (an Enter in the editor) never reaches it unchosen.
+        dialog.ShowActivated = false;
+        dialog.Show(this);
+        // The person may be in another window or program, which keeps the keys.
         using IDisposable attention = Attention.Ask(this);
         try
         {
-            T? said = await dialog.ShowDialog<T?>(this);
-            return takenAway ? null : said ?? no;
+            await closed.Task;
+            return takenAway ? null : answered() ?? no;
         }
         finally
         {
             agentQuestions.Remove(waiting);
             agentDialogs.Remove(dialog);
             ShowAgents();
+            if (hadKeys && IsVisible)
+            {
+                Activate();
+            }
         }
     }
 

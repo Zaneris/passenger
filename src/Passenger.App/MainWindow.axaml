@@ -151,7 +151,7 @@
                     </Button>
                     <!-- Agents on the window: how many, what one runs, or a question one waits on, which stands out (the
                          accent's pill with a bell) and a click brings forward, since the person may not have seen it. -->
-                    <Button Name="AgentButton" Classes="statusItem" IsVisible="False" Click="OnAgentClicked"
+                    <Button Name="AgentButton" Classes="statusItem" Focusable="False" IsVisible="False" Click="OnAgentClicked"
                             ToolTip.Tip="An agent is using this window through Passenger's MCP server">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <PathIcon Name="AgentIcon" Data="{StaticResource Icon.Notifications}" Width="12" Height="12" IsVisible="False" />

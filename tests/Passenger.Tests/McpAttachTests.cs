@@ -417,6 +417,64 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's questions come over the window without the keys and no key answers Allow: an Enter the person types
+    /// in the editor goes into their file, and one pressed in the question itself leaves it waiting, the agent not let in and
+    /// its edit not made, until a click of Allow answers each.</summary>
+    [AvaloniaFact]
+    public void An_agents_question_leaves_the_keys_in_the_editor_and_an_Enter_never_allows()
+    {
+        string folder = Plain("mcp-enter-");
+        string typed = TestFolders.Write(folder, "Typed.txt", "typed\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.OpenFile(typed);
+        Ui.Settle();
+        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "typed");
+        editor.Focus();
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        try
+        {
+            Task<JsonElement> editing = Waiting.Apart(() => Call(client, McpTools.Edit, Note("allowed")));
+            AgentAdmissionDialog admission = Admission(window, "the window to ask whether the agent may work there");
+            EnterLeavesWaiting(window, editor, admission, editing, "typed\n\n");
+            Assert.Equal(0, window.Agents);
+            Press(admission, AgentAdmissionDialog.Allow);
+
+            ConfirmDialog asked = DialogButtonsTests.Check(Question(window, "the question for the agent's edit"));
+            EnterLeavesWaiting(window, editor, asked, editing, "typed\n\n\n");
+            Assert.Equal("notes\n", File.ReadAllText(Path.Combine(folder, "Notes.txt")));
+            Press(asked, "Allow");
+            Await(editing, "the agent's edit, allowed");
+            Assert.Equal("notes allowed\n", File.ReadAllText(Path.Combine(folder, "Notes.txt")));
+            Assert.True(ReferenceEquals(editor, window.FocusManager?.GetFocusedElement()),
+                $"Once the person answered, the keys are with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, not back in the editor");
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
+
+    /// <summary>A question shown without the keys: an Enter in the window goes to the editor; chosen from the status bar's
+    /// words, the question takes the keys, and an Enter there answers nothing, the agent's call still waiting.</summary>
+    private void EnterLeavesWaiting(MainWindow window, Passenger.Editor.CodeEditor editor, Window question, Task waiting, string afterEnter)
+    {
+        Assert.False(question.IsActive, $"\"{question.Title}\" took the keys from the editor as it came");
+        Assert.True(ReferenceEquals(editor, window.FocusManager?.GetFocusedElement()),
+            $"With \"{question.Title}\" asked, the keys are with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, not the editor the person typed in");
+        Ui.Press(window, "enter");
+        Assert.Equal(afterEnter, editor.Document.Snapshot.ToString());
+
+        Ui.Click(window.FindControl<Avalonia.Controls.Button>("AgentButton")!);
+        Assert.True(question.IsActive && !editor.IsKeyboardFocusWithin,
+            $"Choosing the status bar's words on \"{question.Title}\" left it {(question.IsActive ? "active" : "inactive")}, the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}");
+        Ui.Press(question, "enter");
+        Assert.True(question.IsVisible, $"An Enter in \"{question.Title}\" answered it");
+        Assert.False(waiting.IsCompleted, $"An Enter in \"{question.Title}\" let the agent's call go on");
+        Assert.Equal(afterEnter, editor.Document.Snapshot.ToString());
+    }
+
     /// <summary>With Enable MCP Server on, a window keeps its agents as the person opens another folder there, but an agent
     /// set up in the first goes on in it: --mcp-attach joins a window on its own folder again (the running Passenger opening
     /// one), never the window now on the other.</summary>
