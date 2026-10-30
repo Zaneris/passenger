@@ -110,7 +110,8 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
 - **A malformed flag or environment value is fatal**, never a silent default (`LaunchOptions.cs`).
 - **A warning is fixed at its cause.** Turning it off (NoWarn, a pragma, a lowered severity, a suppression) or moving
   the line it checks (a raised budget or limit) does not count as fixing it; neither does an analyzer's baseline.
-- **Work nothing awaits goes to `IdeErrors.Observe`** (`Core.UnawaitedWork.Observe` below the App), never a bare `_ =`
+- **Work nothing awaits goes to `IdeErrors.Observe`** (`Core.UnawaitedWork.Observe` below the App), a fault no one is to
+  hear to `UnawaitedWork.Dismiss`, a wait however it ended through `task.Ended()`, never a bare `_ =` or `ContinueWith`
   or a call left as a statement, so its fault is said as it happens: IdeErrorsTests reads the built IL (`DroppedTasks`).
 - **One threading rule.** Controls, documents, the window's `ProjectSession` and its parts, controllers and views belong
   to the UI thread (`UiThread.Check()` in entry points). Text, Vcs, Workspace, Packages, Lsp, Dap, Debugger and Profiler
@@ -159,11 +160,11 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
 - **State is a `StateDocument`** in the one `StateStore` (versioned `Upgrades`, `Clamped`, written debounced and merged,
   a bad file set aside as `.bad`), read off the UI thread; never a file of its own. Per-folder state lives under
   `workspaces/<name>-<hash>/`, held by each window with the folder open (`StateStore.Hold`/`LetGo`); its writes hold a
-  lock file every process honours (`StateFile.Hold`); a failed write is tried again, and a key a later build renamed
-  moves in `IStateDocument.Renamed`; a value of the wrong kind is passed over alone (`StateFile.Read`). A new setting:
-  an `AppSettings` property, its row and range declared in `Declared` (a value it refuses as `Refused`, which Settings
-  and `settings_set` both ask) and `Add`ed in its place in `SettingsDialog`, a line in `MainWindow.Follow` or
-  `SettingsStore.InForce`.
+  lock file every process honours (`StateFile.Hold(path, limit)`, Local History's too); a failed write is tried again,
+  and a key a later build renamed moves in `IStateDocument.Renamed`; a value of the wrong kind is passed over alone
+  (`StateFile.Read`). A new setting: an `AppSettings` property, its row and range declared in `Declared` (a value it
+  refuses as `Refused`, which Settings and `settings_set` both ask) and `Add`ed in its place in `SettingsDialog`, a line
+  in `MainWindow.Follow` or `SettingsStore.InForce`.
 - **Every action is an `IdeAction`** in the window's `ActionRegistry` (ids and keymaps in `AppActions.cs`): keys, menus,
   Find Action, context menus and MCP's `ide_action` all run it, `WhyNot` greys it with why, titles come from the
   registry (`TitleWhere`), a title that asks more ends in "…", and what's missing is said in `Refusals`' words. Anything
@@ -194,12 +195,13 @@ Projects in `src/`; `find_symbol` finds the rest:
   the installation's folder is `Dotnet.Root`, from the host's real path, never the folder of `Dotnet.Host()`),
   `Dotnet.CliHome` (the CLI's home, after the login shell), `OutboundHttp` (every request Passenger makes of a host),
   `PathNames`, `AtomicFile`, `FolderMoves` (a folder moved whole, across volumes too), `SocketFolders` (every Unix
-  socket), `InFlight`, `BackgroundWork`, `DotnetProcesses.Runs` (whether a process runs: never `HasExited`, which on
-  Windows reads one this user may not open as ended), `EnvironmentValues.Milliseconds` (every PASSENGER_*_MS),
-  `ExitCodes` (an exit code said with its signal), `WindowsCommandLine` (the one maker of a Windows command line),
-  `Product` (the one place the version is read), `PassengerLog` (below the App, never `IdeLog`; a line quoting a
-  program's words through `WriteMasked`), `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's lines read and
-  messages written as pooled bytes), `SharedNames` (a name read from bytes, made once).
+  socket), `Libc` (a C library call more than one place makes, declared once; the App's `MacObjC` and `Xlib` likewise),
+  `InFlight`, `BackgroundWork`, `DotnetProcesses.Runs` (whether a process runs: never `HasExited`, which on Windows
+  reads one this user may not open as ended), `EnvironmentValues.Milliseconds` (every PASSENGER_*_MS), `ExitCodes` (an
+  exit code said with its signal), `WindowsCommandLine` (the one maker of a Windows command line), `Product` (the one
+  place the version is read), `PassengerLog` (below the App, never `IdeLog`; a line quoting a program's words through
+  `WriteMasked`), `UnawaitedWork`, `Utf8Lines` and `PooledBytes` (a peer's lines read and messages written as pooled
+  bytes), `SharedNames` (a name read from bytes, made once).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
   function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `Outline` (a tree's rows in reading order, kept where
   unchanged), `FileText`, and anchors (`AnchorAt`/`RangeAt`/`MarkAt`, `AnchoredList`; moved before `Changed`, each
