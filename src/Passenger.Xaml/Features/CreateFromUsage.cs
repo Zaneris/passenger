@@ -232,8 +232,7 @@ public static class CreateFromUsage
     private static IReadOnlyList<TextEdit> Edits(string text, ClrType owner, Planned member, CSharpParseOptions parsing)
     {
         SyntaxNode root = CSharpSyntaxTree.ParseText(text, parsing).GetRoot();
-        TypeDeclarationSyntax? type = root.DescendantNodes().OfType<TypeDeclarationSyntax>().FirstOrDefault(t => t.Identifier.ValueText == owner.Name
-            && (t.TypeParameterList?.Parameters.Count ?? 0) == owner.Arity);
+        TypeDeclarationSyntax? type = root.DescendantNodes().OfType<TypeDeclarationSyntax>().FirstOrDefault(t => FullName(t) == owner.FullName);
         if (type is null || type.OpenBraceToken.IsMissing)
         {
             return [];
@@ -273,6 +272,29 @@ public static class CreateFromUsage
         }
         return edits;
     }
+
+    /// <summary>The full name a declared type has in metadata, as <see cref="ClrType.FullName"/> gives it: its namespaces,
+    /// and the types it is nested in each before a <c>+</c>, each name with its arity.</summary>
+    private static string FullName(BaseTypeDeclarationSyntax type)
+    {
+        string name = MetadataName(type);
+        for (SyntaxNode? at = type.Parent; at is not null; at = at.Parent)
+        {
+            if (at is BaseTypeDeclarationSyntax outer)
+            {
+                name = $"{MetadataName(outer)}+{name}";
+            }
+            else if (at is BaseNamespaceDeclarationSyntax space)
+            {
+                string written = space.Name.ToString();
+                name = $"{(written.StartsWith("global::", StringComparison.Ordinal) ? written["global::".Length..] : written)}.{name}";
+            }
+        }
+        return name;
+    }
+
+    private static string MetadataName(BaseTypeDeclarationSyntax type) =>
+        type is TypeDeclarationSyntax { TypeParameterList.Parameters.Count: > 0 and int arity } ? $"{type.Identifier.Text}`{arity}" : type.Identifier.Text;
 
     /// <summary>The using directives a file lacks of those a member needs, after its last one (or at its top).</summary>
     private static TextEdit? Usings(SyntaxNode root, IReadOnlyList<string> needed, string own)

@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis.CSharp;
+using Passenger.Text;
 using Passenger.Xaml;
 using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Metadata;
@@ -26,5 +27,16 @@ internal static class XamlFiles
         ProjectInputs inputs = new(PathOf("App.csproj"), "App", "net10.0", [], [], [.. sources.Select(s => PathOf(s.Name))], [], null, []);
         XamlProject project = new(inputs, types, dialect, new Dictionary<string, XamlFileSummary>(), [], new HashSet<string>(), []);
         return new XamlFile(PathOf(name), XmlTree.Parse(text), project);
+    }
+
+    /// <summary>A text with edits made to it, each placed in the text as given, those at one place in their order.</summary>
+    public static string Applied(string text, IEnumerable<TextEdit> edits)
+    {
+        string made = text;
+        foreach (TextEdit edit in edits.Select((e, i) => (Edit: e, Order: i)).OrderByDescending(e => e.Edit.Start).ThenByDescending(e => e.Order).Select(e => e.Edit))
+        {
+            made = made[..edit.Start] + edit.Text + made[(edit.Start + edit.Length)..];
+        }
+        return made;
     }
 }
