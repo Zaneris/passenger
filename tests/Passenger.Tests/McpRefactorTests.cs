@@ -393,6 +393,45 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "an override and a member with what it uses were pulled up");
     }
 
+    /// <summary>Push Members Down of a member the base's own code still calls, one a class not chosen calls as its own, or one
+    /// reached through the base's type, is refused naming each use, nothing changed; members nothing left behind uses go,
+    /// the chosen class's override of one becoming its own virtual member, and the project builds.</summary>
+    [Fact]
+    public async Task An_agent_pushing_down_a_member_still_used_where_it_would_be_gone_finds_it_refused()
+    {
+        await TakeFolderAsync();
+        const string Shape = "namespace Shop;\n\npublic class Shape\n{\n    public virtual string Describe() => \"shape\";\n\n    public string Summary() => Describe() + \"!\";\n\n"
+            + "    public string Label() => \"label\";\n\n    public int Corners() => 0;\n\n    public virtual int Sides() => 0;\n\n    public string Badge() => \"badge\";\n}\n";
+        const string Square = "namespace Shop;\n\npublic class Square : Shape\n{\n    public override string Describe() => \"square\";\n\n    public override int Sides() => 4;\n\n"
+            + "    public string Tag() => Badge() + Sides();\n}\n";
+        const string Circle = "namespace Shop;\n\npublic class Circle : Shape\n{\n    public string Show(Shape other) => Label() + other.Corners();\n}\n";
+        Shop(("Shape.cs", Shape), ("Square.cs", Square), ("Circle.cs", Circle));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        foreach ((string member, string said) in new[]
+        {
+            ("Describe", "'Describe' would be gone from code still using it: Shape.Summary in Shape.cs, through 'Shape'"),
+            ("Label", "'Label' would be gone from code still using it: Circle.Show in Circle.cs, through 'Circle': push it down to 'Circle' too"),
+            ("Corners", "'Corners' would be gone from code still using it: Circle.Show in Circle.cs, through 'Shape'"),
+        })
+        {
+            CallToolResult refused = await Result(client, McpTools.Refactor, Place("push_members_down", "Shape.cs", Shape, "class Sha", new { targets = new[] { "Square" }, members = new[] { member } }));
+            Assert.True(refused.IsError == true && Text(refused).Contains(said, StringComparison.Ordinal), $"Pushing {member} down into Square answered: {Text(refused)}");
+            Assert.Equal(Shape, File.ReadAllText(PathOf("Shape.cs")));
+            Assert.Equal(Square, File.ReadAllText(PathOf("Square.cs")));
+            Assert.Equal(Circle, File.ReadAllText(PathOf("Circle.cs")));
+        }
+
+        JsonElement pushed = await Call(client, McpTools.Refactor, Place("push_members_down", "Shape.cs", Shape, "class Sha", new { targets = new[] { "Square" }, members = new[] { "Sides", "Badge" } }));
+        Assert.Equal(["Shape.cs changed", "Square.cs changed"], Files(pushed));
+        string shape = File.ReadAllText(PathOf("Shape.cs"));
+        string square = File.ReadAllText(PathOf("Square.cs"));
+        Assert.True(!shape.Contains("Sides", StringComparison.Ordinal) && !shape.Contains("Badge", StringComparison.Ordinal)
+            && square.Contains("    public virtual int Sides() => 4;\n", StringComparison.Ordinal) && square.Contains("    public string Badge() => \"badge\";\n", StringComparison.Ordinal),
+            $"Pushing Sides and Badge down into Square left Shape.cs so:\n{shape}\nand Square.cs so:\n{square}");
+        await Compiles(client, "members nothing left behind uses were pushed down");
+    }
+
     /// <summary>Extract Interface from a class whose type parameter a member uses is constrained by another the members do
     /// not name: the interface declares both, so the constraint it copies names a type parameter of its own.</summary>
     [Fact]

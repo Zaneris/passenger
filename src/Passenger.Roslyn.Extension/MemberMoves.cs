@@ -9,8 +9,9 @@ namespace Passenger.Roslyn.Extension;
 
 /// <summary>Pull Members Up and Push Members Down: members of a class moved into a base class (or declared in an
 /// interface it implements) or into every derived class chosen, each one made abstract where it stays when asked, its
-/// overrides then marked so; an override pulled up takes the place of the base's abstract declaration. The files they go
-/// to get the usings of the file they came from that they need.</summary>
+/// overrides then marked so; an override pulled up takes the place of the base's abstract declaration, and a chosen
+/// class's override of a member pushed down becomes its own, virtual. The files they go to get the usings of the file
+/// they came from that they need.</summary>
 internal static class MemberMoves
 {
     public static async Task<Hierarchy> DescribeAsync(Document document, Place at, CancellationToken cancel)
@@ -136,22 +137,44 @@ internal static class MemberMoves
         {
             intos.Add(await DeclarationAsync(target, cancel).ConfigureAwait(false));
         }
+        List<SyntaxNode> pushed = [];
         foreach (ISymbol member in members)
         {
-            SyntaxNode declared = await DeclarationAsync(member, cancel).ConfigureAwait(false);
+            pushed.Add(await DeclarationAsync(member, cancel).ConfigureAwait(false));
+        }
+        foreach (ISymbol member in members)
+        {
             bool keepAbstract = move.Abstract.Contains(Id(member));
             if (keepAbstract && (member is IFieldSymbol || member.IsStatic))
             {
                 return Changes.Refused($"'{member.Name}' cannot be made abstract");
             }
+            if (await PushProblemAsync(solution, member, type, targets, pushed, keepAbstract, cancel).ConfigureAwait(false) is { } wrong)
+            {
+                return Changes.Refused(wrong);
+            }
+        }
+        foreach ((ISymbol member, SyntaxNode declared) in members.Zip(pushed))
+        {
+            bool keepAbstract = move.Abstract.Contains(Id(member));
+            if (keepAbstract && member.IsAbstract)
+            {
+                continue;
+            }
             foreach ((INamedTypeSymbol target, TypeDeclarationSyntax into) in targets.Zip(intos))
             {
                 if (Declares(target, member))
                 {
+                    if (!keepAbstract && !member.IsOverride && OverrideIn(target, member) is { } own)
+                    {
+                        SyntaxNode stated = await DeclarationAsync(own, cancel).ConfigureAwait(false);
+                        (await editors.OfAsync(stated).ConfigureAwait(false)).ReplaceNode(stated, (current, generator) =>
+                            generator.WithModifiers(current, generator.GetModifiers(current).WithIsOverride(false).WithIsSealed(false).WithIsVirtual(!own.IsSealed)));
+                    }
                     continue;
                 }
                 DocumentEditor targetEditor = await editors.OfAsync(into).ConfigureAwait(false);
-                SyntaxNode copy = keepAbstract || member.IsAbstract
+                SyntaxNode copy = keepAbstract
                     ? targetEditor.Generator.WithModifiers(declared, targetEditor.Generator.GetModifiers(declared).WithIsAbstract(false).WithIsVirtual(false).WithIsOverride(true))
                     : Alone(declared);
                 editors.AddMember(targetEditor, into, copy);
@@ -249,6 +272,165 @@ internal static class MemberMoves
     private static bool SameParameters(IReadOnlyList<IParameterSymbol> theirs, IReadOnlyList<IParameterSymbol> ours) =>
         theirs.Count == ours.Count && theirs.Zip(ours).All(p => SymbolEqualityComparer.Default.Equals(p.First.Type, p.Second.Type)
             && (p.First.RefKind == RefKind.None) == (p.Second.RefKind == RefKind.None));
+
+    /// <summary>Why a member cannot be pushed down into the targets; null when it can. Code that would still reach it where
+    /// it is gone (the base's own, a class not chosen, anything through the base's type or a base. call) or an override in
+    /// a class not chosen would not build; kept abstract in the base, a base. call or a class left without it would not.</summary>
+    private static async Task<string?> PushProblemAsync(Solution solution, ISymbol member, INamedTypeSymbol type, IReadOnlyList<INamedTypeSymbol> targets,
+        IReadOnlyList<SyntaxNode> pushed, bool keepAbstract, CancellationToken cancel)
+    {
+        bool Gets(ITypeSymbol? holder) => holder switch
+        {
+            ITypeParameterSymbol parameter => parameter.ConstraintTypes.Any(Gets),
+            INamedTypeSymbol named => targets.Any(t => named.OriginalDefinition.Equals(t.OriginalDefinition, SymbolEqualityComparer.Default)) || Gets(named.BaseType),
+            _ => false,
+        };
+        string text = Interfaces.Text(member);
+        string Hint(IEnumerable<INamedTypeSymbol> lacking)
+        {
+            INamedTypeSymbol[] those = [.. lacking.Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)];
+            return those.Length > 0 && those.All(l => l.BaseType is { } up && Same(up, type))
+                ? $": push it down to {string.Join(" and ", those.Select(l => $"'{l.Name}'"))} too"
+                : string.Empty;
+        }
+        List<INamedTypeSymbol> overriding = [];
+        foreach (ISymbol over in await SymbolFinder.FindOverridesAsync(member, solution, cancellationToken: cancel).ConfigureAwait(false))
+        {
+            overriding.Add(over.ContainingType);
+            if (!keepAbstract && !Gets(over.ContainingType))
+            {
+                return $"'{over.ContainingType.Name}' overrides {text}, which it would no longer have{Hint([over.ContainingType])}";
+            }
+        }
+        if (keepAbstract && !member.IsAbstract)
+        {
+            foreach (INamedTypeSymbol derived in await SymbolFinder.FindDerivedClassesAsync(type, solution, transitive: true, cancellationToken: cancel).ConfigureAwait(false))
+            {
+                if (!derived.IsAbstract && !Gets(derived) && !Bases(derived).Prepend(derived).TakeWhile(b => !Same(b, type)).Any(b => overriding.Any(o => Same(o, b))))
+                {
+                    return $"'{derived.Name}' would not implement {text}, kept abstract in '{type.Name}'{Hint([derived])}";
+                }
+            }
+        }
+        List<(string Who, INamedTypeSymbol? Through)> left = [];
+        foreach (ReferencedSymbol referenced in await SymbolFinder.FindReferencesAsync(member, solution, cancel).ConfigureAwait(false))
+        {
+            if (!SymbolEqualityComparer.Default.Equals(referenced.Definition.OriginalDefinition, member.OriginalDefinition))
+            {
+                continue;
+            }
+            foreach (ReferenceLocation location in referenced.Locations.Where(l => !l.IsCandidateLocation))
+            {
+                SyntaxNode root = (await location.Document.GetSyntaxRootAsync(cancel).ConfigureAwait(false))!;
+                SyntaxNode node = root.FindNode(location.Location.SourceSpan, getInnermostNodeForTie: true);
+                if (node.AncestorsAndSelf().Any(n => n is CrefSyntax))
+                {
+                    continue;
+                }
+                SemanticModel model = (await location.Document.GetSemanticModelAsync(cancel).ConfigureAwait(false))!;
+                bool moves = pushed.Any(d => d.SyntaxTree == node.SyntaxTree && d.Span.Contains(node.Span));
+                (Reach reach, ITypeSymbol? through) = location.IsImplicit ? (Reach.Typed, null) : ReachOf(model, node, member.ContainingType, member is IPropertySymbol { IsIndexer: true }, cancel);
+                bool breaks = reach switch
+                {
+                    Reach.Own => !moves && !keepAbstract && !Gets(through),
+                    Reach.Base => moves || !Gets(through),
+                    _ => !keepAbstract && !Gets(through),
+                };
+                if (breaks)
+                {
+                    left.Add(($"{User(model, node, cancel)} in {Path.GetFileName(location.Document.FilePath ?? location.Document.Name)}", through as INamedTypeSymbol));
+                }
+            }
+        }
+        if (left.Count == 0)
+        {
+            return null;
+        }
+        string Item((string Who, INamedTypeSymbol? Through) use) => use.Through is { } via ? $"{use.Who}, through '{via.Name}'" : use.Who;
+        string uses = string.Join("; ", left.Take(3).Select(Item)) + (left.Count > 3 ? $"; and {left.Count - 3} more" : string.Empty);
+        return $"'{member.Name}' would be gone from code still using it: {uses}"
+            + (left.All(l => l.Through is not null) ? Hint(left.Select(l => l.Through!)) : string.Empty);
+    }
+
+    /// <summary>How a name reaches its member: as the code's own (alone, or through this), through base, or through a
+    /// value, a type's name or an object made.</summary>
+    private enum Reach
+    {
+        Own,
+        Base,
+        Typed,
+    }
+
+    /// <summary>How a reference reaches its member, and the type it is reached through, where known: for the code's own,
+    /// the type the code is in that has the member.</summary>
+    private static (Reach Reach, ITypeSymbol? Through) ReachOf(SemanticModel model, SyntaxNode node, INamedTypeSymbol holder, bool indexer, CancellationToken cancel)
+    {
+        INamedTypeSymbol? Enclosing()
+        {
+            for (INamedTypeSymbol? type = model.GetEnclosingSymbol(node.SpanStart, cancel)?.ContainingType ?? model.GetEnclosingSymbol(node.SpanStart, cancel) as INamedTypeSymbol;
+                type is not null; type = type.ContainingType)
+            {
+                for (INamedTypeSymbol? up = type; up is not null; up = up.BaseType)
+                {
+                    if (Same(up, holder))
+                    {
+                        return type;
+                    }
+                }
+            }
+            return holder;
+        }
+        ITypeSymbol? TypeOf(SyntaxNode expression) => model.GetTypeInfo(expression, cancel).Type;
+        ITypeSymbol? Conditional(SyntaxNode binding) => binding.FirstAncestorOrSelf<ConditionalAccessExpressionSyntax>() is { } conditional ? TypeOf(conditional.Expression) : null;
+        if (indexer)
+        {
+            return node.FirstAncestorOrSelf<ExpressionSyntax>(e => e is ElementAccessExpressionSyntax or ElementBindingExpressionSyntax) switch
+            {
+                ElementAccessExpressionSyntax { Expression: BaseExpressionSyntax } => (Reach.Base, Enclosing()?.BaseType),
+                ElementAccessExpressionSyntax { Expression: ThisExpressionSyntax } => (Reach.Own, Enclosing()),
+                ElementAccessExpressionSyntax access => (Reach.Typed, TypeOf(access.Expression)),
+                ElementBindingExpressionSyntax binding => (Reach.Typed, Conditional(binding)),
+                _ => (Reach.Typed, null),
+            };
+        }
+        SyntaxNode name = node is SimpleNameSyntax ? node : node.DescendantNodesAndSelf().OfType<SimpleNameSyntax>().FirstOrDefault() ?? node;
+        return name.Parent switch
+        {
+            MemberAccessExpressionSyntax access when access.Name == name => access.Expression switch
+            {
+                BaseExpressionSyntax => (Reach.Base, Enclosing()?.BaseType),
+                ThisExpressionSyntax => (Reach.Own, Enclosing()),
+                _ => (Reach.Typed, TypeOf(access.Expression)),
+            },
+            MemberBindingExpressionSyntax binding => (Reach.Typed, Conditional(binding)),
+            NameColonSyntax { Parent: SubpatternSyntax { Parent: PropertyPatternClauseSyntax { Parent: RecursivePatternSyntax pattern } } } =>
+                (Reach.Typed, model.GetTypeInfo(pattern, cancel).ConvertedType),
+            QualifiedNameSyntax qualified when qualified.Right == name => (Reach.Typed, model.GetSymbolInfo(qualified.Left, cancel).Symbol as ITypeSymbol),
+            AssignmentExpressionSyntax { Parent: InitializerExpressionSyntax { Parent: { } made } } assignment when assignment.Left == name => (Reach.Typed, TypeOf(made)),
+            _ => (Reach.Own, Enclosing()),
+        };
+    }
+
+    /// <summary>The member whose code a place is in, as Type.Member, or its type's name outside any member.</summary>
+    private static string User(SemanticModel model, SyntaxNode node, CancellationToken cancel)
+    {
+        ISymbol? symbol = model.GetEnclosingSymbol(node.SpanStart, cancel);
+        while (symbol is IMethodSymbol { MethodKind: MethodKind.AnonymousFunction or MethodKind.LocalFunction })
+        {
+            symbol = symbol.ContainingSymbol;
+        }
+        symbol = symbol is IMethodSymbol { AssociatedSymbol: { } associated } ? associated : symbol;
+        return symbol switch
+        {
+            INamedTypeSymbol type => type.Name,
+            { ContainingType: { } type } => $"{type.Name}.{symbol.Name}",
+            _ => symbol?.Name ?? "code",
+        };
+    }
+
+    /// <summary>A type's own override of a member, where it declares one.</summary>
+    private static ISymbol? OverrideIn(INamedTypeSymbol type, ISymbol member) =>
+        type.GetMembers(member.Name).FirstOrDefault(m => Overridden(m) is { } over && SymbolEqualityComparer.Default.Equals(over.OriginalDefinition, member.OriginalDefinition));
 
     /// <summary>Why a member cannot be pulled up into a target; null when it can. The target or a class between already
     /// declaring it (but an abstract declaration the member overrides, which it replaces), or code that goes with it using
