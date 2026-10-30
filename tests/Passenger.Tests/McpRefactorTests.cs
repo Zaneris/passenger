@@ -587,6 +587,71 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "abstract members were pulled up");
     }
 
+    /// <summary>Pull Members Up to an interface is refused naming each class listing it, or an interface below it, that would
+    /// not implement the member, an abstract class too, nothing changed; where each has it, its own, a base's or abstract,
+    /// the interface declares it and the project builds.</summary>
+    [Fact]
+    public async Task An_agent_pulling_up_to_an_interface_another_implementer_lacks_finds_it_refused_naming_each()
+    {
+        await TakeFolderAsync();
+        const string Contracts = "namespace Shop;\n\npublic interface IShape\n{\n}\n\npublic interface IRound : IShape\n{\n}\n\npublic interface IPriced\n{\n}\n";
+        const string Tile = "namespace Shop;\n\npublic class Tile : IShape, IPriced\n{\n    public double Area() => 1;\n\n    public decimal Price() => 2;\n}\n";
+        const string Others = "namespace Shop;\n\npublic class Disc : IRound\n{\n}\n\npublic struct Dot : IShape\n{\n    public double Area() => 0;\n}\n\n"
+            + "public abstract class Ring : IShape\n{\n}\n\npublic abstract class Patch : IPriced\n{\n    public abstract decimal Price();\n}\n\n"
+            + "public class Quilt : Patch\n{\n    public override decimal Price() => 3;\n}\n\npublic class Stock\n{\n    public decimal Price() => 4;\n}\n\n"
+            + "public class Crate : Stock, IPriced\n{\n}\n";
+        (string Name, string Text)[] files = [("Contracts.cs", Contracts), ("Tile.cs", Tile), ("Others.cs", Others)];
+        Shop(files);
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        CallToolResult refused = await Result(client, McpTools.Refactor, Place("pull_members_up", "Tile.cs", Tile, "class Til", new { target = "IShape", members = new[] { "Area" } }));
+        Assert.True(refused.IsError == true && Text(refused).Contains("'Disc' and 'Ring' would not implement Area(): double, declared in 'IShape'", StringComparison.Ordinal),
+            $"Pulling Tile's Area up to IShape answered: {Text(refused)}");
+        foreach ((string name, string written) in files)
+        {
+            Assert.True(File.ReadAllText(PathOf(name)) == written, $"Pulling Tile's Area up to IShape, refused, changed {name}:\n{File.ReadAllText(PathOf(name))}");
+        }
+
+        JsonElement pulled = await Call(client, McpTools.Refactor, Place("pull_members_up", "Tile.cs", Tile, "class Til", new { target = "IPriced", members = new[] { "Price" } }));
+        Assert.Equal(["Contracts.cs changed"], Files(pulled));
+        string contracts = File.ReadAllText(PathOf("Contracts.cs"));
+        Assert.True(contracts == Contracts.Replace("IPriced\n{\n}", "IPriced\n{\n    decimal Price();\n}", StringComparison.Ordinal),
+            $"Pulling Tile's Price up to IPriced left Contracts.cs so:\n{contracts}");
+        await Compiles(client, "Price was pulled up to IPriced");
+    }
+
+    /// <summary>Pull Members Up of an abstract member into a class that is not abstract, or Push Members Down of one kept
+    /// abstract there, is refused where code makes that class, naming each member that does, nothing changed.</summary>
+    [Fact]
+    public async Task An_agent_making_a_class_abstract_that_code_makes_finds_it_refused_naming_each_place()
+    {
+        await TakeFolderAsync();
+        const string Shape = "namespace Shop;\n\npublic class Shape\n{\n    public virtual int Sides() => 0;\n}\n";
+        const string Polygon = "namespace Shop;\n\npublic abstract class Polygon : Shape\n{\n    public abstract double Perimeter();\n}\n\n"
+            + "public class Hexagon : Polygon\n{\n    public override double Perimeter() => 6;\n}\n";
+        const string Use = "namespace Shop;\n\npublic static class Use\n{\n    public static Shape Made() => new Shape();\n\n"
+            + "    public static Shape Typed()\n    {\n        Shape shape = new();\n        return shape;\n    }\n\n"
+            + "    public static T Make<T>() where T : new() => new T();\n\n    public static Shape Given() => Make<Shape>();\n}\n";
+        (string Name, string Text)[] files = [("Shape.cs", Shape), ("Polygon.cs", Polygon), ("Use.cs", Use)];
+        Shop(files);
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        foreach ((string kind, string file, string text, string at, object options) in new (string, string, string, string, object)[]
+        {
+            ("pull_members_up", "Polygon.cs", Polygon, "class Pol", new { target = "Shape", members = new[] { "Perimeter" } }),
+            ("push_members_down", "Shape.cs", Shape, "class Sha", new { members = new[] { "Sides" }, @abstract = new[] { "Sides" } }),
+        })
+        {
+            CallToolResult refused = await Result(client, McpTools.Refactor, Place(kind, file, text, at, options));
+            Assert.True(refused.IsError == true && Text(refused).Contains("'Shape' would be made abstract, but code makes one: Use.Given in Use.cs; Use.Made in Use.cs; Use.Typed in Use.cs",
+                StringComparison.Ordinal), $"{kind} from {file} answered: {Text(refused)}");
+            foreach ((string name, string written) in files)
+            {
+                Assert.True(File.ReadAllText(PathOf(name)) == written, $"{kind} from {file}, refused, changed {name}:\n{File.ReadAllText(PathOf(name))}");
+            }
+        }
+    }
+
     /// <summary>A refactoring made a moment after Git changed or deleted files outside the IDE acts on the files as they are on
     /// disk: Push Members Down again right after a reset put its files back gives each class the member the reset took from
     /// it, and a rename right after a file using the member was deleted renames it everywhere else, the project building.</summary>

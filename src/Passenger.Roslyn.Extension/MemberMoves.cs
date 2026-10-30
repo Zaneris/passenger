@@ -1,9 +1,11 @@
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Editing;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Formatting;
+using Microsoft.CodeAnalysis.Simplification;
 
 namespace Passenger.Roslyn.Extension;
 
@@ -108,9 +110,17 @@ internal static class MemberMoves
         }
         if (needsAbstract && !target.IsAbstract)
         {
+            if (await ConstructedAsync(solution, target, cancel).ConfigureAwait(false) is { } made)
+            {
+                return Changes.Refused(made);
+            }
             targetEditor.ReplaceNode(into, (current, generator) => generator.WithModifiers(current, generator.GetModifiers(current).WithIsAbstract(true)));
         }
         Solution changed = await editors.ChangedAsync(sources).ConfigureAwait(false);
+        if (target.TypeKind == TypeKind.Interface && await UnimplementedInterfaceAsync(solution, changed, target, cancel).ConfigureAwait(false) is { } unimplemented)
+        {
+            return Changes.Refused(unimplemented);
+        }
         return await Changes.BetweenAsync(solution, changed, cancel).ConfigureAwait(false);
     }
 
@@ -197,6 +207,10 @@ internal static class MemberMoves
         }
         if (needsAbstract && !type.IsAbstract)
         {
+            if (await ConstructedAsync(solution, type, cancel).ConfigureAwait(false) is { } made)
+            {
+                return Changes.Refused(made);
+            }
             sourceEditor.ReplaceNode(from, (current, generator) => generator.WithModifiers(current, generator.GetModifiers(current).WithIsAbstract(true)));
         }
         Solution changed = await editors.ChangedAsync([solution.GetDocument(from.SyntaxTree)!]).ConfigureAwait(false);
@@ -488,13 +502,105 @@ internal static class MemberMoves
         IEnumerable<INamedTypeSymbol> below = await SymbolFinder.FindDerivedClassesAsync(target, solution, transitive: true, cancellationToken: cancel).ConfigureAwait(false);
         string[] lacking = [.. below.Where(d => !d.IsAbstract && !Bases(d).Prepend(d).TakeWhile(b => !Same(b, target)).Any(b => Same(b, type) || overriding.Any(o => Same(o, b))))
             .Select(d => $"'{d.Name}'").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
-        if (lacking.Length == 0)
+        return lacking.Length == 0 ? null : $"{Names(lacking)} would not implement {Interfaces.Text(member)}, {(keptAbstract ? "kept abstract" : "abstract")} in '{target.Name}'";
+    }
+
+    /// <summary>Why members a pull declared in an interface would leave types implementing it without them, naming each
+    /// class or struct listing it, or an interface below it, that neither declares nor inherits a member implementing one,
+    /// an abstract member counting; null when none would.</summary>
+    private static async Task<string?> UnimplementedInterfaceAsync(Solution solution, Solution changed, INamedTypeSymbol contract, CancellationToken cancel)
+    {
+        async Task<Compilation?> NowAsync(ISymbol symbol) => solution.GetProject(symbol.ContainingAssembly, cancel) is { } project && changed.GetProject(project.Id) is { } now
+            ? await now.GetCompilationAsync(cancel).ConfigureAwait(false)
+            : null;
+        HashSet<string> had = [.. contract.GetMembers().Select(Id)];
+        if (await NowAsync(contract).ConfigureAwait(false) is not { } declaring || DocumentationCommentId.GetFirstSymbolForDeclarationId(Id(contract), declaring) is not INamedTypeSymbol declared)
         {
             return null;
         }
-        string names = lacking.Length == 1 ? lacking[0] : $"{string.Join(", ", lacking[..^1])} and {lacking[^1]}";
-        return $"{names} would not implement {Interfaces.Text(member)}, {(keptAbstract ? "kept abstract" : "abstract")} in '{target.Name}'";
+        List<(INamedTypeSymbol Type, Compilation Compilation)> listing = [];
+        foreach (INamedTypeSymbol implementer in await SymbolFinder.FindImplementationsAsync(contract, solution, transitive: true, cancellationToken: cancel).ConfigureAwait(false))
+        {
+            if (InSource(implementer) && implementer.Interfaces.Any(i => Same(i, contract) || i.AllInterfaces.Any(a => Same(a, contract)))
+                && await NowAsync(implementer).ConfigureAwait(false) is { } compilation
+                && DocumentationCommentId.GetFirstSymbolForDeclarationId(Id(implementer), compilation) is INamedTypeSymbol type)
+            {
+                listing.Add((type, compilation));
+            }
+        }
+        foreach (ISymbol member in declared.GetMembers().Where(m => m is IMethodSymbol { MethodKind: MethodKind.Ordinary } or IPropertySymbol or IEventSymbol && !had.Contains(Id(m))))
+        {
+            string[] lacking = [.. listing.Where(l => !Implements(l.Type, DocumentationCommentId.GetFirstSymbolForDeclarationId(Id(member), l.Compilation)))
+                .Select(l => $"'{l.Type.Name}'").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+            if (lacking.Length > 0)
+            {
+                return $"{Names(lacking)} would not implement {Interfaces.Text(member)}, declared in '{contract.Name}'";
+            }
+        }
+        return null;
     }
+
+    /// <summary>Whether a type implements an interface's member, each accessor of a property, under every construction of
+    /// that interface it has.</summary>
+    private static bool Implements(INamedTypeSymbol type, ISymbol? member) => member is null
+        || type.AllInterfaces.SelectMany(i => i.GetMembers(member.Name)).Where(m => SymbolEqualityComparer.Default.Equals(m.OriginalDefinition, member))
+            .SelectMany(m => m is IPropertySymbol property ? [property.GetMethod, property.SetMethod] : new ISymbol?[] { m })
+            .All(m => m is null || type.FindImplementationForInterfaceMember(m) is not null);
+
+    /// <summary>Why a class made abstract would leave code that makes one failing, naming each member that does, by its
+    /// file: an object made of it, or it given as a type argument that must be constructed; null where nothing makes one.</summary>
+    private static async Task<string?> ConstructedAsync(Solution solution, INamedTypeSymbol type, CancellationToken cancel)
+    {
+        SortedSet<string> places = new(StringComparer.Ordinal);
+        foreach (ReferencedSymbol referenced in await SymbolFinder.FindReferencesAsync(type, solution, cancel).ConfigureAwait(false))
+        {
+            bool made = referenced.Definition is IMethodSymbol { MethodKind: MethodKind.Constructor } constructor && Same(constructor.ContainingType, type);
+            if (!made && !(referenced.Definition is INamedTypeSymbol named && Same(named, type)))
+            {
+                continue;
+            }
+            foreach (ReferenceLocation location in referenced.Locations.Where(l => !l.IsCandidateLocation))
+            {
+                SyntaxNode root = (await location.Document.GetSyntaxRootAsync(cancel).ConfigureAwait(false))!;
+                SyntaxNode node = root.FindNode(location.Location.SourceSpan, getInnermostNodeForTie: true);
+                SemanticModel model = (await location.Document.GetSemanticModelAsync(cancel).ConfigureAwait(false))!;
+                if (!node.AncestorsAndSelf().Any(n => n is CrefSyntax) && (made ? Creates(model, node, type, cancel) : Constructed(model, node, cancel)))
+                {
+                    places.Add($"{User(model, node, cancel)} in {Path.GetFileName(location.Document.FilePath ?? location.Document.Name)}");
+                }
+            }
+        }
+        return places.Count == 0 ? null : $"'{type.Name}' would be made abstract, but code makes one: {string.Join("; ", places)}";
+    }
+
+    /// <summary>Whether a reference to a constructor is an object made of a type.</summary>
+    private static bool Creates(SemanticModel model, SyntaxNode node, INamedTypeSymbol type, CancellationToken cancel) =>
+        node.FirstAncestorOrSelf<BaseObjectCreationExpressionSyntax>() is { } creation
+        && model.GetSymbolInfo(creation, cancel).Symbol is IMethodSymbol { ContainingType: { } made } && Same(made, type);
+
+    /// <summary>Whether a type's name is given as a type argument whose parameter must be constructed (new()).</summary>
+    private static bool Constructed(SemanticModel model, SyntaxNode node, CancellationToken cancel)
+    {
+        while ((node.Parent is QualifiedNameSyntax qualified && qualified.Right == node) || (node.Parent is AliasQualifiedNameSyntax alias && alias.Name == node))
+        {
+            node = node.Parent;
+        }
+        if (node is not TypeSyntax argument || node.Parent is not TypeArgumentListSyntax { Parent: GenericNameSyntax generic } list)
+        {
+            return false;
+        }
+        ImmutableArray<ITypeParameterSymbol> parameters = model.GetSymbolInfo(generic, cancel).Symbol switch
+        {
+            IMethodSymbol method => method.TypeParameters,
+            INamedTypeSymbol named => named.TypeParameters,
+            _ => [],
+        };
+        int at = list.Arguments.IndexOf(argument);
+        return at >= 0 && at < parameters.Length && parameters[at].HasConstructorConstraint;
+    }
+
+    /// <summary>Names quoted, joined as a list is read.</summary>
+    private static string Names(string[] names) => names.Length == 1 ? names[0] : $"{string.Join(", ", names[..^1])} and {names[^1]}";
 
     /// <summary>Why a member cannot be pulled up into a target; null when it can. The target or a class between already
     /// declaring it (but an abstract declaration the member overrides, which it replaces), or code that goes with it using
@@ -736,7 +842,8 @@ internal static class MemberMoves
         }
     }
 
-    /// <summary>A file given the usings of other files that it lacks, less those its code then does not need (CS8019).</summary>
+    /// <summary>A file given the usings of other files that it lacks, the names a generator wrote in it (an interface's
+    /// declarations) shortened by them, less those its code then does not need (CS8019).</summary>
     private static async Task<Document> WithUsingsOfAsync(Document document, IEnumerable<Document> others, CancellationToken cancel)
     {
         CompilationUnitSyntax root = (CompilationUnitSyntax)(await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false))!;
@@ -755,10 +862,11 @@ internal static class MemberMoves
         }
         if (added.Count == 0)
         {
-            return document;
+            return await Simplifier.ReduceAsync(document, Simplifier.Annotation, cancellationToken: cancel).ConfigureAwait(false);
         }
         SyntaxAnnotation mark = new();
         Document widened = document.WithSyntaxRoot(root.AddUsings([.. added.Select(u => u.WithAdditionalAnnotations(mark, Formatter.Annotation))]));
+        widened = await Simplifier.ReduceAsync(widened, Simplifier.Annotation, cancellationToken: cancel).ConfigureAwait(false);
         SemanticModel model = (await widened.GetSemanticModelAsync(cancel).ConfigureAwait(false))!;
         SyntaxNode wide = (await widened.GetSyntaxRootAsync(cancel).ConfigureAwait(false))!;
         HashSet<SyntaxNode> unused = [.. model.GetDiagnostics(cancellationToken: cancel).Where(d => d.Id == "CS8019").Select(d => wide.FindNode(d.Location.SourceSpan))];
