@@ -617,11 +617,21 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"nuget_install's update answered that it changed [{string.Join(", ", changed)}], the lock file now holding:\n{locked}");
     }
 
-    /// <summary>Where a Directory.Build.props names the file central package versions are kept in (DirectoryPackagesPropsPath),
-    /// nuget_install names that file among those it changed, the one dotnet wrote the version to, not the
-    /// Directory.Packages.props nearest the project, which the evaluation never reads.</summary>
+    /// <summary>Where a Directory.Build.props names the file central package versions are kept in (DirectoryPackagesPropsPath,
+    /// as eng/Versions.props, which on Windows is not the file's full path), nuget_install writes the version there and
+    /// names that file among those it changed, not the Directory.Packages.props nearest the project, which the evaluation
+    /// never reads.</summary>
     [Fact]
-    public async Task An_agents_package_install_under_central_versions_kept_where_the_build_names_names_that_file_among_those_it_changed()
+    public Task An_agents_package_install_under_central_versions_kept_where_the_build_names_names_that_file_among_those_it_changed() =>
+        InstallUnderCentralVersionsAt("eng/Versions.props");
+
+    /// <summary>Where a Directory.Build.props names the central versions file through a parent folder, on every system a
+    /// spelling other than its full path, nuget_install writes the version there as where it names it plainly.</summary>
+    [Fact]
+    public Task An_agents_package_install_under_central_versions_named_through_a_parent_folder_writes_the_version_there() =>
+        InstallUnderCentralVersionsAt("Lib/../eng/Versions.props");
+
+    private async Task InstallUnderCentralVersionsAt(string spelled)
     {
         string root = PathNames.Canonical(TestFolders.Create("mcp-nuget-central-"));
         DeleteAtEnd(root);
@@ -631,7 +641,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             "<configuration>\n  <packageSources>\n    <clear />\n    <add key=\"local\" value=\"feed\" />\n  </packageSources>\n"
             + "  <config>\n    <add key=\"globalPackagesFolder\" value=\"packages\" />\n  </config>\n</configuration>\n");
         File.WriteAllText(Path.Combine(root, "Directory.Build.props"),
-            "<Project>\n  <PropertyGroup>\n    <DirectoryPackagesPropsPath>$(MSBuildThisFileDirectory)eng/Versions.props</DirectoryPackagesPropsPath>\n  </PropertyGroup>\n</Project>\n");
+            $"<Project>\n  <PropertyGroup>\n    <DirectoryPackagesPropsPath>$(MSBuildThisFileDirectory){spelled}</DirectoryPackagesPropsPath>\n  </PropertyGroup>\n</Project>\n");
         string central = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "eng")).FullName, "Versions.props");
         File.WriteAllText(central, "<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n</Project>\n");
         string library = Directory.CreateDirectory(Path.Combine(root, "Lib")).FullName;
@@ -645,7 +655,13 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         string[] changed = [.. made.GetProperty("changed").EnumerateArray().Select(f => f.GetString()!).Order(StringComparer.Ordinal)];
         string versions = File.ReadAllText(central);
         Assert.True(versions.Contains("\"Passenger.Sample\"", StringComparison.Ordinal) && versions.Contains("\"1.0.0\"", StringComparison.Ordinal),
-            $"dotnet add package did not write the version to {central}, which DirectoryPackagesPropsPath names:\n{versions}");
+            $"nuget_install did not write the version to {central}, which DirectoryPackagesPropsPath names as {spelled}:\n{versions}");
+        string project = File.ReadAllText(Path.Combine(library, "Lib.csproj"));
+        Assert.True(project.Contains("<PackageReference Include=\"Passenger.Sample\" />", StringComparison.Ordinal),
+            $"nuget_install did not reference the package in Lib.csproj with its version left to the central file:\n{project}");
+        string assets = Path.Combine(library, "obj", "project.assets.json");
+        Assert.True(File.Exists(assets) && File.ReadAllText(assets).Contains("Passenger.Sample/1.0.0", StringComparison.Ordinal),
+            "nuget_install left Lib unrestored with the package, so its build would not find it");
         string[] expected = [.. new[] { Path.Combine("Lib", "Lib.csproj"), Path.Combine("eng", "Versions.props") }.Order(StringComparer.Ordinal)];
         Assert.True(changed.SequenceEqual(expected),
             $"nuget_install answered that it changed [{string.Join(", ", changed)}], where dotnet wrote the version to eng/Versions.props: "

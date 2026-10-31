@@ -46,6 +46,13 @@ public sealed record CentralPackages(string Props, IReadOnlyDictionary<string, s
     public static string? PropsOf(ProjectModel project) =>
         PropsOf(project.Property(CarriedProperties.ManagePackageVersionsCentrally), project.Property(CarriedProperties.DirectoryPackagesPropsPath));
 
+    /// <summary>The Directory.Packages.props of a project (<see cref="PropsOf(ProjectModel)"/>) that dotnet add package cannot
+    /// change, where its evaluation's DirectoryPackagesPropsPath spells it otherwise than its full path (eng/Versions.props
+    /// on Windows, a path through ".."): the command looks for the file by that spelling, and fails; else null.</summary>
+    public static string? UnchangedByDotnet(ProjectModel project) =>
+        PropsOf(project) is { } props && project.Property(CarriedProperties.DirectoryPackagesPropsPath) is { } spelled
+            && !string.Equals(Path.GetFullPath(spelled), spelled, StringComparison.Ordinal) ? props : null;
+
     /// <summary>The file an evaluation's DirectoryPackagesPropsPath names, canonical, where its ManagePackageVersionsCentrally
     /// (<paramref name="managed"/>) is true; else null.</summary>
     public static string? PropsOf(string? managed, string? path) =>

@@ -6,8 +6,8 @@ using Passenger.Text;
 
 namespace Passenger.Workspace;
 
-/// <summary>Add Reference and Remove on a project reference, a package reference added, its paths following a file
-/// moved, and a property set (Add &gt; Docker Support's container properties), made to the project file's text through
+/// <summary>Add Reference and Remove on a project reference, a package reference added (or its central version set), its
+/// paths following a file moved, and a property set (Add &gt; Docker Support's container properties), made to the project file's text through
 /// <see cref="XmlText"/>: a reference goes beside the project's others, or in an item group of its own before
 /// &lt;/Project&gt;, written relative with backslashes; taking it out takes the group it leaves empty, so the file is as
 /// it was. What a comment holds is never read or changed, and the rest of the file keeps its bytes, its byte order mark,
@@ -47,17 +47,58 @@ public static class ProjectEdits
             return $"{Path.GetFileNameWithoutExtension(project)} already references {id}";
         }
         string include = XmlEntities.Encode(id, '"');
-        string element = version is null ? $"<PackageReference Include=\"{include}\" />" : $"<PackageReference Include=\"{include}\" Version=\"{XmlEntities.Encode(version, '"')}\" />";
-        if (references.LastOrDefault(Unconditioned) is { } last)
+        Referenced(xml, references, version is null ? $"<PackageReference Include=\"{include}\" />" : $"<PackageReference Include=\"{include}\" Version=\"{XmlEntities.Encode(version, '"')}\" />");
+        return null;
+    });
+
+    /// <summary>A project file's text with a package at a version under central package management, as dotnet add package
+    /// leaves it: a reference with no version added where it has none (<see cref="AddPackage"/>'s place), the version left
+    /// to Directory.Packages.props (<see cref="WithPackageVersion"/>); or the VersionOverride of a reference that has one
+    /// set, the version its own (true). The text unchanged where it does not read as XML.</summary>
+    public static (string Text, bool Overridden) WithCentralPackage(string text, string id, string version)
+    {
+        if (Read(text) is not { } xml)
         {
-            xml.After(last, element);
+            return (text, false);
+        }
+        List<XElement> references = PackageReferences(xml);
+        if (references.FirstOrDefault(r => Names(r, id)) is not { } reference)
+        {
+            Referenced(xml, references, $"<PackageReference Include=\"{XmlEntities.Encode(id, '"')}\" />");
+            return (xml.Text, false);
+        }
+        if (reference.Attribute("VersionOverride") is not null)
+        {
+            xml.SetAttribute(reference, "VersionOverride", version);
+            return (xml.Text, true);
+        }
+        if (reference.Elements().FirstOrDefault(e => e.Name.LocalName == "VersionOverride" && !e.HasElements) is { } element)
+        {
+            xml.Replace(element, $"<VersionOverride>{XmlEntities.Encode(version)}</VersionOverride>");
+            return (xml.Text, true);
+        }
+        return (text, false);
+    }
+
+    /// <summary>A Directory.Packages.props' text with its PackageVersion of a package set to a version, as dotnet add
+    /// package sets it (its Version attribute, else element); null where it has none for the package or does not read as
+    /// XML.</summary>
+    public static string? WithPackageVersion(string text, string id, string version)
+    {
+        if (Read(text) is not { } xml || xml.Root.Descendants().FirstOrDefault(e => e.Name.LocalName == "PackageVersion" && Names(e, id)) is not { } held)
+        {
+            return null;
+        }
+        if (held.Attribute("Version") is null && held.Elements().FirstOrDefault(e => e.Name.LocalName == "Version" && !e.HasElements) is { } element)
+        {
+            xml.Replace(element, $"<Version>{XmlEntities.Encode(version)}</Version>");
         }
         else
         {
-            InGroupOfItsOwn(xml, element);
+            xml.SetAttribute(held, "Version", version);
         }
-        return null;
-    });
+        return xml.Text;
+    }
 
     /// <summary>Whether a project file's text references a package; false for text that does not read as XML.</summary>
     public static bool HasPackage(string text, string id) =>
@@ -356,6 +397,23 @@ public static class ProjectEdits
     }
 
     private static List<XElement> PackageReferences(XmlText xml) => [.. xml.Root.Descendants().Where(e => e.Name.LocalName == "PackageReference")];
+
+    /// <summary>Whether an item names a package, in any letter case.</summary>
+    private static bool Names(XElement item, string id) => string.Equals(((string?)item.Attribute("Include"))?.Trim(), id, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A package reference put after the project's last one that every build sees, else in an item group of its
+    /// own before &lt;/Project&gt;.</summary>
+    private static void Referenced(XmlText xml, List<XElement> references, string element)
+    {
+        if (references.LastOrDefault(Unconditioned) is { } last)
+        {
+            xml.After(last, element);
+        }
+        else
+        {
+            InGroupOfItsOwn(xml, element);
+        }
+    }
 
     /// <summary>A package reference's package and the version it writes (its Version attribute, else element); null for
     /// one that writes none.</summary>

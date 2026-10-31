@@ -239,16 +239,77 @@ public sealed class FolderPackages
         InstalledVersion.Written(version, [.. References(project).Where(r => r.Id.Equals(id, StringComparison.OrdinalIgnoreCase)).Select(r => r.Version)]);
 
     /// <summary>Adds a package to a project at a version, or moves it to that version, a pin kept a pin: the one way a
-    /// package goes in (<see cref="ChangeAsync"/>).</summary>
-    public Task<PackageOutcome> InstallAsync(ProjectModel project, string id, string version, CommandHistory.Recording? within = null) =>
-        ChangeAsync($"Installing {id} {version} in {project.Name}…", $"Install {id} {version} in {project.Name}", project, within,
-            () => manager.InstallAsync(project.Path, id, Written(project, id, version)));
+    /// package goes in (<see cref="ChangeAsync"/>). Where dotnet add package cannot change its Directory.Packages.props
+    /// (<see cref="CentralPackages.UnchangedByDotnet"/>), the files are written as it would write them, then restored.</summary>
+    public Task<PackageOutcome> InstallAsync(ProjectModel project, string id, string version, CommandHistory.Recording? within = null)
+    {
+        string stage = $"Installing {id} {version} in {project.Name}…";
+        string name = $"Install {id} {version} in {project.Name}";
+        return CentralPackages.UnchangedByDotnet(project) is { } props
+            ? ChangeAsync(stage, name, project, within, () => manager.RestoreAsync(project.Path), () => manager.RestoreAsync(project.Path),
+                () => WrittenCentrallyAsync(project, props, [(id, Written(project, id, version))]))
+            : ChangeAsync(stage, name, project, within, () => manager.InstallAsync(project.Path, id, Written(project, id, version)));
+    }
 
     /// <summary>Moves several packages of a project to their versions together, as one change (<see cref="ChangeAsync"/>):
-    /// EF Core's packages with the provider that supports them, pins kept pins. One that fails is restored again once put back.</summary>
-    public Task<PackageOutcome> InstallSetAsync(ProjectModel project, IReadOnlyList<(string Id, string Version)> packages, CommandHistory.Recording? within = null) =>
-        ChangeAsync($"Moving {Moves(packages)} in {project.Name}…", $"Move {Moves(packages)} in {project.Name}", project, within,
-            () => manager.InstallSetAsync(project.Path, [.. packages.Select(p => (p.Id, Written(project, p.Id, p.Version)))]), () => manager.RestoreAsync(project.Path));
+    /// EF Core's packages with the provider that supports them, pins kept pins, written as <see cref="InstallAsync"/>
+    /// writes them. One that fails is restored again once put back.</summary>
+    public Task<PackageOutcome> InstallSetAsync(ProjectModel project, IReadOnlyList<(string Id, string Version)> packages, CommandHistory.Recording? within = null)
+    {
+        string stage = $"Moving {Moves(packages)} in {project.Name}…";
+        string name = $"Move {Moves(packages)} in {project.Name}";
+        Func<IReadOnlyList<(string Id, string Version)>> written = () => [.. packages.Select(p => (p.Id, Written(project, p.Id, p.Version)))];
+        return CentralPackages.UnchangedByDotnet(project) is { } props
+            ? ChangeAsync(stage, name, project, within, () => manager.RestoreAsync(project.Path), () => manager.RestoreAsync(project.Path),
+                () => WrittenCentrallyAsync(project, props, written()))
+            : ChangeAsync(stage, name, project, within, () => manager.InstallSetAsync(project.Path, written()), () => manager.RestoreAsync(project.Path));
+    }
+
+    /// <summary>Packages at their versions written into a project and the Directory.Packages.props that holds its versions,
+    /// as dotnet add package would write them (<see cref="ProjectEdits.WithCentralPackage"/>, <see cref="ProjectEdits.WithPackageVersion"/>,
+    /// <see cref="CentralPackages.Pinned"/>), off the window's thread, their saves waited for: null once written, else why
+    /// not. The log says why Passenger wrote them.</summary>
+    private async Task<string?> WrittenCentrallyAsync(ProjectModel project, string props, IReadOnlyList<(string Id, string Version)> packages)
+    {
+        Line?.Invoke(this, $"dotnet add package cannot change {Path.GetFileName(props)} as DirectoryPackagesPropsPath spells it "
+            + $"({project.Property(Passenger.Host.CarriedProperties.DirectoryPackagesPropsPath)}), so Passenger writes {Path.GetFileName(project.Path)} and it, then restores");
+        string? refused = await BackgroundWork.Run(() =>
+        {
+            try
+            {
+                FileText projectFile = FileText.Load(project.Path) ?? throw new IOException($"{Path.GetFileName(project.Path)} is not a text file");
+                FileText propsFile = FileText.Load(props) ?? throw new IOException($"{Path.GetFileName(props)} is not a text file");
+                string projectText = projectFile.Text;
+                string propsText = propsFile.Text;
+                foreach ((string id, string version) in packages)
+                {
+                    (projectText, bool overridden) = ProjectEdits.WithCentralPackage(projectText, id, version);
+                    if (!overridden)
+                    {
+                        propsText = ProjectEdits.WithPackageVersion(propsText, id, version) ?? CentralPackages.Pinned(propsText, [(id, version)]);
+                    }
+                }
+                if (projectText != projectFile.Text)
+                {
+                    FileText.SaveOver(project.Path, projectFile, projectText);
+                }
+                if (propsText != propsFile.Text)
+                {
+                    FileText.SaveOver(props, propsFile, propsText);
+                }
+                return null;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return error.Message;
+            }
+        });
+        if (refused is null && await EditorArea.LandedAsync([project.Path, props], null) is [(string path, Exception unlanded), ..])
+        {
+            refused = $"{Path.GetFileName(path)} could not be written: {unlanded.Message}";
+        }
+        return refused;
+    }
 
     /// <summary>Takes a package out of a project.</summary>
     public Task<PackageOutcome> RemoveAsync(ProjectModel project, string id, CommandHistory.Recording? within = null) =>
@@ -272,13 +333,13 @@ public sealed class FolderPackages
         return reached.Task;
     }
 
-    /// <summary>A package change, whoever asks for it: one at a time (another asked meanwhile is refused, saying what is under
-    /// way), the open files saved first (refused, saying why, when one is not), shown as the window's work under <see
-    /// cref="Changing"/>; its files (<see cref="PackageFiles"/>) recorded <paramref name="within"/> the caller's command, else
-    /// as its own named <paramref name="name"/>. One that fails puts back what it wrote but a file saved meanwhile, then,
-    /// unless stopped, runs <paramref name="again"/> (a restore of the project as it was). Its end is told (<see cref="Changed"/>).</summary>
+    /// <summary>A package change, whoever asks for it: one at a time (another refused meanwhile, saying what is under way),
+    /// the open files saved first (refused, saying why, when one is not), shown as the window's work under <see cref="Changing"/>,
+    /// its files (<see cref="PackageFiles"/>) recorded <paramref name="within"/> the caller's command, else as its own named
+    /// <paramref name="name"/>, its <paramref name="own"/> writes (null, else why not) made before its command. One that fails
+    /// puts back what it wrote but a file saved meanwhile, then, unless stopped, runs <paramref name="again"/>; its end is told.</summary>
     private async Task<PackageOutcome> ChangeAsync(string stage, string name, ProjectModel project, CommandHistory.Recording? within, Func<Task<bool>> change,
-        Func<Task<bool>>? again = null)
+        Func<Task<bool>>? again = null, Func<Task<string?>>? own = null)
     {
         if (IsBusy)
         {
@@ -293,7 +354,7 @@ public sealed class FolderPackages
         EventHandler<string> heard = (_, line) => said.Add(line);
         manager.Line += heard;
         IReadOnlyList<string> files = PackageFiles(project);
-        CommandHistory.Recording? own = null;
+        CommandHistory.Recording? recorded = null;
         try
         {
             PackageOutcome outcome;
@@ -316,12 +377,14 @@ public sealed class FolderPackages
                             saved[file] = true;
                         }
                     };
-                    FileText.Wrote += saving;
-                    CommandHistory.Recording? recording = within ?? (own = Commands?.RecordWrites(name));
+                    CommandHistory.Recording? recording = within ?? (recorded = Commands?.RecordWrites(name));
                     foreach (string file in files)
                     {
                         recording?.Watch(file);
                     }
+                    // Its own writes before a save is heard as the person's.
+                    string? unwritten = own is null ? null : await own();
+                    FileText.Wrote += saving;
                     if (holdNext is { } hold)
                     {
                         holdNext = null;
@@ -331,7 +394,11 @@ public sealed class FolderPackages
                     bool done;
                     try
                     {
-                        done = await change();
+                        if (unwritten is not null)
+                        {
+                            said.Add(unwritten);
+                        }
+                        done = unwritten is null && await change();
                     }
                     finally
                     {
@@ -366,7 +433,7 @@ public sealed class FolderPackages
         finally
         {
             // Ended once the window has taken the files into its editors, so the command holds their reload.
-            own?.Dispose();
+            recorded?.Dispose();
         }
     }
 

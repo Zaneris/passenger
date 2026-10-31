@@ -30,6 +30,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-31
 
+- `McpTests`' `An_agents_package_install_under_central_versions_kept_where_the_build_names_names_that_file_among_those_it_changed`,
+  CI Windows x64, run 41154974796 (b628b1f3), report lane (#1047): "nuget_install failed: ... dotnet.exe add ...
+  package Passenger.Sample --version 1.0.0", dotnet's last line "error: Object reference not set to an instance of an
+  object.". dotnet add package finds the central versions file among the project's imports by comparing each import's
+  full path with DirectoryPackagesPropsPath as written (NUGET_SHOW_STACK: `MSBuildAPIUtility.AddPackageVersionIntoItemGroupCPM`),
+  and refuses a package the file already holds for the same mismatch ("defined in incorrect location");
+  `$(MSBuildThisFileDirectory)eng/Versions.props` is `...\eng/Versions.props` on Windows, never the import's
+  `...\eng\Versions.props`, and a path through `..` mismatches so on every system. **A bug in NuGet the IDE met** every
+  time: where the evaluation spells the file otherwise than its full path, Passenger writes the reference and the version
+  as dotnet add package would and restores (in this commit, with a test naming the file through `Lib/..`). It failed on
+  the Windows VM every time before; after it, both tests 10 of 10 there and 10 of 10 on this Mac.
+
 - `PauseTests`' `An_interpolation_paused_in_a_sleep_writes_numbers_in_the_programs_culture_and_refuses_a_value_only_its_ToString_writes`,
   CI Windows x64, run 41154974796 (b628b1f3), report lane (#1045): "Paused in its sleep, $"{count}" answered "-1234" and
   $"{ratio:N1}" "1 234,5", where the program wrote asleep -1234 1�234,5 dreaming". The debugger's answer was right, its
