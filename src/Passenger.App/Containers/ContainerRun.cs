@@ -1339,7 +1339,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
                 return;
             }
             watching = started;
-            Task pumped = Task.WhenAll(console.PumpAsync(started.StandardOutput, ConsoleStream.Output), console.PumpAsync(started.StandardError, ConsoleStream.Output));
+            Task pumped = Task.WhenAll(console.PumpAsync(ChildProcesses.Output(started), ConsoleStream.Output), console.PumpAsync(ChildProcesses.Errors(started), ConsoleStream.Output));
             IdeErrors.Observe(Ended());
 
             // A watch that ends while the run lasts says so, rather than leaving its files unsynced unsaid.

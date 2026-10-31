@@ -30,6 +30,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-31
 
+- `AspireStandInTests`' `An_AppHosts_console_and_its_containers_merged_log_cost_a_small_constant_for_each_line_however_many_come`,
+  CI Linux x64, run 41154974796 (b628b1f3), report lane (#1057): "The AppHost's console allocated 238 bytes off the
+  window's thread for each line of 10,000 more than of 1,000", against 220. About 140 bytes of a line are its text
+  waiting for the console; the rest came from the reads of the AppHost's pipe that waited for it, each of which .NET's
+  reader of a child's output allocates for (its read's state and its pipe stream's, about 430 bytes), so the more often
+  the reads caught a program writing a line at a time up, as on CI's runner, the more a line cost. **The IDE**: a
+  child's output on macOS and Linux is read through Passenger's own reader over a socket on its pipe's descriptor, whose
+  reads that wait allocate nothing (in this commit). With the AppHost pausing after each line, so that each comes in a
+  read of its own, a line cost 462 to 475 bytes off the window's thread on this Mac and 332 to 370 on the Linux VM
+  before it, 45 to 48 and 33 to 44 after it. As the test is, its reads seldom waiting on either machine, 134 to 146
+  after it on this Mac (139 to 158 before) and 123 to 165 on the Linux VM (136 to 148 before), its lines' text.
+
 - `AspireStandInTests`' `Profile_of_an_AppHost_gives_up_on_a_service_past_its_time_saying_so`, CI macOS, run 41154974796
   (b628b1f3), report lane (#1057): "Profile's time limit was said as " with nothing after it, as in release run
   40127831310 below. Since 50ce6ce4 the limit fell due on a timer of its own from DCP's ask, and only there: a start

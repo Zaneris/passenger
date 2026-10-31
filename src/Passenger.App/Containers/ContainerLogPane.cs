@@ -173,8 +173,8 @@ public sealed class ContainerLogPane : DockPanel
             start.RedirectStandardError = true;
             Process started = ChildProcesses.Start(start);
             MergedStream stream = new(started);
-            Task read = Task.WhenAll(sink.PumpAsync(started.StandardOutput, ConsoleStream.Output, stream.letGo.Token, prefix: prefix),
-                sink.PumpAsync(started.StandardError, ConsoleStream.Error, stream.letGo.Token, prefix: prefix));
+            Task read = Task.WhenAll(sink.PumpAsync(ChildProcesses.Output(started), ConsoleStream.Output, stream.letGo.Token, prefix: prefix),
+                sink.PumpAsync(ChildProcesses.Errors(started), ConsoleStream.Error, stream.letGo.Token, prefix: prefix));
             IdeErrors.Observe(stream.EndedAsync(read));
             return stream;
         }

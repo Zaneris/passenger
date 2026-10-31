@@ -2,6 +2,8 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO.Pipes;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Passenger.Core;
@@ -209,8 +211,8 @@ public static class ChildProcesses
         using Process process = await StartOffAsync(start, answers);
         using CancellationTokenSource ending = CancellationTokenSource.CreateLinkedTokenSource(cancel);
         // Output past what the caller reads of it ends the child as an overrun limit does, said by the size it went past.
-        Reading output = new(process.StandardOutput, mostOutput, ending);
-        Reading errors = new(process.StandardError, mostOutput, ending);
+        Reading output = new(Output(process), mostOutput, ending);
+        Reading errors = new(Errors(process), mostOutput, ending);
         if (limit is { } most)
         {
             ending.CancelAfter(most);
@@ -241,7 +243,7 @@ public static class ChildProcesses
         start.RedirectStandardError = true;
         using Process process = await StartOffAsync(start, answers);
         using CancellationTokenSource ending = CancellationTokenSource.CreateLinkedTokenSource(cancel);
-        Reading errors = new(process.StandardError);
+        Reading errors = new(Errors(process));
         Task<T> output = ReadThroughAsync(process, read);
         await RunToEndAsync(process, Task.WhenAll(output, errors.Done), input, ending, cancel);
         if (!output.IsCompleted)
@@ -307,8 +309,8 @@ public static class ChildProcesses
         start.RedirectStandardError = true;
         Process process = await StartOffAsync(start, answers: null);
         CancellationTokenSource ending = CancellationTokenSource.CreateLinkedTokenSource(cancel);
-        Reading output = new(process.StandardOutput, isAnswer: isAnswer);
-        Reading errors = new(process.StandardError);
+        Reading output = new(Output(process), isAnswer: isAnswer);
+        Reading errors = new(Errors(process));
         Task read = Task.WhenAll(output.Done, errors.Done);
         if (limit is { } most)
         {
@@ -449,7 +451,7 @@ public static class ChildProcesses
         private int lineStart;
         private int looked;
 
-        public Reading(StreamReader reader, int? most = null, CancellationTokenSource? ending = null, Func<string, bool>? isAnswer = null)
+        public Reading(TextReader reader, int? most = null, CancellationTokenSource? ending = null, Func<string, bool>? isAnswer = null)
         {
             this.most = most;
             this.ending = ending;
@@ -477,7 +479,7 @@ public static class ChildProcesses
         }
 
         /// <summary>Reads through a buffer of the pool's, given back once the reading ends however it ends.</summary>
-        private async Task ReadAsync(StreamReader reader)
+        private async Task ReadAsync(TextReader reader)
         {
             char[] buffer = ArrayPool<char>.Shared.Rent(16 * 1024);
             try
@@ -561,12 +563,12 @@ public static class ChildProcesses
     /// never closes a stream read here under its read. The task ends once both reads have; a hearer's fault faults it. With
     /// <paramref name="longest"/>, each line is cut there, the rest of it passed over: for a child whose lines nothing bounds.</summary>
     public static Task Hear(Process process, Action<string>? output = null, Action<string>? errors = null, int? longest = null) =>
-        Task.WhenAll(output is null ? Task.CompletedTask : HearAsync(process.StandardOutput, new ChildLines(output, longest)),
-            errors is null ? Task.CompletedTask : HearAsync(process.StandardError, new ChildLines(errors, longest)));
+        Task.WhenAll(output is null ? Task.CompletedTask : HearAsync(Output(process), new ChildLines(output, longest)),
+            errors is null ? Task.CompletedTask : HearAsync(Errors(process), new ChildLines(errors, longest)));
 
-    /// <summary>One stream heard to its end. It is taken as the process's reader, which the process's disposal leaves open
-    /// for whoever took it: closed under a read, the read would fault.</summary>
-    private static Task HearAsync(StreamReader stream, ChildLines lines) =>
+    /// <summary>One stream heard to its end, through the reader taken from the process (<see cref="Output"/>), which the
+    /// process's disposal leaves open for whoever took it: closed under a read, the read would fault.</summary>
+    private static Task HearAsync(TextReader stream, ChildLines lines) =>
         // Unheld: it reads for as long as the child keeps its pipe open, which no wait for the IDE to be quiet may wait out.
         BackgroundWork.Unheld(async () =>
         {
@@ -575,9 +577,22 @@ public static class ChildProcesses
                 char[] buffer = ArrayPool<char>.Shared.Rent(4096);
                 try
                 {
-                    int read;
-                    while ((read = await ReadAsync(stream, buffer).ConfigureAwait(false)) > 0)
+                    while (true)
                     {
+                        int read;
+                        try
+                        {
+                            read = await stream.ReadAsync(buffer.AsMemory(), CancellationToken.None).ConfigureAwait(false);
+                        }
+                        catch (IOException)
+                        {
+                            // A pipe broken as its child was killed: the stream has ended all the same.
+                            read = 0;
+                        }
+                        if (read == 0)
+                        {
+                            break;
+                        }
                         lines.Read(buffer.AsSpan(0, read));
                     }
                 }
@@ -589,19 +604,22 @@ public static class ChildProcesses
             }
         });
 
-    /// <summary>The next of a child's stream read into <paramref name="buffer"/>, nothing once it has ended.</summary>
-    private static async Task<int> ReadAsync(StreamReader stream, char[] buffer)
-    {
-        try
-        {
-            return await stream.ReadAsync(buffer.AsMemory(), CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (IOException)
-        {
-            // A pipe broken as its child was killed: the stream has ended all the same.
-            return 0;
-        }
-    }
+    /// <summary>A child's output, redirected, as text read as it comes: on macOS and Linux from its pipe, a read of a
+    /// buffer that waits for the child allocating nothing (<see cref="ChildPipe"/>, <see cref="ChildText"/>), so a
+    /// program that writes a line at a time costs no more than its lines; on Windows the process's own reader. Taken from
+    /// the process before anything reads it, the same reader each time it is asked for, which the process's disposal
+    /// leaves open and whose disposal ends a read under way.</summary>
+    public static TextReader Output(Process process) => Taken(process.StandardOutput);
+
+    /// <summary>A child's errors, redirected, as <see cref="Output"/> reads its output.</summary>
+    public static TextReader Errors(Process process) => Taken(process.StandardError);
+
+    /// <summary>Each of a child's streams' readers, by the process's own reader it was taken from.</summary>
+    private static readonly ConditionalWeakTable<StreamReader, TextReader> Readers = new();
+
+    private static TextReader Taken(StreamReader reader) =>
+        OperatingSystem.IsWindows() || reader.BaseStream is not PipeStream ? reader
+        : Readers.GetValue(reader, static taken => new ChildText(new ChildPipe((PipeStream)taken.BaseStream), taken.CurrentEncoding));
 
     /// <summary>Has <see cref="Kill"/> end what a child that has just started starts from now on, even once the process that
     /// started it has gone (a restore's MSBuild nodes after the restore), which on Windows no walk of its tree finds;

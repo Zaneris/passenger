@@ -29,8 +29,8 @@ public static class ConsoleCommand
         start.RedirectStandardError = true;
         Queue<string> said = new();
         using Process process = await ChildProcesses.StartAsync(start);
-        Task read = Task.WhenAll(console.PumpAsync(process.StandardOutput, ConsoleStream.Output, lines: Line, shown: shown),
-            console.PumpAsync(process.StandardError, errors, lines: Line, shown: shown));
+        Task read = Task.WhenAll(console.PumpAsync(ChildProcesses.Output(process), ConsoleStream.Output, lines: Line, shown: shown),
+            console.PumpAsync(ChildProcesses.Errors(process), errors, lines: Line, shown: shown));
         try
         {
             await process.WaitForExitAsync(cancel);

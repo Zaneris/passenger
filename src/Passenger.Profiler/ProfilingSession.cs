@@ -152,7 +152,7 @@ public sealed class ProfilingSession : IAsyncDisposable
         }
         // The last line it wrote on its standard error, which says why when it ends before the profiler sees it.
         string? lastSaid = null;
-        Task reading = Task.WhenAll(pump(process.StandardOutput, false, null), pump(process.StandardError, true, line =>
+        Task reading = Task.WhenAll(pump(ChildProcesses.Output(process), false, null), pump(ChildProcesses.Errors(process), true, line =>
         {
             if (line.Trim() is { Length: > 0 } said)
             {

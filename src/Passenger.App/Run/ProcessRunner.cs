@@ -293,7 +293,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
             landing.Ended();
         }
         CancellationTokenSource letGo = new();
-        Task outputs = reading = Task.WhenAll(Pump(started.StandardOutput, sink, ConsoleStream.Output, letGo.Token), Pump(started.StandardError, sink, ConsoleStream.Error, letGo.Token));
+        Task outputs = reading = Task.WhenAll(Pump(ChildProcesses.Output(started), sink, ConsoleStream.Output, letGo.Token), Pump(ChildProcesses.Errors(started), sink, ConsoleStream.Error, letGo.Token));
         draining = LandAsync(started, outputs, letGo, input, ending, landing);
     }
 
@@ -448,8 +448,8 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
                 {
                     try
                     {
-                        owned.StandardOutput.Dispose();
-                        owned.StandardError.Dispose();
+                        ChildProcesses.Output(owned).Dispose();
+                        ChildProcesses.Errors(owned).Dispose();
                         if (takesInput)
                         {
                             owned.StandardInput.Dispose();
@@ -475,7 +475,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     /// go of (its program ended, and what holds the stream is out of the kill's reach), what still comes is nobody's,
     /// since the console may be another program's by then. A read is copied for <see cref="OutputReceived"/> only while
     /// someone listens.</summary>
-    private Task Pump(StreamReader reader, ConsoleSink sink, ConsoleStream stream, CancellationToken letGo)
+    private Task Pump(TextReader reader, ConsoleSink sink, ConsoleStream stream, CancellationToken letGo)
         => sink.PumpAsync(reader, stream, letGo, chunks: text =>
         {
             if (OutputReceived is null)
