@@ -1577,6 +1577,46 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>Rename on a named element's field in the code-behind a moment after the element's rename was written to its
+    /// XAML on disk, as an agent's rename writes it, the language server not yet told of the XAML's change and so knowing
+    /// no field of the new name: the rename waits for the server to read the XAML, saying so, then renames the element in
+    /// it and the field's use.</summary>
+    [AvaloniaFact]
+    public void An_elements_field_renamed_from_the_code_behind_a_moment_after_its_xaml_was_written_waits_for_the_server_to_read_it()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
+        OpenDocument behind = window.EditorArea.Active!;
+        Ui.Settle();
+        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
+        TaskCompletionSource told = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        server.HoldNext(Passenger.Lsp.LspMethods.DidChangeWatchedFiles,
+            p => System.Text.Json.JsonSerializer.Serialize(p).Contains("MainWindow.axaml\"", StringComparison.Ordinal), told.Task);
+        try
+        {
+            string started = Gallery.Window.Replace("Name=\"Go\"", "Name=\"Start\"", StringComparison.Ordinal).Replace("#Go.", "#Start.", StringComparison.Ordinal);
+            TestFolders.Write(app.Folder, "MainWindow.axaml", started);
+            Replace(window.EditorArea.CodeEditor, "Go.Content", "Start.Content");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "        Sta");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "Start", "the rename box on the field's name");
+            window.KeyTextInput("Begin");
+            Ui.Press(window, "ENTER", settle: false);
+            Assert.True(Ui.Pumped(() => window.Status?.StartsWith("Waiting for the language server to read MainWindow.axaml", StringComparison.Ordinal) == true, TimeSpan.FromSeconds(5)),
+                $"The rename did not wait for the language server to read the XAML written a moment before, which knows no field of the new name yet: the status says {window.Status}");
+        }
+        finally
+        {
+            told.TrySetResult();
+        }
+        Ui.WaitFor(() => window.Status?.Contains("ename", StringComparison.Ordinal) == true, () => $"the rename's word, the status saying {window.Status}");
+        Ui.Settle();
+        string view = File.ReadAllText(app.PathOf("MainWindow.axaml"));
+        Assert.True(window.Status == "Renamed in 2 files" && behind.Text.Snapshot.ToString() == Gallery.CodeBehind.Replace("Go.Content", "Begin.Content", StringComparison.Ordinal)
+            && view == Gallery.Window.Replace("Name=\"Go\"", "Name=\"Begin\"", StringComparison.Ordinal).Replace("#Go.", "#Begin.", StringComparison.Ordinal),
+            $"The field's rename from the code-behind said {window.Status}, leaving the code-behind\n{behind.Text.Snapshot}\nand the XAML\n{view}");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_key_one_theme_variant_lacks_is_warned_of_where_defined_and_used_and_the_fix_adds_it_to_that_variant()
     {

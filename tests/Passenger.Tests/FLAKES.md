@@ -76,6 +76,19 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   Neither race: **the test**, which presses the platform's first shortcut for each action now (in this commit). After
   it, 10 of 10 on the Linux VM and on the Windows VM, and it passes on this Mac.
 
+- `McpLanguagesTests`' `An_agent_reads_navigates_renames_and_refactors_avalonia_xaml_through_passengers_own_xaml_and_a_library_type_decompiled_once`,
+  CI Windows x64, run 41154974796 (b628b1f3), report lane (#1052): "Expected: "Renamed in 2 files: MainWindow.axaml,
+  MainWindow.a"··· Actual: "This can't be renamed"". The agent renamed the button Go to Start from the XAML, which wrote
+  MainWindow.axaml, then at once renamed the field Start from the code-behind. Roslyn's server reads a XAML file from
+  disk once the folder's watcher tells it of a change and makes the element's field from it, so asked before it had read
+  the new XAML it knew no Start and its rename answered nothing, which the IDE took as a name that can't be renamed; the
+  wait for files the server had yet to read looked only at what an edit changed, and passed over open files, though the
+  server reads an open XAML file from disk as any other. **A race in the IDE**: a rename the server answers with nothing
+  a moment after a file of its solution it reads from disk was written (an open one too, but C# and Razor) waits for the
+  server to read it and asks again, as an edit's files are waited for (in this commit, with a window test holding the
+  server's word of the XAML's change, failing so on main every time on this Mac). It passed 6 of 6 on the idle Windows
+  VM on main; after it, it and the new test passed 10 of 10 there and on this Mac.
+
 - `XamlTests`' `Previewers_run_for_the_preview_shown_and_the_one_hidden_last_and_a_build_starts_only_the_shown_one_again`,
   CI Windows x64, run 41154974796 (b628b1f3), report lane (#1050): "A build started 0 previewers again, where only the
   shown view's should start again". An Avalonia previewer loads the project's assembly where the build put it, and

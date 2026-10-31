@@ -275,6 +275,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         return (made with { Said = said }, chosen.Edit is not null && made.Left.Count == 0);
     }
 
+    /// <summary>A workspace edit that changes nothing, for asking whether the server had read the files it answered from.</summary>
+    private static readonly System.Text.Json.JsonElement NoEdit = System.Text.Json.JsonSerializer.SerializeToElement(new { });
+
     /// <summary>Why a server's edit must not be applied to the files not open it changes (<see cref="WorkspaceEdits.StaleAsync"/>):
     /// the C# server is asked what it holds of them; another server's files are judged by when they changed alone.</summary>
     private Task<string?> StaleAsync(OpenDocument document, System.Text.Json.JsonElement edit, Asked? asked, Patience? patience = null) =>
@@ -455,7 +458,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             : context.CSharp?.Session is { } session ? await session.RenameAsync(component.Name, name) : null;
         if (renamed is not { } edit)
         {
-            return new RefactorOutcome("This can't be renamed", null, [], []);
+            // Asked a moment after a file it reads from disk was written (a XAML file making a field), the server may not know the name yet.
+            return await StaleAsync(document, NoEdit, asked, patience) is { } unread ? RefactorOutcome.Refused($"Rename was not applied: {unread}")
+                : new RefactorOutcome("This can't be renamed", null, [], []);
         }
         TypeRename.Markup markup = type is null ? new([], null) : await TypeRename.MarkupAsync(context.Xaml?.Invoke(), type, name, renameFiles);
         if (await StaleAsync(document, edit, asked, patience) is { } stale)

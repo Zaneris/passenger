@@ -104,9 +104,10 @@ public static class WorkspaceEdits
         return null;
     }
 
-    /// <summary>The files not open of the server's solution, but those an edit <paramref name="made"/>, written on disk or
-    /// deleted at or after a time that the server may hold as they were: each written one the command has not seen it hold
-    /// as the disk has it, and each gone that it still holds. None from a server that cannot say.</summary>
+    /// <summary>The files of the server's solution it reads from disk (all but the open C# and Razor files, whose text it is
+    /// given), but those an edit <paramref name="made"/>, written on disk or deleted at or after a time that the server may
+    /// hold as they were: each written one the command has not seen it hold as the disk has it, and each gone that it still
+    /// holds. None from a server that cannot say.</summary>
     private static async Task<List<Roslyn.Extension.DocumentWritten>> WrittenElsewhereAsync(EditorArea editors, Written? written, DateTime after, Patience patience,
         IReadOnlyCollection<string>? made)
     {
@@ -124,7 +125,8 @@ public static class WorkspaceEdits
             // A server without Passenger's extension: the edit's own files are all there is to go by.
             return [];
         }
-        return [.. found.Where(d => editors.Find(d.Path) is null && made?.Contains(d.Path) != true && (d.Gone || !patience.Trusts(d.Path)))];
+        return [.. found.Where(d => editors.Find(d.Path) is not { Language.Service: Languages.LanguageService.CSharp } && made?.Contains(d.Path) != true
+            && (d.Gone || !patience.Trusts(d.Path)))];
     }
 
     /// <summary>Why an edit is not made in a file not open written once its server was asked.</summary>

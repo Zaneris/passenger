@@ -618,8 +618,9 @@ public sealed class LanguageServer : IAsyncDisposable
         }
     }
 
-    /// <summary>Holds the next request of a method whose parameters <paramref name="which"/> takes unsent until
-    /// <paramref name="until"/> ends, as a server busy with it holds its answer, for a test of what goes on meanwhile.</summary>
+    /// <summary>Holds the next request or notification of a method whose parameters <paramref name="which"/> takes unsent
+    /// until <paramref name="until"/> ends, as a server busy with it holds its answer, or one slow to take in a file
+    /// changed on disk, for a test of what goes on meanwhile.</summary>
     public void HoldNext(string method, Func<object, bool> which, Task until)
     {
         lock (holding)
@@ -763,6 +764,11 @@ public sealed class LanguageServer : IAsyncDisposable
     {
         try
         {
+            if (Held(method, parameters) is { Answered: false } held)
+            {
+                held.Holding.TrySetResult();
+                await held.Until.ConfigureAwait(false);
+            }
             await rpc.NotifyWithParameterObjectAsync(method, parameters);
         }
         catch (Exception error) when (error is ConnectionLostException or ObjectDisposedException or IOException)
