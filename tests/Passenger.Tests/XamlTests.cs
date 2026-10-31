@@ -1979,6 +1979,38 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A window wider than the preview's pane is drawn smaller by the previewer itself, at the scale the pane has
+    /// room for, and its frame lands pixel for pixel on the window: shrunk as a picture, its text smeared (on Windows at
+    /// 100%, ClearType's colour fringes into blotches).</summary>
+    [AvaloniaFact]
+    public void A_window_wider_than_the_preview_is_drawn_by_the_previewer_at_the_scale_shown_pixel_for_pixel()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        Replace(editor, "d:DesignWidth=\"800\"", "d:DesignWidth=\"3000\"");
+        Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
+        Ui.Settle();
+        Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException("XAML Preview showed no preview beside the file");
+        Passenger.App.Xaml.XamlPreviewPane pane = window.PreviewPaneOf(document)!;
+        double scale = window.RenderScaling;
+        Avalonia.Controls.Image frame = pane.Frame;
+        // The frame's width on the window, in the screen's pixels.
+        double Shown() => ((frame.TranslatePoint(new Point(preview.FrameSize.Width, 0), window)?.X ?? 0) - (frame.TranslatePoint(default, window)?.X ?? 0)) * scale;
+        Ui.WaitFor(() => preview.Frame is { } drawn && Math.Abs(preview.FrameSize.Width - 3000) < 1 && drawn.PixelSize.Width < 3000 * scale * 0.9,
+            () => $"the previewer drawing the 3000-wide window smaller for the pane {pane.Bounds.Width:0} wide (its frame {preview.Frame?.PixelSize}, {preview.FrameSize} in its units)",
+            TimeSpan.FromSeconds(60));
+        Ui.Settle();
+        Assert.True(Math.Abs(Shown() - preview.Frame!.PixelSize.Width) < 0.5,
+            $"The frame drawn {preview.Frame.PixelSize.Width} pixels wide is shown {Shown():0.##} wide, so its pixels are resampled and its text smeared");
+        Assert.True(Shown() / scale <= pane.Bounds.Width, $"The frame {Shown() / scale:0} wide overflows the pane {pane.Bounds.Width:0} wide");
+        // XAML Preview is kept on for the next window, which the class's other tests open with it off.
+        Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
+        window.Close();
+    }
+
     /// <summary>An app still on Avalonia 11, whose package carries its previewer under tools/netstandard2.0 where Avalonia
     /// 12's are under tools/net8.0 and later, and whose Directory.Build.props moves its obj and bin folders, previews as
     /// any app does: turned on from its file's tab strip before the app was ever restored, it draws once Build has

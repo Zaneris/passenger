@@ -199,7 +199,8 @@ public sealed class XamlPreview : IDisposable
         Say(words);
     }
 
-    /// <summary>The scale the pane's window draws at, which the previewer is asked to draw at too.</summary>
+    /// <summary>The scale the previewer is asked to draw at: the pane's window's, times the share of its design's size the
+    /// pane has room to show it at.</summary>
     public double Scaling
     {
         get => scaling;
