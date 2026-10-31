@@ -331,7 +331,7 @@ public sealed partial class FileTests : IDisposable
         hash is not null && history.Content(hash) is { } bytes ? Encoding.UTF8.GetString(bytes) : null;
 
     /// <summary>A save writes its temporary file under a name of its own, made new, so a link a cloned repository
-    /// carries under a fixed name (One.cs.passenger-save) never takes the save elsewhere.</summary>
+    /// carries under a fixed name (One.cs.passenger-save.user) never takes the save elsewhere.</summary>
     [Gate]
     [AvaloniaFact]
     public void A_save_never_writes_through_a_link_left_where_its_temporary_file_would_go()

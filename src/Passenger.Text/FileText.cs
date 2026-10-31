@@ -231,12 +231,18 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
     /// Raised on the saving thread, or the pool's for a save that landed later (<see cref="Landed(string)"/>).</summary>
     public static event Action<string, byte[]?, byte[]>? Wrote;
 
+    /// <summary>A save's temporary file, holding the save's bytes, about to take its file's place: raised on the saving
+    /// thread, for a test of what hears the temporary file while a slow disk keeps it there.</summary>
+    public static event Action<string>? Placing;
+
     /// <summary>How large a file's content Local History keeps, and so reads before a save writes over it.</summary>
     public const int KeptLimit = 20 * 1024 * 1024;
 
-    /// <summary>The temporary file a save writes first, and the old file a replace sets aside, which nothing but the save
-    /// should see.</summary>
-    public const string SaveSuffix = ".passenger-save";
+    /// <summary>The end of the name of the temporary file a save writes first, and of the old file a replace sets aside,
+    /// which nothing but the save should see: a '.user' file, which a .NET project's items leave out (the SDK's
+    /// DefaultItemExcludes), so dotnet watch never takes one for a file added to the project and loads the projects again,
+    /// however long the save keeps it there.</summary>
+    public const string SaveSuffix = ".passenger-save.user";
 
     /// <summary>Whether a path is a save's temporary file, there beside its file for the moment the save writes: what
     /// reads the folder meanwhile (the folder watcher, Git's status, Go to File's index, the Explorer) passes it over
@@ -380,6 +386,7 @@ public sealed record FileText(string Text, Encoding Encoding, bool HasBom, bool 
             {
                 MacFileMetadata.Copy(at, temporary, encoding);
             }
+            Placing?.Invoke(temporary);
             held = Placed(temporary, at) ? null : temporary;
         });
         if (!moved && OperatingSystem.IsMacOS())

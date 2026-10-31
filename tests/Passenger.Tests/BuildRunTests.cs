@@ -347,6 +347,90 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>Edits saved one after another into a program under dotnet watch, each save's temporary file kept a second
+    /// before it takes the file's place, as a loaded machine's disk keeps it, longer than dotnet watch gathers what changed
+    /// before it acts: each edit reaches the program, saved by Save or by Apply Hot Reload Changes, which the status bar
+    /// says applied, and dotnet watch hears each save as its file's change alone, never as a file added to the project,
+    /// which would have it load the projects again and say an edit saved meanwhile had no changes to apply.</summary>
+    [AvaloniaFact]
+    public void With_hot_reload_edits_saved_one_after_another_each_reach_the_program_heard_as_their_files_change_alone_however_long_a_save_takes()
+    {
+        Write("src/Hello/Program.cs", """
+            while (true)
+            {
+                Console.WriteLine(Talk.Say());
+                Thread.Sleep(200);
+            }
+
+            static class Talk
+            {
+                public static string Say() => "said 0";
+            }
+
+            """);
+        string folder = PathNames.Canonical(Folder);
+        System.Collections.Concurrent.ConcurrentQueue<string> held = new();
+        void Slow(string temporary)
+        {
+            if (PathNames.IsUnder(temporary, folder))
+            {
+                held.Enqueue(Path.GetFileName(temporary));
+                Ui.Stall(TimeSpan.FromSeconds(1), "a save's temporary file kept as a loaded machine's disk keeps it, past the 200 ms dotnet watch gathers changes in");
+            }
+        }
+        MainWindow window = Open();
+        window.ApplySettings(window.Settings with { HotReload = true });
+        FileText.Placing += Slow;
+        try
+        {
+            window.OpenFile(Path.Combine(Folder, "src", "Hello", "Program.cs"));
+            Ui.Settle();
+            window.Perform(AppActions.RunProgram);
+            WaitWatched(window, () => Output(window).Contains("said 0", StringComparison.Ordinal) && Output(window).Contains("Waiting for changes", StringComparison.Ordinal),
+                "the program to run under dotnet watch", TimeSpan.FromMinutes(2));
+            int watching = Output(window).IndexOf("Waiting for changes", StringComparison.Ordinal);
+            Passenger.App.Workspace.OpenDocument program = window.EditorArea.Active!;
+
+            for (int edit = 1; edit <= 4; edit++)
+            {
+                string before = $"said {edit - 1}";
+                string after = $"said {edit}";
+                int at = program.Text.Snapshot.ToString().IndexOf(before, StringComparison.Ordinal);
+                window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(at, before.Length, after)]);
+                if (edit < 4)
+                {
+                    window.Perform(AppActions.Save);
+                    WaitWatched(window, () => Output(window).Contains(after, StringComparison.Ordinal), $"edit {edit}, saved, to reach the program", TimeSpan.FromMinutes(1));
+                }
+                else
+                {
+                    Assert.True(window.Perform(AppActions.ApplyHotReloadChanges), $"Apply Hot Reload Changes could not run: {window.Status}");
+                    WaitWatched(window, () => Output(window).Contains(after, StringComparison.Ordinal) && window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is null
+                        && window.Status?.Contains("dotnet watch applied the changes", StringComparison.Ordinal) == true,
+                        "the edit Apply Hot Reload Changes saved to reach the program and the status bar to say dotnet watch applied it", TimeSpan.FromMinutes(1));
+                }
+            }
+
+            Assert.True(held.Count >= 4, $"{held.Count} saves held their temporary file, of the 4 made");
+            string[] heard = [.. Output(window)[watching..].Split('\n').Where(line => line.StartsWith("dotnet watch", StringComparison.Ordinal))];
+            string[] more = [.. heard.Where(line => held.Any(name => line.Contains(name, StringComparison.Ordinal))
+                || line.Contains(" added: ", StringComparison.Ordinal) || line.Contains(" deleted: ", StringComparison.Ordinal)
+                || line.Contains("Loading projects", StringComparison.Ordinal) || line.Contains("No managed code changes", StringComparison.Ordinal))];
+            Assert.True(more.Length == 0, "dotnet watch heard a save as more than its file's change, a file added loading the projects again, so an edit saved "
+                + $"meanwhile is said to have no changes to apply:\n{string.Join("\n", heard)}");
+            Assert.True(heard.Count(line => line.Contains("changes applied", StringComparison.Ordinal)) == 4,
+                $"dotnet watch should have applied each of the 4 edits once:\n{string.Join("\n", heard)}");
+        }
+        finally
+        {
+            FileText.Placing -= Slow;
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning, "the program to stop");
+            window.Close();
+            window.ApplySettings(new Passenger.App.Settings.AppSettings());
+        }
+    }
+
     /// <summary>A program under dotnet watch that ends on calling a method whose signature an applied edit changed, as one
     /// does that calls it before dotnet watch has hooked the deleted body: the Apply ends, and the status bar and the Run
     /// window say the program ended and dotnet watch starts it again when a change is saved, the Run window offering Rerun

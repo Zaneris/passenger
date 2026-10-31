@@ -30,6 +30,21 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-31
 
+- `BuildRunTests`' `With_hot_reload_edits_reach_the_running_program_a_signature_change_restarts_it_and_it_ends_with_the_window`,
+  CI Linux x64, release run 41228013314 (d85c9858), gate (#1062): "Waited 180 s for the status bar to say the changes
+  applied; the status bar says \"Hot Reload: no managed code changes to apply\"". A save writes its bytes to a temporary
+  file beside its file, flushes them to disk and moves it over the file. dotnet watch gathers what changes for 200 ms
+  before it acts, and takes a file added in a project's folder for a new item, loading the projects again; on the loaded
+  runner the save kept its temporary file there past that, so dotnet watch heard it added, loaded the projects (which
+  read the edit, applied), then heard the file's change and the temporary file's deletion and said "No managed code
+  changes to apply", which the status bar followed. A script saving as Passenger does, its temporary file kept 0.4 s,
+  had dotnet watch say just that on the Linux VM and this Mac; a name of a hidden file did not help, and a hidden folder
+  for it was heard deleted on Linux. **A race in the IDE**: a save's temporary file, and the old file a replace sets
+  aside on Windows, end in `.user`, which every .NET project's items leave out (the SDK's DefaultItemExcludes), so dotnet
+  watch passes them over and hears a save as its file's change alone (in this commit, with a case saving four edits in a
+  row, each save's temporary file kept a second, which on main had dotnet watch load the projects again for each, on
+  the Linux VM and this Mac). After it, the test and the case pass 10 of 10 on the Linux VM and 10 of 10 on this Mac.
+
 - `ProjectLoadTests`' `A_package_with_a_known_vulnerability_is_a_warning_in_the_status_bar_and_problems_with_its_advisory_and_nuget_offers_its_fix`,
   CI Linux x64, run 41208501263 (c1e3b8c6), gate (#1060): "Clicking the advisory's link opened []". Roslyn's server
   logged the project's load warning again after Problems listed it, and each report made every row of the tab shown
