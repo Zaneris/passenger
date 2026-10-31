@@ -98,6 +98,13 @@ public sealed class VcsController : IDisposable
     /// <summary>The stash an unstash with conflicts applied, which names the sides until they are resolved.</summary>
     private string? unstashed;
 
+    /// <summary>How many reads of the status have begun.</summary>
+    private long readsBegun;
+
+    /// <summary>The reads begun when the last unstash's git ended (all of them while it runs): only a read begun after
+    /// it can find its conflicts resolved, as one begun before may have read the tree before git wrote them.</summary>
+    private long readsBeforeUnstash;
+
     /// <summary>Raised when an operation (an update, an unstash, a cherry-pick, a rebase continued) stopped for
     /// conflicts.</summary>
     public event EventHandler? ConflictsFound;
@@ -449,9 +456,11 @@ public sealed class VcsController : IDisposable
         MergeState? merge = null;
         UInt128? refs = null;
         string? failure = null;
+        long begun = 0;
         try
         {
             await indexed;
+            begun = ++readsBegun;
             status = await repository.StatusAsync();
             merge = await repository.MergeStateAsync(status.Branch, status.Head);
             refs = history ? await repository.RefsAsync() : null;
@@ -459,6 +468,12 @@ public sealed class VcsController : IDisposable
         catch (InvalidOperationException failed)
         {
             failure = failed.Message;
+        }
+        if (readHeld is { } held)
+        {
+            readHeld = null;
+            held.Answered.SetResult();
+            await held.Until;
         }
         if (git != repository)
         {
@@ -481,7 +496,7 @@ public sealed class VcsController : IDisposable
             Changes = status.Changes;
             Conflicts = status.Conflicts;
             Merge = merge ?? MergeState.Idle;
-            if (Conflicts.Count == 0)
+            if (Conflicts.Count == 0 && begun > readsBeforeUnstash)
             {
                 unstashed = null;
             }
@@ -506,6 +521,18 @@ public sealed class VcsController : IDisposable
             knownHistory = (read, status.Head);
             HistoryChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>What the next read of the status waits for once git has answered it (<see cref="HoldNextRead"/>).</summary>
+    private (Task Until, TaskCompletionSource Answered)? readHeld;
+
+    /// <summary>Holds the next read of the status, once git has answered it, from landing until <paramref name="until"/>
+    /// ends, for a test of what the tree does meanwhile: done once git has answered.</summary>
+    public Task HoldNextRead(Task until)
+    {
+        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        readHeld = (until, answered);
+        return answered.Task;
     }
 
     /// <summary>Looks for the open folder's working tree again, taking what is found where it is not what the window holds (a
@@ -1197,7 +1224,15 @@ public sealed class VcsController : IDisposable
         {
             unstashed = $"stash@{{{now.Index}}}";
         }
-        return await repository.UnstashAsync(stash, pop);
+        readsBeforeUnstash = long.MaxValue;
+        try
+        {
+            return await repository.UnstashAsync(stash, pop);
+        }
+        finally
+        {
+            readsBeforeUnstash = readsBegun;
+        }
     }, pop ? $"Unstashed {stash.Message}" : $"Applied {stash.Message}", "Git unstash", "Unstashed with conflicts");
 
     /// <summary>Drops a stash, the one of its commit wherever the list now has it.</summary>

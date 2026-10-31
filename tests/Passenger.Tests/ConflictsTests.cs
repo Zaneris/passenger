@@ -491,6 +491,32 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A read of Git that took the status before an unstash wrote its conflicts, landing as the unstash runs, as one
+    /// the folder watcher started may, leaves the Conflicts dialog naming the stash.</summary>
+    [AvaloniaFact]
+    public void A_read_of_git_from_before_an_unstash_landing_during_it_leaves_the_conflicts_dialog_naming_the_stash()
+    {
+        Write("Shop.cs", Shop.Replace("int count", "short count", StringComparison.Ordinal));
+        Git("stash", "push", "-m", "Short count");
+        Write("Shop.cs", Shop.Replace("int count", "long count", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Long");
+
+        MainWindow window = Open();
+        UnstashPopup popup = Ui.Landed(window.ShowUnstashAsync(), "the stashes")!;
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task answered = window.Vcs.HoldNextRead(release.Task);
+        Task before = window.Vcs.RefreshAsync();
+        Ui.PumpUntil(() => answered.IsCompleted, "git's status of the tree before the unstash");
+        Task popping = popup.PopAsync();
+        Ui.PumpUntil(() => window.Vcs.Sides.Description == "Conflicts during unstashing stash@{0}", "the unstash under way");
+        release.SetResult();
+        Ui.Landed(() => before.IsCompleted && popping.IsCompleted && window.ConflictsWindow is not null, "the Conflicts dialog");
+        Assert.Equal("Unstashed with conflicts: Shop.cs", window.Status);
+        Assert.True(window.ConflictsWindow!.Description == "Conflicts during unstashing stash@{0}",
+            $"The Conflicts dialog said \"{window.ConflictsWindow.Description}\", the stash's name lost to a read of the tree from before the unstash");
+        window.Close();
+    }
+
     /// <summary>A cherry-pick stopped for its conflict is aborted by Abort Cherry-Pick once agreed to, and a revert stopped
     /// so by Abort Revert: each time HEAD and the file are as they were before it and nothing is under way. While one is
     /// under way, the other aborts and Abort Merge are greyed saying none of theirs is.</summary>

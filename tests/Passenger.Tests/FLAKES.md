@@ -43,6 +43,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   failed so on macOS before it (in this commit). It failed on the Linux VM every time before; after it, 10 of 10 there
   and 10 of 10 on this Mac.
 
+- `ConflictsTests`' `An_unstash_that_conflicts_opens_the_conflicts_dialog_on_the_stash_and_accept_theirs_takes_the_stashed_change`,
+  CI Windows x64, run 41154974796 (b628b1f3), gate (#1043): "Expected: "Conflicts during unstashing stash@{0}", Actual:
+  "The following files have conflicts:"". Git keeps no record of an unstash stopped for conflicts, so the window names
+  its stash itself until a read of the status finds none; a read begun before the pop's git ended (one the folder
+  watcher started as git wrote the files and the index) took the status before the conflicts were in it and landed after
+  the stash was named, taking the name away, and the dialog the unstash then opened gave the words of no operation. It
+  was not the watcher opening the dialog, as the issue guessed: only the unstash's end opens it, and it follows every
+  read. **A race in the IDE**: only a read begun after the unstash's git ended takes the stash's name away (in this
+  commit, with a test holding a read taken before the unstash until the unstash is under way, which fails so on main
+  every time, on this Mac and the Windows VM). The test alone passed 11 of 11 on main on the idle Windows VM; after it,
+  it and the new test passed 10 of 10 on the Windows VM and on this Mac.
+
 - `HotReloadEditsTests`' `Each_edit_to_a_running_program_applies_as_the_runtime_allows` (chain "bodies of methods, lambdas,
   async methods, records and generics"), this Mac, one of four runs while landing #1020, report lane (#1039): "Waited 90 s
   for the program to print 'lambda captured' once a lambda capturing a new variable applied", its output ending at "pet
