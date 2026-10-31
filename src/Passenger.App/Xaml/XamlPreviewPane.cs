@@ -27,7 +27,7 @@ public sealed class XamlPreviewPane : DockPanel
     public XamlPreviewPane(XamlPreview preview)
     {
         this.preview = preview;
-        status = new TextBlock { Classes = { "muted" }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        status = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         Border header = ToolWindows.ToolBars.OverEditor(new DockPanel
         {
             Margin = new Thickness(10, 0),
@@ -51,7 +51,7 @@ public sealed class XamlPreviewPane : DockPanel
         // An edge, so a frame of the editor's own colour still shows where the design ends.
         edge = new Border { Child = framed, BorderThickness = new Thickness(1), Margin = new Thickness(16), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         edge.Bind(Border.BorderBrushProperty, edge.GetResourceObservable(TokenKeys.Divider));
-        waiting = new TextBlock { Classes = { "muted" }, TextWrapping = TextWrapping.Wrap, MaxWidth = 320, TextAlignment = TextAlignment.Center,
+        waiting = new TextBlock { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, MaxWidth = 320, TextAlignment = TextAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         // A frame larger than the pane is shrunk to fit it, never one smaller enlarged.
         Panel view = new()

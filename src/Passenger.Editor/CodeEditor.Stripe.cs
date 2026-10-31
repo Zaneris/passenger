@@ -34,7 +34,7 @@ public sealed partial class CodeEditor
         {
             showErrorStripe = value;
             vertical.AllowAutoHide = !value;
-            vertical.Classes.Set("stripe", value);
+            vertical.Classes.Set(StyleClasses.Stripe, value);
             stripe.IsVisible = counts.IsVisible = value;
             if (switcher is not null)
             {

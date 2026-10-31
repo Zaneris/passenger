@@ -57,43 +57,43 @@ public sealed class NewProjectDialog : IdeWindow
 {
     private readonly ProjectTarget? target;
     private readonly string readFrom;
-    private readonly TextBox search = new() { Classes = { "search" }, PlaceholderText = "Search", Margin = new Thickness(8, 8, 8, 6) };
+    private readonly TextBox search = new() { Classes = { StyleClasses.Search }, PlaceholderText = "Search", Margin = new Thickness(8, 8, 8, 6) };
     private readonly ListBox list;
     private readonly TextBlock loading;
-    private readonly ComboBox typeChooser = new() { Classes = { "form" } };
+    private readonly ComboBox typeChooser = new() { Classes = { StyleClasses.Form } };
     private readonly Control typeRow;
     private readonly TextBlock heading;
     private readonly TextBlock description;
-    private readonly TextBox solutionName = new() { Classes = { "search" } };
-    private readonly TextBox projectName = new() { Classes = { "search" } };
-    private readonly TextBox directory = new() { Classes = { "search" } };
+    private readonly TextBox solutionName = new() { Classes = { StyleClasses.Search } };
+    private readonly TextBox projectName = new() { Classes = { StyleClasses.Search } };
+    private readonly TextBox directory = new() { Classes = { StyleClasses.Search } };
     private readonly CheckBox sameDirectory = new() { Content = "Put solution and project in the same directory" };
-    private readonly ComboBox format = new() { Classes = { "form" } };
+    private readonly ComboBox format = new() { Classes = { StyleClasses.Form } };
     private readonly Control projectRow;
     private readonly Control sameRow;
     private readonly Control? formatRow;
-    private readonly TextBlock where = new() { Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
-    private readonly ComboBox framework = new() { Classes = { "form" } };
-    private readonly ComboBox language = new() { Classes = { "form" } };
+    private readonly TextBlock where = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly ComboBox framework = new() { Classes = { StyleClasses.Form } };
+    private readonly ComboBox language = new() { Classes = { StyleClasses.Form } };
     private readonly Control languageRow;
     private readonly StackPanel options = new() { Spacing = 10 };
-    private readonly TextBlock command = new() { Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly Control details;
     private readonly Control offer;
     private readonly TextBlock offerText = new() { TextWrapping = TextWrapping.Wrap };
-    private readonly TextBlock offerCommand = new() { Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
-    private readonly Button install = new() { Content = "Install", Classes = { "primary" }, MinWidth = 80, HorizontalAlignment = HorizontalAlignment.Left };
+    private readonly TextBlock offerCommand = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly Button install = new() { Content = "Install", Classes = { StyleClasses.Primary }, MinWidth = 80, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly OutputView installOutput = new(toolbar: false) { Height = 220, IsVisible = false };
     private readonly ProgressBar bar = new() { IsIndeterminate = true, Height = 4, MinHeight = 4, Width = 160, VerticalAlignment = VerticalAlignment.Center };
-    private readonly TextBlock progress = new() { Classes = { "muted" }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock progress = new() { Classes = { StyleClasses.Muted }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
     private readonly StackPanel working;
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button create = DialogFooter.Default("Create");
     private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(8, 0, 0, 0) };
-    private readonly ComboBox setup = new() { Classes = { "form" } };
+    private readonly ComboBox setup = new() { Classes = { StyleClasses.Form } };
     private readonly ComboBoxItem[] setups = [.. Enum.GetValues<ProjectSetup>().Select(s => new ComboBoxItem { Content = SetupName(s) })];
-    private readonly TextBlock setupNote = new() { Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
-    private readonly Button installSetup = new() { Classes = { "link" }, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
+    private readonly TextBlock setupNote = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly Button installSetup = new() { Classes = { StyleClasses.Link }, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = false };
     private readonly Control setupRow;
 
     /// <summary>The set-up chosen last, in any dialog, which the next service made offers.</summary>
@@ -151,7 +151,7 @@ public sealed class NewProjectDialog : IdeWindow
 
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             // The chosen family's band as wide as the search field above, its name where the field's text starts.
             Padding = new Thickness(8, 0),
         };
@@ -165,7 +165,7 @@ public sealed class NewProjectDialog : IdeWindow
         };
         search.TextChanged += (_, _) => Filter(searched: true);
         search.AddHandler(KeyDownEvent, OnSearchKeyDown, RoutingStrategies.Tunnel);
-        loading = new TextBlock { Classes = { "muted" }, Text = "Loading templates…", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12) };
+        loading = new TextBlock { Classes = { StyleClasses.Muted }, Text = "Loading templates…", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12) };
         DockPanel leftPanel = new();
         DockPanel.SetDock(search, Dock.Top);
         leftPanel.Children.Add(search);
@@ -183,7 +183,7 @@ public sealed class NewProjectDialog : IdeWindow
         typeRow = Row("Type:", typeChooser);
 
         heading = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold };
-        description = new TextBlock { Classes = { "muted" }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
+        description = new TextBlock { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
         directory.Text = folder;
         browse.Click += (_, _) => IdeErrors.Observe(BrowseAsync());
         Grid folderRow = BrowseRow.Of(directory, browse);
@@ -1255,7 +1255,7 @@ public sealed class NewProjectDialog : IdeWindow
                     row = Row(null, box);
                     break;
                 case TemplateOptionKind.Choice:
-                    ComboBox choices = new() { Classes = { "form" }, ItemsSource = option.Choices.Select(c => c.Label).ToList() };
+                    ComboBox choices = new() { Classes = { StyleClasses.Form }, ItemsSource = option.Choices.Select(c => c.Label).ToList() };
                     choices.SelectedIndex = Math.Max(0, option.Choices.ToList().FindIndex(c => c.Value.Equals(value, StringComparison.OrdinalIgnoreCase)));
                     choices.SelectionChanged += (_, _) =>
                     {
@@ -1268,7 +1268,7 @@ public sealed class NewProjectDialog : IdeWindow
                     row = Row($"{option.Label}:", choices);
                     break;
                 default:
-                    TextBox text = new() { Classes = { "search" }, Text = value, MaxWidth = 360, HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 240 };
+                    TextBox text = new() { Classes = { StyleClasses.Search }, Text = value, MaxWidth = 360, HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 240 };
                     text.TextChanged += (_, _) => Changed(option, text.Text ?? string.Empty);
                     editor = text;
                     row = Row($"{option.Label}:", text);
@@ -1477,7 +1477,7 @@ public sealed class NewProjectDialog : IdeWindow
     private static (DockPanel Named, TextBlock Name, TextBlock Missing) Named()
     {
         TextBlock name = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        TextBlock missing = new() { Text = "Not installed", Classes = { "muted" }, FontSize = 11, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBlock missing = new() { Text = "Not installed", Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         DockPanel both = new();
         DockPanel.SetDock(missing, Dock.Right);
         both.Children.Add(missing);

@@ -63,7 +63,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         Range = range;
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(list, Row);
         list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowCommitAsync());
@@ -98,7 +98,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         ]);
         fileList = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = files,
         };
         ReusedRows.Use(fileList, FileRow);
@@ -138,20 +138,20 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         placeholder = new EmptyState();
         placeholder.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
 
-        filter = new TextBox { Classes = { "search" }, PlaceholderText = "Text or hash", Width = 240, Margin = new Thickness(8, 0) };
+        filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Text or hash", Width = 240, Margin = new Thickness(8, 0) };
         filter.TextChanged += (_, _) => Filter();
         Button refresh = ToolButtons.Of(AppActions.GitLogRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action));
         // The Branch filter, shown while the log is filtered to a branch, its x showing every branch again.
         branchFilterText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
-        PathIcon clearGlyph = new() { Classes = { "small" } };
+        PathIcon clearGlyph = new() { Classes = { StyleClasses.Small } };
         clearGlyph.Bind(PathIcon.DataProperty, clearGlyph.GetResourceObservable(IconKeys.Close));
-        Button clearBranch = new() { Classes = { "tabPin" }, Content = clearGlyph, Margin = new Thickness(6, 0, 0, 0) };
+        Button clearBranch = new() { Classes = { StyleClasses.TabPin }, Content = clearGlyph, Margin = new Thickness(6, 0, 0, 0) };
         ToolTip.SetTip(clearBranch, "Clear Branch Filter");
         clearBranch.Click += (_, _) => FilterBranch(null, all: true);
         branchFilter = new Border
         {
             IsVisible = false,
-            Classes = { "tag" },
+            Classes = { StyleClasses.Tag },
             Padding = new Thickness(8, 2, 4, 2),
             Margin = new Thickness(0, 0, 8, 0),
             VerticalAlignment = VerticalAlignment.Center,
@@ -496,7 +496,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
                 // A long branch's name ends in an ellipsis and leaves the subject room.
                 TextBlock text = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
                 text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(TokenKeys.Vcs_RefText));
-                Border tag = new() { [DockProperty] = Dock.Left, Classes = { "tag" }, Padding = new Thickness(5, 1), Margin = new Thickness(0, 0, 6, 0), Child = text, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160 };
+                Border tag = new() { [DockProperty] = Dock.Left, Classes = { StyleClasses.Tag }, Padding = new Thickness(5, 1), Margin = new Thickness(0, 0, 6, 0), Child = text, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160 };
                 tag.Bind(Border.BackgroundProperty, tag.GetResourceObservable(TokenKeys.Vcs_Ref));
                 subject.Children.Insert(tags.Count, tag);
                 tags.Add((tag, text));
@@ -544,7 +544,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(8, 0, 6, 0) };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock folder = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12 };
-        folder.Classes.Add("muted");
+        folder.Classes.Add(StyleClasses.Muted);
         string? kind = null;
         // The folder gives way first, then the name, each ending in an ellipsis, in a narrow pane.
         ShrinkingRow row = new() { Height = RowHeight, Children = { icon, name, folder } };

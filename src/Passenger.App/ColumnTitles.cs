@@ -73,7 +73,7 @@ public sealed class ColumnTitles : Border
             TextBlock title = titles[i];
             int column = i;
             grid.Children.Remove(title);
-            Button button = new() { Classes = { "crumb" }, Content = title, Padding = new Thickness(0), HorizontalAlignment = title.HorizontalAlignment,
+            Button button = new() { Classes = { StyleClasses.Crumb }, Content = title, Padding = new Thickness(0), HorizontalAlignment = title.HorizontalAlignment,
                 VerticalAlignment = VerticalAlignment.Center };
             button.Margin = title.Margin;
             title.Margin = default;

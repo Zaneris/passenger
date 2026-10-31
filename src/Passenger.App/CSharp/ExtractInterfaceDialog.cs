@@ -52,7 +52,7 @@ public sealed class ExtractInterfaceDialog : RefactoringDialog
 
         Border listFrame = new()
         {
-            Classes = { "framed" },
+            Classes = { StyleClasses.Framed },
             ClipToBounds = true,
             Child = new DockPanel { Children = { ColumnTitles.Of("*", ["Members"]), new ScrollViewer { Content = list, MaxHeight = 240, MinHeight = 100 } } },
         };

@@ -47,11 +47,11 @@ public sealed class AddReferenceDialog : IdeWindow
         MinHeight = 240;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        list = new ListBox { Classes = { "tree" }, ItemsSource = choices };
+        list = new ListBox { Classes = { StyleClasses.Tree }, ItemsSource = choices };
         ReusedRows.Use(list, CheckRows.Of);
         list.SelectedItem = choices.FirstOrDefault(c => c.CanChoose);
         list.AddHandler(KeyDownEvent, OnListKeyDown, RoutingStrategies.Tunnel);
-        Border rows = new() { Classes = { "framed" }, Child = list };
+        Border rows = new() { Classes = { StyleClasses.Framed }, Child = list };
 
         Button ok = DialogFooter.Default();
         ok.Click += (_, _) => Accept();

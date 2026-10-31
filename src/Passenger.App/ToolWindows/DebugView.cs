@@ -70,7 +70,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         };
         frames = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = model.Frames,
         };
         ReusedRows.Use(frames, FrameRow);
@@ -86,7 +86,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         evaluate = new TextBox
         {
             [DockProperty] = Dock.Top,
-            Classes = { "search" },
+            Classes = { StyleClasses.Search },
             Margin = new Thickness(6, 6, 6, 4),
         };
         string enter = new Keystroke(Key.Enter, KeyModifiers.None).Display();
@@ -111,12 +111,12 @@ public sealed class DebugView : DockPanel, IOwnKeys
         split.Children.Add(framesPane);
         split.Children.Add(divider);
         split.Children.Add(variablesPane);
-        placeholder = new TextBlock { Classes = { "emptyText" } };
+        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         ActionTips.SetWords(placeholder, AppActions.Debug, keys => keys is null ? "Not debugging." : $"Not debugging. Debug starts with {keys}.");
         debugger = new Panel { Children = { split, placeholder } };
 
-        debuggerTab = new ToggleButton { Content = "Debugger", Classes = { "panelTab" }, IsChecked = true };
-        consoleTab = new ToggleButton { Content = "Console", Classes = { "panelTab" } };
+        debuggerTab = new ToggleButton { Content = "Debugger", Classes = { StyleClasses.PanelTab }, IsChecked = true };
+        consoleTab = new ToggleButton { Content = "Console", Classes = { StyleClasses.PanelTab } };
         debuggerTab.Click += (_, _) => model.ShowTab(console: false);
         consoleTab.Click += (_, _) => model.ShowTab(console: true);
         StackPanel top = new()
@@ -212,7 +212,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         return button.Showing<DebugTab>(tab =>
         {
             name.Text = tab.Name;
-            name.Classes.Set("muted", tab.HasEnded);
+            name.Classes.Set(StyleClasses.Muted, tab.HasEnded);
             button.IsChecked = tab.IsChosen;
         });
     }
@@ -346,7 +346,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
             Margin = new Thickness(8, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
-        where.Classes.Add("muted");
+        where.Classes.Add(StyleClasses.Muted);
         // Its place gives way first, then its name, each ending in an ellipsis.
         ShrinkingRow row = new() { Height = ListRow.Height, Children = { method, where } };
         return row.Showing<DapStackFrame>(frame =>

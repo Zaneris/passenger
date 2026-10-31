@@ -40,7 +40,7 @@ public partial class MainWindow
         {
             foreach (string menu in MainMenu.Titles)
             {
-                Button title = new() { Content = menu, Tag = menu, Classes = { "widget", "menuBarItem" } };
+                Button title = new() { Content = menu, Tag = menu, Classes = { StyleClasses.Widget, StyleClasses.MenuBarItem } };
                 title.Click += (_, _) => OnBarTitleClicked(title);
                 MainMenuPlace.Children.Add(title);
             }
@@ -257,7 +257,7 @@ public partial class MainWindow
             }
         }
         (barMenu, barMenuFrom, barMenuContext) = (flyout, title, context);
-        title.Classes.Add("open");
+        title.Classes.Add(StyleClasses.Open);
         Action release = KeepKeys(title, () => flyout.IsOpen ? flyout.Items.OfType<Control>().FirstOrDefault()?.FindLogicalAncestorOfType<MenuBase>() : null);
         AddHandler(PointerMovedEvent, FollowBarPointer, RoutingStrategies.Tunnel, handledEventsToo: true);
         flyout.ShowAt(title);
@@ -275,7 +275,7 @@ public partial class MainWindow
         flyout.Closed += (_, _) =>
         {
             release();
-            title.Classes.Remove("open");
+            title.Classes.Remove(StyleClasses.Open);
             popup?.RemoveHandler(PointerMovedEvent, FollowBarPointer);
             if (barMenu == flyout)
             {

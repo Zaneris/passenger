@@ -28,17 +28,17 @@ public sealed class WelcomeView : UserControl
 
     public WelcomeView()
     {
-        Classes.Add("welcome");
-        Image mark = new() { Classes = { "welcomeMark" }, Source = new Bitmap(AssetLoader.Open(new Uri("avares://Passenger/Assets/passenger.png"))) };
+        Classes.Add(StyleClasses.Welcome);
+        Image mark = new() { Classes = { StyleClasses.WelcomeMark }, Source = new Bitmap(AssetLoader.Open(new Uri("avares://Passenger/Assets/passenger.png"))) };
         RenderOptions.SetBitmapInterpolationMode(mark, BitmapInterpolationMode.HighQuality);
-        TextBlock title = new() { Classes = { "welcomeTitle" }, Text = "Welcome to Passenger" };
+        TextBlock title = new() { Classes = { StyleClasses.WelcomeTitle }, Text = "Welcome to Passenger" };
         TextBlock subtitle = new()
         {
-            Classes = { "welcomeSubtitle" },
+            Classes = { StyleClasses.WelcomeSubtitle },
             Text = $"Version {Product.Version}. Start a new solution, open a solution, project or folder, or clone a repository.",
             TextWrapping = TextWrapping.Wrap,
         };
-        Grid hero = new() { Classes = { "welcomeHero" }, ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        Grid hero = new() { Classes = { StyleClasses.WelcomeHero }, ColumnDefinitions = new ColumnDefinitions("Auto,*") };
         // The mark gives its room to the words in a narrow page, where beside them it would break the title mid-word.
         hero.SizeChanged += (_, e) => mark.IsVisible = e.NewSize.Width >= NarrowHero;
         hero.Children.Add(mark);
@@ -52,7 +52,7 @@ public sealed class WelcomeView : UserControl
         openFolder.Click += (_, _) => OpenFolderRequested?.Invoke(this, EventArgs.Empty);
         Button clone = Action(IconKeys.Branch, "Clone Repository", "From a Git URL");
         clone.Click += (_, _) => CloneRequested?.Invoke(this, EventArgs.Empty);
-        WrapPanel actions = new() { Classes = { "welcomeActions" }, Children = { NewSolutionButton, open, openFolder, clone } };
+        WrapPanel actions = new() { Classes = { StyleClasses.WelcomeActions }, Children = { NewSolutionButton, open, openFolder, clone } };
         // Two or one across in a narrow page, so no tile is cut off at its edge.
         actions.SizeChanged += (_, e) =>
         {
@@ -61,17 +61,17 @@ public sealed class WelcomeView : UserControl
             actions.ItemWidth = Math.Floor((e.NewSize.Width - (across - 1) * gap) / across);
         };
 
-        TextBlock recent = new() { Classes = { "welcomeSection" }, Text = "Recent solutions", VerticalAlignment = VerticalAlignment.Center };
-        search = new TextBox { Classes = { "search", "welcomeSearch" }, PlaceholderText = "Search recent solutions", [Grid.ColumnProperty] = 1 };
+        TextBlock recent = new() { Classes = { StyleClasses.WelcomeSection }, Text = "Recent solutions", VerticalAlignment = VerticalAlignment.Center };
+        search = new TextBox { Classes = { StyleClasses.Search, StyleClasses.WelcomeSearch }, PlaceholderText = "Search recent solutions", [Grid.ColumnProperty] = 1 };
         search.TextChanged += (_, _) => Filter();
         search.AddHandler(KeyDownEvent, OnSearchKeyDown, RoutingStrategies.Tunnel);
-        Grid bar = new() { Classes = { "welcomeRecentBar" }, ColumnDefinitions = new ColumnDefinitions("Auto,*"), Children = { recent, search } };
+        Grid bar = new() { Classes = { StyleClasses.WelcomeRecentBar }, ColumnDefinitions = new ColumnDefinitions("Auto,*"), Children = { recent, search } };
 
         notice = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(4, 0, 4, 10) };
         notice.Bind(TextBlock.ForegroundProperty, notice.GetResourceObservable(TokenKeys.Warning));
         list = new ListBox
         {
-            Classes = { "tree", "welcomeList" },
+            Classes = { StyleClasses.Tree, StyleClasses.WelcomeList },
         };
         ReusedRows.Use(list, Row);
         list.DoubleTapped += (_, _) => OpenChosen();
@@ -84,15 +84,15 @@ public sealed class WelcomeView : UserControl
             new Separator(),
             ListMenus.Item("Remove from Recent Solutions", OperatingSystem.IsMacOS() ? "Back" : "Delete", () => RemoveRequested?.Invoke(this, chosen)),
         ]);
-        empty = new TextBlock { Classes = { "emptyText", "welcomeEmpty" } };
+        empty = new TextBlock { Classes = { StyleClasses.EmptyText, StyleClasses.WelcomeEmpty } };
 
-        Page page = new() { Classes = { "welcomePage" } };
+        Page page = new() { Classes = { StyleClasses.WelcomePage } };
         foreach (Control top in (Control[])[hero, actions, bar, notice])
         {
             DockPanel.SetDock(top, Dock.Top);
             page.Children.Add(top);
         }
-        page.Children.Add(new Border { Classes = { "welcomeRecent" }, Child = new Panel { Children = { list, empty } } });
+        page.Children.Add(new Border { Classes = { StyleClasses.WelcomeRecent }, Child = new Panel { Children = { list, empty } } });
         ScrollViewer scroller = new() { Content = page };
         scroller.SizeChanged += (_, e) => page.View = e.NewSize.Height - page.Margin.Top - page.Margin.Bottom;
         Content = scroller;
@@ -147,15 +147,15 @@ public sealed class WelcomeView : UserControl
     /// <summary>One of the page's actions: its icon, its name, and in a few words what it opens.</summary>
     private static Button Action(string icon, string name, string hint)
     {
-        PathIcon glyph = new() { Classes = { "welcomeActionIcon" } };
+        PathIcon glyph = new() { Classes = { StyleClasses.WelcomeActionIcon } };
         glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(icon));
-        Border chip = new() { Classes = { "welcomeActionChip" }, Child = glyph, VerticalAlignment = VerticalAlignment.Center };
-        TextBlock label = new() { Classes = { "welcomeActionTitle" }, Text = name, TextTrimming = TextTrimming.CharacterEllipsis };
-        TextBlock what = new() { Classes = { "welcomeActionHint" }, Text = hint, TextTrimming = TextTrimming.CharacterEllipsis };
+        Border chip = new() { Classes = { StyleClasses.WelcomeActionChip }, Child = glyph, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock label = new() { Classes = { StyleClasses.WelcomeActionTitle }, Text = name, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock what = new() { Classes = { StyleClasses.WelcomeActionHint }, Text = hint, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel.SetDock(chip, Dock.Left);
         return new Button
         {
-            Classes = { "welcomeAction" },
+            Classes = { StyleClasses.WelcomeAction },
             Content = new DockPanel { Children = { chip, new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { label, what } } } },
         };
     }
@@ -294,28 +294,28 @@ public sealed class WelcomeView : UserControl
     /// longer on disk, its name and badge muted.</summary>
     private static Control Row()
     {
-        TextBlock letters = new() { Classes = { "welcomeBadgeText" }, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        Border badge = new() { Classes = { "welcomeBadge" }, Child = letters, VerticalAlignment = VerticalAlignment.Center };
-        TextBlock name = new() { Classes = { "welcomeRowName" }, TextTrimming = TextTrimming.CharacterEllipsis };
-        TextBlock where = new() { Classes = { "muted", "welcomeRowPath" }, TextTrimming = TextTrimming.PathSegmentEllipsis };
-        DockPanel line = new() { Classes = { "welcomeRow" } };
+        TextBlock letters = new() { Classes = { StyleClasses.WelcomeBadgeText }, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        Border badge = new() { Classes = { StyleClasses.WelcomeBadge }, Child = letters, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock name = new() { Classes = { StyleClasses.WelcomeRowName }, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock where = new() { Classes = { StyleClasses.Muted, StyleClasses.WelcomeRowPath }, TextTrimming = TextTrimming.PathSegmentEllipsis };
+        DockPanel line = new() { Classes = { StyleClasses.WelcomeRow } };
         DockPanel.SetDock(badge, Dock.Left);
         line.Children.Add(badge);
         TextBlock gone = new() { Text = "Missing", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
         gone.Bind(TextBlock.ForegroundProperty, gone.GetResourceObservable(TokenKeys.Warning));
         DockPanel.SetDock(gone, Dock.Right);
         line.Children.Add(gone);
-        TextBlock kindText = new() { Classes = { "welcomeKindText" } };
-        Border kind = new() { Classes = { "welcomeKind" }, Child = kindText, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock kindText = new() { Classes = { StyleClasses.WelcomeKindText } };
+        Border kind = new() { Classes = { StyleClasses.WelcomeKind }, Child = kindText, VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(kind, Dock.Right);
         line.Children.Add(kind);
         line.Children.Add(new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2, Children = { name, where } });
         return line.Showing<RecentRow>(row =>
         {
             letters.Text = MainWindow.Initials(row.Name);
-            badge.Classes.Set("missing", row.Missing);
+            badge.Classes.Set(StyleClasses.Missing, row.Missing);
             name.Text = row.Name;
-            name.Classes.Set("muted", row.Missing);
+            name.Classes.Set(StyleClasses.Muted, row.Missing);
             where.Text = row.Shown;
             gone.IsVisible = row.Missing;
             kindText.Text = Kind(row.Path);

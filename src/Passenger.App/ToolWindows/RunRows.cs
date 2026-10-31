@@ -179,7 +179,7 @@ public static class RunRows
         TextBlock words = new() { Text = text, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         if (muted)
         {
-            words.Classes.Add("muted");
+            words.Classes.Add(StyleClasses.Muted);
         }
         if (dock is { } side)
         {
@@ -299,7 +299,7 @@ public sealed class RunRowView : DockPanel
         {
             return RunRows.Words(link.Words, muted: true, dock: null);
         }
-        Button open = new() { Classes = { "link" }, Content = link.Words, VerticalAlignment = VerticalAlignment.Center, Name = linkName };
+        Button open = new() { Classes = { StyleClasses.Link }, Content = link.Words, VerticalAlignment = VerticalAlignment.Center, Name = linkName };
         ToolTip.SetTip(open, link.Tip ?? target.ToString());
         open.Click += (_, _) => browse(target);
         return open;

@@ -31,7 +31,7 @@ public sealed partial class SettingsDialog
         Add(Declared.WrapAroundElements);
         Add(Declared.RightMargin);
 
-        TextBox order = new() { Classes = { "search" }, Text = Groups(now.AttributeOrder), AcceptsReturn = true, Width = 420, Height = 210, IsEnabled = now.ReorderAttributes };
+        TextBox order = new() { Classes = { StyleClasses.Search }, Text = Groups(now.AttributeOrder), AcceptsReturn = true, Width = 420, Height = 210, IsEnabled = now.ReorderAttributes };
         // A group longer than the box scrolls into view rather than being cut at its edge.
         ScrollViewer.SetHorizontalScrollBarVisibility(order, Avalonia.Controls.Primitives.ScrollBarVisibility.Auto);
         order.TextChanged += (_, _) => Set(x => x with { AttributeOrder = string.Join("; ", (order.Text ?? string.Empty).Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)) });

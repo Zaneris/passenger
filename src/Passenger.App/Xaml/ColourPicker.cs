@@ -34,7 +34,7 @@ internal sealed class ColourPicker : Border
     public ColourPicker(Argb start, string? unchangeable = null)
     {
         chooses = unchangeable is null;
-        Classes.Add("popup");
+        Classes.Add(StyleClasses.Popup);
         Padding = new Thickness(10);
         (h, s, v) = ToHsv(start);
         a = start.A;
@@ -47,8 +47,8 @@ internal sealed class ColourPicker : Border
         before.Bind(Border.CornerRadiusProperty, before.GetResourceObservable(TokenKeys.ControlRadius, r => r is CornerRadius c ? new CornerRadius(c.TopLeft, 0, 0, c.BottomLeft) : default(CornerRadius)));
         after.Bind(Border.CornerRadiusProperty, after.GetResourceObservable(TokenKeys.ControlRadius, r => r is CornerRadius c ? new CornerRadius(0, c.TopRight, c.BottomRight, 0) : default(CornerRadius)));
         // The field takes what the swatches and buttons leave.
-        hex = new TextBox { Classes = { "search" }, FontFamily = CodeEditor.CodeFont };
-        Button choose = new() { Content = "Choose", Classes = { "primary" }, IsDefault = chooses, IsEnabled = chooses };
+        hex = new TextBox { Classes = { StyleClasses.Search }, FontFamily = CodeEditor.CodeFont };
+        Button choose = new() { Content = "Choose", Classes = { StyleClasses.Primary }, IsDefault = chooses, IsEnabled = chooses };
         ToolTip.SetTip(choose, unchangeable);
         choose.Click += (_, _) => Chosen?.Invoke(this, Colour);
         StackPanel answers = DialogFooter.Popup(choose, () => Chosen?.Invoke(this, null));

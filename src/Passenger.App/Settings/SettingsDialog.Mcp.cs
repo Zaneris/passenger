@@ -16,7 +16,7 @@ public sealed partial class SettingsDialog
     public IReadOnlyList<(string Heading, string Text)> AgentSetups { get; private set; } = [];
 
     /// <summary>The folders agents join unasked, as the page's list shows them.</summary>
-    public ListBox AgentFolderList { get; } = new() { Classes = { "tree" }, Height = 96 };
+    public ListBox AgentFolderList { get; } = new() { Classes = { StyleClasses.Tree }, Height = 96 };
 
     /// <summary>Takes the folder chosen in <see cref="AgentFolderList"/> off it.</summary>
     public Button RemoveAgentFolderButton { get; } = new() { Content = "Remove", IsEnabled = false };
@@ -30,7 +30,7 @@ public sealed partial class SettingsDialog
     {
         Add(Declared.McpServer);
 
-        TextBlock none = new() { Classes = { "emptyText" }, Text = "None: a window asks before it lets an agent in" };
+        TextBlock none = new() { Classes = { StyleClasses.EmptyText }, Text = "None: a window asks before it lets an agent in" };
         void List()
         {
             AgentFolderList.ItemsSource = Working.AgentFolders.ToArray();
@@ -53,7 +53,7 @@ public sealed partial class SettingsDialog
             Width = 420,
             Children =
             {
-                new Border { Classes = { "framed" }, Child = new Panel { Children = { AgentFolderList, none } } },
+                new Border { Classes = { StyleClasses.Framed }, Child = new Panel { Children = { AgentFolderList, none } } },
                 RemoveAgentFolderButton,
             },
         };

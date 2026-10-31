@@ -43,7 +43,7 @@ public sealed class Banner : Border
     {
         Button link = new()
         {
-            Classes = { "link" },
+            Classes = { StyleClasses.Link },
             Content = text,
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,

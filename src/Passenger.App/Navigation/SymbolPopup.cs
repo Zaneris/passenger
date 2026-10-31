@@ -174,7 +174,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     {
         Width = 16,
         Height = 16,
-        Classes = { "kindBadge" },
+        Classes = { StyleClasses.KindBadge },
         VerticalAlignment = VerticalAlignment.Center,
         Child = letter,
     };

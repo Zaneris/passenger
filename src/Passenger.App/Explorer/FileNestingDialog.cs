@@ -38,7 +38,7 @@ public sealed class FileNestingDialog : IdeWindow
                 };
                 if (heading)
                 {
-                    cell.Classes.Add("muted");
+                    cell.Classes.Add(StyleClasses.Muted);
                 }
                 table.Children.Add(cell);
             }
@@ -50,7 +50,7 @@ public sealed class FileNestingDialog : IdeWindow
         }
         Row(FileNesting.EnvironmentParent, FileNesting.EnvironmentChildren);
         Rules = table;
-        Border framed = new() { Classes = { "framed" }, Child = new ScrollViewer { Content = table } };
+        Border framed = new() { Classes = { StyleClasses.Framed }, Child = new ScrollViewer { Content = table } };
         Rules.IsEnabled = nest;
         NestBox.IsCheckedChanged += (_, _) => Rules.IsEnabled = NestBox.IsChecked == true;
 

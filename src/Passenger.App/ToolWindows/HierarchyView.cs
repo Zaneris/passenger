@@ -94,7 +94,7 @@ public sealed class HierarchyView : DockPanel
         Children.Add(bar);
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = rows,
         };
         ReusedRows.Use(list, Row);
@@ -110,7 +110,7 @@ public sealed class HierarchyView : DockPanel
             ListMenus.Item("Copy Name", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Item.Name))),
             ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Node.Path))),
         ]);
-        placeholder = new TextBlock { Classes = { "emptyText" } };
+        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         ActionTips.SetWords(placeholder, keys =>
             $"{ActionTips.Named("Call Hierarchy", keys(AppActions.CallHierarchy))} and {ActionTips.Named("Type Hierarchy", keys(AppActions.TypeHierarchy))} show the symbol at the caret here");
         Children.Add(new Panel { Children = { list, placeholder } });
@@ -289,7 +289,7 @@ public sealed class HierarchyView : DockPanel
             FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        detail.Classes.Add("muted");
+        detail.Classes.Add(StyleClasses.Muted);
         StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { chevron, name, detail } };
         chevron.PointerPressed += (_, e) =>
         {
@@ -311,5 +311,5 @@ public sealed class HierarchyView : DockPanel
     }
 
     // As wide as its words: an option toggle is otherwise an icon's square.
-    private static ToggleButton Toggle() => new() { Classes = { "option" }, FontSize = 12, Width = double.NaN, Padding = new Thickness(8, 2) };
+    private static ToggleButton Toggle() => new() { Classes = { StyleClasses.Option }, FontSize = 12, Width = double.NaN, Padding = new Thickness(8, 2) };
 }

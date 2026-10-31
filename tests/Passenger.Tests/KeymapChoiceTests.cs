@@ -160,7 +160,7 @@ public sealed class KeymapChoiceTests : IDisposable
             window.Perform(AppActions.ShowDebug);
             Ui.Settle();
             string Said() => window.DebugWindow.GetVisualDescendants().OfType<TextBlock>()
-                .Single(t => t.Classes.Contains("emptyText") && t.Text?.StartsWith("Not debugging", StringComparison.Ordinal) == true).Text!;
+                .Single(t => t.Classes.Contains(StyleClasses.EmptyText) && t.Text?.StartsWith("Not debugging", StringComparison.Ordinal) == true).Text!;
             Assert.Equal($"Not debugging. Debug starts with {Shortcut.Parse("alt F5").Display()}.", Said());
 
             window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
@@ -192,10 +192,10 @@ public sealed class KeymapChoiceTests : IDisposable
             Assert.Equal($"Run ({run})", ToolTip.GetTip(runButton));
             window.ShowToolWindow(ToolWindowIds.Run);
             Ui.Settle();
-            Button hide = window.BottomPanel.Run.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains("toolPane"))
+            Button hide = window.BottomPanel.Run.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains(StyleClasses.ToolPane))
                 .GetVisualDescendants().OfType<Button>().Single(b => b.Name == AppActions.HideToolWindow);
             Assert.Equal($"Hide ({Shortcut.Parse("shift ESCAPE").Display()})", ToolTip.GetTip(hide));
-            string? Said() => window.BottomPanel.Run.GetVisualDescendants().OfType<TextBlock>().SingleOrDefault(t => t.Classes.Contains("emptyText") && t.IsEffectivelyVisible)?.Text;
+            string? Said() => window.BottomPanel.Run.GetVisualDescendants().OfType<TextBlock>().SingleOrDefault(t => t.Classes.Contains(StyleClasses.EmptyText) && t.IsEffectivelyVisible)?.Text;
             Assert.Equal($"Run ({run}) shows a program's output here", Said());
 
             window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
@@ -349,7 +349,7 @@ public sealed class KeymapChoiceTests : IDisposable
             dock.SetMode(dock[ToolWindowIds.Tests], Passenger.App.Docking.ToolMode.Floating);
             Ui.Settle();
             Window floating = Assert.Single(window.OwnedWindows);
-            TextBox search = window.BottomPanel.Tests.GetVisualDescendants().OfType<TextBox>().Single(b => b.Classes.Contains("search"));
+            TextBox search = window.BottomPanel.Tests.GetVisualDescendants().OfType<TextBox>().Single(b => b.Classes.Contains(StyleClasses.Search));
             Ui.Click(search);
             Assert.True(search.IsKeyboardFocusWithin, "A click on the floating Unit Tests window's search box left the keys elsewhere");
             floating.KeyTextInput("Onex");

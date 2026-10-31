@@ -10,8 +10,8 @@ namespace Passenger.App.ToolWindows;
 /// <see cref="ActionRequested"/> asks the window for.</summary>
 public sealed class EmptyState : StackPanel
 {
-    private readonly TextBlock words = new() { Classes = { "emptyText" } };
-    private readonly Button link = new() { Classes = { "link" }, HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false };
+    private readonly TextBlock words = new() { Classes = { StyleClasses.EmptyText } };
+    private readonly Button link = new() { Classes = { StyleClasses.Link }, HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false };
     private string? offered;
 
     public EmptyState()

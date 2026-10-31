@@ -27,12 +27,12 @@ public sealed class AspireServiceDialog : IdeWindow
         {
             Spacing = 8,
             Margin = new Thickness(20, 16),
-            Children = { new TextBlock { Text = "Choose a running .NET service", Classes = { "muted" } } },
+            Children = { new TextBlock { Text = "Choose a running .NET service", Classes = { StyleClasses.Muted } } },
         };
         DockPanel page = new();
         DockPanel.SetDock(heading, Dock.Top);
         page.Children.Add(heading);
-        page.Children.Add(new Border { Classes = { "framed" }, Margin = new Thickness(20, 0, 20, 16), Child = Services });
+        page.Children.Add(new Border { Classes = { StyleClasses.Framed }, Margin = new Thickness(20, 0, 20, 16), Child = Services });
         Content = DialogFooter.Page(page, DialogFooter.OkCancel(Profile, () => Close(null)));
         Services.SelectedIndex = services.Count > 0 ? 0 : -1;
     }

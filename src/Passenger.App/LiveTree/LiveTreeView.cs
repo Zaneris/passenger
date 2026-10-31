@@ -74,7 +74,7 @@ public sealed class LiveTreeView : DockPanel
         SelectElement = ToolButtons.Toggle(IconKeys.SelectElement, "Select Element: point at a control in the app and click it");
         SelectElement.Click += (_, _) => PickRequested?.Invoke(this, SelectElement.IsChecked == true);
         Button refresh = ToolButtons.Of(AppActions.LiveTreeRefresh, IconKeys.Rerun, "Refresh", _ => RefreshRequested?.Invoke(this, EventArgs.Empty));
-        status = new TextBlock { Classes = { "muted" }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+        status = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel top = new() { Margin = new Thickness(6, 0) };
         StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { SelectElement, refresh } };
         DockPanel.SetDock(buttons, Dock.Left);
@@ -89,7 +89,7 @@ public sealed class LiveTreeView : DockPanel
 
         tree = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = rows,
         };
         ReusedRows.Use(tree, Row);
@@ -111,21 +111,21 @@ public sealed class LiveTreeView : DockPanel
             GoToRequested?.Invoke(this, source);
             return true;
         });
-        placeholder = new TextBlock { Classes = { "emptyText" } };
+        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
 
         heading = new StackPanel { [DockProperty] = Dock.Top, Margin = new Thickness(10, 8, 10, 4), Spacing = 2 };
         StackPanel tabRow = new() { [DockProperty] = Dock.Top, Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 2, 6, 4) };
         foreach (LiveTreePage page in Enum.GetValues<LiveTreePage>())
         {
-            ToggleButton tab = new() { Classes = { "panelTab" }, Content = page.ToString() };
+            ToggleButton tab = new() { Classes = { StyleClasses.PanelTab }, Content = page.ToString() };
             tab.Click += (_, _) => ShowPage(page);
             tabs[page] = tab;
             tabRow.Children.Add(tab);
         }
-        filter = new TextBox { Classes = { "search" }, PlaceholderText = "Filter properties", Margin = new Thickness(0, 0, 6, 0) };
+        filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Filter properties", Margin = new Thickness(0, 0, 6, 0) };
         filter.TextChanged += (_, _) => ShowProperties();
         // An option toggle with words, as wide as they are, where the style's are an icon's square.
-        defaults = new ToggleButton { Classes = { "option" }, Content = "Defaults", FontSize = 12, Width = double.NaN, Padding = new Thickness(8, 2), VerticalAlignment = VerticalAlignment.Center };
+        defaults = new ToggleButton { Classes = { StyleClasses.Option }, Content = "Defaults", FontSize = 12, Width = double.NaN, Padding = new Thickness(8, 2), VerticalAlignment = VerticalAlignment.Center };
         ToolTip.SetTip(defaults, "Show the properties at their default values too");
         defaults.Click += (_, _) => ShowProperties();
         DockPanel filterRow = new() { [DockProperty] = Dock.Top, Margin = new Thickness(8, 2, 8, 6) };
@@ -134,7 +134,7 @@ public sealed class LiveTreeView : DockPanel
         filterRow.Children.Add(filter);
         properties = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = PropertyRows,
         };
         ReusedRows.Use(properties, PropertyRow);
@@ -321,7 +321,7 @@ public sealed class LiveTreeView : DockPanel
         layout.Children.Clear();
         if (details is null)
         {
-            heading.Children.Add(new TextBlock { Text = problem ?? "Choose a control in the tree, or with Select Element in the app.", Classes = { "muted" }, TextWrapping = TextWrapping.Wrap });
+            heading.Children.Add(new TextBlock { Text = problem ?? "Choose a control in the tree, or with Select Element in the app.", Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap });
             PropertyRows.Clear();
             pages.IsVisible = false;
             foreach (ToggleButton tab in tabs.Values)
@@ -345,11 +345,11 @@ public sealed class LiveTreeView : DockPanel
         string classes = string.Join(" ", details.Classes.Select(c => "." + c).Concat(details.PseudoClasses));
         if (classes.Length > 0)
         {
-            heading.Children.Add(new TextBlock { Text = classes, Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+            heading.Children.Add(new TextBlock { Text = classes, Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
         }
         if (details.TemplatedParent is { } parent)
         {
-            heading.Children.Add(new TextBlock { Text = $"A part of {parent}'s template", Classes = { "muted" }, FontSize = 12 });
+            heading.Children.Add(new TextBlock { Text = $"A part of {parent}'s template", Classes = { StyleClasses.Muted }, FontSize = 12 });
         }
         if (details.Source is { } source)
         {
@@ -359,7 +359,7 @@ public sealed class LiveTreeView : DockPanel
         else
         {
             GoToSource = null;
-            heading.Children.Add(new TextBlock { Text = details.NoSource, Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+            heading.Children.Add(new TextBlock { Text = details.NoSource, Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap });
         }
         ShowProperties();
         foreach (StyleReport style in details.Styles)
@@ -368,7 +368,7 @@ public sealed class LiveTreeView : DockPanel
         }
         if (details.Styles.Count == 0)
         {
-            styles.Children.Add(new TextBlock { Text = "No style could apply to it.", Classes = { "muted" } });
+            styles.Children.Add(new TextBlock { Text = "No style could apply to it.", Classes = { StyleClasses.Muted } });
         }
         ShowLayout(details.Layout);
     }
@@ -489,7 +489,7 @@ public sealed class LiveTreeView : DockPanel
         RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 4, 0) };
         TextBlock type = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock name = Colored(new TextBlock { Margin = new Thickness(5, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }, TokenKeys.Syntax_Field);
-        TextBlock classes = new() { Classes = { "muted" }, Margin = new Thickness(6, 0, 0, 0), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock classes = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(6, 0, 0, 0), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { chevron, type, name, classes } };
         chevron.PointerPressed += (_, e) =>
         {
@@ -505,7 +505,7 @@ public sealed class LiveTreeView : DockPanel
             chevron.Opacity = row.Expands ? 1 : 0;
             chevron.DataKey = row.IsExpanded ? IconKeys.ChevronDown : IconKeys.ChevronRight;
             type.Text = element.Type;
-            type.Classes.Set("muted", element.FromTemplate);
+            type.Classes.Set(StyleClasses.Muted, element.FromTemplate);
             line.Margin = new Thickness(6 + (row.Depth * 12), 0, 8, 0);
             line.Opacity = element.Visible ? 1 : 0.5;
             name.IsVisible = element.Name is { Length: > 0 };
@@ -528,7 +528,7 @@ public sealed class LiveTreeView : DockPanel
         TextBlock shown = new() { FontFamily = CodeEditor.CodeFont, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(shown, 1);
         TextBlock linked = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
-        Button link = new() { Classes = { "link" }, Content = linked, HorizontalAlignment = HorizontalAlignment.Left };
+        Button link = new() { Classes = { StyleClasses.Link }, Content = linked, HorizontalAlignment = HorizontalAlignment.Left };
         link.Click += (_, _) =>
         {
             if (grid.DataContext is PropertyValue { Place: { } place })
@@ -536,7 +536,7 @@ public sealed class LiveTreeView : DockPanel
                 GoToRequested?.Invoke(this, place);
             }
         };
-        TextBlock source = new() { Classes = { "muted" }, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock source = new() { Classes = { StyleClasses.Muted }, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
         foreach (Control from in new Control[] { link, source })
         {
             Grid.SetRow(from, 1);
@@ -592,7 +592,7 @@ public sealed class LiveTreeView : DockPanel
         TextBlock selector = new() { Text = style.Selector, FontFamily = CodeEditor.CodeFont, FontSize = 12.5, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap };
         top.Children.Add(selector);
         block.Children.Add(top);
-        block.Children.Add(new TextBlock { Text = $"{style.Kind} · {style.Origin}", Classes = { "muted" }, FontSize = 11, TextWrapping = TextWrapping.Wrap });
+        block.Children.Add(new TextBlock { Text = $"{style.Kind} · {style.Origin}", Classes = { StyleClasses.Muted }, FontSize = 11, TextWrapping = TextWrapping.Wrap });
         TextBlock state = new() { Text = style.Applies ? "Applies" : $"Does not apply: {style.WhyNot}", FontSize = 12, TextWrapping = TextWrapping.Wrap };
         Colored(state, style.Applies ? TokenKeys.Test_Passed : TokenKeys.TextMuted);
         block.Children.Add(state);
@@ -615,16 +615,16 @@ public sealed class LiveTreeView : DockPanel
         {
             case SetterStates.Overridden:
                 text.TextDecorations = TextDecorations.Strikethrough;
-                text.Classes.Add("muted");
+                text.Classes.Add(StyleClasses.Muted);
                 break;
             case SetterStates.Inactive:
-                text.Classes.Add("muted");
+                text.Classes.Add(StyleClasses.Muted);
                 break;
         }
         line.Children.Add(setter.Place is { } place ? Link(text, place) : text);
         if (AppPlaces.OverriddenBy(setter) is { } by)
         {
-            line.Children.Add(new TextBlock { Text = $"overridden by {by}", Classes = { "muted" }, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12, 0, 0, 2) });
+            line.Children.Add(new TextBlock { Text = $"overridden by {by}", Classes = { StyleClasses.Muted }, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12, 0, 0, 2) });
         }
         return line;
     }
@@ -652,7 +652,7 @@ public sealed class LiveTreeView : DockPanel
     private static Control Boxed(string label, Edges edges, Control inner)
     {
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), RowDefinitions = new RowDefinitions("Auto,*,Auto") };
-        TextBlock name = new() { Text = label, Classes = { "muted" }, FontSize = 10, Margin = new Thickness(4, 2) };
+        TextBlock name = new() { Text = label, Classes = { StyleClasses.Muted }, FontSize = 10, Margin = new Thickness(4, 2) };
         grid.Children.Add(name);
         grid.Children.Add(Side(edges.Top, 0, 1));
         grid.Children.Add(Side(edges.Left, 1, 0));
@@ -688,7 +688,7 @@ public sealed class LiveTreeView : DockPanel
     private static Control Fact(string name, string value)
     {
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("140,*") };
-        TextBlock label = new() { Text = name, Classes = { "muted" } };
+        TextBlock label = new() { Text = name, Classes = { StyleClasses.Muted } };
         TextBlock shown = new() { Text = value, FontFamily = CodeEditor.CodeFont, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(shown, 1);
         grid.Children.Add(label);
@@ -717,7 +717,7 @@ public sealed class LiveTreeView : DockPanel
 
     private Button Link(Control content, SourcePlace place)
     {
-        Button link = new() { Classes = { "link" }, Content = content, HorizontalAlignment = HorizontalAlignment.Left };
+        Button link = new() { Classes = { StyleClasses.Link }, Content = content, HorizontalAlignment = HorizontalAlignment.Left };
         ToolTip.SetTip(link, $"Go to {place.File}{(place.Line > 0 ? $":{place.Line}" : string.Empty)}");
         link.Click += (_, _) => GoToRequested?.Invoke(this, place);
         return link;

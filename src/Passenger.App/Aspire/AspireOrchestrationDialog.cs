@@ -66,7 +66,7 @@ public sealed class AspireOrchestrationDialog : IdeWindow
         DockPanel.SetDock(options, Dock.Bottom);
         TextBlock heading = new() { Text = "Service projects", Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(heading, Dock.Top);
-        Border rows = new() { Classes = { "framed" }, Child = ServiceProjects, Margin = new Thickness(0, 0, 0, 12) };
+        Border rows = new() { Classes = { StyleClasses.Framed }, Child = ServiceProjects, Margin = new Thickness(0, 0, 0, 12) };
         Content = DialogFooter.Page(new DockPanel
         {
             Margin = new Thickness(16),

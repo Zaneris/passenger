@@ -32,7 +32,7 @@ internal sealed partial class InfoCard : Border, IHoverCard
 
     public InfoCard()
     {
-        Classes.Add("popup");
+        Classes.Add(StyleClasses.Popup);
         Padding = new Thickness(10, 8);
         MaxWidth = WordsWidth;
         Child = parts;
@@ -239,13 +239,13 @@ internal sealed class CompletionPopup : Border
 
     public CompletionPopup()
     {
-        Classes.Add("popup");
+        Classes.Add(StyleClasses.Popup);
         MinWidth = 280;
         MaxWidth = 620;
         Padding = new Thickness(0, 4);
         List = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             MaxHeight = 26 * 10,
             ItemsSource = slots,
         };
@@ -343,7 +343,7 @@ internal sealed class CompletionRowView : DockPanel
         {
             Width = 16,
             Height = 16,
-            Classes = { "kindBadge" },
+            Classes = { StyleClasses.KindBadge },
             Margin = new Thickness(0, 0, 8, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Child = letter,
@@ -406,13 +406,13 @@ internal sealed class ChoicePopup : Border
         Titles = [.. choices.Select(c => c.Text)];
         Details = [.. choices.Select(c => c.Detail)];
         bool numbered = choices.Any(c => c.Mnemonic is not null);
-        Classes.Add("popup");
+        Classes.Add(StyleClasses.Popup);
         MinWidth = 320;
         MaxWidth = 760;
         Padding = new Thickness(0, 6);
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             MaxHeight = 26 * 14,
             ItemsSource = choices,
             SelectedIndex = choices.Count > 0 ? 0 : -1,
@@ -423,7 +423,7 @@ internal sealed class ChoicePopup : Border
             Spacing = 4,
             Children =
             {
-                new TextBlock { Text = title, Classes = { "popupTitle" }, Margin = new Thickness(12, 2, 12, 2) },
+                new TextBlock { Text = title, Classes = { StyleClasses.PopupTitle }, Margin = new Thickness(12, 2, 12, 2) },
                 list,
             },
         };
@@ -512,15 +512,15 @@ internal sealed class RenameBox : Border
 
     public RenameBox(string current)
     {
-        Classes.Add("popup");
+        Classes.Add(StyleClasses.Popup);
         Padding = new Thickness(8, 6);
-        name = new TextBox { Text = current, Classes = { "search" }, MinWidth = 220, FontFamily = CodeEditor.CodeFont };
+        name = new TextBox { Text = current, Classes = { StyleClasses.Search }, MinWidth = 220, FontFamily = CodeEditor.CodeFont };
         body = new StackPanel
         {
             Spacing = 4,
             Children =
             {
-                new TextBlock { Text = "Rename", Classes = { "muted" }, FontSize = 11 },
+                new TextBlock { Text = "Rename", Classes = { StyleClasses.Muted }, FontSize = 11 },
                 name,
             },
         };
@@ -558,7 +558,7 @@ internal sealed class RenameBox : Border
         body.Children.Add(new TextBlock
         {
             Text = $"Corresponding files to be renamed: {string.Join(", ", files.Select(Path.GetFileName))}",
-            Classes = { "muted" },
+            Classes = { StyleClasses.Muted },
             FontSize = 11,
             TextWrapping = TextWrapping.Wrap,
             MaxWidth = 360,

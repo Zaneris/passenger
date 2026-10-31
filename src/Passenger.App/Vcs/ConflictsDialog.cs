@@ -60,7 +60,7 @@ public sealed class ConflictsDialog : IdeWindow
         theirsColumn = titles.Titles[2];
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = rows,
             SelectionMode = SelectionMode.Multiple,
         };
@@ -77,7 +77,7 @@ public sealed class ConflictsDialog : IdeWindow
         }, RoutingStrategies.Tunnel);
         Border table = new()
         {
-            Classes = { "framed" },
+            Classes = { StyleClasses.Framed },
             ClipToBounds = true,
             Child = new DockPanel { Children = { titles, list } },
         };
@@ -205,7 +205,7 @@ public sealed class ConflictsDialog : IdeWindow
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         name.Bind(TextBlock.ForegroundProperty, name.GetResourceObservable(TokenKeys.Vcs_File_Conflicted));
         TextBlock folder = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
-        folder.Classes.Add("muted");
+        folder.Classes.Add(StyleClasses.Muted);
         StackPanel file = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(CellInset, 0, 0, 0), Children = { icon, name, folder } };
         TextBlock yours = Status(1);
         TextBlock theirs = Status(2);

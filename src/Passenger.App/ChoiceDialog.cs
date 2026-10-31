@@ -22,7 +22,7 @@ public sealed class ChoiceDialog : IdeWindow
         answers.Add(cancel);
         foreach (Button button in answers.Where(b => b.IsDefault))
         {
-            button.Classes.Add("primary");
+            button.Classes.Add(StyleClasses.Primary);
         }
         DialogFooter.Question(this, title, [DialogFooter.Paragraph(text)], DialogFooter.Listed([.. answers]));
     }

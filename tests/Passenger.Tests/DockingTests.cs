@@ -644,7 +644,7 @@ public sealed class DockingTests
             Assert.Equal(["Usages of a"], window.Find.Searches);
 
             Control editorTab = window.EditorArea.ActiveGroup.GetVisualDescendants().OfType<TextBlock>()
-                .First(t => t.Text == "One.cs" && t.Classes.Contains("tabName")).FindAncestorOfType<Border>()!;
+                .First(t => t.Text == "One.cs" && t.Classes.Contains(StyleClasses.TabName)).FindAncestorOfType<Border>()!;
             Ui.DoubleClick(editorTab);
             Assert.False(window.DockHost.IsShown(ToolWindowIds.Explorer) || window.DockHost.IsShown(ToolWindowIds.Find),
                 "A double-click on the editor's tab left the tool windows open beside the editors");
@@ -693,7 +693,7 @@ public sealed class DockingTests
 
     /// <summary>A tool window's header button running one of the window's actions, shown in the pane its window is in.</summary>
     private static Button HeaderButton(MainWindow window, string id, string action) =>
-        window.DockHost[id].Content.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains("toolPane"))
+        window.DockHost[id].Content.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains(StyleClasses.ToolPane))
             .GetVisualDescendants().OfType<Button>().First(b => b.Name == action);
 
     /// <summary>A window, keeping its state in a folder of the test's own when it is given one.</summary>

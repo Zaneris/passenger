@@ -84,4 +84,12 @@ internal static class Rules
         Category,
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor ClassesUnread = new(
+        "PSG9002",
+        "A style classes file is not read",
+        "{0}'s classes are not all in {1}: {2}",
+        Category,
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }

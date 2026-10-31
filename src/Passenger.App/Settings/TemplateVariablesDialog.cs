@@ -12,7 +12,7 @@ namespace Passenger.App.Settings;
 public sealed class TemplateVariablesDialog : IdeWindow
 {
     private readonly List<TemplateVariable> variables;
-    private readonly ListBox names = new() { Classes = { "tree" } };
+    private readonly ListBox names = new() { Classes = { StyleClasses.Tree } };
     private readonly TextBlock macro = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock parameterName = new() { VerticalAlignment = VerticalAlignment.Center, Width = 120 };
     private readonly DockPanel parameterRow;
@@ -35,7 +35,7 @@ public sealed class TemplateVariablesDialog : IdeWindow
         up.Click += (_, _) => Move(-1);
         down.Click += (_, _) => Move(1);
         names.SelectionChanged += (_, _) => ShowChosen();
-        ParameterBox = new TextBox { Classes = { "search" } };
+        ParameterBox = new TextBox { Classes = { StyleClasses.Search } };
         ParameterBox.TextChanged += (_, _) => Edit(v => v with { Parameter = ParameterBox.Text ?? string.Empty });
         EditableBox = new CheckBox { Content = "Editable" };
         EditableBox.IsCheckedChanged += (_, _) => Edit(v => v with { Editable = EditableBox.IsChecked == true });
@@ -56,7 +56,7 @@ public sealed class TemplateVariablesDialog : IdeWindow
         DockPanel left = new() { Width = 180 };
         DockPanel.SetDock(moves, Dock.Bottom);
         left.Children.Add(moves);
-        Border framed = new() { Classes = { "framed" }, Child = names };
+        Border framed = new() { Classes = { StyleClasses.Framed }, Child = names };
         left.Children.Add(framed);
         DockPanel body = new() { Margin = new Thickness(16, 14, 16, 8) };
         DockPanel.SetDock(left, Dock.Left);
@@ -156,7 +156,7 @@ public sealed class ChooseMacroDialog : IdeWindow
     /// <summary>What "(No macro)" is called in the list.</summary>
     public const string NoMacro = "(No macro)";
 
-    private readonly ListBox list = new() { Classes = { "tree" } };
+    private readonly ListBox list = new() { Classes = { StyleClasses.Tree } };
 
     public ChooseMacroDialog(string current)
     {
@@ -171,7 +171,7 @@ public sealed class ChooseMacroDialog : IdeWindow
         list.DoubleTapped += (_, _) => Close(true);
         OkButton = DialogFooter.Default();
         OkButton.Click += (_, _) => Close(true);
-        Content = DialogFooter.Page(new Border { Classes = { "framed" }, Margin = new Thickness(12), Child = list }, DialogFooter.OkCancel(OkButton, () => Close(false)));
+        Content = DialogFooter.Page(new Border { Classes = { StyleClasses.Framed }, Margin = new Thickness(12), Child = list }, DialogFooter.OkCancel(OkButton, () => Close(false)));
     }
 
     public Button OkButton { get; }

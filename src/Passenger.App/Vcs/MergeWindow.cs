@@ -36,9 +36,9 @@ public sealed class MergeWindow : IdeWindow, IOwnKeys
         Button acceptRight = Action("Accept Right", () => AcceptAsync(MergeSide.Right));
         Button cancel = Action("Cancel", CancelAsync);
         Button apply = Action("Apply Changes", ApplyAsync);
-        apply.Classes.Add("primary");
+        apply.Classes.Add(StyleClasses.Primary);
         buttons = [acceptLeft, acceptRight, cancel, apply];
-        StackPanel sides = new() { Classes = { "footer" }, Children = { acceptLeft, acceptRight } };
+        StackPanel sides = new() { Classes = { StyleClasses.Footer }, Children = { acceptLeft, acceptRight } };
         Border bar = DialogFooter.Bar(DialogFooter.Of(apply, cancel), sides);
         DockPanel.SetDock(bar, Avalonia.Controls.Dock.Bottom);
         Content = new DockPanel { Children = { bar, view } };

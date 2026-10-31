@@ -70,8 +70,8 @@ public sealed class NuGetView : DockPanel
     public NuGetView(FolderPackages folder)
     {
         model = folder;
-        search = new TextBox { Classes = { "search" }, PlaceholderText = "Search packages", Margin = new Thickness(8, 0) };
-        chooser = new ComboBox { Classes = { "compact" }, MinWidth = 130, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+        search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Search packages", Margin = new Thickness(8, 0) };
+        chooser = new ComboBox { Classes = { StyleClasses.Compact }, MinWidth = 130, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
         ToolTip.SetTip(chooser, "The feeds searched");
         chooser.SelectionChanged += (_, _) =>
         {
@@ -83,7 +83,7 @@ public sealed class NuGetView : DockPanel
         };
         prerelease = new CheckBox { Content = "Prerelease", VerticalAlignment = VerticalAlignment.Center };
         status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0), TextTrimming = TextTrimming.CharacterEllipsis };
-        status.Classes.Add("muted");
+        status.Classes.Add(StyleClasses.Muted);
         Button refresh = ToolButtons.Of(AppActions.NuGetRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action));
         refresh.Margin = new Thickness(6, 0, 0, 0);
         typing = new Debounce(Pause, RefreshAsync);
@@ -110,7 +110,7 @@ public sealed class NuGetView : DockPanel
 
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(list, Row);
         list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowAsync());
@@ -561,7 +561,7 @@ public sealed class NuGetView : DockPanel
 
     private ToggleButton Tab(string title, Control content)
     {
-        ToggleButton tab = new() { Classes = { "panelTab" }, IsChecked = body.Content == content, Content = title };
+        ToggleButton tab = new() { Classes = { StyleClasses.PanelTab }, IsChecked = body.Content == content, Content = title };
         tab.Click += (_, _) =>
         {
             if (content == Sources)
@@ -641,13 +641,13 @@ public sealed class NuGetView : DockPanel
         if (row.Authors.Length > 0 || row.Downloads > 0)
         {
             TextBlock by = new() { Text = row.Downloads > 0 ? $"{row.Authors}, {row.Downloads:N0} downloads" : row.Authors, FontSize = 12 };
-            by.Classes.Add("muted");
+            by.Classes.Add(StyleClasses.Muted);
             details.Children.Add(by);
         }
         if (row.Feeds.Count > 0)
         {
             TextBlock from = new() { Text = $"In {string.Join(", ", row.Feeds)}", FontSize = 12 };
-            from.Classes.Add("muted");
+            from.Classes.Add(StyleClasses.Muted);
             details.Children.Add(from);
         }
         if (vulnerable is not null)
@@ -676,7 +676,7 @@ public sealed class NuGetView : DockPanel
             Control link = new TextBlock { Text = advisory.Address, VerticalAlignment = VerticalAlignment.Center };
             if (advisory.Link is { } page)
             {
-                Button button = new() { Classes = { "link" }, Content = advisory.Address, VerticalAlignment = VerticalAlignment.Center };
+                Button button = new() { Classes = { StyleClasses.Link }, Content = advisory.Address, VerticalAlignment = VerticalAlignment.Center };
                 button.Click += (_, _) => LinkClicked?.Invoke(this, page);
                 link = button;
             }
@@ -696,7 +696,7 @@ public sealed class NuGetView : DockPanel
         Border block = new()
         {
             Name = "Vulnerability",
-            Classes = { "box" },
+            Classes = { StyleClasses.Box },
             Padding = new Thickness(10, 8),
             Child = new DockPanel { Children = { warning, said } },
         };
@@ -791,7 +791,7 @@ public sealed class NuGetView : DockPanel
     private Control Row()
     {
         TextBlock version = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
-        version.Classes.Add("muted");
+        version.Classes.Add(StyleClasses.Muted);
         RowIcon icon = new() { Width = 14, Height = 14, Margin = new Thickness(6, 0, 6, 0) };
         icon.DataKey = IconKeys.Package;
         TextBlock id = new() { VerticalAlignment = VerticalAlignment.Center };

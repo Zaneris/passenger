@@ -84,12 +84,12 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Ui.Settle();
             UnderEachLook(window, () =>
             {
-                Border[] tabs = [.. window.EditorArea.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("tab") && b.IsEffectivelyVisible)];
+                Border[] tabs = [.. window.EditorArea.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains(StyleClasses.Tab) && b.IsEffectivelyVisible)];
                 Assert.Equal(2, tabs.Length);
                 foreach (Border tab in tabs)
                 {
-                    bool open = tab.Classes.Contains("active");
-                    Button close = tab.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("tabClose"));
+                    bool open = tab.Classes.Contains(StyleClasses.Active);
+                    Button close = tab.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains(StyleClasses.TabClose));
                     Assert.True(close.Opacity == (open ? 1 : 0),
                         $"The {(open ? "open" : "other")} tab's × has an opacity of {close.Opacity}, where Rider shows it on the open tab alone until the pointer is over another");
                 }
@@ -132,12 +132,12 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             {
                 Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true }, "the shell to start");
             }
-            Assert.False(ToolWindowParts(window).OfType<Border>().Any(b => b.Classes.Contains("tab")),
+            Assert.False(ToolWindowParts(window).OfType<Border>().Any(b => b.Classes.Contains(StyleClasses.Tab)),
                 $"{action}'s window has an editor tab's look among its tabs, where every tool window's tab is a panelTab");
             // Its title larger than every word in it (14 over the window's 13), under a header of one height.
-            foreach (TextBlock title in ToolWindowParts(window).OfType<TextBlock>().Where(t => t.Classes.Contains("toolTitle")))
+            foreach (TextBlock title in ToolWindowParts(window).OfType<TextBlock>().Where(t => t.Classes.Contains(StyleClasses.ToolTitle)))
             {
-                Control header = title.GetVisualAncestors().OfType<Border>().First(b => b.Classes.Contains("toolHeader"));
+                Control header = title.GetVisualAncestors().OfType<Border>().First(b => b.Classes.Contains(StyleClasses.ToolHeader));
                 Assert.True(title.FontSize == 14 && title.FontWeight == FontWeight.SemiBold && Math.Abs(header.Bounds.Height - 38) < 0.5,
                     $"{action}'s window has its title '{title.Text}' in {title.FontSize} pt {title.FontWeight} under a header {header.Bounds.Height:0.#} tall, "
                     + "where every tool window's title is 14 pt semibold under a header 38 tall");
@@ -149,7 +149,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                     $"A row of {action}'s window is {row.Bounds.Height:0.#} px tall, where every list's row is {ListRow.Height}");
             }
             // Read while the window is shown: one hidden leaves the tree, and its tabs their styles with it.
-            foreach (ToggleButton tab in ToolWindowParts(window).OfType<ToggleButton>().Where(t => t.Classes.Contains("panelTab")))
+            foreach (ToggleButton tab in ToolWindowParts(window).OfType<ToggleButton>().Where(t => t.Classes.Contains(StyleClasses.PanelTab)))
             {
                 seen++;
                 string where = $"{action}'s tab '{Words(tab)}'";
@@ -186,20 +186,20 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 Assert.True(window.Perform(action), $"{action} did not run");
                 Ui.Settle();
                 // Every tab the window has, those its chosen row does not show too.
-                ToggleButton[] tabs = [.. view.GetVisualDescendants().OfType<ToggleButton>().Where(tab => tab.Classes.Contains("panelTab")
+                ToggleButton[] tabs = [.. view.GetVisualDescendants().OfType<ToggleButton>().Where(tab => tab.Classes.Contains(StyleClasses.PanelTab)
                     && Passenger.App.ToolWindows.RunWindows.Tabs.Contains(TabName(tab)))];
                 string[] names = [.. tabs.Select(TabName)];
                 Assert.True(names.Length >= 3, $"{action}'s window has only the tabs [{string.Join(", ", names)}]");
                 Assert.Equal([.. Passenger.App.ToolWindows.RunWindows.Tabs.Where(names.Contains)], names);
                 Assert.True(names[0] == "Log" && tabs[0].IsChecked == true, $"{action}'s window opens on {names.FirstOrDefault(n => tabs[Array.IndexOf(names, n)].IsChecked == true)}, where both open on Log");
-                string[] toolbar = [.. view.GetVisualDescendants().OfType<Button>().Where(button => button.Classes.Contains("tool") && ActionButtons.GetAction(button) is not null)
+                string[] toolbar = [.. view.GetVisualDescendants().OfType<Button>().Where(button => button.Classes.Contains(StyleClasses.Tool) && ActionButtons.GetAction(button) is not null)
                     .Select(button => ActionButtons.GetAction(button)!)];
                 int at = Array.IndexOf(toolbar, refresh) + 1;
                 Assert.True(at > 0 && toolbar.Skip(at).Take(services.Length).SequenceEqual(services),
                     $"{action}'s toolbar is [{string.Join(", ", toolbar)}], where both have the service actions [{string.Join(", ", services)}] right after their Refresh");
                 foreach (string service in services)
                 {
-                    Button button = view.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("tool") && ActionButtons.GetAction(b) == service);
+                    Button button = view.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains(StyleClasses.Tool) && ActionButtons.GetAction(b) == service);
                     Assert.Equal(window.Actions[service]!.Title, ActionTips.Of(button) ?? ToolTip.GetTip(button) as string);
                 }
             }
@@ -235,7 +235,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             open();
             Ui.Settle();
             Ui.WaitFor(() => window.IsPopupOpen, what);
-            Border frame = window.Popup!.GetSelfAndVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("popup"));
+            Border frame = window.Popup!.GetSelfAndVisualDescendants().OfType<Border>().First(b => b.Classes.Contains(StyleClasses.Popup));
             HoldsToPopupRules(what, frame);
             seen.Add((what, frame));
             Ui.Press(window, "ESCAPE");
@@ -249,7 +249,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Popup("Stash Changes", () => window.Perform(AppActions.Stash));
         Popup("IDE Internal Errors", () => window.ShowErrors());
 
-        TextBlock[] titles = [.. seen.SelectMany(s => s.Frame.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("popupTitle")))];
+        TextBlock[] titles = [.. seen.SelectMany(s => s.Frame.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains(StyleClasses.PopupTitle)))];
         Assert.True(titles.Length >= seen.Count - 2, $"Only {titles.Length} of {seen.Count} popups have a title of the popups' look");
         Assert.True(titles.All(t => t.FontSize == titles[0].FontSize && t.FontWeight == titles[0].FontWeight),
             "Popups' titles differ in size or weight: " + string.Join(", ", titles.Select(t => $"'{t.Text}' {t.FontSize} {t.FontWeight}")));
@@ -270,7 +270,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <see cref="ListRow.Height"/> tall; a popup that lives elsewhere (the debugger's hover card) is held to it here too.</summary>
     internal static void HoldsToPopupRules(string what, Border frame)
     {
-        Assert.True(frame.Classes.Contains("popup"), $"{what} is not framed as the popups are (Border.popup)");
+        Assert.True(frame.Classes.Contains(StyleClasses.Popup), $"{what} is not framed as the popups are (Border.popup)");
         Assert.True(PopupFrame.Widths.Any(w => Math.Abs(frame.Bounds.Width - w) < 0.5),
             $"{what} is {frame.Bounds.Width:0.#} px wide, not one of the popups' widths ({string.Join(", ", PopupFrame.Widths)})");
         foreach (ListBoxItem row in frame.GetVisualDescendants().OfType<ListBoxItem>().Where(r => r.IsEffectivelyVisible))
@@ -381,7 +381,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         {
             Assert.True(window.Perform(action), $"{action} did not run");
             Ui.Settle();
-            foreach (TextBlock empty in window.DockHost.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("emptyText") && t.IsEffectivelyVisible))
+            foreach (TextBlock empty in window.DockHost.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains(StyleClasses.EmptyText) && t.IsEffectivelyVisible))
             {
                 Rect text = Placed(window, empty);
                 Rect room = Placed(window, (Visual)empty.Parent!);
@@ -681,7 +681,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             {
                 window.DockHost.Show(tool.Id);
                 Ui.Settle();
-                foreach (Button button in ToolWindowParts(window).OfType<Button>().Where(b => b.Classes.Contains("tool") && b.Bounds.Width > 0))
+                foreach (Button button in ToolWindowParts(window).OfType<Button>().Where(b => b.Classes.Contains(StyleClasses.Tool) && b.Bounds.Width > 0))
                 {
                     if (button.GetVisualDescendants().OfType<PathIcon>().FirstOrDefault() is not { } icon)
                     {
@@ -689,7 +689,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                     }
                     seen++;
                     bool frames = (button.Name == AppActions.HideToolWindow || ToolTip.GetTip(button) is "Options")
-                        && button.FindAncestorOfType<Border>() is { Classes: var classes } && classes.Contains("toolHeader");
+                        && button.FindAncestorOfType<Border>() is { Classes: var classes } && classes.Contains(StyleClasses.ToolHeader);
                     double size = frames ? 10 : 16;
                     string what = $"{tool.Title}'s {ToolTip.GetTip(button)}";
                     Assert.False(button.Focusable, $"{what} takes the keys when clicked, where a toolbar's button leaves them with what it acts on");
@@ -774,7 +774,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             {
                 window.DockHost.Show(tool.Id);
                 Ui.Settle();
-                foreach (Button button in ToolWindowParts(window).OfType<Button>().Where(b => b.Classes.Contains("tool")))
+                foreach (Button button in ToolWindowParts(window).OfType<Button>().Where(b => b.Classes.Contains(StyleClasses.Tool)))
                 {
                     if (ToolTip.GetTip(button) is not string tip || kinds.FirstOrDefault(k => tip.StartsWith(k, StringComparison.Ordinal)) is not { } kind)
                     {
@@ -927,7 +927,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Ui.Settle();
             Visual debug = PaneOf(window.DebugWindow);
             FitsItsRoom(window, debug, "The Debug window");
-            ToggleButton[] tabs = [.. debug.GetVisualDescendants().OfType<ToggleButton>().Where(t => t.Classes.Contains("panelTab") && Words(t).Contains("Greenhouse", StringComparison.Ordinal))];
+            ToggleButton[] tabs = [.. debug.GetVisualDescendants().OfType<ToggleButton>().Where(t => t.Classes.Contains(StyleClasses.PanelTab) && Words(t).Contains("Greenhouse", StringComparison.Ordinal))];
             Assert.True(tabs.Length == 2 && tabs.All(t => Visible(window, t).Width >= 40),
                 $"The Debug window shows {tabs.Count(t => Visible(window, t).Width >= 40)} of its two programs' tabs in its header's room");
             Rect room = Placed(window, (Visual)tabs[0].GetVisualAncestors().OfType<ContentControl>().First(c => c.ClipToBounds));
@@ -957,7 +957,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>The tool window a view is shown in, its header and all.</summary>
     private static Visual PaneOf(Visual view) =>
-        view.GetVisualAncestors().OfType<DockPanel>().FirstOrDefault(p => p.Classes.Contains("toolPane"))
+        view.GetVisualAncestors().OfType<DockPanel>().FirstOrDefault(p => p.Classes.Contains(StyleClasses.ToolPane))
             ?? throw new Xunit.Sdk.XunitException($"The {view.GetType().Name} is in no tool window");
 
     /// <summary>A part of a window kept as every part is however narrow: words wider than their room end in an ellipsis
@@ -1291,9 +1291,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
         // The frame one ground with no rule round it; the tool windows a step lighter; the editor a step from both.
         foreach (Border part in window.GetVisualDescendants().OfType<Border>().Where(b => b.IsEffectivelyVisible
-            && b.Classes.Any(c => c is "titleBar" or "stripeBar" or "tabStrip" or "statusBar")))
+            && b.Classes.Any(c => c is StyleClasses.TitleBar or StyleClasses.StripeBar or StyleClasses.TabStrip or StyleClasses.StatusBar)))
         {
-            string what = part.Classes.First(c => c is "titleBar" or "stripeBar" or "tabStrip" or "statusBar");
+            string what = part.Classes.First(c => c is StyleClasses.TitleBar or StyleClasses.StripeBar or StyleClasses.TabStrip or StyleClasses.StatusBar);
             Assert.True(part.BorderThickness == default, $"The {what} has a rule of {part.BorderThickness} along it, where the window's areas are told apart by shade");
             Assert.True(what == "titleBar" || (part.Background is ISolidColorBrush ground && ground.Color == frame),
                 $"The {what} is drawn on {(part.Background as ISolidColorBrush)?.Color}, not the frame's ground {frame}, as the stripes, the tabs' strip and the status bar are");
@@ -1320,7 +1320,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Rect structure = Placed(window, Pane(window.DockHost.GetVisualDescendants().OfType<Passenger.App.ToolWindows.StructureView>().First(v => v.IsEffectivelyVisible)));
         Rect problems = Placed(window, Pane(window.DockHost.GetVisualDescendants().OfType<Passenger.App.ToolWindows.ProblemsView>().First(v => v.IsEffectivelyVisible)));
         Rect code = Placed(window, window.EditorArea.CodeEditor);
-        Rect status = Placed(window, window.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("statusBar")));
+        Rect status = Placed(window, window.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains(StyleClasses.StatusBar)));
         using Picture picture = new(window);
         // Where two grounds meet, nothing but the two.
         picture.Meets("the left stripe and the Explorer", new Point(explorer.Left, explorer.Top + (explorer.Height * 0.8)), across: true, frame, panel);
@@ -1359,7 +1359,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Color text = Brush(window, TokenKeys.Text);
             Color field = Brush(window, TokenKeys.Field);
             Color chosenRow = Brush(window, TokenKeys.RowSelected);
-            ToggleButton stripe = window.DockHost.GetVisualDescendants().OfType<ToggleButton>().First(b => b.Classes.Contains("stripe") && b.IsEffectivelyVisible);
+            ToggleButton stripe = window.DockHost.GetVisualDescendants().OfType<ToggleButton>().First(b => b.Classes.Contains(StyleClasses.Stripe) && b.IsEffectivelyVisible);
             ToolTip.SetIsOpen(stripe, true);
             Ui.Settle();
             ToolTip tip = window.GetVisualDescendants().OfType<ToolTip>().FirstOrDefault(t => t.IsEffectivelyVisible)
@@ -1716,6 +1716,72 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Directory.Exists(Path.Combine(root, "src", string.Join('.', name.Split('.').Take(parts)))));
     }
 
+    /// <summary>Every style class the code names is one a style takes: StyleClasses holds each class the theme's selectors
+    /// name, C# names a class from there (or takes it by a parameter marked [IdentifierOf] StyleClasses), and XAML's
+    /// Classes name only those. A class written as text in C#, or one in XAML no style takes, fails here naming its line:
+    /// misspelt or unstyled, it changes nothing, with no error.</summary>
+    [Fact]
+    public void Every_style_class_the_code_names_is_one_a_style_takes()
+    {
+        string root = Passenger.Tests.Debugging.Helpers.Debuggees.Root;
+        HashSet<string> styled = new(StringComparer.Ordinal);
+        foreach (string theme in (string[])["Shell.axaml", "ControlThemes.axaml"])
+        {
+            foreach (Match selector in Regex.Matches(File.ReadAllText(Path.Combine(root, "src", "Passenger.App", "Theme", theme)), @"<Style\s[^>]*Selector=""([^""]*)"""))
+            {
+                styled.UnionWith(Regex.Matches(Regex.Replace(selector.Groups[1].Value, @"\[[^\]]*\]", string.Empty), @"\.([A-Za-z_][\w-]*)").Select(m => m.Groups[1].Value));
+            }
+        }
+        string[] named = [.. typeof(StyleClasses).GetFields().Select(f => (string)f.GetRawConstantValue()!)];
+        Assert.True(styled.Count > 100, $"Only {styled.Count} classes were found styled: the search no longer reads the theme's selectors");
+        Assert.True(styled.SetEquals(named), $"StyleClasses is not the classes the styles take: it lacks {string.Join(", ", styled.Except(named))} "
+            + $"and holds {string.Join(", ", named.Except(styled))}");
+
+        Regex given = new(@"\bClasses\s*=\s*\{([^}]*)\}|\bClasses\.(?:Add|Contains|Set|Remove|Insert)\(\s*([^,)]*)|\bClasses:\s*\[([^\]]*)\]");
+        Regex written = new(@"\bClasses=""([^""{]*)""|\bClasses\.([A-Za-z_][\w-]*)=");
+        List<string> found = [];
+        int checkedCount = 0;
+        foreach ((string path, string text) in UiFiles(theme: true))
+        {
+            bool code = path.EndsWith(".cs", StringComparison.Ordinal);
+            string[] lines = text.Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                if (line.TrimStart().StartsWith(code ? "//" : "<!--", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                foreach (Match match in (code ? given : written).Matches(line))
+                {
+                    string classes = string.Concat(match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Value);
+                    foreach (string one in code ? classes.Split(',') : classes.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        string shown = one.Trim();
+                        checkedCount++;
+                        if (code && shown.Contains('"', StringComparison.Ordinal))
+                        {
+                            found.Add($"{path}:{i + 1}: {shown} is written as text");
+                        }
+                        else if (code && Regex.IsMatch(shown, @"^\w+$")
+                            && !Regex.IsMatch(text, $@"\[IdentifierOf\(typeof\(StyleClasses\)\)\]\s*string\??\s+{Regex.Escape(shown)}\b"))
+                        {
+                            found.Add($"{path}:{i + 1}: {shown} is taken from somewhere other than StyleClasses");
+                        }
+                        else if (!code && !styled.Contains(shown))
+                        {
+                            found.Add($"{path}:{i + 1}: {shown} is no class a style takes");
+                        }
+                    }
+                }
+            }
+        }
+        Assert.True(checkedCount > 500, $"Only {checkedCount} classes were found named in the code: the search no longer reads it");
+        Assert.True(found.Count == 0, $"{found.Count} classes the code names may be none a style takes, so a control given one looks as if it had none: "
+            + $"name each from StyleClasses (a parameter that takes one marked [IdentifierOf(typeof(StyleClasses))]), and in XAML write only a class "
+            + $"Shell.axaml or ControlThemes.axaml styles:\n{string.Join("\n", found)}");
+    }
+
     /// <summary>A message that sends a person to Settings names a page the dialog lists, as the dialog names it: through
     /// SettingsDialog.PlaceOfPage, given one of the dialog's page constants. Words written after "Settings |" by hand, or
     /// a page the dialog does not list, fail here, naming the line.</summary>
@@ -1887,7 +1953,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Regex byHand = new(@"Bind\(TextBlock\.ForegroundProperty, \w+\.GetResourceObservable\(TokenKeys\.TextMuted\)\)");
         string[] found = [.. UiFiles().SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
             .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}")];
-        Assert.True(found.Length == 0, $"{found.Length} TextBlocks bind the muted colour by hand: give each the muted class (MutedText.Of, or Classes.Add(\"muted\")):\n"
+        Assert.True(found.Length == 0, $"{found.Length} TextBlocks bind the muted colour by hand: give each the muted class (MutedText.Of, or Classes.Add(StyleClasses.Muted)):\n"
             + string.Join("\n", found));
     }
 
@@ -2178,7 +2244,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         [.. ((ResourceDictionary)dictionary.ThemeDictionaries[variant]).Keys.Select(k => k.ToString()!).Where(k => k.StartsWith("Passenger.", StringComparison.Ordinal)).Order(StringComparer.Ordinal)];
 
     /// <summary>The tool window's pane a view is shown in.</summary>
-    private static Control Pane(Control view) => view.GetVisualAncestors().OfType<Control>().First(a => a.Classes.Contains("toolPane"));
+    private static Control Pane(Control view) => view.GetVisualAncestors().OfType<Control>().First(a => a.Classes.Contains(StyleClasses.ToolPane));
 
     /// <summary>The window as the compositor last drew it, read pixel by pixel.</summary>
     private sealed class Picture : IDisposable
@@ -2236,7 +2302,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     private static void StripeButtonsFit(MainWindow window)
     {
         Rect dock = Placed(window, window.DockHost);
-        foreach (ToggleButton button in window.DockHost.GetVisualDescendants().OfType<ToggleButton>().Where(b => b.Classes.Contains("stripe") && b.IsEffectivelyVisible))
+        foreach (ToggleButton button in window.DockHost.GetVisualDescendants().OfType<ToggleButton>().Where(b => b.Classes.Contains(StyleClasses.Stripe) && b.IsEffectivelyVisible))
         {
             Rect at = Placed(window, button);
             Assert.True(at.Top >= dock.Top - 0.5 && at.Bottom <= dock.Bottom + 0.5,

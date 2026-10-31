@@ -29,7 +29,7 @@ public sealed class HairlineDivider : Panel
         ZIndex = 1;
         line.Bind(Border.BackgroundProperty, line.GetResourceObservable(TokenKeys.Divider));
         line.IsVisible = drawn;
-        Splitter = new HairlineSplitter { Classes = { direction == GridResizeDirection.Columns ? "hairline" : "hairlineRows" }, ResizeDirection = direction };
+        Splitter = new HairlineSplitter { Classes = { direction == GridResizeDirection.Columns ? StyleClasses.Hairline : StyleClasses.HairlineRows }, ResizeDirection = direction };
         Children.Add(line);
         Children.Add(Splitter);
     }

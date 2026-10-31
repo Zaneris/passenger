@@ -14,8 +14,8 @@ public sealed class TableViewer
 {
     private readonly StackPanel choices = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
     private readonly CheckBox header = new() { Content = "First row is header", FontSize = 12, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-    private readonly TextBlock size = new() { Classes = { "muted" }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-    private readonly TextBlock message = new() { Classes = { "emptyText" }, IsVisible = false };
+    private readonly TextBlock size = new() { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly TextBlock message = new() { Classes = { StyleClasses.EmptyText }, IsVisible = false };
     private readonly Dictionary<TableFile, ((int, int) Anchor, (int, int) Caret, Vector Scroll)> kept = [];
     private TableFile? file;
     private bool painting;
@@ -147,7 +147,7 @@ public sealed class TableViewer
             for (int i = 0; i < names.Length; i++)
             {
                 int index = i;
-                ToggleButton choice = new() { Classes = { "segment" }, Content = names[i], FontSize = 12, Name = shown.IsWorkbook ? null : $"Show{names[i]}" };
+                ToggleButton choice = new() { Classes = { StyleClasses.Segment }, Content = names[i], FontSize = 12, Name = shown.IsWorkbook ? null : $"Show{names[i]}" };
                 choice.Click += (_, _) => Choose(index);
                 choices.Children.Add(choice);
             }

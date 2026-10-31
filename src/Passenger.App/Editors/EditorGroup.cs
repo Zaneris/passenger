@@ -78,7 +78,7 @@ public sealed class EditorGroup : DockPanel
         };
         ReusedRows.Use(strip, Tab);
         PreviewToggle = ToolButtons.Toggle(IconKeys.Preview, "Preview");
-        PreviewToggle.Classes.Add("tabStripTool");
+        PreviewToggle.Classes.Add(StyleClasses.TabStripTool);
         PreviewToggle.IsVisible = false;
         PreviewToggle[DockProperty] = Dock.Right;
         PreviewToggle.Click += (_, _) =>
@@ -92,7 +92,7 @@ public sealed class EditorGroup : DockPanel
         stripView.SizeChanged += (_, _) => RevealActive();
         tabBar = new Border
         {
-            Classes = { "tabStrip" },
+            Classes = { StyleClasses.TabStrip },
             [DockProperty] = Dock.Top,
             Child = new DockPanel
             {
@@ -499,7 +499,7 @@ public sealed class EditorGroup : DockPanel
     public int IndexAt(Point at)
     {
         int index = 0;
-        foreach (Control tab in tabBar.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("tab")))
+        foreach (Control tab in tabBar.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains(StyleClasses.Tab)))
         {
             Point centre = tab.TranslatePoint(new Point(tab.Bounds.Width / 2, 0), tabBar) ?? default;
             if (at.X > centre.X)
@@ -613,17 +613,17 @@ public sealed class EditorGroup : DockPanel
     private Control Tab()
     {
         RowIcon icon = new();
-        TextBlock name = new() { Classes = { "tabName" }, VerticalAlignment = VerticalAlignment.Center };
-        Ellipse modified = new() { Classes = { "modified" }, Width = 7, Height = 7 };
+        TextBlock name = new() { Classes = { StyleClasses.TabName }, VerticalAlignment = VerticalAlignment.Center };
+        Ellipse modified = new() { Classes = { StyleClasses.Modified }, Width = 7, Height = 7 };
         RowIcon closeGlyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Close };
-        Button close = new() { Classes = { "tabClose" }, Content = closeGlyph };
+        Button close = new() { Classes = { StyleClasses.TabClose }, Content = closeGlyph };
         ToolTip.SetTip(close, "Close");
         RowIcon pinGlyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Pin };
-        Button pin = new() { Classes = { "tabPin" }, Content = pinGlyph };
+        Button pin = new() { Classes = { StyleClasses.TabPin }, Content = pinGlyph };
         ToolTip.SetTip(pin, "Unpin Tab");
         Border border = new()
         {
-            Classes = { "tab" },
+            Classes = { StyleClasses.Tab },
             Child = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -657,11 +657,11 @@ public sealed class EditorGroup : DockPanel
             icon.Foreground = document.IconBrush;
             ToolTip.SetTip(border, document.Path);
             modified.IsVisible = document.IsModified;
-            border.Classes.Set("active", tab.IsActive);
-            border.Classes.Set("elsewhere", !IsCurrent);
+            border.Classes.Set(StyleClasses.Active, tab.IsActive);
+            border.Classes.Set(StyleClasses.Elsewhere, !IsCurrent);
             pin.IsVisible = tab.IsPinned;
         }
-        void OnCurrentChanged(object? sender, EventArgs e) => border.Classes.Set("elsewhere", !IsCurrent);
+        void OnCurrentChanged(object? sender, EventArgs e) => border.Classes.Set(StyleClasses.Elsewhere, !IsCurrent);
         void OnFileChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             if (border.DataContext is not EditorTab tab)
@@ -702,7 +702,7 @@ public sealed class EditorGroup : DockPanel
             onStrip = true;
             CurrentChanged += OnCurrentChanged;
             Follow();
-            border.Classes.Set("elsewhere", !IsCurrent);
+            border.Classes.Set(StyleClasses.Elsewhere, !IsCurrent);
         };
         border.DetachedFromVisualTree += (_, _) =>
         {

@@ -111,7 +111,7 @@ public sealed class InteractiveTestDialog : IdeWindow
         Response.Margin = new Thickness(4, 8, 8, 8);
         panes.Children.Add(Response);
 
-        Send = new Button { Content = "Send", IsDefault = true, Classes = { "primary" } };
+        Send = new Button { Content = "Send", IsDefault = true, Classes = { StyleClasses.Primary } };
         Button close = new() { Content = "Close", IsCancel = true };
         Send.Click += (_, _) => IdeErrors.Observe(SendAsync());
         close.Click += (_, _) => Close();

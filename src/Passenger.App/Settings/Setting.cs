@@ -108,7 +108,7 @@ public sealed class ChoiceSetting<T> : Setting where T : struct, Enum
         {
             ItemsSource = choices.Select(c => c.Name).ToArray(),
             SelectedIndex = choices.Select(c => c.Value).ToList().IndexOf(value),
-            Classes = { "form" },
+            Classes = { StyleClasses.Form },
         };
         box.SelectionChanged += (_, _) => change(s => set(s, choices[Math.Max(0, box.SelectedIndex)].Value));
         return box;
@@ -127,7 +127,7 @@ public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSetti
 
     public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change)
     {
-        TextBox line = new() { Classes = { "search" }, Text = get(now) ?? string.Empty, PlaceholderText = found(), Width = 320 };
+        TextBox line = new() { Classes = { StyleClasses.Search }, Text = get(now) ?? string.Empty, PlaceholderText = found(), Width = 320 };
         TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 320, HorizontalAlignment = HorizontalAlignment.Left };
         problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
         Said();

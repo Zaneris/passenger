@@ -369,7 +369,7 @@ public sealed class NavigationTests : IDisposable
         Assert.Equal("One.cs", window.EditorArea.Active?.Name);
         Assert.True(window.ExplorerView.Selected?.Name == "One.cs", $"Select Next Tab showed One.cs and left the Explorer on {window.ExplorerView.Selected?.Name}");
 
-        Control two = window.EditorArea.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "Two.cs" && t.Classes.Contains("tabName"));
+        Control two = window.EditorArea.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "Two.cs" && t.Classes.Contains(StyleClasses.TabName));
         Ui.Click(two);
         Assert.Equal("Two.cs", window.EditorArea.Active?.Name);
         Assert.True(window.ExplorerView.Selected?.Name == "Two.cs", $"A click on Two.cs's tab left the Explorer on {window.ExplorerView.Selected?.Name}");
@@ -597,8 +597,8 @@ public sealed class NavigationTests : IDisposable
     private static void InSight(EditorGroup group, string name)
     {
         ScrollViewer strip = group.TabStrip.GetVisualDescendants().OfType<ScrollViewer>().First();
-        Border tab = strip.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("tab") && b.Classes.Contains("active"));
-        Assert.Equal(name, tab.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("tabName")).Text);
+        Border tab = strip.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains(StyleClasses.Tab) && b.Classes.Contains(StyleClasses.Active));
+        Assert.Equal(name, tab.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains(StyleClasses.TabName)).Text);
         double left = tab.TranslatePoint(default, strip)?.X ?? double.NaN;
         Assert.True(left >= -0.5 && left + tab.Bounds.Width <= strip.Viewport.Width + 0.5,
             $"{name}'s tab, the active one, lies from {left:0.#} to {left + tab.Bounds.Width:0.#}, out of the strip's sight (0 to {strip.Viewport.Width:0.#})");
@@ -624,7 +624,7 @@ public sealed class NavigationTests : IDisposable
 
     private static void ClickTab(MainWindow window, string name)
     {
-        Ui.Click(window.EditorArea.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains("tabName")));
+        Ui.Click(window.EditorArea.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains(StyleClasses.TabName)));
         Assert.True(window.EditorArea.Active?.Name == name, $"A click on {name}'s tab showed {window.EditorArea.Active?.Name}");
     }
 

@@ -31,7 +31,7 @@ public sealed class AssetPreviewControl : DockPanel, IDisposable
         if (asset.IsPending)
         {
             TextBlock loading = new() { Text = asset.Kind == AssetKind.Font ? "Loading the font…" : "Loading the image…", Margin = default };
-            loading.Classes.Add("emptyText");
+            loading.Classes.Add(StyleClasses.EmptyText);
             StackPanel waiting = new()
             {
                 Orientation = Orientation.Horizontal,

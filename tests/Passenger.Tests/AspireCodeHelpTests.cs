@@ -480,7 +480,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
             Assert.Contains(dialog.AspireTable.Rows, row => Equals(row.Project.SelectedItem, "Api"));
             Assert.Contains(dialog.AspireTable.Rows, row => Equals(row.Project.SelectedItem, "Worker"));
             DialogButtonsTests.Check(dialog);
-            Assert.True(dialog.AspireTable.Classes.Contains("framed"), "The Aspire resources are not the framed services table Compose's are");
+            Assert.True(dialog.AspireTable.Classes.Contains(StyleClasses.Framed), "The Aspire resources are not the framed services table Compose's are");
             ComboBox worker = dialog.AspireTable.Rows.Single(row => row.Service == "worker").Action;
             Assert.Equal(["Run", "Debug", "Don't start"], Assert.IsType<string[]>(worker.ItemsSource));
             Assert.False(dialog.AspireTable.Rows.Single(row => row.Service == "worker").Project.IsEnabled, "A resource's project was offered as a choice, where its AppHost names it");

@@ -41,7 +41,7 @@ public static class ToolButtons
     {
         PathIcon glyph = new();
         glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(icon));
-        button.Classes.Add("tool");
+        button.Classes.Add(StyleClasses.Tool);
         button.Content = glyph;
         button.Focusable = false;
         ToolTip.SetTip(button, tip);
@@ -55,7 +55,7 @@ public static class ToolButtons
 public static class MutedText
 {
     public static TextBlock Of(string text) =>
-        new() { Classes = { "muted" }, Text = text, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        new() { Classes = { StyleClasses.Muted }, Text = text, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
 
     /// <summary>A muted note that wraps to its column, as a page's explanations do.</summary>
     public static TextBlock Wrapped(string text)

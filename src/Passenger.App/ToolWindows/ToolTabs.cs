@@ -17,10 +17,10 @@ public static class ToolTabs
         Control name = title as Control ?? new TextBlock { Text = title.ToString(), VerticalAlignment = VerticalAlignment.Center };
         if (close is null)
         {
-            return new ToggleButton { Classes = { "panelTab" }, IsChecked = open, Content = name };
+            return new ToggleButton { Classes = { StyleClasses.PanelTab }, IsChecked = open, Content = name };
         }
         RowIcon glyph = new() { Width = 10, Height = 10, DataKey = IconKeys.Close };
-        Button button = new() { Classes = { "tabClose" }, Content = glyph, Margin = new Thickness(6, 0, 0, 0), [DockPanel.DockProperty] = Dock.Right };
+        Button button = new() { Classes = { StyleClasses.TabClose }, Content = glyph, Margin = new Thickness(6, 0, 0, 0), [DockPanel.DockProperty] = Dock.Right };
         ToolTip.SetTip(button, closeTip);
         button.Click += (_, e) =>
         {
@@ -29,7 +29,7 @@ public static class ToolTabs
         };
         ToggleButton tab = new()
         {
-            Classes = { "panelTab" },
+            Classes = { StyleClasses.PanelTab },
             IsChecked = open,
             // Its name gives way before its ×, ending in an ellipsis, down to a few letters, so every tab stays to choose.
             [ShrinkingRow.LeastProperty] = 88,

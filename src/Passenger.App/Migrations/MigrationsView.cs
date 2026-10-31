@@ -84,7 +84,7 @@ public sealed class MigrationsView : DockPanel
             ListMenus.Item("Update Database", null, () => ActionRequested?.Invoke(this, AppActions.UpdateDatabase)),
             ListMenus.Item("Copy Id", null, () => IdeErrors.Observe(ListMenus.CopyAsync(list, chosen.Id))),
         ]);
-        placeholder = new TextBlock { Classes = { "emptyText" } };
+        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         Children.Add(leftBar);
         Children.Add(topBar);
         Children.Add(gaps);
@@ -189,7 +189,7 @@ public sealed class MigrationsView : DockPanel
                 System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out DateTime made)
                 ? made.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
             state.Text = row.Applied switch { true => "Applied", false => "Pending", null => "Not read" };
-            state.Classes.Set("muted", row.Applied != false);
+            state.Classes.Set(StyleClasses.Muted, row.Applied != false);
             state.TextTrimming = row.Applied == false ? TextTrimming.None : TextTrimming.CharacterEllipsis;
             name.Text = row.Name;
             when.Text = stamp;

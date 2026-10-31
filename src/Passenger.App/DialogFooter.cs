@@ -12,7 +12,7 @@ public static class DialogFooter
 {
     /// <summary>A dialog's default button, OK unless its words say what it does (Next, Publish, Create): Enter clicks it,
     /// and it wears the accent.</summary>
-    public static Button Default(string words = "OK") => new() { Content = words, IsDefault = true, Classes = { "primary" } };
+    public static Button Default(string words = "OK") => new() { Content = words, IsDefault = true, Classes = { StyleClasses.Primary } };
 
     /// <summary>A dialog's Cancel, or the answer that stands for it (No): Escape clicks it too, and a click does what
     /// <paramref name="cancelled"/> does.</summary>
@@ -59,7 +59,7 @@ public static class DialogFooter
     /// <summary>The footer's row: its buttons at the right, and at the left what goes beside them.</summary>
     public static DockPanel Row(StackPanel buttons, Control? left = null)
     {
-        DockPanel row = new() { Classes = { "footerRow" } };
+        DockPanel row = new();
         DockPanel.SetDock(buttons, Dock.Right);
         row.Children.Add(buttons);
         if (left is not null)
@@ -72,7 +72,7 @@ public static class DialogFooter
     }
 
     /// <summary>The bar under a dialog's page that its footer's row stands in (Shell.axaml's <c>Border.footerBar</c>).</summary>
-    public static Border Bar(StackPanel buttons, Control? left = null) => new() { Classes = { "footerBar" }, Child = Row(buttons, left) };
+    public static Border Bar(StackPanel buttons, Control? left = null) => new() { Classes = { StyleClasses.FooterBar }, Child = Row(buttons, left) };
 
     /// <summary>A dialog's whole content: its page, and under it the footer's bar across the window.</summary>
     public static DockPanel Page(Control page, Border bar)
@@ -129,7 +129,7 @@ public static class DialogFooter
 
     private static StackPanel Buttons(IEnumerable<Button> buttons)
     {
-        StackPanel footer = new() { Classes = { "footer" } };
+        StackPanel footer = new() { Classes = { StyleClasses.Footer } };
         footer.Children.AddRange(buttons);
         return footer;
     }

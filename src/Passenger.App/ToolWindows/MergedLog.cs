@@ -69,7 +69,7 @@ public sealed class MergedLog : DockPanel
         {
             ToggleButton toggle = new()
             {
-                Classes = { "segment" }, Content = words, IsChecked = !hidden.Contains(key), VerticalAlignment = VerticalAlignment.Center,
+                Classes = { StyleClasses.Segment }, Content = words, IsChecked = !hidden.Contains(key), VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 2, 0),
             };
             toggle.IsCheckedChanged += (_, _) =>

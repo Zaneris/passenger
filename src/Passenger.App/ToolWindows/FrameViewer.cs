@@ -38,7 +38,7 @@ public sealed class FrameViewer : IdeWindow, IOwnKeys
         MinHeight = 200;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Editor_Background));
-        sizeText.Classes.Add("muted");
+        sizeText.Classes.Add(StyleClasses.Muted);
 
         Border framed = new()
         {

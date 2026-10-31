@@ -15,7 +15,7 @@ public sealed class AgentAdmissionDialog : IdeWindow
 
     public AgentAdmissionDialog(string agent, string? folder)
     {
-        Button allow = new() { Content = Allow, Classes = { "primary" } };
+        Button allow = new() { Content = Allow, Classes = { StyleClasses.Primary } };
         Button dontAllow = new() { Content = DontAllow, IsCancel = true };
         allow.Click += (_, _) => Answer(Admission.Allowed);
         dontAllow.Click += (_, _) => Answer(Admission.NotAllowed);

@@ -39,7 +39,7 @@ public sealed class TitleBarTests : IDisposable
         Assert.True(window.MovesStarted == 1, "A press on the bar's empty space did not move the window");
 
         // What is on the bar keeps its clicks: Windows hands them to it.
-        foreach (Button button in Bar(window).GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible && !b.Classes.Contains("windowButton")))
+        foreach (Button button in Bar(window).GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible && !b.Classes.Contains(StyleClasses.WindowButton)))
         {
             Assert.True(ChromeAt(window, Ui.Centre(button, window)) == WindowDecorationsElementRole.User,
                 $"Windows would take a press on the toolbar's {button.Name ?? ToolTip.GetTip(button)} as one on its caption, moving the window instead of clicking it");

@@ -23,7 +23,7 @@ public sealed class ContainerFilesPane : DockPanel
     private readonly Func<ContainerEngine> engine;
     private readonly Func<string> stateFolder;
     private readonly ListBox list;
-    private readonly TextBlock said = new() { Classes = { "emptyText" } };
+    private readonly TextBlock said = new() { Classes = { StyleClasses.EmptyText } };
     private readonly Dictionary<string, IReadOnlyList<ContainerFile>> listed = new(StringComparer.Ordinal);
     private readonly HashSet<string> open = new(StringComparer.Ordinal) { "/" };
     private ContainerInfo? container;
@@ -34,7 +34,7 @@ public sealed class ContainerFilesPane : DockPanel
         this.stateFolder = stateFolder;
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(list, Row);
         list.DoubleTapped += (_, _) => IdeErrors.Observe(ActivateAsync(list.SelectedItem as ContainerFile));

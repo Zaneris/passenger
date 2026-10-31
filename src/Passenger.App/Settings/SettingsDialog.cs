@@ -114,13 +114,13 @@ public sealed partial class SettingsDialog : IdeWindow
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
         AddOptions(agents ?? Mcp.AgentSetup.Here(null, current.TerminalShell));
-        search = new TextBox { Classes = { "search" }, PlaceholderText = "Search settings", Margin = new Thickness(10, 10, 10, 6) };
+        search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Search settings", Margin = new Thickness(10, 10, 10, 6) };
         search.TextChanged += (_, _) => Filter();
-        pages = new ListBox { Classes = { "tree", "pages" } };
+        pages = new ListBox { Classes = { StyleClasses.Tree, StyleClasses.Pages } };
         pages.SelectionChanged += (_, _) => ShowPage();
         heading = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 14) };
         body = new StackPanel { Spacing = 12 };
-        nothing = new TextBlock { Classes = { "muted" }, Text = "Nothing matches", IsVisible = false, Margin = new Thickness(21, 4) };
+        nothing = new TextBlock { Classes = { StyleClasses.Muted }, Text = "Nothing matches", IsVisible = false, Margin = new Thickness(21, 4) };
 
         ok.Click += (_, _) => Ok();
         applyButton.Click += (_, _) => Apply();
@@ -289,7 +289,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.SolutionWideAnalysis);
         Add(Declared.ParameterHints);
         Add(Declared.TypeHints);
-        TextBox masks = new() { Classes = { "search" }, Text = Working.SoftWrapFiles, PlaceholderText = "No files", Width = 260, IsEnabled = Working.SoftWrap };
+        TextBox masks = new() { Classes = { StyleClasses.Search }, Text = Working.SoftWrapFiles, PlaceholderText = "No files", Width = 260, IsEnabled = Working.SoftWrap };
         ToolTip.SetTip(masks, "Use * and ? as wildcards and ; to separate patterns");
         masks.TextChanged += (_, _) => Change(s => s with { SoftWrapFiles = masks.Text ?? string.Empty });
         CheckBox wrapFiles = Check(Working.SoftWrap, v =>
@@ -340,7 +340,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.ConsoleBufferKb);
 
         string? onPath = Passenger.Core.Programs.Node();
-        TextBox node = new() { Classes = { "search" }, Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = onPath ?? "Not found on the PATH", Width = 320 };
+        TextBox node = new() { Classes = { StyleClasses.Search }, Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = onPath ?? "Not found on the PATH", Width = 320 };
         node.TextChanged += (_, _) => Change(s => s with { NodeInterpreter = string.IsNullOrWhiteSpace(node.Text) ? null : node.Text.Trim() });
         Add(NodePage, "Node interpreter", node, "node nodejs interpreter javascript typescript html css json language server npm path",
             "The Node.js the JavaScript, TypeScript, HTML, CSS and JSON language servers run on. Empty, it is the first on the PATH, "
@@ -412,7 +412,7 @@ public sealed partial class SettingsDialog : IdeWindow
         {
             TextBox { AcceptsReturn: true } => 5,
             StackPanel { Orientation: Orientation.Vertical, Children: [TextBox, ..] } => 5,
-            StackPanel { Orientation: Orientation.Vertical, Children: [RadioButton or Border { Classes: ["framed"] }, ..] } => 6,
+            StackPanel { Orientation: Orientation.Vertical, Children: [RadioButton or Border { Classes: [StyleClasses.Framed] }, ..] } => 6,
             _ => -1,
         };
         TextBlock name = new()
@@ -428,7 +428,7 @@ public sealed partial class SettingsDialog : IdeWindow
         if (note is not null)
         {
             TextBlock said = new() { Text = note, TextWrapping = TextWrapping.Wrap, MaxWidth = 360, Margin = new Thickness(name.Width, 0, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
-            said.Classes.Add("muted");
+            said.Classes.Add(StyleClasses.Muted);
             row = new StackPanel { Spacing = 4, Children = { row, said } };
         }
         options.Add(new Option(page, label, row, $"{page} {label} {keywords}", action));

@@ -365,7 +365,7 @@ public partial class MainWindow
         RunConfiguration? chosen = configurations.Chosen;
         string? why = chosen is null ? null : configurations.WhyNotHere(chosen);
         RunConfigName.Text = chosen is null ? "No configurations" : Shown(chosen);
-        RunConfigName.Classes.Set("muted", why is not null);
+        RunConfigName.Classes.Set(StyleClasses.Muted, why is not null);
         ToolTip.SetTip(RunConfigButton, why is null ? "Run configuration" : $"{chosen!.Name} cannot run here: {why}");
     }
 
@@ -402,8 +402,8 @@ public partial class MainWindow
             Spacing = 8,
             Children =
             {
-                new TextBlock { Text = name, Classes = { "muted" } },
-                new TextBlock { Text = why, Classes = { "muted" }, FontSize = 11, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center },
+                new TextBlock { Text = name, Classes = { StyleClasses.Muted } },
+                new TextBlock { Text = why, Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center },
             },
         };
     }

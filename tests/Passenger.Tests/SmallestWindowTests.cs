@@ -24,9 +24,9 @@ public sealed class SmallestWindowTests
             window.Show();
             window.Start(LaunchOptions.Empty);
             Ui.Settle();
-            Button[] tiles = [.. window.Welcome.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("welcomeAction"))];
+            Button[] tiles = [.. window.Welcome.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains(StyleClasses.WelcomeAction))];
             Assert.Equal(4, tiles.Length);
-            TextBox search = window.Welcome.GetVisualDescendants().OfType<TextBox>().Single(t => t.Classes.Contains("welcomeSearch"));
+            TextBox search = window.Welcome.GetVisualDescendants().OfType<TextBox>().Single(t => t.Classes.Contains(StyleClasses.WelcomeSearch));
             foreach (Button tile in tiles)
             {
                 tile.BringIntoView();
@@ -60,7 +60,7 @@ public sealed class SmallestWindowTests
             Passenger.App.Navigation.FindInFilesPopup popup = window.GetVisualDescendants().OfType<Passenger.App.Navigation.FindInFilesPopup>().Single();
             window.KeyTextInput("Greet");
             Ui.WaitFor(() => popup.Matches.Count == 40, () => $"Find in Files' 40 matches ({popup.Status})");
-            Border frame = popup.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("popup"));
+            Border frame = popup.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains(StyleClasses.Popup));
             Rect at = Placed(window, frame);
             Assert.True(at.Top >= 0 && at.Bottom <= window.ClientSize.Height,
                 $"Find in Files' frame stands from {at.Top:0.#} to {at.Bottom:0.#} in a window {window.ClientSize.Height:0.#} tall: its preview hangs past the window's foot");

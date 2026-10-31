@@ -629,7 +629,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
         return [.. window.DebugWindow.HeaderTools.GetVisualDescendants().OfType<ToggleButton>().Select(button =>
         {
             TextBlock name = button.GetVisualDescendants().OfType<TextBlock>().First();
-            return (name.Text ?? string.Empty, button.IsChecked == true, name.Classes.Contains("muted"), button, button.GetVisualDescendants().OfType<Button>().First());
+            return (name.Text ?? string.Empty, button.IsChecked == true, name.Classes.Contains(StyleClasses.Muted), button, button.GetVisualDescendants().OfType<Button>().First());
         })];
     }
 

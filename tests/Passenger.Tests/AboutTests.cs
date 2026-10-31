@@ -142,7 +142,7 @@ public sealed partial class AboutTests : IDisposable
         string.Join("\n", about.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).Where(t => !string.IsNullOrEmpty(t)));
 
     private static Button Link(Window about, string words) =>
-        about.GetVisualDescendants().OfType<Button>().First(b => b.Classes.Contains("link") && (string?)b.Content == words);
+        about.GetVisualDescendants().OfType<Button>().First(b => b.Classes.Contains(StyleClasses.Link) && (string?)b.Content == words);
 
     /// <summary>The packages a .deps.json file names whose files are beside it, as Id/Version: those with none of their
     /// files there (Visual Studio's left out of roslyn/) are not carried.</summary>

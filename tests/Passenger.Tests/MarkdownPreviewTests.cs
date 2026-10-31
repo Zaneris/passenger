@@ -112,9 +112,10 @@ public sealed class MarkdownPreviewTests
 
         MarkdownText[] words = [.. preview.GetLogicalDescendants().OfType<MarkdownText>()];
         string[] headings = ["Shop", "Getting started", "Tasks", "Prices", "A quote", "Code"];
+        string[] levels = [StyleClasses.MdHeading1, StyleClasses.MdHeading2, StyleClasses.MdHeading3, StyleClasses.MdHeading4, StyleClasses.MdHeading5, StyleClasses.MdHeading6];
         for (int level = 1; level <= 6; level++)
         {
-            Assert.True(words.Any(w => w.Classes.Contains($"mdHeading{level}") && w.Shown == headings[level - 1]),
+            Assert.True(words.Any(w => w.Classes.Contains(levels[level - 1]) && w.Shown == headings[level - 1]),
                 $"The preview draws no heading of level {level} saying '{headings[level - 1]}':\n{preview.Text}");
         }
         Assert.DoesNotContain("##", preview.Text, StringComparison.Ordinal);
@@ -125,22 +126,22 @@ public sealed class MarkdownPreviewTests
         Assert.True(runs.Any(r => r.Text == "emphasis" && r.FontStyle == FontStyle.Italic), "The emphasis is not drawn in italics");
         Assert.True(runs.Any(r => r.Text == "code spans" && r.FontFamily == CodeEditor.CodeFont), "The code span is not drawn in the editor's font");
 
-        Assert.True(preview.GetLogicalDescendants().OfType<StackPanel>().Any(l => l.Classes.Contains("mdList")
-            && l.GetLogicalDescendants().OfType<StackPanel>().Any(inner => inner.Classes.Contains("mdList"))), "The list inside a list is not drawn as one");
-        Border[] tasks = [.. preview.GetLogicalDescendants().OfType<Border>().Where(b => b.Classes.Contains("mdTask"))];
-        Assert.True(tasks.Length == 2 && tasks[0].Classes.Contains("done") && !tasks[1].Classes.Contains("done"),
-            $"The task list draws {tasks.Length} checks, done [{string.Join(", ", tasks.Select(t => t.Classes.Contains("done")))}], not one done and one to do");
+        Assert.True(preview.GetLogicalDescendants().OfType<StackPanel>().Any(l => l.Classes.Contains(StyleClasses.MdList)
+            && l.GetLogicalDescendants().OfType<StackPanel>().Any(inner => inner.Classes.Contains(StyleClasses.MdList))), "The list inside a list is not drawn as one");
+        Border[] tasks = [.. preview.GetLogicalDescendants().OfType<Border>().Where(b => b.Classes.Contains(StyleClasses.MdTask))];
+        Assert.True(tasks.Length == 2 && tasks[0].Classes.Contains(StyleClasses.Done) && !tasks[1].Classes.Contains(StyleClasses.Done),
+            $"The task list draws {tasks.Length} checks, done [{string.Join(", ", tasks.Select(t => t.Classes.Contains(StyleClasses.Done)))}], not one done and one to do");
         Assert.True(words.Any(w => w.Shown == "Ship the shop"), "A task's words still show its [ ] mark");
 
-        Border[] cells = [.. preview.GetLogicalDescendants().OfType<Border>().Where(b => b.Classes.Contains("mdCell"))];
-        Assert.True(cells.Length == 9 && cells.Take(3).All(c => c.Classes.Contains("head")), $"The table draws {cells.Length} cells, not its header's 3 and two rows' 6");
+        Border[] cells = [.. preview.GetLogicalDescendants().OfType<Border>().Where(b => b.Classes.Contains(StyleClasses.MdCell))];
+        Assert.True(cells.Length == 9 && cells.Take(3).All(c => c.Classes.Contains(StyleClasses.Head)), $"The table draws {cells.Length} cells, not its header's 3 and two rows' 6");
         Assert.Equal(TextAlignment.Center, Cell(cells, "fruit").TextAlignment);
         Assert.Equal(TextAlignment.Right, Cell(cells, "3.50").TextAlignment);
         Assert.Equal(TextAlignment.Left, Cell(cells, "Apple").TextAlignment);
 
-        Assert.True(preview.GetLogicalDescendants().OfType<Border>().Any(b => b.Classes.Contains("mdQuote")
+        Assert.True(preview.GetLogicalDescendants().OfType<Border>().Any(b => b.Classes.Contains(StyleClasses.MdQuote)
             && b.GetLogicalDescendants().OfType<MarkdownText>().Any(t => t.Shown == "Shops sell things.")), "The block quote is not drawn as one");
-        Assert.Contains(preview.GetLogicalDescendants().OfType<Border>(), b => b.Classes.Contains("mdRule"));
+        Assert.Contains(preview.GetLogicalDescendants().OfType<Border>(), b => b.Classes.Contains(StyleClasses.MdRule));
 
         MarkdownCode[] code = [.. preview.GetLogicalDescendants().OfType<MarkdownCode>()];
         Assert.True(code.Select(c => c.Language).SequenceEqual(["C#", "JSON"]), $"The fences are coloured as [{string.Join(", ", code.Select(c => c.Language))}], not C# and JSON");
@@ -182,7 +183,7 @@ public sealed class MarkdownPreviewTests
         Ui.Press(window, "ENTER");
         Ui.Press(window, "ENTER");
         Ui.Settle();
-        Assert.True(preview.GetLogicalDescendants().OfType<MarkdownText>().Any(w => w.Classes.Contains("mdHeading2") && w.Shown == "Typed heading"),
+        Assert.True(preview.GetLogicalDescendants().OfType<MarkdownText>().Any(w => w.Classes.Contains(StyleClasses.MdHeading2) && w.Shown == "Typed heading"),
             $"The heading typed does not show in the preview:\n{preview.Text}");
         Control[] made = [.. preview.Blocks.Where(b => !before.Contains(b))];
         Assert.True(made.Length == 1 && before.All(preview.Blocks.Contains),
@@ -406,7 +407,7 @@ public sealed class MarkdownPreviewTests
         EditorGroup right = window.EditorArea.ActiveGroup;
         MarkdownPreview split = Shown(right);
         Assert.True(right != left && Shown(left) != split, "The two splits of the README do not each have a preview of their own");
-        Ui.Click(right.GetLogicalDescendants().OfType<Button>().Single(b => b.Classes.Contains("tabClose") && b.IsEffectivelyVisible));
+        Ui.Click(right.GetLogicalDescendants().OfType<Button>().Single(b => b.Classes.Contains(StyleClasses.TabClose) && b.IsEffectivelyVisible));
         window.MouseMove(new Point(1, 1));
         Ui.Settle();
         Assert.Single(window.EditorArea.Groups);

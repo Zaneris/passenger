@@ -33,13 +33,13 @@ public sealed class AspireView : DockPanel, IDisposable
     private const string LogTab = AspireModel.LogTab;
     private const string TelemetryTab = AspireModel.TelemetryTab;
 
-    private readonly TextBlock status = new() { Classes = { "muted" }, Margin = new Thickness(8, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-    private readonly TextBlock empty = new() { Classes = { "emptyText" } };
+    private readonly TextBlock status = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(8, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly TextBlock empty = new() { Classes = { StyleClasses.EmptyText } };
     private readonly List<(Button Button, string Action)> tools = [];
     private readonly Button commands;
     private readonly ContentControl page = new();
     private readonly ContentControl appHostConsole = new();
-    private readonly TextBlock readiness = new() { Classes = { "muted" }, Margin = new Thickness(8, 6), TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock readiness = new() { Classes = { StyleClasses.Muted }, Margin = new Thickness(8, 6), TextWrapping = TextWrapping.Wrap };
     private readonly IReadOnlyDictionary<string, ToggleButton> tabs;
     private readonly Dictionary<string, Control> pages;
     private readonly TextBlock consoleStatus = Said();
@@ -85,7 +85,7 @@ public sealed class AspireView : DockPanel, IDisposable
 
         ResourceList = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
         };
         RunRows.Use<AspireRow>(ResourceList, Row, row => this.model.Toggle(row), uri => Browse?.Invoke(uri), "aspireUrl");
         AutomationProperties.SetName(ResourceList, "Aspire resources");
@@ -607,7 +607,7 @@ public sealed class AspireView : DockPanel, IDisposable
         Telemetry.ShowPage(shown);
     }
 
-    private static TextBlock Said() => new() { Classes = { "muted" }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+    private static TextBlock Said() => new() { Classes = { StyleClasses.Muted }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
 
     private static DockPanel WithHeader(Control header, Control body)
     {

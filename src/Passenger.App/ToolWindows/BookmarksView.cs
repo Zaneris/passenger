@@ -23,7 +23,7 @@ public sealed class BookmarksView : DockPanel
         this.lineText = lineText;
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(list, Row);
         list.DoubleTapped += (_, _) => Go();
@@ -40,7 +40,7 @@ public sealed class BookmarksView : DockPanel
                 e.Handled = true;
             }
         };
-        placeholder = new TextBlock { Classes = { "emptyText" } };
+        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         ActionTips.SetWords(placeholder, AppActions.ToggleBookmark, keys => $"{ActionTips.Named("Toggle Bookmark", keys)} marks the caret's line");
         Children.Add(new Panel { Children = { list, placeholder } });
         store.Changed += OnChanged;
@@ -87,7 +87,7 @@ public sealed class BookmarksView : DockPanel
     {
         TextBlock where = new() { Width = 200, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold };
         TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center, FontFamily = CodeEditor.CodeFont, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
-        text.Classes.Add("muted");
+        text.Classes.Add(StyleClasses.Muted);
         // The line takes what the row leaves, so a narrow window ends it in an ellipsis rather than cutting it off.
         DockPanel.SetDock(where, Dock.Left);
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(8, 0), Children = { where, text } };

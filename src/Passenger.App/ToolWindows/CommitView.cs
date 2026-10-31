@@ -86,7 +86,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         vcs = git;
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = rows,
             SelectionMode = SelectionMode.Multiple,
         };
@@ -147,9 +147,9 @@ public sealed class CommitView : DockPanel, IOwnKeys
 
         // What git is in the middle of, said over Amend until it ends, its conflicts resolved or a rebase stopped at an edit.
         underWayText = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        continueRebase = new Button { Classes = { "link" }, Content = "Continue Rebase" };
+        continueRebase = new Button { Classes = { StyleClasses.Link }, Content = "Continue Rebase" };
         continueRebase.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.ContinueRebase);
-        abort = new Button { Classes = { "link" } };
+        abort = new Button { Classes = { StyleClasses.Link } };
         abort.Click += (_, _) =>
         {
             if (AbortOf(vcs.Merge.Operation) is { } action)
@@ -164,7 +164,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         amend.IsCheckedChanged += (_, _) => IdeErrors.Observe(AmendChangedAsync());
         message = new TextBox
         {
-            Classes = { "search" },
+            Classes = { StyleClasses.Search },
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             PlaceholderText = "Commit Message",
@@ -183,7 +183,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 e.Handled = true;
             }
         }, RoutingStrategies.Tunnel);
-        commit = new Button { Content = "Commit", Classes = { "primary" } };
+        commit = new Button { Content = "Commit", Classes = { StyleClasses.Primary } };
         commit.Click += (_, _) => IdeErrors.Observe(CommitAsync(push: false));
         commitAndPush = new Button { Content = "Commit and Push…" };
         commitAndPush.Click += (_, _) => IdeErrors.Observe(CommitAsync(push: true));
@@ -538,8 +538,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
             Margin = new Thickness(8, 0, 0, 0),
             FontSize = 12,
         };
-        count.Classes.Add("muted");
-        Button resolve = new() { Classes = { "link" }, Content = "Resolve", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
+        count.Classes.Add(StyleClasses.Muted);
+        Button resolve = new() { Classes = { StyleClasses.Link }, Content = "Resolve", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
         resolve.Click += (_, _) => ResolveRequested?.Invoke(this, EventArgs.Empty);
         StackPanel groupLine = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { groupBox, groupName, count, resolve } };
         CheckBox fileBox = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(22, 0, 2, 0) };
@@ -604,7 +604,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         }
         return new Border
         {
-            Classes = { "framed" },
+            Classes = { StyleClasses.Framed },
             MaxHeight = (24 * 8) + 6,
             Child = new ScrollViewer { Content = lines, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled },
         };
@@ -631,7 +631,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock folder = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
-        folder.Classes.Add("muted");
+        folder.Classes.Add(StyleClasses.Muted);
         // The folder takes what the row leaves, ending in an ellipsis in a narrow window rather than cut mid-letter.
         DockPanel.SetDock(icon, Dock.Left);
         DockPanel.SetDock(name, Dock.Left);

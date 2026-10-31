@@ -34,10 +34,10 @@ public sealed class FeedDialog : IdeWindow
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        name = new TextBox { Classes = { "search" }, Text = feed?.Name ?? "New feed" };
-        url = new TextBox { Classes = { "search" }, Text = feed?.Value ?? string.Empty, PlaceholderText = "A feed's index.json, a v2 URL, or a folder" };
-        user = new TextBox { Classes = { "search" }, Text = feed?.Username ?? string.Empty };
-        password = new TextBox { Classes = { "search" }, PasswordChar = '•', PlaceholderText = feed?.HasPassword == true ? "Unchanged" : string.Empty };
+        name = new TextBox { Classes = { StyleClasses.Search }, Text = feed?.Name ?? "New feed" };
+        url = new TextBox { Classes = { StyleClasses.Search }, Text = feed?.Value ?? string.Empty, PlaceholderText = "A feed's index.json, a v2 URL, or a folder" };
+        user = new TextBox { Classes = { StyleClasses.Search }, Text = feed?.Username ?? string.Empty };
+        password = new TextBox { Classes = { StyleClasses.Search }, PasswordChar = '•', PlaceholderText = feed?.HasPassword == true ? "Unchanged" : string.Empty };
         enabled = new CheckBox { IsChecked = feed is null || !feed.DisabledHere };
         insecure = new CheckBox { IsChecked = feed?.AllowInsecure == true };
         problem = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false };
@@ -53,7 +53,7 @@ public sealed class FeedDialog : IdeWindow
 
         TextBlock saved = new()
         {
-            Classes = { "muted" },
+            Classes = { StyleClasses.Muted },
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             Text = $"Credentials will be saved to {RecentRow.Home(file.Path)}"

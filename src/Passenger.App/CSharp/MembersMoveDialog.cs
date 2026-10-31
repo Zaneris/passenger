@@ -72,7 +72,7 @@ public sealed class MembersMoveDialog : RefactoringDialog
         }
         Border tableFrame = new()
         {
-            Classes = { "framed" },
+            Classes = { StyleClasses.Framed },
             ClipToBounds = true,
             Child = new DockPanel { Children = { titles, new ScrollViewer { Content = rows, MaxHeight = 260, MinHeight = 100 } } },
         };

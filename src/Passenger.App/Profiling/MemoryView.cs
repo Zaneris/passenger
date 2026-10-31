@@ -91,7 +91,7 @@ public sealed class MemoryView : DockPanel
     {
         snapshotList = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = snapshots,
         };
         ReusedRows.Use(snapshotList, Row);
@@ -381,7 +381,7 @@ public sealed class MemoryView : DockPanel
                 continue;
             }
             int back = i + 1;
-            Button crumb = new() { Classes = { "link" }, Content = trail[i].Crumb, VerticalAlignment = VerticalAlignment.Center };
+            Button crumb = new() { Classes = { StyleClasses.Link }, Content = trail[i].Crumb, VerticalAlignment = VerticalAlignment.Center };
             crumb.Click += (_, _) => Go([.. trail.Take(back)]);
             crumbs.Children.Add(crumb);
         }
@@ -626,7 +626,7 @@ public sealed class MemoryView : DockPanel
 
     private ToggleButton Tab(string label, int index)
     {
-        ToggleButton tab = new() { Content = label, Classes = { "panelTab" } };
+        ToggleButton tab = new() { Content = label, Classes = { StyleClasses.PanelTab } };
         tab.Click += (_, _) => ShowTab(index);
         return tab;
     }
@@ -641,7 +641,7 @@ public sealed class MemoryView : DockPanel
 
     private static ListBox List(Func<Control> row)
     {
-        ListBox list = new() { Classes = { "tree" } };
+        ListBox list = new() { Classes = { StyleClasses.Tree } };
         ReusedRows.Use(list, row);
         // Rows fill the list's width, so their columns line up under the header's.
         list.Styles.Add(new Style(x => x.OfType<ListBoxItem>())
@@ -736,7 +736,7 @@ public sealed class MemoryView : DockPanel
         for (int i = 0; i < cells.Length; i++)
         {
             cells[i].Text = texts[i];
-            cells[i].Classes.Set("muted", texts[i] is "0" or "0 B");
+            cells[i].Classes.Set(StyleClasses.Muted, texts[i] is "0" or "0 B");
         }
     }
 

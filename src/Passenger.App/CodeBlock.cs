@@ -10,7 +10,7 @@ public static class CodeBlock
 {
     public static Border Of(string text) => new()
     {
-        Classes = { "code" },
+        Classes = { StyleClasses.Code },
         Child = new SelectableTextBlock { Text = text, FontFamily = CodeEditor.CodeFont, FontSize = 12, TextWrapping = TextWrapping.Wrap },
     };
 }

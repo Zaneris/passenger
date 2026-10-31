@@ -34,7 +34,7 @@ public sealed class ContainerLogPane : DockPanel
     public ContainerLogPane(Func<ContainerEngine> engine)
     {
         this.engine = engine;
-        timestamps = new ToggleButton { Classes = { "segment" }, Content = "Timestamps", VerticalAlignment = VerticalAlignment.Center, Name = "containerTimestamps" };
+        timestamps = new ToggleButton { Classes = { StyleClasses.Segment }, Content = "Timestamps", VerticalAlignment = VerticalAlignment.Center, Name = "containerTimestamps" };
         timestamps.IsCheckedChanged += (_, _) => Restart();
         log = new MergedLog("containerLogFind", timestamps);
         log.Console.LinkClicked += (_, link) => LinkClicked?.Invoke(this, link);

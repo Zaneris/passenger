@@ -169,7 +169,7 @@ public sealed class BreakpointProperties : UserControl
         }
     }
 
-    private static TextBox Field(string watermark) => new() { Classes = { "search" }, PlaceholderText = watermark, MinWidth = 280 };
+    private static TextBox Field(string watermark) => new() { Classes = { StyleClasses.Search }, PlaceholderText = watermark, MinWidth = 280 };
 
     private static StackPanel Row(params Control[] controls)
     {
@@ -180,7 +180,7 @@ public sealed class BreakpointProperties : UserControl
 
     private static void AddRow(Grid grid, int row, string label, Control field)
     {
-        TextBlock name = new() { Text = label, VerticalAlignment = VerticalAlignment.Center, Classes = { "muted" } };
+        TextBlock name = new() { Text = label, VerticalAlignment = VerticalAlignment.Center, Classes = { StyleClasses.Muted } };
         Grid.SetRow(name, row);
         Grid.SetRow(field, row);
         Grid.SetColumn(field, 1);
@@ -198,7 +198,7 @@ public sealed class BreakpointPopup : UserControl
         Properties.Show(breakpoint);
         Button remove = new() { Content = "Remove" };
         Button more = new() { Content = moreShortcut is null ? "More" : $"More ({moreShortcut})" };
-        Button done = new() { Content = "Done", Classes = { "primary" } };
+        Button done = new() { Content = "Done", Classes = { StyleClasses.Primary } };
         remove.Click += (_, _) =>
         {
             store.Remove(breakpoint);
@@ -210,14 +210,14 @@ public sealed class BreakpointPopup : UserControl
         Properties.Dismissed += (_, _) => Close(store, more: false);
         Content = new Border
         {
-            Classes = { "popup" },
+            Classes = { StyleClasses.Popup },
             Padding = new Thickness(14, 12),
             Child = new StackPanel
             {
                 Spacing = 10,
                 Children =
                 {
-                    new TextBlock { Text = breakpoint.Location, Classes = { "popupTitle" } },
+                    new TextBlock { Text = breakpoint.Location, Classes = { StyleClasses.PopupTitle } },
                     Properties,
                     new DockPanel
                     {
@@ -262,16 +262,16 @@ public sealed class BreakpointsWindow : UserControl
 {
     private readonly BreakpointStore store;
     private readonly Func<Task<IReadOnlyList<string>>> exceptionTypes;
-    private readonly ListBox list = new() { Classes = { "tree" } };
+    private readonly ListBox list = new() { Classes = { StyleClasses.Tree } };
     private readonly BreakpointProperties properties = new();
-    private readonly TextBlock title = new() { Classes = { "popupTitle" } };
+    private readonly TextBlock title = new() { Classes = { StyleClasses.PopupTitle } };
     private readonly Button remove = new() { Content = "Remove" };
     private readonly Button goTo = new() { Content = "Go to Source" };
     private readonly Button removeTool = ToolButtons.Of(IconKeys.Minimize, "Remove");
     private readonly StackPanel chosenPane;
     private readonly StackPanel addPane;
-    private readonly TextBox typed = new() { Classes = { "search" }, PlaceholderText = "An exception type: InvalidOperationException" };
-    private readonly ListBox found = new() { Classes = { "tree" }, Height = 210 };
+    private readonly TextBox typed = new() { Classes = { StyleClasses.Search }, PlaceholderText = "An exception type: InvalidOperationException" };
+    private readonly ListBox found = new() { Classes = { StyleClasses.Tree }, Height = 210 };
     private IReadOnlyList<string> known = [];
 
     public BreakpointsWindow(BreakpointStore store, Breakpoint? chosen, Func<Task<IReadOnlyList<string>>> exceptionTypes)
@@ -279,7 +279,7 @@ public sealed class BreakpointsWindow : UserControl
         this.store = store;
         this.exceptionTypes = exceptionTypes;
         Button add = ToolButtons.Of(IconKeys.Add, "Add CLR Exception Breakpoints");
-        Button done = new() { Content = "Done", Classes = { "primary" } };
+        Button done = new() { Content = "Done", Classes = { StyleClasses.Primary } };
         add.Click += (_, _) => ShowAdd();
         removeTool.Click += (_, _) => RemoveChosen();
         remove.Click += (_, _) => RemoveChosen();
@@ -319,7 +319,7 @@ public sealed class BreakpointsWindow : UserControl
         typed.TextChanged += (_, _) => ShowFound();
         typed.AddHandler(KeyDownEvent, OnTypedKeyDown, RoutingStrategies.Tunnel);
         found.DoubleTapped += (_, _) => AddChosenType();
-        Button addType = new() { Content = "Add", Classes = { "primary" } };
+        Button addType = new() { Content = "Add", Classes = { StyleClasses.Primary } };
         addType.Click += (_, _) => AddChosenType();
         StackPanel answers = DialogFooter.Popup(addType, ShowChosen);
         answers.HorizontalAlignment = HorizontalAlignment.Right;
@@ -353,14 +353,14 @@ public sealed class BreakpointsWindow : UserControl
         body.Children.Add(addPane);
         Content = new Border
         {
-            Classes = { "popup" },
+            Classes = { StyleClasses.Popup },
             Padding = new Thickness(14, 12),
             Child = new StackPanel
             {
                 Spacing = 10,
                 Children =
                 {
-                    new TextBlock { Text = "Breakpoints", Classes = { "popupTitle" } },
+                    new TextBlock { Text = "Breakpoints", Classes = { StyleClasses.PopupTitle } },
                     body,
                     new DockPanel
                     {
@@ -435,7 +435,7 @@ public sealed class BreakpointsWindow : UserControl
                     Children =
                     {
                         new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center },
-                        new TextBlock { Text = space, Classes = { "muted" }, VerticalAlignment = VerticalAlignment.Center },
+                        new TextBlock { Text = space, Classes = { StyleClasses.Muted }, VerticalAlignment = VerticalAlignment.Center },
                     },
                 },
             });
@@ -593,7 +593,7 @@ public sealed class BreakpointsWindow : UserControl
                 {
                     on,
                     new TextBlock { Text = breakpoint.Location, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 240 },
-                    new TextBlock { Text = what, Classes = { "muted" }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 100 },
+                    new TextBlock { Text = what, Classes = { StyleClasses.Muted }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 100 },
                 },
             },
         };
@@ -620,7 +620,7 @@ public sealed class BreakpointsWindow : UserControl
 
     private static Border Framed(Control content)
     {
-        Border frame = new() { Classes = { "framed" }, Child = content };
+        Border frame = new() { Classes = { StyleClasses.Framed }, Child = content };
         return frame;
     }
 

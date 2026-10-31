@@ -56,7 +56,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
             Ui.Settle();
             Problem listed = Assert.Single(window.BottomPanel.Problems.FileProblems, p => p.Message == PreferConst);
             Assert.Equal(ProblemSeverity.Error, listed.Severity);
-            Button rule = window.ProblemsWindow.GetVisualDescendants().OfType<Button>().First(b => b.Classes.Contains("link") && (string?)b.Content == "prefer-const");
+            Button rule = window.ProblemsWindow.GetVisualDescendants().OfType<Button>().First(b => b.Classes.Contains(StyleClasses.Link) && (string?)b.Content == "prefer-const");
             Ui.Click(rule);
             Assert.Equal(["https://eslint.org/docs/latest/rules/prefer-const"], window.Browsed.Select(u => u.AbsoluteUri));
 

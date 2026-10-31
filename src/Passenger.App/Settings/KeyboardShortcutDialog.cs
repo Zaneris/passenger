@@ -96,7 +96,7 @@ public sealed class KeyboardShortcutDialog : IdeWindow
     {
         TextBlock name = new() { Text = title };
         TextBlock place = new() { Text = $" in {where}", TextTrimming = TextTrimming.CharacterEllipsis };
-        place.Classes.Add("muted");
+        place.Classes.Add(StyleClasses.Muted);
         DockPanel.SetDock(name, Dock.Left);
         return new DockPanel { Children = { name, place } };
     }

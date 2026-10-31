@@ -98,7 +98,7 @@ public sealed class FolderWatchTests : IDisposable
             [.. commit.Rows.OfType<Passenger.App.ToolWindows.CommitRow>().Select(r => r.Change.Name)];
 
         static string? Said(Passenger.App.ToolWindows.CommitView commit) => Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(commit)
-            .OfType<Avalonia.Controls.TextBlock>().SingleOrDefault(t => t.Classes.Contains("emptyText") && t.IsEffectivelyVisible)?.Text;
+            .OfType<Avalonia.Controls.TextBlock>().SingleOrDefault(t => t.Classes.Contains(StyleClasses.EmptyText) && t.IsEffectivelyVisible)?.Text;
     }
 
     /// <summary>Git's checkout and rollback, and editors that save so, delete a file and write it anew: the open file

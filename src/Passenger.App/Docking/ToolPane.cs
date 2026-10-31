@@ -12,7 +12,7 @@ namespace Passenger.App.Docking;
 internal sealed class ToolPane : DockPanel
 {
     private readonly DockHost host;
-    private readonly TextBlock title = new() { Classes = { "toolTitle" }, VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock title = new() { Classes = { StyleClasses.ToolTitle }, VerticalAlignment = VerticalAlignment.Center };
     private readonly ContentControl body = new();
     // What the window puts after its title (its tabs) narrows before the title does and never draws past its room, over
     // the header's buttons.
@@ -48,7 +48,7 @@ internal sealed class ToolPane : DockPanel
         };
         header = new Border
         {
-            Classes = { "toolHeader" },
+            Classes = { StyleClasses.ToolHeader },
             [DockProperty] = Dock.Top,
             Child = new DockPanel
             {
@@ -84,7 +84,7 @@ internal sealed class ToolPane : DockPanel
         header.PointerReleased += (_, e) => host.Drag.End(e);
         Children.Add(header);
         Children.Add(body);
-        Classes.Add("toolPane");
+        Classes.Add(StyleClasses.ToolPane);
         IsVisible = false;
         AddHandler(KeyDownEvent, OnKeyDown);
     }
@@ -221,7 +221,7 @@ internal sealed class ToolPane : DockPanel
     private static Button HeaderButton(string icon, string tip)
     {
         Button button = ToolButtons.Of(icon, tip);
-        ((PathIcon)button.Content!).Classes.Add("small");
+        ((PathIcon)button.Content!).Classes.Add(StyleClasses.Small);
         return button;
     }
 }

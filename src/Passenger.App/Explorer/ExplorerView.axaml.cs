@@ -380,7 +380,7 @@ public partial class ExplorerView : UserControl
         RowGlyphs glyphs = new();
         glyphs.ChevronPressed += OnChevronPressed;
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock detail = new() { Classes = { "muted" }, FontSize = 12, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBlock detail = new() { Classes = { StyleClasses.Muted }, FontSize = 12, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { glyphs, name, detail } };
         return row.Showing<ExplorerNode>(node =>
         {
@@ -392,10 +392,10 @@ public partial class ExplorerView : UserControl
             glyphs.Icon = node.Icon;
             glyphs.IconBrush = node.IconBrush;
             name.Text = node.Name;
-            name.Classes.Set("vcsModified", node.IsVcsModified);
-            name.Classes.Set("vcsAdded", node.IsVcsAdded);
-            name.Classes.Set("vcsUnversioned", node.IsVcsUnversioned);
-            name.Classes.Set("vcsConflicted", node.IsVcsConflicted);
+            name.Classes.Set(StyleClasses.VcsModified, node.IsVcsModified);
+            name.Classes.Set(StyleClasses.VcsAdded, node.IsVcsAdded);
+            name.Classes.Set(StyleClasses.VcsUnversioned, node.IsVcsUnversioned);
+            name.Classes.Set(StyleClasses.VcsConflicted, node.IsVcsConflicted);
             detail.Text = node.Detail;
         });
     }

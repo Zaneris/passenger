@@ -25,7 +25,7 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
     {
         MainWindow window = Open();
         Control end = window.FindControl<Control>("ToolbarEnd")!;
-        List<string> unbound = [.. end.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("tool") && ActionButtons.GetAction(b) is null)
+        List<string> unbound = [.. end.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains(StyleClasses.Tool) && ActionButtons.GetAction(b) is null)
             .Select(b => b.Name ?? ToolTip.GetTip(b)?.ToString() ?? b.GetType().Name)];
         Assert.True(unbound.Count == 0, "Every toolbar button should run its action through ActionButtons, so a click on it shows the action's work "
             + $"at once and a second click starts nothing more, but these are wired by hand: {string.Join(", ", unbound)}");

@@ -28,7 +28,7 @@ public abstract class RefactoringDialog : IdeWindow
         NextButton = DialogFooter.Default("Next");
         NextButton.Click += (_, _) => IdeErrors.Observe(Next());
         problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
-        TextBlock about = new() { Text = description, TextWrapping = TextWrapping.Wrap, Classes = { "muted" } };
+        TextBlock about = new() { Text = description, TextWrapping = TextWrapping.Wrap, Classes = { StyleClasses.Muted } };
         Content = DialogFooter.Headed(page, about, body, DialogFooter.OkCancel(NextButton, () => Close(false), problem));
     }
 
@@ -119,5 +119,5 @@ public abstract class RefactoringDialog : IdeWindow
         return row;
     }
 
-    protected static TextBox Field(string text) => new() { Classes = { "search" }, Text = text };
+    protected static TextBox Field(string text) => new() { Classes = { StyleClasses.Search }, Text = text };
 }

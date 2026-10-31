@@ -22,7 +22,7 @@ public sealed class VariablesList : ListBox
     public VariablesList(VariablesTree tree)
     {
         Tree = tree;
-        Classes.Add("tree");
+        Classes.Add(StyleClasses.Tree);
         ItemsSource = tree.Rows;
         ReusedRows.Use(this, Row);
         DoubleTapped += (_, _) =>
@@ -237,9 +237,9 @@ public sealed class VariablesList : ListBox
         RowIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock type = new() { VerticalAlignment = VerticalAlignment.Center };
-        type.Classes.Add("muted");
+        type.Classes.Add(StyleClasses.Muted);
         TextBlock value = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 900 };
-        TextBox editor = new() { Classes = { "search" }, MinHeight = 22, Height = 22, MinWidth = 240, Padding = new Thickness(6, 0), IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
+        TextBox editor = new() { Classes = { StyleClasses.Search }, MinHeight = 22, Height = 22, MinWidth = 240, Padding = new Thickness(6, 0), IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
         // Narrower than its row, the value gives way first, ending in an ellipsis, then its type.
         ShrinkingRow row = new()
         {

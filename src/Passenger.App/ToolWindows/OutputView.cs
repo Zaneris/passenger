@@ -29,7 +29,7 @@ public sealed class OutputView : DockPanel
     private readonly Panel body = new();
 
     /// <summary>What the console says while it is empty and nothing runs in it, once given words (<see cref="SayWhenEmpty"/>).</summary>
-    private readonly TextBlock empty = new() { Classes = { "emptyText" }, IsVisible = false };
+    private readonly TextBlock empty = new() { Classes = { StyleClasses.EmptyText }, IsVisible = false };
 
     private int limit = DefaultLimitKb * 1024;
     private ConsoleInput? input;

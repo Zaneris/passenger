@@ -28,7 +28,7 @@ public sealed class ComposeServicesTable : Border
     private const string NoProject = "None: as Compose says";
 
     private readonly StackPanel table = new();
-    private readonly TextBlock said = new() { Classes = { "muted" }, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Thickness(8, 6) };
+    private readonly TextBlock said = new() { Classes = { StyleClasses.Muted }, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Thickness(8, 6) };
     private readonly List<Row> rows = [];
     private IReadOnlyList<ProjectModel> projects = [];
     private bool setting;
@@ -39,7 +39,7 @@ public sealed class ComposeServicesTable : Border
     /// <param name="named">What a row stands for, the first column's title: a Compose service, an AppHost's resource.</param>
     public ComposeServicesTable(string named = "Service")
     {
-        Classes.Add("framed");
+        Classes.Add(StyleClasses.Framed);
         ClipToBounds = true;
         Child = new DockPanel { Children = { ColumnTitles.Of(Columns, [named, "Project", "Run does"]), new StackPanel { Children = { table, said } } } };
     }
@@ -163,11 +163,11 @@ public sealed class ComposeServicesTable : Border
         name.Children.Add(new TextBlock { Text = service, VerticalAlignment = VerticalAlignment.Center });
         if (runs.Length > 0)
         {
-            name.Children.Add(new TextBlock { Text = runs, Classes = { "muted" }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis });
+            name.Children.Add(new TextBlock { Text = runs, Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis });
         }
         ComboBox projectBox = new()
         {
-            Classes = { "cell" },
+            Classes = { StyleClasses.Cell },
             HorizontalAlignment = HorizontalAlignment.Stretch,
             ItemsSource = (string[])[NoProject, .. projects.Select(p => p.Name)],
             // An AppHost's resource runs the project its AppHost's code names.
@@ -179,7 +179,7 @@ public sealed class ComposeServicesTable : Border
         projectBox.SelectedIndex = found + 1;
         ToolTip.SetTip(projectBox, named ? "The project the AppHost runs for this resource, as its code names it"
             : choosable ? "The project this service runs: Run builds it and runs it in the service's container" : "Runs its image: no project of the solution");
-        ComboBox actionBox = new() { Classes = { "cell" }, HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = editable };
+        ComboBox actionBox = new() { Classes = { StyleClasses.Cell }, HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = editable };
         Grid cells = new() { ColumnDefinitions = new ColumnDefinitions(Columns), MinHeight = ListRow.Height };
         Control[] parts = [name, projectBox, actionBox];
         for (int i = 0; i < parts.Length; i++)

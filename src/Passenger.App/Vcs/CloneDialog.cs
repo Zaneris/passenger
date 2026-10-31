@@ -36,15 +36,15 @@ public sealed partial class CloneDialog : IdeWindow
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        url = new TextBox { Classes = { "search" }, PlaceholderText = "https://github.com/owner/repository.git" };
-        parent = new TextBox { Classes = { "search" }, Text = folder };
+        url = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "https://github.com/owner/repository.git" };
+        parent = new TextBox { Classes = { StyleClasses.Search }, Text = folder };
         url.TextChanged += (_, _) => ShowDestination();
         parent.TextChanged += (_, _) => ShowDestination();
         browse = new Button { Content = "Browse…", Margin = new Thickness(8, 0, 0, 0) };
         browse.Click += (_, _) => IdeErrors.Observe(BrowseAsync());
-        into = new TextBlock { Classes = { "muted" }, FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, 6, 0, 0) };
+        into = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, 6, 0, 0) };
         bar = new ProgressBar { IsIndeterminate = true, Minimum = 0, Maximum = 100, Height = 4, MinHeight = 4 };
-        progress = new TextBlock { Classes = { "muted" }, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+        progress = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
         working = new StackPanel { Spacing = 6, IsVisible = false, Children = { bar, progress } };
         problem = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false };
         problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));

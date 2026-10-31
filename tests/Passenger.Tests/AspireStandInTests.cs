@@ -588,7 +588,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             string masked = Passenger.App.Containers.ContainerSecrets.Masked;
             Assert.Contains($"--api-key, {masked}, --port, 5310, {masked}", shown);
             Assert.Contains(shown, text => text.Contains("It answers", StringComparison.Ordinal));
-            Assert.True(details.GetVisualDescendants().OfType<Border>().Count(border => border.Classes.Contains("framed")) >= 4,
+            Assert.True(details.GetVisualDescendants().OfType<Border>().Count(border => border.Classes.Contains(StyleClasses.Framed)) >= 4,
                 "The details are not framed tables as Containers' are");
             // Marks sent with lists not marked sensitive themselves still mask the argument they mark.
             backend.PushResource(WithArguments(service, ["--port", "5311", "second-never-shown"], [0, 0, 1], marked: false));
@@ -599,7 +599,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
             foreach ((string action, Button button) in window.AspireWindow.Tools)
             {
-                Assert.True(button.Classes.Contains("tool") && button.GetVisualDescendants().OfType<PathIcon>().Any(), $"{action} is not a toolbar's icon button");
+                Assert.True(button.Classes.Contains(StyleClasses.Tool) && button.GetVisualDescendants().OfType<PathIcon>().Any(), $"{action} is not a toolbar's icon button");
                 Assert.Equal(action, ActionButtons.GetAction(button));
             }
             Ui.Click(window.AspireWindow.Tools[AppActions.AspireCommand]);
@@ -1999,7 +1999,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
     /// <summary>A tab of the Aspire window's pages.</summary>
     internal static Avalonia.Controls.Primitives.ToggleButton Tab(MainWindow window, string page) => window.AspireWindow.GetVisualDescendants()
-        .OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(tab => tab.Classes.Contains("panelTab") && tab.Content is TextBlock { Text: var words } && words == page);
+        .OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(tab => tab.Classes.Contains(StyleClasses.PanelTab) && tab.Content is TextBlock { Text: var words } && words == page);
 
     [AvaloniaFact]
     public void A_confirmation_cancelled_and_a_form_the_AppHost_updates_send_what_the_dialog_shows()

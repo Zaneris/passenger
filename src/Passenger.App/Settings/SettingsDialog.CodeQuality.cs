@@ -69,7 +69,7 @@ public sealed partial class SettingsDialog
 
     private static TextBox Text(string text, string placeholder, bool enabled, Action<string> changed)
     {
-        TextBox box = new() { Classes = { "search" }, Text = text, PlaceholderText = placeholder, Width = 360, IsEnabled = enabled, VerticalAlignment = VerticalAlignment.Center };
+        TextBox box = new() { Classes = { StyleClasses.Search }, Text = text, PlaceholderText = placeholder, Width = 360, IsEnabled = enabled, VerticalAlignment = VerticalAlignment.Center };
         box.TextChanged += (_, _) => changed((box.Text ?? string.Empty).Trim());
         return box;
     }

@@ -293,7 +293,7 @@ public sealed class SettingsTests : IDisposable
             ComboBox theme = Editor<ComboBox>(dialog, "Theme");
             Assert.Equal("Passenger", theme.SelectedItem);
             Assert.Equal(["System", "Dark", "Light"], Editor<ComboBox>(dialog, "Dark or light").Items.Cast<string>());
-            Border stripe = window.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("stripeBar") && b.IsEffectivelyVisible);
+            Border stripe = window.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains(StyleClasses.StripeBar) && b.IsEffectivelyVisible);
             Point bare = Bare(window, stripe);
             Color passenger = Ui.Pixel(window, bare);
 

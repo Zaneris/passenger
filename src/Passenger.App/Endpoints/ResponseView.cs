@@ -14,8 +14,8 @@ public sealed class ResponseView : DockPanel
 {
     private readonly TextBlock summary = new() { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly StackPanel criteria = new() { Margin = new Thickness(8, 0, 8, 4) };
-    private readonly ToggleButton bodyTab = new() { Classes = { "segment" }, Content = "Body", IsChecked = true, FontSize = 12 };
-    private readonly ToggleButton headersTab = new() { Classes = { "segment" }, Content = "Headers", FontSize = 12 };
+    private readonly ToggleButton bodyTab = new() { Classes = { StyleClasses.Segment }, Content = "Body", IsChecked = true, FontSize = 12 };
+    private readonly ToggleButton headersTab = new() { Classes = { StyleClasses.Segment }, Content = "Headers", FontSize = 12 };
     private readonly TextBox text = new()
     {
         IsReadOnly = true,
@@ -45,7 +45,7 @@ public sealed class ResponseView : DockPanel
         content.Children.Add(head);
         content.Children.Add(criteria);
         content.Children.Add(text);
-        empty = new TextBlock { Text = emptyText, Classes = { "emptyText" } };
+        empty = new TextBlock { Text = emptyText, Classes = { StyleClasses.EmptyText } };
         shown = content;
         shown.IsVisible = false;
         Children.Add(new Panel { Children = { shown, empty } });

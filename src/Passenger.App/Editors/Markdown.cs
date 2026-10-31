@@ -19,6 +19,10 @@ namespace Passenger.App.Editors;
 /// image is drawn are the page's (<see cref="MarkdownPage"/>): the notes' a web link alone and no image. Nothing is fetched.</summary>
 internal static partial class Markdown
 {
+    /// <summary>Each heading level's class, the first level's first.</summary>
+    private static readonly string[] Headings =
+        [StyleClasses.MdHeading1, StyleClasses.MdHeading2, StyleClasses.MdHeading3, StyleClasses.MdHeading4, StyleClasses.MdHeading5, StyleClasses.MdHeading6];
+
     internal abstract record Block;
 
     internal sealed record Heading(int Level, string Text) : Block;
@@ -94,13 +98,13 @@ internal static partial class Markdown
     /// <summary>A block's control, as the page draws it.</summary>
     public static Control Control(Block block, MarkdownPage page, int depth = 0) => block switch
     {
-        Heading heading => MarkdownText.Of(Inlines(heading.Text), page, $"mdHeading{Math.Clamp(heading.Level, 1, 6)}"),
+        Heading heading => MarkdownText.Of(Inlines(heading.Text), page, Headings[Math.Clamp(heading.Level, 1, 6) - 1]),
         Paragraph paragraph => ParagraphOf(Inlines(paragraph.Text), page),
         Listing listing => List(listing, page, depth),
         Code code => MarkdownCode.Of(code),
         Quote quote => QuoteOf(quote, page, depth),
         Table table => TableOf(table, page),
-        _ => new Border { Classes = { "mdRule" } },
+        _ => new Border { Classes = { StyleClasses.MdRule } },
     };
 
     /// <summary>A paragraph's words; where the page draws an image of it (a file inside the open folder), the image stands in
@@ -109,9 +113,9 @@ internal static partial class Markdown
     {
         if (page.ImageFile is not { } fileOf || !parts.Any(p => p is Image image && fileOf(image.Target) is not null))
         {
-            return MarkdownText.Of(parts, page, "mdText");
+            return MarkdownText.Of(parts, page, StyleClasses.MdText);
         }
-        StackPanel rows = new() { Classes = { "mdItem" } };
+        StackPanel rows = new() { Classes = { StyleClasses.MdItem } };
         List<Inline> words = [];
         WrapPanel? pictures = null;
         foreach (Inline part in parts)
@@ -121,7 +125,7 @@ internal static partial class Markdown
                 Flush();
                 if (pictures is null)
                 {
-                    pictures = new WrapPanel { Classes = { "mdImages" } };
+                    pictures = new WrapPanel();
                     rows.Children.Add(pictures);
                 }
                 pictures.Children.Add(page.Picture(file, image.Alt));
@@ -140,7 +144,7 @@ internal static partial class Markdown
         {
             if (words.Any(w => w is not Words { Text: var text } || !string.IsNullOrWhiteSpace(text)))
             {
-                rows.Children.Add(MarkdownText.Of([.. words], page, "mdText"));
+                rows.Children.Add(MarkdownText.Of([.. words], page, StyleClasses.MdText));
             }
             words.Clear();
         }
@@ -150,7 +154,7 @@ internal static partial class Markdown
     /// bulleted as the next depth.</summary>
     private static StackPanel List(Listing listing, MarkdownPage page, int depth)
     {
-        StackPanel list = new() { Classes = { "mdList" } };
+        StackPanel list = new() { Classes = { StyleClasses.MdList } };
         int number = listing.Start;
         for (int index = 0; index < listing.Items.Count; index++)
         {
@@ -158,10 +162,10 @@ internal static partial class Markdown
             if (listing.Checks?[index] is { } done)
             {
                 // Drawn as the check it is, never one to click: the file's text is what says it is done.
-                PathIcon tick = new() { Classes = { "mdTick" }, IsVisible = done };
+                PathIcon tick = new() { Classes = { StyleClasses.MdTick }, IsVisible = done };
                 tick.Bind(PathIcon.DataProperty, tick.GetResourceObservable(IconKeys.Check));
-                mark = new Border { Classes = { "box", "mdTask" }, Child = tick };
-                mark.Classes.Set("done", done);
+                mark = new Border { Classes = { StyleClasses.Box, StyleClasses.MdTask }, Child = tick };
+                mark.Classes.Set(StyleClasses.Done, done);
                 Avalonia.Automation.AutomationProperties.SetName(mark, done ? "Done" : "Not done");
                 number++;
             }
@@ -169,12 +173,12 @@ internal static partial class Markdown
             {
                 mark = new TextBlock
                 {
-                    Classes = { "mdMark" },
+                    Classes = { StyleClasses.MdMark },
                     Text = listing.Ordered ? $"{number++}." : depth % 2 == 0 ? "•" : "◦",
                     TextAlignment = listing.Ordered ? TextAlignment.Right : TextAlignment.Center,
                 };
             }
-            StackPanel content = new() { Classes = { "mdItem" }, [Grid.ColumnProperty] = 1 };
+            StackPanel content = new() { Classes = { StyleClasses.MdItem }, [Grid.ColumnProperty] = 1 };
             Render(listing.Items[index], content, page, depth + 1);
             list.Children.Add(new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Children = { mark, content } });
         }
@@ -183,9 +187,9 @@ internal static partial class Markdown
 
     private static Border QuoteOf(Quote quote, MarkdownPage page, int depth)
     {
-        StackPanel content = new() { Classes = { "mdItem" } };
+        StackPanel content = new() { Classes = { StyleClasses.MdItem } };
         Render(quote.Blocks, content, page, depth);
-        return new Border { Classes = { "mdQuote" }, Child = content };
+        return new Border { Classes = { StyleClasses.MdQuote }, Child = content };
     }
 
     /// <summary>A table's cells in a grid, each column as wide as its widest cell up to the most a cell is drawn, its words
@@ -200,27 +204,26 @@ internal static partial class Markdown
             grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             for (int column = 0; column < columns; column++)
             {
-                MarkdownText words = MarkdownText.Of(Inlines(column < rows[row].Count ? rows[row][column] : ""), page, row == 0 ? "mdCellHead" : "mdCellText");
+                MarkdownText words = MarkdownText.Of(Inlines(column < rows[row].Count ? rows[row][column] : ""), page, row == 0 ? StyleClasses.MdCellHead : StyleClasses.MdCellText);
                 words.TextAlignment = table.Aligns[column] ?? TextAlignment.Left;
                 // The rules between cells only: the table's frame draws its edges.
                 Border cell = new()
                 {
-                    Classes = { "mdCell" },
+                    Classes = { StyleClasses.MdCell },
                     BorderThickness = new Thickness(0, 0, column < columns - 1 ? 1 : 0, row < rows.Count - 1 ? 1 : 0),
                     Child = words,
                     [Grid.RowProperty] = row,
                     [Grid.ColumnProperty] = column,
                 };
-                cell.Classes.Set("head", row == 0);
+                cell.Classes.Set(StyleClasses.Head, row == 0);
                 grid.Children.Add(cell);
             }
         }
         return new ScrollViewer
         {
-            Classes = { "mdTableScroll" },
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-            Content = new Border { Classes = { "box", "mdTable" }, HorizontalAlignment = HorizontalAlignment.Left, Child = grid },
+            Content = new Border { Classes = { StyleClasses.Box, StyleClasses.MdTable }, HorizontalAlignment = HorizontalAlignment.Left, Child = grid },
         };
     }
 
@@ -811,7 +814,7 @@ public sealed class MarkdownText : SelectableTextBlock
     /// <summary>Each link's words and address.</summary>
     public IEnumerable<(string Words, Uri Target)> Links => links.Select(l => (Shown[l.Start..l.End], l.Target));
 
-    internal static MarkdownText Of(IReadOnlyList<Markdown.Inline> parts, MarkdownPage page, string kind)
+    internal static MarkdownText Of(IReadOnlyList<Markdown.Inline> parts, MarkdownPage page, [IdentifierOf(typeof(StyleClasses))] string kind)
     {
         MarkdownText block = new(page) { Classes = { kind } };
         block.Add(parts, bold: false, italic: false, link: null);

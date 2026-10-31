@@ -25,7 +25,7 @@ public sealed class ProblemsView : DockPanel
         StackPanel strip = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 0), VerticalAlignment = VerticalAlignment.Center };
         foreach (ProblemsTab tab in Enum.GetValues<ProblemsTab>())
         {
-            ToggleButton button = new() { Classes = { "panelTab" } };
+            ToggleButton button = new() { Classes = { StyleClasses.PanelTab } };
             button.Click += (_, _) => model.Shown = tab;
             tabs[tab] = button;
             strip.Children.Add(button);
@@ -34,11 +34,11 @@ public sealed class ProblemsView : DockPanel
         Children.Add(bar);
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = model.ShownRows,
         };
         ReusedRows.Use(list, Row);
-        empty = new TextBlock { Classes = { "emptyText" } };
+        empty = new TextBlock { Classes = { StyleClasses.EmptyText } };
         Children.Add(new Panel { Children = { empty, list } });
         list.DoubleTapped += (_, _) => Choose();
         list.AddHandler(KeyDownEvent, (_, e) =>
@@ -123,10 +123,10 @@ public sealed class ProblemsView : DockPanel
     {
         RowIcon icon = new() { Margin = new Thickness(0, 0, 8, 0) };
         TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center };
-        Button open = new() { Classes = { "link" }, VerticalAlignment = VerticalAlignment.Center };
+        Button open = new() { Classes = { StyleClasses.Link }, VerticalAlignment = VerticalAlignment.Center };
         TextBlock after = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new() { FontSize = 12, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        detail.Classes.Add("muted");
+        detail.Classes.Add(StyleClasses.Muted);
         ShrinkingRow panel = new() { Height = ListRow.Height, Children = { icon, text, open, after, detail } };
         open.Click += (_, e) =>
         {

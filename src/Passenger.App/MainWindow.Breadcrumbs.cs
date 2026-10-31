@@ -192,8 +192,8 @@ public partial class MainWindow
     private void AddCrumbButton()
     {
         int index = crumbButtons.Count;
-        TextBlock between = new() { Text = "›", Classes = { "status" }, Margin = new Avalonia.Thickness(4, 0), VerticalAlignment = VerticalAlignment.Center };
-        Button crumb = new() { Classes = { "crumb" } };
+        TextBlock between = new() { Text = "›", Classes = { StyleClasses.Status }, Margin = new Avalonia.Thickness(4, 0), VerticalAlignment = VerticalAlignment.Center };
+        Button crumb = new() { Classes = { StyleClasses.Crumb } };
         crumb.Click += (_, _) =>
         {
             if (index >= shownCrumbs.Count)

@@ -50,7 +50,7 @@ public sealed class MenuTests : IDisposable
         window.OpenFile(one);
         Ui.Settle();
         Control tab = window.EditorArea.ActiveGroup.GetVisualDescendants().OfType<TextBlock>()
-            .First(t => t.Text == "One.cs" && t.Classes.Contains("tabName")).FindAncestorOfType<Border>()!;
+            .First(t => t.Text == "One.cs" && t.Classes.Contains(StyleClasses.TabName)).FindAncestorOfType<Border>()!;
         Ui.ChooseFromMenu(tab, "Copy Path");
         Ui.WaitFor(() => Ui.Clipboard(window) == window.EditorArea.Active!.Path, "the tab's file's path on the clipboard");
         tab.RaiseEvent(new ContextRequestedEventArgs());
@@ -66,7 +66,7 @@ public sealed class MenuTests : IDisposable
         window.OpenFile(page);
         Ui.Settle();
         Control pageTab = window.EditorArea.ActiveGroup.GetVisualDescendants().OfType<TextBlock>()
-            .First(t => t.Text == "page.html" && t.Classes.Contains("tabName")).FindAncestorOfType<Border>()!;
+            .First(t => t.Text == "page.html" && t.Classes.Contains(StyleClasses.TabName)).FindAncestorOfType<Border>()!;
         Ui.ChooseFromMenu(pageTab, "Open In", "Open in Browser");
         Assert.Contains(window.Browsed, uri => uri.IsFile && uri.LocalPath.EndsWith("page.html", StringComparison.Ordinal));
         window.Close();
@@ -275,18 +275,18 @@ public sealed class MenuTests : IDisposable
             Ui.Press(window, "DOWN");
             Ui.WaitFor(() => OpenMenuTitles(window).Contains("Open…"), "the File menu, opened by Down");
             Assert.True(Focused(window) is MenuItem, $"The File menu opened by Down left the keys with {Focused(window)?.GetType().Name}");
-            Assert.True(titles[0].Classes.Contains("open"), "The open File menu's title does not show pressed");
+            Assert.True(titles[0].Classes.Contains(StyleClasses.Open), "The open File menu's title does not show pressed");
             Ui.Press(window, "RIGHT");
             Ui.WaitFor(() => OpenMenuTitles(window).Contains("Undo"), "the Edit menu, opened by Right from File's");
-            Assert.False(titles[0].Classes.Contains("open"), "File's title still shows pressed with Edit's menu open");
-            Assert.True(titles[1].Classes.Contains("open") && Focused(window) is MenuItem, "Edit's menu opened by Right is not shown pressed with the keys");
+            Assert.False(titles[0].Classes.Contains(StyleClasses.Open), "File's title still shows pressed with Edit's menu open");
+            Assert.True(titles[1].Classes.Contains(StyleClasses.Open) && Focused(window) is MenuItem, "Edit's menu opened by Right is not shown pressed with the keys");
             Ui.Press(window, "LEFT");
             Ui.WaitFor(() => OpenMenuTitles(window).Contains("Open…"), "the File menu again, opened by Left from Edit's");
 
             Ui.Press(window, "ESCAPE");
             Assert.False(MenuOpen(window), "Escape left the bar's menu open");
             Assert.True(Focused(window) == window.EditorArea.CodeEditor, $"Escape gave the keys to {Focused(window)?.GetType().Name}, not back to the editor");
-            Assert.False(titles[0].Classes.Contains("open"), "File's title still shows pressed with its menu closed");
+            Assert.False(titles[0].Classes.Contains(StyleClasses.Open), "File's title still shows pressed with its menu closed");
             TapAlt(window);
             TapAlt(window);
             Assert.True(Focused(window) == window.EditorArea.CodeEditor, "Alt tapped again did not give the keys back to the editor");

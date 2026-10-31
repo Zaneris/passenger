@@ -18,8 +18,12 @@ public static class ActionButtons
 
     public static string? GetAction(Button button) => button.GetValue(ActionProperty);
 
+    /// <summary>Set on a button from the moment its action's work begins until it is done.</summary>
+    private static readonly AttachedProperty<bool> WorkingProperty =
+        AvaloniaProperty.RegisterAttached<Control, bool>("Working", typeof(ActionButtons));
+
     /// <summary>Whether the button shows its action's work under way.</summary>
-    public static bool IsWorking(Button button) => button.Classes.Contains("working");
+    public static bool IsWorking(Control button) => button.GetValue(WorkingProperty);
 
     /// <summary>Makes the button run the action through <paramref name="request"/> (the window's, which says why one cannot
     /// run) and show its work, its tip naming the action's keys (<see cref="ActionTips"/>).</summary>
@@ -55,7 +59,7 @@ public static class ActionButtons
         void Show()
         {
             Working? under = actions.Work.Of(actions[id]?.WorkId ?? id);
-            button.Classes.Set("working", under is not null);
+            button.SetValue(WorkingProperty, under is not null);
             // A tip naming the action's keys names those of the keymap in force now.
             string? words = ActionTips.Of(button) ?? tip;
             ToolTip.SetTip(button, under is null ? words : $"{words}: {under.Stage}");

@@ -59,7 +59,7 @@ public sealed class HistoryTab : DockPanel
         IsFolder = isFolder;
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(list, Row);
         list.SelectionChanged += (_, _) => IdeErrors.Observe(ShowAsync());
@@ -76,7 +76,7 @@ public sealed class HistoryTab : DockPanel
         diffPlaceholder.VerticalAlignment = VerticalAlignment.Center;
         diffHost.Content = diffPlaceholder;
 
-        filter = new TextBox { Classes = { "search" }, PlaceholderText = isFolder ? "Search by file name" : "Search by content", Width = 240, Margin = new Thickness(8, 0) };
+        filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = isFolder ? "Search by file name" : "Search by content", Width = 240, Margin = new Thickness(8, 0) };
         filter.TextChanged += (_, _) => IdeErrors.Observe(FilterAsync());
         Button revert = ToolButtons.Of(IconKeys.Rollback, "Revert Selected and Later Changes", () => IdeErrors.Observe(RevertAsync()));
         Border top = ToolBars.Top(new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { filter, revert } });
@@ -86,7 +86,7 @@ public sealed class HistoryTab : DockPanel
         {
             fileList = new ListBox
             {
-                Classes = { "tree" },
+                Classes = { StyleClasses.Tree },
                 SelectionMode = SelectionMode.Multiple,
             };
             ReusedRows.Use(fileList, FileRow);

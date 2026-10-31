@@ -56,7 +56,7 @@ public sealed class AttachToProcessDialog : IdeWindow
         MinHeight = 300;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        Search = new TextBox { Classes = { "search" }, Text = search, PlaceholderText = "Search by name, process ID, user or command line" };
+        Search = new TextBox { Classes = { StyleClasses.Search }, Text = search, PlaceholderText = "Search by name, process ID, user or command line" };
         Search.TextChanged += (_, _) => ShowRows();
         Search.AddHandler(KeyDownEvent, OnKey, RoutingStrategies.Tunnel);
         Button refresh = ToolButtons.Of(IconKeys.Rerun, "Refresh", () => IdeErrors.Observe(RefreshAsync()));
@@ -67,7 +67,7 @@ public sealed class AttachToProcessDialog : IdeWindow
 
         ColumnTitles titles = ColumnTitles.Of(Columns, ["Executable", "Process ID", "User", "Command Line"], ColumnTitles.OverList, CellInset);
 
-        rows = new ListBox { Classes = { "tree" } };
+        rows = new ListBox { Classes = { StyleClasses.Tree } };
         ReusedRows.Use(rows, Row);
         // A heading is never chosen; a container shows a heading and a program in turn as the list is filled again.
         rows.ContainerPrepared += (_, e) => e.Container.IsEnabled = e.Container.DataContext is not AttachRow { Process: null };
@@ -80,15 +80,15 @@ public sealed class AttachToProcessDialog : IdeWindow
             }
         };
         rows.SelectionChanged += (_, _) => attach!.IsEnabled = Chosen is { WhyNot: null };
-        empty = new TextBlock { Classes = { "emptyText" }, Text = "Looking for .NET processes…" };
+        empty = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "Looking for .NET processes…" };
         Border table = new()
         {
-            Classes = { "framed" },
+            Classes = { StyleClasses.Framed },
             ClipToBounds = true,
             Child = new DockPanel { Children = { titles, new Panel { Children = { rows, empty } } } },
         };
 
-        attach = new Button { Content = purpose == AttachPurpose.Profiler ? "Attach Profiler" : "Attach with .NET Debugger", Classes = { "primary" }, IsEnabled = false };
+        attach = new Button { Content = purpose == AttachPurpose.Profiler ? "Attach Profiler" : "Attach with .NET Debugger", Classes = { StyleClasses.Primary }, IsEnabled = false };
         attach.Click += (_, _) => Attach();
         Content = DialogFooter.Page(new DockPanel { Margin = new Thickness(16), Children = { top, table } }, DialogFooter.OkCancel(attach, () => Close(null)));
         Opened += (_, _) => Dispatcher.UIThread.Post(() =>
@@ -218,7 +218,7 @@ public sealed class AttachToProcessDialog : IdeWindow
     /// and in its tip).</summary>
     private static Control Row()
     {
-        TextBlock heading = new() { Classes = { "muted" }, FontSize = 11, FontWeight = FontWeight.SemiBold, Margin = new Thickness(4, 6, 0, 2) };
+        TextBlock heading = new() { Classes = { StyleClasses.Muted }, FontSize = 11, FontWeight = FontWeight.SemiBold, Margin = new Thickness(4, 6, 0, 2) };
         TextBlock name = Cell(0, muted: false);
         TextBlock id = Cell(1, muted: false);
         TextBlock user = Cell(2, muted: true);
@@ -256,7 +256,7 @@ public sealed class AttachToProcessDialog : IdeWindow
         };
         if (muted)
         {
-            cell.Classes.Add("muted");
+            cell.Classes.Add(StyleClasses.Muted);
         }
         return cell;
     }

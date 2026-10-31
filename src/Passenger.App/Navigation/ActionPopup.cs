@@ -38,9 +38,9 @@ public sealed class ActionPopup : SearchPopup<IdeAction>
     {
         TextBlock title = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock group = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
-        group.Classes.Add("muted");
+        group.Classes.Add(StyleClasses.Muted);
         TextBlock keys = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
-        keys.Classes.Add("muted");
+        keys.Classes.Add(StyleClasses.Muted);
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(4, 0) };
         DockPanel.SetDock(keys, Dock.Right);
         row.Children.Add(keys);
@@ -53,7 +53,7 @@ public sealed class ActionPopup : SearchPopup<IdeAction>
         {
             title.Text = action.Title;
             // Listed, so it can be found, but greyed: it cannot run here.
-            title.Classes.Set("muted", !action.CanRun(context));
+            title.Classes.Set(StyleClasses.Muted, !action.CanRun(context));
             group.Text = action.Group;
             keys.Text = actions.Shortcut(action.Id) ?? string.Empty;
         });

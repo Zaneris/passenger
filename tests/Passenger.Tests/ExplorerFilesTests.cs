@@ -486,7 +486,7 @@ public sealed class ExplorerFilesTests : IDisposable
         Assert.Equal(purchase, document.Path);
         Assert.True(area.Groups.Count == 2, "The rename closed the file's second split");
         Assert.All(area.Groups, group => Assert.Same(document, Assert.Single(group.Tabs).Document));
-        Assert.Equal(["Purchase.cs", "Purchase.cs"], window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("tabName")).Select(t => t.Text));
+        Assert.Equal(["Purchase.cs", "Purchase.cs"], window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains(StyleClasses.TabName)).Select(t => t.Text));
         Assert.Empty(window.Debugger.Breakpoints.In(order));
         Assert.Equal(4, Assert.Single(window.Debugger.Breakpoints.In(purchase)).Line);
         Assert.Contains(new LineMark(4, LineMarkKind.Breakpoint), area.CodeEditor.LineMarks);

@@ -21,14 +21,14 @@ public sealed class ReleaseNotesView : ScrollViewer
 
     public ReleaseNotesView(OpenDocument document, Action<Uri> browse)
     {
-        Classes.Add("notes");
+        Classes.Add(StyleClasses.Notes);
         Focusable = true;
         HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         string version = ReleaseNotes.VersionOf(document.Path) ?? Product.Version;
-        Image mark = new() { Classes = { "notesMark" }, Source = new Bitmap(AssetLoader.Open(new Uri("avares://Passenger/Assets/passenger.png"))) };
+        Image mark = new() { Classes = { StyleClasses.NotesMark }, Source = new Bitmap(AssetLoader.Open(new Uri("avares://Passenger/Assets/passenger.png"))) };
         RenderOptions.SetBitmapInterpolationMode(mark, BitmapInterpolationMode.HighQuality);
         Title = $"What's New in Passenger {version}";
-        Grid hero = new() { Classes = { "notesHero" }, ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        Grid hero = new() { Classes = { StyleClasses.NotesHero }, ColumnDefinitions = new ColumnDefinitions("Auto,*") };
         hero.Children.Add(mark);
         hero.Children.Add(new StackPanel
         {
@@ -36,16 +36,16 @@ public sealed class ReleaseNotesView : ScrollViewer
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                new TextBlock { Classes = { "notesTitle" }, Text = Title, TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Classes = { StyleClasses.NotesTitle }, Text = Title, TextWrapping = TextWrapping.Wrap },
                 new TextBlock
                 {
-                    Classes = { "notesSubtitle" },
+                    Classes = { StyleClasses.NotesSubtitle },
                     Text = "Help, What's New shows these notes again.",
                     TextWrapping = TextWrapping.Wrap,
                 },
             },
         });
-        page = new StackPanel { Classes = { "notesPage" }, Children = { hero } };
+        page = new StackPanel { Classes = { StyleClasses.NotesPage }, Children = { hero } };
         Markdown.Render(Markdown.Parse(document.Text.Snapshot.ToString()), page, browse);
         Content = page;
     }

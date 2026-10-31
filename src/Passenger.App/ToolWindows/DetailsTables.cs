@@ -14,7 +14,7 @@ namespace Passenger.App.ToolWindows;
 public class DetailsTables : DockPanel
 {
     private readonly StackPanel sections = new() { Margin = new Thickness(8, 0, 8, 8) };
-    private readonly TextBlock said = new() { Classes = { "emptyText" } };
+    private readonly TextBlock said = new() { Classes = { StyleClasses.EmptyText } };
 
     /// <summary>The tables a <see cref="Show"/> is making, and what they show in words; null outside one.</summary>
     private List<Control>? making;
@@ -91,7 +91,7 @@ public class DetailsTables : DockPanel
             table.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             TextBlock name = new()
             {
-                Text = rows[i].Name, Classes = { "muted", "detailsName" }, MaxWidth = namesMost, MinHeight = ListRow.Height, Margin = new Thickness(0, 0, 16, 0),
+                Text = rows[i].Name, Classes = { StyleClasses.Muted }, MaxWidth = namesMost, MinHeight = ListRow.Height, Margin = new Thickness(0, 0, 16, 0),
                 TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Top, Padding = new Thickness(0, 4),
                 [Grid.RowProperty] = i,
             };
@@ -103,7 +103,7 @@ public class DetailsTables : DockPanel
             table.Children.Add(name);
             table.Children.Add(value);
         }
-        Border framed = new() { Classes = { "framed" }, Padding = new Thickness(0, 2), Child = table };
+        Border framed = new() { Classes = { StyleClasses.Framed }, Padding = new Thickness(0, 2), Child = table };
         if (making is { } made)
         {
             made.Add(heading);
@@ -123,7 +123,9 @@ public class DetailsTables : DockPanel
         if (most != namesMost)
         {
             namesMost = most;
-            foreach (TextBlock name in sections.GetLogicalDescendants().OfType<TextBlock>().Where(t => t.Classes.Contains("detailsName")))
+            // The names are each framed table's first column.
+            foreach (TextBlock name in sections.Children.OfType<Border>().Select(b => b.Child).OfType<Grid>()
+                .SelectMany(table => table.Children.OfType<TextBlock>()).Where(t => Grid.GetColumn(t) == 0))
             {
                 name.MaxWidth = most;
             }
@@ -161,7 +163,7 @@ public class DetailsTables : DockPanel
     {
         Button link = new()
         {
-            Classes = { "link" }, Content = words, Name = name, HorizontalAlignment = HorizontalAlignment.Left,
+            Classes = { StyleClasses.Link }, Content = words, Name = name, HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center, MinHeight = ListRow.Height,
         };
         ToolTip.SetTip(link, tip);

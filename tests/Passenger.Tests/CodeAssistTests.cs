@@ -108,7 +108,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
 
         // The path's buttons in the status bar, those hidden past the path shown too.
-        Button[] Crumbs() => [.. window.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("crumb"))];
+        Button[] Crumbs() => [.. window.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains(StyleClasses.Crumb))];
     }
 
     /// <summary>A file shown before its folder's language server has it names the member the caret is in once the server

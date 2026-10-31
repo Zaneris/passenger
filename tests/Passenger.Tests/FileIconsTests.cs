@@ -196,7 +196,7 @@ public sealed class FileIconsTests : IDisposable
         {
             if (way == 5)
             {
-                PathIcon chevron = new() { Classes = { "chevron" }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = new RotateTransform(icon.Bounds.Width > 15 ? 90 : 0) };
+                PathIcon chevron = new() { Classes = { StyleClasses.Chevron }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = new RotateTransform(icon.Bounds.Width > 15 ? 90 : 0) };
                 chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
                 return new StackPanel
                 {
@@ -205,7 +205,7 @@ public sealed class FileIconsTests : IDisposable
                     Children = { new Border { Width = 18, Height = 24, Background = Brushes.Transparent, Child = chevron }, new PathIcon { Data = icon, Margin = new Thickness(0, 0, 6, 0) } },
                 };
             }
-            PathIcon drawn = way is 2 or 3 ? new() { Classes = { "chevron" } } : new();
+            PathIcon drawn = way is 2 or 3 ? new() { Classes = { StyleClasses.Chevron } } : new();
             drawn.Data = icon;
             if (way == 1)
             {

@@ -13,7 +13,7 @@ public sealed class CertificateQuestionDialog : IdeWindow
 
     public CertificateQuestionDialog(string configuration, string services, bool missing)
     {
-        CreateButton = new Button { Content = CreateAndTrust, IsDefault = true, Classes = { "primary" } };
+        CreateButton = new Button { Content = CreateAndTrust, IsDefault = true, Classes = { StyleClasses.Primary } };
         HttpButton = new Button { Content = RunOverHttp, IsCancel = true };
         CreateButton.Click += (_, _) => Close(true);
         HttpButton.Click += (_, _) => Close(false);

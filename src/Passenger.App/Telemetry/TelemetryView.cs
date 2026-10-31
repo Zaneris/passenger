@@ -78,7 +78,7 @@ public sealed class TelemetryView : IDisposable
         }
         LogsPage = WithHeader(PageBar(logsStatus, logTrace), Split(StructuredLogs, logDetails));
         Grid traceBody = new() { ColumnDefinitions = new ColumnDefinitions("*,1,2*") };
-        traceBody.Children.Add(new Border { Classes = { "framed" }, Child = TraceList });
+        traceBody.Children.Add(new Border { Classes = { StyleClasses.Framed }, Child = TraceList });
         traceBody.Children.Add(new HairlineDivider(GridResizeDirection.Columns) { [Grid.ColumnProperty] = 1 });
         Control spanBody = Split(SpanList, spanDetails);
         spanBody[Grid.ColumnProperty] = 2;
@@ -583,7 +583,7 @@ public sealed class TelemetryView : IDisposable
         }
     }
 
-    private static TextBlock Said() => new() { Classes = { "muted" }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
+    private static TextBlock Said() => new() { Classes = { StyleClasses.Muted }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
 
     /// <summary>A page's toolbar button: the host's action of that id when it gives one (shown with its work, its tip naming
     /// the action's keys), else the view's own.</summary>
@@ -620,7 +620,7 @@ public sealed class TelemetryView : IDisposable
     {
         ListBox list = new()
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = items,
         };
         ReusedRows.Use(list, () => Row(text));
@@ -661,7 +661,7 @@ public sealed class TelemetryView : IDisposable
     private static Control Split(Control top, Control bottom)
     {
         Grid split = new() { RowDefinitions = new RowDefinitions("*,1,*") };
-        split.Children.Add(new Border { Classes = { "framed" }, Child = top });
+        split.Children.Add(new Border { Classes = { StyleClasses.Framed }, Child = top });
         split.Children.Add(new HairlineDivider(GridResizeDirection.Rows) { [Grid.RowProperty] = 1 });
         bottom[Grid.RowProperty] = 2;
         split.Children.Add(bottom);

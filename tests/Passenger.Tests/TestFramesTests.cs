@@ -301,7 +301,7 @@ public sealed class TestFramesTests(HeadlessTestsFolder project) : IClassFixture
         [.. window.Tests.Tree.Methods.Where(m => m.Name == name)];
 
     private static List<Button> Thumbnails(TestsView tests) =>
-        [.. tests.Frames.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("frame"))];
+        [.. tests.Frames.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains(StyleClasses.Frame))];
 
     /// <summary>A key with the platform's command modifier, as Rider's keymaps write it.</summary>
     private static string Command(string key) => OperatingSystem.IsMacOS() ? $"meta {key}" : $"control {key}";

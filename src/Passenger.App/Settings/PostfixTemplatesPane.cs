@@ -18,7 +18,7 @@ public sealed class PostfixTemplatesPane : DockPanel
 
     private readonly Action<Func<AppSettings, AppSettings>> change;
     private readonly Dictionary<string, bool> turned;
-    private readonly ListBox tree = new() { Classes = { "tree" } };
+    private readonly ListBox tree = new() { Classes = { StyleClasses.Tree } };
     private readonly TextBlock description = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBox before = Code();
     private readonly TextBox after = Code();
@@ -44,7 +44,7 @@ public sealed class PostfixTemplatesPane : DockPanel
         tree.ItemsSource = (object[])[Language, .. PostfixTemplates.All];
         tree.SelectionChanged += (_, _) => Describe();
 
-        Border framed = new() { Classes = { "framed" }, Child = tree, Width = 300 };
+        Border framed = new() { Classes = { StyleClasses.Framed }, Child = tree, Width = 300 };
         about = new StackPanel
         {
             Spacing = 6,
@@ -133,7 +133,7 @@ public sealed class PostfixTemplatesPane : DockPanel
         };
         CheckBox on = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
         TextBlock name = new() { FontFamily = CodeEditor.CodeFont, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
-        TextBlock example = new() { Classes = { "muted" }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock example = new() { Classes = { StyleClasses.Muted }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         SetDock(on, Dock.Left);
         SetDock(name, Dock.Left);
         // The example takes what the row leaves, so a long one ends in an ellipsis rather than cut at the frame.
@@ -173,5 +173,5 @@ public sealed class PostfixTemplatesPane : DockPanel
         });
     }
 
-    private static TextBox Code() => new() { IsReadOnly = true, FontFamily = CodeEditor.CodeFont, FontSize = 12.5, Classes = { "search" }, Focusable = false };
+    private static TextBox Code() => new() { IsReadOnly = true, FontFamily = CodeEditor.CodeFont, FontSize = 12.5, Classes = { StyleClasses.Search }, Focusable = false };
 }

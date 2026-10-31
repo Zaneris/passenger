@@ -46,7 +46,7 @@ public sealed class AspireInteractionDialog : IdeWindow
         MinWidth = 300;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Primary = new Button { IsDefault = true, Classes = { "primary" } };
+        Primary = new Button { IsDefault = true, Classes = { StyleClasses.Primary } };
         Secondary = new Button { IsCancel = true };
         Problem = new TextBlock { TextWrapping = TextWrapping.Wrap };
         Primary.Click += (_, _) => IdeErrors.Observe(RunActionAsync(SubmitAsync));

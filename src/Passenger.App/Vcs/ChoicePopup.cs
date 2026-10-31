@@ -34,7 +34,7 @@ public sealed class ChoicePopup : SearchPopup<Choice>
     protected override Control Row()
     {
         TextBlock detail = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 4, 0) };
-        detail.Classes.Add("muted");
+        detail.Classes.Add(StyleClasses.Muted);
         TextBlock label = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(4, 0) };
         DockPanel.SetDock(detail, Dock.Right);

@@ -528,7 +528,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Ui.Run(window, AppActions.EditBreakpoint);
         BreakpointPopup popup = Assert.IsType<BreakpointPopup>(window.Popup);
         Ui.Settle();
-        Assert.Equal(inside, popup.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("popupTitle")).Text);
+        Assert.Equal(inside, popup.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains(StyleClasses.PopupTitle)).Text);
         Ui.Press(window, "Enter");
         Assert.Equal(["Program.cs:2", inside], window.Debugger.Breakpoints.In(Program).Select(b => b.Location));
         RightClick(window, gutter);

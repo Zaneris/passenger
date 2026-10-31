@@ -14,7 +14,7 @@ public sealed class OverlaysButton : Button
 
     public OverlaysButton()
     {
-        Classes.Add("tool");
+        Classes.Add(StyleClasses.Tool);
         Name = "AvaloniaOverlays";
         PathIcon icon = new();
         icon.Bind(PathIcon.DataProperty, this.GetResourceObservable(IconKeys.Overlays));

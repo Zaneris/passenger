@@ -102,7 +102,7 @@ public sealed class BranchesPanel : DockPanel
         vcs = git;
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = rows,
         };
         ReusedRows.Use(list, Row);
@@ -126,7 +126,7 @@ public sealed class BranchesPanel : DockPanel
         list.AddHandler(KeyDownEvent, OnKey, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         list.SelectionChanged += (_, _) => UpdateTools();
         ListMenus.Attach(list, () => Selected is { Branch: { } branch } ? Menu(branch) : []);
-        search = new TextBox { Classes = { "search" }, PlaceholderText = "Branch or tag", Margin = new Thickness(6, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
+        search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Branch or tag", Margin = new Thickness(6, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
         search.TextChanged += (_, _) => Show();
         favorite = ToolButtons.Of(IconKeys.Star, "Mark/Unmark As Favorite", () =>
         {
@@ -549,7 +549,7 @@ public sealed class BranchesPanel : DockPanel
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         // Where it pushes and pulls, muted after its name.
         TextBlock tracked = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
-        tracked.Classes.Add("muted");
+        tracked.Classes.Add(StyleClasses.Muted);
         ShrinkingRow row = new() { Height = ListRow.Height, Children = { hit, gap, mark, name, tracked } };
         hit.PointerPressed += (_, e) =>
         {

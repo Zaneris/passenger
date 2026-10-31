@@ -83,7 +83,7 @@ public sealed class FramesView : DockPanel
             ("Arranges", NumberWidth), ("Arrange time", NumberWidth + 16));
         table = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = rows,
         };
         ReusedRows.Use(table, () => RowOf(titles));
@@ -264,7 +264,7 @@ public sealed class FramesView : DockPanel
     private static void Put(TextBlock cell, string text)
     {
         cell.Text = text;
-        cell.Classes.Set("muted", text is "0" or "0.0 ms");
+        cell.Classes.Set(StyleClasses.Muted, text is "0" or "0.0 ms");
     }
 
     private static TextBlock Muted(string text)

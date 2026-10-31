@@ -95,7 +95,7 @@ public sealed class ContainersView : DockPanel
 
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = items,
         };
         RunRows.Use<ContainerRow>(list, Row, Toggle, parts.Browse, "containerPort");
@@ -125,8 +125,8 @@ public sealed class ContainersView : DockPanel
             new Separator(),
             Item(AppActions.ContainerRemove),
         ]);
-        empty = new TextBlock { Classes = { "emptyText" }, Text = "Reading what the engine holds…" };
-        nothingChosen = new TextBlock { Classes = { "emptyText" }, Text = NothingChosen };
+        empty = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "Reading what the engine holds…" };
+        nothingChosen = new TextBlock { Classes = { StyleClasses.EmptyText }, Text = NothingChosen };
 
         tabs = RunWindowFrame.Build(this, tools, new Panel { Children = { list, empty } }, new Panel { Children = { detail, nothingChosen } }, Pages, PageAction,
             "containers", Request);

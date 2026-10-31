@@ -20,12 +20,12 @@ public sealed class ErrorsPopup : UserControl
         Width = PopupFrame.Wide;
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             Height = 150,
             ItemsSource = errors,
         };
         ReusedRows.Use(list, Row);
-        occurred = new TextBlock { Classes = { "muted" } };
+        occurred = new TextBlock { Classes = { StyleClasses.Muted } };
         details = new TextBox
         {
             IsReadOnly = true,
@@ -51,21 +51,21 @@ public sealed class ErrorsPopup : UserControl
         };
         Button log = new() { Content = $"Show Log in {FileManager.Name}" };
         log.Click += (_, _) => LogAsked?.Invoke(this, EventArgs.Empty);
-        Button close = new() { Content = "Close", Classes = { "primary" }, IsDefault = true };
+        Button close = new() { Content = "Close", Classes = { StyleClasses.Primary }, IsDefault = true };
         close.Click += (_, _) => Done?.Invoke(this, EventArgs.Empty);
         Content = new Border
         {
-            Classes = { "popup" },
+            Classes = { StyleClasses.Popup },
             Padding = new Thickness(14, 12),
             Child = new StackPanel
             {
                 Spacing = 10,
                 Children =
                 {
-                    new TextBlock { Classes = { "popupTitle" }, Text = "IDE Internal Errors" },
+                    new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = "IDE Internal Errors" },
                     new TextBlock
                     {
-                        Classes = { "muted" },
+                        Classes = { StyleClasses.Muted },
                         TextWrapping = TextWrapping.Wrap,
                         Text = unlisted == 0
                             ? "Passenger caught these and kept running. Each is in the log with its details."
@@ -94,7 +94,7 @@ public sealed class ErrorsPopup : UserControl
     {
         TextBlock count = new()
         {
-            Classes = { "muted" },
+            Classes = { StyleClasses.Muted },
             Margin = new Thickness(12, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             [DockPanel.DockProperty] = Dock.Right,

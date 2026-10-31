@@ -138,7 +138,7 @@ public sealed class StatusBar
     private void Placed()
     {
         StatusPlace? place = Place;
-        message.Classes.Set("place", place is not null);
+        message.Classes.Set(StyleClasses.Place, place is not null);
         string? said = text.Text;
         ToolTip.SetTip(message, string.IsNullOrEmpty(said) ? null : place is null ? said : $"{said}\n\nClick to {place.Name}");
     }

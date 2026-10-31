@@ -78,7 +78,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         this.parseOptions = parseOptions;
         projects = choices.Projects;
         Width = PopupFrame.Widest;
-        query = new TextBox { Classes = { "search" }, PlaceholderText = "Text to find", Text = initial ?? string.Empty };
+        query = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Text to find", Text = initial ?? string.Empty };
         matchCase = Option(OptionGlyph(IconKeys.MatchCase), "Match case (Alt+C)");
         words = Option(OptionGlyph(IconKeys.WholeWord), "Words (Alt+O)");
         regex = Option(new TextBlock { Text = ".*", FontFamily = CodeEditor.CodeFont, FontWeight = FontWeight.Bold, FontSize = 12 }, "Regex (Alt+X)");
@@ -98,12 +98,12 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         DockPanel header = new() { Margin = new Thickness(12, 8, 10, 6) };
         DockPanel.SetDock(mask, Dock.Right);
         header.Children.Add(mask);
-        header.Children.Add(new TextBlock { Classes = { "popupTitle" }, Text = replace ? "Replace in Files" : "Find in Files", VerticalAlignment = VerticalAlignment.Center });
+        header.Children.Add(new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = replace ? "Replace in Files" : "Find in Files", VerticalAlignment = VerticalAlignment.Center });
         StackPanel top = new() { Children = { header, find } };
         if (replace)
         {
-            replacement = new TextBox { Classes = { "search" }, PlaceholderText = "Replacement" };
-            Button all = new() { Content = "Replace All", Classes = { "primary" }, Margin = new Thickness(6, 0, 0, 0) };
+            replacement = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Replacement" };
+            Button all = new() { Content = "Replace All", Classes = { StyleClasses.Primary }, Margin = new Thickness(6, 0, 0, 0) };
             all.Click += (_, _) => RequestReplace();
             DockPanel row = new() { Margin = new Thickness(10, 0, 10, 6) };
             DockPanel.SetDock(all, Dock.Right);
@@ -121,7 +121,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         projectBox.SelectedItem = choices.Projects.FirstOrDefault(p => p.Path == choices.Start.Project) ?? choices.Projects.FirstOrDefault();
         directoryBox = Field(choices.Directories, editable: true);
         directoryBox.Text = choices.Start.Directory ?? string.Empty;
-        recursive = new ToggleButton { Classes = { "option" }, Content = Glyph(IconKeys.Structure), IsChecked = choices.Start.Recursive };
+        recursive = new ToggleButton { Classes = { StyleClasses.Option }, Content = Glyph(IconKeys.Structure), IsChecked = choices.Start.Recursive };
         ToolTip.SetTip(recursive, "Recursively (Alt+Y)");
         Button browse = ToolButtons.Of(IconKeys.FolderOpen, "Choose a directory", () => IdeErrors.Observe(BrowseAsync()));
         browse.Margin = new Thickness(4, 0, 2, 0);
@@ -137,7 +137,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         StackPanel kinds = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 8, 0) };
         foreach ((SearchScopeKind each, string name, Key key) in Kinds)
         {
-            ToggleButton tab = new() { Classes = { "segment" }, Content = name, FontSize = 12 };
+            ToggleButton tab = new() { Classes = { StyleClasses.Segment }, Content = name, FontSize = 12 };
             ToolTip.SetTip(tab, $"{name} (Alt+{key})");
             tab.Click += (_, _) => ScopeKind = each;
             tabs[each] = tab;
@@ -153,11 +153,11 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         top.Children.Add(scope);
         Show(choices.Start.Kind);
 
-        status = new TextBlock { Classes = { "muted" }, FontSize = 12, Margin = new Thickness(12, 0, 12, 6) };
+        status = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, Margin = new Thickness(12, 0, 12, 6) };
         top.Children.Add(status);
         results = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             Height = ResultsHeight,
         };
         ReusedRows.Use(results, () => Row(ligatures));
@@ -175,7 +175,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         previewFrame.Bind(Border.BorderBrushProperty, previewFrame.GetResourceObservable(TokenKeys.Divider));
         Content = new Border
         {
-            Classes = { "popup" },
+            Classes = { StyleClasses.Popup },
             Child = new StackPanel { Children = { top, results, previewFrame } },
         };
         typing = new Debounce(Pause, () => searching = Refresh());
@@ -558,7 +558,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     /// <summary>A compact drop-down field of the popup's scope and mask, typed into when editable.</summary>
     private static ComboBox Field(System.Collections.IEnumerable items, bool editable) => new()
     {
-        Classes = { "compact" },
+        Classes = { StyleClasses.Compact },
         ItemsSource = items,
         IsEditable = editable,
         HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -566,7 +566,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 
     private static PathIcon Glyph(string icon)
     {
-        PathIcon glyph = new() { Classes = { "small" } };
+        PathIcon glyph = new() { Classes = { StyleClasses.Small } };
         glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(icon));
         return glyph;
     }
@@ -580,7 +580,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 
     private static ToggleButton Option(Control label, string tip)
     {
-        ToggleButton button = new() { Classes = { "option" }, Content = label };
+        ToggleButton button = new() { Classes = { StyleClasses.Option }, Content = label };
         ToolTip.SetTip(button, tip);
         return button;
     }
@@ -601,7 +601,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             Inlines = [before, matched, after],
         };
         TextBlock where = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 4, 0), FontSize = 12 };
-        where.Classes.Add("muted");
+        where.Classes.Add(StyleClasses.Muted);
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(8, 0) };
         DockPanel.SetDock(where, Dock.Right);
         row.Children.Add(where);

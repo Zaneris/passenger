@@ -43,11 +43,11 @@ public sealed class AboutDialog : IdeWindow
         };
         if (Copyright() is { } copyright)
         {
-            facts.Children.Add(new TextBlock { Classes = { "muted" }, Text = copyright, Margin = new Thickness(0, 14, 0, 0) });
+            facts.Children.Add(new TextBlock { Classes = { StyleClasses.Muted }, Text = copyright, Margin = new Thickness(0, 14, 0, 0) });
         }
 
         Button copy = new() { Content = "Copy and Close" };
-        Button close = new() { Content = "Close", IsDefault = true, IsCancel = true, Classes = { "primary" } };
+        Button close = new() { Content = "Close", IsDefault = true, IsCancel = true, Classes = { StyleClasses.Primary } };
         copy.Click += (_, _) => IdeErrors.Observe(CopyAndCloseAsync());
         close.Click += (_, _) => Close();
 
@@ -71,7 +71,7 @@ public sealed class AboutDialog : IdeWindow
 
         Button Link(string words, string path)
         {
-            Button link = new() { Classes = { "link" }, Content = words, IsEnabled = File.Exists(path) };
+            Button link = new() { Classes = { StyleClasses.Link }, Content = words, IsEnabled = File.Exists(path) };
             link.Click += (_, _) =>
             {
                 Close();

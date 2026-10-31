@@ -241,7 +241,7 @@ public sealed class EditorWindowTests : IDisposable
     private static string[] Names(EditorGroup group) => [.. group.Tabs.Select(t => t.Document.Name)];
 
     private static Control Tab(EditorGroup group, string name) =>
-        group.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains("tabName")).FindAncestorOfType<Border>()!;
+        group.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains(StyleClasses.TabName)).FindAncestorOfType<Border>()!;
 
     /// <summary>Chooses an item of a tab's menu, whose header carries the item's shortcut after its title.</summary>
     private static void ChooseFromTabMenu(Control tab, string title)

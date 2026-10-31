@@ -252,8 +252,8 @@ public sealed class EditorTabsTests : IDisposable
     private static string[] Names(EditorGroup group) => [.. group.Tabs.Select(t => t.Document.Name)];
 
     private static Control Tab(EditorGroup group, string name) =>
-        group.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains("tabName")).FindAncestorOfType<Border>()!;
+        group.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains(StyleClasses.TabName)).FindAncestorOfType<Border>()!;
 
     private static bool PinShown(EditorGroup group, string name) =>
-        Tab(group, name).GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("tabPin")).IsEffectivelyVisible;
+        Tab(group, name).GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains(StyleClasses.TabPin)).IsEffectivelyVisible;
 }

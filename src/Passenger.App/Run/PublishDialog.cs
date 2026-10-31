@@ -32,20 +32,20 @@ public sealed class PublishDialog : IdeWindow
     private readonly Func<PublishChoice, Task<string?>> save;
 
     private readonly ComboBox profileBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
-    private readonly TextBox nameBox = new() { Classes = { "search" } };
+    private readonly TextBox nameBox = new() { Classes = { StyleClasses.Search } };
     private readonly Control nameRow;
     private readonly ComboBox configurationBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly ComboBox frameworkBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly ComboBox deploymentBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[] { FrameworkDependent, SelfContainedMode } };
     private readonly ComboBox runtimeBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
-    private readonly TextBox folderBox = new() { Classes = { "search" } };
+    private readonly TextBox folderBox = new() { Classes = { StyleClasses.Search } };
     private readonly Button browse = new() { Content = "Browse…", Margin = new Thickness(8, 0, 0, 0) };
-    private readonly TextBlock destination = new() { Classes = { "muted" }, FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, 4, 0, 0) };
-    private readonly TextBlock copied = new() { Classes = { "muted" }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0), IsVisible = false };
+    private readonly TextBlock destination = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis, Margin = new Thickness(0, 4, 0, 0) };
+    private readonly TextBlock copied = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0), IsVisible = false };
     private readonly CheckBox singleFileBox = new() { Content = "Produce a single file" };
     private readonly CheckBox readyToRunBox = new() { Content = "Compile ReadyToRun" };
     private readonly CheckBox trimBox = new() { Content = "Trim unused code" };
-    private readonly TextBlock command = new() { Classes = { "muted" }, TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+    private readonly TextBlock command = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button publish = DialogFooter.Default("Publish");
     private readonly Button saveButton = new() { Content = "Save" };

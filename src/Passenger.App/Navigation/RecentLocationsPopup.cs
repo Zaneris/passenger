@@ -105,7 +105,7 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        member.Classes.Add("muted");
+        member.Classes.Add(StyleClasses.Muted);
         StackPanel header = new()
         {
             Orientation = Orientation.Horizontal,
@@ -136,7 +136,7 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
         DockPanel.SetDock(numbers, Dock.Left);
         fragment.Children.Add(numbers);
         fragment.Children.Add(code);
-        Border frame = new() { Child = fragment, Classes = { "box" }, ClipToBounds = true, Padding = new Thickness(0, 4) };
+        Border frame = new() { Child = fragment, Classes = { StyleClasses.Box }, ClipToBounds = true, Padding = new Thickness(0, 4) };
         frame.Bind(Border.BackgroundProperty, frame.GetResourceObservable(TokenKeys.Editor_Background));
         // A row the list let go of lets go of the colours it was shown with, whose changes would otherwise still reach it.
         code.DetachedFromVisualTree += (_, _) => code.Highlighter = null;

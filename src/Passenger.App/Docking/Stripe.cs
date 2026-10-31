@@ -47,7 +47,7 @@ internal sealed class Stripe : Border
         // A window too short for every button puts the last ones behind More.
         PathIcon dots = new();
         dots.Bind(PathIcon.DataProperty, dots.GetResourceObservable(IconKeys.More));
-        more = new ToggleButton { Classes = { "stripe" }, Content = dots, IsVisible = false, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
+        more = new ToggleButton { Classes = { StyleClasses.Stripe }, Content = dots, IsVisible = false, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
         ToolTip.SetTip(more, "More Tool Windows");
         more.Click += (_, _) => ShowMore();
         StackPanel sides = new() { [DockPanel.DockProperty] = Dock.Top, Children = { groups[upper], gap, groups[lower], more } };
@@ -55,7 +55,7 @@ internal sealed class Stripe : Border
         groups[bottom][DockPanel.DockProperty] = Dock.Bottom;
         Child = new DockPanel { Margin = new Thickness(0, 6), Children = { sides, groups[bottom] } };
         SizeChanged += (_, _) => FitButtons();
-        Classes.Add("stripeBar");
+        Classes.Add(StyleClasses.StripeBar);
     }
 
     /// <summary>Styled as a Border of its own class (Shell.axaml's stripeBar), its look the theme's.</summary>
@@ -148,7 +148,7 @@ internal sealed class Stripe : Border
     {
         PathIcon glyph = new();
         glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(window.Icon));
-        ToggleButton button = new() { Classes = { "stripe" }, Content = glyph, Tag = window.Id };
+        ToggleButton button = new() { Classes = { StyleClasses.Stripe }, Content = glyph, Tag = window.Id };
         button.AddHandler(PointerPressedEvent, (_, e) => host.Drag.Begin(window, e), RoutingStrategies.Tunnel, handledEventsToo: true);
         button.AddHandler(PointerMovedEvent, (_, e) => host.Drag.Continue(e), RoutingStrategies.Tunnel, handledEventsToo: true);
         button.AddHandler(PointerReleasedEvent, (_, e) =>

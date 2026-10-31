@@ -107,7 +107,7 @@ public sealed class TestFramesStrip : Border
         string size = frame.Picture is { } known ? $"{known.PixelSize.Width} × {known.PixelSize.Height}" : string.Empty;
         Button thumbnail = new()
         {
-            Classes = { "frame" },
+            Classes = { StyleClasses.Frame },
             Focusable = false,
             IsEnabled = frame.Picture is not null,
             Content = new StackPanel

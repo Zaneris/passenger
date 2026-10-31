@@ -78,7 +78,7 @@ public static class ActionTips
                 block.Text = words(KeysOf);
             }
         }
-        else if (!control.Classes.Contains("working"))
+        else if (!ActionButtons.IsWorking(control))
         {
             ToolTip.SetTip(control, Of(control));
         }

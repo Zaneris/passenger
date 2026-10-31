@@ -31,11 +31,11 @@ public sealed class LiveTemplatesPane : DockPanel
 
     private readonly Action<IReadOnlyList<LiveTemplate>> changed;
     private readonly List<LiveTemplate> templates;
-    private readonly ListBox list = new() { Classes = { "tree" } };
+    private readonly ListBox list = new() { Classes = { StyleClasses.Tree } };
     private readonly Control form;
-    private readonly TextBlock nothing = new() { Classes = { "muted" }, Text = "No template is chosen", Margin = new Thickness(16, 10) };
+    private readonly TextBlock nothing = new() { Classes = { StyleClasses.Muted }, Text = "No template is chosen", Margin = new Thickness(16, 10) };
     private readonly TextBlock mnemonicSaid = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
-    private readonly TextBlock variablesSaid = new() { Classes = { "muted" }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly TextBlock variablesSaid = new() { Classes = { StyleClasses.Muted }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
 
     /// <summary>Set while the fields show a template, so what they hold then is no edit of it.</summary>
     private bool showing;
@@ -71,7 +71,7 @@ public sealed class LiveTemplatesPane : DockPanel
         GenerationButton = Use("Generation", TemplateUse.Generation);
         SurroundButton = Use("Surround", TemplateUse.Surround);
         BothButton = Use("Both", TemplateUse.Both);
-        MnemonicBox = new TextBox { Classes = { "search" }, Width = 44 };
+        MnemonicBox = new TextBox { Classes = { StyleClasses.Search }, Width = 44 };
         MnemonicBox.TextChanged += (_, _) => Mnemonic();
         EditVariablesButton = new Button { Content = "Edit variables" };
         EditVariablesButton.Click += (_, _) => IdeErrors.Observe(EditVariables());
@@ -83,7 +83,7 @@ public sealed class LiveTemplatesPane : DockPanel
             FontFamily = CodeEditor.CodeFont,
             FontSize = 12.5,
             VerticalContentAlignment = VerticalAlignment.Top,
-            Classes = { "search" },
+            Classes = { StyleClasses.Search },
             Margin = new Thickness(0, 10, 0, 0),
         };
         TextBox.TextChanged += (_, _) => Edit(t => WithText(t, (TextBox.Text ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal)));
@@ -110,7 +110,7 @@ public sealed class LiveTemplatesPane : DockPanel
         form = editor;
 
         StackPanel tools = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 0, 4), Children = { NewButton, CloneButton, DeleteButton, RestoreButton } };
-        Border framed = new() { Classes = { "framed" }, Child = list };
+        Border framed = new() { Classes = { StyleClasses.Framed }, Child = list };
         DockPanel left = new() { Width = 260 };
         SetDock(tools, Dock.Top);
         left.Children.Add(tools);
@@ -438,7 +438,7 @@ public sealed class LiveTemplatesPane : DockPanel
             {
                 name.Inlines.Add(new Avalonia.Controls.Documents.Run($" ({template.Description})"));
             }
-            name.Classes.Set("muted", !template.Enabled);
+            name.Classes.Set(StyleClasses.Muted, !template.Enabled);
         });
     }
 
@@ -476,5 +476,5 @@ public sealed class LiveTemplatesPane : DockPanel
         return control;
     }
 
-    private static TextBox Field() => new() { Classes = { "search" } };
+    private static TextBox Field() => new() { Classes = { StyleClasses.Search } };
 }

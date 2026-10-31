@@ -84,7 +84,7 @@ public sealed class FindView : DockPanel
         Children.Add(tabBar);
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = rows,
         };
         ReusedRows.Use(list, Row);
@@ -112,7 +112,7 @@ public sealed class FindView : DockPanel
         body.Children.Add(list);
         body.Children.Add(divider);
         body.Children.Add(preview);
-        placeholder = new TextBlock { Classes = { "emptyText" } };
+        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         ActionTips.SetWords(placeholder, AppActions.FindUsages, keys => $"{ActionTips.Named("Find Usages", keys)} lists a symbol's usages here");
         note = MutedText.Wrapped(string.Empty);
         note.Margin = new Thickness(8, 4);
@@ -341,12 +341,12 @@ public sealed class FindView : DockPanel
     private Control Row()
     {
         TextBlock number = new() { MinWidth = 36, FontFamily = CodeEditor.CodeFont, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-        number.Classes.Add("muted");
+        number.Classes.Add(StyleClasses.Muted);
         RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 6, 0) };
         RowIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
         TextBlock label = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock count = new() { FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        count.Classes.Add("muted");
+        count.Classes.Add(StyleClasses.Muted);
         StackPanel panel = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { number, chevron, icon, label, count } };
         chevron.PointerPressed += (_, e) =>
         {

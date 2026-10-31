@@ -32,7 +32,7 @@ public sealed class UnstashPopup : UserControl
         Width = PopupFrame.Medium;
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             MaxHeight = ListRow.Height * 10,
             ItemsSource = stashes,
             SelectedIndex = stashes.Count > 0 ? 0 : -1,
@@ -45,14 +45,14 @@ public sealed class UnstashPopup : UserControl
         actions = [pop, apply, remove];
         Content = new Border
         {
-            Classes = { "popup" },
+            Classes = { StyleClasses.Popup },
             Child = new StackPanel
             {
                 Children =
                 {
-                    new TextBlock { Classes = { "popupTitle" }, Text = "Unstash Changes", Margin = new Thickness(12, 10, 12, 6) },
+                    new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = "Unstash Changes", Margin = new Thickness(12, 10, 12, 6) },
                     stashes.Count == 0
-                        ? new TextBlock { Classes = { "muted" }, Text = "Nothing is stashed", Margin = new Thickness(12, 0, 12, 10) }
+                        ? new TextBlock { Classes = { StyleClasses.Muted }, Text = "Nothing is stashed", Margin = new Thickness(12, 0, 12, 10) }
                         : list,
                     new StackPanel
                     {
@@ -167,7 +167,7 @@ public sealed class UnstashPopup : UserControl
         Button button = new() { Content = label };
         if (primary)
         {
-            button.Classes.Add("primary");
+            button.Classes.Add(StyleClasses.Primary);
         }
         button.Click += (_, _) => IdeErrors.Observe(run());
         return button;
@@ -177,7 +177,7 @@ public sealed class UnstashPopup : UserControl
     private static Control Row()
     {
         TextBlock when = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = new Thickness(12, 0, 4, 0) };
-        when.Classes.Add("muted");
+        when.Classes.Add(StyleClasses.Muted);
         TextBlock message = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(8, 0) };
         DockPanel.SetDock(when, Dock.Right);

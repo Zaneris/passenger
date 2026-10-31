@@ -24,11 +24,11 @@ public sealed class GitQuestionDialog : IdeWindow
         bool yesNo = question.Kind == GitQuestionKind.YesNo;
         if (question.Kind == GitQuestionKind.User)
         {
-            user = new TextBox { Name = "GitUser", Classes = { "search" } };
+            user = new TextBox { Name = "GitUser", Classes = { StyleClasses.Search } };
         }
         if (!yesNo)
         {
-            secret = new TextBox { Name = "GitSecret", Classes = { "search" }, PasswordChar = '•' };
+            secret = new TextBox { Name = "GitSecret", Classes = { StyleClasses.Search }, PasswordChar = '•' };
         }
         Grid fields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowSpacing = 8 };
         if (user is not null)
@@ -45,7 +45,7 @@ public sealed class GitQuestionDialog : IdeWindow
             }, secret);
         }
 
-        Button ok = new() { Content = yesNo ? "Yes" : question.Kind == GitQuestionKind.User ? "Sign In" : "OK", IsDefault = agent is null, Classes = { "primary" } };
+        Button ok = new() { Content = yesNo ? "Yes" : question.Kind == GitQuestionKind.User ? "Sign In" : "OK", IsDefault = agent is null, Classes = { StyleClasses.Primary } };
         Button cancel = DialogFooter.Cancel(Decline, yesNo ? "No" : "Cancel");
         ok.Click += (_, _) => Accept();
         List<Control> paragraphs = [DialogFooter.Paragraph(Said(question))];
@@ -55,7 +55,7 @@ public sealed class GitQuestionDialog : IdeWindow
         }
         TextBlock kept = new()
         {
-            Classes = { "muted" },
+            Classes = { StyleClasses.Muted },
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             Text = (agent is null ? string.Empty : $"Asked for {agent}'s call through Passenger's MCP server: the answer goes to git, never to the agent. ")

@@ -42,7 +42,7 @@ public sealed class RequestsView : DockPanel
         this.log = log;
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = rows,
         };
         ReusedRows.Use(list, View);
@@ -55,9 +55,9 @@ public sealed class RequestsView : DockPanel
                 e.Handled = true;
             }
         };
-        placeholder = new TextBlock { Text = "No requests yet: run or debug a web app and send it one", Classes = { "emptyText" } };
+        placeholder = new TextBlock { Text = "No requests yet: run or debug a web app and send it one", Classes = { StyleClasses.EmptyText } };
         following = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0), TextTrimming = TextTrimming.CharacterEllipsis };
-        following.Classes.Add("muted");
+        following.Classes.Add(StyleClasses.Muted);
         Button clear = ToolButtons.Of(IconKeys.Clear, "Clear the requests", log.Clear);
         DockPanel bar = new() { Margin = new Thickness(8, 4) };
         DockPanel.SetDock(clear, Dock.Left);
@@ -284,7 +284,7 @@ public sealed class RequestsView : DockPanel
     private static TextBlock Muted(string words)
     {
         TextBlock text = new() { Text = words, VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = new Thickness(8, 0, 0, 0) };
-        text.Classes.Add("muted");
+        text.Classes.Add(StyleClasses.Muted);
         return text;
     }
 
@@ -292,6 +292,6 @@ public sealed class RequestsView : DockPanel
     {
         TextBlock text = new() { Text = words, FontSize = 11, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center };
         text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(colour));
-        return new Border { Classes = { "tag" }, Padding = new Thickness(4, 1), Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
+        return new Border { Classes = { StyleClasses.Tag }, Padding = new Thickness(4, 1), Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
     }
 }

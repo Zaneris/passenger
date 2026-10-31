@@ -110,7 +110,7 @@ public sealed class DockerComposeDialog : IdeWindow
         page.Children.Add(List(projects, 1));
         page.Children.Add(Heading("Beside them, from their packages", 2));
         Control backing = services.Count == 0
-            ? new TextBlock { Classes = { "emptyText" }, Text = "No database, cache or broker among their packages", Margin = new Thickness(0, 0, 0, 4) }
+            ? new TextBlock { Classes = { StyleClasses.EmptyText }, Text = "No database, cache or broker among their packages", Margin = new Thickness(0, 0, 0, 4) }
             : List(services, 3);
         Grid.SetRow(backing, 3);
         page.Children.Add(backing);
@@ -130,9 +130,9 @@ public sealed class DockerComposeDialog : IdeWindow
 
     private static Border List(IReadOnlyList<ComposeChoice> choices, int row)
     {
-        ListBox list = new() { Classes = { "tree" }, ItemsSource = choices };
+        ListBox list = new() { Classes = { StyleClasses.Tree }, ItemsSource = choices };
         ReusedRows.Use(list, CheckRows.Of);
-        Border framed = new() { Classes = { "framed" }, Child = list, MaxHeight = row == 3 ? 140 : double.PositiveInfinity };
+        Border framed = new() { Classes = { StyleClasses.Framed }, Child = list, MaxHeight = row == 3 ? 140 : double.PositiveInfinity };
         Grid.SetRow(framed, row);
         return framed;
     }

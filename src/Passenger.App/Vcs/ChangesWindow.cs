@@ -25,7 +25,7 @@ public sealed class ChangesWindow : IdeWindow
         Files = files;
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = files,
         };
         ReusedRows.Use(list, () => Row(repository));
@@ -38,7 +38,7 @@ public sealed class ChangesWindow : IdeWindow
                 e.Handled = true;
             }
         };
-        TextBlock empty = new() { Text = "No differences", IsVisible = files.Count == 0, Classes = { "emptyText" } };
+        TextBlock empty = new() { Text = "No differences", IsVisible = files.Count == 0, Classes = { StyleClasses.EmptyText } };
         Content = new Panel { Children = { list, empty } };
         KeyDown += (_, e) =>
         {
@@ -91,7 +91,7 @@ public sealed class ChangesWindow : IdeWindow
             Margin = new Thickness(8, 0, 0, 0),
             FontSize = 12,
         };
-        folder.Classes.Add("muted");
+        folder.Classes.Add(StyleClasses.Muted);
         string? colour = null;
         StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { icon, name, folder } };
         return row.Showing<FileChange>(change =>

@@ -89,7 +89,7 @@ public sealed class EditorSplitTests : IDisposable
         Ui.Settle();
         EditorGroup left = Assert.Single(window.EditorArea.Groups);
         Assert.StartsWith("// class Two", left.Editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        Assert.True(Tab(left, "Two.cs").GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().Single(e => e.Classes.Contains("modified")).IsVisible,
+        Assert.True(Tab(left, "Two.cs").GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().Single(e => e.Classes.Contains(StyleClasses.Modified)).IsVisible,
             "The tab of the file typed in shows no mark that it changed");
 
         GC.Collect();
@@ -314,7 +314,7 @@ public sealed class EditorSplitTests : IDisposable
         Assert.True(window.Perform(AppActions.Find));
         Ui.Settle();
         Assert.True(right.Find.IsVisible);
-        Button close = Tab(right, "Two.cs").GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("tabClose"));
+        Button close = Tab(right, "Two.cs").GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains(StyleClasses.TabClose));
         Ui.Click(close);
         // The pointer moves on, as a person's does: until it does, the pointer still rests on the closed tab's button.
         window.MouseMove(new Point(1, 1));
@@ -325,7 +325,7 @@ public sealed class EditorSplitTests : IDisposable
     }
 
     private static Control Tab(EditorGroup group, string name) =>
-        group.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains("tabName")).FindAncestorOfType<Border>()!;
+        group.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains(StyleClasses.TabName)).FindAncestorOfType<Border>()!;
 
     private static GridSplitter Divider(EditorArea area, GridResizeDirection direction) =>
         area.GetVisualDescendants().OfType<GridSplitter>().Single(s => s.ResizeDirection == direction);

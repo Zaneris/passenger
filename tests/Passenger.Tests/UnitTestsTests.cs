@@ -872,7 +872,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 
     /// <summary>A button in the Unit Tests window's header.</summary>
     private static Button HeaderButton(MainWindow window, string action) =>
-        window.BottomPanel.Tests.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains("toolPane"))
+        window.BottomPanel.Tests.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains(StyleClasses.ToolPane))
             .GetVisualDescendants().OfType<Button>().First(b => b.Name == action);
 
     [Gate]

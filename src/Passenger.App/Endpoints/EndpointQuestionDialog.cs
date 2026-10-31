@@ -14,7 +14,7 @@ public sealed class EndpointQuestionDialog : IdeWindow
     public EndpointQuestionDialog(string request, string host, IReadOnlyList<EndpointRead> reads)
     {
         Reads = reads;
-        AllowButton = new Button { Content = Allow, IsDefault = true, Classes = { "primary" } };
+        AllowButton = new Button { Content = Allow, IsDefault = true, Classes = { StyleClasses.Primary } };
         DontAllowButton = new Button { Content = DontAllow, IsCancel = true };
         AllowButton.Click += (_, _) => Close(true);
         DontAllowButton.Click += (_, _) => Close(false);

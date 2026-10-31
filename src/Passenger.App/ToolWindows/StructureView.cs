@@ -38,7 +38,7 @@ public sealed class StructureView : DockPanel
     {
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(list, SymbolPopup.ReusedRow);
         list.SelectionChanged += (_, _) =>
@@ -63,9 +63,9 @@ public sealed class StructureView : DockPanel
                 e.Handled = true;
             }
         };
-        placeholder = new TextBlock { Classes = { "emptyText" } };
+        placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         ActionTips.SetWords(placeholder, AppActions.GoToFile, keys => $"The open file's outline shows here: open one with {ActionTips.Named("Go to File", keys)}");
-        unoutlined = new TextBlock { Classes = { "emptyText" }, IsVisible = false };
+        unoutlined = new TextBlock { Classes = { StyleClasses.EmptyText }, IsVisible = false };
         settle = new Debounce(Pause, Refresh);
         ListMenus.Attach(list, () => list.SelectedItem is not SymbolRow chosen ? [] :
         [

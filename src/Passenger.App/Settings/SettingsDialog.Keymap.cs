@@ -20,11 +20,11 @@ public sealed partial class SettingsDialog
 
     private readonly Dictionary<string, ActionRow> keymapRows = [];
     private readonly DockPanel keymapHeader = new() { Margin = new Thickness(0, 0, 0, 10) };
-    private readonly TextBlock keymapNote = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, Classes = { "muted" } };
+    private readonly TextBlock keymapNote = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, Classes = { StyleClasses.Muted } };
     private readonly ShortcutPanel filterKeys = new("Second stroke");
     private readonly Popup findPopup = new() { Placement = PlacementMode.BottomEdgeAlignedRight, IsLightDismissEnabled = true };
     private readonly TextBlock filterText = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 12 };
-    private readonly Border filterChip = new() { IsVisible = false, Classes = { "tag" }, Padding = new Thickness(8, 2, 4, 2), VerticalAlignment = VerticalAlignment.Center };
+    private readonly Border filterChip = new() { IsVisible = false, Classes = { StyleClasses.Tag }, Padding = new Thickness(8, 2, 4, 2), VerticalAlignment = VerticalAlignment.Center };
     private readonly Dictionary<KeymapPreset, Keymap> defaults = [];
     private Shortcut? shortcutFilter;
 
@@ -36,16 +36,16 @@ public sealed partial class SettingsDialog
 
     /// <summary>The keymap drop-down at the Keymap page's top: the keymap the person's keys follow, their own shortcuts
     /// kept over each apart.</summary>
-    public ComboBox KeymapChoice { get; } = new() { Name = "KeymapChoice", Classes = { "form" } };
+    public ComboBox KeymapChoice { get; } = new() { Name = "KeymapChoice", Classes = { StyleClasses.Form } };
 
     /// <summary>Find Actions by Shortcut, the magnifier over a keyboard at the Keymap page's top.</summary>
-    public Button FindByShortcut { get; } = new() { Classes = { "tool" } };
+    public Button FindByShortcut { get; } = new() { Classes = { StyleClasses.Tool } };
 
     /// <summary>Find Actions by Shortcut's popup: the keystrokes the page is narrowed to.</summary>
     public ShortcutPanel FindShortcut => filterKeys;
 
     /// <summary>The x on the shortcut the page is narrowed to (Clear Filtering).</summary>
-    public Button ClearFiltering { get; } = new() { Classes = { "tabPin" }, Margin = new Thickness(6, 0, 0, 0) };
+    public Button ClearFiltering { get; } = new() { Classes = { StyleClasses.TabPin }, Margin = new Thickness(6, 0, 0, 0) };
 
     /// <summary>The shortcut the Keymap page is narrowed to, or null while it lists every action.</summary>
     public Shortcut? ShortcutFilter => shortcutFilter;
@@ -65,7 +65,7 @@ public sealed partial class SettingsDialog
         [.. keymapRows[action].Keys.Children.OfType<Border>().Select(b => ((TextBlock)b.Child!).Text ?? string.Empty)];
 
     /// <summary>Whether an action's row shows it in the colour of one whose shortcuts the person changed.</summary>
-    public bool ShowsChanged(string action) => keymapRows[action].Title.Classes.Contains("changed");
+    public bool ShowsChanged(string action) => keymapRows[action].Title.Classes.Contains(StyleClasses.Changed);
 
     /// <summary>Gives an action exactly these shortcuts (keymap notation, "meta shift K"); none unbinds it. Each other
     /// action's shortcut one clashes with (<see cref="Keymap.Conflicts"/>) is taken from it, and the page says
@@ -196,7 +196,7 @@ public sealed partial class SettingsDialog
         {
             Width = 320,
             Padding = new Thickness(12, 10, 12, 12),
-            Classes = { "popup" },
+            Classes = { StyleClasses.Popup },
             Child = new StackPanel { Spacing = 8, Children = { title, filterKeys } },
         };
         // Tab goes round the popup's own fields, never on to the page under it.
@@ -334,14 +334,14 @@ public sealed partial class SettingsDialog
                 row.Keys.Children.Clear();
                 foreach (string keys in shown)
                 {
-                    Border box = new() { Classes = { "box" }, Padding = new Thickness(6, 1), Margin = new Thickness(0, 2, 4, 2), Child = new TextBlock { Text = keys, FontSize = 12 } };
+                    Border box = new() { Classes = { StyleClasses.Box }, Padding = new Thickness(6, 1), Margin = new Thickness(0, 2, 4, 2), Child = new TextBlock { Text = keys, FontSize = 12 } };
                     box.Bind(Border.BackgroundProperty, box.GetResourceObservable(TokenKeys.Selected));
                     row.Keys.Children.Add(box);
                 }
                 int option = options.FindIndex(o => o.Page == KeymapPage && o.Action == id);
                 options[option] = options[option] with { Words = $"{KeymapPage} {row.Action.Title} {RowWords(row.Action, shown)}" };
             }
-            row.Title.Classes.Set("changed", IsChanged(id, current));
+            row.Title.Classes.Set(StyleClasses.Changed, IsChanged(id, current));
         }
         if (shortcutFilter is not null)
         {

@@ -61,7 +61,7 @@ public sealed class TestsView : DockPanel
         Model = model;
         tree = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = model.Rows,
             SelectionMode = SelectionMode.Multiple,
         };
@@ -104,8 +104,8 @@ public sealed class TestsView : DockPanel
         };
         model.ViewChanged += (_, _) => ShowFilters();
         status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0), TextTrimming = TextTrimming.CharacterEllipsis };
-        status.Classes.Add("muted");
-        placeholder = new TextBlock { Text = model.EmptyText, Classes = { "emptyText" } };
+        status.Classes.Add(StyleClasses.Muted);
+        placeholder = new TextBlock { Text = model.EmptyText, Classes = { StyleClasses.EmptyText } };
         model.Rows.CollectionChanged += (_, _) => ShowPlaceholder();
         model.EmptyTextChanged += (_, _) => ShowPlaceholder();
 
@@ -124,7 +124,7 @@ public sealed class TestsView : DockPanel
         search = new TextBox
         {
             [DockProperty] = Dock.Right,
-            Classes = { "search" },
+            Classes = { StyleClasses.Search },
             Width = 220,
             Margin = new Thickness(6, 0),
             VerticalAlignment = VerticalAlignment.Center,
@@ -354,7 +354,7 @@ public sealed class TestsView : DockPanel
         count = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
         ToggleButton button = new()
         {
-            Classes = { "outcome" },
+            Classes = { StyleClasses.Outcome },
             Focusable = false,
             Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Children = { mark, count } },
         };
@@ -508,7 +508,7 @@ public sealed class TestsView : DockPanel
             state = new RowIcon { VerticalAlignment = VerticalAlignment.Center };
             label = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
             duration = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0), FontSize = 12 };
-            duration.Classes.Add("muted");
+            duration.Classes.Add(StyleClasses.Muted);
             Children.Add(toggle);
             Children.Add(state);
             Children.Add(label);

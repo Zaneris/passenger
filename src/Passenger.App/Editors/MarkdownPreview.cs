@@ -40,7 +40,7 @@ public sealed class MarkdownPreview : ScrollViewer
     {
         this.editor = editor;
         this.area = area;
-        Classes.Add("markdownPreview");
+        Classes.Add(StyleClasses.MarkdownPreview);
         Focusable = true;
         HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         links = new MarkdownPage(Follow) { LocalLinks = true, ImageFile = ImageFile, Load = LoadAsync };
@@ -122,7 +122,7 @@ public sealed class MarkdownPreview : ScrollViewer
 
     private MarkdownBlocks NewPage()
     {
-        MarkdownBlocks blocks = new(block => Markdown.Control(block, links), FollowEditor) { Classes = { "mdPage" } };
+        MarkdownBlocks blocks = new(block => Markdown.Control(block, links), FollowEditor) { Classes = { StyleClasses.MdPage } };
         // A block that grew (a picture read, a narrower page) moves those under it: they follow once laid out.
         blocks.Moved += (_, _) => FollowLaidOut();
         return blocks;

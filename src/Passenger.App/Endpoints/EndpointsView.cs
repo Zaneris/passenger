@@ -59,7 +59,7 @@ public sealed class EndpointsView : DockPanel
         Response = new ResponseView("Test a request to see its response here");
         list = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(list, Row);
         list.DoubleTapped += (_, _) =>
@@ -104,7 +104,7 @@ public sealed class EndpointsView : DockPanel
             ListMenus.Item("Interactive Test…", null, () => InteractiveRequested?.Invoke(this, chosen)),
             ListMenus.Item("Go to Request", "F4", GoToChosen),
         ]);
-        placeholder = new TextBlock { Text = "No requests: add an .http file (GET https://…)", Classes = { "emptyText" } };
+        placeholder = new TextBlock { Text = "No requests: add an .http file (GET https://…)", Classes = { StyleClasses.EmptyText } };
 
         environments = new ComboBox { MinWidth = 140, VerticalAlignment = VerticalAlignment.Center };
         environments.SelectionChanged += (_, _) => EnvironmentChanged?.Invoke(this, EventArgs.Empty);
@@ -480,7 +480,7 @@ public sealed class EndpointsView : DockPanel
         TextBlock title = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         // A named request shows its URL after the name, muted, ending in an ellipsis first.
         TextBlock url = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12, Margin = new Thickness(8, 0, 0, 0) };
-        url.Classes.Add("muted");
+        url.Classes.Add(StyleClasses.Muted);
         // The title takes what the row leaves, so a narrow window ends it in an ellipsis and keeps the buttons.
         DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(22, 0, 4, 0), Children = { buttons, outcome, method, title, url } };
         string? methodColour = MethodColour(string.Empty);
@@ -519,7 +519,7 @@ public sealed class EndpointsView : DockPanel
         TextBlock template = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel.SetDock(template, Dock.Left);
         TextBlock kind = new() { VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Margin = new Thickness(8, 0, 4, 0), TextAlignment = TextAlignment.Right, TextTrimming = TextTrimming.CharacterEllipsis };
-        kind.Classes.Add("muted");
+        kind.Classes.Add(StyleClasses.Muted);
         DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(22, 0, 4, 0), Children = { send, method, template, kind } };
         string? methodColour = MethodColour(string.Empty);
         return (line, route =>
@@ -545,7 +545,7 @@ public sealed class EndpointsView : DockPanel
     {
         TextBlock text = new() { Text = method, FontFamily = CodeEditor.CodeFont, FontSize = 11, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(MethodColour(method)));
-        return new Border { Classes = { "tag" }, MinWidth = 52, Padding = new Thickness(4, 1), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
+        return new Border { Classes = { StyleClasses.Tag }, MinWidth = 52, Padding = new Thickness(4, 1), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
     }
 
     /// <summary>The colour a method's tag shows its name in.</summary>

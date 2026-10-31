@@ -103,7 +103,7 @@ public sealed class ProfilerView : DockPanel
     {
         tree = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = rows,
         };
         ReusedRows.Use(tree, Row);
@@ -117,7 +117,7 @@ public sealed class ProfilerView : DockPanel
         TreeKeys.Attach<CallRow>(tree, Toggle, OpenRow);
         spots = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(spots, Spot);
         spots.DoubleTapped += (_, _) =>
@@ -129,13 +129,13 @@ public sealed class ProfilerView : DockPanel
         };
         types = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(types, Allocated);
         types.SelectionChanged += (_, _) => ShowBackTraces();
         backTraces = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             ItemsSource = traces,
         };
         ReusedRows.Use(backTraces, Row);
@@ -156,7 +156,7 @@ public sealed class ProfilerView : DockPanel
         collectionsSummary = new TextBlock { Margin = new Thickness(12, 8), TextWrapping = TextWrapping.Wrap };
         collections = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(collections, CollectionRow);
         garbage = new DockPanel();
@@ -169,7 +169,7 @@ public sealed class ProfilerView : DockPanel
         flameScroll = new ScrollViewer { Content = flame, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         kept = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
         };
         ReusedRows.Use(kept, KeptRow);
         kept.DoubleTapped += (_, _) => OpenKept();
@@ -199,11 +199,11 @@ public sealed class ProfilerView : DockPanel
         placeholder = new TextBlock
         {
             Text = "Profile runs the chosen configuration under the profiler; Get Snapshot shows where its time went",
-            Classes = { "emptyText" },
+            Classes = { StyleClasses.EmptyText },
         };
 
         status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0) };
-        stop = new Button { Name = "ProfilerGetSnapshot", Content = "Get Snapshot", Classes = { "primary" }, IsVisible = false };
+        stop = new Button { Name = "ProfilerGetSnapshot", Content = "Get Snapshot", Classes = { StyleClasses.Primary }, IsVisible = false };
         stop.Click += (_, _) => StopRequested?.Invoke(this, EventArgs.Empty);
         kill = new Button { Content = "Kill", IsVisible = false };
         kill.Click += (_, _) => KillRequested?.Invoke(this, EventArgs.Empty);
@@ -612,7 +612,7 @@ public sealed class ProfilerView : DockPanel
 
     private ToggleButton PageButton(string label)
     {
-        ToggleButton button = new() { Content = label, Classes = { "panelTab" } };
+        ToggleButton button = new() { Content = label, Classes = { StyleClasses.PanelTab } };
         button.Click += (_, _) => ShowPage((ProfilerPage)Array.IndexOf(pages, button));
         return button;
     }

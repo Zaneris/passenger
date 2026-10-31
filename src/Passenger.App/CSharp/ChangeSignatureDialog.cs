@@ -49,7 +49,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
 
         Border tableFrame = new()
         {
-            Classes = { "framed" },
+            Classes = { StyleClasses.Framed },
             ClipToBounds = true,
             Child = new DockPanel
             {
@@ -57,7 +57,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
             },
         };
 
-        Border previewFrame = new() { Classes = { "framed" }, Padding = new Thickness(10, 8), Child = preview };
+        Border previewFrame = new() { Classes = { StyleClasses.Framed }, Padding = new Thickness(10, 8), Child = preview };
         previewFrame.Bind(Border.BackgroundProperty, previewFrame.GetResourceObservable(TokenKeys.Editor_Background));
 
         for (int i = 0; i < signature.Parameters.Count; i++)
@@ -246,7 +246,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
 
     private ParameterRow MakeRow(int from, string modifier, string type, string name, string defaultValue)
     {
-        ComboBox modifiers = new() { Classes = { "cell" }, HorizontalAlignment = HorizontalAlignment.Stretch };
+        ComboBox modifiers = new() { Classes = { StyleClasses.Cell }, HorizontalAlignment = HorizontalAlignment.Stretch };
         bool receiver = signature.IsExtension && from == 0;
         foreach (string choice in receiver ? [modifier] : ModifierChoices.Contains(modifier) ? ModifierChoices : [.. ModifierChoices, modifier])
         {
@@ -283,7 +283,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
         return row;
     }
 
-    private static TextBox Cell(string text) => new() { Classes = { "cell" }, Text = text };
+    private static TextBox Cell(string text) => new() { Classes = { StyleClasses.Cell }, Text = text };
 
     private static T Docked<T>(T control, Dock dock) where T : Control
     {

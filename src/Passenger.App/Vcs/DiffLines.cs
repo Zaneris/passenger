@@ -68,7 +68,7 @@ public static class DiffLines
         status.VerticalAlignment = VerticalAlignment.Center;
         status.Margin = new Thickness(12, 0);
         status.TextTrimming = TextTrimming.CharacterEllipsis;
-        status.Classes.Add("muted");
+        status.Classes.Add(StyleClasses.Muted);
         start.Children.Add(status);
         DockPanel row = new();
         if (end is not null)
@@ -88,7 +88,7 @@ public static class DiffLines
     public static Control Title(string text, int column)
     {
         TextBlock label = new() { Text = text, FontSize = 12, Margin = new Thickness(12, 4), TextTrimming = TextTrimming.CharacterEllipsis };
-        label.Classes.Add("muted");
+        label.Classes.Add(StyleClasses.Muted);
         Grid.SetColumn(label, column);
         return label;
     }

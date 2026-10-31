@@ -31,9 +31,9 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
     {
         this.attempt = attempt;
         Width = PopupFrame.Narrow;
-        name = new TextBox { Classes = { "search" }, Text = initial };
-        problem = new TextBlock { Classes = { "muted" }, FontSize = 12, IsVisible = false, TextWrapping = TextWrapping.Wrap };
-        StackPanel body = new() { Spacing = 8, Children = { new TextBlock { Classes = { "popupTitle" }, Text = title }, name } };
+        name = new TextBox { Classes = { StyleClasses.Search }, Text = initial };
+        problem = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, IsVisible = false, TextWrapping = TextWrapping.Wrap };
+        StackPanel body = new() { Spacing = 8, Children = { new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = title }, name } };
         if (option is { } asked)
         {
             this.option = new CheckBox { Content = asked.Text, IsChecked = asked.On, Focusable = false, FontSize = 12, MinHeight = 0 };
@@ -46,7 +46,7 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
         {
             this.kinds = new ListBox
             {
-                Classes = { "tree" },
+                Classes = { StyleClasses.Tree },
                 Focusable = false,
                 ItemsSource = kinds.Select(k => new StackPanel
                 {
@@ -64,7 +64,7 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
         }
         Content = new Border
         {
-            Classes = { "popup" },
+            Classes = { StyleClasses.Popup },
             Padding = new Thickness(12, 10),
             Child = body,
         };

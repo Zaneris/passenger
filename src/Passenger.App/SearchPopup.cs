@@ -35,16 +35,16 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
         double listHeight = ListHeight)
     {
         Width = width;
-        this.title = new TextBlock { Classes = { "popupTitle" }, Text = title, VerticalAlignment = VerticalAlignment.Center };
-        query = new TextBox { Classes = { "search" }, PlaceholderText = placeholder, Text = initialQuery ?? string.Empty };
+        this.title = new TextBlock { Classes = { StyleClasses.PopupTitle }, Text = title, VerticalAlignment = VerticalAlignment.Center };
+        query = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = placeholder, Text = initialQuery ?? string.Empty };
         results = new ListBox
         {
-            Classes = { "tree" },
+            Classes = { StyleClasses.Tree },
             MaxHeight = listHeight,
             Margin = new Thickness(0, 0, 0, 8),
         };
         ReusedRows.Use(results, Row);
-        empty = new TextBlock { Classes = { "muted" }, Margin = new Thickness(12, 0, 12, 12), IsVisible = false };
+        empty = new TextBlock { Classes = { StyleClasses.Muted }, Margin = new Thickness(12, 0, 12, 12), IsVisible = false };
         results.DoubleTapped += (_, _) => Choose();
         query.TextChanged += (_, _) => QueryChanged();
         query.AddHandler(KeyDownEvent, OnQueryKeyDown, RoutingStrategies.Tunnel);
@@ -61,7 +61,7 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
         StackPanel top = new() { Margin = new Thickness(12, 10, 12, 8), Spacing = 8, Children = { heading, query } };
         DockPanel.SetDock(top, Dock.Top);
         DockPanel.SetDock(empty, Dock.Top);
-        Content = new Border { Classes = { "popup" }, Child = new DockPanel { Children = { top, empty, results } } };
+        Content = new Border { Classes = { StyleClasses.Popup }, Child = new DockPanel { Children = { top, empty, results } } };
         Dispatcher.UIThread.Post(() =>
         {
             query.Focus();

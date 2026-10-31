@@ -396,7 +396,7 @@ public sealed class ProjectLoadTests : IDisposable
         Ui.Click(said);
     }
 
-    private static IEnumerable<Button> Links(Control parent) => Descendants<Button>(parent).Where(b => b.Classes.Contains("link"));
+    private static IEnumerable<Button> Links(Control parent) => Descendants<Button>(parent).Where(b => b.Classes.Contains(StyleClasses.Link));
 
     /// <summary>The words on the window's buttons, the projects' Install, Update, Downgrade and Remove among them.</summary>
     private static List<string> Labels(NuGetView nuget) => [.. Descendants<Button>(nuget).Select(b => b.Content).OfType<string>()];

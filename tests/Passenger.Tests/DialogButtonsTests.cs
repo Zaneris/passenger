@@ -23,7 +23,7 @@ namespace Passenger.Tests;
 public sealed class DialogButtonsTests : IDisposable
 {
     /// <summary>The buttons that read as text, whose words stand at their left as a line of text's do.</summary>
-    private static readonly string[] ReadAsText = ["link", "crumb", "statusItem"];
+    private static readonly string[] ReadAsText = [StyleClasses.Link, StyleClasses.Crumb, StyleClasses.StatusItem];
 
     private readonly string folder = TestFolders.Create("dialog-buttons-");
     private readonly string other = TestFolders.Create("dialog-buttons-other-");
@@ -127,7 +127,7 @@ public sealed class DialogButtonsTests : IDisposable
             Assert.Fail($"{Name(button)} in {title} has three dots, where every label has the one ellipsis, '…'");
         }
 
-        Button[] text = [.. shown.Where(b => b.Content is string && b.Classes.Where(c => !c.StartsWith(':')).All(c => c == "primary"))];
+        Button[] text = [.. shown.Where(b => b.Content is string && b.Classes.Where(c => !c.StartsWith(':')).All(c => c == StyleClasses.Primary))];
         foreach (Button button in text.Skip(1))
         {
             Button first = text[0];
@@ -143,7 +143,7 @@ public sealed class DialogButtonsTests : IDisposable
 
         // A plain button: its own ground (white in light) inside a field's edge.
         Color plain = Token(dialog, TokenKeys.Button);
-        foreach (Button button in text.Where(b => !b.Classes.Contains("primary") && b.IsEffectivelyEnabled))
+        foreach (Button button in text.Where(b => !b.Classes.Contains(StyleClasses.Primary) && b.IsEffectivelyEnabled))
         {
             ContentPresenter frame = button.GetVisualDescendants().OfType<ContentPresenter>().First(p => p.Name == "PART_ContentPresenter");
             Assert.True(frame.Background is ISolidColorBrush ground && ground.Color == plain && frame.BorderThickness.Left > 0,
@@ -152,7 +152,7 @@ public sealed class DialogButtonsTests : IDisposable
 
         // A default button that cannot be used looks disabled, not like the default it would be.
         Color accent = Token(dialog, TokenKeys.Accent);
-        foreach (Button idle in shown.Where(b => (b.IsDefault || b.Classes.Contains("primary")) && !b.IsEffectivelyEnabled))
+        foreach (Button idle in shown.Where(b => (b.IsDefault || b.Classes.Contains(StyleClasses.Primary)) && !b.IsEffectivelyEnabled))
         {
             ContentPresenter frame = idle.GetVisualDescendants().OfType<ContentPresenter>().First(p => p.Name == "PART_ContentPresenter");
             Assert.False(frame.Background is ISolidColorBrush ground && ground.Color == accent,
@@ -163,13 +163,13 @@ public sealed class DialogButtonsTests : IDisposable
         Assert.True(dialog.Background is ISolidColorBrush page && page.Color == Token(dialog, TokenKeys.Panel),
             $"{title}'s page is not a tool window's ground, as every dialog's page is");
         // A dialog's buttons stand on its footer's bar, never straight on its page.
-        foreach (StackPanel footer in dialog.GetVisualDescendants().OfType<StackPanel>().Where(s => s.Classes.Contains("footer") && s.IsEffectivelyVisible))
+        foreach (StackPanel footer in dialog.GetVisualDescendants().OfType<StackPanel>().Where(s => s.Classes.Contains(StyleClasses.Footer) && s.IsEffectivelyVisible))
         {
-            Assert.True(footer.GetVisualAncestors().OfType<Border>().Any(b => b.Classes.Contains("footerBar")),
+            Assert.True(footer.GetVisualAncestors().OfType<Border>().Any(b => b.Classes.Contains(StyleClasses.FooterBar)),
                 $"{title}'s buttons ({string.Join(", ", footer.Children.OfType<Button>().Select(Name))}) stand on its page, not on the footer's bar every dialog has");
         }
         // The footer stands on the frame's ground, told from the page by shade, with no rule between them.
-        foreach (Border bar in dialog.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("footerBar") && b.IsEffectivelyVisible))
+        foreach (Border bar in dialog.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains(StyleClasses.FooterBar) && b.IsEffectivelyVisible))
         {
             Assert.True(bar.BorderThickness == default && bar.Background is ISolidColorBrush ground && ground.Color == Token(dialog, TokenKeys.Frame),
                 $"{title}'s footer is drawn on {(bar.Background as ISolidColorBrush)?.Color} with a rule of {bar.BorderThickness}, where a footer is the frame's ground and no rule");
@@ -177,7 +177,7 @@ public sealed class DialogButtonsTests : IDisposable
         Color editor = Token(dialog, TokenKeys.Editor_Background);
         double area = dialog.Bounds.Width * dialog.Bounds.Height;
         foreach (Border pane in dialog.GetVisualDescendants().OfType<Border>().Where(b => b.IsEffectivelyVisible && b.Background is ISolidColorBrush ground && ground.Color == editor
-            && b.TemplatedParent is null && !b.Classes.Contains("framed") && b.FindAncestorOfType<Passenger.Editor.CodeEditor>() is null))
+            && b.TemplatedParent is null && !b.Classes.Contains(StyleClasses.Framed) && b.FindAncestorOfType<Passenger.Editor.CodeEditor>() is null))
         {
             Assert.True(pane.Bounds.Width * pane.Bounds.Height < area / 3,
                 $"{title} lays a third of its page on the editor's ground, where its page is the chrome");
@@ -206,8 +206,8 @@ public sealed class DialogButtonsTests : IDisposable
         foreach (CheckBox ask in dialog.GetVisualDescendants().OfType<CheckBox>().Where(c => c.IsEffectivelyVisible && c.Content is string words
             && (words.StartsWith("Don't ask", StringComparison.Ordinal) || words.StartsWith("Do not ask", StringComparison.Ordinal))))
         {
-            StackPanel? footer = ask.GetVisualParent() is DockPanel row && row.Classes.Contains("footerRow")
-                ? row.Children.OfType<StackPanel>().FirstOrDefault(s => s.Classes.Contains("footer")) : null;
+            StackPanel? footer = ask.GetVisualParent() is DockPanel row
+                ? row.Children.OfType<StackPanel>().FirstOrDefault(s => s.Classes.Contains(StyleClasses.Footer)) : null;
             Assert.True(footer is not null, $"In {title}, '{ask.Content}' is not in the footer's row beside the buttons, as Rider puts it");
             Rect box = new(ask.TranslatePoint(default, dialog)!.Value, ask.Bounds.Size);
             Rect buttons = new(footer!.TranslatePoint(default, dialog)!.Value, footer.Bounds.Size);

@@ -23,7 +23,7 @@ public sealed class ChangePopup : UserControl
     {
         Before = before;
         this.highlightWords = highlightWords;
-        ToggleButton highlight = new() { Classes = { "option" }, IsChecked = highlightWords, Content = new PathIcon(), Focusable = false, Margin = new Thickness(4, 0, 0, 0) };
+        ToggleButton highlight = new() { Classes = { StyleClasses.Option }, IsChecked = highlightWords, Content = new PathIcon(), Focusable = false, Margin = new Thickness(4, 0, 0, 0) };
         ((PathIcon)highlight.Content).Bind(PathIcon.DataProperty, highlight.GetResourceObservable(IconKeys.Highlight));
         ToolTip.SetTip(highlight, "Highlight Words");
         highlight.IsCheckedChanged += (_, _) =>
@@ -51,11 +51,11 @@ public sealed class ChangePopup : UserControl
         {
             old = new TextBlock { FontFamily = CodeEditor.CodeFont, FontSize = 12, Padding = new Thickness(8, 6) };
             ShowText();
-            Border text = new() { Classes = { "box" }, Child = new ScrollViewer { MaxHeight = 260, MaxWidth = 640, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, Content = old } };
+            Border text = new() { Classes = { StyleClasses.Box }, Child = new ScrollViewer { MaxHeight = 260, MaxWidth = 640, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, Content = old } };
             text.Bind(Border.BackgroundProperty, text.GetResourceObservable(TokenKeys.Diff_Modified));
             content.Children.Add(text);
         }
-        Content = new Border { Classes = { "popup" }, Padding = new Thickness(6), Child = content };
+        Content = new Border { Classes = { StyleClasses.Popup }, Padding = new Thickness(6), Child = content };
     }
 
     /// <summary>The lines the last commit had there, or null for lines that are new.</summary>

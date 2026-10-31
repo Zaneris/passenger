@@ -69,7 +69,7 @@ public sealed class MarkdownPicture : Panel
     {
         File = file;
         this.load = load;
-        Classes.Add("mdPicture");
+        Classes.Add(StyleClasses.MdPicture);
         image = new Image
         {
             Stretch = Stretch.Uniform,
@@ -78,7 +78,7 @@ public sealed class MarkdownPicture : Panel
             IsVisible = false,
         };
         RenderOptions.SetBitmapInterpolationMode(image, BitmapInterpolationMode.HighQuality);
-        alt = new TextBlock { Classes = { "muted" }, Text = words.Length > 0 ? words : Path.GetFileName(file), TextWrapping = TextWrapping.Wrap };
+        alt = new TextBlock { Classes = { StyleClasses.Muted }, Text = words.Length > 0 ? words : Path.GetFileName(file), TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetName(this, alt.Text);
         Children.Add(image);
         Children.Add(alt);
@@ -138,7 +138,7 @@ public sealed class MarkdownCode : Border
     {
         this.code = code;
         this.language = language;
-        Classes.Add("code");
+        Classes.Add(StyleClasses.Code);
         // "=>" as written rather than the font's arrow.
         text = new SelectableTextBlock
         {

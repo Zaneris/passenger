@@ -88,7 +88,7 @@ public sealed class WindowsOnlyProjectsTests : IClassFixture<WindowsOnlyProjects
             MenuItem[] items = [.. chooser.Items.OfType<MenuItem>()];
             Assert.Equal(["Gallery cannot run here: WPF runs only on Windows", "Forms cannot run here: Windows Forms runs only on Windows"],
                 items.Take(2).Select(i => ToolTip.GetTip(i) as string));
-            Assert.True(items.Take(2).All(i => i.Header is StackPanel { Children: [TextBlock { Classes: var named }, TextBlock] } && named.Contains("muted")),
+            Assert.True(items.Take(2).All(i => i.Header is StackPanel { Children: [TextBlock { Classes: var named }, TextBlock] } && named.Contains(StyleClasses.Muted)),
                 "A configuration that cannot run here is listed as one that can, not greyed");
             Ui.Click(items[1]);
             chooser.Close();

@@ -21,7 +21,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private readonly IReadOnlyList<ProjectModel> projects;
     private readonly Action<IReadOnlyList<RunConfiguration>, IReadOnlyList<RunConfiguration>, string?> apply;
     private readonly IReadOnlyList<string> singleFileAppHosts;
-    private readonly ListBox list = new() { Classes = { "tree" } };
+    private readonly ListBox list = new() { Classes = { StyleClasses.Tree } };
     private readonly StackPanel variables = new() { Spacing = 4 };
     private readonly StackPanel linkedAppHosts = new() { Spacing = 4 };
     private readonly Control linkedRow;
@@ -29,10 +29,10 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private readonly CancellationTokenSource aspireLifetime = new();
     private int aspireReading;
     private bool aspireClosed;
-    private readonly TextBlock note = new() { TextWrapping = TextWrapping.Wrap, Classes = { "muted" } };
+    private readonly TextBlock note = new() { TextWrapping = TextWrapping.Wrap, Classes = { StyleClasses.Muted } };
     private readonly TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
     private readonly Control form;
-    private readonly TextBlock nothing = new() { Text = "No configuration is chosen", Classes = { "muted" }, Margin = new Thickness(0, 8) };
+    private readonly TextBlock nothing = new() { Text = "No configuration is chosen", Classes = { StyleClasses.Muted }, Margin = new Thickness(0, 8) };
 
     /// <summary>Each row's label (or a box's own words) with the fields it shows, by the store's names, marked when the
     /// generated configuration chosen has one changed from its source.</summary>
@@ -87,9 +87,9 @@ public sealed class RunConfigurationsDialog : IdeWindow
         };
 
         NameBox = Field();
-        ProjectBox = new ComboBox { Classes = { "form" } };
-        FrameworkBox = new ComboBox { Classes = { "form" } };
-        ProfileBox = new ComboBox { Classes = { "form" } };
+        ProjectBox = new ComboBox { Classes = { StyleClasses.Form } };
+        FrameworkBox = new ComboBox { Classes = { StyleClasses.Form } };
+        ProfileBox = new ComboBox { Classes = { StyleClasses.Form } };
         SaveAsProfileButton = new Button { Name = "SaveAsProfileButton", IsVisible = false };
         SaveAsProfileButton.Click += (_, _) => SaveAsLaunchProfile();
         ReusedRows.Use(ProjectBox, () =>
@@ -144,7 +144,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             Services = [],
         });
         LaunchServiceBox = Field("The first .NET service");
-        ModeBox = new ComboBox { Classes = { "form" }, ItemsSource = (string[])[FastMode, ImagesMode] };
+        ModeBox = new ComboBox { Classes = { StyleClasses.Form }, ItemsSource = (string[])[FastMode, ImagesMode] };
         ToolTip.SetTip(ModeBox, "Fast runs each .NET service in its image's runtime stage with Passenger's build mounted in, so a code change needs no image rebuild; the other builds every image as Compose says");
         TextBlock keepWords = new() { Text = "Keep backing services running after Stop" };
         KeepBackingBox = new CheckBox { Content = keepWords };
@@ -295,7 +295,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     public string Changes => changes.IsVisible ? changesText.Text ?? string.Empty : string.Empty;
 
     /// <summary>The rows (their titles) marked as changed from the chosen generated configuration's source.</summary>
-    public IReadOnlyList<string> Marked => [.. marks.Where(m => m.Label.Classes.Contains("changed") && m.Label.IsEffectivelyVisible).Select(m => m.Title)];
+    public IReadOnlyList<string> Marked => [.. marks.Where(m => m.Label.Classes.Contains(StyleClasses.Changed) && m.Label.IsEffectivelyVisible).Select(m => m.Title)];
 
     public Button AddVariableButton { get; }
 
@@ -925,7 +925,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             }
             if (linkedAppHosts.Children.Count == 0)
             {
-                linkedAppHosts.Children.Add(new TextBlock { Text = "No other AppHosts in this solution", Classes = { "muted" } });
+                linkedAppHosts.Children.Add(new TextBlock { Text = "No other AppHosts in this solution", Classes = { StyleClasses.Muted } });
             }
             IReadOnlyList<string> frameworks = project?.TargetFrameworks ?? [];
             FrameworkBox.ItemsSource = (string[])[frameworks.Count > 0 ? $"Default ({frameworks[0]})" : "Default", .. frameworks];
@@ -1017,7 +1017,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         foreach ((TextBlock label, _, string[] fields) in marks)
         {
             bool marked = fields.Any(changed.Contains);
-            label.Classes.Set("changed", marked);
+            label.Classes.Set(StyleClasses.Changed, marked);
             ToolTip.SetTip(label, marked ? $"Changed here from what its {from} gives" : null);
         }
         changes.IsVisible = changed.Count > 0 || written is not null;
@@ -1099,8 +1099,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private static Control VariablesHeader()
     {
         Grid header = new() { ColumnDefinitions = new ColumnDefinitions("240,8,*") };
-        TextBlock name = new() { Text = "Name", Classes = { "muted" } };
-        TextBlock value = new() { Text = "Value", Classes = { "muted" } };
+        TextBlock name = new() { Text = "Name", Classes = { StyleClasses.Muted } };
+        TextBlock value = new() { Text = "Value", Classes = { StyleClasses.Muted } };
         Grid.SetColumn(value, 2);
         header.Children.Add(name);
         header.Children.Add(value);
@@ -1117,7 +1117,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private Control RowView()
     {
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock from = new() { Classes = { "muted" }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+        TextBlock from = new() { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         ShrinkingRow line = new() { Children = { name, from } };
         return line.Showing<Entry>(entry =>
         {
@@ -1127,8 +1127,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
                 || row.LinkedAppHosts.Any(linked => Core.PathNames.Same(linked, path))));
             name.Text = running switch { 0 => row.Name, 1 => $"{row.Name} (running)", _ => $"{row.Name} ({running} apps running)" };
             bool changed = whyNot is null && entry.IsChanged;
-            name.Classes.Set("muted", whyNot is not null);
-            name.Classes.Set("changed", changed);
+            name.Classes.Set(StyleClasses.Muted, whyNot is not null);
+            name.Classes.Set(StyleClasses.Changed, changed);
             ToolTip.SetTip(line, whyNot is not null ? $"{row.Name} cannot run here: {whyNot}" : changed ? $"{row.Name} is changed here from what its {SourceName(row)} gives" : null);
             from.IsVisible = row.Generated;
             from.Text = !row.Generated ? null : row.Kind switch
@@ -1169,7 +1169,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         return row;
     }
 
-    private static TextBox Field(string? placeholder = null) => new() { Classes = { "search" }, PlaceholderText = placeholder };
+    private static TextBox Field(string? placeholder = null) => new() { Classes = { StyleClasses.Search }, PlaceholderText = placeholder };
 
     private static PathIcon Glyph(string key)
     {

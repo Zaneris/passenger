@@ -321,7 +321,7 @@ public partial class MainWindow
     {
         bool asking = agentQuestions.Count > 0;
         AgentButton.IsVisible = agents > 0 || agentWork.Count > 0 || asking;
-        AgentButton.Classes.Set("asking", asking);
+        AgentButton.Classes.Set(StyleClasses.Asking, asking);
         AgentIcon.IsVisible = asking;
         AgentText.Text = asking ? agentQuestions[^1]
             : agentWork.Count > 0 ? $"Agent: {agentWork[^1]}"

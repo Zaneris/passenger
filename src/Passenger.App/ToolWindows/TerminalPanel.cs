@@ -357,7 +357,7 @@ public sealed class TerminalPanel : DockPanel
         return button.Showing<TerminalTab>(tab =>
         {
             name.Text = tab.Name;
-            name.Classes.Set("muted", tab.HasEnded);
+            name.Classes.Set(StyleClasses.Muted, tab.HasEnded);
             button.IsChecked = tab.IsActive;
         });
     }

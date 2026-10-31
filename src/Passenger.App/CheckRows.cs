@@ -34,7 +34,7 @@ public static class CheckRows
         CheckBox check = Box();
         check.Focusable = false;
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
-        TextBlock detail = new() { Classes = { "muted" }, FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock detail = new() { Classes = { StyleClasses.Muted }, FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Margin = new Thickness(6, 0), Children = { check, name, detail } };
         bool setting = false;
         check.IsCheckedChanged += (_, _) =>
