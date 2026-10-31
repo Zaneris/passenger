@@ -204,10 +204,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   bytes), `SharedNames` (a name read from bytes, made once), `ContentLengthHeader` (every LSP and DAP message's header),
   `RazorFiles` (an `[IdentifierHome]`) and `MSBuildNames` (MSBuild's environment variables too) (compiled into the
   extension and the host; every MSBuild name Passenger writes but those the evaluation's `CarriedProperties` holds,
-  MSBuildNamesTests holding both; a build's and a publish's command line end in `BuildOutput.Tail`), `Sorted` (every
-  search by halving, the key read by a static lambda: never a loop of your own), `ProjectFolders` (a project's own
-  folders, linked into the host), `FrameworkNames`, `PrimitiveTypes` (the one table of primitives; the debugger's
-  element types through `MetadataTypeNames.ElementTypeOf`, a generic name closed through `CSharpTypeNames.Closed`).
+  MSBuildNamesTests holding both; a build's and a publish's command line end in `BuildOutput.Tail`), `JsonMembers` (a
+  member of another program's or a person's JSON read as its kind, refusing another: never a bare
+  `TryGetProperty`/`GetString` on it), `LenientJson` (hand-written JSON), `Sorted` (every search by halving, the key
+  read by a static lambda: never a loop of your own), `ProjectFolders` (a project's own folders, linked into the host),
+  `FrameworkNames`, `PrimitiveTypes` (the one table of primitives; the debugger's element types through
+  `MetadataTypeNames.ElementTypeOf`, a generic name closed through `CSharpTypeNames.Closed`).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
   function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `Outline` (a tree's rows in reading order, kept where
   unchanged), `FileText`, `XmlEntities` (every XML value decoded and escaped, never `SecurityElement.Escape` or a hand
