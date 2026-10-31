@@ -881,16 +881,24 @@ public sealed partial class CodeEditor : Control
 
     private static int Digits(int value) => value < 10 ? 1 : (int)Math.Floor(Math.Log10(value)) + 1;
 
+    /// <summary>A monospaced font's line height at a size and the width of a character, measured over ten as a line of the
+    /// editor is laid out: the cell the editor's columns and the terminal's take.</summary>
+    public static (double LineHeight, double CharWidth) MeasureFont(Typeface typeface, double fontSize)
+    {
+        GenericTextRunProperties props = new(typeface, fontSize);
+        using TextLine probe = TextFormatter.Current.FormatLine(
+            new SingleRun("MMMMMMMMMM", props), 0, double.PositiveInfinity, new LineProperties(props, 4))!;
+        return (probe.Height, probe.WidthIncludingTrailingWhitespace / 10);
+    }
+
     /// <summary>The font's measures at a size: the height of a line and the width of a character,
     /// both whole pixels so lines and columns land on the pixel grid.</summary>
     private readonly record struct Metrics(double LineHeight, double CharWidth, double FontSize)
     {
         public static Metrics Measure(Typeface typeface, double fontSize, double spacing)
         {
-            GenericTextRunProperties props = new(typeface, fontSize);
-            using TextLine probe = TextFormatter.Current.FormatLine(
-                new SingleRun("MMMMMMMMMM", props), 0, double.PositiveInfinity, new LineProperties(props, 4))!;
-            return new Metrics(Math.Ceiling(probe.Height * spacing), probe.WidthIncludingTrailingWhitespace / 10, fontSize);
+            (double height, double charWidth) = MeasureFont(typeface, fontSize);
+            return new Metrics(Math.Ceiling(height * spacing), charWidth, fontSize);
         }
     }
 }

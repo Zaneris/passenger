@@ -12,29 +12,30 @@ public readonly record struct Keystroke(Key Key, KeyModifiers Modifiers)
         Key? key = null;
         foreach (string part in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
-            switch (part.ToLowerInvariant())
+            if (ModifierOf(part) is { } modifier)
             {
-                case "meta" or "cmd":
-                    modifiers |= KeyModifiers.Meta;
-                    break;
-                case "control" or "ctrl":
-                    modifiers |= KeyModifiers.Control;
-                    break;
-                case "alt" or "option":
-                    modifiers |= KeyModifiers.Alt;
-                    break;
-                case "shift":
-                    modifiers |= KeyModifiers.Shift;
-                    break;
-                default:
-                    key = key is null ? ParseKey(part) : throw new FormatException($"'{text}' names two keys");
-                    break;
+                modifiers |= modifier;
+            }
+            else
+            {
+                key = key is null ? ParseKey(part) : throw new FormatException($"'{text}' names two keys");
             }
         }
         return new Keystroke(key ?? throw new FormatException($"'{text}' names no key"), modifiers);
     }
 
     public static Keystroke From(KeyEventArgs e) => new(e.Key, e.KeyModifiers);
+
+    /// <summary>The modifier a word of the notation names ("meta" or "cmd", "control" or "ctrl", "alt" or "option",
+    /// "shift"), or null for another word.</summary>
+    internal static KeyModifiers? ModifierOf(string word) => word.ToLowerInvariant() switch
+    {
+        "meta" or "cmd" => KeyModifiers.Meta,
+        "control" or "ctrl" => KeyModifiers.Control,
+        "alt" or "option" => KeyModifiers.Alt,
+        "shift" => KeyModifiers.Shift,
+        _ => null,
+    };
 
     /// <summary>The modifier the platform's commands take: Cmd on macOS, Ctrl elsewhere.</summary>
     public static KeyModifiers Command => OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
@@ -217,20 +218,11 @@ public readonly record struct MouseShortcut(MouseButton Button, KeyModifiers Mod
         {
             switch (part.ToLowerInvariant())
             {
-                case "meta" or "cmd":
-                    modifiers |= KeyModifiers.Meta;
-                    break;
-                case "control" or "ctrl":
-                    modifiers |= KeyModifiers.Control;
-                    break;
-                case "alt" or "option":
-                    modifiers |= KeyModifiers.Alt;
-                    break;
-                case "shift":
-                    modifiers |= KeyModifiers.Shift;
-                    break;
                 case "doubleclick":
                     clicks = 2;
+                    break;
+                case string word when Keystroke.ModifierOf(word) is { } modifier:
+                    modifiers |= modifier;
                     break;
                 default:
                     button = button is null ? ButtonOf(part) ?? throw new FormatException($"unknown mouse button '{part}'") : throw new FormatException($"'{text}' names two buttons");

@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
@@ -22,8 +21,7 @@ public sealed partial class TerminalView : Control
     public static readonly StyledProperty<double> FontSizeProperty =
         AvaloniaProperty.Register<TerminalView, double>(nameof(FontSize), 13);
 
-    public static readonly StyledProperty<FontFamily> FontFamilyProperty =
-        AvaloniaProperty.Register<TerminalView, FontFamily>(nameof(FontFamily), new FontFamily("avares://Passenger.Editor/Fonts#JetBrains Mono"));
+    public static readonly StyledProperty<FontFamily> FontFamilyProperty = CodeEditor.FontFamilyProperty.AddOwner<TerminalView>();
 
     private const double Pad = 6;
 
@@ -274,10 +272,10 @@ public sealed partial class TerminalView : Control
 
     private void Measure()
     {
-        FormattedText probe = new("MMMMMMMMMM", CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(FontFamily), FontSize, Brushes.Transparent);
-        cellWidth = probe.WidthIncludingTrailingWhitespace / 10;
+        Typeface typeface = new(FontFamily);
+        cellWidth = CodeEditor.MeasureFont(typeface, FontSize).CharWidth;
         cellHeight = Math.Ceiling(FontSize * 1.25);
-        glyphs = new Typeface(FontFamily).GlyphTypeface.CharacterToGlyphMap;
+        glyphs = typeface.GlyphTypeface.CharacterToGlyphMap;
         ForgetDrawings();
     }
 
