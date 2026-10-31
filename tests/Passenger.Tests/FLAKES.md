@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-31
 
+- `FileBasedProgramsTests`' `A_file_of_top_level_statements_alone_with_no_directive_is_a_program_that_completes_runs_and_debugs`,
+  CI Linux x64, run 41154974796 (b628b1f3), report lane (#1046): "dotnet restore …/héllo app.cs exited with code 1: …
+  NU1101: Unable to find package Microsoft.AspNetCore.App.Runtime.linux-x64". Not the accent or the space: a program's
+  Native AOT, on by default, has the SDK infer a self-contained publish for this platform before the test's
+  Directory.Build.targets turns AOT off, so the restore asks for this platform's .NET and ASP.NET Core runtime packs,
+  which the test's empty feed lacks; it passed only where the package cache held both, and CI's held the .NET pack the
+  repository's own restore brings but not ASP.NET Core's. Neither race: **the test**, whose Directory.Build.props now
+  leaves the publish's platform unset (in this commit). It failed so on the Linux VM and on this Mac with a cache
+  lacking ASP.NET Core's pack; after it, 10 of 10 on the VM so, and it passes on this Mac so.
+
 - `FindInFilesScopeTests`' `Changing_the_scope_cannot_replace_files_from_the_previous_search_before_the_next_search_finishes`,
   CI Linux x64, run 41154974796 (b628b1f3), report lane (#1055): "Assert.Equal() Failure: Values differ, Expected: 0,
   Actual: 1". The test asserted that Replace All, pressed as the scope changed to the current file, had asked nothing by

@@ -413,7 +413,8 @@ public sealed class FileBasedProgramsTests : IDisposable
                 </configuration>
                 """);
             Directory.CreateDirectory(Path.Combine(plain, "feed"));
-            TestFolders.Write(plain, "Directory.Build.props", "<Project>\n  <PropertyGroup>\n    <UseArtifactsOutput>true</UseArtifactsOutput>\n  </PropertyGroup>\n</Project>\n");
+            // Native AOT, on for a program by default, has a restore fetch this platform's runtime packs, which the empty feed lacks, before the targets turn it off.
+            TestFolders.Write(plain, "Directory.Build.props", "<Project>\n  <PropertyGroup>\n    <UseArtifactsOutput>true</UseArtifactsOutput>\n    <UseDefaultPublishRuntimeIdentifier>false</UseDefaultPublishRuntimeIdentifier>\n  </PropertyGroup>\n</Project>\n");
             // Native AOT, on for a program by default, would restore its compiler's packages, which the empty feed lacks.
             TestFolders.Write(plain, "Directory.Build.targets", "<Project>\n  <PropertyGroup>\n    <PublishAot>false</PublishAot>\n  </PropertyGroup>\n</Project>\n");
             string program = Path.Combine(plain, "héllo app.cs");
