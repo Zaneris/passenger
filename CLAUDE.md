@@ -352,10 +352,13 @@ Projects in `src/`; `find_symbol` finds the rest:
   Directory.Packages.props, one command of Undo, put back when it fails; credentials only to their feed's host),
   `Workspace` (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`; a version
   written where packages are managed centrally goes through `CentralPackages` (the file, `PropsOf`)),
-  `ShellWords.Quoted` a word for a shell by kind (a dropped path, Settings' agent commands), `Templates` (every `dotnet
-  new` through `ProjectTemplates`, what it writes above the new folder part of its command, `FilesAbove`; a new
-  service's container or Aspire set-up after Create through Add's own actions, `MainWindow.ServiceSetup`), `Updates`
-  (only an installed copy updates itself; What's New from `docs/release-notes/X.Y.Z.md`).
+  `ShellWords.Quoted` a word for a shell by kind (a dropped path, Settings' agent commands), `Templates` (the templates
+  drive what is listed and offered, Passenger's config only layered on: every template `dotnet new` lists, item
+  templates in New Item beside Passenger's own, `OwnTemplates`, one entry each; every parameter a template takes, its
+  ide.host.json's first, one switch shown once, `TemplateOptions`; every `dotnet new` through `ProjectTemplates`, what
+  it writes above the new folder part of its command, `FilesAbove`; a new service's container or Aspire set-up after
+  Create through Add's own actions, `MainWindow.ServiceSetup`), `Updates` (only an installed copy updates itself; What's
+  New from `docs/release-notes/X.Y.Z.md`).
 - **MCP.** `PassengerTools` (every tool, run on the UI thread, answering with what its operation returned), `McpHost`
   (`--mcp FOLDER`, a window's socket, `--mcp-attach` through `McpProxy`), `HeadStart` (an `--mcp` folder's opening
   begun before its window, which its first session takes up), `AgentConnection` (admission and questions). A relay
