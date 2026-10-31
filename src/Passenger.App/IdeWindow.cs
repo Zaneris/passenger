@@ -9,11 +9,18 @@ namespace Passenger.App;
 /// larger than the area, down to its least size, and wholly on it. One shown over an owner (a dialog, a diff, a floating
 /// tool window) fits its owner's screen as it shows, centred over the owner as it asked, kept where it was placed
 /// otherwise; one shown with no owner (a project window, an editor window, a tool window in a window of its own) is
-/// fitted by its opener before it shows (<see cref="FitToScreen"/>, <see cref="FitWithin"/>,
-/// <see cref="FitOver"/>).</summary>
+/// fitted by its opener before it shows (<see cref="FitToScreen"/>, <see cref="FitWithin"/>, <see cref="FitOver"/>).
+/// Fitted before the platform reports its frame, it is fitted again with the frame the platform reports.</summary>
 public abstract class IdeWindow : Window
 {
     private bool fitted;
+
+    /// <summary>Whether the platform has shown the window, so that its frame is the one the platform reports.</summary>
+    private bool opened;
+
+    /// <summary>The fit made with the frame guessed, made again once the window shows and again as the platform first
+    /// reports its frame; null once made with the frame reported.</summary>
+    private Fitting? following;
 
     /// <param name="asks">Whether it asks the person, taking their keys (a dialog, a diff): one an agent's action would open
     /// as it runs is refused, and one work it started opens later comes without the keys (<see cref="AgentAsks.Dialog"/>),
@@ -67,11 +74,41 @@ public abstract class IdeWindow : Window
         }
     }
 
+    /// <summary>Once the window shows, the fit made with the frame guessed is made again with the frame the platform
+    /// reports, or with none where it reports none yet.</summary>
+    protected override void OnOpened(EventArgs e)
+    {
+        opened = true;
+        if (following is { } fitting)
+        {
+            Fit(fitting, ClientSize);
+            // X11's window manager gives the frame only once it has mapped the window: fitted again then.
+            following = FrameSize is null ? fitting : null;
+        }
+        base.OnOpened(e);
+    }
+
+    /// <summary>The platform reports the frame of a window shown with none reported: the window is fitted again with
+    /// it, unless it has been maximized or minimized since.</summary>
+    protected override void OnResized(WindowResizedEventArgs e)
+    {
+        base.OnResized(e);
+        if (opened && following is { } fitting && FrameSize is not null && WindowState == WindowState.Normal)
+        {
+            Fit(fitting, ClientSize);
+        }
+    }
+
     /// <summary>The size the window asks for before it is shown: its Width and Height, else its least.</summary>
     private Size Asked() => new(double.IsNaN(Width) ? MinWidth : Width, double.IsNaN(Height) ? MinHeight : Height);
 
-    private void Fit(PixelRect area, double scaling, PixelRect over, PixelPoint? at, Size wanted)
+    private void Fit(PixelRect area, double scaling, PixelRect over, PixelPoint? at, Size wanted) =>
+        Fit(new Fitting(area, scaling, over, at), wanted);
+
+    private void Fit(Fitting fitting, Size wanted)
     {
+        following = opened ? null : fitting;
+        (PixelRect area, double scaling, PixelRect over, PixelPoint? at) = fitting;
         Size frame = Frame();
         WindowFit.Fitted fit = WindowFit.Within(Box(area), scaling, (wanted.Width, wanted.Height), (MinWidth, MinHeight),
             (frame.Width, frame.Height), Box(over), at is { } place ? (place.X, place.Y) : null);
@@ -96,9 +133,18 @@ public abstract class IdeWindow : Window
     /// before the window is shown, when the frame's own size is not yet known.</summary>
     private static readonly Size SystemFrame = new(16, 40);
 
-    /// <summary>What the window's frame adds round its client area: nothing where its content takes the title bar's
-    /// place.</summary>
-    private Size Frame() => ExtendClientAreaToDecorationsHint ? default : SystemFrame;
+    /// <summary>What the window's frame adds round its client area: once shown, what the platform reports, nothing
+    /// where it reports no frame; before, nothing where its content takes the title bar's place, else the system's
+    /// most.</summary>
+    private Size Frame()
+    {
+        if (!opened)
+        {
+            return ExtendClientAreaToDecorationsHint ? default : SystemFrame;
+        }
+        Size reported = FrameSize ?? ClientSize;
+        return new Size(Math.Max(0, reported.Width - ClientSize.Width), Math.Max(0, reported.Height - ClientSize.Height));
+    }
 
     private static Screen? ScreenOf(Window window) =>
         window.Screens.ScreenFromWindow(window) ?? window.Screens.ScreenFromPoint(window.Position) ?? window.Screens.Primary;
@@ -108,4 +154,8 @@ public abstract class IdeWindow : Window
         new(window.Position, PixelSize.FromSize(window.FrameSize ?? window.ClientSize, window.DesktopScaling));
 
     private static WindowFit.Box Box(PixelRect rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
+
+    /// <summary>What a fit is made within: a working area at its scaling, what the window is centred over, and the
+    /// place it keeps, if any.</summary>
+    private sealed record Fitting(PixelRect Area, double Scaling, PixelRect Over, PixelPoint? At);
 }

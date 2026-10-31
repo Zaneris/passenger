@@ -30,6 +30,19 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-30
 
+- `UiRulesTests`' `A_window_opens_inside_a_small_screens_working_area_centred_and_one_placed_past_its_edge_is_brought_onto_it`,
+  CI Linux, run 41154974796 (b628b1f3), gate (#1044): "A new window opened at 84, 0, 2800, 1580, not centred on the
+  screen's working area 0, 0, 3000, 1660". Since #737 a window is fitted before it shows with room kept for the most a
+  system's frame adds (16 by 40) wherever its content is not the title bar, and that guessed frame is what it centred; on
+  Linux with no desktop named (CI's runners, the VM's runs) the main window keeps the system's title bar, so it centred a
+  frame the headless platform never draws and stood 8 by 20 units off the centre, as any window did whose real frame
+  differs from the guess (a dialog's on macOS, a window manager's on Linux). macOS and Windows merge the main window's
+  title bar, so it guessed no frame there and passed. Neither race: **a bug in the IDE**, met every time: a window
+  fitted before it shows is fitted again once it shows, with the frame the platform reports (none where it reports
+  none), and again as X11's window manager first reports it; the test also opens a window in the system's frame, which
+  failed so on macOS before it (in this commit). It failed on the Linux VM every time before; after it, 10 of 10 there
+  and 10 of 10 on this Mac.
+
 - `HotReloadEditsTests`' `Each_edit_to_a_running_program_applies_as_the_runtime_allows` (chain "bodies of methods, lambdas,
   async methods, records and generics"), this Mac, one of four runs while landing #1020, report lane (#1039): "Waited 90 s
   for the program to print 'lambda captured' once a lambda capturing a new variable applied", its output ending at "pet

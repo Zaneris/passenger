@@ -405,7 +405,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Ui.Settle();
     }
 
-    /// <summary>A window opens inside the working area of a screen smaller than its default size: centred when new; one
+    /// <summary>A window opens inside the working area of a screen smaller than its default size: centred when new, by
+    /// the frame the platform reports, whether its content is the title bar or the system's frame stays round it; one
     /// placed past the area's edge is brought onto it.</summary>
     [Gate]
     [AvaloniaFact]
@@ -414,29 +415,38 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         PixelRect area = new(0, 0, 3000, 1660);
         MainWindow window = new() { Autosaves = false };
         MainWindow placed = new() { Autosaves = false, Width = 2400, Height = 1400, Position = new PixelPoint(2900, 1500) };
+        LargeWindow framed = new() { Width = 2400, Height = 1400 };
         try
         {
             window.FitWithin(area, 2, keepPlace: false);
             window.Show();
             placed.FitWithin(area, 2, keepPlace: true);
             placed.Show();
+            framed.FitWithin(area, 2, keepPlace: false);
+            framed.Show();
             Ui.Settle();
             foreach ((MainWindow shown, string what) in (IEnumerable<(MainWindow, string)>)[(window, "A new window"), (placed, "A window placed past the screen's edge")])
             {
-                PixelRect at = new(shown.Position, PixelSize.FromSize(shown.ClientSize, 2));
+                PixelRect at = Frame(shown);
                 Assert.True(area.Contains(at), $"{what} opened at {at}, {shown.ClientSize} large, past the screen's working area {area}");
                 Assert.True(shown.ClientSize.Width >= MainWindow.SmallestWidth && shown.ClientSize.Height >= MainWindow.SmallestHeight,
                     $"{what} opened {shown.ClientSize} large, under the window's smallest");
             }
-            PixelRect centred = new(window.Position, PixelSize.FromSize(window.ClientSize, 2));
-            Assert.True(Math.Abs(centred.Center.X - area.Center.X) <= 2 && Math.Abs(centred.Center.Y - area.Center.Y) <= 2,
-                $"A new window opened at {centred}, not centred on the screen's working area {area}");
+            foreach ((Window shown, string what) in (IEnumerable<(Window, string)>)[(window, "A new window"), (framed, "A new window in the system's frame")])
+            {
+                PixelRect centred = Frame(shown);
+                Assert.True(area.Contains(centred) && Math.Abs(centred.Center.X - area.Center.X) <= 2 && Math.Abs(centred.Center.Y - area.Center.Y) <= 2,
+                    $"{what} opened at {centred}, not centred on the screen's working area {area}");
+            }
         }
         finally
         {
             window.Close();
             placed.Close();
+            framed.Close();
         }
+
+        static PixelRect Frame(Window shown) => new(shown.Position, PixelSize.FromSize(shown.FrameSize ?? shown.ClientSize, 2));
     }
 
     /// <summary>Every window the IDE opens is an IdeWindow, fitted by one rule to the working area of its owner's screen as it
