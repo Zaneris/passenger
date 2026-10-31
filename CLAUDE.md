@@ -204,23 +204,25 @@ Projects in `src/`; `find_symbol` finds the rest:
   bytes), `SharedNames` (a name read from bytes, made once), `ContentLengthHeader` (every LSP and DAP message's header),
   `RazorFiles` (an `[IdentifierHome]`) and `MSBuildNames` (MSBuild's environment variables too) (compiled into the
   extension and the host; every MSBuild name Passenger writes but those the evaluation's `CarriedProperties` holds,
-  MSBuildNamesTests holding both; a build's and a publish's command line end in `BuildOutput.Tail`), `ProjectFolders` (a
-  project's own folders, linked into the host), `FrameworkNames`, `PrimitiveTypes` (the one table of primitives; the
-  debugger's element types through `MetadataTypeNames.ElementTypeOf`, a generic name closed through
-  `CSharpTypeNames.Closed`).
+  MSBuildNamesTests holding both; a build's and a publish's command line end in `BuildOutput.Tail`), `Sorted` (every
+  search by halving, the key read by a static lambda: never a loop of your own), `ProjectFolders` (a project's own
+  folders, linked into the host), `FrameworkNames`, `PrimitiveTypes` (the one table of primitives; the debugger's
+  element types through `MetadataTypeNames.ElementTypeOf`, a generic name closed through `CSharpTypeNames.Closed`).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
   function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `Outline` (a tree's rows in reading order, kept where
   unchanged), `FileText`, `XmlEntities` (every XML value decoded and escaped, never `SecurityElement.Escape` or a hand
   Replace), `RoslynLines` (Roslyn's line breaks, which `ServerLines` takes), and anchors (`AnchorAt`/`RangeAt`/`MarkAt`,
   `AnchoredList`; moved before `Changed`, each handler isolated): hold a place in the text with one, never your own
   `TextEditing.Map*`.
-- `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets). The gutter's columns
-  but numbers and folds are the App's (`IGutterColumn`), the editor naming no debugger, test or VCS concept
-  (EditorRulesTests); what a file's editors draw is its one `DocumentDecorations`, never fed per split. With soft wrap,
-  an offset becomes a place through `Rows`/`RowSpan` (a place on a line through `WrapOf`), the lines off screen wrapped
-  on the pool (`WrapRest`). Wraps, rows, folds, hints and built lines are runs an edit moves only where it reaches, so a
-  key costs what it changed, not the file's size: keep it so. Row views are carried so too, a highlighter carrying the
-  colours of lines an edit didn't reach (`IHighlighter.Showing`, `KeptColours`).
+- `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets; modifier words read by
+  `Keystroke.ModifierOf`); the terminal takes the editor's font and cell (`CodeEditor.FontFamilyProperty`,
+  `MeasureFont`). The gutter's columns but numbers and folds are the App's (`IGutterColumn`), the editor naming no
+  debugger, test or VCS concept (EditorRulesTests); what a file's editors draw is its one `DocumentDecorations`, never
+  fed per split. With soft wrap, an offset becomes a place through `Rows`/`RowSpan` (a place on a line through
+  `WrapOf`), the lines off screen wrapped on the pool (`WrapRest`). Wraps, rows, folds, hints and built lines are runs
+  an edit moves only where it reaches, so a key costs what it changed, not the file's size: keep it so. Row views are
+  carried so too, a highlighter carrying the colours of lines an edit didn't reach (`IHighlighter.Showing`,
+  `KeptColours`).
 - `Passenger.Languages`: C# coloured by Roslyn's parser in-process (`CSharpHighlighter`, also each open file's one
   syntax service, `OpenDocument.Syntax`: never a fresh parse; every in-process parse takes its options from
   `CSharpParsing`, a folder's file's through `CompilationSymbols`, `EditorArea.ParseOptions`, the XAML core's through
