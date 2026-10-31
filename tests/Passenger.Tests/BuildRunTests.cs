@@ -723,6 +723,37 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>A program run writes characters outside an English Windows' code page (an é, the narrow no-break space
+    /// French groups digits with, a CJK letter) and reads a line typed with them: the Run window shows each as the program
+    /// wrote it, and the program reads each as it was typed, on every system.</summary>
+    [AvaloniaFact]
+    public void A_programs_characters_outside_the_systems_code_page_reach_the_run_window_as_written_and_the_program_as_typed()
+    {
+        Write("src/Hello/Program.cs",
+            "Console.WriteLine(\"caf\\u00e9 1\\u202f234,5 \\u6f22\");\nstring typed = Console.ReadLine() ?? string.Empty;\n"
+            + "Console.WriteLine($\"read {typed} as {string.Join(' ', typed.Select(c => ((int)c).ToString(\"x4\")))}\");\n");
+        MainWindow window = Open();
+        try
+        {
+            window.Perform(AppActions.RunProgram);
+            Ui.WaitFor(() => Output(window).Contains("234,5", StringComparison.Ordinal), "the program to write its line", TimeSpan.FromMinutes(2));
+            Assert.True(Output(window).Contains("caf\u00e9 1\u202f234,5 \u6f22\n", StringComparison.Ordinal),
+                $"The program wrote caf\u00e9 1\u202f234,5 \u6f22 but the Run window shows something else:\n{Output(window)}");
+            Ui.Click(window.BottomPanel.Run.Editor, settle: false);
+            window.KeyTextInput("na\u00efve \u6f22");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to read the line typed and end");
+            Assert.True(Output(window).Contains("read na\u00efve \u6f22 as 006e 0061 00ef 0076 0065 0020 6f22\n", StringComparison.Ordinal),
+                $"na\u00efve \u6f22 was typed but the program read something else:\n{Output(window)}");
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            window.Close();
+        }
+    }
+
     [Gate]
     [AvaloniaFact]
     public void The_projects_chosen_in_the_explorer_build_rebuild_and_clean_on_their_own()

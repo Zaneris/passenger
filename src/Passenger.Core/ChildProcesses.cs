@@ -7,12 +7,12 @@ using System.Text;
 namespace Passenger.Core;
 
 /// <summary>Every program Passenger starts is started here, one way: no shell and no window, an input of its own (never
-/// the IDE's), UTF-8 streams, none of a git hook's repository variables, its folder's PWD as the disk names it, and a
-/// line in the log when it fails or takes a while, or for every one with the debug log on (<see cref="Started"/>,
-/// <see cref="Ended"/>): one the IDE ended itself (<see cref="Kill"/>, <see cref="Ending"/>) did not fail, nor did a
-/// question whose exit code is its answer. None outlives the IDE, however the IDE ends (<see cref="Lifeline"/>). A program
-/// run in the terminal is taken on (<see cref="Adopt"/>), and one that must outlive the IDE starts apart
-/// (<see cref="StartApart"/>).</summary>
+/// the IDE's), UTF-8 streams (on Windows the IDE's console too, in UTF-8: <see cref="SharedConsole"/>), none of a git
+/// hook's repository variables, its folder's PWD as the disk names it, and a line in the log when it fails or takes a
+/// while, or for every one with the debug log on (<see cref="Started"/>, <see cref="Ended"/>): one the IDE ended itself
+/// (<see cref="Kill"/>, <see cref="Ending"/>) did not fail, nor did a question whose exit code is its answer. None
+/// outlives the IDE, however the IDE ends (<see cref="Lifeline"/>). A program run in the terminal is taken on
+/// (<see cref="Adopt"/>), and one that must outlive the IDE starts apart (<see cref="StartApart"/>).</summary>
 public static class ChildProcesses
 {
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
@@ -120,7 +120,8 @@ public static class ChildProcesses
     private static Process Start(ProcessStartInfo start, IReadOnlyCollection<int>? answers)
     {
         start.UseShellExecute = false;
-        start.CreateNoWindow = true;
+        // On Windows, a console of its own, with no window, only where it cannot share the IDE's.
+        start.CreateNoWindow = !OperatingSystem.IsWindows() || !SharedConsole.Ready();
         bool closeInput = !start.RedirectStandardInput;
         start.RedirectStandardInput = true;
         start.StandardInputEncoding ??= Utf8;

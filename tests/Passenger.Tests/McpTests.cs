@@ -491,6 +491,20 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(ran.GetProperty("output").GetString()?.Contains("Hello from helper.cs\n", StringComparison.Ordinal) == true, $"The program's run did not print its greeting: {ran}");
     }
 
+    /// <summary>An agent's own Passenger, which starts with no console, runs a program writing characters outside an English
+    /// Windows' code page (an é, the narrow no-break space French groups digits with, a CJK letter): run's answer has each
+    /// as the program wrote it, on every system.</summary>
+    [Fact]
+    public async Task An_agents_run_of_a_program_writing_characters_outside_the_systems_code_page_answers_each_as_written()
+    {
+        await TakeFolderAsync();
+        Write("Program.cs", "Console.WriteLine(\"caf\\u00e9 1\\u202f234,5 \\u6f22\");\n");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["waitSeconds"] = 60 });
+        Assert.True(ran.GetProperty("output").GetString()?.Contains("caf\u00e9 1\u202f234,5 \u6f22\n", StringComparison.Ordinal) == true,
+            $"The program wrote caf\u00e9 1\u202f234,5 \u6f22 but its run answered something else: {ran.GetProperty("output").GetString()}");
+    }
+
     /// <summary>A run refused for a reason of its own (here a launch profile's command named RetryFailed, which Passenger does
     /// not run) is answered with that reason alone, though the last build's errors are still in Problems; a run refused for
     /// the build it ran failing still names them.</summary>
