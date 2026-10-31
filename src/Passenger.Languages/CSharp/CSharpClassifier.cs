@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.Languages.CSharp;
@@ -192,19 +193,7 @@ internal static class CSharpClassifier
     {
         // A long list's positions are kept by Roslyn (its indexer reads them), a short one's summed: walked from its start.
         int count = trivia.Count;
-        int first = 0;
-        for (int last = count; count > 16 && first < last;)
-        {
-            int middle = (first + last) / 2;
-            if (trivia[middle].FullSpan.End < range.Start)
-            {
-                first = middle + 1;
-            }
-            else
-            {
-                last = middle;
-            }
-        }
+        int first = count > 16 ? Sorted.FirstAtOrAfter(count, trivia, static (list, at) => list[at].FullSpan.End, range.Start) : 0;
         for (int i = first; i < count; i++)
         {
             SyntaxTrivia t = trivia[i];

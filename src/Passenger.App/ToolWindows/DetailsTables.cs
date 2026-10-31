@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
+using Passenger.Editor;
 
 namespace Passenger.App.ToolWindows;
 
@@ -145,7 +146,7 @@ public class DetailsTables : DockPanel
         };
         if (code)
         {
-            words.FontFamily = CodeBlock.Font;
+            words.FontFamily = CodeEditor.CodeFont;
             words.FontSize = 12;
         }
         if (brush is not null)

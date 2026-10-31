@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Navigation;
+using Passenger.Editor;
 
 namespace Passenger.App.ToolWindows;
 
@@ -85,7 +86,7 @@ public sealed class BookmarksView : DockPanel
     private Control Row()
     {
         TextBlock where = new() { Width = 200, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold };
-        TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center, FontFamily = CSharp.Fonts.Mono, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center, FontFamily = CodeEditor.CodeFont, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
         text.Classes.Add("muted");
         // The line takes what the row leaves, so a narrow window ends it in an ellipsis rather than cutting it off.
         DockPanel.SetDock(where, Dock.Left);

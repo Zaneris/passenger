@@ -3,7 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.VisualTree;
-using Passenger.App.CSharp;
+using Passenger.Editor;
 using Passenger.Languages.CSharp;
 
 namespace Passenger.App.Settings;
@@ -132,7 +132,7 @@ public sealed class PostfixTemplatesPane : DockPanel
             Children = { all, new TextBlock { Text = Language, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center } },
         };
         CheckBox on = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
-        TextBlock name = new() { FontFamily = Fonts.Mono, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+        TextBlock name = new() { FontFamily = CodeEditor.CodeFont, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
         TextBlock example = new() { Classes = { "muted" }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         SetDock(on, Dock.Left);
         SetDock(name, Dock.Left);
@@ -173,5 +173,5 @@ public sealed class PostfixTemplatesPane : DockPanel
         });
     }
 
-    private static TextBox Code() => new() { IsReadOnly = true, FontFamily = Fonts.Mono, FontSize = 12.5, Classes = { "search" }, Focusable = false };
+    private static TextBox Code() => new() { IsReadOnly = true, FontFamily = CodeEditor.CodeFont, FontSize = 12.5, Classes = { "search" }, Focusable = false };
 }

@@ -340,8 +340,7 @@ public sealed class FindView : DockPanel
     /// name and count; a usage's line number and code.</summary>
     private Control Row()
     {
-        FontFamily mono = new("avares://Passenger.Editor/Fonts#JetBrains Mono");
-        TextBlock number = new() { MinWidth = 36, FontFamily = mono, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock number = new() { MinWidth = 36, FontFamily = CodeEditor.CodeFont, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         number.Classes.Add("muted");
         RowIcon chevron = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 6, 0) };
         RowIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
@@ -373,7 +372,7 @@ public sealed class FindView : DockPanel
             label.FontWeight = !usage && row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
             if (usage)
             {
-                label.FontFamily = mono;
+                label.FontFamily = CodeEditor.CodeFont;
                 label.FontSize = 12;
             }
             else

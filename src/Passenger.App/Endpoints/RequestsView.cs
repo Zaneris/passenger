@@ -7,6 +7,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.Endpoints;
 
@@ -251,7 +252,7 @@ public sealed class RequestsView : DockPanel
         private readonly Border repeated = Marked(string.Empty, TokenKeys.Warning);
         private readonly TextBlock text = new()
         {
-            FontFamily = CSharp.Fonts.Mono,
+            FontFamily = CodeEditor.CodeFont,
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,

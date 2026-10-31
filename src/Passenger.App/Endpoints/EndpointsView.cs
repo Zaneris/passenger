@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Roslyn.Extension;
 
 namespace Passenger.App.Endpoints;
@@ -542,7 +543,7 @@ public sealed class EndpointsView : DockPanel
     /// <summary>A method's tag, in its method's colour.</summary>
     internal static Border MethodTag(string method)
     {
-        TextBlock text = new() { Text = method, FontFamily = CSharp.Fonts.Mono, FontSize = 11, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock text = new() { Text = method, FontFamily = CodeEditor.CodeFont, FontSize = 11, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(MethodColour(method)));
         return new Border { Classes = { "tag" }, MinWidth = 52, Padding = new Thickness(4, 1), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
     }

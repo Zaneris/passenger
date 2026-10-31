@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Editor;
 
 namespace Passenger.App.Endpoints;
 
@@ -20,7 +21,7 @@ public sealed class ResponseView : DockPanel
         IsReadOnly = true,
         AcceptsReturn = true,
         TextWrapping = TextWrapping.NoWrap,
-        FontFamily = CSharp.Fonts.Mono,
+        FontFamily = CodeEditor.CodeFont,
         FontSize = 12,
         Margin = new Thickness(8, 4, 8, 8),
     };
@@ -108,7 +109,7 @@ public sealed class ResponseView : DockPanel
             PathIcon mark = new() { Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0) };
             mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(result.Passed ? IconKeys.TestPassed : IconKeys.TestFailed));
             Paint(mark, result.Passed ? TokenKeys.Test_Passed : TokenKeys.Test_Failed);
-            TextBlock what = new() { Text = result.Expectation.ToString(), FontFamily = CSharp.Fonts.Mono, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+            TextBlock what = new() { Text = result.Expectation.ToString(), FontFamily = CodeEditor.CodeFont, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
             TextBlock had = new() { Text = $"  got {result.Actual}", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
             Paint(had, TokenKeys.TextMuted);
             // What the answer had takes what the row leaves, so a narrow pane ends it in an ellipsis rather than cutting it.

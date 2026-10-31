@@ -1,11 +1,13 @@
 using System.ComponentModel;
 using System.Globalization;
+using Avalonia.Input;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Passenger.App.Debugging;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Inspector;
 
 namespace Passenger.App.Mcp;
@@ -499,15 +501,20 @@ public sealed partial class PassengerTools
 
     private static List<Modifier>? Modifiers(IReadOnlyList<string>? names) => names is null ? null : [.. names.Select(ModifierNamed)];
 
-    /// <summary>A modifier as an agent names it, or an error naming those there are.</summary>
-    private static Modifier ModifierNamed(string name) => name.Trim().ToLowerInvariant() switch
+    /// <summary>A modifier as an agent names it, a word of the keymap's or primary (the app's command key), or an error
+    /// naming those there are.</summary>
+    private static Modifier ModifierNamed(string name) => name.Trim() switch
     {
-        "ctrl" or "control" => Modifier.Control,
-        "shift" => Modifier.Shift,
-        "alt" or "option" or "opt" => Modifier.Alt,
-        "cmd" or "command" or "meta" or "win" or "super" => Modifier.Meta,
-        "primary" or "cmdorctrl" => Modifier.Primary,
-        _ => throw new ArgumentException($"No modifier '{name}': there are ctrl, shift, alt, cmd (meta) and primary"),
+        string word when word.Equals("primary", StringComparison.OrdinalIgnoreCase) || word.Equals("cmdorctrl", StringComparison.OrdinalIgnoreCase)
+            => Modifier.Primary,
+        string word => Keystroke.ModifierOf(word) switch
+        {
+            KeyModifiers.Control => Modifier.Control,
+            KeyModifiers.Shift => Modifier.Shift,
+            KeyModifiers.Alt => Modifier.Alt,
+            KeyModifiers.Meta => Modifier.Meta,
+            _ => throw new ArgumentException($"No modifier '{name}': there are ctrl, shift, alt, cmd (meta) and primary"),
+        },
     };
 
     /// <summary>Chords as an agent writes them, "ctrl+shift+S Enter", as Avalonia's keys and modifiers.</summary>

@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Languages.CSharp;
 using Passenger.Lsp;
 using Passenger.Text;
@@ -265,7 +266,7 @@ internal sealed partial class CodeActions
             TextBlock code = new()
             {
                 Text = used,
-                FontFamily = Fonts.Mono,
+                FontFamily = CodeEditor.CodeFont,
                 FontSize = 12,
                 Foreground = InfoCard.Brush(TokenKeys.TextMuted),
                 TextTrimming = TextTrimming.CharacterEllipsis,

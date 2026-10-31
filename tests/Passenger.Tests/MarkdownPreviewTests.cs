@@ -123,7 +123,7 @@ public sealed class MarkdownPreviewTests
         Run[] runs = [.. said.Inlines!.OfType<Run>()];
         Assert.True(runs.Any(r => r.Text == "strong words" && r.FontWeight == FontWeight.Bold), "The strong words are not drawn bold");
         Assert.True(runs.Any(r => r.Text == "emphasis" && r.FontStyle == FontStyle.Italic), "The emphasis is not drawn in italics");
-        Assert.True(runs.Any(r => r.Text == "code spans" && r.FontFamily == CodeBlock.Font), "The code span is not drawn in the editor's font");
+        Assert.True(runs.Any(r => r.Text == "code spans" && r.FontFamily == CodeEditor.CodeFont), "The code span is not drawn in the editor's font");
 
         Assert.True(preview.GetLogicalDescendants().OfType<StackPanel>().Any(l => l.Classes.Contains("mdList")
             && l.GetLogicalDescendants().OfType<StackPanel>().Any(inner => inner.Classes.Contains("mdList"))), "The list inside a list is not drawn as one");

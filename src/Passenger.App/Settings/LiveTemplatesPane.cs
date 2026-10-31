@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Passenger.App.CSharp;
+using Passenger.Editor;
 using Passenger.Languages.CSharp;
 
 namespace Passenger.App.Settings;
@@ -79,7 +80,7 @@ public sealed class LiveTemplatesPane : DockPanel
             AcceptsReturn = true,
             AcceptsTab = true,
             TextWrapping = TextWrapping.NoWrap,
-            FontFamily = Fonts.Mono,
+            FontFamily = CodeEditor.CodeFont,
             FontSize = 12.5,
             VerticalContentAlignment = VerticalAlignment.Top,
             Classes = { "search" },

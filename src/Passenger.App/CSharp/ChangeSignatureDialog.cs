@@ -21,7 +21,7 @@ public sealed class ChangeSignatureDialog : RefactoringDialog
     private readonly Func<string, string, IReadOnlyList<ParameterChange>, Task<string?>> make;
     private readonly StackPanel table = new();
     private readonly List<ParameterRow> rows = [];
-    private readonly TextBlock preview = new() { FontFamily = Fonts.Mono, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock preview = new() { FontFamily = CodeEditor.CodeFont, FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private ParameterRow? chosen;
 
     public ChangeSignatureDialog(Signature signature, Func<string, string, IReadOnlyList<ParameterChange>, Task<string?>> make)

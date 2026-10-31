@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Passenger.Core;
 
 namespace Passenger.Text;
 
@@ -87,20 +88,7 @@ public sealed class Outline<T>
             }
             return -1;
         }
-        int low = 0;
-        int high = places.Length;
-        while (low < high)
-        {
-            int middle = (low + high) >>> 1;
-            if (places[middle].First <= line)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
+        int low = Sorted.FirstAfter(places, static p => p.First, line);
         // Where rows nest, the innermost holding the line is the last to start by it or one of that row's parents.
         for (int i = low - 1; i >= 0; i = places[i].Parent)
         {

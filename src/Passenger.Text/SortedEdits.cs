@@ -1,4 +1,5 @@
 using System.Collections;
+using Passenger.Core;
 
 namespace Passenger.Text;
 
@@ -28,26 +29,13 @@ internal sealed class SortedEdits : IReadOnlyList<TextEdit>
 
     /// <summary>An offset carried through the edits: inside a replaced range to its start, or its end when
     /// <paramref name="afterInsertions"/>, which also puts text inserted at it before it. The edits wholly before it
-    /// are a run from the first (their ends never go back), found by halving.</summary>
+    /// are a run from the first, found by halving their ends (which never go back): one ending at the offset is before it
+    /// when it replaced text, an insertion there only <paramref name="afterInsertions"/>, so it counts after a replacement
+    /// ending there.</summary>
     public int Map(int offset, bool afterInsertions)
     {
         int[] before = shifts ??= Shifts(edits);
-        int low = 0;
-        int high = edits.Length;
-        while (low < high)
-        {
-            int middle = (int)((uint)(low + high) >> 1);
-            TextEdit e = edits[middle];
-            int end = e.Start + e.Length;
-            if (end < offset || (end == offset && (e.Length > 0 || afterInsertions)))
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
+        int low = Sorted.FirstAfter(edits, static e => (e.End, e.Length == 0 ? 1 : 0), (offset, afterInsertions ? 1 : 0));
         int shift = before[low];
         if (low < edits.Length)
         {

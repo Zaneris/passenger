@@ -26,13 +26,14 @@ public readonly record struct Keystroke(Key Key, KeyModifiers Modifiers)
 
     public static Keystroke From(KeyEventArgs e) => new(e.Key, e.KeyModifiers);
 
-    /// <summary>The modifier a word of the notation names ("meta" or "cmd", "control" or "ctrl", "alt" or "option",
-    /// "shift"), or null for another word.</summary>
-    internal static KeyModifiers? ModifierOf(string word) => word.ToLowerInvariant() switch
+    /// <summary>The modifier a word of the notation names, in any case ("meta", "cmd", "command", "win" or "super";
+    /// "control" or "ctrl"; "alt", "option" or "opt"; "shift"), or null for another word: a keymap's words and an
+    /// agent's alike.</summary>
+    public static KeyModifiers? ModifierOf(string word) => word.ToLowerInvariant() switch
     {
-        "meta" or "cmd" => KeyModifiers.Meta,
+        "meta" or "cmd" or "command" or "win" or "super" => KeyModifiers.Meta,
         "control" or "ctrl" => KeyModifiers.Control,
-        "alt" or "option" => KeyModifiers.Alt,
+        "alt" or "option" or "opt" => KeyModifiers.Alt,
         "shift" => KeyModifiers.Shift,
         _ => null,
     };

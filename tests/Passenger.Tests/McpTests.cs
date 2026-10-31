@@ -73,6 +73,26 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(run.IsError == true && Text(run).Contains(Missing, StringComparison.Ordinal), $"run without the SDK answered: {Text(run)}");
     }
 
+    /// <summary>An agent holds modifiers by the keymap's words and the aliases agents write (command, opt, win, super), in
+    /// any case, and primary; a word of none is refused naming those there are, before any key is pressed.</summary>
+    [Fact]
+    public async Task An_agents_modifiers_are_the_keymaps_words_and_their_aliases_and_a_word_of_none_is_refused_naming_them()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-keys-"));
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        // F24, which nothing binds, so each chord is read and pressed and nothing runs.
+        foreach (string chord in new[] { "ctrl+shift+F24", "Control+Option+F24", "cmd+opt+F24", "command+alt+F24", "meta+win+F24", "SUPER+primary+F24", "cmdorctrl+F24" })
+        {
+            CallToolResult pressed = await Result(client, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = chord });
+            Assert.True(pressed.IsError != true, $"app_key {chord} was refused: {Text(pressed)}");
+        }
+        CallToolResult refused = await Result(client, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "hyper+F24" });
+        Assert.True(refused.IsError == true && Text(refused).Contains("No modifier 'hyper': there are ctrl, shift, alt, cmd (meta) and primary", StringComparison.Ordinal),
+            $"app_key with a modifier of no name answered: {Text(refused)}");
+    }
+
     /// <summary>A folder whose .slnx does not read: workspace names it with where its reader stopped and why, and no
     /// solution open.</summary>
     [Fact]

@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Passenger.Editor;
 using Passenger.Profiler;
 using Passenger.Core;
 using Passenger.App.ToolWindows;
@@ -716,7 +717,7 @@ public sealed class ProfilerView : DockPanel
     /// <summary>Words in the code font, at the size of a row's numbers.</summary>
     private static TextBlock Mono(TextBlock block)
     {
-        block.FontFamily = CSharp.Fonts.Mono;
+        block.FontFamily = CodeEditor.CodeFont;
         block.FontSize = 12;
         return block;
     }

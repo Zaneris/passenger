@@ -81,7 +81,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         query = new TextBox { Classes = { "search" }, PlaceholderText = "Text to find", Text = initial ?? string.Empty };
         matchCase = Option(OptionGlyph(IconKeys.MatchCase), "Match case (Alt+C)");
         words = Option(OptionGlyph(IconKeys.WholeWord), "Words (Alt+O)");
-        regex = Option(new TextBlock { Text = ".*", FontFamily = CSharp.Fonts.Mono, FontWeight = FontWeight.Bold, FontSize = 12 }, "Regex (Alt+X)");
+        regex = Option(new TextBlock { Text = ".*", FontFamily = CodeEditor.CodeFont, FontWeight = FontWeight.Bold, FontSize = 12 }, "Regex (Alt+X)");
         DockPanel find = new() { Margin = new Thickness(10, 0, 10, 6) };
         StackPanel toggles = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 0, 0, 0), Children = { matchCase, words, regex } };
         DockPanel.SetDock(toggles, Dock.Right);
@@ -595,7 +595,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         {
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            FontFamily = CSharp.Fonts.Mono,
+            FontFamily = CodeEditor.CodeFont,
             FontSize = 12,
             FontFeatures = CSharp.Fonts.Features(ligatures),
             Inlines = [before, matched, after],

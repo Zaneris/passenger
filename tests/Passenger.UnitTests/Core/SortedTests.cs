@@ -30,6 +30,7 @@ public class SortedTests
                 Assert.True(after == Sorted.FirstAfter(items, static i => i.Key, value), $"The first item after {where} in a span is wrong");
                 Assert.True(atOrAfter == Sorted.FirstAtOrAfter(list, static i => i.Key, value), $"The first item at or after {where} in a list is wrong");
                 Assert.True(after == Sorted.FirstAfter(list, static i => i.Key, value), $"The first item after {where} in a list is wrong");
+                Assert.True(atOrAfter == Sorted.FirstAtOrAfter(keys.Length, keys, static (all, at) => all[at], value), $"The first place at or after {where} by its key is wrong, so a comment on screen is passed over");
                 Assert.True(after == Sorted.FirstAfter(keys.Length, keys, static (all, at) => all[at], value), $"The first place after {where} by its key is wrong");
             }
         }

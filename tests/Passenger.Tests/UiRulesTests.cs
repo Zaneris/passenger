@@ -1932,7 +1932,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 bool docked = own.Contains("Dock.Top", StringComparison.Ordinal);
                 bool high = Regex.IsMatch(own, @"\bHeight\s*=\s*\d");
                 bool top = (own.Contains("Thickness(0, 0, 0, 1)", StringComparison.Ordinal) && (high || (docked && !own.Contains("Padding", StringComparison.Ordinal))))
-                    || (docked && high && !DiffsBar(path));
+                    || (docked && high);
                 bool side = own.Contains("Dock.Left", StringComparison.Ordinal) && narrow
                     && (own.Contains("Thickness(0, 0, 1, 0)", StringComparison.Ordinal) || (width.Success && own.Contains("Child", StringComparison.Ordinal)));
                 if (top || side)
@@ -1947,9 +1947,6 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
         Assert.True(found.Count == 0, $"{found.Count} tool window bars are built by hand, so their heights, widths and rules drift apart: make each with "
             + $"ToolBars.Top or ToolBars.Side (ToolBars.OverEditor over an editor, Banner for a line of words on the banner's tint):\n{string.Join("\n", found)}");
-
-        // The diff window's bar over its two editors, a height of its own, not yet ToolBars.OverEditor.
-        static bool DiffsBar(string path) => path.EndsWith("Vcs/DiffLines.cs", StringComparison.Ordinal);
     }
 
     /// <summary>A table's column titles are one piece, ColumnTitles, so every table's are one size and height over one rule:

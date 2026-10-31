@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:editor="using:Passenger.Editor"
              x:Class="Passenger.App.Editors.FindBar">
     <!-- The find bar: across the top of the editor, the query with its toggles inside the field,
          the count and the arrows beside it, the replace row under it when replacing. On a tool window's ground, told
@@ -16,7 +17,7 @@
                         <PathIcon Data="{StaticResource Icon.WholeWord}" />
                     </ToggleButton>
                     <ToggleButton Name="UseRegex" Classes="option" ToolTip.Tip="Regex">
-                        <TextBlock Text=".*" FontFamily="avares://Passenger.Editor/Fonts#JetBrains Mono" FontWeight="Bold" FontSize="12" />
+                        <TextBlock Text=".*" FontFamily="{x:Static editor:CodeEditor.CodeFont}" FontWeight="Bold" FontSize="12" />
                     </ToggleButton>
                 </StackPanel>
             </Panel>

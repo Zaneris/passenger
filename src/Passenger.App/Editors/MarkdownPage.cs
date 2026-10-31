@@ -142,7 +142,7 @@ public sealed class MarkdownCode : Border
         // "=>" as written rather than the font's arrow.
         text = new SelectableTextBlock
         {
-            FontFamily = CodeBlock.Font,
+            FontFamily = CodeEditor.CodeFont,
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             FontFeatures = [new FontFeature { Tag = "calt", Value = 0 }, new FontFeature { Tag = "liga", Value = 0 }],

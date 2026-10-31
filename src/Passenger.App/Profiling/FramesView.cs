@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Passenger.Editor;
 using Passenger.Profiler;
 using Passenger.Core;
 
@@ -257,7 +258,7 @@ public sealed class FramesView : DockPanel
     }
 
     private static TextBlock Number() =>
-        new() { FontFamily = CSharp.Fonts.Mono, FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        new() { FontFamily = CodeEditor.CodeFont, FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
 
     /// <summary>A number in its cell, muted where it is nothing.</summary>
     private static void Put(TextBlock cell, string text)

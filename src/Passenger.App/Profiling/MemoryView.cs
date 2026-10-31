@@ -8,6 +8,7 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Profiler;
 
 namespace Passenger.App.Profiling;
@@ -158,7 +159,7 @@ public sealed class MemoryView : DockPanel
         objects = List(() =>
         {
             Avalonia.Controls.Documents.Run type = new();
-            Avalonia.Controls.Documents.Run address = new() { FontFamily = CSharp.Fonts.Mono, FontSize = 12 };
+            Avalonia.Controls.Documents.Run address = new() { FontFamily = CodeEditor.CodeFont, FontSize = 12 };
             TextBlock name = Cell();
             address.Bind(Avalonia.Controls.Documents.TextElement.ForegroundProperty, name.GetResourceObservable(TokenKeys.TextMuted));
             // An object: its type, then its address in the code font, muted.
@@ -724,7 +725,7 @@ public sealed class MemoryView : DockPanel
         TextBlock[] cells = new TextBlock[count];
         for (int i = 0; i < count; i++)
         {
-            cells[i] = new TextBlock { FontFamily = CSharp.Fonts.Mono, FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            cells[i] = new TextBlock { FontFamily = CodeEditor.CodeFont, FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         }
         return cells;
     }

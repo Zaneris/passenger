@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App.Tables;
@@ -36,9 +37,8 @@ public sealed class CellGrid : Control
     /// <summary>How many laid-out texts are kept: some screens' worth, after which they are laid out afresh.</summary>
     private const int KeptTexts = 8192;
 
-    private static readonly FontFamily Mono = new("avares://Passenger.Editor/Fonts#JetBrains Mono");
-    private static readonly Typeface Plain = new(Mono);
-    private static readonly Typeface Bold = new(Mono, FontStyle.Normal, FontWeight.SemiBold);
+    private static readonly Typeface Plain = new(CodeEditor.CodeFont);
+    private static readonly Typeface Bold = new(CodeEditor.CodeFont, FontStyle.Normal, FontWeight.SemiBold);
     private static readonly Cursor SizeColumn = new(StandardCursorType.SizeWestEast);
 
     private readonly ScrollBar vertical = new() { Orientation = Orientation.Vertical, AllowAutoHide = true };
@@ -84,7 +84,7 @@ public sealed class CellGrid : Control
             ShowMenu(e.TryGetPosition(this, out Point at) ? at : null);
             e.Handled = true;
         };
-        charWidth = Measure("MMMMMMMMMM", Plain, null).WidthIncludingTrailingWhitespace / 10;
+        charWidth = CodeEditor.MeasureFont(Plain, FontSize).CharWidth;
     }
 
     /// <summary>The cells' menu while it is open.</summary>
@@ -313,8 +313,7 @@ public sealed class CellGrid : Control
     /// <summary>The column whose span holds an x from the first column's left edge, or the last when past it.</summary>
     private int ColumnAt(double x)
     {
-        int found = Array.BinarySearch(lefts, x);
-        int column = found >= 0 ? found : ~found - 1;
+        int column = Sorted.FirstAfter(lefts, x) - 1;
         return Math.Clamp(column, 0, Math.Max(0, widths.Length - 1));
     }
 
@@ -736,16 +735,13 @@ public sealed class CellGrid : Control
             texts[key] = null;
             return null;
         }
-        FormattedText text = Measure(shown, typeface, brush);
+        FormattedText text = new(shown, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, FontSize, brush);
         text.MaxTextWidth = Math.Max(1, width - 2 * Pad);
         text.MaxLineCount = 1;
         text.Trimming = TextTrimming.CharacterEllipsis;
         texts[key] = text;
         return text;
     }
-
-    private static FormattedText Measure(string text, Typeface typeface, IBrush? brush) =>
-        new(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, FontSize, brush);
 
     /// <summary>The theme's brushes the table draws with, read once per look.</summary>
     private sealed record Palette(IBrush Background, IBrush Text, IBrush Number, IBrush Header, IBrush HeaderText, IBrush HeaderChosen,

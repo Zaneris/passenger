@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.App.ToolWindows;
 using Passenger.Editor;
 
 namespace Passenger.App.Vcs;
@@ -78,10 +79,7 @@ public static class DiffLines
             row.Children.Add(end);
         }
         row.Children.Add(start);
-        // A tool window's ground over the editors', told apart by shade.
-        Border bar = new() { [DockPanel.DockProperty] = Dock.Top, Height = 34, Child = row };
-        bar.Bind(Border.BackgroundProperty, bar.GetResourceObservable(TokenKeys.Panel));
-        return bar;
+        return ToolBars.OverEditor(row);
 
         static string Keys(string shown) => OperatingSystem.IsMacOS() ? shown : $"{shown}, {shown.Replace("F7", "F8", StringComparison.Ordinal)}";
     }

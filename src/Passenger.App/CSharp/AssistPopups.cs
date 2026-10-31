@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Passenger.Editor;
 
 namespace Passenger.App.CSharp;
 
@@ -94,7 +95,7 @@ internal sealed partial class InfoCard : Border, IHoverCard
     public void AddCode(string code) => parts.Children.Add(new TextBlock
     {
         Text = code,
-        FontFamily = Fonts.Mono,
+        FontFamily = CodeEditor.CodeFont,
         FontFeatures = Fonts.NoLigatures,
         FontSize = 12.5,
         TextWrapping = TextWrapping.Wrap,
@@ -359,7 +360,7 @@ internal sealed class CompletionRowView : DockPanel
         };
         label = new TextBlock
         {
-            FontFamily = Fonts.Mono,
+            FontFamily = CodeEditor.CodeFont,
             FontFeatures = Fonts.NoLigatures,
             FontSize = 12.5,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -462,7 +463,7 @@ internal sealed class ChoicePopup : Border
     /// <summary>A choice's row: its digit when the list has them, its words, and its detail muted, in code's font for code.</summary>
     private static Control ChoiceRow(bool numbered)
     {
-        TextBlock digit = new() { FontFamily = Fonts.Mono, Width = 10, IsVisible = numbered, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock digit = new() { FontFamily = CodeEditor.CodeFont, Width = 10, IsVisible = numbered, VerticalAlignment = VerticalAlignment.Center };
         TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new() { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 460, VerticalAlignment = VerticalAlignment.Center };
         StackPanel row = new() { Orientation = Orientation.Horizontal, Spacing = 10, Height = ListRow.Height, Children = { digit, text, detail } };
@@ -473,7 +474,7 @@ internal sealed class ChoicePopup : Border
             text.Text = choice.Text;
             detail.Text = choice.Detail;
             detail.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
-            detail.FontFamily = choice.DetailIsCode ? Fonts.Mono : FontFamily.Default;
+            detail.FontFamily = choice.DetailIsCode ? CodeEditor.CodeFont : FontFamily.Default;
         });
     }
 
@@ -513,7 +514,7 @@ internal sealed class RenameBox : Border
     {
         Classes.Add("popup");
         Padding = new Thickness(8, 6);
-        name = new TextBox { Text = current, Classes = { "search" }, MinWidth = 220, FontFamily = Fonts.Mono };
+        name = new TextBox { Text = current, Classes = { "search" }, MinWidth = 220, FontFamily = CodeEditor.CodeFont };
         body = new StackPanel
         {
             Spacing = 4,
@@ -579,8 +580,6 @@ internal sealed class RenameBox : Border
 
 internal static class Fonts
 {
-    public static readonly FontFamily Mono = new("avares://Passenger.Editor/Fonts#JetBrains Mono");
-
     /// <summary>Code as the editor draws it by default, its characters each its own: JetBrains Mono would join "&lt;&gt;" into
     /// a diamond and "=>" into an arrow.</summary>
     public static readonly FontFeatureCollection NoLigatures = [new FontFeature { Tag = "calt", Value = 0 }, new FontFeature { Tag = "liga", Value = 0 }];

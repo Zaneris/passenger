@@ -30,9 +30,16 @@ public static class Sorted
         where T : IComparable<T> => Halve(new SpanValues<T>(values, value, past: true));
 
     /// <summary>The first of the places 0 to <paramref name="count"/> whose key, read from <paramref name="state"/> at the
-    /// place, is after <paramref name="value"/>: for keys no list holds.</summary>
+    /// place, is at or after <paramref name="value"/>: for keys no list holds, or a struct's list that an interface would
+    /// box.</summary>
+    public static int FirstAtOrAfter<TState, TKey>(int count, TState state, Func<TState, int, TKey> keyAt, TKey value)
+        where TKey : IComparable<TKey> => Halve(new StateKeys<TState, TKey>(count, state, keyAt, value, past: false));
+
+    /// <summary>The first of the places 0 to <paramref name="count"/> whose key, read from <paramref name="state"/> at the
+    /// place, is after <paramref name="value"/>: for keys no list holds, or a struct's list that an interface would
+    /// box.</summary>
     public static int FirstAfter<TState, TKey>(int count, TState state, Func<TState, int, TKey> keyAt, TKey value)
-        where TKey : IComparable<TKey> => Halve(new StateKeys<TState, TKey>(count, state, keyAt, value));
+        where TKey : IComparable<TKey> => Halve(new StateKeys<TState, TKey>(count, state, keyAt, value, past: true));
 
     private static int Halve<TProbe>(scoped in TProbe probe)
         where TProbe : IProbe, allows ref struct
@@ -90,12 +97,12 @@ public static class Sorted
         public bool Before(int index) => Ahead(values[index].CompareTo(value), past);
     }
 
-    private readonly struct StateKeys<TState, TKey>(int count, TState state, Func<TState, int, TKey> keyAt, TKey value) : IProbe
+    private readonly struct StateKeys<TState, TKey>(int count, TState state, Func<TState, int, TKey> keyAt, TKey value, bool past) : IProbe
         where TKey : IComparable<TKey>
     {
         public int Count => count;
 
-        public bool Before(int index) => Ahead(keyAt(state, index).CompareTo(value), past: true);
+        public bool Before(int index) => Ahead(keyAt(state, index).CompareTo(value), past);
     }
 
     /// <summary>Whether a key that compares so with the value comes before the answer: below it, or with

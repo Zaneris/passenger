@@ -4,6 +4,7 @@ using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Editor;
 using Passenger.Text;
 
 namespace Passenger.App.Vcs;
@@ -48,7 +49,7 @@ public sealed class ChangePopup : UserControl
         StackPanel content = new() { Spacing = 6, Children = { tools } };
         if (before is { Length: > 0 })
         {
-            old = new TextBlock { FontFamily = CSharp.Fonts.Mono, FontSize = 12, Padding = new Thickness(8, 6) };
+            old = new TextBlock { FontFamily = CodeEditor.CodeFont, FontSize = 12, Padding = new Thickness(8, 6) };
             ShowText();
             Border text = new() { Classes = { "box" }, Child = new ScrollViewer { MaxHeight = 260, MaxWidth = 640, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, Content = old } };
             text.Bind(Border.BackgroundProperty, text.GetResourceObservable(TokenKeys.Diff_Modified));

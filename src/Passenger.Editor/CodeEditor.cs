@@ -16,6 +16,10 @@ namespace Passenger.Editor;
 /// line it changed.</summary>
 public sealed partial class CodeEditor : Control
 {
+    /// <summary>The code font, JetBrains Mono: the editor's and the terminal's, and code's wherever the window shows
+    /// it.</summary>
+    public static readonly FontFamily CodeFont = new("avares://Passenger.Editor/Fonts#JetBrains Mono");
+
     public static readonly StyledProperty<double> FontSizeProperty =
         AvaloniaProperty.Register<CodeEditor, double>(nameof(FontSize), 13);
 
@@ -23,7 +27,7 @@ public sealed partial class CodeEditor : Control
         AvaloniaProperty.Register<CodeEditor, double>(nameof(LineSpacing), 1.2);
 
     public static readonly StyledProperty<FontFamily> FontFamilyProperty =
-        AvaloniaProperty.Register<CodeEditor, FontFamily>(nameof(FontFamily), new FontFamily("avares://Passenger.Editor/Fonts#JetBrains Mono"));
+        AvaloniaProperty.Register<CodeEditor, FontFamily>(nameof(FontFamily), CodeFont);
 
     /// <summary>Space between the gutter's edge and the line numbers, and after them.</summary>
     private const double GutterPadLeft = 14;

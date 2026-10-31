@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Editor;
 
 namespace Passenger.App;
 
@@ -31,7 +32,7 @@ public sealed class ErrorsPopup : UserControl
             TextWrapping = TextWrapping.NoWrap,
             AcceptsReturn = true,
             Height = 220,
-            FontFamily = new FontFamily("avares://Passenger.Editor/Fonts#JetBrains Mono"),
+            FontFamily = CodeEditor.CodeFont,
             FontSize = 11.5,
         };
         list.SelectionChanged += (_, _) =>

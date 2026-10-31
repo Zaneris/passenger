@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Media;
+using Passenger.Editor;
 
 namespace Passenger.App;
 
@@ -7,11 +8,9 @@ namespace Passenger.App;
 /// font on its ground, in Shell.axaml's Border.code frame, selectable and wrapped rather than cut.</summary>
 public static class CodeBlock
 {
-    public static readonly FontFamily Font = new("avares://Passenger.Editor/Fonts#JetBrains Mono");
-
     public static Border Of(string text) => new()
     {
         Classes = { "code" },
-        Child = new SelectableTextBlock { Text = text, FontFamily = Font, FontSize = 12, TextWrapping = TextWrapping.Wrap },
+        Child = new SelectableTextBlock { Text = text, FontFamily = CodeEditor.CodeFont, FontSize = 12, TextWrapping = TextWrapping.Wrap },
     };
 }

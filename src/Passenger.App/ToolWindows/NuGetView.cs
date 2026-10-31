@@ -119,7 +119,7 @@ public sealed class NuGetView : DockPanel
         {
             IsReadOnly = true,
             AcceptsReturn = true,
-            FontFamily = CSharp.Fonts.Mono,
+            FontFamily = CodeEditor.CodeFont,
             FontSize = 11,
             Height = 90,
             BorderThickness = new Thickness(0, 1, 0, 0),

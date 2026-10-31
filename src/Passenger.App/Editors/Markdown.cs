@@ -8,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
+using Passenger.Editor;
 
 namespace Passenger.App.Editors;
 
@@ -866,7 +867,7 @@ public sealed class MarkdownText : SelectableTextBlock
         }
         if (code)
         {
-            run.FontFamily = CodeBlock.Font;
+            run.FontFamily = CodeEditor.CodeFont;
             run.Bind(TextElement.BackgroundProperty, this.GetResourceObservable(TokenKeys.Hover));
         }
         if (link is not null)

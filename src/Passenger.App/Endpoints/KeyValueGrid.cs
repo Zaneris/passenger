@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Passenger.Editor;
 
 namespace Passenger.App.Endpoints;
 
@@ -72,8 +73,8 @@ public sealed class KeyValueGrid : Border
     private Row Add(bool on, string key, string value)
     {
         CheckBox check = new() { IsChecked = on, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MinWidth = 0 };
-        TextBox keyBox = new() { Classes = { "cell" }, Text = key, FontFamily = CSharp.Fonts.Mono, FontSize = 12 };
-        TextBox valueBox = new() { Classes = { "cell" }, Text = value, FontFamily = CSharp.Fonts.Mono, FontSize = 12 };
+        TextBox keyBox = new() { Classes = { "cell" }, Text = key, FontFamily = CodeEditor.CodeFont, FontSize = 12 };
+        TextBox valueBox = new() { Classes = { "cell" }, Text = value, FontFamily = CodeEditor.CodeFont, FontSize = 12 };
         Button remove = ToolButtons.Of(IconKeys.Close, "Remove");
         remove.VerticalAlignment = VerticalAlignment.Center;
         ((PathIcon)remove.Content!).Classes.Add("small");
