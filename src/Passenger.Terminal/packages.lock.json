@@ -58,14 +58,14 @@
         "type": "Project",
         "dependencies": {
           "Avalonia": "[12.1.4, )",
-          "Passenger.Core": "[0.2.2, )",
-          "Passenger.Text": "[0.2.2, )"
+          "Passenger.Core": "[0.2.3, )",
+          "Passenger.Text": "[0.2.3, )"
         }
       },
       "passenger.text": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.2.2, )"
+          "Passenger.Core": "[0.2.3, )"
         }
       },
       "Microsoft.Diagnostics.NETCore.Client": {

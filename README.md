@@ -7,7 +7,7 @@ Windows, macOS and Linux ([how to install it there](https://passenger-ide.net/li
 <p align="center">
   <a href="https://passenger-ide.net">Website</a> •
   <a href="https://passenger-ide.net/#download">Download</a> •
-  <a href="https://github.com/Zaneris/passenger/releases/tag/v0.2.2">What's new in 0.2.2</a> •
+  <a href="https://github.com/Zaneris/passenger/releases/tag/v0.2.3">What's new in 0.2.3</a> •
   <a href="#what-it-does">What it does</a> •
   <a href="#your-coding-agent-using-the-ide-as-you-do">Your coding agent</a> •
   <a href="#building">Building</a> •
@@ -52,8 +52,9 @@ them. The pictures here are of sample projects committed to this repository, in 
 
 ### Containers and Docker Compose
 
-A container is one more place a .NET service runs, with nothing to set up beyond a Dockerfile or a compose file.
-Passenger works through your own `docker` command and whatever its context reaches: Docker Desktop, Colima, OrbStack,
+A container is one more place a .NET service runs, with nothing to set up beyond a Dockerfile or a compose file, and
+New Solution and New Project write those for a new web, API, worker, Blazor or gRPC service, Aspire's AppHost too,
+launch profiles included, ready to Run or Debug. Passenger works through your own `docker` command and whatever its context reaches: Docker Desktop, Colima, OrbStack,
 Rancher Desktop, Podman or a remote engine.
 
 Each compose file (with its override), each project with a Dockerfile or that asks the .NET SDK for its image, and each
