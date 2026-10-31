@@ -96,10 +96,11 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
 - **Colours are tokens** (`Passenger.*` in `Theme/Tokens.axaml`), given in every theme (dark and light, `Harbour.axaml`
   and each look `just themes` writes); Fluent's keys are mapped once in `Theme/FluentKeys.axaml`. UiRulesTests fails on a
   colour or non-zero CornerRadius written outside `Theme/` (but the content's own) and on an unmapped Fluent key.
-- **An identifier is named from its home** (`[IdentifierHome]`: action and tool window ids, DAP and LSP names, `McpTools`,
-  each `PASSENGER_` variable's const, the theme's keys as `TokenKeys` and `IconKeys`, generated from their XAML): PSG0001
-  (`src/Passenger.Analyzers`, every rule's id and words in `Rules.cs`) fails its text written anywhere else, a plain word
-  only where a parameter or member marked `[IdentifierOf]` its home takes it.
+- **An identifier is named from its home** (`[IdentifierHome]`: action and tool window ids, DAP and LSP names,
+  `McpTools`, each `PASSENGER_` variable's const, the theme's keys as `TokenKeys` and `IconKeys` and its styles' classes
+  as `StyleClasses`, generated from their XAML): PSG0001 (`src/Passenger.Analyzers`, every rule's id and words in
+  `Rules.cs`) fails its text written anywhere else, a plain word only where a parameter or member marked
+  `[IdentifierOf]` its home takes it.
 - **Async is awaited**: no async void (PSG0002), no async lambda given to a void delegate (PSG0003), no blocking wait on
   a task (PSG0004; a read where the task has certainly ended passes); a caller that must stay synchronous (Main's end, a
   library's synchronous callback) goes through `Synchronously.Run`, saying why.
@@ -604,9 +605,10 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
   code can't show (`just comments` holds the lengths).
 - XAML: four spaces; one style per selector in `Theme/Shell.axaml`, restyling Fluent's states on its
   `PART_ContentPresenter`. Shell.axaml's base styles give every Button, TextBox, ComboBox, NumericUpDown, CheckBox and
-  MenuItem its look (`Passenger.ControlHeight` 28; radii `ControlRadius` 4, `ToolRadius` 6, `PopupRadius` 8); a class style
-  says only how it differs. A style on a template part Fluent sets under a property trigger (`^[AllowAutoHide=True]`)
-  needs a trigger of its own, or it ranks below Fluent's.
+  MenuItem its look (`Passenger.ControlHeight` 28; radii `ControlRadius` 4, `ToolRadius` 6, `PopupRadius` 8); a class
+  style says only how it differs, and code names a class from `StyleClasses`, never as text or as a marker no style
+  takes (UiRulesTests). A style on a template part Fluent sets under a property trigger (`^[AllowAutoHide=True]`) needs
+  a trigger of its own, or it ranks below Fluent's.
 - A visual inconsistency is fixed once, in a shared place (a token, a base style, a helper), never per control:
   Passenger's own consistency settles a design question. The shared pieces: dialogs `DialogFooter` (`Of`, `Listed`,
   `Answers`, `Bar`, `Page`, `Default`, `Cancel`, `OkCancel`, a step's page `Headed`, a popup's answers `Popup`) in a
