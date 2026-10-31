@@ -103,6 +103,17 @@ public static class ChildProcesses
         return start;
     }
 
+    /// <summary>The IDE's own question of the .NET command line, asked in a folder of the person's and taken as its answer
+    /// comes (<see cref="AnswerAsync"/>): <see cref="DotnetCommand"/> with the command line's telemetry off, so it ends
+    /// with its answer, where it would send its telemetry for seconds after it, its folder held meanwhile on Windows (no
+    /// one could delete or rename it).</summary>
+    public static ProcessStartInfo DotnetQuestion(IEnumerable<string> arguments, string folder)
+    {
+        ProcessStartInfo start = DotnetCommand(arguments, folder);
+        start.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
+        return start;
+    }
+
     /// <summary>Starts a child that ends with the IDE. Its input is the caller's to write when it asked for it, and is
     /// otherwise closed at once, so the child reads nothing of the IDE's. The start is the child's from then on (another
     /// run needs another); what <see cref="Process.Start()"/> throws when it cannot start, this throws.</summary>

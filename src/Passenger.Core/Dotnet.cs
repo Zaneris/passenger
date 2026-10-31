@@ -12,7 +12,7 @@ public static partial class Dotnet
     private static readonly ConcurrentDictionary<string, Lazy<Task<string>>> Sdks = new(PathNames.Comparer);
 
     /// <summary>What names a folder's SDK: <c>dotnet --version</c> run there, or a test's stand-in.</summary>
-    public static Func<string, ProcessStartInfo> SdkQuestion { get; set; } = folder => ChildProcesses.DotnetCommand(["--version"], folder);
+    public static Func<string, ProcessStartInfo> SdkQuestion { get; set; } = folder => ChildProcesses.DotnetQuestion(["--version"], folder);
 
     /// <summary>The SDK a folder's dotnet runs (its global.json's, else the newest), as <c>dotnet --version</c> names it
     /// there: asked once for the folder and the global.json over it as it stands, on the thread pool whoever asks first, and
@@ -37,8 +37,7 @@ public static partial class Dotnet
     /// <summary>Lets go of the SDKs named, once one is installed or removed.</summary>
     public static void ForgetSdks() => Sdks.Clear();
 
-    /// <summary>The version dotnet names, taken as its line comes: what dotnet does after naming it (sending its telemetry,
-    /// which can take seconds) is never waited for.</summary>
+    /// <summary>The version dotnet names, taken as its line comes: whatever dotnet does after naming it is never waited for.</summary>
     private static async Task<string> AskSdkAsync(string folder)
     {
         ChildAnswer version;

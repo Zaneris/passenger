@@ -18,7 +18,7 @@ public static class ProgramProjects
         string folder = Path.GetDirectoryName(path)!;
         string asked = JsonSerializer.Serialize(new Dictionary<string, string> { ["$type"] = "GetProject", ["EntryPointFileFullPath"] = path });
         // Its answer is its line of JSON, taken as it comes: the SDK's first run in a new home writes its welcome before it.
-        ChildAnswer answer = await ChildProcesses.AnswerAsync(ChildProcesses.DotnetCommand(["run-api"], folder), l => l.TrimStart().StartsWith('{'), asked,
+        ChildAnswer answer = await ChildProcesses.AnswerAsync(ChildProcesses.DotnetQuestion(["run-api"], folder), l => l.TrimStart().StartsWith('{'), asked,
             cancel: cancel).ConfigureAwait(false);
         string name = Path.GetFileName(path);
         if (answer.Answer?.Trim() is not { } line)

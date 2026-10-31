@@ -30,6 +30,19 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-31
 
+- `AspireStandInTests`' `An_agent_is_told_the_failed_bindings_of_an_Avalonia_app_the_AppHost_runs_as_a_service`, then
+  the class's next tests, the Windows VM (Windows 11 on Arm), not CI (#1059): "The process cannot access the file
+  …\Bindings because it is being used by another process" from each next test's `SharedProject.Reset`. Listing every
+  process's working folder and handles on the folder named the holder: `dotnet --version`, which the IDE runs in a
+  project's folder for the SDK its global.json picks (`Dotnet.SdkAsync`), here as the AppHost started the Bindings app.
+  It answers in about 40 ms, then sends the command line's telemetry for about 2 s more, its working folder held all
+  the while, and Windows lets no one delete a folder a process works in; `dotnet run-api`, asked in a file-based
+  program's folder, lingers the same. CI and `just test` turn the command line's telemetry off for the whole run, so
+  only the VM's run, which leaves it on, showed it. **The IDE**: its own questions of the .NET command line are asked
+  with its telemetry off (`ChildProcesses.DotnetQuestion`), so each ends with its answer (in this commit). On main the
+  class failed so on both runs on the VM (7 and 17 tests); after it, it passed whole 2 of 2 there (39 passed, the 8
+  needing a container engine or a shell skipped, as on main) and 2 of 2 on this Mac.
+
 - `AspireStandInTests`' `An_AppHosts_console_and_its_containers_merged_log_cost_a_small_constant_for_each_line_however_many_come`,
   CI Linux x64, run 41154974796 (b628b1f3), report lane (#1057): "The AppHost's console allocated 238 bytes off the
   window's thread for each line of 10,000 more than of 1,000", against 220. About 140 bytes of a line are its text
