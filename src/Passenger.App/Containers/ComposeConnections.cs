@@ -68,7 +68,7 @@ internal static class ComposeConnections
             }
             foreach (JsonProperty service in all.EnumerateObject())
             {
-                if (BackingService.OfImage(ContainerEngine.Text(service.Value, "image")) is { } kind)
+                if (BackingService.OfImage(JsonMembers.Scalar(service.Value, "image")) is { } kind)
                 {
                     backing.Add((service.Name, kind));
                 }
@@ -156,14 +156,14 @@ internal static class ComposeConnections
     private static string? ProjectOf(JsonElement service, string folder, IReadOnlyList<ProjectModel> projects)
     {
         if (!service.TryGetProperty("build", out JsonElement build) || build.ValueKind != JsonValueKind.Object
-            || ContainerEngine.Text(build, "context") is not { } context || context.Contains("://", StringComparison.Ordinal))
+            || JsonMembers.Scalar(build, "context") is not { } context || context.Contains("://", StringComparison.Ordinal))
         {
             return null;
         }
         try
         {
             string root = Path.GetFullPath(Path.Combine(folder, context));
-            string dockerfile = Path.GetFullPath(Path.Combine(root, ContainerEngine.Text(build, "dockerfile") ?? "Dockerfile"));
+            string dockerfile = Path.GetFullPath(Path.Combine(root, JsonMembers.Scalar(build, "dockerfile") ?? "Dockerfile"));
             return File.Exists(dockerfile) ? Web.ComposeDeclarations.Built(TextSnapshot.From(File.ReadAllText(dockerfile)), root, projects) : null;
         }
         catch (Exception unread) when (unread is IOException or UnauthorizedAccessException or ArgumentException)

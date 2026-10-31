@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Passenger.Core;
 
 namespace Passenger.App.Containers;
 
@@ -53,9 +54,9 @@ public sealed record ComposeModel(string Name, IReadOnlyList<ComposeService> Ser
                 (string? context, string? dockerfile, string? target, Dictionary<string, string> args) = (null, null, null, []);
                 if (value.TryGetProperty("build", out JsonElement build) && build.ValueKind == JsonValueKind.Object)
                 {
-                    context = ContainerEngine.Text(build, "context");
-                    dockerfile = ContainerEngine.Text(build, "dockerfile");
-                    target = ContainerEngine.Text(build, "target");
+                    context = JsonMembers.Scalar(build, "context");
+                    dockerfile = JsonMembers.Scalar(build, "dockerfile");
+                    target = JsonMembers.Scalar(build, "target");
                     args = Map(build, "args");
                 }
                 List<ComposePort> ports = [];
@@ -65,8 +66,8 @@ public sealed record ComposeModel(string Name, IReadOnlyList<ComposeService> Ser
                     {
                         if (port.TryGetProperty("target", out JsonElement inside) && inside.TryGetInt32(out int number))
                         {
-                            ports.Add(new ComposePort(number, ContainerEngine.Text(port, "published"), ContainerEngine.Text(port, "protocol") ?? "tcp",
-                                ContainerEngine.Text(port, "host_ip"), ContainerEngine.Text(port, "mode"), ContainerEngine.Text(port, "name"), ContainerEngine.Text(port, "app_protocol")));
+                            ports.Add(new ComposePort(number, JsonMembers.Scalar(port, "published"), JsonMembers.Scalar(port, "protocol") ?? "tcp",
+                                JsonMembers.Scalar(port, "host_ip"), JsonMembers.Scalar(port, "mode"), JsonMembers.Scalar(port, "name"), JsonMembers.Scalar(port, "app_protocol")));
                         }
                     }
                 }
@@ -76,7 +77,7 @@ public sealed record ComposeModel(string Name, IReadOnlyList<ComposeService> Ser
                     ? [.. on.EnumerateObject().Select(d => d.Name)] : [];
                 List<string> joined = value.TryGetProperty("networks", out JsonElement nets) && nets.ValueKind == JsonValueKind.Object
                     ? [.. nets.EnumerateObject().Select(n => n.Name)] : [];
-                services.Add(new ComposeService(service.Name, context, dockerfile, target, args, ContainerEngine.Text(value, "image"), ports, Map(value, "environment"), watches, depends)
+                services.Add(new ComposeService(service.Name, context, dockerfile, target, args, JsonMembers.Scalar(value, "image"), ports, Map(value, "environment"), watches, depends)
                 {
                     Networks = joined,
                 });
@@ -91,7 +92,7 @@ public sealed record ComposeModel(string Name, IReadOnlyList<ComposeService> Ser
                     && external.ValueKind == JsonValueKind.True;
             }
         }
-        return new ComposeModel(ContainerEngine.Text(root, "name") ?? string.Empty, services, networks);
+        return new ComposeModel(JsonMembers.Scalar(root, "name") ?? string.Empty, services, networks);
 
         static Dictionary<string, string> Map(JsonElement element, string name)
         {

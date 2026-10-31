@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.App.Migrations;
@@ -60,7 +61,7 @@ public static class EfConnections
                 {
                     continue;
                 }
-                using JsonDocument read = JsonDocument.Parse(settings.Text, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+                using JsonDocument read = JsonDocument.Parse(settings.Text, LenientJson.Document);
                 if (read.RootElement.ValueKind == JsonValueKind.Object && read.RootElement.TryGetProperty("ConnectionStrings", out JsonElement strings)
                     && strings.ValueKind == JsonValueKind.Object)
                 {

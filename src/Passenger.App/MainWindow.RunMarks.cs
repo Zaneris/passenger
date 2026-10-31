@@ -388,7 +388,7 @@ public partial class MainWindow
     {
         List<(int, string)> found = [];
         byte[] bytes = Encoding.UTF8.GetBytes(text.ToString());
-        Utf8JsonReader reader = new(bytes, new JsonReaderOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+        Utf8JsonReader reader = new(bytes, LenientJson.Reader);
         bool inProfiles = false;
         int counted = 0;
         int characters = 0;

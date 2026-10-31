@@ -16,14 +16,14 @@ public sealed record ContainerStatsSample(string Name, double Cpu, double Memory
     /// <param name="names">The containers' names by the ids they were asked by (Docker's Container is the id asked).</param>
     internal static ContainerStatsSample? Read(JsonElement row, IReadOnlyDictionary<string, string>? names = null)
     {
-        string? name = ContainerEngine.Text(row, "Container") is { } asked && names?.GetValueOrDefault(asked) is { } known ? known : ContainerEngine.Text(row, "Name");
+        string? name = JsonMembers.Scalar(row, "Container") is { } asked && names?.GetValueOrDefault(asked) is { } known ? known : JsonMembers.Scalar(row, "Name");
         if (name is null)
         {
             return null;
         }
-        return new ContainerStatsSample(name, Percent(ContainerEngine.Text(row, "CPUPerc")), Percent(ContainerEngine.Text(row, "MemPerc")),
-            ContainerEngine.Text(row, "MemUsage") ?? string.Empty, ContainerEngine.Text(row, "NetIO") ?? string.Empty,
-            ContainerEngine.Text(row, "BlockIO") ?? string.Empty, ContainerEngine.Text(row, "PIDs") ?? string.Empty);
+        return new ContainerStatsSample(name, Percent(JsonMembers.Scalar(row, "CPUPerc")), Percent(JsonMembers.Scalar(row, "MemPerc")),
+            JsonMembers.Scalar(row, "MemUsage") ?? string.Empty, JsonMembers.Scalar(row, "NetIO") ?? string.Empty,
+            JsonMembers.Scalar(row, "BlockIO") ?? string.Empty, JsonMembers.Scalar(row, "PIDs") ?? string.Empty);
     }
 
     private static double Percent(string? said) =>

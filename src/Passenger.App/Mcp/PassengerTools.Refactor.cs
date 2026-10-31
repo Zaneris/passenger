@@ -130,8 +130,8 @@ public sealed partial class PassengerTools
             });
         }
         JsonElement given = options!.Value;
-        string name = Text(given, "name") ?? signature.Name;
-        string returnType = Text(given, "returnType") ?? (method ? signature.ReturnType : string.Empty);
+        string name = JsonMembers.Text(given, "name") ?? signature.Name;
+        string returnType = JsonMembers.Text(given, "returnType") ?? (method ? signature.ReturnType : string.Empty);
         if (!method && (name != signature.Name || returnType.Length > 0))
         {
             throw new ArgumentException($"A constructor's name is its type's and it has no return type: change only {signature.Container}'s parameters");
@@ -149,7 +149,7 @@ public sealed partial class PassengerTools
         {
             foreach (JsonElement parameter in asked.EnumerateArray())
             {
-                string? from = parameter.ValueKind == JsonValueKind.String ? parameter.GetString() : Text(parameter, "from");
+                string? from = parameter.ValueKind == JsonValueKind.String ? parameter.GetString() : JsonMembers.Text(parameter, "from");
                 if (from is not null)
                 {
                     int was = signature.Parameters.ToList().FindIndex(p => p.Name == from);
@@ -158,16 +158,15 @@ public sealed partial class PassengerTools
                         throw new ArgumentException($"{signature.Name} has no parameter '{from}'; it has {string.Join(", ", signature.Parameters.Select(p => p.Name))}");
                     }
                     Parameter old = signature.Parameters[was];
-                    JsonElement changed = parameter.ValueKind == JsonValueKind.Object ? parameter : default;
-                    parameters.Add(new ParameterChange(was, Text(changed, "modifier") ?? old.Modifier, Text(changed, "type") ?? old.Type, Text(changed, "name") ?? old.Name,
-                        Text(changed, "defaultValue") ?? old.DefaultValue, string.Empty));
+                    parameters.Add(new ParameterChange(was, JsonMembers.Text(parameter, "modifier") ?? old.Modifier, JsonMembers.Text(parameter, "type") ?? old.Type,
+                        JsonMembers.Text(parameter, "name") ?? old.Name, JsonMembers.Text(parameter, "defaultValue") ?? old.DefaultValue, string.Empty));
                 }
                 else
                 {
-                    string type = Text(parameter, "type") ?? throw new ArgumentException("A new parameter needs its type (and from, for one that was there: its old name)");
-                    string made = Text(parameter, "name") ?? throw new ArgumentException($"The new {type} parameter needs a name");
-                    parameters.Add(new ParameterChange(-1, Text(parameter, "modifier") ?? string.Empty, type, made, Text(parameter, "defaultValue") ?? string.Empty,
-                        Text(parameter, "callValue") ?? string.Empty));
+                    string type = JsonMembers.Text(parameter, "type") ?? throw new ArgumentException("A new parameter needs its type (and from, for one that was there: its old name)");
+                    string made = JsonMembers.Text(parameter, "name") ?? throw new ArgumentException($"The new {type} parameter needs a name");
+                    parameters.Add(new ParameterChange(-1, JsonMembers.Text(parameter, "modifier") ?? string.Empty, type, made, JsonMembers.Text(parameter, "defaultValue") ?? string.Empty,
+                        JsonMembers.Text(parameter, "callValue") ?? string.Empty));
                 }
             }
         }
@@ -192,9 +191,9 @@ public sealed partial class PassengerTools
             });
         }
         JsonElement given = options!.Value;
-        string name = Text(given, "name") ?? source.Name;
+        string name = JsonMembers.Text(given, "name") ?? source.Name;
         // The file follows the name until it is given, as the dialog's does until it is typed in.
-        string file = Text(given, "file") ?? (Text(given, "name") is { } typed ? $"{typed.Trim()}.cs" : source.FileName);
+        string file = JsonMembers.Text(given, "file") ?? (JsonMembers.Text(given, "name") is { } typed ? $"{typed.Trim()}.cs" : source.FileName);
         IReadOnlyList<string> members = Texts(given, "members") is { } chosen ? [.. chosen.Select(m => MemberId(source.Members, m, $"members {source.Type} can give an interface"))] : [.. source.Members.Select(m => m.Id)];
         return Applied("extract_interface", await window.Assist.Actions.ExtractInterfaceAsync(document, offset, source, name, file, members, patience));
     }
@@ -220,7 +219,7 @@ public sealed partial class PassengerTools
             });
         }
         JsonElement given = options!.Value;
-        (string? file, string? space) = (Text(given, "file"), Text(given, "namespace"));
+        (string? file, string? space) = (JsonMembers.Text(given, "file"), JsonMembers.Text(given, "namespace"));
         return (file, space) switch
         {
             (null, null) => throw new ArgumentException("move takes file (a new file beside the type's) or namespace, as the window's Move to Another File and Move to Namespace do"),
@@ -247,7 +246,7 @@ public sealed partial class PassengerTools
         }
         JsonElement given = options!.Value;
         string target = up
-            ? Text(given, "target") is { } baseType ? MemberId(hierarchy.Bases, baseType, $"base types of {hierarchy.Type}") : hierarchy.Bases[0].Id
+            ? JsonMembers.Text(given, "target") is { } baseType ? MemberId(hierarchy.Bases, baseType, $"base types of {hierarchy.Type}") : hierarchy.Bases[0].Id
             : string.Join("\n", Texts(given, "targets") is { } targets
                 ? targets.Select(t => MemberId(hierarchy.Derived, t, $"classes derived from {hierarchy.Type}"))
                 : hierarchy.Derived.Select(d => d.Id));
@@ -281,7 +280,7 @@ public sealed partial class PassengerTools
                 return new RefactorAnswer("safe_delete", $"Safe Delete would take {what} out of {Relative(doomed.Path)}, "
                     + (uses.Count == 0 ? "used nowhere else" : $"leaving {Plural.Of(uses.Count, "usage")} that would no longer compile"), [], [], Usages: uses);
             }
-            bool anyway = options is { } given && given.TryGetProperty("deleteAnyway", out JsonElement value) && value.ValueKind == JsonValueKind.True;
+            bool anyway = JsonMembers.Bool(options, "deleteAnyway") is true;
             if (uses.Count > 0 && !anyway)
             {
                 throw new InvalidOperationException($"Safe Delete left {what} where it is: it has {Plural.Of(uses.Count, "usage")} that would no longer compile "
@@ -316,8 +315,8 @@ public sealed partial class PassengerTools
                 Actions = offered.Select(a => new { a.Title, Choices = CSharp.CodeActions.ChoicesOf(a, refactoring).Select(c => c.Text) }),
             });
         }
-        string? title = options is { } given ? Text(given, "action") : null;
-        string? choice = options is { } chosenBy ? Text(chosenBy, "choice") : null;
+        string? title = JsonMembers.Text(options, "action");
+        string? choice = JsonMembers.Text(options, "choice");
         CodeAction action = title is null
             ? offered.Count == 1 ? offered[0] : throw new ArgumentException($"{refactoring.Name} offers {offered.Count} actions here; name one as action: {string.Join("; ", offered.Select(a => a.Title))}")
             : offered.FirstOrDefault(a => a.Title == title) ?? throw new ArgumentException($"{refactoring.Name} offers no '{title}' here; it offers {string.Join("; ", offered.Select(a => a.Title))}");
@@ -347,7 +346,7 @@ public sealed partial class PassengerTools
     {
         bool cleanup = kind == "code_cleanup";
         string name = cleanup ? "Code Cleanup" : "Optimize Imports";
-        string scope = (options is { } given ? Text(given, "scope") : null)?.Trim().ToLowerInvariant()
+        string scope = JsonMembers.Text(options, "scope")?.Trim().ToLowerInvariant()
             ?? (path is null ? "solution" : path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) ? "project" : "file");
         if (scope == "file")
         {
@@ -505,9 +504,6 @@ public sealed partial class PassengerTools
         { ValueKind: JsonValueKind.String } text when text.GetString() is { Length: > 0 } json && json.TrimStart().StartsWith('{') => JsonDocument.Parse(json).RootElement.Clone(),
         _ => throw new ArgumentException("options is one JSON object, as the tool's description gives for each kind", nameof(options)),
     };
-
-    private static string? Text(JsonElement element, string name) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     private static IReadOnlyList<string>? Texts(JsonElement element, string name)
     {

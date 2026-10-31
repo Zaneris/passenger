@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Workspace;
 
 namespace Passenger.App.Aspire;
@@ -24,8 +25,6 @@ public sealed record AspireAppHostSettings(string AppHost, string? UserSecretsId
 /// kept. A value is never read back out of either, only whether it is there.</summary>
 public static class AspireParameters
 {
-    private static readonly JsonDocumentOptions Lenient = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
-
     /// <summary>Whether the AppHost's configuration gives a parameter a value, read from <paramref name="text"/> (an open
     /// file's text as it stands, else the disk's).</summary>
     public static bool HasValue(AspireAppHostSettings host, string name, Func<string, string?> text)
@@ -53,7 +52,7 @@ public static class AspireParameters
         HashSet<string> wanted = new(StringComparer.OrdinalIgnoreCase) { $"Parameters:{name}", $"Parameters:{name.Replace('-', '_')}" };
         try
         {
-            using JsonDocument read = JsonDocument.Parse(text, Lenient);
+            using JsonDocument read = JsonDocument.Parse(text, LenientJson.Document);
             return Keys(read.RootElement, string.Empty).Any(wanted.Contains);
         }
         catch (JsonException)
@@ -108,7 +107,7 @@ public static class AspireParameters
         HashSet<string> names = new(StringComparer.OrdinalIgnoreCase) { name, name.Replace('-', '_') };
         try
         {
-            using JsonDocument read = JsonDocument.Parse(text, Lenient);
+            using JsonDocument read = JsonDocument.Parse(text, LenientJson.Document);
             if (read.RootElement.ValueKind != JsonValueKind.Object)
             {
                 return (null, null);
@@ -139,7 +138,7 @@ public static class AspireParameters
     {
         try
         {
-            using JsonDocument read = JsonDocument.Parse(text, Lenient);
+            using JsonDocument read = JsonDocument.Parse(text, LenientJson.Document);
             return read.RootElement.ValueKind == JsonValueKind.Object && read.RootElement.EnumerateObject()
                 .Any(p => p.Name.Equals("Parameters", StringComparison.OrdinalIgnoreCase) && p.Value.ValueKind == JsonValueKind.Object);
         }

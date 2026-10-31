@@ -100,7 +100,8 @@ public static partial class ProjectTemplates
 {
     private static readonly ConcurrentDictionary<(string Sdk, string? Hive), Lazy<Task<TemplateCatalog>>> Read = new();
 
-    private static readonly JsonDocumentOptions Lenient = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
+    /// <summary>A member's name read in any letter case, as ide.host.json files write them both ways.</summary>
+    private const bool AnyCase = true;
 
     /// <summary>What the dialog asks for itself (the name, the framework, the language), or a person never sets.</summary>
     private static readonly HashSet<string> NotShown = new(StringComparer.OrdinalIgnoreCase)
@@ -295,7 +296,7 @@ public static partial class ProjectTemplates
         List<JsonElement> all = [.. document.RootElement.GetProperty("TemplateInfo").EnumerateArray()];
         using HostFiles ide = new();
         List<ProjectTemplate> templates = [];
-        foreach (IGrouping<string, JsonElement> group in all.Where(t => Tag(t, "type") is "project" or "solution" && Usable(t)).GroupBy(t => Text(t, "GroupIdentity") ?? Text(t, "Identity")!))
+        foreach (IGrouping<string, JsonElement> group in all.Where(t => Tag(t, "type") is "project" or "solution" && Usable(t)).GroupBy(t => JsonMembers.Scalar(t, "GroupIdentity", AnyCase) ?? JsonMembers.Scalar(t, "Identity", AnyCase)!))
         {
             List<TemplateVariant> variants = [];
             foreach (JsonElement template in group.OrderByDescending(t => Int(t, "Precedence")).ThenBy(t => LanguageOrder(Tag(t, "language") ?? string.Empty)))
@@ -309,11 +310,11 @@ public static partial class ProjectTemplates
             {
                 continue;
             }
-            JsonElement newest = group.Where(t => variants.Any(v => v.Identity == Text(t, "Identity")))
+            JsonElement newest = group.Where(t => variants.Any(v => v.Identity == JsonMembers.Scalar(t, "Identity", AnyCase)))
                 .OrderByDescending(t => Int(t, "Precedence")).ThenBy(t => LanguageOrder(Tag(t, "language") ?? string.Empty)).First();
-            string name = Text(newest, "Name") ?? Text(newest, "Identity")!;
-            templates.Add(new ProjectTemplate(name, [.. Strings(newest, "ShortNameList")], Text(newest, "Author") ?? string.Empty,
-                [.. Strings(newest, "Classifications")], DefaultName(newest, name), variants) { IsSolution = Tag(newest, "type") == "solution" });
+            string name = JsonMembers.Scalar(newest, "Name", AnyCase) ?? JsonMembers.Scalar(newest, "Identity", AnyCase)!;
+            templates.Add(new ProjectTemplate(name, [.. JsonMembers.Texts(newest, "ShortNameList", AnyCase)], JsonMembers.Scalar(newest, "Author", AnyCase) ?? string.Empty,
+                [.. JsonMembers.Texts(newest, "Classifications", AnyCase)], DefaultName(newest, name), variants) { IsSolution = Tag(newest, "type") == "solution" });
         }
         (IReadOnlyList<string> formats, string format) = SolutionFormats(all);
         return new TemplateCatalog(sdk, TemplateFamilies.Of([.. templates, .. TemplatePacks.Offered(templates)]), formats, format);
@@ -327,7 +328,7 @@ public static partial class ProjectTemplates
             try
             {
                 await using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                return await JsonDocument.ParseAsync(stream, Lenient);
+                return await JsonDocument.ParseAsync(stream, LenientJson.Document);
             }
             catch (Exception error) when (attempt < 3 && error is IOException or JsonException)
             {
@@ -340,21 +341,17 @@ public static partial class ProjectTemplates
     /// template that says which systems it runs on only on those.</summary>
     private static bool Usable(JsonElement template)
     {
-        string[] classifications = [.. Strings(template, "Classifications")];
+        string[] classifications = [.. JsonMembers.Texts(template, "Classifications", AnyCase)];
         if (!OperatingSystem.IsWindows() && classifications.Any(c => c is "WPF" or "WinForms"))
         {
             return false;
         }
-        if (!template.TryGetProperty("Constraints", out JsonElement constraints) || constraints.ValueKind != JsonValueKind.Array)
+        foreach (JsonElement constraint in JsonMembers.Items(template, "Constraints"))
         {
-            return true;
-        }
-        foreach (JsonElement constraint in constraints.EnumerateArray())
-        {
-            if (Text(constraint, "Type") == "os" && Text(constraint, "Args") is { } args)
+            if (JsonMembers.Scalar(constraint, "Type", AnyCase) == "os" && JsonMembers.Scalar(constraint, "Args", AnyCase) is { } args)
             {
-                using JsonDocument parsed = JsonDocument.Parse(args.TrimStart().StartsWith('[') || args.TrimStart().StartsWith('"') ? args : $"\"{args}\"", Lenient);
-                string[] systems = parsed.RootElement.ValueKind == JsonValueKind.Array ? [.. Strings(parsed.RootElement)] : [parsed.RootElement.GetString() ?? string.Empty];
+                using JsonDocument parsed = JsonDocument.Parse(args.TrimStart().StartsWith('[') || args.TrimStart().StartsWith('"') ? args : $"\"{args}\"", LenientJson.Document);
+                string[] systems = parsed.RootElement.ValueKind == JsonValueKind.Array ? [.. parsed.RootElement.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!)] : [parsed.RootElement.GetString() ?? string.Empty];
                 if (!systems.Any(s => OperatingSystem.IsOSPlatform(s.Equals("OSX", StringComparison.OrdinalIgnoreCase) ? "macOS" : s)))
                 {
                     return false;
@@ -369,9 +366,9 @@ public static partial class ProjectTemplates
     private static TemplateVariant? Variant(JsonElement template, HostFiles ide)
     {
         Dictionary<string, JsonElement> parameters = new(StringComparer.Ordinal);
-        foreach (JsonElement parameter in Items(template, "Parameters"))
+        foreach (JsonElement parameter in JsonMembers.Items(template, "Parameters", AnyCase))
         {
-            if (Text(parameter, "Name") is { } name)
+            if (JsonMembers.Scalar(parameter, "Name", AnyCase) is { } name)
             {
                 parameters[name] = parameter;
             }
@@ -389,21 +386,21 @@ public static partial class ProjectTemplates
             {
                 return null;
             }
-            defaultFramework = Text(framework, "DefaultValue") is { } given && frameworks.Contains(given) ? given : frameworks.FirstOrDefault();
+            defaultFramework = JsonMembers.Scalar(framework, "DefaultValue", AnyCase) is { } given && frameworks.Contains(given) ? given : frameworks.FirstOrDefault();
         }
         List<TemplateOption> options = [];
         if (ide.Read(template) is { } host)
         {
             // An IDE's options are the ones the template's ide.host.json makes visible, in its order.
-            foreach (JsonElement symbol in Items(host, "symbolInfo"))
+            foreach (JsonElement symbol in JsonMembers.Items(host, "symbolInfo", AnyCase))
             {
-                if (Text(symbol, "id") is { } id && Bool(symbol, "isVisible") && !NotShown.Contains(id) && parameters.TryGetValue(id, out JsonElement parameter)
-                    && Option(parameter, cli, symbol, inverted: Bool(symbol, "invertBoolean"), label: Text(Property(symbol, "name"), "text")) is { } option)
+                if (JsonMembers.Scalar(symbol, "id", AnyCase) is { } id && Bool(symbol, "isVisible") && !NotShown.Contains(id) && parameters.TryGetValue(id, out JsonElement parameter)
+                    && Option(parameter, cli, symbol, inverted: Bool(symbol, "invertBoolean"), label: JsonMembers.Scalar(JsonMembers.Object(symbol, "name", AnyCase), "text", AnyCase)) is { } option)
                 {
                     options.Add(option);
                 }
             }
-            if (Text(host, "disableHttpsSymbol") is { } https && parameters.TryGetValue(https, out JsonElement noHttps) && options.All(o => o.Name != https)
+            if (JsonMembers.Scalar(host, "disableHttpsSymbol", AnyCase) is { } https && parameters.TryGetValue(https, out JsonElement noHttps) && options.All(o => o.Name != https)
                 && Option(noHttps, cli, null, inverted: true, label: "Configure for HTTPS") is { } configure)
             {
                 options.Add(configure);
@@ -420,7 +417,7 @@ public static partial class ProjectTemplates
                 }
             }
         }
-        return new TemplateVariant(Text(template, "Identity")!, Tag(template, "language"), Int(template, "Precedence"), Text(template, "Description") ?? string.Empty,
+        return new TemplateVariant(JsonMembers.Scalar(template, "Identity", AnyCase)!, Tag(template, "language"), Int(template, "Precedence"), JsonMembers.Scalar(template, "Description", AnyCase) ?? string.Empty,
             frameworkOption, frameworks, defaultFramework, options)
         {
             SkipRestoreOption = parameters.ContainsKey("skipRestore") ? LongName(cli, "skipRestore") : null,
@@ -434,19 +431,19 @@ public static partial class ProjectTemplates
 
     private static TemplateOption? Option(JsonElement parameter, Dictionary<string, JsonElement> cli, JsonElement? ide, bool inverted, string? label)
     {
-        string name = Text(parameter, "Name")!;
-        if (Text(parameter, "Type") is { } type && type != "parameter")
+        string name = JsonMembers.Scalar(parameter, "Name", AnyCase)!;
+        if (JsonMembers.Scalar(parameter, "Type", AnyCase) is { } type && type != "parameter")
         {
             return null;
         }
-        JsonElement precedence = Property(parameter, "Precedence");
+        JsonElement? precedence = JsonMembers.Object(parameter, "Precedence", AnyCase);
         // Implicit (the name, the type and language) and Disabled are never asked of a person.
-        int definition = precedence.ValueKind == JsonValueKind.Object ? Int(precedence, "PrecedenceDefinition") : 2;
+        int definition = precedence is { } ? Int(precedence, "PrecedenceDefinition") : 2;
         if (definition is 3 or 5)
         {
             return null;
         }
-        TemplateOptionKind kind = (Text(parameter, "DataType") ?? "string").ToLowerInvariant() switch
+        TemplateOptionKind kind = (JsonMembers.Scalar(parameter, "DataType", AnyCase) ?? "string").ToLowerInvariant() switch
         {
             "bool" or "boolean" => TemplateOptionKind.Bool,
             "choice" => TemplateOptionKind.Choice,
@@ -459,25 +456,20 @@ public static partial class ProjectTemplates
         {
             return null;
         }
-        string shown = Plain(label ?? Text(parameter, "DisplayName") ?? Text(parameter, "Description") ?? name);
-        string? description = ide is { } symbol ? Text(Property(symbol, "description"), "text") : null;
+        string shown = Plain(label ?? JsonMembers.Scalar(parameter, "DisplayName", AnyCase) ?? JsonMembers.Scalar(parameter, "Description", AnyCase) ?? name);
+        string? description = ide is { } symbol ? JsonMembers.Scalar(JsonMembers.Object(symbol, "description", AnyCase), "text", AnyCase) : null;
         string fallback = kind switch { TemplateOptionKind.Bool => "false", TemplateOptionKind.Choice => choices[0].Value, _ => string.Empty };
-        return new TemplateOption(name, LongName(cli, name), shown, Plain(description ?? Text(parameter, "Description") ?? string.Empty), kind,
-            Text(parameter, "DefaultValue") ?? fallback, choices, inverted && kind == TemplateOptionKind.Bool,
-            precedence.ValueKind == JsonValueKind.Object && Bool(precedence, "IsRequired"),
-            precedence.ValueKind == JsonValueKind.Object ? Text(precedence, "IsEnabledCondition") : null);
+        return new TemplateOption(name, LongName(cli, name), shown, Plain(description ?? JsonMembers.Scalar(parameter, "Description", AnyCase) ?? string.Empty), kind,
+            JsonMembers.Scalar(parameter, "DefaultValue", AnyCase) ?? fallback, choices, inverted && kind == TemplateOptionKind.Bool,
+            Bool(precedence, "IsRequired"), JsonMembers.Scalar(precedence, "IsEnabledCondition", AnyCase));
     }
 
     private static IEnumerable<TemplateChoice> Choices(JsonElement parameter)
     {
-        if (!parameter.TryGetProperty("Choices", out JsonElement choices) || choices.ValueKind != JsonValueKind.Object)
+        foreach (JsonProperty choice in JsonMembers.Properties(parameter, "Choices"))
         {
-            yield break;
-        }
-        foreach (JsonProperty choice in choices.EnumerateObject())
-        {
-            string? display = Text(choice.Value, "DisplayName");
-            yield return new TemplateChoice(choice.Name, string.IsNullOrWhiteSpace(display) ? choice.Name : display, Text(choice.Value, "Description"));
+            string? display = JsonMembers.Scalar(choice.Value, "DisplayName", AnyCase);
+            yield return new TemplateChoice(choice.Name, string.IsNullOrWhiteSpace(display) ? choice.Name : display, JsonMembers.Scalar(choice.Value, "Description", AnyCase));
         }
     }
 
@@ -486,15 +478,15 @@ public static partial class ProjectTemplates
 
     /// <summary>The command line's name for an option: its dotnetcli.host.json long name, else its own.</summary>
     private static string LongName(Dictionary<string, JsonElement> cli, string name) =>
-        cli.TryGetValue(name, out JsonElement symbol) && Text(symbol, "longName") is { Length: > 0 } longName ? longName : name;
+        cli.TryGetValue(name, out JsonElement symbol) && JsonMembers.Scalar(symbol, "longName", AnyCase) is { Length: > 0 } longName ? longName : name;
 
     private static Dictionary<string, JsonElement> HostSymbols(JsonElement template)
     {
         Dictionary<string, JsonElement> symbols = new(StringComparer.Ordinal);
-        if (Text(template, "HostData") is { Length: > 0 } data)
+        if (JsonMembers.Scalar(template, "HostData", AnyCase) is { Length: > 0 } data)
         {
-            using JsonDocument host = JsonDocument.Parse(data, Lenient);
-            if (Property(host.RootElement, "symbolInfo") is { ValueKind: JsonValueKind.Object } info)
+            using JsonDocument host = JsonDocument.Parse(data, LenientJson.Document);
+            if (JsonMembers.Object(host.RootElement, "symbolInfo", AnyCase) is { } info)
             {
                 foreach (JsonProperty symbol in info.EnumerateObject())
                 {
@@ -509,7 +501,7 @@ public static partial class ProjectTemplates
     /// name without spaces or punctuation.</summary>
     private static string DefaultName(JsonElement template, string name)
     {
-        string given = Text(template, "DefaultName") ?? string.Empty;
+        string given = JsonMembers.Scalar(template, "DefaultName", AnyCase) ?? string.Empty;
         given = Regex.Replace(given, @"\d+$", string.Empty);
         return given.Length > 0 ? given : new string([.. name.Where(char.IsLetterOrDigit)]);
     }
@@ -517,61 +509,26 @@ public static partial class ProjectTemplates
     /// <summary>The formats dotnet new sln makes, and the one it makes by default: a .sln alone where it has no choice.</summary>
     private static (IReadOnlyList<string> Formats, string Default) SolutionFormats(List<JsonElement> all)
     {
-        JsonElement? solution = all.Where(t => Strings(t, "ShortNameList").Contains("sln")).OrderByDescending(t => Int(t, "Precedence")).Cast<JsonElement?>().FirstOrDefault();
-        JsonElement? format = solution is { } found && found.TryGetProperty("Parameters", out JsonElement parameters)
-            ? parameters.EnumerateArray().Where(p => Text(p, "Name") == "Format").Cast<JsonElement?>().FirstOrDefault() : null;
+        JsonElement? solution = all.Where(t => JsonMembers.Texts(t, "ShortNameList", AnyCase).Contains("sln")).OrderByDescending(t => Int(t, "Precedence")).Cast<JsonElement?>().FirstOrDefault();
+        JsonElement? format = JsonMembers.Items(solution, "Parameters").Where(p => JsonMembers.Scalar(p, "Name", AnyCase) == "Format").Cast<JsonElement?>().FirstOrDefault();
         if (format is not { } choice)
         {
             return (["sln"], "sln");
         }
         List<string> formats = [.. Choices(choice).Select(c => c.Value)];
-        string preferred = Text(choice, "DefaultValue") is { } given && formats.Contains(given) ? given : formats.FirstOrDefault() ?? "sln";
+        string preferred = JsonMembers.Scalar(choice, "DefaultValue", AnyCase) is { } given && formats.Contains(given) ? given : formats.FirstOrDefault() ?? "sln";
         return (formats.Count == 0 ? ["sln"] : [.. formats.OrderBy(f => f == preferred ? 0 : 1)], preferred);
     }
 
     private static string? Tag(JsonElement template, string tag) =>
-        template.TryGetProperty("TagsCollection", out JsonElement tags) && tags.ValueKind == JsonValueKind.Object ? Text(tags, tag) : null;
+        JsonMembers.Scalar(JsonMembers.Object(template, "TagsCollection"), tag, AnyCase);
 
-    /// <summary>A property by its name in any case, as ide.host.json files write them both ways.</summary>
-    private static JsonElement Property(JsonElement element, string name)
-    {
-        if (element.ValueKind != JsonValueKind.Object)
-        {
-            return default;
-        }
-        foreach (JsonProperty property in element.EnumerateObject())
-        {
-            if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
-            {
-                return property.Value;
-            }
-        }
-        return default;
-    }
+    /// <summary>A flag as dotnet new's files write it, <c>true</c> or <c>"true"</c>; false when it is neither.</summary>
+    private static bool Bool(JsonElement? element, string name) =>
+        JsonMembers.Bool(element, name, AnyCase) ?? (bool.TryParse(JsonMembers.Text(element, name, AnyCase), out bool value) && value);
 
-    private static string? Text(JsonElement element, string name) => Property(element, name) switch
-    {
-        { ValueKind: JsonValueKind.String } text => text.GetString(),
-        { ValueKind: JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False } value => value.GetRawText(),
-        _ => null,
-    };
-
-    private static bool Bool(JsonElement element, string name) => Property(element, name) switch
-    {
-        { ValueKind: JsonValueKind.True } => true,
-        { ValueKind: JsonValueKind.String } text => bool.TryParse(text.GetString(), out bool value) && value,
-        _ => false,
-    };
-
-    private static int Int(JsonElement element, string name) => int.TryParse(Text(element, name), out int value) ? value : 0;
-
-    private static IEnumerable<JsonElement> Items(JsonElement element, string name) =>
-        Property(element, name) is { ValueKind: JsonValueKind.Array } array ? array.EnumerateArray() : [];
-
-    private static IEnumerable<string> Strings(JsonElement element, string name) => Strings(Property(element, name));
-
-    private static IEnumerable<string> Strings(JsonElement array) =>
-        array.ValueKind == JsonValueKind.Array ? array.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!) : [];
+    /// <summary>A whole number as dotnet new's files write it, a number or its text; 0 when it is neither.</summary>
+    private static int Int(JsonElement? element, string name) => int.TryParse(JsonMembers.Scalar(element, name, AnyCase), out int value) ? value : 0;
 
     /// <summary>The ide.host.json beside each template's template.json, in its package (or folder), each package opened once.</summary>
     private sealed class HostFiles : IDisposable
@@ -581,7 +538,7 @@ public static partial class ProjectTemplates
 
         public JsonElement? Read(JsonElement template)
         {
-            if (Text(template, "MountPointUri") is not { } mount || Text(template, "ConfigPlace") is not { } place)
+            if (JsonMembers.Scalar(template, "MountPointUri", AnyCase) is not { } mount || JsonMembers.Scalar(template, "ConfigPlace", AnyCase) is not { } place)
             {
                 return null;
             }
@@ -607,7 +564,7 @@ public static partial class ProjectTemplates
                 {
                     return null;
                 }
-                JsonDocument host = JsonDocument.Parse(text, Lenient);
+                JsonDocument host = JsonDocument.Parse(text, LenientJson.Document);
                 read.Add(host);
                 return host.RootElement;
             }

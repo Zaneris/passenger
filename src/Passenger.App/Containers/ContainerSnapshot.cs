@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Passenger.Core;
 
 namespace Passenger.App.Containers;
 
@@ -28,15 +29,15 @@ public sealed record ContainerPort(string HostPort, string Inside, string Protoc
     /// (<c>host_port</c>, <c>container_port</c>, <c>protocol</c>).</summary>
     public static IReadOnlyList<ContainerPort> Read(JsonElement row)
     {
-        if (!row.TryGetProperty("Ports", out JsonElement listed) || listed.ValueKind != JsonValueKind.Array)
+        if (JsonMembers.Scalar(row, "Ports") is { } said)
         {
-            return Read(ContainerEngine.Text(row, "Ports"));
+            return Read(said);
         }
         List<ContainerPort> ports = [];
-        foreach (JsonElement published in listed.EnumerateArray())
+        foreach (JsonElement published in JsonMembers.Items(row, "Ports"))
         {
-            if (ContainerEngine.Text(published, "host_port") is { } host and not "0" && ContainerEngine.Text(published, "container_port") is { } inside
-                && new ContainerPort(host, inside, ContainerEngine.Text(published, "protocol") ?? "tcp") is var port && !ports.Contains(port))
+            if (JsonMembers.Scalar(published, "host_port") is { } host and not "0" && JsonMembers.Scalar(published, "container_port") is { } inside
+                && new ContainerPort(host, inside, JsonMembers.Scalar(published, "protocol") ?? "tcp") is var port && !ports.Contains(port))
             {
                 ports.Add(port);
             }
@@ -100,36 +101,31 @@ public sealed record ContainerInfo(string Id, string Name, string Image, string 
 
     internal static ContainerInfo Read(JsonElement row)
     {
-        string status = ContainerEngine.Text(row, "Status") ?? string.Empty;
-        string? health = ContainerEngine.Text(row, "HealthStatus") is { } said && said != "none" ? said
+        string status = JsonMembers.Scalar(row, "Status") ?? string.Empty;
+        string? health = JsonMembers.Scalar(row, "HealthStatus") is { } said && said != "none" ? said
             : status.Contains("(healthy)", StringComparison.Ordinal) ? "healthy"
             : status.Contains("(unhealthy)", StringComparison.Ordinal) ? "unhealthy"
             : status.Contains("(health: starting)", StringComparison.Ordinal) || status.Contains("(starting)", StringComparison.Ordinal) ? "starting" : null;
         return new ContainerInfo(IdOf(row) ?? string.Empty, First(row, "Names") ?? string.Empty,
-            ContainerEngine.Text(row, "Image") ?? string.Empty, (ContainerEngine.Text(row, "State") ?? string.Empty).ToLowerInvariant(), status, health,
+            JsonMembers.Scalar(row, "Image") ?? string.Empty, (JsonMembers.Scalar(row, "State") ?? string.Empty).ToLowerInvariant(), status, health,
             ContainerPort.Read(row), ReadLabels(row));
     }
 
     /// <summary>A row's id: Docker's CLI writes ID, Podman's own Id (an image's, a container's) or id (a network's).</summary>
-    internal static string? IdOf(JsonElement row) => ContainerEngine.Text(row, "ID") ?? ContainerEngine.Text(row, "Id") ?? ContainerEngine.Text(row, "id");
+    internal static string? IdOf(JsonElement row) => JsonMembers.Scalar(row, "ID") ?? JsonMembers.Scalar(row, "Id") ?? JsonMembers.Scalar(row, "id");
 
     /// <summary>The first of a row's names: Docker's CLI joins them with commas, Podman's own lists them.</summary>
     internal static string? First(JsonElement row, string name) =>
-        row.ValueKind == JsonValueKind.Object && row.TryGetProperty(name, out JsonElement names) && names.ValueKind == JsonValueKind.Array
-            ? names.EnumerateArray().Select(n => n.ValueKind == JsonValueKind.String ? n.GetString() : null).FirstOrDefault()
-            : ContainerEngine.Text(row, name)?.Split(',')[0];
+        JsonMembers.Texts(row, name) is [var first, ..] ? first : JsonMembers.Scalar(row, name)?.Split(',')[0];
 
     /// <summary>A row's labels: Docker's CLI joins them ("a=1,b=2"), Podman's own gives an object (Labels, or a network's labels).</summary>
     internal static IReadOnlyDictionary<string, string> ReadLabels(JsonElement row)
     {
-        foreach (string name in (string[])["Labels", "labels"])
+        if ((JsonMembers.Object(row, "Labels") ?? JsonMembers.Object(row, "labels")) is { } labels)
         {
-            if (row.ValueKind == JsonValueKind.Object && row.TryGetProperty(name, out JsonElement labels) && labels.ValueKind == JsonValueKind.Object)
-            {
-                return labels.EnumerateObject().ToDictionary(l => l.Name, l => l.Value.ToString(), StringComparer.Ordinal);
-            }
+            return labels.EnumerateObject().ToDictionary(l => l.Name, l => l.Value.ToString(), StringComparer.Ordinal);
         }
-        return ReadLabels(ContainerEngine.Text(row, "Labels"));
+        return ReadLabels(JsonMembers.Scalar(row, "Labels"));
     }
 
     /// <summary>Labels as the CLI's table joins them, "a=1,b=2": a part with no '=' belongs to the value before it (Compose's
@@ -223,8 +219,8 @@ public sealed record ContainerSnapshot(IReadOnlyList<ComposeProject> Projects, I
         {
             all = await InspectedAsync(engine, all, cancel);
         }
-        Dictionary<string, string> statuses = (await projects).Where(p => ContainerEngine.Text(p, "Name") is not null)
-            .ToDictionary(p => ContainerEngine.Text(p, "Name")!, p => ContainerEngine.Text(p, "Status") ?? string.Empty, StringComparer.Ordinal);
+        Dictionary<string, string> statuses = (await projects).Where(p => JsonMembers.Scalar(p, "Name") is not null)
+            .ToDictionary(p => JsonMembers.Scalar(p, "Name")!, p => JsonMembers.Scalar(p, "Status") ?? string.Empty, StringComparer.Ordinal);
         List<ComposeProject> composed = [];
         foreach (IGrouping<string, ContainerInfo> project in all.Where(c => c.Project is not null).GroupBy(c => c.Project!).OrderBy(g => g.Key, StringComparer.Ordinal))
         {
@@ -237,11 +233,11 @@ public sealed record ContainerSnapshot(IReadOnlyList<ComposeProject> Projects, I
         }
         return new ContainerSnapshot(composed, [.. all.Where(c => c.Project is null)],
             [.. (await images).Select(i => new EngineObject("image", ContainerInfo.IdOf(i) ?? string.Empty, ImageName(i), ImageDetail(i), new Dictionary<string, string>()))],
-            [.. (await volumes).Select(v => new EngineObject("volume", ContainerEngine.Text(v, "Name") ?? string.Empty, ContainerEngine.Text(v, "Name") ?? string.Empty,
-                ContainerEngine.Text(v, "Driver") ?? string.Empty, ContainerInfo.ReadLabels(v)))
+            [.. (await volumes).Select(v => new EngineObject("volume", JsonMembers.Scalar(v, "Name") ?? string.Empty, JsonMembers.Scalar(v, "Name") ?? string.Empty,
+                JsonMembers.Scalar(v, "Driver") ?? string.Empty, ContainerInfo.ReadLabels(v)))
                 .OrderBy(v => v.Labels.ContainsKey("com.docker.volume.anonymous")).ThenBy(v => v.Name, StringComparer.Ordinal)],
-            [.. (await networks).Select(n => new EngineObject("network", ContainerInfo.IdOf(n) ?? string.Empty, ContainerEngine.Text(n, "Name") ?? ContainerEngine.Text(n, "name") ?? string.Empty,
-                ContainerEngine.Text(n, "Driver") ?? ContainerEngine.Text(n, "driver") ?? string.Empty, ContainerInfo.ReadLabels(n)))
+            [.. (await networks).Select(n => new EngineObject("network", ContainerInfo.IdOf(n) ?? string.Empty, JsonMembers.Scalar(n, "Name") ?? JsonMembers.Scalar(n, "name") ?? string.Empty,
+                JsonMembers.Scalar(n, "Driver") ?? JsonMembers.Scalar(n, "driver") ?? string.Empty, ContainerInfo.ReadLabels(n)))
                 .OrderBy(n => n.Name, StringComparer.Ordinal)]);
 
         static string Status(IEnumerable<ContainerInfo> containers) =>
@@ -301,7 +297,7 @@ public sealed record ContainerSnapshot(IReadOnlyList<ComposeProject> Projects, I
                     string[] port = inside.Name.Split('/');
                     foreach (JsonElement binding in inside.Value.EnumerateArray())
                     {
-                        if (ContainerEngine.Text(binding, "HostPort") is { Length: > 0 } host
+                        if (JsonMembers.Scalar(binding, "HostPort") is { Length: > 0 } host
                             && new ContainerPort(host, port[0], port.Length > 1 ? port[1] : "tcp") is var published && !ports.Contains(published))
                         {
                             ports.Add(published);
@@ -320,25 +316,25 @@ public sealed record ContainerSnapshot(IReadOnlyList<ComposeProject> Projects, I
     private static string ImageName(JsonElement image)
     {
         // Podman's own command names an image in full ("docker.io/library/busybox:1.37"), with no repository and tag apart.
-        if (ContainerEngine.Text(image, "Repository") is null && ContainerInfo.First(image, "Names") is { } named)
+        if (JsonMembers.Scalar(image, "Repository") is null && ContainerInfo.First(image, "Names") is { } named)
         {
             return named;
         }
-        string repository = ContainerEngine.Text(image, "Repository") ?? "<none>";
-        string tag = ContainerEngine.Text(image, "Tag") ?? "<none>";
+        string repository = JsonMembers.Scalar(image, "Repository") ?? "<none>";
+        string tag = JsonMembers.Scalar(image, "Tag") ?? "<none>";
         return repository == "<none>" ? ContainerInfo.IdOf(image) ?? repository : tag == "<none>" ? repository : $"{repository}:{tag}";
     }
 
     /// <summary>An image's size and age as Docker's CLI words them; Podman's own gives the size in bytes and no age.</summary>
     private static string ImageDetail(JsonElement image)
     {
-        string? size = ContainerEngine.Text(image, "Size");
+        string? size = JsonMembers.Scalar(image, "Size");
         if (image.TryGetProperty("Size", out JsonElement bytes) && bytes.ValueKind == JsonValueKind.Number && bytes.TryGetInt64(out long count))
         {
             size = count >= 1_000_000_000 ? string.Create(CultureInfo.InvariantCulture, $"{count / 1e9:0.##}GB")
                 : count >= 1_000_000 ? string.Create(CultureInfo.InvariantCulture, $"{count / 1e6:0.##}MB")
                 : string.Create(CultureInfo.InvariantCulture, $"{count / 1e3:0.##}kB");
         }
-        return ContainerEngine.Text(image, "CreatedSince") is { } since ? $"{size}, {since}" : size ?? string.Empty;
+        return JsonMembers.Scalar(image, "CreatedSince") is { } since ? $"{size}, {since}" : size ?? string.Empty;
     }
 }

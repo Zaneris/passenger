@@ -31,7 +31,7 @@ public sealed record SolutionFilter(string Path, string Solution, IReadOnlySet<s
     {
         try
         {
-            using JsonDocument read = JsonDocument.Parse(text, JsonText.Lenient);
+            using JsonDocument read = JsonDocument.Parse(text, LenientJson.Document);
             return Of(path, read);
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or ArgumentException)

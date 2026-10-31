@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -81,8 +82,6 @@ public sealed partial record LaunchProfile(
     /// <summary>Another program, named by <c>executablePath</c>.</summary>
     public const string ExecutableCommand = "Executable";
 
-    private static readonly JsonDocumentOptions Lenient = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
-
     /// <summary>The file a project's launch profiles are in, under its folder's Properties.</summary>
     public const string SettingsFile = "launchSettings.json";
 
@@ -160,43 +159,37 @@ public sealed partial record LaunchProfile(
         }
         try
         {
-            using JsonDocument settings = JsonDocument.Parse(text, Lenient);
-            if (settings.RootElement.ValueKind != JsonValueKind.Object || !settings.RootElement.TryGetProperty("profiles", out JsonElement profiles)
-                || profiles.ValueKind != JsonValueKind.Object)
-            {
-                return [];
-            }
+            using JsonDocument settings = JsonDocument.Parse(text, LenientJson.Document);
             List<LaunchProfile> found = [];
-            foreach (JsonProperty profile in profiles.EnumerateObject())
+            foreach (JsonProperty profile in JsonMembers.Properties(settings.RootElement, "profiles"))
             {
                 JsonElement value = profile.Value;
                 if (value.ValueKind != JsonValueKind.Object)
                 {
                     continue;
                 }
-                JsonElement? compose = value.TryGetProperty("composeProfile", out JsonElement inProfile) && inProfile.ValueKind == JsonValueKind.Object ? inProfile : null;
+                JsonElement? compose = JsonMembers.Object(value, "composeProfile");
                 Dictionary<string, string> actions = [];
-                foreach (JsonElement holder in compose is { } composeProfile ? (JsonElement[])[value, composeProfile] : [value])
+                foreach (JsonElement? holder in (JsonElement?[])[value, compose])
                 {
                     Values(holder, "serviceActions", actions);
                 }
-                bool browser = value.TryGetProperty("launchBrowser", out JsonElement launch) && launch.ValueKind == JsonValueKind.True;
-                found.Add(new LaunchProfile(profile.Name, Text(value, "commandName"), Text(value, "executablePath"), Text(value, "commandLineArgs"),
-                    Text(value, "workingDirectory"), Values(value, "environmentVariables", []), Text(value, "applicationUrl"), browser, Text(value, "launchUrl"))
+                found.Add(new LaunchProfile(profile.Name, JsonMembers.Text(value, "commandName"), JsonMembers.Text(value, "executablePath"),
+                    JsonMembers.Text(value, "commandLineArgs"), JsonMembers.Text(value, "workingDirectory"), Values(value, "environmentVariables", []),
+                    JsonMembers.Text(value, "applicationUrl"), JsonMembers.Bool(value, "launchBrowser") is true, JsonMembers.Text(value, "launchUrl"))
                 {
-                    HttpPort = Number(value, "httpPort"),
-                    SslPort = Number(value, "sslPort"),
-                    UseSsl = value.TryGetProperty("useSSL", out JsonElement ssl) && ssl.ValueKind == JsonValueKind.True,
-                    PublishAllPorts = value.TryGetProperty("publishAllPorts", out JsonElement all) && all.ValueKind == JsonValueKind.True,
-                    RunArguments = Text(value, RunArgumentsKeys[0]) ?? Text(value, RunArgumentsKeys[1]),
-                    RunArgumentsKey = RunArgumentsKeys.FirstOrDefault(k => Text(value, k) is not null),
-                    EnvironmentFiles = Text(value, "containerRunEnvironmentFiles"),
+                    HttpPort = Port(value, "httpPort"),
+                    SslPort = Port(value, "sslPort"),
+                    UseSsl = JsonMembers.Bool(value, "useSSL") is true,
+                    PublishAllPorts = JsonMembers.Bool(value, "publishAllPorts") is true,
+                    RunArguments = JsonMembers.Text(value, RunArgumentsKeys[0]) ?? JsonMembers.Text(value, RunArgumentsKeys[1]),
+                    RunArgumentsKey = RunArgumentsKeys.FirstOrDefault(k => JsonMembers.Text(value, k) is not null),
+                    EnvironmentFiles = JsonMembers.Text(value, "containerRunEnvironmentFiles"),
                     ServiceActions = actions,
-                    ComposeProfiles = compose is { } c && c.TryGetProperty("includes", out JsonElement includes) && includes.ValueKind == JsonValueKind.Array
-                        ? [.. includes.EnumerateArray().Where(i => i.ValueKind == JsonValueKind.String).Select(i => i.GetString()!)] : [],
-                    ComposeLaunchAction = Text(value, "composeLaunchAction"),
-                    ComposeLaunchService = Text(value, "composeLaunchServiceName"),
-                    ComposeLaunchUrl = Text(value, "composeLaunchUrl"),
+                    ComposeProfiles = JsonMembers.Texts(compose, "includes"),
+                    ComposeLaunchAction = JsonMembers.Text(value, "composeLaunchAction"),
+                    ComposeLaunchService = JsonMembers.Text(value, "composeLaunchServiceName"),
+                    ComposeLaunchUrl = JsonMembers.Text(value, "composeLaunchUrl"),
                 });
             }
             return found;
@@ -206,32 +199,19 @@ public sealed partial record LaunchProfile(
             return [];
         }
 
-        static string? Text(JsonElement value, string key) =>
-            value.TryGetProperty(key, out JsonElement found) && found.ValueKind == JsonValueKind.String ? found.GetString() : null;
-
-        static Dictionary<string, string> Values(JsonElement value, string key, Dictionary<string, string> into)
+        static Dictionary<string, string> Values(JsonElement? value, string key, Dictionary<string, string> into)
         {
-            if (value.TryGetProperty(key, out JsonElement values) && values.ValueKind == JsonValueKind.Object)
+            foreach (JsonProperty named in JsonMembers.Properties(value, key))
             {
-                foreach (JsonProperty named in values.EnumerateObject())
-                {
-                    into[named.Name] = named.Value.ValueKind == JsonValueKind.String ? named.Value.GetString()! : named.Value.GetRawText();
-                }
+                into[named.Name] = named.Value.ValueKind == JsonValueKind.String ? named.Value.GetString()! : named.Value.GetRawText();
             }
             return into;
         }
 
-        static int? Number(JsonElement value, string key)
-        {
-            if (!value.TryGetProperty(key, out JsonElement found))
-            {
-                return null;
-            }
-            int port = 0;
-            bool read = found.ValueKind == JsonValueKind.Number ? found.TryGetInt32(out port)
-                : found.ValueKind == JsonValueKind.String && int.TryParse(found.GetString(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out port);
-            return read && port is > 0 and < 65536 ? port : null;
-        }
+        // A port written as a number or as its digits.
+        static int? Port(JsonElement value, string key) =>
+            (JsonMembers.Number(value, key) ?? (int.TryParse(JsonMembers.Text(value, key), NumberStyles.None, CultureInfo.InvariantCulture, out int written) ? written : null))
+                is int port and > 0 and < 65536 ? port : null;
     }
 
     /// <summary>The ports the profiles listen on over HTTP (their <c>applicationUrl</c>s), in the order they first come.</summary>

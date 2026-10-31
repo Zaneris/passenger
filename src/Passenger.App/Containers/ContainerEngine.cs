@@ -352,18 +352,18 @@ public sealed class ContainerEngine
         (string? serverVersion, string? serverOs, string? serverArch, string? context, bool podmanCli, bool podman) = (null, null, null, null, false, false);
         foreach (JsonElement read in JsonLines(version.Output))
         {
-            context = Text(read, "Client", "Context");
-            serverVersion = Text(read, "Server", "Version");
-            serverOs = Text(read, "Server", "Os");
-            serverArch = Text(read, "Server", "Arch") ?? ArchOf(Text(read, "Server", "OsArch"));
+            JsonElement? client = JsonMembers.Object(read, "Client");
+            JsonElement? server = JsonMembers.Object(read, "Server");
+            context = JsonMembers.Scalar(client, "Context");
+            serverVersion = JsonMembers.Scalar(server, "Version");
+            serverOs = JsonMembers.Scalar(server, "Os");
+            serverArch = JsonMembers.Scalar(server, "Arch") ?? ArchOf(JsonMembers.Scalar(server, "OsArch"));
             // Podman's own command words its system as OsArch; on Linux it is the engine itself, with no server apart.
-            podmanCli = Text(read, "Client", "OsArch") is not null;
-            podman = podmanCli || (read.TryGetProperty("Server", out JsonElement server) && server.ValueKind == JsonValueKind.Object
-                && server.TryGetProperty("Components", out JsonElement parts) && parts.ValueKind == JsonValueKind.Array
-                && parts.EnumerateArray().Any(p => Text(p, "Name") == "Podman Engine"));
+            podmanCli = JsonMembers.Scalar(client, "OsArch") is not null;
+            podman = podmanCli || JsonMembers.Items(server, "Components").Any(p => JsonMembers.Scalar(p, "Name") == "Podman Engine");
             if (podmanCli && version.Succeeded && serverVersion is null)
             {
-                (serverVersion, serverOs, serverArch) = (Text(read, "Client", "Version"), Text(read, "Client", "Os"), ArchOf(Text(read, "Client", "OsArch")));
+                (serverVersion, serverOs, serverArch) = (JsonMembers.Scalar(client, "Version"), JsonMembers.Scalar(client, "Os"), ArchOf(JsonMembers.Scalar(client, "OsArch")));
             }
         }
         // The engine's info asked beside the rest, once it answers: Docker's and Podman's alike say whether it runs rootless.
@@ -429,13 +429,15 @@ public sealed class ContainerEngine
                 {
                     return (options.EnumerateArray().Any(o => o.ValueKind == JsonValueKind.String && o.GetString() == "name=rootless"), null, true);
                 }
-                bool isRootless = Text(info, "host", "security", "rootless") == "true";
+                JsonElement? host = JsonMembers.Object(info, "host");
+                bool isRootless = JsonMembers.Scalar(JsonMembers.Object(host, "security"), "rootless") == "true";
                 if (!podmanCli || !OperatingSystem.IsLinux())
                 {
                     return (isRootless, null, true);
                 }
-                bool there = Text(info, "host", "remoteSocket", "exists") != "false";
-                return (isRootless, there && Text(info, "host", "remoteSocket", "path") is { Length: > 0 } path ? (path.Contains("://", StringComparison.Ordinal) ? path : $"unix://{path}") : null, there);
+                JsonElement? socket = JsonMembers.Object(host, "remoteSocket");
+                bool there = JsonMembers.Scalar(socket, "exists") != "false";
+                return (isRootless, there && JsonMembers.Scalar(socket, "path") is { Length: > 0 } path ? (path.Contains("://", StringComparison.Ordinal) ? path : $"unix://{path}") : null, there);
             }
             catch (Exception failed) when (failed is TimeoutException or JsonException)
             {
@@ -448,7 +450,7 @@ public sealed class ContainerEngine
             try
             {
                 ChildResult inspected = await RunAsync(["context", "inspect", "--format", "json"], AskLimit);
-                return JsonLines(inspected.Output).Select(c => Text(c, "Endpoints", "docker", "Host")).FirstOrDefault(h => h is not null);
+                return JsonLines(inspected.Output).Select(c => JsonMembers.Scalar(JsonMembers.Object(JsonMembers.Object(c, "Endpoints"), "docker"), "Host")).FirstOrDefault(h => h is not null);
             }
             catch (Exception failed) when (failed is TimeoutException or JsonException)
             {
@@ -461,7 +463,7 @@ public sealed class ContainerEngine
             try
             {
                 ChildResult said = await RunAsync(["compose", "version", "--format", "json"], AskLimit);
-                return said.Succeeded ? JsonLines(said.Output).Select(v => Text(v, "version")).FirstOrDefault() : null;
+                return said.Succeeded ? JsonLines(said.Output).Select(v => JsonMembers.Scalar(v, "version")).FirstOrDefault() : null;
             }
             catch (Exception failed) when (failed is TimeoutException or JsonException)
             {
@@ -487,24 +489,6 @@ public sealed class ContainerEngine
 
     /// <summary>The processor of Podman's "linux/arm64".</summary>
     private static string? ArchOf(string? osArch) => osArch?.Split('/') is [_, var arch, ..] ? arch : null;
-
-    /// <summary>A string at a path of properties, or null.</summary>
-    public static string? Text(JsonElement element, params string[] path)
-    {
-        foreach (string name in path)
-        {
-            if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out element))
-            {
-                return null;
-            }
-        }
-        return element.ValueKind switch
-        {
-            JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => element.GetRawText(),
-            _ => null,
-        };
-    }
 
     /// <summary>What a follower is told when the engine's events stop (it stopped, Docker Desktop quit) and when they come
     /// again once it is ready: an event of the engine's own, <c>stopped</c> or <c>started</c>.</summary>
@@ -712,18 +696,18 @@ public sealed class ContainerEngine
             JsonElement root = read.RootElement;
             Dictionary<string, string> attributes = [];
             // Docker's attributes are its actor's; Podman's own command puts them, its status and id at the top.
-            JsonElement given = root.TryGetProperty("Actor", out JsonElement actor) && actor.ValueKind == JsonValueKind.Object
-                && actor.TryGetProperty("Attributes", out JsonElement actors) ? actors
-                : root.TryGetProperty("Attributes", out JsonElement own) ? own : default;
-            if (given.ValueKind == JsonValueKind.Object)
+            JsonElement? actor = JsonMembers.Object(root, "Actor");
+            JsonElement? given = JsonMembers.Object(actor, "Attributes") ?? JsonMembers.Object(root, "Attributes");
+            if (given is { } named)
             {
-                foreach (JsonProperty property in given.EnumerateObject())
+                foreach (JsonProperty property in named.EnumerateObject())
                 {
                     attributes[property.Name] = property.Value.ToString();
                 }
             }
-            return new ContainerEvent(Text(root, "Type") ?? string.Empty, Text(root, "Action") ?? Text(root, "status") ?? Text(root, "Status") ?? string.Empty,
-                Text(root, "Actor", "ID") ?? Text(root, "id") ?? Text(root, "ID") ?? string.Empty, attributes);
+            return new ContainerEvent(JsonMembers.Scalar(root, "Type") ?? string.Empty,
+                JsonMembers.Scalar(root, "Action") ?? JsonMembers.Scalar(root, "status") ?? JsonMembers.Scalar(root, "Status") ?? string.Empty,
+                JsonMembers.Scalar(actor, "ID") ?? JsonMembers.Scalar(root, "id") ?? JsonMembers.Scalar(root, "ID") ?? string.Empty, attributes);
         }
         catch (JsonException)
         {

@@ -71,14 +71,13 @@ public sealed partial class CSharpDocument
             if (diagnostic.Source == LocalizationDiagnosticSource
                 && (line is not { } on || diagnostic.Range.Start.Line <= on && on <= diagnostic.Range.End.Line)
                 && diagnostic.Data is { ValueKind: JsonValueKind.Object } data
-                && Field(data, "key") is { } key && Field(data, "file") is { } file && Field(data, "culture") is { } culture && Field(data, "base") is { } basePath)
+                && JsonMembers.Text(data, "key") is { } key && JsonMembers.Text(data, "file") is { } file
+                && JsonMembers.Text(data, "culture") is { } culture && JsonMembers.Text(data, "base") is { } basePath)
             {
-                missing.Add((range, key, file, culture, basePath, Field(data, "untranslated") == "true"));
+                missing.Add((range, key, file, culture, basePath, JsonMembers.Text(data, "untranslated") == "true"));
             }
         }
         return missing;
-
-        static string? Field(JsonElement data, string name) => data.TryGetProperty(name, out JsonElement value) ? value.GetString() : null;
     }
 
     /// <summary>The file's reads of localized strings a language lacks, each a warning where its key is written, one a language:

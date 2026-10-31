@@ -1556,14 +1556,14 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
     public async Task<IReadOnlyList<ServiceState>> StatesAsync(CancellationToken cancel)
     {
         IReadOnlyList<JsonElement> rows = await engine.JsonLinesAsync([.. Plan.Compose, "ps", "--all", "--format", "json"], cancel);
-        return [.. rows.Select(r => new ServiceState(ContainerEngine.Text(r, "Service") ?? string.Empty, ContainerEngine.Text(r, "State") ?? string.Empty,
-            ContainerEngine.Text(r, "Health") is { Length: > 0 } health ? health : null,
-            ContainerEngine.Text(r, "Publishers") is null ? ContainerEngine.Text(r, "Ports") ?? string.Empty : Ports(r), ContainerEngine.Text(r, "Name"),
-            int.TryParse(ContainerEngine.Text(r, "ExitCode"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int code) ? code : null))];
+        return [.. rows.Select(r => new ServiceState(JsonMembers.Scalar(r, "Service") ?? string.Empty, JsonMembers.Scalar(r, "State") ?? string.Empty,
+            JsonMembers.Scalar(r, "Health") is { Length: > 0 } health ? health : null,
+            JsonMembers.Scalar(r, "Publishers") is null ? JsonMembers.Scalar(r, "Ports") ?? string.Empty : Ports(r), JsonMembers.Scalar(r, "Name"),
+            int.TryParse(JsonMembers.Scalar(r, "ExitCode"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int code) ? code : null))];
 
         static string Ports(JsonElement row) => row.TryGetProperty("Publishers", out JsonElement publishers) && publishers.ValueKind == JsonValueKind.Array
-            ? string.Join(", ", publishers.EnumerateArray().Where(p => ContainerEngine.Text(p, "PublishedPort") is not (null or "0"))
-                .Select(p => $"{ContainerEngine.Text(p, "PublishedPort")}->{ContainerEngine.Text(p, "TargetPort")}/{ContainerEngine.Text(p, "Protocol")}").Distinct())
+            ? string.Join(", ", publishers.EnumerateArray().Where(p => JsonMembers.Scalar(p, "PublishedPort") is not (null or "0"))
+                .Select(p => $"{JsonMembers.Scalar(p, "PublishedPort")}->{JsonMembers.Scalar(p, "TargetPort")}/{JsonMembers.Scalar(p, "Protocol")}").Distinct())
             : string.Empty;
     }
 
@@ -1579,8 +1579,8 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         IReadOnlyList<JsonElement> rows = await engine.JsonLinesAsync([.. Plan.Compose, "ps", "--format", "json", "--", service.Service], cancel);
         List<ContainerPort> published = [.. rows.SelectMany(r => r.TryGetProperty("Publishers", out JsonElement publishers) && publishers.ValueKind == JsonValueKind.Array
                 ? publishers.EnumerateArray() : Enumerable.Empty<JsonElement>())
-            .Where(p => ContainerEngine.Text(p, "PublishedPort") is not (null or "0"))
-            .Select(p => new ContainerPort(ContainerEngine.Text(p, "PublishedPort")!, ContainerEngine.Text(p, "TargetPort") ?? string.Empty, ContainerEngine.Text(p, "Protocol") ?? "tcp"))];
+            .Where(p => JsonMembers.Scalar(p, "PublishedPort") is not (null or "0"))
+            .Select(p => new ContainerPort(JsonMembers.Scalar(p, "PublishedPort")!, JsonMembers.Scalar(p, "TargetPort") ?? string.Empty, JsonMembers.Scalar(p, "Protocol") ?? "tcp"))];
         ContainerPort? chosen = published.FirstOrDefault(p => p.Inside == "8080") ?? published.FirstOrDefault(p => p.Inside == "80") ?? published.FirstOrDefault();
         string? endpoint = (await engine.StateAsync(cancel: cancel)).Endpoint;
         return chosen?.LinkOn(endpoint)?.GetLeftPart(UriPartial.Authority);

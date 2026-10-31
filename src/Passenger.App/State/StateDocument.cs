@@ -407,7 +407,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
     /// <summary>A file's text as a document of this build's version and names, with the version it was written at.</summary>
     private static (JsonObject Document, int Version) Upgraded(string text)
     {
-        if (JsonNode.Parse(text, documentOptions: StateFile.HandEdited) is not JsonObject document)
+        if (JsonNode.Parse(text, documentOptions: LenientJson.Document) is not JsonObject document)
         {
             throw new JsonException("it is not a JSON object");
         }
@@ -438,9 +438,6 @@ internal static class StateFile
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         Converters = { new EnumNames() },
     };
-
-    /// <summary>What a person editing a file by hand may leave in it and still have it read.</summary>
-    public static readonly JsonDocumentOptions HandEdited = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
     private static readonly ConcurrentDictionary<string, object> Locks = new(StringComparer.Ordinal);
 

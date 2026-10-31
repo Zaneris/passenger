@@ -3,6 +3,7 @@ using System.Text.Json;
 using Avalonia.Controls;
 using Passenger.App.Containers;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 
 namespace Passenger.App.Aspire;
 
@@ -43,7 +44,7 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open) :
     private void Fill(AspireResource resource, bool leftUnstarted)
     {
         JsonElement data = resource.Data;
-        List<(string, Control)> about = [("Type", Words(Text(data, "resourceType") ?? Text(data, "type") ?? "Unknown"))];
+        List<(string, Control)> about = [("Type", Words(JsonMembers.Text(data, "resourceType") ?? JsonMembers.Text(data, "type") ?? "Unknown"))];
         about.Add(("State", leftUnstarted ? State(AspireAppRun.NotStarted, null) : State(resource.State ?? "Unknown", Health(resource))));
         if (leftUnstarted)
         {
@@ -57,25 +58,25 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open) :
         }
         foreach ((string name, string field) in (ReadOnlySpan<(string, string)>)[("Started", "startTimestamp"), ("Stopped", "stopTimestamp")])
         {
-            if (Text(data, field) is { } said && DateTimeOffset.TryParse(said, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTimeOffset at))
+            if (JsonMembers.Text(data, field) is { } said && DateTimeOffset.TryParse(said, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTimeOffset at))
             {
                 about.Add((name, Words(ContainerDetailsPane.When(at))));
             }
         }
         Section("Resource", about);
-        if (Members(data, "healthReports") is { Count: > 0 } reports)
+        if (JsonMembers.Properties(data, "healthReports") is { Count: > 0 } reports)
         {
             Section("Health", [.. reports.Select(report => (report.Name, (Control)Report(report.Value)))]);
         }
         List<(string, Control)> addresses = [];
-        foreach (JsonElement url in Items(data, "urls"))
+        foreach (JsonElement url in JsonMembers.Items(data, "urls"))
         {
-            if (Text(url, "url") is not { } address || !Uri.TryCreate(address, UriKind.Absolute, out Uri? target))
+            if (JsonMembers.Text(url, "url") is not { } address || !Uri.TryCreate(address, UriKind.Absolute, out Uri? target))
             {
                 continue;
             }
-            string name = Text(url, "displayName") ?? Text(url, "name") ?? target.Scheme;
-            bool inactive = url.TryGetProperty("isInactive", out JsonElement flag) && flag.ValueKind == JsonValueKind.True;
+            string name = JsonMembers.Text(url, "displayName") ?? JsonMembers.Text(url, "name") ?? target.Scheme;
+            bool inactive = JsonMembers.Bool(url, "isInactive") is true;
             addresses.Add((name, target.Scheme is "http" or "https" && !inactive
                 ? Link(target.AbsoluteUri, target.AbsoluteUri, () => browse(target), "aspireDetailsUrl")
                 : Words(target.AbsoluteUri, brush: inactive ? TokenKeys.TextMuted : null)));
@@ -84,41 +85,41 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open) :
         {
             Section("URLs", addresses);
         }
-        if (Items(data, "relationships") is { Count: > 0 } relations)
+        if (JsonMembers.Items(data, "relationships") is { Count: > 0 } relations)
         {
-            Section("Relationships", [.. relations.Select(r => (Text(r, "resourceName") ?? "?", (Control)Words(Text(r, "type") ?? string.Empty)))]);
+            Section("Relationships", [.. relations.Select(r => (JsonMembers.Text(r, "resourceName") ?? "?", (Control)Words(JsonMembers.Text(r, "type") ?? string.Empty)))]);
         }
-        if (Members(data, "environment") is { Count: > 0 } environment)
+        if (JsonMembers.Properties(data, "environment") is { Count: > 0 } environment)
         {
             Section("Environment", [.. environment.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
                 .Select(e => (e.Name, (Control)Value(e.Name, e.Value)))]);
         }
-        if (Members(data, "properties") is { Count: > 0 } properties)
+        if (JsonMembers.Properties(data, "properties") is { Count: > 0 } properties)
         {
-            Dictionary<string, string> titles = Members(data, "propertyMetadata")
-                .Where(m => m.Value.ValueKind == JsonValueKind.Object && Text(m.Value, "displayName") is { Length: > 0 })
-                .ToDictionary(m => m.Name, m => Text(m.Value, "displayName")!, StringComparer.Ordinal);
+            Dictionary<string, string> titles = JsonMembers.Properties(data, "propertyMetadata")
+                .Where(m => JsonMembers.Text(m.Value, "displayName") is { Length: > 0 })
+                .ToDictionary(m => m.Name, m => JsonMembers.Text(m.Value, "displayName")!, StringComparer.Ordinal);
             Section("Properties", [.. properties.Where(p => p.Value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
                 .OrderBy(p => p.Name, StringComparer.Ordinal)
                 .Select(p => (titles.GetValueOrDefault(p.Name) ?? p.Name, (Control)Value(p.Name, p.Value)))]);
         }
-        if (Items(data, "volumes") is { Count: > 0 } volumes)
+        if (JsonMembers.Items(data, "volumes") is { Count: > 0 } volumes)
         {
-            Section("Volumes", [.. volumes.Select(v => (Text(v, "target") ?? "?", (Control)Words(
-                $"{Text(v, "mountType")} {Text(v, "source")}{(v.TryGetProperty("isReadOnly", out JsonElement read) && read.ValueKind == JsonValueKind.True ? " (read-only)" : string.Empty)}".Trim())))]);
+            Section("Volumes", [.. volumes.Select(v => (JsonMembers.Text(v, "target") ?? "?", (Control)Words(
+                $"{JsonMembers.Text(v, "mountType")} {JsonMembers.Text(v, "source")}{(JsonMembers.Bool(v, "isReadOnly") is true ? " (read-only)" : string.Empty)}".Trim())))]);
         }
     }
 
     /// <summary>A resource's health as the lists show it (healthy, unhealthy, degraded), or null for one with no health
     /// report, as a container with no health check shows none (Aspire calls such a resource healthy once it runs).</summary>
     internal static string? Health(AspireResource resource) =>
-        Members(resource.Data, "healthReports").Count > 0 ? resource.HealthStatus?.ToLowerInvariant() : null;
+        JsonMembers.Properties(resource.Data, "healthReports").Count > 0 ? resource.HealthStatus?.ToLowerInvariant() : null;
 
     /// <summary>A health report: its status, what it says, and an exception it carries.</summary>
     private static SelectableTextBlock Report(JsonElement report)
     {
-        string status = Text(report, "status")?.ToLowerInvariant() ?? "no status";
-        string words = string.Join(": ", ((string?[])[status, Text(report, "description"), Text(report, "exceptionMessage")]).Where(w => w is { Length: > 0 }));
+        string status = JsonMembers.Text(report, "status")?.ToLowerInvariant() ?? "no status";
+        string words = string.Join(": ", ((string?[])[status, JsonMembers.Text(report, "description"), JsonMembers.Text(report, "exceptionMessage")]).Where(w => w is { Length: > 0 }));
         return Words(words, brush: status == "unhealthy" ? TokenKeys.Error : null);
     }
 
@@ -133,15 +134,4 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open) :
     };
 
     private static string Plain(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
-
-    private static string? Text(JsonElement element, string name) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out JsonElement field) && field.ValueKind == JsonValueKind.String ? field.GetString() : null;
-
-    private static IReadOnlyList<JsonProperty> Members(JsonElement element, string name) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out JsonElement field) && field.ValueKind == JsonValueKind.Object
-            ? [.. field.EnumerateObject()] : [];
-
-    private static IReadOnlyList<JsonElement> Items(JsonElement element, string name) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out JsonElement field) && field.ValueKind == JsonValueKind.Array
-            ? [.. field.EnumerateArray()] : [];
 }

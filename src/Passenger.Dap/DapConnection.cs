@@ -366,14 +366,14 @@ public sealed class DapConnection : IAsyncDisposable
 
     private void Receive(JsonElement message)
     {
-        if (Text(message, "type") == "response")
+        if (JsonMembers.Text(message, "type") == "response")
         {
             int seq = message.GetProperty("request_seq").GetInt32();
             // Read before the request is taken from those waiting, so an answer that does not read fails it with the rest.
             bool succeeded = message.TryGetProperty("success", out JsonElement success) && success.GetBoolean();
             if (!succeeded)
             {
-                pending.Fail(seq, asked => new DapException(Text(message, "command") ?? asked.Command, Text(message, "message") ?? "failed"));
+                pending.Fail(seq, asked => new DapException(JsonMembers.Text(message, "command") ?? asked.Command, JsonMembers.Text(message, "message") ?? "failed"));
             }
             else if (pending.TryGet(seq, out Asked asked))
             {
@@ -408,14 +408,14 @@ public sealed class DapConnection : IAsyncDisposable
         {
             try
             {
-                switch (Text(message, "type"))
+                switch (JsonMembers.Text(message, "type"))
                 {
                     case "request":
                         // Started in order and left to finish: the next request may start at a handler's first wait.
                         UnawaitedWork.Observe(AnswerAsync(message));
                         break;
                     case "event":
-                        string name = Text(message, "event") ?? string.Empty;
+                        string name = JsonMembers.Text(message, "event") ?? string.Empty;
                         JsonElement body = message.TryGetProperty("body", out JsonElement found) ? found : default;
                         if (eventHandlers.TryGetValue(name, out Action<JsonElement>? handler))
                         {
@@ -441,7 +441,7 @@ public sealed class DapConnection : IAsyncDisposable
     private async Task AnswerAsync(JsonElement request)
     {
         int seq = request.GetProperty("seq").GetInt32();
-        string command = Text(request, "command") ?? string.Empty;
+        string command = JsonMembers.Text(request, "command") ?? string.Empty;
         object? body = null;
         Exception? failed = null;
         try
@@ -489,9 +489,6 @@ public sealed class DapConnection : IAsyncDisposable
     /// <summary>Fails every request waiting, and each asked from now on, named by its command, since a request failed
     /// this way may be heard of only from the finalizer, with no stack to say whose it was.</summary>
     private void FailPending(string why) => pending.End(asked => new DapException(asked.Command, why));
-
-    private static string? Text(JsonElement element, string name) =>
-        element.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 }
 
 /// <summary>A request the other end answered with an error, or could not answer.</summary>

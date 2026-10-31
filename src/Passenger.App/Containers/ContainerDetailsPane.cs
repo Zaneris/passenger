@@ -77,86 +77,72 @@ public sealed record ContainerDetails
 
     internal static ContainerDetails Read(JsonElement said)
     {
-        JsonElement state = Child(said, "State");
-        JsonElement config = Child(said, "Config");
-        JsonElement health = Child(state, "Health");
-        JsonElement settings = Child(said, "NetworkSettings");
+        JsonElement? state = JsonMembers.Object(said, "State");
+        JsonElement? config = JsonMembers.Object(said, "Config");
+        JsonElement? health = JsonMembers.Object(state, "Health");
+        JsonElement? settings = JsonMembers.Object(said, "NetworkSettings");
         List<ContainerPort> ports = [];
         List<string> unpublished = [];
-        if (Child(settings, "Ports") is { ValueKind: JsonValueKind.Object } exposed)
+        foreach (JsonProperty port in JsonMembers.Properties(settings, "Ports").OrderBy(p => int.TryParse(p.Name.Split('/')[0], CultureInfo.InvariantCulture, out int n) ? n : 0))
         {
-            foreach (JsonProperty port in exposed.EnumerateObject().OrderBy(p => int.TryParse(p.Name.Split('/')[0], CultureInfo.InvariantCulture, out int n) ? n : 0))
+            string[] inside = port.Name.Split('/');
+            string protocol = inside.Length > 1 ? inside[1] : "tcp";
+            List<ContainerPort> bound = port.Value.ValueKind != JsonValueKind.Array ? []
+                : [.. port.Value.EnumerateArray().Select(b => JsonMembers.Scalar(b, "HostPort")).OfType<string>().Where(h => h.Length > 0).Distinct(StringComparer.Ordinal)
+                    .Select(host => new ContainerPort(host, inside[0], protocol))];
+            if (bound.Count == 0)
             {
-                string[] inside = port.Name.Split('/');
-                string protocol = inside.Length > 1 ? inside[1] : "tcp";
-                List<ContainerPort> bound = port.Value.ValueKind != JsonValueKind.Array ? []
-                    : [.. port.Value.EnumerateArray().Select(b => ContainerEngine.Text(b, "HostPort")).OfType<string>().Where(h => h.Length > 0).Distinct(StringComparer.Ordinal)
-                        .Select(host => new ContainerPort(host, inside[0], protocol))];
-                if (bound.Count == 0)
-                {
-                    unpublished.Add(port.Name);
-                }
-                ports.AddRange(bound);
+                unpublished.Add(port.Name);
             }
+            ports.AddRange(bound);
         }
-        string? errors = ContainerEngine.Text(state, "Error") is { Length: > 0 } error ? error : null;
-        if (ContainerEngine.Text(state, "OOMKilled") == "true")
+        string? errors = JsonMembers.Scalar(state, "Error") is { Length: > 0 } error ? error : null;
+        if (JsonMembers.Scalar(state, "OOMKilled") == "true")
         {
             errors = errors is null ? "Ended by the kernel for want of memory" : $"{errors}; ended by the kernel for want of memory";
         }
-        string status = ContainerEngine.Text(state, "Status") ?? string.Empty;
-        string[] test = Strings(Child(Child(config, "Healthcheck"), "Test"));
-        string? policy = ContainerEngine.Text(said, "HostConfig", "RestartPolicy", "Name");
-        string id = ContainerEngine.Text(said, "Id") ?? string.Empty;
+        string status = JsonMembers.Scalar(state, "Status") ?? string.Empty;
+        string[] test = [.. JsonMembers.Texts(JsonMembers.Object(config, "Healthcheck"), "Test")];
+        string? policy = JsonMembers.Scalar(JsonMembers.Object(JsonMembers.Object(said, "HostConfig"), "RestartPolicy"), "Name");
+        string id = JsonMembers.Scalar(said, "Id") ?? string.Empty;
         return new ContainerDetails
         {
             Id = id,
-            Name = (ContainerEngine.Text(said, "Name") ?? string.Empty).TrimStart('/'),
-            Image = ContainerEngine.Text(config, "Image") ?? string.Empty,
+            Name = (JsonMembers.Scalar(said, "Name") ?? string.Empty).TrimStart('/'),
+            Image = JsonMembers.Scalar(config, "Image") ?? string.Empty,
             State = status,
-            Health = ContainerEngine.Text(health, "Status") is { Length: > 0 } now && now != "none" ? now : null,
-            FailingStreak = int.TryParse(ContainerEngine.Text(health, "FailingStreak"), CultureInfo.InvariantCulture, out int streak) ? streak : 0,
+            Health = JsonMembers.Scalar(health, "Status") is { Length: > 0 } now && now != "none" ? now : null,
+            FailingStreak = int.TryParse(JsonMembers.Scalar(health, "FailingStreak"), CultureInfo.InvariantCulture, out int streak) ? streak : 0,
             // ["CMD", words…] runs the words, ["CMD-SHELL", line] the line in the image's shell, ["NONE"] none.
             HealthCheck = test is ["CMD-SHELL", var line] ? line : test is ["CMD", .. var words] ? string.Join(' ', words) : null,
-            Probes = Child(health, "Log") is { ValueKind: JsonValueKind.Array } log
-                ? [.. log.EnumerateArray().Reverse().Select(p => new HealthProbe(Time(ContainerEngine.Text(p, "Start")),
-                    int.TryParse(ContainerEngine.Text(p, "ExitCode"), CultureInfo.InvariantCulture, out int code) ? code : 0,
-                    (ContainerEngine.Text(p, "Output") ?? string.Empty).Trim()))]
-                : [],
-            RestartCount = int.TryParse(ContainerEngine.Text(said, "RestartCount"), CultureInfo.InvariantCulture, out int restarts) ? restarts : 0,
+            Probes = [.. JsonMembers.Items(health, "Log").Reverse().Select(p => new HealthProbe(Time(JsonMembers.Scalar(p, "Start")),
+                int.TryParse(JsonMembers.Scalar(p, "ExitCode"), CultureInfo.InvariantCulture, out int code) ? code : 0,
+                (JsonMembers.Scalar(p, "Output") ?? string.Empty).Trim()))],
+            RestartCount = int.TryParse(JsonMembers.Scalar(said, "RestartCount"), CultureInfo.InvariantCulture, out int restarts) ? restarts : 0,
             RestartPolicy = policy is { Length: > 0 } and not "no" ? policy : null,
-            LastExit = status is not ("running" or "paused") && Time(ContainerEngine.Text(state, "FinishedAt")) is { } finished
-                && int.TryParse(ContainerEngine.Text(state, "ExitCode"), CultureInfo.InvariantCulture, out int exit) ? (exit, finished) : null,
+            LastExit = status is not ("running" or "paused") && Time(JsonMembers.Scalar(state, "FinishedAt")) is { } finished
+                && int.TryParse(JsonMembers.Scalar(state, "ExitCode"), CultureInfo.InvariantCulture, out int exit) ? (exit, finished) : null,
             Error = errors,
-            Environment = [.. Strings(Child(config, "Env"))
+            Environment = [.. JsonMembers.Texts(config, "Env")
                 .Select(e => e.Split('=', 2))
                 .Select(e => (e[0], ContainerSecrets.Shown(e[0], e.Length > 1 ? e[1] : string.Empty)))
                 .OrderBy(e => e.Item1, StringComparer.OrdinalIgnoreCase)],
-            Mounts = Child(said, "Mounts") is { ValueKind: JsonValueKind.Array } mounts
-                ? [.. mounts.EnumerateArray().Select(m => new ContainerMount(ContainerEngine.Text(m, "Type") ?? string.Empty,
-                    (ContainerEngine.Text(m, "Type") == "volume" ? ContainerEngine.Text(m, "Name") : null) ?? ContainerEngine.Text(m, "Source") ?? string.Empty,
-                    ContainerEngine.Text(m, "Destination") ?? string.Empty, ContainerEngine.Text(m, "RW") == "false"))]
-                : [],
-            Networks = Child(settings, "Networks") is { ValueKind: JsonValueKind.Object } networks
-                ? [.. networks.EnumerateObject().Select(n => new ContainerNetwork(n.Name, ContainerEngine.Text(n.Value, "IPAddress") is { Length: > 0 } address ? address : null,
-                    // The engine also answers to the start of its id, which says nothing the row does not.
-                    [.. Strings(Child(n.Value, "Aliases")).Concat(Strings(Child(n.Value, "DNSNames"))).Distinct(StringComparer.Ordinal)
-                        .Where(a => id.Length == 0 || !id.StartsWith(a, StringComparison.Ordinal))]))]
-                : [],
+            Mounts = [.. JsonMembers.Items(said, "Mounts").Select(m => new ContainerMount(JsonMembers.Scalar(m, "Type") ?? string.Empty,
+                (JsonMembers.Scalar(m, "Type") == "volume" ? JsonMembers.Scalar(m, "Name") : null) ?? JsonMembers.Scalar(m, "Source") ?? string.Empty,
+                JsonMembers.Scalar(m, "Destination") ?? string.Empty, JsonMembers.Scalar(m, "RW") == "false"))],
+            Networks = [.. JsonMembers.Properties(settings, "Networks").Select(n => new ContainerNetwork(n.Name,
+                JsonMembers.Scalar(n.Value, "IPAddress") is { Length: > 0 } address ? address : null,
+                // The engine also answers to the start of its id, which says nothing the row does not.
+                [.. JsonMembers.Texts(n.Value, "Aliases").Concat(JsonMembers.Texts(n.Value, "DNSNames")).Distinct(StringComparer.Ordinal)
+                    .Where(a => id.Length == 0 || !id.StartsWith(a, StringComparison.Ordinal))]))],
             Ports = ports,
             Unpublished = unpublished,
-            DependsOn = ContainerEngine.Text(config, "Labels", "com.docker.compose.depends_on") is { Length: > 0 } waits
+            DependsOn = JsonMembers.Scalar(JsonMembers.Object(config, "Labels"), "com.docker.compose.depends_on") is { Length: > 0 } waits
                 ? [.. waits.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(w => w.Split(':'))
                     .Select(w => new ServiceDependency(w[0], w.Length > 1 ? w[1] : "service_started", w.Length > 2 && w[2] == "true"))]
                 : [],
         };
     }
-
-    private static JsonElement Child(JsonElement element, string name) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out JsonElement child) ? child : default;
-
-    private static string[] Strings(JsonElement array) =>
-        array.ValueKind == JsonValueKind.Array ? [.. array.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!)] : [];
 
     /// <summary>A time as the engine writes it (RFC 3339 to the nanosecond); null for none, or its zero time.</summary>
     private static DateTimeOffset? Time(string? said)

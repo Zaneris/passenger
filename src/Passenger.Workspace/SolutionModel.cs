@@ -513,7 +513,7 @@ internal static class SharedRead
     public static System.Text.Json.JsonDocument Json(string path)
     {
         using FileStream stream = Open(path);
-        return System.Text.Json.JsonDocument.Parse(stream, JsonText.Lenient);
+        return System.Text.Json.JsonDocument.Parse(stream, LenientJson.Document);
     }
 
     public static IEnumerable<string> Lines(string path)

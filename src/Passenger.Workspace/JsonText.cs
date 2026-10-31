@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Passenger.Core;
 
 namespace Passenger.Workspace;
 
@@ -11,9 +12,6 @@ namespace Passenger.Workspace;
 public static class JsonText
 {
     internal static readonly JsonSerializerOptions Written = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
-
-    /// <summary>JSON as .NET's readers of these files take it: comments passed over and trailing commas allowed.</summary>
-    internal static readonly JsonDocumentOptions Lenient = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
     /// <summary>The text with an entry of an object member of its root set (appsettings.json's <c>Parameters</c>'
     /// <c>password</c>), the member made when the root has none, or with a member of the root set when no entry is given;
@@ -142,7 +140,7 @@ public static class JsonText
         {
             try
             {
-                return JsonNode.Parse(item, documentOptions: Lenient);
+                return JsonNode.Parse(item, documentOptions: LenientJson.Document);
             }
             catch (JsonException)
             {

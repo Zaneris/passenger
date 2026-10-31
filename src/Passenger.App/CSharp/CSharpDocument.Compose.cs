@@ -40,15 +40,13 @@ public sealed partial class CSharpDocument
             if (diagnostic.Source == ComposeDiagnosticSource
                 && (line is not { } on || diagnostic.Range.Start.Line <= on && on <= diagnostic.Range.End.Line)
                 && diagnostic.Data is { ValueKind: JsonValueKind.Object } data
-                && Text(data, "compose") is { } compose && Text(data, "service") is { } named && Text(data, "name") is { } name
+                && JsonMembers.Text(data, "compose") is { } compose && JsonMembers.Text(data, "service") is { } named && JsonMembers.Text(data, "name") is { } name
                 && gaps.FirstOrDefault(g => PathNames.Same(g.Compose, compose) && g.Service == named && g.Name == name) is { } gap)
             {
                 marked.Add((range, gap));
             }
         }
         return marked;
-
-        static string? Text(JsonElement data, string key) => data.TryGetProperty(key, out JsonElement value) ? value.GetString() : null;
     }
 
     /// <summary>The open compose files' warnings of a connection string a .NET service reads that its environment does not set,

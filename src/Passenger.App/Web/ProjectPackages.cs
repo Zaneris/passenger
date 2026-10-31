@@ -76,7 +76,7 @@ public static class ProjectPackages
     {
         try
         {
-            using JsonDocument read = JsonDocument.Parse(File.ReadAllText(manifest), new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+            using JsonDocument read = JsonDocument.Parse(File.ReadAllText(manifest), LenientJson.Document);
             return read.RootElement.ValueKind == JsonValueKind.Object && Lists.Any(list =>
                 read.RootElement.TryGetProperty(list, out JsonElement listed) && listed.ValueKind == JsonValueKind.Object && listed.TryGetProperty(name, out _));
         }

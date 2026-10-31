@@ -29,20 +29,17 @@ public static class ProgramProjects
         {
             using JsonDocument read = JsonDocument.Parse(line);
             JsonElement root = read.RootElement;
-            if (root.TryGetProperty("$type", out JsonElement type) && type.GetString() == "Error")
+            if (JsonMembers.Text(root, "$type") == "Error")
             {
-                return (new ProgramParams(path, null, null, $"{name}: {Text(root, "Message") ?? "the .NET SDK made no project for it"}"), [head], []);
+                return (new ProgramParams(path, null, null, $"{name}: {JsonMembers.Text(root, "Message") ?? "the .NET SDK made no project for it"}"), [head], []);
             }
             List<string> problems = [];
-            if (root.TryGetProperty("Diagnostics", out JsonElement diagnostics) && diagnostics.ValueKind == JsonValueKind.Array)
+            foreach (JsonElement diagnostic in JsonMembers.Items(root, "Diagnostics"))
             {
-                foreach (JsonElement diagnostic in diagnostics.EnumerateArray())
-                {
-                    problems.Add($"{At(diagnostic, name)}: {Text(diagnostic, "Message")}");
-                }
+                problems.Add($"{At(diagnostic, name)}: {JsonMembers.Text(diagnostic, "Message")}");
             }
-            string? content = Text(root, "Content");
-            string? project = Text(root, "ProjectPath");
+            string? content = JsonMembers.Text(root, "Content");
+            string? project = JsonMembers.Text(root, "ProjectPath");
             (List<string> included, List<string> referenced) = Named(content);
             IReadOnlyList<Stamp> heads = [head, .. included.Where(f => !PathNames.Same(f, path)).Select(Stamps.Head)];
             return (new ProgramParams(path, project, content, problems.Count > 0 ? string.Join(" ", problems) : null), heads, referenced);
@@ -53,23 +50,15 @@ public static class ProgramProjects
         }
     }
 
-    private static string? Text(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out JsonElement value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-
     /// <summary>Where a diagnostic of the SDK's is, as a build names a place: its file and line from 1.</summary>
     private static string At(JsonElement diagnostic, string name)
     {
-        if (diagnostic.TryGetProperty("Location", out JsonElement location) && location.ValueKind == JsonValueKind.Object)
+        if (JsonMembers.Object(diagnostic, "Location") is not { } location)
         {
-            string file = Text(location, "Path") is { } path ? Path.GetFileName(path) : name;
-            if (location.TryGetProperty("Span", out JsonElement span) && span.TryGetProperty("Start", out JsonElement start)
-                && start.TryGetProperty("Line", out JsonElement line) && line.TryGetInt32(out int number))
-            {
-                return $"{file}({number + 1})";
-            }
-            return file;
+            return name;
         }
-        return name;
+        string file = JsonMembers.Text(location, "Path") is { } path ? Path.GetFileName(path) : name;
+        return JsonMembers.Number(JsonMembers.Object(JsonMembers.Object(location, "Span"), "Start"), "Line") is { } line ? $"{file}({line + 1})" : file;
     }
 
     /// <summary>The C# files the project compiles that a directive named by its path (no wildcard nor property in it), and

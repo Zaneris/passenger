@@ -274,13 +274,13 @@ public static class ContainerTools
     public static async Task<ContainerSystem> SystemOfContainerAsync(ContainerEngine engine, string container, CancellationToken cancel)
     {
         JsonElement inspected = await engine.JsonAsync(["inspect", "--type", "container", container], cancel).ConfigureAwait(false);
-        string image = ContainerEngine.Text(First(inspected), "Image") ?? throw new ContainerToolsException($"docker inspect named no image of {container}");
+        string image = JsonMembers.Scalar(First(inspected), "Image") ?? throw new ContainerToolsException($"docker inspect named no image of {container}");
         if (Systems.TryGetValue(image, out ContainerSystem? known))
         {
             return known;
         }
         JsonElement described = await engine.JsonAsync(["image", "inspect", image], cancel).ConfigureAwait(false);
-        string architecture = ContainerEngine.Text(First(described), "Architecture") ?? "amd64";
+        string architecture = JsonMembers.Scalar(First(described), "Architecture") ?? "amd64";
         string loader = architecture == "arm64" ? "aarch64" : architecture == "amd64" ? "x86_64" : architecture;
         ContainerSystem system = new(architecture, await HasAsync(engine, container, $"/lib/ld-musl-{loader}.so.1", cancel).ConfigureAwait(false));
         Systems[image] = system;
@@ -342,7 +342,7 @@ public static class ContainerTools
     public static async Task<ContainerSystem> SystemOfImageAsync(ContainerEngine engine, string image, IReadOnlyList<string> labels, CancellationToken cancel)
     {
         JsonElement described = await engine.JsonAsync(["image", "inspect", image], cancel).ConfigureAwait(false);
-        if (ContainerEngine.Text(described[0], "Id") is { } id && Systems.TryGetValue(id, out ContainerSystem? known))
+        if (JsonMembers.Scalar(described[0], "Id") is { } id && Systems.TryGetValue(id, out ContainerSystem? known))
         {
             return known;
         }
@@ -440,13 +440,13 @@ public static class ContainerTools
             }
             return [.. document.RootElement.EnumerateArray()
                 .Where(p => p.ValueKind == JsonValueKind.Object && p.TryGetProperty("id", out JsonElement id) && id.ValueKind == JsonValueKind.Number && id.TryGetInt32(out _))
-                .Select(p => new DotnetProcess(p.GetProperty("id").GetInt32(), ContainerEngine.Text(p, "name") ?? string.Empty,
-                    ContainerEngine.Text(p, "commandLine") ?? string.Empty, ContainerEngine.Text(p, "user") ?? string.Empty, true)
+                .Select(p => new DotnetProcess(p.GetProperty("id").GetInt32(), JsonMembers.Scalar(p, "name") ?? string.Empty,
+                    JsonMembers.Scalar(p, "commandLine") ?? string.Empty, JsonMembers.Scalar(p, "user") ?? string.Empty, true)
                 {
                     Container = container,
                     HotReload = p.TryGetProperty("hotReload", out JsonElement hot) && hot.ValueKind == JsonValueKind.True,
                     Note = p.TryGetProperty("optimized", out JsonElement optimized) && optimized.ValueKind == JsonValueKind.True ? ReleaseBuild : null,
-                    WhyNot = ContainerEngine.Text(p, "whyNot"),
+                    WhyNot = JsonMembers.Scalar(p, "whyNot"),
                 })];
         }
         catch (JsonException unread)

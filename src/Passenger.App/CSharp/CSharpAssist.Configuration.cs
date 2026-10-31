@@ -184,8 +184,7 @@ internal sealed partial class CSharpAssist
     {
         try
         {
-            using System.Text.Json.JsonDocument read = System.Text.Json.JsonDocument.Parse(text,
-                new System.Text.Json.JsonDocumentOptions { CommentHandling = System.Text.Json.JsonCommentHandling.Skip, AllowTrailingCommas = true });
+            using System.Text.Json.JsonDocument read = System.Text.Json.JsonDocument.Parse(text, LenientJson.Document);
             return read.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object && read.RootElement.EnumerateObject()
                 .Any(p => p.Name.Equals(section, StringComparison.OrdinalIgnoreCase) && p.Value.ValueKind == System.Text.Json.JsonValueKind.Object);
         }

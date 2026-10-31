@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Passenger.Core;
 
 namespace Passenger.App.Endpoints;
 
@@ -84,7 +85,7 @@ public static partial class HttpVariables
         Dictionary<string, Dictionary<string, string>> environments = new(StringComparer.Ordinal);
         try
         {
-            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(envFile), new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(envFile), LenientJson.Document);
             if (document.RootElement.ValueKind != JsonValueKind.Object)
             {
                 return environments;

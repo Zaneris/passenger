@@ -522,19 +522,15 @@ internal sealed class DockerfileCheck(EngineChecks owner, OpenDocument document,
         using JsonDocument read = JsonDocument.Parse(result.Output);
         JsonElement root = read.RootElement;
         List<Finding> found = [];
-        if (root.TryGetProperty("warnings", out JsonElement warnings) && warnings.ValueKind == JsonValueKind.Array)
+        foreach (JsonElement warning in JsonMembers.Items(root, "warnings"))
         {
-            foreach (JsonElement warning in warnings.EnumerateArray())
-            {
-                string? rule = ContainerEngine.Text(warning, "ruleName");
-                string said = ContainerEngine.Text(warning, "detail") ?? ContainerEngine.Text(warning, "description") ?? rule ?? "BuildKit's check failed";
-                Uri? page = ContainerEngine.Text(warning, "url") is { } url && Uri.TryCreate(url, UriKind.Absolute, out Uri? link) && link.Scheme == Uri.UriSchemeHttps ? link : null;
-                found.Add(At(snapshot, path, warning, ProblemSeverity.Warning, rule is null ? $"BuildKit: {said}" : $"BuildKit: {said} ({rule})")
-                    with { Link = page, LinkText = page is null ? null : rule });
-            }
+            string? rule = JsonMembers.Scalar(warning, "ruleName");
+            string said = JsonMembers.Scalar(warning, "detail") ?? JsonMembers.Scalar(warning, "description") ?? rule ?? "BuildKit's check failed";
+            Uri? page = JsonMembers.Scalar(warning, "url") is { } url && Uri.TryCreate(url, UriKind.Absolute, out Uri? link) && link.Scheme == Uri.UriSchemeHttps ? link : null;
+            found.Add(At(snapshot, path, warning, ProblemSeverity.Warning, rule is null ? $"BuildKit: {said}" : $"BuildKit: {said} ({rule})")
+                with { Link = page, LinkText = page is null ? null : rule });
         }
-        if (root.TryGetProperty("buildError", out JsonElement error) && error.ValueKind == JsonValueKind.Object
-            && ContainerEngine.Text(error, "message") is { } message && Shown(message))
+        if (JsonMembers.Object(root, "buildError") is { } error && JsonMembers.Scalar(error, "message") is { } message && Shown(message))
         {
             found.Add(At(snapshot, path, error, ProblemSeverity.Error, $"BuildKit: {message}"));
         }
@@ -612,20 +608,15 @@ internal sealed class DockerfileCheck(EngineChecks owner, OpenDocument document,
     {
         int first = 1;
         int last = 1;
-        if (Property(found, "location") is { } location && Property(location, "ranges") is { ValueKind: JsonValueKind.Array } ranges && ranges.GetArrayLength() > 0)
+        if (JsonMembers.Items(JsonMembers.Object(found, "location"), "ranges") is [var range, ..])
         {
-            JsonElement range = ranges[0];
             first = LineOf(range, "start") ?? 1;
             last = LineOf(range, "end") ?? first;
         }
         TextRange marked = Lines(text, first - 1, last - 1);
         return new Finding(severity, message, path, text.GetPosition(marked.Start), marked);
 
-        static int? LineOf(JsonElement range, string end) =>
-            Property(range, end) is { } place && Property(place, "line") is { ValueKind: JsonValueKind.Number } line && line.TryGetInt32(out int n) && n > 0 ? n : null;
-
-        static JsonElement? Property(JsonElement element, string name) =>
-            element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out JsonElement value) ? value : null;
+        static int? LineOf(JsonElement range, string end) => JsonMembers.Number(JsonMembers.Object(range, end), "line") is int n and > 0 ? n : null;
     }
 
     /// <summary>Whether a build error is the check's to say: not the Dockerfile's syntax, which its server marks as typed,

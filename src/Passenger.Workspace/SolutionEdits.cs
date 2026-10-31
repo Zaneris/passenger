@@ -76,7 +76,7 @@ public static class SolutionEdits
             string after = Path.GetDirectoryName(solution)!;
             if (!PathNames.Same(solution, read.Solution) || !PathNames.Same(Path.GetDirectoryName(filter)!, Path.GetDirectoryName(was)!))
             {
-                string named = JsonNode.Parse(text, documentOptions: JsonText.Lenient)!["solution"]!["path"]!.GetValue<string>();
+                string named = JsonNode.Parse(text, documentOptions: LenientJson.Document)!["solution"]!["path"]!.GetValue<string>();
                 (string? renamed, string? unrenamed) = JsonText.SetInRoot(text, "solution", "path",
                     JsonValue.Create(Written(Path.GetRelativePath(Path.GetDirectoryName(filter)!, solution), named)));
                 if (renamed is null)
@@ -158,7 +158,7 @@ public static class SolutionEdits
     {
         try
         {
-            using JsonDocument read = JsonDocument.Parse(text, JsonText.Lenient);
+            using JsonDocument read = JsonDocument.Parse(text, LenientJson.Document);
             return read.RootElement.ValueKind == JsonValueKind.Object && read.RootElement.TryGetProperty("solution", out JsonElement solution)
                 && solution.ValueKind == JsonValueKind.Object && solution.TryGetProperty("projects", out JsonElement projects)
                 && projects.ValueKind == JsonValueKind.Array && projects.EnumerateArray().FirstOrDefault() is { ValueKind: JsonValueKind.String } first

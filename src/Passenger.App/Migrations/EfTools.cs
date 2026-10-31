@@ -167,7 +167,7 @@ public static class EfTools
     {
         try
         {
-            return JsonNode.Parse(File.ReadAllText(manifest), documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }) as JsonObject;
+            return JsonNode.Parse(File.ReadAllText(manifest), documentOptions: LenientJson.Document) as JsonObject;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
         {

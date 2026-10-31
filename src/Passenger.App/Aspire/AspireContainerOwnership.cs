@@ -378,7 +378,7 @@ internal sealed class AspireContainerOwnership
     private static string[] NetworksOf(JsonElement row) =>
         row.ValueKind == JsonValueKind.Object && row.TryGetProperty("Networks", out JsonElement networks) && networks.ValueKind == JsonValueKind.Array
             ? [.. networks.EnumerateArray().Where(network => network.ValueKind == JsonValueKind.String).Select(network => network.GetString()!)]
-            : (ContainerEngine.Text(row, "Networks") ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            : (JsonMembers.Scalar(row, "Networks") ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     /// <summary>Each container with the session network the orchestrator put it on: one of its networks the engine lists as
     /// the orchestrator's and not Persistent (DCP's labels), else none; an AppHost with a Persistent container keeps its
@@ -394,7 +394,7 @@ internal sealed class AspireContainerOwnership
                 foreach (JsonElement network in await engine.JsonLinesAsync(["network", "ls", "--filter", $"label={PersistentLabel}=false", "--format", "json"],
                     limit: ContainerEngine.AskLimit))
                 {
-                    if ((ContainerEngine.Text(network, "Name") ?? ContainerEngine.Text(network, "name")) is { } name && named.Contains(name)
+                    if ((JsonMembers.Scalar(network, "Name") ?? JsonMembers.Scalar(network, "name")) is { } name && named.Contains(name)
                         && ContainerInfo.ReadLabels(network) is var labels && labels.GetValueOrDefault(PersistentLabel) == "false" && labels.ContainsKey(CreatorLabel))
                     {
                         session.Add(name);
@@ -422,7 +422,7 @@ internal sealed class AspireContainerOwnership
         {
             string[] there = [.. (await engine.JsonLinesAsync([.. arguments ?? [], "network", "ls", "--filter", $"label={PersistentLabel}=false", "--format", "json"],
                     limit: ContainerEngine.AskLimit))
-                .Select(network => ContainerEngine.Text(network, "Name") ?? ContainerEngine.Text(network, "name")).OfType<string>().Where(names.Contains)];
+                .Select(network => JsonMembers.Scalar(network, "Name") ?? JsonMembers.Scalar(network, "name")).OfType<string>().Where(names.Contains)];
             if (there.Length == 0)
             {
                 return true;
@@ -592,8 +592,8 @@ internal sealed class AspireContainerOwnership
         {
             JsonElement inspected = await engine.JsonAsync(["context", "inspect", named]).ConfigureAwait(false);
             if (inspected.ValueKind != JsonValueKind.Array || inspected.GetArrayLength() != 1
-                || ContainerEngine.Text(inspected[0], "Name") != named
-                || ContainerEngine.Text(inspected[0], "Endpoints", "docker", "Host") != endpoint)
+                || JsonMembers.Scalar(inspected[0], "Name") != named
+                || JsonMembers.Scalar(JsonMembers.Object(JsonMembers.Object(inspected[0], "Endpoints"), "docker"), "Host") != endpoint)
             {
                 return null;
             }

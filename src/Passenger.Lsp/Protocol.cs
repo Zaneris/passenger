@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Lsp;
@@ -725,21 +726,18 @@ public sealed record WorkProgress(string Token, bool Ended, string? Title, strin
     /// <summary>Work done progress from a <c>$/progress</c> notification; null for any other kind (partial results).</summary>
     public static WorkProgress? From(ProgressParams progress)
     {
-        if (progress.Value.ValueKind != JsonValueKind.Object || !progress.Value.TryGetProperty("kind", out JsonElement kind)
-            || kind.GetString() is not ("begin" or "report" or "end") || progress.Token.ValueKind is not (JsonValueKind.String or JsonValueKind.Number))
+        if (JsonMembers.Text(progress.Value, "kind") is not { } kind || kind is not ("begin" or "report" or "end")
+            || progress.Token.ValueKind is not (JsonValueKind.String or JsonValueKind.Number))
         {
             return null;
         }
         return new WorkProgress(
             progress.Token.ToString(),
-            kind.GetString() == "end",
-            Text(progress.Value, "title"),
-            Text(progress.Value, "message"),
-            progress.Value.TryGetProperty("percentage", out JsonElement percentage) && percentage.TryGetInt32(out int percent) ? percent : null);
+            kind == "end",
+            JsonMembers.Text(progress.Value, "title"),
+            JsonMembers.Text(progress.Value, "message"),
+            JsonMembers.Number(progress.Value, "percentage"));
     }
-
-    private static string? Text(JsonElement value, string name) =>
-        value.TryGetProperty(name, out JsonElement text) && text.ValueKind == JsonValueKind.String ? text.GetString() : null;
 }
 
 public sealed record ConfigurationItem(string? ScopeUri, string? Section);
