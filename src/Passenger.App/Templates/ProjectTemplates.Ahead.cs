@@ -32,7 +32,10 @@ public static partial class ProjectTemplates
     private static (string Root, FileSystemWatcher Watch)? packagesWatch;
 
     private static volatile string? lastSdk;
-    private static int preloaded;
+
+    /// <summary>The template home the templates were last read ahead for (<see cref="Hive"/>, dotnet new's own as the empty
+    /// string); null before any read ahead, or once one failed.</summary>
+    private static string? preloaded;
     private static int watching;
     private static long changes;
 
@@ -66,17 +69,19 @@ public static partial class ProjectTemplates
     }
 
     /// <summary>Reads the templates of the SDK a folder builds with ahead of the dialog, once the window is up and below
-    /// its input and drawing, once a process: after that, the watch keeps them fresh.</summary>
+    /// its input and drawing, once a process for each template home in force (<see cref="Hive"/>): after that, the watch
+    /// keeps them fresh.</summary>
     public static void Preload(string folder)
     {
-        if (Interlocked.Exchange(ref preloaded, 1) == 1)
+        string home = Hive ?? "";
+        if (Interlocked.Exchange(ref preloaded, home) == home)
         {
             return;
         }
-        Dispatcher.UIThread.Post(() => IdeErrors.Observe(PreloadAsync(folder)), DispatcherPriority.Background);
+        Dispatcher.UIThread.Post(() => IdeErrors.Observe(PreloadAsync(folder, home)), DispatcherPriority.Background);
     }
 
-    private static async Task PreloadAsync(string folder)
+    private static async Task PreloadAsync(string folder, string home)
     {
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
         try
@@ -89,7 +94,7 @@ public static partial class ProjectTemplates
         catch (Exception error) when (Unreadable(error))
         {
             // The dialog says why when it is opened; until then, a line in the log.
-            Interlocked.Exchange(ref preloaded, 0);
+            Interlocked.CompareExchange(ref preloaded, null, home);
             IdeErrors.Write($"The project templates could not be read ahead of New Solution: {error.Message}");
         }
     }

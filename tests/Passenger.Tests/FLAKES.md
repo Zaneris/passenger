@@ -30,6 +30,17 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-31
 
+- `TemplateFamiliesTests`' `New_Solution_opens_with_every_family_listed_at_once_the_templates_read_ahead_and_the_search_finds_one_by_any_of_its_Types`,
+  CI Windows x64, run 41154974796 (b628b1f3), report lane (#1049): "Waited 300 s for the templates to be read ahead of
+  New Solution". The templates were read ahead once a process but kept by template home (`ProjectTemplates.Hive`); the
+  class's Aspire test sets a home of its own and puts the run's back, and in CI's Windows checkout xunit ran it first in
+  its process, so the one read ahead was of the Aspire test's home, none ever came for the run's, and the next test
+  waited for it (on Linux and macOS a test between them read the run's home through its dialog). Not #1036's watch:
+  nothing changed for it to hear. **A bug in the IDE** only a change of template home meets, which the tests alone make:
+  the templates are read ahead once a process for each home (in this commit). With the Aspire test ordered first (by a
+  test orderer used for the check alone) it failed on this Mac every time before; after it, the class passed 10 of 10
+  there and 10 of 10 on the Windows VM.
+
 - `IdeErrorsTests`' `A_rename_whose_write_to_a_file_never_lands_leaves_that_file_out_of_its_Undo`, CI Windows x64, run
   41154974796 (b628b1f3), report lane (#1048): "Assert.Contains() Failure: Sub-string not found ... Not found:
   "Helper.Double(2)"". Since #1033 a rename refused partway takes back all it did before it says so, the open file's
