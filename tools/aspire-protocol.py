@@ -16,9 +16,9 @@ import sys
 import urllib.request
 import zipfile
 
-VERSION = "2.84.0"
+VERSION = "2.85.0"
 # The SHA-512 of nuget.org's Grpc.Tools.VERSION.nupkg, as NuGet's package cache records it (grpc.tools.VERSION.nupkg.sha512).
-SHA512 = "g+LBB/Psn2bUDqBhK1/gNDKWLfMkLJDkDTFtQE+skgBKzHg2ixbZGRzcOzwvzb8TyxJ8xPs3maSkFah8ZMv4yw=="
+SHA512 = "2jKm1yx1zXk37Xjr0Y5lQljW0MomMoZjw2j2afOmD83WGZdE4jFJWWKVfM1ldp67GxoZ+deATvKYhpbJBWNp+g=="
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = os.path.join(ROOT, "src", "Passenger.App")
