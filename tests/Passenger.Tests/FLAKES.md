@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-31
 
+- `IdeErrorsTests`' `A_rename_whose_write_to_a_file_never_lands_leaves_that_file_out_of_its_Undo`, CI Windows x64, run
+  41154974796 (b628b1f3), report lane (#1048): "Assert.Contains() Failure: Sub-string not found ... Not found:
+  "Helper.Double(2)"". Since #1033 a rename refused partway takes back all it did before it says so, the open file's
+  change too, and leaves no command for Undo; the test's Windows branch still asked for the open file to keep the rename
+  after the refusal, as before #1033, which no run could give, and off Windows it asked nothing then, so it passed there.
+  Not the take-back racing the held write: the write gives up after its wait and never lands. **The test asked for the
+  old behaviour**: it holds every system to the take-back (the call back as it was, nothing unsaved, no command for
+  Undo), renamed `A_rename_whose_write_to_a_file_never_lands_takes_back_the_open_files_change_and_leaves_nothing_to_Undo`
+  (in this commit). It failed on the Windows VM every time before; after it, 10 of 10 there and 10 of 10 on this Mac.
+
 - `McpTests`' `An_agents_package_install_under_central_versions_kept_where_the_build_names_names_that_file_among_those_it_changed`,
   CI Windows x64, run 41154974796 (b628b1f3), report lane (#1047): "nuget_install failed: ... dotnet.exe add ...
   package Passenger.Sample --version 1.0.0", dotnet's last line "error: Object reference not set to an instance of an

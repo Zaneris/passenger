@@ -846,10 +846,10 @@ public sealed class IdeErrorsTests : IDisposable
     }
 
     /// <summary>A rename whose write to a file it changes never lands (refused at once, or on Windows held by another program
-    /// past the save's wait) leaves that file out of its Undo: Undo takes the rest back, the open file's change, with nothing
-    /// to ask, and the file stays as the disk has it.</summary>
+    /// past the save's wait) takes back all it did as it says so: the open file's change goes back, nothing left unsaved
+    /// and nothing asked, no command is left for Undo, and the file stays as the disk has it.</summary>
     [AvaloniaFact]
-    public void A_rename_whose_write_to_a_file_never_lands_leaves_that_file_out_of_its_Undo()
+    public void A_rename_whose_write_to_a_file_never_lands_takes_back_the_open_files_change_and_leaves_nothing_to_Undo()
     {
         string helper = HelperOfProgram(out MainWindow window);
         List<string> asked = [];
@@ -864,14 +864,14 @@ public sealed class IdeErrorsTests : IDisposable
             Rename(window, "Double");
             SaidUntil(window, said, s => s.StartsWith("Rename failed", StringComparison.Ordinal), "the rename to say it failed");
         }
+        Assert.StartsWith("Rename failed: Helper.cs could not be written", window.Status, StringComparison.Ordinal);
+        Assert.DoesNotContain("could not all be put back", window.Status, StringComparison.Ordinal);
         Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Contains("Helper.Double(2)", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        }
+        Assert.True(editor.Document.Snapshot.ToString().Contains("Helper.Twice(2)", StringComparison.Ordinal) && window.EditorArea.Documents.All(d => !d.IsModified),
+            $"The rename refused left the call renamed or a file changed and unsaved, where it takes back all it did: {window.Status}\n{editor.Document.Snapshot}");
+        Assert.True(window.EditorArea.Commands.ToUndo(null) is null, "The rename refused left a command for Undo to take back");
         Ui.Run(window, Passenger.Editor.EditorActions.Undo);
-        Assert.True(editor.Document.Snapshot.ToString().Contains("Helper.Twice(2)", StringComparison.Ordinal),
-            $"Undo left the call renamed, the rename's Undo still holding Helper.cs, which it never wrote: {window.Status}");
+        Assert.Contains("Helper.Twice(2)", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
         Assert.Empty(asked);
         Assert.Contains("public static int Twice(int value)", File.ReadAllText(helper), StringComparison.Ordinal);
         window.Close();
