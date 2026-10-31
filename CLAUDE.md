@@ -405,7 +405,8 @@ site-shots` retakes its images.
   session takes edits only for the projects of modules its program has loaded (others frozen), and `StaleCallers` blocks
   an update that leaves loaded code calling a deleted body. The runtime offers a frame left in old code a remap at every
   statement, unstoppable: a running program is held through an update so Roslyn maps its frames, which move only at a
-  statement's start (`RemapTarget`).
+  statement's start (`RemapTarget`) and only where they hold the new code's closures
+  (`ModuleMetadataReader.HoldsClosuresOf`).
 - **dotnet watch takes Ctrl+R only from a console's keys**, never from redirected input: the Run window's restart under it
   is Rerun, and when it waits after the program ends it says so (`BuildRunController.WatchedEnd`).
 - **The inspector** never touches `Dispatcher.UIThread` before the app makes it, never waits on Passenger, and readies its
