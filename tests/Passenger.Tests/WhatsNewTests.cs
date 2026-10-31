@@ -17,7 +17,7 @@ namespace Passenger.Tests;
 /// (docs/release-notes/0.2.2.md), so each reads that real file.</summary>
 public sealed class WhatsNewTests : IDisposable
 {
-    private const string Version = "0.2.2";
+    private const string Version = "0.2.3";
 
     private readonly string state = TestFolders.Create("whatsnew-state-");
     private readonly string folder = TestFolders.Create("whatsnew-folder-");
