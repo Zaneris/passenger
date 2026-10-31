@@ -258,9 +258,9 @@ public sealed class TemplateFamiliesTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A template whose ide.host.json shows two of its options still offers the parameters it leaves out after
-    /// them, as dotnet new's command line does, but one its command line hides and one a computed symbol makes the same
-    /// switch as one shown; an option only an IDE's host reads goes to the command line through the parameter that does.</summary>
+    /// <summary>A template whose ide.host.json shows two of its options still offers the parameters it leaves out, under
+    /// More options, as dotnet new's command line does, but one its command line hides and one a computed symbol makes the
+    /// same switch as one shown; an option only an IDE's host reads goes to the command line through the parameter that does.</summary>
     [AvaloniaFact]
     public void A_template_with_an_ide_host_json_offers_the_parameters_it_leaves_out_each_switch_once()
     {
@@ -277,13 +277,22 @@ public sealed class TemplateFamiliesTests : IDisposable
             NewProjectDialog dialog = Opened(window);
             Search(dialog, "probehost");
             Assert.Equal("probehost", dialog.Chosen?.ShortName);
-            Assert.Equal(["Use the full kind", "Include extras", "Greeting"], dialog.OptionLabels);
+            Assert.Equal(["Use the full kind", "Include extras", "Greeting", "--farewell"], dialog.OptionLabels);
 
             Ui.Click(dialog.OptionEditor("Use the full kind")!);
             Ui.Click(dialog.OptionEditor("Include extras")!);
             Assert.Contains("--use-minimal false", dialog.Command, StringComparison.Ordinal);
             Assert.Contains("--bare true", dialog.Command, StringComparison.Ordinal);
             Assert.DoesNotContain("--include-extras", dialog.Command, StringComparison.Ordinal);
+
+            // The parameters ide.host.json leaves out wait under More options, one with no name of its own named by its switch.
+            Assert.True(dialog.MoreOptions.IsEffectivelyVisible && !dialog.OptionEditor("--farewell")!.IsEffectivelyVisible,
+                "probehost shows the parameters its ide.host.json leaves out beside the ones it picks, not under More options");
+            Ui.Click(dialog.MoreOptions);
+            Assert.True(dialog.OptionEditor("Greeting")!.IsEffectivelyVisible, "More options opens without Greeting");
+            Ui.Click(dialog.OptionEditor("--farewell")!);
+            Type(dialog, "Bye");
+            Assert.Contains("--farewell Bye", dialog.Command, StringComparison.Ordinal);
             dialog.Cancel();
             window.Close();
         }
@@ -299,8 +308,8 @@ public sealed class TemplateFamiliesTests : IDisposable
 
     /// <summary>A project template of the tests' own with an ide.host.json, in the test's folder: Probe Host App
     /// (probehost), whose ide.host.json shows UseMinimal (as its opposite) and IncludeExtras, which only an IDE's host reads,
-    /// the command line's Bare doing it there; UseFull restates UseMinimal, Greeting is in no host file and Secret is hidden
-    /// from the command line.</summary>
+    /// the command line's Bare doing it there; UseFull restates UseMinimal, Greeting and Farewell (no name of its own) are
+    /// in no host file and Secret is hidden from the command line.</summary>
     private string WriteHostProbeTemplate()
     {
         string folder = Directory.CreateDirectory(Path.Combine(place, "HostProbeTemplate", ".template.config")).Parent!.FullName;
@@ -324,6 +333,7 @@ public sealed class TemplateFamiliesTests : IDisposable
                 "Bare": { "type": "parameter", "datatype": "bool", "defaultValue": "false", "description": "Whether to leave the extras out." },
                 "Extras": { "type": "computed", "value": "((IncludeExtras && (HostIdentifier != \"dotnetcli\" && HostIdentifier != \"dotnetcli-preview\")) || (!Bare && (HostIdentifier == \"dotnetcli\" || HostIdentifier == \"dotnetcli-preview\")))" },
                 "Greeting": { "type": "parameter", "datatype": "string", "defaultValue": "Hello", "displayName": "Greeting", "description": "What it says." },
+                "Farewell": { "type": "parameter", "datatype": "string", "defaultValue": "", "description": "What it says on leaving." },
                 "Secret": { "type": "parameter", "datatype": "string", "defaultValue": "", "description": "Hidden from the command line." },
                 "HostIdentifier": { "type": "bind", "binding": "host:HostIdentifier" }
               }
@@ -347,6 +357,7 @@ public sealed class TemplateFamiliesTests : IDisposable
                 "IncludeExtras": { "longName": "include-extras", "isHidden": true },
                 "Bare": { "longName": "bare" },
                 "Greeting": { "longName": "greeting" },
+                "Farewell": { "longName": "farewell" },
                 "Secret": { "longName": "secret", "isHidden": true }
               }
             }

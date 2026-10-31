@@ -222,7 +222,7 @@ public sealed class NewProjectDialog : IdeWindow
         details = new StackPanel
         {
             Spacing = 10,
-            Children = { Row("Target framework:", framework), languageRow, options.Panel, setupRow, Row(null, new StackPanel { Spacing = 4, Children = { setupNote, installSetup } }), Row(null, command) },
+            Children = { Row("Target framework:", framework), languageRow, options.Panel, setupRow, Row(null, new StackPanel { Spacing = 4, Children = { setupNote, installSetup } }), options.Folded, Row(null, command) },
         };
         options.Changed += ShowCommand;
         install.Click += (_, _) => IdeErrors.Observe(InstallAsync());
@@ -382,6 +382,9 @@ public sealed class NewProjectDialog : IdeWindow
 
     /// <summary>The control that sets an option, by its label, for a click; null when none is shown.</summary>
     public Control? OptionEditor(string label) => options.Editor(label);
+
+    /// <summary>The link that opens the template's options waiting under More options.</summary>
+    public Button MoreOptions => options.MoreOptions;
 
     /// <summary>How the project made is to run, set up once it is open: none for a template that is no service.</summary>
     public ProjectSetup Setup
@@ -1310,7 +1313,7 @@ public sealed class NewProjectDialog : IdeWindow
         install.IsEnabled = !busy;
         installSetup.IsEnabled = !busy;
         list.IsEnabled = !busy;
-        foreach (Control field in (Control[])[search, typeChooser, solutionName, projectName, directory, browse, sameDirectory, format, framework, language, options.Panel, setup])
+        foreach (Control field in (Control[])[search, typeChooser, solutionName, projectName, directory, browse, sameDirectory, format, framework, language, options.Panel, options.Folded, setup])
         {
             field.IsEnabled = !busy;
         }
