@@ -45,14 +45,14 @@
       "passenger.text": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.2.0, )"
+          "Passenger.Core": "[0.2.2, )"
         }
       },
       "passenger.workspace": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.2.0, )",
-          "Passenger.Text": "[0.2.0, )"
+          "Passenger.Core": "[0.2.2, )",
+          "Passenger.Text": "[0.2.2, )"
         }
       },
       "Microsoft.Diagnostics.NETCore.Client": {

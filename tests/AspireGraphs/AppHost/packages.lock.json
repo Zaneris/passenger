@@ -630,7 +630,7 @@
       },
       "Grpc.Net.Client": {
         "type": "CentralTransitive",
-        "requested": "[2.84.0, )",
+        "requested": "[2.85.0, )",
         "resolved": "2.83.0",
         "contentHash": "dHYtx7hW4muttsCrWNG4/Ysb1iAIhNPEq28eo7vF166CdXn/RXOr3SGvSreIGIjvmdrADrBNJ2cUeJBto/T0XA==",
         "dependencies": {

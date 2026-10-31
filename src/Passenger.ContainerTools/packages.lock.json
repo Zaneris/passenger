@@ -170,21 +170,21 @@
       "passenger.dap": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.2.0, )"
+          "Passenger.Core": "[0.2.2, )"
         }
       },
       "passenger.debugger": {
         "type": "Project",
         "dependencies": {
-          "ICSharpCode.Decompiler": "[11.1.0.9782, )",
+          "ICSharpCode.Decompiler": "[11.2.0.10050, )",
           "MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler": "[5.9.0, )",
           "Microsoft.CodeAnalysis.CSharp": "[5.9.0, )",
           "Microsoft.Diagnostics.DbgShim": "[10.0.750501, )",
           "Microsoft.Diagnostics.NETCore.Client": "[0.2.750501, )",
-          "Passenger.Core": "[0.2.0, )",
-          "Passenger.Dap": "[0.2.0, )",
-          "Passenger.Debugger.Interop": "[0.2.0, )",
-          "ZLinq": "[1.5.6, )"
+          "Passenger.Core": "[0.2.2, )",
+          "Passenger.Dap": "[0.2.2, )",
+          "Passenger.Debugger.Interop": "[0.2.2, )",
+          "ZLinq": "[1.6.1, )"
         }
       },
       "passenger.debugger.interop": {
@@ -196,14 +196,14 @@
           "Microsoft.Diagnostics.NETCore.Client": "[0.2.750501, )",
           "Microsoft.Diagnostics.Runtime": "[4.2.751201, )",
           "Microsoft.Diagnostics.Tracing.TraceEvent": "[4.0.0, )",
-          "Passenger.Core": "[0.2.0, )"
+          "Passenger.Core": "[0.2.2, )"
         }
       },
       "ICSharpCode.Decompiler": {
         "type": "CentralTransitive",
-        "requested": "[11.1.0.9782, )",
-        "resolved": "11.1.0.9782",
-        "contentHash": "8aXhTlTHfq+Ng+w415pMapSfhsI768AQrix7q3lDf8BBbmPyNUaJVB+mFg2Sv7oCs72MZkK2Zk8K6DE6tsb1Mg=="
+        "requested": "[11.2.0.10050, )",
+        "resolved": "11.2.0.10050",
+        "contentHash": "H8cD1Sast2Zkex1RxdUiZvCmc1ZZ8Fkf+Mfs9WYzlPq74zW6xqMmZgip9l0rt5z9akh1fnSUg72hIGtClEI4zw=="
       },
       "Microsoft.CodeAnalysis.CSharp": {
         "type": "CentralTransitive",
@@ -275,9 +275,9 @@
       },
       "ZLinq": {
         "type": "CentralTransitive",
-        "requested": "[1.5.6, )",
-        "resolved": "1.5.6",
-        "contentHash": "O2lcAZ1hC2zytrTuJV8WwpGbFURvsAApIEkmFJUKL3CFpedt1cgNVn+ZF00YyN321NL7Vz766wHxIPTzSyfUWg=="
+        "requested": "[1.6.1, )",
+        "resolved": "1.6.1",
+        "contentHash": "5x/IG9xtXbzUQ7iB2qkXvOuuBy1sydA2OLC4YrNHRsRiXsKaGP8noYYQ1ihpf6mB4nVINzgquLmvPI69h9gQ/g=="
       }
     },
     "net11.0/linux-arm64": {

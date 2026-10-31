@@ -4,9 +4,9 @@
     "net11.0": {
       "ICSharpCode.Decompiler": {
         "type": "Direct",
-        "requested": "[11.1.0.9782, )",
-        "resolved": "11.1.0.9782",
-        "contentHash": "8aXhTlTHfq+Ng+w415pMapSfhsI768AQrix7q3lDf8BBbmPyNUaJVB+mFg2Sv7oCs72MZkK2Zk8K6DE6tsb1Mg=="
+        "requested": "[11.2.0.10050, )",
+        "resolved": "11.2.0.10050",
+        "contentHash": "H8cD1Sast2Zkex1RxdUiZvCmc1ZZ8Fkf+Mfs9WYzlPq74zW6xqMmZgip9l0rt5z9akh1fnSUg72hIGtClEI4zw=="
       },
       "Krafs.Publicizer": {
         "type": "Direct",
@@ -70,9 +70,9 @@
       },
       "ZLinq": {
         "type": "Direct",
-        "requested": "[1.5.6, )",
-        "resolved": "1.5.6",
-        "contentHash": "O2lcAZ1hC2zytrTuJV8WwpGbFURvsAApIEkmFJUKL3CFpedt1cgNVn+ZF00YyN321NL7Vz766wHxIPTzSyfUWg=="
+        "requested": "[1.6.1, )",
+        "resolved": "1.6.1",
+        "contentHash": "5x/IG9xtXbzUQ7iB2qkXvOuuBy1sydA2OLC4YrNHRsRiXsKaGP8noYYQ1ihpf6mB4nVINzgquLmvPI69h9gQ/g=="
       },
       "Microsoft.CodeAnalysis.Analyzers": {
         "type": "Transitive",
@@ -166,7 +166,7 @@
       "passenger.dap": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.2.0, )"
+          "Passenger.Core": "[0.2.2, )"
         }
       },
       "passenger.debugger.interop": {

@@ -39,7 +39,7 @@
     <PackageVersion Include="Avalonia.Skia" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
     <PackageVersion Include="Google.Protobuf" Version="3.36.2" />
-    <PackageVersion Include="Grpc.Net.Client" Version="2.84.0" />
+    <PackageVersion Include="Grpc.Net.Client" Version="2.85.0" />
     <!-- Also what Passenger's analyzers are compiled against (src/Passenger.Analyzers), so never past the compiler of
          global.json's SDK, nor of Roslyn's server at RoslynServerVersion, which load them. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
@@ -52,7 +52,7 @@
     <PackageVersion Include="Porta.Pty" Version="2.2.3" />
     <!-- TextMate grammars' tokenizer, with GregsEx's managed regular expressions: colour for every
          language but C#. -->
-    <PackageVersion Include="Tint" Version="0.1.2" />
+    <PackageVersion Include="Tint" Version="0.2.2" />
     <!-- VSTest's own client for the vstest.console the SDK ships: discovery, runs and debugging of tests. -->
     <PackageVersion Include="Microsoft.TestPlatform.TranslationLayer" Version="18.11.0" />
     <!-- The Windows install's hooks, at the version of the vpk tool that packs it (dotnet-tools.json). -->
@@ -68,14 +68,14 @@
   <!-- The debugger's engine. The expression compiler is Roslyn's, packed from its own source (Roslyn does not
        publish it) at the Microsoft.CodeAnalysis version above, which it must match. -->
   <ItemGroup>
-    <PackageVersion Include="ICSharpCode.Decompiler" Version="11.1.0.9782" />
+    <PackageVersion Include="ICSharpCode.Decompiler" Version="11.2.0.10050" />
     <PackageVersion Include="Krafs.Publicizer" Version="2.3.2" />
     <PackageVersion Include="Microsoft.Diagnostics.DbgShim" Version="10.0.750501" />
     <PackageVersion Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.750501" />
     <PackageVersion Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="4.0.0" />
     <PackageVersion Include="Microsoft.Diagnostics.Runtime" Version="4.2.751201" />
     <PackageVersion Include="MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler" Version="5.9.0" />
-    <PackageVersion Include="ZLinq" Version="1.5.6" />
+    <PackageVersion Include="ZLinq" Version="1.6.1" />
   </ItemGroup>
   <!-- Tests. xunit v3 stays on 3.2, the line Avalonia.Headless.XUnit is built against. -->
   <ItemGroup>

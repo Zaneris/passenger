@@ -20,11 +20,11 @@
       },
       "Tint": {
         "type": "Direct",
-        "requested": "[0.1.2, )",
-        "resolved": "0.1.2",
-        "contentHash": "BZCD9XlUE+lN3Qvq4ta9UrgY/FN4Q8D2rK0aBqnOIJO2ndHoIllNBEREsp93znXsrCP36zl+Z2/VnfTFAruDBA==",
+        "requested": "[0.2.2, )",
+        "resolved": "0.2.2",
+        "contentHash": "F46YenrvE7ZT2f8bOeVfnfEGJ6/VbLYTrD265S7/7YMdA0r3jjT5BjJ7HLX3yJO1BeZCTkBLQ6bgs1NlJ6IByA==",
         "dependencies": {
-          "GregsEx": "0.5.3"
+          "GregsEx": "0.5.5"
         }
       },
       "Avalonia.BuildServices": {
@@ -39,8 +39,8 @@
       },
       "GregsEx": {
         "type": "Transitive",
-        "resolved": "0.5.3",
-        "contentHash": "Bqql6pbTEX5/xgMlxaTtKlXMWc8Se5i/WaugU+AXQ/Jo0wUo1jbZeMPyJXOobdLtQCA0BCZzo1gNSF1HtexSyw=="
+        "resolved": "0.5.5",
+        "contentHash": "+hEewxVdermTNbUWMKWGyt9uQnIkIgFJpaJ5rZSRyj0yYaQyBkYCmn+MlTKyQHI4rjGcU7JxoV9uIBlTjbIXIQ=="
       },
       "MessagePack": {
         "type": "Transitive",
@@ -122,22 +122,22 @@
         "type": "Project",
         "dependencies": {
           "Avalonia": "[12.1.4, )",
-          "Passenger.Core": "[0.2.0, )",
-          "Passenger.Text": "[0.2.0, )"
+          "Passenger.Core": "[0.2.2, )",
+          "Passenger.Text": "[0.2.2, )"
         }
       },
       "passenger.lsp": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.2.0, )",
-          "Passenger.Text": "[0.2.0, )",
+          "Passenger.Core": "[0.2.2, )",
+          "Passenger.Text": "[0.2.2, )",
           "StreamJsonRpc": "[2.26.150, )"
         }
       },
       "passenger.text": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.2.0, )"
+          "Passenger.Core": "[0.2.2, )"
         }
       },
       "Avalonia": {
