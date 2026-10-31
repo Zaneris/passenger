@@ -72,7 +72,7 @@ public sealed partial class EditorRulesTests
         }
         foreach (Type type in editor.GetTypes())
         {
-            if (Generated(type) || type.Name is nameof(TokenKeys) or nameof(IconKeys))
+            if (Generated(type) || type.Name is nameof(TokenKeys) or nameof(IconKeys) or nameof(StyleClasses))
             {
                 continue;
             }

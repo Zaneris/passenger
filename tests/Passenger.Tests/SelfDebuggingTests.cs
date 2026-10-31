@@ -51,7 +51,7 @@ public sealed class SelfDebuggingTests : IDisposable
 
         // Where the status bar is told why a key's action cannot run: F10 with nothing being debugged, in the inner Passenger.
         string actions = PathNames.Canonical(Path.Combine(repository, "src", "Passenger.App", "MainWindow.Actions.cs"));
-        int line = Array.FindIndex(File.ReadAllLines(actions), l => l.Trim() == "status.Text = why;");
+        int line = Array.FindIndex(File.ReadAllLines(actions), l => l.Trim() == "Say(why, RefusalPlace(action));");
         Assert.True(line >= 0, "MainWindow.Actions.cs no longer tells the status bar why an action cannot run");
         window.OpenFile(actions);
         CodeEditor editor = window.EditorArea.CodeEditor;

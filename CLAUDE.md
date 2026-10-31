@@ -587,7 +587,7 @@ nothing large: a test needing an image the engine lacks names it and skips), Nod
 **Debuggees** (`tests/Debuggees`): tests find the lines they stop at by their code (`Debuggees.Line`, `MyMethodEnd`), so
 changing a line's code means changing the tests that name it (a breakpoint on a line binds the statement that starts
 first on it, and inside a lambda only where the line starts in one: give the lambda's column to stop inside it).
-`SelfDebuggingTests` finds its breakpoint by the code `status.Text = why;` in MainWindow.Actions.cs.
+`SelfDebuggingTests` finds its breakpoint by the code `Say(why, RefusalPlace(action));` in MainWindow.Actions.cs.
 `Debugging/Helpers/StartHold` holds a launched program at its start. `PASSENGER_ENGINE_LOG=FILE` keeps the engine's log.
 A thread a debuggee starts just before a stop can hold that stop's evaluations (it is loading what they need, and they
 run with it held still): stop once it has run a round (#599).
