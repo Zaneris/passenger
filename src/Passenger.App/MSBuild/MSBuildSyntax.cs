@@ -148,7 +148,7 @@ public static class MSBuildSyntax
     public static string TextOf(XmlElement element, string text)
     {
         TextRange content = element.Content;
-        return content.Length == 0 ? string.Empty : XmlEntities.Decode(text.Substring(content.Start, content.Length)).Trim();
+        return content.Length == 0 ? string.Empty : XmlEntities.DecodeText(text.Substring(content.Start, content.Length)).Trim();
     }
 
     /// <summary>Whether a value has MSBuild expressions in it, which only the evaluation can read.</summary>

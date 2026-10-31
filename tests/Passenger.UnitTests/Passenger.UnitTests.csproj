@@ -56,6 +56,11 @@
     <Compile Include="../../src/Passenger.Languages/CSharp/CompletionTriggers.cs" Link="Languages/CompletionTriggers.cs" />
   </ItemGroup>
 
+  <!-- What an MSBuild file's elements say, read from its markup alone, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/MSBuild/MSBuildSyntax.cs" Link="App/MSBuildSyntax.cs" />
+  </ItemGroup>
+
   <!-- The bindings an .axaml file writes, read from its markup alone, compiled in since their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/LiveTree/XamlBindings.cs" Link="App/XamlBindings.cs" />

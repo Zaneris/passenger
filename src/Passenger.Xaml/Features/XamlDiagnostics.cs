@@ -497,7 +497,7 @@ public static class XamlDiagnostics
         {
             return;
         }
-        string? value = path?.Value ?? (given is null ? null : XmlEntities.Decode(file.Text[given.Content.Start..given.Content.End]));
+        string? value = path?.Value ?? (given is null ? null : XmlEntities.DecodeText(file.Text[given.Content.Start..given.Content.End]));
         if (CompiledBindings.StartsAtDataContext(value) && CompiledBindings.ContextOf(file, binding) is var context && CompiledBindings.Refused(context.Context, value))
         {
             found.Add(new XamlDiagnostic(binding.NameRange, XamlSeverity.Error, CompiledBindings.NoDataType)

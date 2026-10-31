@@ -709,6 +709,40 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A &lt;Binding&gt; element whose path is a CDATA section, in a view with no x:DataType where bindings
+    /// compile, is marked as the build refuses it, as the same path written as text is.</summary>
+    [AvaloniaFact]
+    public void A_binding_elements_path_in_a_cdata_section_is_read_as_the_path_it_holds()
+    {
+        const string Unbound = """
+            <UserControl xmlns="https://github.com/avaloniaui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                <StackPanel>
+                    <TextBlock>
+                        <TextBlock.Text>
+                            <Binding>
+                                <Binding.Path>Greeting</Binding.Path>
+                            </Binding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                    <TextBlock>
+                        <TextBlock.Text>
+                            <Binding>
+                                <Binding.Path><![CDATA[Greeting]]></Binding.Path>
+                            </Binding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                </StackPanel>
+            </UserControl>
+
+            """;
+        const string NoDataType = "No x:DataType gives this compiled binding the type it binds to";
+        MainWindow window = app.Open(app.Write("CdataView.axaml", Unbound));
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.WaitFor(() => document.Markers.Count(m => m.Message == NoDataType) == 2,
+            () => $"both binding elements marked, the CDATA section's path read as the path it holds: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+    }
+
     /// <summary>A view with no x:DataType in an Avalonia 12 project, which compiles its bindings: its {Binding} and its
     /// {CompiledBinding}, which Avalonia's compiler refuses (AVLN2100), are marked. The fix that gives the view the view
     /// model's x:DataType, its namespace declared, clears both as one step of Undo, and the project builds.</summary>

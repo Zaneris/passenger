@@ -643,7 +643,8 @@ public sealed class XamlFile
         Dialect.CompilesBindings && !element.IsPropertyElement && element.LocalName == "Binding" && UriOf(element, element.Prefix) == Dialect.PresentationUri;
 
     /// <summary>The path a binding element writes as text, its <c>Path</c> attribute's or its <c>&lt;Binding.Path&gt;</c>
-    /// element's, with where it starts; null for none, an extension, or text whose character references move its places.</summary>
+    /// element's, with where it starts; null for none, an extension, or text whose character references or CDATA sections
+    /// move its places.</summary>
     public (string Text, int Start)? PathOf(XmlElement binding)
     {
         if (binding.Attribute("Path") is { } path)
@@ -658,7 +659,7 @@ public sealed class XamlFile
         }
         string content = Text[given.Content.Start..given.Content.End];
         string trimmed = content.Trim();
-        return trimmed.Length > 0 && XmlEntities.Decode(trimmed) == trimmed ? (trimmed, given.Content.Start + content.Length - content.TrimStart().Length) : null;
+        return trimmed.Length > 0 && XmlEntities.DecodeText(trimmed) == trimmed ? (trimmed, given.Content.Start + content.Length - content.TrimStart().Length) : null;
     }
 
     /// <summary>Whether a binding names where its path starts other than its data context: an element, a source, a data
