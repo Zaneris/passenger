@@ -122,9 +122,9 @@ public static partial class BuildOutput
     private static readonly string[] LoggerSwitches = ["-nologo", "-tl:off", "-clp:NoSummary;ForceNoAlign"];
 
     /// <summary>Whether a build of a target (the solution, the folder, or one project) needs EnableWindowsTargeting: a
-    /// project it builds (the one named and those it references, or every one) is one the project host evaluated with it.
-    /// A global property, so every project the build reaches has it, which changes nothing for those that need no Windows
-    /// framework.</summary>
+    /// project it builds (the one named and those it references, or every one) is one the project host evaluated with it,
+    /// or one not evaluated yet whose file targets Windows off it (<see cref="TargetsWindowsUnread"/>). A global property,
+    /// so every project the build reaches has it, which changes nothing for those that need no Windows framework.</summary>
     public static bool WindowsTargeting(string target, IReadOnlyList<ProjectModel> projects)
     {
         Dictionary<string, ProjectModel> byPath = new(PathNames.Comparer);
@@ -134,7 +134,7 @@ public static partial class BuildOutput
         }
         if (!byPath.ContainsKey(target))
         {
-            return projects.Any(p => p.WindowsTargeting);
+            return projects.Any(p => p.WindowsTargeting || TargetsWindowsUnread(p));
         }
         HashSet<string> seen = new(PathNames.Comparer);
         Queue<string> next = new([target]);
@@ -144,7 +144,7 @@ public static partial class BuildOutput
             {
                 continue;
             }
-            if (project.WindowsTargeting)
+            if (project.WindowsTargeting || TargetsWindowsUnread(project))
             {
                 return true;
             }
@@ -155,6 +155,28 @@ public static partial class BuildOutput
         }
         return false;
     }
+
+    /// <summary>Off Windows, whether a project MSBuild has not evaluated yet (one New Solution made a moment ago) names a
+    /// Windows target framework in its file ("net10.0-windows"), as the host would evaluate it with EnableWindowsTargeting.</summary>
+    private static bool TargetsWindowsUnread(ProjectModel project)
+    {
+        if (OperatingSystem.IsWindows() || project.Evaluated is not null)
+        {
+            return false;
+        }
+        try
+        {
+            return WindowsTarget().IsMatch(File.ReadAllText(project.Path));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Unread, it is built as it is: its build says what it lacks.
+            return false;
+        }
+    }
+
+    [GeneratedRegex(@"<TargetFrameworks?>[^<]*-windows", RegexOptions.IgnoreCase)]
+    private static partial Regex WindowsTarget();
 
     /// <summary>The project and assembly a build's line says it made ("  Lib -> /src/Lib/bin/Debug/net10.0/Lib.dll"), or null.</summary>
     public static (string Project, string Path)? Made(string line)

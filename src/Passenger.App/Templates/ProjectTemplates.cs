@@ -58,6 +58,13 @@ public sealed record ProjectTemplate(string Name, IReadOnlyList<string> ShortNam
     /// <summary>Whether it makes what it makes by the name given: false for one whose name has no default (.gitignore).</summary>
     public bool TakesName { get; init; } = true;
 
+    /// <summary>Off Windows, the Windows desktop UI its app is made with (WPF, Windows Forms), which builds here but runs only
+    /// on Windows; null on Windows and for any other template.</summary>
+    public string? WindowsOnly => OperatingSystem.IsWindows() ? null
+        : Classifications.Contains("WPF", StringComparer.OrdinalIgnoreCase) ? "WPF"
+        : Classifications.Contains("WinForms", StringComparer.OrdinalIgnoreCase) ? "Windows Forms"
+        : null;
+
     /// <summary>Its languages, C# first, as <c>dotnet new list</c> lists them.</summary>
     public IReadOnlyList<string> Languages =>
         [.. Variants.Select(v => v.Language).OfType<string>().Distinct().OrderBy(ProjectTemplates.LanguageOrder).ThenBy(l => l, StringComparer.Ordinal)];
@@ -149,11 +156,13 @@ public static partial class ProjectTemplates
     public static System.Diagnostics.ProcessStartInfo NewCommand(IEnumerable<string> arguments, string folder) =>
         ChildProcesses.DotnetCommand(New(arguments), folder);
 
-    /// <summary><c>dotnet restore</c> of a project a template made, run in a folder: null once restored, else what dotnet
-    /// said why not.</summary>
-    public static async Task<string?> RestoreAsync(string project, string folder, CancellationToken cancel = default)
+    /// <summary><c>dotnet restore</c> of a project a template made, run in a folder, with EnableWindowsTargeting for one that
+    /// targets Windows off it (<paramref name="windowsTargeting"/>), as its builds have it: null once restored, else what
+    /// dotnet said why not.</summary>
+    public static async Task<string?> RestoreAsync(string project, string folder, CancellationToken cancel = default, bool windowsTargeting = false)
     {
-        Task<ChildResult> restore = ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["restore", project], folder), limit: TimeSpan.FromMinutes(10), cancel: cancel);
+        IReadOnlyList<string> arguments = windowsTargeting ? ["restore", project, $"-p:{MSBuildNames.EnableWindowsTargeting}=true"] : ["restore", project];
+        Task<ChildResult> restore = ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(arguments, folder), limit: TimeSpan.FromMinutes(10), cancel: cancel);
         BackgroundWork.Track(restore);
         ChildResult restored = await restore;
         return restored.Succeeded ? null : restored.Said;
@@ -368,15 +377,10 @@ public static partial class ProjectTemplates
         }
     }
 
-    /// <summary>Whether a template can make a project Passenger builds here: WPF and Windows Forms only on Windows, and a
-    /// template that says which systems it runs on only on those.</summary>
+    /// <summary>Whether dotnet new makes a template's project here: a template that says which systems it runs on (its os
+    /// constraint) only on those. WPF and Windows Forms are made everywhere, marked off Windows (<see cref="ProjectTemplate.WindowsOnly"/>).</summary>
     private static bool Usable(JsonElement template)
     {
-        string[] classifications = [.. JsonMembers.Texts(template, "Classifications", AnyCase)];
-        if (!OperatingSystem.IsWindows() && classifications.Any(c => c is "WPF" or "WinForms"))
-        {
-            return false;
-        }
         foreach (JsonElement constraint in JsonMembers.Items(template, "Constraints"))
         {
             if (JsonMembers.Scalar(constraint, "Type", AnyCase) == "os" && JsonMembers.Scalar(constraint, "Args", AnyCase) is { } args)

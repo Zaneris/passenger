@@ -122,6 +122,38 @@ public sealed class NewSolutionTests : IDisposable
         window.Close();
     }
 
+    /// <summary>New Solution's WPF Application, listed everywhere: off Windows it is marked Windows only and says before
+    /// Create that it builds here but runs only on Windows; made, restored and built here (with EnableWindowsTargeting off
+    /// Windows, written into none of its files), its solution opens with the app built.</summary>
+    [AvaloniaFact]
+    public void A_WPF_app_from_New_Solution_is_marked_where_it_cannot_run_and_opens_built()
+    {
+        using IDisposable theme = TestsTheme();
+        WpfApp.UseFeed(place);
+        MainWindow window = Started();
+        Ui.Click(window.Welcome.NewSolutionButton);
+        NewProjectDialog dialog = Templates(window);
+        dialog.Folder = place;
+        NewServiceSetupTests.Choose(dialog, "wpf");
+        Assert.True((dialog.WindowsNote is { } note && note.StartsWith("WPF runs only on Windows: Passenger builds the project here", StringComparison.Ordinal)) != OperatingSystem.IsWindows(),
+            $"WPF Application says \"{dialog.WindowsNote}\" before Create here");
+        dialog.SolutionName = "Gallery";
+        dialog.Framework = WpfApp.Framework;
+        Ui.Click(dialog.CreateButton);
+        Ui.WaitFor(() => !dialog.IsVisible || dialog.Problem is not null, "dotnet new to make the WPF app", TimeSpan.FromMinutes(5));
+        Assert.True(dialog.Problem is null, $"The WPF app was not made: {dialog.Problem}");
+
+        string folder = PathNames.Canonical(Path.Combine(place, "Gallery"));
+        Ui.WaitFor(() => window.WorkspaceModel?.OpenedAs?.StartsWith(Path.Combine(folder, "Gallery."), StringComparison.Ordinal) == true,
+            $"the new solution to open: {window.Status}", TimeSpan.FromMinutes(2));
+        Ui.WaitFor(() => !window.IsBuilding && File.Exists(Path.Combine(folder, "Gallery", "bin", "Debug", $"{WpfApp.Framework}-windows", "Gallery.dll")),
+            $"the new WPF app to be built: {Ui.Said(window)}", TimeSpan.FromMinutes(4));
+        string project = File.ReadAllText(Path.Combine(folder, "Gallery", "Gallery.csproj"));
+        Assert.DoesNotContain("EnableWindowsTargeting", project, StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(folder, "Directory.Build.*", SearchOption.AllDirectories));
+        window.Close();
+    }
+
     /// <summary>New Solution stopped after dotnet new made its project takes away what Create wrote, the solution file and
     /// the project, and leaves a file another program wrote into its folder meanwhile, with the folder.</summary>
     [AvaloniaFact]
@@ -441,8 +473,7 @@ public sealed class NewSolutionTests : IDisposable
                 $"dotnet new list --type {type}", TimeSpan.FromMinutes(3) + TestFolders.Spare);
             // 103: none of the type is installed.
             Assert.True(listed.Succeeded || (type == "solution" && listed.ExitCode == 103), $"dotnet new list failed:\n{listed.Output}{listed.Error}");
-            // WPF and Windows Forms build on Windows alone, so only there are they listed.
-            expected.AddRange(listed.Succeeded ? Table(listed.Output).Where(t => OperatingSystem.IsWindows() || !t.Tags.Any(tag => tag is "WPF" or "WinForms")) : []);
+            expected.AddRange(listed.Succeeded ? Table(listed.Output) : []);
             said += listed.Output;
         }
         Assert.True(expected.Count > 0, $"dotnet new list listed no project templates:\n{said}");
@@ -466,6 +497,9 @@ public sealed class NewSolutionTests : IDisposable
             $"The dialog does not list what dotnet new list reports. Not listed: [{string.Join("; ", missing)}]. Listed but not reported: "
             + $"[{string.Join("; ", unmatched.Select(t => $"{t.Name} ({string.Join(',', t.ShortNames)}; {string.Join(',', t.Languages)})"))}]\n{said}");
         Assert.Equal("Console App", dialog.Templates[0].Name);
+        // WPF and Windows Forms are listed everywhere, marked off Windows, where their apps build but do not run.
+        Assert.All(dialog.Templates.Where(t => t.Classifications.Any(c => c is "WPF" or "WinForms")),
+            t => Assert.True((t.WindowsOnly is not null) != OperatingSystem.IsWindows(), $"{t.Name} is {(t.WindowsOnly is null ? "not " : string.Empty)}marked Windows only here"));
     }
 
     /// <summary>One row of dotnet new list's table: its name (cut short with "..." when long), short names, languages

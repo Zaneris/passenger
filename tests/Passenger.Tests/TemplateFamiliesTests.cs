@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Templates;
 using Passenger.Core;
@@ -41,7 +42,7 @@ public sealed class TemplateFamiliesTests : IDisposable
         // Rider's types first, in its order (Desktop where WPF builds, MAUI with its workload's templates), then the rest by name.
         string[] atOnce = [.. dialog.Families.Select(f => f.Name)];
         bool maui = Lists("MAUI");
-        string[] riders = ["Console", "Class Library", .. OperatingSystem.IsWindows() ? ["Desktop"] : Array.Empty<string>(), "Web", "AI Extensions",
+        string[] riders = ["Console", "Class Library", "Desktop", "Web", "AI Extensions",
             "Services", "Unit Test", "Aspire", "Azure Functions", .. maui ? ["MAUI"] : Array.Empty<string>()];
         Assert.Equal(riders, atOnce.Take(riders.Length));
         string[] others = atOnce[riders.Length..];
@@ -64,6 +65,9 @@ public sealed class TemplateFamiliesTests : IDisposable
         Assert.Contains("Blazor Web App", Family(dialog, "Web").Types.Select(t => t.TypeName));
         Assert.Equal(["Class Library", "Blazor Web Worker"], Family(dialog, "Class Library").Types.Take(2).Select(t => t.TypeName));
         Assert.Equal(["Worker Service"], Family(dialog, "Services").Types.Select(t => t.Name));
+        // Desktop's WPF and Windows Forms apps are listed everywhere, marked off Windows, where they build but do not run.
+        string[] desktopMarks = [.. dialog.FamilyRow("Desktop")!.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsVisible).Select(t => t.Text ?? string.Empty)];
+        Assert.True(desktopMarks.Contains("Windows only") != OperatingSystem.IsWindows(), $"Desktop's row reads [{string.Join(", ", desktopMarks)}] here");
         // Not installed unless a workload brought one of its templates (MAUI 10's Aspire service defaults).
         bool aspire = Lists("Aspire");
         Assert.True(Family(dialog, "Aspire").NotInstalled != aspire, aspire

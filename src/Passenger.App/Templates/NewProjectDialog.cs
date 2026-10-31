@@ -63,6 +63,7 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly Control typeRow;
     private readonly TextBlock heading;
     private readonly TextBlock description;
+    private readonly TextBlock windowsNote = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0), IsVisible = false };
     private readonly TextBox solutionName = new() { Classes = { StyleClasses.Search } };
     private readonly TextBox projectName = new() { Classes = { StyleClasses.Search } };
     private readonly TextBox directory = new() { Classes = { StyleClasses.Search } };
@@ -242,11 +243,12 @@ public sealed class NewProjectDialog : IdeWindow
         {
             Margin = new Thickness(24, 18, 24, 18),
             Spacing = 10,
-            Children = { new StackPanel { Children = { heading, description }, Margin = new Thickness(0, 0, 0, 8) }, fields, Rule(), typeRow, details, offer, installOutput },
+            Children = { new StackPanel { Children = { heading, description, windowsNote }, Margin = new Thickness(0, 0, 0, 8) }, fields, Rule(), typeRow, details, offer, installOutput },
         };
         Border rightPane = new() { Child = new ScrollViewer { Content = right } };
 
         problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        windowsNote.Bind(TextBlock.ForegroundProperty, windowsNote.GetResourceObservable(TokenKeys.Warning));
         working = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, IsVisible = false, Children = { bar, progress } };
         create.Click += (_, _) => IdeErrors.Observe(CreateAsync());
         Closing += (_, _) =>
@@ -437,6 +439,9 @@ public sealed class NewProjectDialog : IdeWindow
     /// <summary>The Create button, for a click on it.</summary>
     public Button CreateButton => create;
 
+    /// <summary>What the dialog says of a template whose app runs only on Windows, off Windows; null for any other.</summary>
+    public string? WindowsNote => windowsNote.IsVisible ? windowsNote.Text : null;
+
     /// <summary>What Create made, once it closed the dialog; null until then, and when given up.</summary>
     public CreatedProjects? Created { get; private set; }
 
@@ -528,7 +533,7 @@ public sealed class NewProjectDialog : IdeWindow
                 foreach (string project in projects)
                 {
                     progress.Text = $"Restoring {Path.GetFileNameWithoutExtension(project)}…";
-                    if (await writes.During(() => ProjectTemplates.RestoreAsync(project, plan.Root, cancel.Token), Path.Combine(Path.GetDirectoryName(project)!, "obj")) is { } said)
+                    if (await writes.During(() => ProjectTemplates.RestoreAsync(project, plan.Root, cancel.Token, windowsTargeting: template.WindowsOnly is not null), Path.Combine(Path.GetDirectoryName(project)!, "obj")) is { } said)
                     {
                         unrestored ??= $"{Path.GetFileNameWithoutExtension(project)} did not restore: {said}";
                     }
@@ -1109,6 +1114,8 @@ public sealed class NewProjectDialog : IdeWindow
         languageRow.IsVisible = template.Languages.Count > 1;
         heading.Text = template.Name;
         description.Text = Variant().Description;
+        windowsNote.Text = template.WindowsOnly is { } desktop ? $"{desktop} runs only on Windows: Passenger builds the project here for its code help, and Run, Debug and Profile need Windows" : null;
+        windowsNote.IsVisible = template.WindowsOnly is not null;
         options.Show(Variant());
         ShowSetup();
         ShowWhere();
@@ -1255,6 +1262,7 @@ public sealed class NewProjectDialog : IdeWindow
         {
             heading.Text = target is null ? "New Solution" : "New Project";
             description.Text = string.Empty;
+            windowsNote.IsVisible = false;
         }
     }
 
@@ -1334,42 +1342,56 @@ public sealed class NewProjectDialog : IdeWindow
     }
 
     /// <summary>A row for whichever family the list hands its container: its name, its Types on hover, and "Not installed"
-    /// for one none of whose Types is.</summary>
+    /// for one none of whose Types is, or "Windows only" for one whose every Type's app runs only on Windows.</summary>
     private static Control Item()
     {
-        (DockPanel named, TextBlock name, TextBlock missing) = Named();
+        (DockPanel named, TextBlock name, TextBlock mark) = Named();
         Border item = new() { Padding = new Thickness(5, 6), Child = named };
         return item.Showing<TemplateFamily>(row =>
         {
             string types = row.Types.Count > 1 ? $": {string.Join(", ", row.Types.Select(t => t.TypeName))}" : row.Name == row.Types[0].Name ? string.Empty : $": {row.Types[0].Name}";
-            ToolTip.SetTip(item, row.NotInstalled ? $"{row.Name}{types}, from {row.Types[0].Pack!.Id}, which is not installed" : $"{row.Name}{types}");
+            bool windows = row.Types.All(t => t.WindowsOnly is not null);
+            ToolTip.SetTip(item, row.NotInstalled ? $"{row.Name}{types}, from {row.Types[0].Pack!.Id}, which is not installed"
+                : windows ? $"{row.Name}{types}: they build here but run only on Windows" : $"{row.Name}{types}");
             name.Text = row.Name;
-            missing.IsVisible = row.NotInstalled;
+            Mark(mark, row.NotInstalled ? NotInstalled : windows ? WindowsOnly : null);
         });
     }
 
-    /// <summary>A Type in the chooser, for whichever Type it is handed: its name, and "Not installed" for one not installed.</summary>
+    /// <summary>A Type in the chooser, for whichever Type it is handed: its name, and "Not installed" for one not installed
+    /// or "Windows only" for one whose app runs only on Windows.</summary>
     private static Control TypeItem()
     {
-        (DockPanel named, TextBlock name, TextBlock missing) = Named();
+        (DockPanel named, TextBlock name, TextBlock mark) = Named();
         return named.Showing<ProjectTemplate>(type =>
         {
             name.Text = type.TypeName;
-            missing.IsVisible = type.Pack is not null;
+            Mark(mark, type.Pack is not null ? NotInstalled : type.WindowsOnly is not null ? WindowsOnly : null);
         });
     }
 
-    /// <summary>A name cut short where it must be, with "Not installed" after it for what dotnet new has not got, shown
-    /// only then.</summary>
-    private static (DockPanel Named, TextBlock Name, TextBlock Missing) Named()
+    private const string NotInstalled = "Not installed";
+
+    private const string WindowsOnly = "Windows only";
+
+    /// <summary>A row's mark after its name, shown only with words.</summary>
+    private static void Mark(TextBlock mark, string? words)
+    {
+        mark.Text = words;
+        mark.IsVisible = words is not null;
+    }
+
+    /// <summary>A name cut short where it must be, with a mark after it ("Not installed" for what dotnet new has not got),
+    /// shown only where it says something.</summary>
+    private static (DockPanel Named, TextBlock Name, TextBlock Mark) Named()
     {
         TextBlock name = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        TextBlock missing = new() { Text = "Not installed", Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBlock mark = new() { Classes = { StyleClasses.Muted }, FontSize = 11, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         DockPanel both = new();
-        DockPanel.SetDock(missing, Dock.Right);
-        both.Children.Add(missing);
+        DockPanel.SetDock(mark, Dock.Right);
+        both.Children.Add(mark);
         both.Children.Add(name);
-        return (both, name, missing);
+        return (both, name, mark);
     }
 
     private Control Rule()

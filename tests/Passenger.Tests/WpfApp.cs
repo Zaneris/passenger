@@ -15,7 +15,15 @@ internal static class WpfApp
         LazyThreadSafetyMode.ExecutionAndPublication);
 
     /// <summary>The target the app is made for, the test project's own.</summary>
-    private static string Framework => AvaloniaApp.Metadata("TargetFramework");
+    public static string Framework => AvaloniaApp.Metadata("TargetFramework");
+
+    /// <summary>Has a folder's restores (and those of the folders under it) take WindowsDesktop's reference pack from the
+    /// run's local feed alone, as a WPF app made there by New Solution needs.</summary>
+    public static void UseFeed(string folder)
+    {
+        AddToFeed(Pinned());
+        AvaloniaApp.UseFeed(folder);
+    }
 
     /// <summary><see cref="CreateAsync"/> from the UI thread (a window test's body), run on the thread pool and waited for
     /// with the window's loop running (<see cref="Ui.AwaitPumped{T}"/>), never for its work to land.</summary>
