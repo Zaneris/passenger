@@ -76,6 +76,17 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   Neither race: **the test**, which presses the platform's first shortcut for each action now (in this commit). After
   it, 10 of 10 on the Linux VM and on the Windows VM, and it passes on this Mac.
 
+- `BuildRunTests`' `A_program_under_dotnet_watch_whose_build_fails_is_said_to_wait_for_a_change_naming_the_error_and_a_change_that_builds_runs_it`,
+  CI Windows x64, run 41154974796 (b628b1f3), report lane (#1051): "Waited 150 s for dotnet watch to build and start the
+  program again once a change that builds was saved", the Run window ending "dotnet watch : mended again" and "Waiting for
+  changes" on two lines. dotnet watch writes its prefix and its words to standard error in two writes, and the program it
+  started wrote its first line to standard output between them; the Run window's runner told one line of both streams
+  together, so "dotnet watch : Waiting for changes" never came whole and the window kept saying the change waited to be
+  applied. **A race in the IDE**: each of a program's streams has its lines told whole now, however the other's text
+  comes between (in this commit, with a test whose program writes into each stream's line from the other, failing so on
+  main every time on this Mac). It passed 6 of 6 on the idle Windows VM on main; after it, it and the new test passed 10
+  of 10 there and on this Mac.
+
 - `TemplateFamiliesTests`' `New_Solution_opens_with_every_family_listed_at_once_the_templates_read_ahead_and_the_search_finds_one_by_any_of_its_Types`,
   CI Windows x64, run 41154974796 (b628b1f3), report lane (#1049): "Waited 300 s for the templates to be read ahead of
   New Solution". The templates were read ahead once a process but kept by template home (`ProjectTemplates.Hive`); the

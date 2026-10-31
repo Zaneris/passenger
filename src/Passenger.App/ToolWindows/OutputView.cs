@@ -1,3 +1,4 @@
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -193,8 +194,9 @@ public sealed class OutputView : DockPanel
     /// <summary>What the bar over the console says of its program, null while it shows none.</summary>
     public string? Waiting => waiting?.Said;
 
-    /// <summary>A program's text as it reached the console, its colour codes gone, a batch at a time.</summary>
-    public event EventHandler<string>? Written;
+    /// <summary>A program's text as it reached the console, its colour codes gone, a batch at a time, with the stretches
+    /// of it each of its streams wrote.</summary>
+    public event EventHandler<ConsoleWritten>? Written;
 
     public TextDocument Document { get; }
 
@@ -309,9 +311,23 @@ public sealed class OutputView : DockPanel
             return;
         }
         Insert(batch.Text, batch.Runs);
-        Written?.Invoke(this, batch.Runs.Count == 1 && batch.Runs[0].Stream != ConsoleStream.System
-            ? batch.Text
-            : string.Concat(batch.Runs.Where(r => r.Stream != ConsoleStream.System).Select(r => batch.Text.Substring(r.Start, r.Length))));
+        if (Written is not { } written)
+        {
+            return;
+        }
+        if (batch.Runs.TrueForAll(r => r.Stream != ConsoleStream.System))
+        {
+            written(this, new ConsoleWritten(batch.Text, batch.Runs));
+            return;
+        }
+        StringBuilder text = new();
+        List<ConsoleRun> runs = [];
+        foreach (ConsoleRun run in batch.Runs.Where(r => r.Stream != ConsoleStream.System))
+        {
+            runs.Add(run with { Start = text.Length });
+            text.Append(batch.Text, run.Start, run.Length);
+        }
+        written(this, new ConsoleWritten(text.ToString(), runs));
     }
 
     /// <summary>Whether Rerun stays there while what it reruns runs (the Run window's stops the program and runs it again);

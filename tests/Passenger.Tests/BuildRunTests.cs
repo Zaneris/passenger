@@ -568,6 +568,46 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>A program whose errors begin a line its output writes a whole line into before they end it, and whose output
+    /// begins a line its errors write a whole line into: each stream's lines are heard whole, as dotnet watch's words are
+    /// read whatever the program it runs writes between a word's start and its end.</summary>
+    [AvaloniaFact]
+    public void A_programs_output_and_errors_written_into_each_others_lines_are_heard_a_whole_line_of_each_stream_at_a_time()
+    {
+        Write("src/Hello/Program.cs", """
+            Console.Error.Write("dotnet watch : ");
+            Thread.Sleep(300);
+            Console.Out.WriteLine("the program's own line");
+            Thread.Sleep(300);
+            Console.Error.WriteLine("Waiting for changes");
+            Console.Out.Write("output begun, ");
+            Thread.Sleep(300);
+            Console.Error.WriteLine("an error between");
+            Thread.Sleep(300);
+            Console.Out.WriteLine("output ended");
+
+            """);
+        MainWindow window = Open();
+        List<string> heard = [];
+        void OnLine(object? sender, string line) => heard.Add(line);
+        window.Runner.Line += OnLine;
+        try
+        {
+            window.Perform(AppActions.RunProgram);
+            Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to end", TimeSpan.FromMinutes(2));
+            string[] written = ["dotnet watch", "the program's own line", "Waiting for changes", "output begun", "an error between", "output ended"];
+            string[] lines = [.. heard.Where(line => written.Any(part => line.Contains(part, StringComparison.Ordinal)))];
+            Assert.True(lines.SequenceEqual(["the program's own line", "dotnet watch : Waiting for changes", "an error between", "output begun, output ended"]),
+                $"The lines heard are not each stream's own, so dotnet watch's word that it watches the program it started is missed when the program writes "
+                + $"between its start and its end: [{string.Join(" | ", lines)}]");
+        }
+        finally
+        {
+            window.Runner.Line -= OnLine;
+            window.Close();
+        }
+    }
+
     private static string Output(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
 
     /// <summary>A test program's expression of the static delegates of the exception a body an update deleted throws (none

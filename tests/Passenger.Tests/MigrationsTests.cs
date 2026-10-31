@@ -25,7 +25,7 @@ public sealed class MigrationsTests
         string folder = ShopApp.Make(design: true, tool: ShopApp.Version);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         System.Text.StringBuilder programs = new();
-        window.BottomPanel.Build.Written += (_, text) => programs.Append(text);
+        window.BottomPanel.Build.Written += (_, written) => programs.Append(written.Text);
         using EfRuns runs = new(folder);
         try
         {

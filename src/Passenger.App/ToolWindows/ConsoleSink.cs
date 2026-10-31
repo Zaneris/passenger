@@ -17,6 +17,10 @@ public enum ConsoleStream
 /// <summary>A stretch of a batch of console text and the stream it came from.</summary>
 public readonly record struct ConsoleRun(int Start, int Length, ConsoleStream Stream);
 
+/// <summary>A batch of a program's text as its console took it in, and the stretches of it each of the program's streams
+/// wrote, in the order they came: a line one stream began may end after another stream's text.</summary>
+public sealed record ConsoleWritten(string Text, IReadOnlyList<ConsoleRun> Runs);
+
 /// <summary>What one read of a program's stream brought, as it came: the reader's own buffer, which its next read
 /// writes over.</summary>
 public delegate void ConsoleRead(ReadOnlySpan<char> text);

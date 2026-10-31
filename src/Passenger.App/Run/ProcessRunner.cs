@@ -13,7 +13,8 @@ namespace Passenger.App.Run;
 /// another folder's runner writes there.</summary>
 public sealed class ProcessRunner : IDisposable, IRunningProgram
 {
-    private readonly StringBuilder partialLine = new();
+    /// <summary>The line each of the program's streams has begun and not yet ended, its output's and its errors'.</summary>
+    private readonly StringBuilder[] partialLines = [new(), new()];
     private readonly OutputView console;
     private readonly bool takesInput;
     private Process? process;
@@ -37,11 +38,14 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
         console.Written += OnWritten;
     }
 
-    private void OnWritten(object? sender, string text)
+    private void OnWritten(object? sender, ConsoleWritten written)
     {
         if (running && Line is not null)
         {
-            Lines(text);
+            foreach (ConsoleRun run in written.Runs)
+            {
+                Lines(written.Text.AsSpan(run.Start, run.Length), partialLines[run.Stream == ConsoleStream.Error ? 1 : 0]);
+            }
         }
     }
 
@@ -328,7 +332,7 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
                     console.Input = null;
                 }
                 console.Flush();
-                if (partialLine.Length > 0)
+                foreach (StringBuilder partialLine in partialLines.Where(p => p.Length > 0))
                 {
                     Line?.Invoke(this, partialLine.ToString());
                     partialLine.Clear();
@@ -486,8 +490,9 @@ public sealed class ProcessRunner : IDisposable, IRunningProgram
     /// is never held whole, nor copied again with each batch, while someone listens.</summary>
     private const int LongestLine = 16 * 1024;
 
-    /// <summary>Tells each line a batch ends, at '\n' or a lone '\r' (the console has made "\r\n" one '\n').</summary>
-    private void Lines(string text)
+    /// <summary>Tells each line a stream's stretch of a batch ends, at '\n' or a lone '\r' (the console has made "\r\n" one
+    /// '\n'), after what that stream began before it in <paramref name="partialLine"/>.</summary>
+    private void Lines(ReadOnlySpan<char> text, StringBuilder partialLine)
     {
         ReadOnlySpan<char> rest = text;
         while (rest.Length > 0)

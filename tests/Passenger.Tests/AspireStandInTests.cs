@@ -2816,8 +2816,9 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         int unseen = lines.Count;
         int kept = lines.Max(line => line.Length) - 1;
         string carry = string.Empty;
-        void Heard(object? sender, string batch)
+        void Heard(object? sender, Passenger.App.ToolWindows.ConsoleWritten written)
         {
+            string batch = written.Text;
             foreach ((string line, int times) in wanted)
             {
                 // Those begun in the batches before and ended in this one, then those inside it.
