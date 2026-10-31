@@ -2,6 +2,11 @@
   <!-- The SDK's blazorwasm template's references. The SDK makes any Blazor WebAssembly project a program, which needs code
        to build, so this one is restored alone: its Build does nothing. -->
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk.BlazorWebAssembly" />
+  <PropertyGroup>
+    <!-- A machine with .NET's WebAssembly tools installed would otherwise run their targets after the empty Build, which
+         want the browser's runtime pack only a build resolves. -->
+    <UsingBrowserRuntimeWorkload>false</UsingBrowserRuntimeWorkload>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />

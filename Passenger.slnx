@@ -39,9 +39,7 @@
     <Project Path="tests/AspireGraphs/ServiceDefaults/AspireGraphs.ServiceDefaults.csproj" />
   </Folder>
   <Folder Name="/tests/BlazorGraphs/">
-    <Project Path="tests/BlazorGraphs/Wasm/BlazorGraphs.Wasm.csproj">
-      <Build Project="false" />
-    </Project>
+    <Project Path="tests/BlazorGraphs/Wasm/BlazorGraphs.Wasm.csproj" />
   </Folder>
   <Folder Name="/tests/AvaloniaGraphs/">
     <Project Path="tests/AvaloniaGraphs/Avalonia11/AvaloniaGraphs.Avalonia11.csproj" />
