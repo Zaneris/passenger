@@ -80,8 +80,9 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   licence. MIT first.
 - **Every program Passenger starts goes through `ChildProcesses`** (`Command`/`DotnetCommand`, then `Start`,
   `StartAsync`, `RunAsync`, or `AnswerAsync` for a question one line answers; `Kill` ends it with all it started), so
-  none outlives the IDE (`Lifeline`), each given its folder as the disk names it, PWD too; a child's lines are heard
-  through `ChildProcesses.Hear`, never Process's `Begin*ReadLine` (banned: its disposal faults a read under it). Started
+  none outlives the IDE (`Lifeline`), each given its folder as the disk names it, PWD too; on Windows every child shares
+  the IDE's UTF-8 console, made windowless where it has none (`SharedConsole`); a child's lines are heard through
+  `ChildProcesses.Hear`, never Process's `Begin*ReadLine` (banned: its disposal faults a read under it). Started
   elsewhere: the terminal's shell (Porta.Pty), vstest.console, Velopack's Update.exe and an agent's `--mcp-attach`
   Passenger (`StartApart`); a program run in the terminal is `Adopt`ed. Passenger's own standard input is taken at its
   start (`StandardInput`, fd 0 then the null device), so nothing it starts reads it.
@@ -316,7 +317,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   debugged test host; a RunCommand naming another program run as `dotnet run` runs it, `OtherProgram`; a Blazor Web
   App's client no program of its own, `ProjectModel.IsBrowserClient`; a Passenger it launches keeps its state in the
   launcher's `sandbox/`), `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build
-  under way waited out first), `TogetherBuild`.
+  under way waited out first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia previewers
+  holding its output (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time
+  (`ConsoleWritten`).
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach,
   Restart and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time
   (`TakeStartAsync`); Stop ends every session and recording before the programs go.
