@@ -6,25 +6,28 @@ using Passenger.Core;
 
 namespace Passenger.App.Templates;
 
-/// <summary>The project templates <c>dotnet new</c> has installed for one SDK, with the known packages' kinds it lacks:
-/// in families (Console, Unit Test, Web), each Type a template group (xUnit Test Project) with its languages, target
-/// frameworks and options; and the solution formats <c>dotnet new sln</c> makes.</summary>
-public sealed record TemplateCatalog(string Sdk, IReadOnlyList<TemplateFamily> Families, IReadOnlyList<string> SolutionFormats, string SolutionFormat)
+/// <summary>The templates <c>dotnet new</c> has installed for one SDK: its project templates, with the known packages'
+/// kinds it lacks, in families (Console, Unit Test, Web), each Type a template group (xUnit Test Project) with its
+/// languages, target frameworks and options; the solution formats <c>dotnet new sln</c> makes; and its item templates
+/// (API Controller, Razor Component, .gitignore), as groups alike.</summary>
+public sealed record TemplateCatalog(string Sdk, IReadOnlyList<TemplateFamily> Families, IReadOnlyList<string> SolutionFormats, string SolutionFormat,
+    IReadOnlyList<ProjectTemplate> Items)
 {
     /// <summary>Every template, family by family.</summary>
     public IReadOnlyList<ProjectTemplate> Templates { get; } = [.. Families.SelectMany(f => f.Types)];
 
     /// <summary>What it offers, as text: two reads of the same templates (the watch's after the dialog's own) are the same.</summary>
-    public string Shape { get; } = ShapeOf(Sdk, Families, SolutionFormats, SolutionFormat);
+    public string Shape { get; } = ShapeOf(Sdk, Families, SolutionFormats, SolutionFormat, Items);
 
-    private static string ShapeOf(string sdk, IReadOnlyList<TemplateFamily> families, IReadOnlyList<string> formats, string format)
+    private static string ShapeOf(string sdk, IReadOnlyList<TemplateFamily> families, IReadOnlyList<string> formats, string format, IReadOnlyList<ProjectTemplate> items)
     {
         static string Variant(TemplateVariant v) =>
             $"{v.Identity}:{v.Language}:{string.Join(',', v.Frameworks)}:{v.DefaultFramework}:{v.Description}:"
             + string.Join(',', v.Options.Select(o => $"{o.Name}={o.Default}/{o.Label}/{o.Kind}/{o.Choices.Count}/{o.EnabledWhen}/{o.Through}"));
-        IEnumerable<string> types = families.SelectMany(f => f.Types.Select(t =>
-            $"{f.Name}|{t.TypeName}|{t.Name}|{string.Join(',', t.ShortNames)}|{t.IsSolution}|{t.Pack?.Id}|{t.DefaultName}|{string.Join(';', t.Variants.Select(Variant))}"));
-        return string.Join('\n', [sdk, string.Join(',', formats), format, .. types]);
+        static string Type(string family, ProjectTemplate t) =>
+            $"{family}|{t.TypeName}|{t.Name}|{string.Join(',', t.ShortNames)}|{t.IsSolution}|{t.Pack?.Id}|{t.DefaultName}|{string.Join(';', t.Variants.Select(Variant))}";
+        IEnumerable<string> types = families.SelectMany(f => f.Types.Select(t => Type(f.Name, t)));
+        return string.Join('\n', [sdk, string.Join(',', formats), format, .. types, .. items.Select(i => Type("item", i))]);
     }
 }
 
@@ -48,6 +51,12 @@ public sealed record ProjectTemplate(string Name, IReadOnlyList<string> ShortNam
 
     /// <summary>The package that brings it when dotnet new has not got it yet; null for an installed template.</summary>
     public TemplatePack? Pack { get; init; }
+
+    /// <summary>Passenger's own item template it is, which the IDE makes itself; null for dotnet new's.</summary>
+    public OwnTemplate? Own { get; init; }
+
+    /// <summary>Whether it makes what it makes by the name given: false for one whose name has no default (.gitignore).</summary>
+    public bool TakesName { get; init; } = true;
 
     /// <summary>Its languages, C# first, as <c>dotnet new list</c> lists them.</summary>
     public IReadOnlyList<string> Languages =>
@@ -298,15 +307,24 @@ public static partial class ProjectTemplates
     private static string? TemplateRoot(string? custom) =>
         custom ?? (Dotnet.CliHome() is { } home ? Path.Combine(home, ".templateengine") : null);
 
-    /// <summary>The templates in dotnet new's cache, each one's options from its ide.host.json, with the known packages'
-    /// kinds it has not got, in families.</summary>
+    /// <summary>The templates in dotnet new's cache, each one's options from its parameters with its ide.host.json's over
+    /// them, the project templates with the known packages' kinds it has not got, in families, and the item templates.</summary>
     private static async Task<TemplateCatalog> ParseAsync(string cache, string sdk)
     {
         using JsonDocument document = await ReadSharedAsync(cache);
         List<JsonElement> all = [.. document.RootElement.GetProperty("TemplateInfo").EnumerateArray()];
         using HostFiles ide = new();
+        List<ProjectTemplate> templates = Groups(all.Where(t => Tag(t, "type") is "project" or "solution" && Usable(t)), ide);
+        List<ProjectTemplate> items = Groups(all.Where(t => Tag(t, "type") == "item" && Usable(t)), ide);
+        (IReadOnlyList<string> formats, string format) = SolutionFormats(all);
+        return new TemplateCatalog(sdk, TemplateFamilies.Of([.. templates, .. TemplatePacks.Offered(templates)]), formats, format, items);
+    }
+
+    /// <summary>Templates as groups, each of its templates a variant, newest first.</summary>
+    private static List<ProjectTemplate> Groups(IEnumerable<JsonElement> all, HostFiles ide)
+    {
         List<ProjectTemplate> templates = [];
-        foreach (IGrouping<string, JsonElement> group in all.Where(t => Tag(t, "type") is "project" or "solution" && Usable(t)).GroupBy(t => JsonMembers.Scalar(t, "GroupIdentity", AnyCase) ?? JsonMembers.Scalar(t, "Identity", AnyCase)!))
+        foreach (IGrouping<string, JsonElement> group in all.GroupBy(t => JsonMembers.Scalar(t, "GroupIdentity", AnyCase) ?? JsonMembers.Scalar(t, "Identity", AnyCase)!))
         {
             List<TemplateVariant> variants = [];
             foreach (JsonElement template in group.OrderByDescending(t => Int(t, "Precedence")).ThenBy(t => LanguageOrder(Tag(t, "language") ?? string.Empty)))
@@ -324,10 +342,13 @@ public static partial class ProjectTemplates
                 .OrderByDescending(t => Int(t, "Precedence")).ThenBy(t => LanguageOrder(Tag(t, "language") ?? string.Empty)).First();
             string name = JsonMembers.Scalar(newest, "Name", AnyCase) ?? JsonMembers.Scalar(newest, "Identity", AnyCase)!;
             templates.Add(new ProjectTemplate(name, [.. JsonMembers.Texts(newest, "ShortNameList", AnyCase)], JsonMembers.Scalar(newest, "Author", AnyCase) ?? string.Empty,
-                [.. JsonMembers.Texts(newest, "Classifications", AnyCase)], DefaultName(newest, name), variants) { IsSolution = Tag(newest, "type") == "solution" });
+                [.. JsonMembers.Texts(newest, "Classifications", AnyCase)], DefaultName(newest, name), variants)
+            {
+                IsSolution = Tag(newest, "type") == "solution",
+                TakesName = JsonMembers.Items(newest, "Parameters", AnyCase).Any(p => JsonMembers.Scalar(p, "Name", AnyCase) == "name" && JsonMembers.Scalar(p, "DefaultValue", AnyCase) is not null),
+            });
         }
-        (IReadOnlyList<string> formats, string format) = SolutionFormats(all);
-        return new TemplateCatalog(sdk, TemplateFamilies.Of([.. templates, .. TemplatePacks.Offered(templates)]), formats, format);
+        return templates;
     }
 
     /// <summary>The cache, read as another dotnet new may be writing it: a read that does not parse is tried again.</summary>
@@ -440,7 +461,7 @@ public static partial class ProjectTemplates
                 options.Add(option);
             }
         }
-        return new TemplateVariant(JsonMembers.Scalar(template, "Identity", AnyCase)!, Tag(template, "language"), Int(template, "Precedence"), JsonMembers.Scalar(template, "Description", AnyCase) ?? string.Empty,
+        return new TemplateVariant(JsonMembers.Scalar(template, "Identity", AnyCase)!, Tag(template, "language") is { Length: > 0 } language ? language : null, Int(template, "Precedence"), JsonMembers.Scalar(template, "Description", AnyCase) ?? string.Empty,
             frameworkOption, frameworks, defaultFramework, options)
         {
             SkipRestoreOption = parameters.ContainsKey("skipRestore") ? LongName(cli, "skipRestore") : null,

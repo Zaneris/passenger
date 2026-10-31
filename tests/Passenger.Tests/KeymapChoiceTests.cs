@@ -534,7 +534,7 @@ public sealed class KeymapChoiceTests : IDisposable
     /// character, a line and to the text's ends have, in each keymap, the keys Rider's keymap of that preset on this
     /// platform resolves them to (<see cref="RiderKeymaps"/>), and the Mac's Cmd+Up and Down besides in Visual Studio's.
     /// A key Rider gives several of them, told apart by where it is pressed, has one action and the rest take it where
-    /// they are (<see cref="AppActions.KeysIn"/>); Rider's New, which Passenger leaves out, keeps its keys from Generate.</summary>
+    /// they are (<see cref="AppActions.KeysIn"/>); Rider's New is New Item, by the keys Generate does not take.</summary>
     [AvaloniaFact]
     public void Each_keymaps_keys_for_Duplicate_Parameter_Info_Toggle_Case_and_Generate_are_those_Riders_keymap_resolves_them_to()
     {
@@ -568,10 +568,10 @@ public sealed class KeymapChoiceTests : IDisposable
                 Assert.True(keymap.ShortcutsFor(shared).Count == 0,
                     $"In {DefaultKeymaps.NameOf(preset)}'s keymap {shared} has keys of its own, [{string.Join("; ", keymap.ShortcutsFor(shared).Select(s => s.Notation()))}], where it takes another's where it is pressed");
             }
-            foreach (Shortcut key in RiderKeymaps.Resolve(rider, "NewElement").Except(RiderKeymaps.Resolve(rider, "Generate")))
-            {
-                Assert.True(keymap.ActionFor(key) is null, $"In {DefaultKeymaps.NameOf(preset)}'s keymap {key.Notation()}, Rider's New, runs {keymap.ActionFor(key)}");
-            }
+            string[] newItem = [.. keymap.ShortcutsFor(AppActions.NewItem).Select(s => s.Notation()).Order(StringComparer.Ordinal)];
+            string[] riderNew = [.. RiderKeymaps.Resolve(rider, "NewElement").Except(RiderKeymaps.Resolve(rider, "Generate")).Select(s => s.Notation()).Order(StringComparer.Ordinal)];
+            Assert.True(newItem.SequenceEqual(riderNew),
+                $"In {DefaultKeymaps.NameOf(preset)}'s keymap New Item runs from [{string.Join("; ", newItem)}], where Rider's New (NewElement) has [{string.Join("; ", riderNew)}] that Generate does not take");
         }
     }
 

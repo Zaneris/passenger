@@ -180,6 +180,10 @@ public static class AppActions
     public const string NewFile = "app.explorer.newFile";
     public const string NewFolder = "app.explorer.newFolder";
     public const string NewType = "app.explorer.newType";
+
+    // New Item: dotnet new's item templates and Passenger's own, by Rider's New (NewElement) keys where Generate does not take
+    // them (Visual Studio's keymaps; VS Code's give them all to Generate).
+    public const string NewItem = "app.explorer.newItem";
     public const string NewSolutionFolder = "app.explorer.newSolutionFolder";
     public const string AddExistingProject = "app.explorer.addExistingProject";
     public const string AddExistingItem = "app.explorer.addExistingItem";
@@ -547,6 +551,7 @@ public static class AppActions
             return keymap
                 .Bind(Open, "meta O")
                 .Bind(NewProject, "meta shift N")
+                .Bind(NewItem, "meta N", "alt INSERT")
                 .Bind(Save, "meta S")
                 .Bind(SaveAll, "meta shift S")
                 .Bind(CloseTab, "meta W", "meta F4")
@@ -673,6 +678,7 @@ public static class AppActions
         return keymap
             .Bind(Open, "control O")
             .Bind(NewProject, "control shift N")
+            .Bind(NewItem, "control N")
             .Bind(Save, "control S")
             .Bind(SaveAll, "control shift S")
             .Bind(CloseTab, "control F4")

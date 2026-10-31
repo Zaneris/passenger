@@ -68,7 +68,7 @@ public partial class MainWindow
     }
 
     /// <summary>The C# types Class/Interface makes, in the order its popup lists them.</summary>
-    public static IReadOnlyList<string> TypeKinds { get; } = ["Class", "Interface", "Record", "Struct", "Enum"];
+    public static IReadOnlyList<string> TypeKinds => Templates.OwnTemplates.TypeKinds;
 
     /// <summary>Add, Class/Interface: a name, and the kind of type chosen under it with Up and Down.</summary>
     private void AskType(string into)
@@ -160,15 +160,7 @@ public partial class MainWindow
             return problem;
         }
         into = Path.Combine([into, .. parts[..^1].Where(p => p.Length > 0)]);
-        string declaration = kind switch
-        {
-            "Interface" => $"public interface {type}\n{{\n}}\n",
-            "Record" => $"public record {type}();\n",
-            "Struct" => $"public struct {type}\n{{\n}}\n",
-            "Enum" => $"public enum {type}\n{{\n}}\n",
-            _ => $"public class {type}\n{{\n}}\n",
-        };
-        return CreateFile(into, type + ".cs", $"namespace {NamespaceFor(into)};\n\n{declaration}");
+        return CreateFile(into, type + ".cs", Templates.OwnTemplates.TypeText(kind, type, NamespaceFor(into)));
     }
 
     /// <summary>The namespace a folder's code takes: its project's evaluated RootNamespace (until it is evaluated, its
