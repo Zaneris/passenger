@@ -55,7 +55,7 @@ public sealed class SmallestWindowTests
         {
             window.OpenFile(Path.Combine(folder, "Greeter.cs"));
             Ui.Settle();
-            Ui.Press(window, "meta shift F");
+            Ui.Run(window, AppActions.FindInFiles);
             Ui.WaitFor(() => window.GetVisualDescendants().OfType<Passenger.App.Navigation.FindInFilesPopup>().Any(p => p.IsEffectivelyVisible), "Find in Files");
             Passenger.App.Navigation.FindInFilesPopup popup = window.GetVisualDescendants().OfType<Passenger.App.Navigation.FindInFilesPopup>().Single();
             window.KeyTextInput("Greet");
@@ -126,7 +126,7 @@ public sealed class SmallestWindowTests
             window.OpenFile(deep);
             Ui.Settle();
             Assert.NotEmpty(window.Breadcrumbs);
-            Ui.Press(window, "meta shift B");
+            Ui.Run(window, AppActions.Build);
             Ui.WaitFor(() => window.Status is { Length: > 0 }, "Build's refusal in the status bar");
             TextBlock said = (TextBlock)Named(window, "StatusText");
             Assert.True(said.IsEffectivelyVisible && said.TextLayout.TextLines.All(l => !l.HasCollapsed) && said.Bounds.Width > 0,

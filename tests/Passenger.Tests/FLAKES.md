@@ -30,6 +30,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-31
 
+- `SmallestWindowTests`' `At_the_smallest_window_Find_in_Files_stands_inside_the_window_its_results_and_preview_giving_way`
+  and `At_the_smallest_width_a_refusal_stands_whole_in_front_of_a_deep_files_path`, CI Linux and Windows x64, run
+  41154974796 (b628b1f3), report lane (#1054): "Waited 180 s for Find in Files" and "Waited 180 s for Build's refusal in
+  the status bar" (225 s on Windows). Each pressed Rider's macOS keys, meta shift F and meta shift B, which the keymaps
+  of Linux and Windows bind to nothing, so neither action ran there; both passed on macOS and failed so on the Linux VM.
+  Neither race: **the test**, which presses the platform's first shortcut for each action now (in this commit). After
+  it, 10 of 10 on the Linux VM and on the Windows VM, and it passes on this Mac.
+
 - `TemplateFamiliesTests`' `New_Solution_opens_with_every_family_listed_at_once_the_templates_read_ahead_and_the_search_finds_one_by_any_of_its_Types`,
   CI Windows x64, run 41154974796 (b628b1f3), report lane (#1049): "Waited 300 s for the templates to be read ahead of
   New Solution". The templates were read ahead once a process but kept by template home (`ProjectTemplates.Hive`); the
