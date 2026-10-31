@@ -76,6 +76,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   Neither race: **the test**, which presses the platform's first shortcut for each action now (in this commit). After
   it, 10 of 10 on the Linux VM and on the Windows VM, and it passes on this Mac.
 
+- `XamlTests`' `Previewers_run_for_the_preview_shown_and_the_one_hidden_last_and_a_build_starts_only_the_shown_one_again`,
+  CI Windows x64, run 41154974796 (b628b1f3), report lane (#1050): "A build started 0 previewers again, where only the
+  shown view's should start again". An Avalonia previewer loads the project's assembly where the build put it, and
+  Windows lets no build write a file a running program has loaded, so the build after the edit failed after ten tries to
+  copy Gallery.dll into bin/ ("MSB3027 … The file is locked by: .NET Host"), and a failed build starts no previewer; a
+  person with XAML Preview on met the same failed build. **A bug in the IDE**: on Windows a build's first step waits for
+  the Avalonia previewers to end, their frames kept, and the shown view's starts again as the build ends (in this
+  commit). It failed so on the Windows VM 2 of 2 on main; after it, 10 of 10 there and on this Mac, and XamlTests 52 of
+  52 there.
+
 - `BuildRunTests`' `A_program_under_dotnet_watch_whose_build_fails_is_said_to_wait_for_a_change_naming_the_error_and_a_change_that_builds_runs_it`,
   CI Windows x64, run 41154974796 (b628b1f3), report lane (#1051): "Waited 150 s for dotnet watch to build and start the
   program again once a change that builds was saved", the Run window ending "dotnet watch : mended again" and "Waiting for

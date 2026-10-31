@@ -2338,7 +2338,8 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
 
     /// <summary>With XAML Preview on, previewers run only for the preview shown and the one hidden last: three views shown in
     /// turn leave two previewers, the first's ended; the one hidden last, shown again, draws with the previewer it kept; a
-    /// build that changes nothing starts none again, and one after an edit to the view shown starts its previewer alone
+    /// build that changes nothing starts none again (on Windows, where a previewer holds the build it loaded, it ends both
+    /// and starts the shown view's again), and one after an edit to the view shown builds and starts its previewer alone
     /// again, ending the hidden one's, which starts again as its view is shown.</summary>
     [AvaloniaFact]
     public void Previewers_run_for_the_preview_shown_and_the_one_hidden_last_and_a_build_starts_only_the_shown_one_again()
@@ -2388,15 +2389,18 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
 
             Ui.Run(window, AppActions.Build);
             Ui.Settle();
-            Assert.True(Started().Length == 3 && Preview(one).Running && Preview(two).Running,
-                $"A build that changed nothing started {Plural.Of(Started().Length - 3, "previewer")} again (One running {Preview(one).Running}, Two {Preview(two).Running})");
+            bool holds = OperatingSystem.IsWindows();
+            Assert.True(Started().Length == (holds ? 4 : 3) && Preview(one).Running && Preview(two).Running != holds,
+                $"A build that changed nothing started {Plural.Of(Started().Length - 3, "previewer")} again (One running {Preview(one).Running}, Two {Preview(two).Running}), "
+                + $"the status bar saying '{window.Status}'");
 
             // An edit the build compiles into the project's assembly, which the shown view's previewer then draws from.
             Replace(window.EditorArea.CodeEditor, "#3D7BF5", "#E2A33F");
             int before = Started().Length;
             Ui.Run(window, AppActions.Build);
             Ui.Settle();
-            Assert.True(Started().Length == before + 1, $"A build started {Plural.Of(Started().Length - before, "previewer")} again, where only the shown view's should start again");
+            Assert.True(Started().Length == before + 1,
+                $"A build started {Plural.Of(Started().Length - before, "previewer")} again, where only the shown view's should start again, the status bar saying '{window.Status}'");
             Assert.True(Preview(one).Running && Preview(one).Status == "Live", $"One's new previewer is not live: the pane says '{Preview(one).Status}'");
             Assert.True(!Preview(two).Running, "The build left the hidden view's previewer running on the build before it");
             Ui.WaitFor(() => Ended(Started()[1]), "One's previewer of the build before to end with the build");

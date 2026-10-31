@@ -228,6 +228,11 @@ public sealed partial class BuildRunController
     /// <summary>A build ended, how it did said; after its caller has heard.</summary>
     public event EventHandler<BuildOutcome>? BuildFinished;
 
+    /// <summary>What lets go of the projects' build output before a build's first step writes it, waited for once the
+    /// design-time builds it meets have ended (the XAML previews, whose previewers hold it on Windows); its end is
+    /// <see cref="BuildFinished"/>.</summary>
+    public Func<Task>? LettingGo { get; set; }
+
     /// <summary>How a run that ended is named, in the status bar and to an agent.</summary>
     public static string RunEnded(string name, int code) => $"{name} exited with code {code}";
 
@@ -427,7 +432,7 @@ public sealed partial class BuildRunController
         buildWork?.Say($"{verb} {what}…");
         bool windows = WindowsTargeting(together?.Projects ?? [target]);
         IReadOnlyList<string> arguments = publishing is { } publish ? publish.Arguments(windows) : BuildOutput.Arguments(target, buildKind, buildFramework, windows, buildOutput);
-        Func<CancellationToken, Task>? after = first ? HoldDesignTimeBuildsAsync : null;
+        Func<CancellationToken, Task>? after = first ? BeforeFirstStepAsync : null;
         if (checking is { } checks)
         {
             Func<CancellationToken, Task>? held = after;
@@ -525,6 +530,17 @@ public sealed partial class BuildRunController
         return check.Inputs.Output is { Length: > 0 } output && PathNames.Canonical(Path.TrimEndingDirectorySeparator(output)) is var folder
             && assemblies.Any(each => each.Project.Equals(name, StringComparison.OrdinalIgnoreCase) && Path.GetDirectoryName(each.Path) is { } at && PathNames.Same(at, folder))
             && check.Inputs.Referenced.All(reference => PathNames.Canonical(reference) is var path && assemblies.Any(each => PathNames.Same(each.Path, path)));
+    }
+
+    /// <summary>What a build's first step waits for: the design-time builds it would meet (<see cref="HoldDesignTimeBuildsAsync"/>),
+    /// then what holds the build's output (<see cref="LettingGo"/>).</summary>
+    private async Task BeforeFirstStepAsync(CancellationToken stop)
+    {
+        await HoldDesignTimeBuildsAsync(stop);
+        if (LettingGo is { } letGo)
+        {
+            await letGo().WaitAsync(stop);
+        }
     }
 
     /// <summary>Waits for the project host's design-time builds of WPF and Avalonia projects under way, the Build window

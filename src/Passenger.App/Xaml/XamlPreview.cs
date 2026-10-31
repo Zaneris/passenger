@@ -34,6 +34,13 @@ public sealed class XamlPreview : IDisposable
 
     /// <summary>Whether the previewer rests, ended while the preview is not shown, to start as it is shown again.</summary>
     private bool resting;
+
+    /// <summary>A build under way that writes the project's output, which an Avalonia previewer started on Windows would
+    /// hold (<see cref="LetGoForBuildAsync"/>): done as it ends; null while none is.</summary>
+    private TaskCompletionSource? building;
+
+    /// <summary>Whether the previewer ended for the build under way, to start again as it ends.</summary>
+    private bool endedForBuild;
     private double scaling = 1;
 
     /// <summary>The elements on the ranges of their XAML and of their tags, which the text carries, and the elements as last
@@ -102,10 +109,27 @@ public sealed class XamlPreview : IDisposable
         switch (builder.Dialect)
         {
             case AvaloniaDialect:
+                if (building is { } held)
+                {
+                    Say("The previewer waits for the build to end…");
+                    await held.Task;
+                    if (disposed || start != starts)
+                    {
+                        return;
+                    }
+                }
                 IPreviewHost? drawing = await AvaloniaPreviewHost.StartAsync(this, builder.Current.Inputs);
                 if (disposed || start != starts)
                 {
                     drawing?.Dispose();
+                    return;
+                }
+                // Started as a build began, it holds what the build writes: it ends, to start again as the build ends.
+                if (building is not null && drawing is AvaloniaPreviewHost late)
+                {
+                    endedForBuild = true;
+                    Say("The previewer waits for the build to end…");
+                    await late.EndAsync();
                     return;
                 }
                 Adopt(drawing);
@@ -245,12 +269,64 @@ public sealed class XamlPreview : IDisposable
         return StartAsync();
     }
 
-    /// <summary>A build succeeded: a previewer whose build it changed (or with a newer one beside it) starts again on the
-    /// newest while the preview is <paramref name="shown"/>, and rests while it is not; one whose build stands goes on, and
-    /// a preview with no previewer is started where shown.</summary>
+    /// <summary>A build is about to write the project's output. On Windows an Avalonia previewer loads its build where the
+    /// build lies, and no build may write a file it holds: it ends, its last frame kept, and no previewer of the file
+    /// starts until the build has ended (<see cref="BuiltAsync"/>, <see cref="BuildFailedAsync"/>). Done once its process
+    /// has let go of the build's files.</summary>
+    public async Task LetGoForBuildAsync()
+    {
+        UiThread.Check();
+        if (disposed || !OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        building ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (host is not AvaloniaPreviewHost holding)
+        {
+            return;
+        }
+        Let();
+        host = null;
+        starts++;
+        endedForBuild = true;
+        Say("The previewer waits for the build to end…");
+        await holding.EndAsync();
+    }
+
+    /// <summary>The build under way has ended: a previewer may start from here on; whether one ended for it.</summary>
+    private bool BuildEnded()
+    {
+        building?.TrySetResult();
+        building = null;
+        bool ended = endedForBuild;
+        endedForBuild = false;
+        return ended;
+    }
+
+    /// <summary>A build failed, was stopped or never started: a previewer that ended for it starts again on the build that
+    /// stands while the preview is <paramref name="shown"/>, and rests while it is not.</summary>
+    public Task BuildFailedAsync(bool shown)
+    {
+        UiThread.Check();
+        if (!BuildEnded() || disposed || resting)
+        {
+            return Task.CompletedTask;
+        }
+        if (shown)
+        {
+            return RestartAsync();
+        }
+        Rest();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>A build succeeded: a previewer whose build it changed (or with a newer one beside it), or that ended for it,
+    /// starts again on the newest while the preview is <paramref name="shown"/>, and rests while it is not; one whose build
+    /// stands goes on, and a preview with no previewer is started where shown.</summary>
     public async Task BuiltAsync(bool shown)
     {
         UiThread.Check();
+        BuildEnded();
         if (disposed || resting)
         {
             return;
@@ -374,6 +450,7 @@ public sealed class XamlPreview : IDisposable
     public void Dispose()
     {
         disposed = true;
+        BuildEnded();
         Stop();
         wholes.Clear();
         tags.Clear();

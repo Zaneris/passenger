@@ -319,6 +319,35 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         return port;
     }
 
+    /// <summary>The longest <see cref="EndAsync"/> waits for the previewer's process to exit once it is killed.</summary>
+    private static readonly TimeSpan Exiting = TimeSpan.FromSeconds(5);
+
+    /// <summary>Ends the previewer as <see cref="Dispose"/> does, done once its process has exited and so let go of the
+    /// build's files it loaded, which Windows lets no build write while it holds them.</summary>
+    public async Task EndAsync()
+    {
+        Process? running = host;
+        host = null;
+        Dispose();
+        if (running is null)
+        {
+            return;
+        }
+        ChildProcesses.Kill(running);
+        try
+        {
+            await running.WaitForExitAsync().WaitAsync(Waits.Of(Exiting));
+        }
+        catch (TimeoutException)
+        {
+            // A process that will not exit holds the files no less for a longer wait.
+        }
+        finally
+        {
+            running.Dispose();
+        }
+    }
+
     public void Dispose()
     {
         disposed = true;

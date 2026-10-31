@@ -85,6 +85,7 @@ public partial class MainWindow
                 PreviewsBuilt(outcome);
             }
         };
+        buildRun.LettingGo = () => Task.WhenAll(previews.Values.Select(shown => shown.Preview.LetGoForBuildAsync()));
         FollowPreviews();
     }
 
@@ -202,16 +203,13 @@ public partial class MainWindow
     }
 
     /// <summary>A build that succeeded is what each preview draws from then on: a shown preview whose build it changed
-    /// starts its previewer again, and a hidden one's ends, to start as it is shown.</summary>
+    /// starts its previewer again, and a hidden one's ends, to start as it is shown; after any other end, a previewer
+    /// that ended for the build starts again on the build that stands.</summary>
     private void PreviewsBuilt(BuildOutcome outcome)
     {
-        if (outcome.Status != BuildStatus.Succeeded)
-        {
-            return;
-        }
         foreach (ShownPreview shown in previews.Values)
         {
-            IdeErrors.Observe(shown.Preview.BuiltAsync(Shows(shown.Pane)));
+            IdeErrors.Observe(outcome.Status == BuildStatus.Succeeded ? shown.Preview.BuiltAsync(Shows(shown.Pane)) : shown.Preview.BuildFailedAsync(Shows(shown.Pane)));
         }
     }
 
