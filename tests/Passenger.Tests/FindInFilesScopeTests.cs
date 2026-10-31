@@ -39,10 +39,10 @@ public sealed class FindInFilesScopeTests : IClassFixture<FindInFilesScopeTests.
         {
             window.OpenFile(Full("App/Main.cs"));
             Ui.Settle();
-            int confirmations = 0;
-            window.Confirm = (_, _, _) =>
+            List<string> asked = [];
+            window.Confirm = (_, question, _) =>
             {
-                confirmations++;
+                asked.Add(question);
                 return Task.FromResult(true);
             };
             Ui.Press(window, Ui.Shortcut(AppActions.ReplaceInFiles));
@@ -53,12 +53,13 @@ public sealed class FindInFilesScopeTests : IClassFixture<FindInFilesScopeTests.
             popup.Replacement = "sum";
             popup.ScopeKind = SearchScopeKind.Scope;
             popup.NamedScope = "Current File";
+            // The next search may end before this returns or after: either way the replace asks only of its matches.
             popup.RequestReplace();
-            Assert.Equal(0, confirmations);
-            Assert.Equal(outside, File.ReadAllText(Full("Lib/Money.cs")));
             Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, "the current-file replacement");
             Assert.Equal("Replaced 2 matches in 1 file", window.Status);
-            Assert.Equal(1, confirmations);
+            string question = Assert.Single(asked);
+            Assert.True(question.StartsWith("Replace 2 matches in 1 file with 'sum'?", StringComparison.Ordinal),
+                $"Replace All asked '{question}': the previous search's matches in other files would have been replaced");
             Assert.Equal(outside, File.ReadAllText(Full("Lib/Money.cs")));
             Assert.Contains("sum", window.EditorArea.CodeEditor.Document.Snapshot.ToString(), StringComparison.Ordinal);
         }

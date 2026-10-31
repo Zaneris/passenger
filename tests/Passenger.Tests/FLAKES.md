@@ -30,6 +30,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-31
 
+- `FindInFilesScopeTests`' `Changing_the_scope_cannot_replace_files_from_the_previous_search_before_the_next_search_finishes`,
+  CI Linux x64, run 41154974796 (b628b1f3), report lane (#1055): "Assert.Equal() Failure: Values differ, Expected: 0,
+  Actual: 1". The test asserted that Replace All, pressed as the scope changed to the current file, had asked nothing by
+  the time the call returned; but Replace All searches again first, and that search of one open file runs on the thread
+  pool and can end before the window's thread reaches its await, so the replace went on at once and asked, rightly, of
+  the current file's two matches alone. Neither race in the IDE: **the test** read a state that moved; it now checks
+  what Replace All asked, the current file's matches, whichever ends first (in this commit). It failed so on the Linux VM
+  before; after it, 10 of 10 there, and it passes on this Mac.
+
 - `SmallestWindowTests`' `At_the_smallest_window_Find_in_Files_stands_inside_the_window_its_results_and_preview_giving_way`
   and `At_the_smallest_width_a_refusal_stands_whole_in_front_of_a_deep_files_path`, CI Linux and Windows x64, run
   41154974796 (b628b1f3), report lane (#1054): "Waited 180 s for Find in Files" and "Waited 180 s for Build's refusal in
