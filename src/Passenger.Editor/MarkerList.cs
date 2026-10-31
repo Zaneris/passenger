@@ -1,4 +1,5 @@
 using System.Collections;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -132,20 +133,7 @@ public sealed class MarkerList : IReadOnlyList<Marker>
     /// marker before it ends before the offset.</summary>
     public int FirstReaching(int offset)
     {
-        int low = 0;
-        int high = reach.Length;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (reach[middle] < offset)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
+        int low = Sorted.FirstAtOrAfter(reach, offset);
         if (low < runs.Length)
         {
             Run run = runs[low];

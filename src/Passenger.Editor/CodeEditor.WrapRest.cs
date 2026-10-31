@@ -276,16 +276,7 @@ public sealed partial class CodeEditor
             {
                 return live.ShownHintFrom(live.decorations.InlayHints, live.FirstHintFrom(offset));
             }
-            int at = Array.BinarySearch(offsets, offset);
-            if (at < 0)
-            {
-                return ~at;
-            }
-            while (at > 0 && offsets[at - 1] == offset)
-            {
-                at--;
-            }
-            return at;
+            return Sorted.FirstAtOrAfter(offsets, offset);
         }
 
         /// <summary>The next hint shown after one.</summary>

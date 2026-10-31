@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Editor;
 using Tint;
 
@@ -41,11 +42,7 @@ internal sealed class LineTable
     {
         get
         {
-            int run = Array.BinarySearch(starts, line);
-            if (run < 0)
-            {
-                run = ~run - 1;
-            }
+            int run = Sorted.FirstAfter(starts, line) - 1;
             return runs[run][line - starts[run]];
         }
     }
@@ -57,11 +54,7 @@ internal sealed class LineTable
         {
             yield break;
         }
-        int run = Array.BinarySearch(starts, start);
-        if (run < 0)
-        {
-            run = ~run - 1;
-        }
+        int run = Sorted.FirstAfter(starts, start) - 1;
         int end = start + count;
         for (; run < runs.Length && starts[run] < end; run++)
         {

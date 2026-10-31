@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -269,25 +270,8 @@ public sealed partial class TextMateHighlighter
     /// <summary>The kind of the character at a column of a line, from its spans (sorted, plain text left out).</summary>
     private static TokenKind KindIn(SyntaxSpan[] spans, int column)
     {
-        int low = 0;
-        int high = spans.Length - 1;
-        while (low <= high)
-        {
-            int middle = (low + high) / 2;
-            if (spans[middle].End <= column)
-            {
-                low = middle + 1;
-            }
-            else if (spans[middle].Start > column)
-            {
-                high = middle - 1;
-            }
-            else
-            {
-                return spans[middle].Kind;
-            }
-        }
-        return TokenKind.Text;
+        int at = Sorted.FirstAfter(spans, static s => s.End, column);
+        return at < spans.Length && spans[at].Start <= column ? spans[at].Kind : TokenKind.Text;
     }
 
     private ReadOnlySpan<char> LineChars(TextSnapshot text, int line, out int lineStart)

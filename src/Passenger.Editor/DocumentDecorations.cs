@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -236,22 +237,5 @@ public sealed class LineOrdered<T>
     public int LineOf(int index) => firsts[index];
 
     /// <summary>The place in line order of the first item reaching a line or past it: none before it reaches that far.</summary>
-    public int From(int line)
-    {
-        int low = 0;
-        int high = reach.Length;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (reach[middle] < line)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        return low;
-    }
+    public int From(int line) => Sorted.FirstAtOrAfter(reach, line);
 }

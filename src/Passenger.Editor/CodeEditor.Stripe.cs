@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Rendering;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -314,24 +315,7 @@ public sealed partial class CodeEditor
     };
 
     /// <summary>The place of the first marker starting at an offset or after it, by halving.</summary>
-    private static int FirstStartingAt(MarkerList markers, int offset)
-    {
-        int low = 0;
-        int high = markers.Count;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (markers[middle].Range.Start < offset)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        return low;
-    }
+    private static int FirstStartingAt(MarkerList markers, int offset) => Sorted.FirstAtOrAfter(markers, static m => m.Range.Start, offset);
 
     /// <summary>Whether every mark of a build stands on the row it stood on: the same lines folded away and, wrapped, every
     /// line on as many rows as it was, a match or a use on a line whose rows break elsewhere still on its row.</summary>

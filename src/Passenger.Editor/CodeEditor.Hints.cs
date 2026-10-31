@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -110,25 +111,7 @@ public sealed partial class CodeEditor
     private TextLine PreeditLabel() => labels.Get((preedit, -9), () => Format(preedit, [], RunWith(palette.Preedit)));
 
     /// <summary>The first hint at or after an offset, shown or not.</summary>
-    private int FirstHintFrom(int offset)
-    {
-        HintList hints = decorations.InlayHints;
-        int low = 0;
-        int high = hints.Count;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (hints[middle].Offset < offset)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        return low;
-    }
+    private int FirstHintFrom(int offset) => Sorted.FirstAtOrAfter(decorations.InlayHints, static h => h.Offset, offset);
 
     /// <summary>The hints shown on a row: those at a wrap go on the row it starts. Kept for the row while the text, the hints
     /// and how they are drawn stand (<see cref="rowGaps"/>), so a frame that draws them again makes none of them again.</summary>

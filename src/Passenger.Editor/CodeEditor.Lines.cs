@@ -3,6 +3,7 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -858,21 +859,7 @@ public sealed partial class CodeEditor
                 int column = (int)(find / uniform);
                 return Math.Min(Length, (find - (column * uniform)) * 2 >= uniform ? column + 1 : column);
             }
-            int low = 0;
-            int high = count;
-            while (low < high)
-            {
-                int middle = (low + high) / 2;
-                if (keptX[middle] <= find)
-                {
-                    low = middle + 1;
-                }
-                else
-                {
-                    high = middle;
-                }
-            }
-            int k = Math.Max(0, low - 1);
+            int k = Math.Max(0, Sorted.FirstAfter(keptX.AsSpan(0, count), find) - 1);
             return Walk(kept[k], keptX[k], k + 1 < count ? kept[k + 1] : Length, find).Column;
         }
 
@@ -1020,24 +1007,7 @@ public sealed partial class CodeEditor
         }
 
         /// <summary>The last kept boundary at or before a column.</summary>
-        private int Before(int column)
-        {
-            int low = 0;
-            int high = count - 1;
-            while (low < high)
-            {
-                int middle = (int)((uint)(low + high + 1) >> 1);
-                if (kept![middle] <= column)
-                {
-                    low = middle;
-                }
-                else
-                {
-                    high = middle - 1;
-                }
-            }
-            return low;
-        }
+        private int Before(int column) => Math.Max(0, Sorted.FirstAfter(kept!.AsSpan(0, count), column) - 1);
 
         /// <summary>The first grapheme boundary at or after a column.</summary>
         private int BoundaryFrom(int column)

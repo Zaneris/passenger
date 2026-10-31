@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Avalonia.Media.TextFormatting;
 using Avalonia.Threading;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -197,46 +198,10 @@ public sealed partial class CodeEditor
 
     /// <summary>The first selection that ends at or after an offset; selections never overlap, so their ends rise with
     /// their starts.</summary>
-    private int FirstSelectionEndingFrom(int offset)
-    {
-        IReadOnlyList<Selection> items = selections.Items;
-        int low = 0;
-        int high = items.Count;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (items[middle].End < offset)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        return low;
-    }
+    private int FirstSelectionEndingFrom(int offset) => Sorted.FirstAtOrAfter(selections.Items, static s => s.End, offset);
 
     /// <summary>The first caret at or after an offset; carets of selections that never overlap rise in order too.</summary>
-    private int FirstCaretFrom(int offset)
-    {
-        IReadOnlyList<Selection> items = selections.Items;
-        int low = 0;
-        int high = items.Count;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (items[middle].Caret < offset)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        return low;
-    }
+    private int FirstCaretFrom(int offset) => Sorted.FirstAtOrAfter(selections.Items, static s => s.Caret, offset);
 
     /// <summary>The lines with a caret on them on screen, found again for each frame.</summary>
     private readonly HashSet<int> caretLines = [];
@@ -299,21 +264,7 @@ public sealed partial class CodeEditor
     {
         RowSpan span = view.Span;
         IReadOnlyList<TextRange> ranges = Highlights;
-        int low = 0;
-        int high = ranges.Count;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (ranges[middle].End <= span.Start)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        for (int i = low; i < ranges.Count && ranges[i].Start <= span.End; i++)
+        for (int i = Sorted.FirstAfter(ranges, static r => r.End, span.Start); i < ranges.Count && ranges[i].Start <= span.End; i++)
         {
             int from = Math.Max(ranges[i].Start, span.Start) - span.Start;
             int to = Math.Min(ranges[i].End, span.End) - span.Start;
@@ -629,21 +580,7 @@ public sealed partial class CodeEditor
             return;
         }
         RowSpan span = view.Span;
-        int low = 0;
-        int high = changes.Count;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (changes[middle].Range.End <= span.Start)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        for (int i = low; i < changes.Count && changes[i].Range.Start < span.End; i++)
+        for (int i = Sorted.FirstAfter(changes, static c => c.Range.End, span.Start); i < changes.Count && changes[i].Range.Start < span.End; i++)
         {
             IBrush brush = changes[i].Kind switch
             {

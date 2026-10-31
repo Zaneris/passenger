@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Text;
 
 /// <summary>Commands that change only the carets: occurrence selection and caret cloning. None makes more carets than
@@ -155,20 +157,7 @@ public static class SelectionCommands
 
     private static bool StartsSelection(SelectionSet selections, int offset)
     {
-        int low = 0;
-        int high = selections.Count;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (selections.Items[middle].Start < offset)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        return low < selections.Count && selections.Items[low].Start == offset;
+        int at = Sorted.FirstAtOrAfter(selections.Items, static s => s.Start, offset);
+        return at < selections.Count && selections.Items[at].Start == offset;
     }
 }

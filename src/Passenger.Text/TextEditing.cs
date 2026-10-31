@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Text;
 
 /// <summary>An edit worked out but not yet applied: the edits (in the snapshot it was planned on),
@@ -867,20 +869,7 @@ public static class TextEditing
             return (line, line);
         }
         // The last range starting at most a line below: the one this line shows, or hides in, if any.
-        int low = 0;
-        int high = folded.Count;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (folded[middle].First <= line + 1)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
+        int low = Sorted.FirstAfter(folded, static f => f.First, line + 1);
         return low > 0 && line <= folded[low - 1].Last ? (Math.Min(line, folded[low - 1].First - 1), folded[low - 1].Last) : (line, line);
     }
 

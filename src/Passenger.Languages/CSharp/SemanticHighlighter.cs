@@ -417,20 +417,7 @@ public sealed class SemanticHighlighter : IHighlighter, IBraceMatcher, IDisposab
             to = CarriedSpans.Back(history[i].Edits, to, toEnd: true) + 1;
         }
         SyntaxSpan[] all = tokens.Spans;
-        int low = 0;
-        int high = all.Length;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (all[middle].End <= from - 1)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
+        int low = Sorted.FirstAfter(all, static s => s.End, from - 1);
         int last = low;
         while (last < all.Length && all[last].Start <= to)
         {

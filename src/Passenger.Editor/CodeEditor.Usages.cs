@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Media;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -111,21 +112,7 @@ public sealed partial class CodeEditor
     {
         RowSpan span = view.Span;
         IReadOnlyList<UsageHighlight> uses = UsageHighlights;
-        int low = 0;
-        int high = uses.Count;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (uses[middle].Range.End <= span.Start)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        for (int i = low; i < uses.Count && uses[i].Range.Start <= span.End; i++)
+        for (int i = Sorted.FirstAfter(uses, static u => u.Range.End, span.Start); i < uses.Count && uses[i].Range.Start <= span.End; i++)
         {
             FillRange(context, view, gaps, left, y, uses[i].Range, uses[i].IsWrite ? palette.UsageWrite : palette.UsageRead);
         }

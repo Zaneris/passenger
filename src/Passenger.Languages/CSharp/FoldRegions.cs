@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -310,26 +311,6 @@ public sealed class FoldRegions
         return count == merged.Length ? merged : merged[..count];
     }
 
-    /// <summary>The first region starting at or after an offset.</summary>
-    private static int FirstAtOrAfter<T>(T[] regions, Func<T, int> start, int offset)
-    {
-        int low = 0;
-        int high = regions.Length;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (start(regions[middle]) < offset)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        return low;
-    }
-
     /// <summary>A walk of the tree in document order that, beside a node of the tree before, takes the regions of each
     /// child the incremental parse took from it whole rather than walk that child; it holds a stack of its own, since a
     /// long chain of operators nests deeper than a thread's stack would allow.</summary>
@@ -403,7 +384,7 @@ public sealed class FoldRegions
         private void Take(FoldRegions from, TextSpan span, int moved, int deep)
         {
             Made[] owned = from.Owned;
-            for (int i = FirstAtOrAfter(owned, m => m.Region.Start, span.Start); i < owned.Length && owned[i].Region.Start < span.End; i++)
+            for (int i = Sorted.FirstAtOrAfter(owned, static m => m.Region.Start, span.Start); i < owned.Length && owned[i].Region.Start < span.End; i++)
             {
                 Made made = owned[i];
                 if (made.Region.End <= span.End && made.OwnerStart >= span.Start && made.OwnerEnd <= span.End && made.OwnerDepth >= deep)
@@ -412,7 +393,7 @@ public sealed class FoldRegions
                 }
             }
             FoldRegion[] comments = from.Comments;
-            for (int i = FirstAtOrAfter(comments, r => r.Start, span.Start); i < comments.Length && comments[i].Start < span.End; i++)
+            for (int i = Sorted.FirstAtOrAfter(comments, static r => r.Start, span.Start); i < comments.Length && comments[i].Start < span.End; i++)
             {
                 if (comments[i].End <= span.End)
                 {

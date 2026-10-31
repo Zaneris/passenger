@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -301,7 +302,7 @@ public sealed partial class CodeEditor
         {
             return 0;
         }
-        int row = UpperBound(wrap.Starts, column);
+        int row = Sorted.FirstAfter(wrap.Starts, column);
         return beforeWrap && row > 0 && wrap.Starts[row - 1] == column ? row - 1 : row;
     }
 
@@ -906,26 +907,6 @@ public sealed partial class CodeEditor
 
     private static bool IsBlank(char c) => c is ' ' or '\t';
 
-    /// <summary>How many of a rising array's values are at most <paramref name="value"/>.</summary>
-    private static int UpperBound(ReadOnlySpan<int> values, int value)
-    {
-        int low = 0;
-        int high = values.Length;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (values[middle] <= value)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        return low;
-    }
-
     /// <summary>One row of a line as it is drawn: the whole line, or with soft wrap one of the rows it wraps into, whose text
     /// is drawn from <see cref="Indent"/> (the line's own indent, on a row after its first). Only the last row has the line's
     /// break.</summary>
@@ -1224,11 +1205,7 @@ public sealed partial class CodeEditor
             }
         }
 
-        private int RunOf(int line)
-        {
-            int k = Array.BinarySearch(firstLines, line);
-            return k >= 0 ? k : ~k - 1;
-        }
+        private int RunOf(int line) => Sorted.FirstAfter(firstLines, line) - 1;
     }
 
     /// <summary>Lines' wraps as a stretch of one array, with the rows the wraps before each line of the array add, so a
@@ -1409,21 +1386,8 @@ public sealed partial class CodeEditor
                 return (Folds.Text.LineCount + row - Count, 0);
             }
             // The last line whose first row is at most the row; a folded one is on its fold's first line's.
-            int low = 0;
-            int high = Folds.Text.LineCount - 1;
-            while (low < high)
-            {
-                int middle = (int)((uint)(low + high + 1) >> 1);
-                if (RowOf(middle) <= row)
-                {
-                    low = middle;
-                }
-                else
-                {
-                    high = middle - 1;
-                }
-            }
-            int line = Folds.Shown(low);
+            int last = Math.Max(0, Sorted.FirstAfter(Folds.Text.LineCount, this, static (map, at) => map.RowOf(at), row) - 1);
+            int line = Folds.Shown(last);
             return (line, row - RowOf(line));
         }
     }

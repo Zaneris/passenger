@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Editor;
@@ -434,21 +435,7 @@ public sealed partial class CodeEditor
     private int FirstStartingOn(TextSnapshot text, int line)
     {
         int offset = line < text.LineCount ? text.GetLineStart(line) : text.Length + 1;
-        int low = 0;
-        int high = FoldRegions.Count;
-        while (low < high)
-        {
-            int middle = (low + high) / 2;
-            if (FoldRegions[middle].Start < offset)
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                high = middle;
-            }
-        }
-        return low;
+        return Sorted.FirstAtOrAfter(FoldRegions, static r => r.Start, offset);
     }
 
     /// <summary>The folded regions of one text in its lines: the folded lines as ranges in order with the lines folded
@@ -547,41 +534,11 @@ public sealed partial class CodeEditor
         public int LineOfRow(int row)
         {
             // A range comes before the row's line when its first line, less the lines folded before it, is at most the row.
-            int low = 0;
-            int high = Hidden.Length;
-            while (low < high)
-            {
-                int middle = (low + high) / 2;
-                if (Hidden[middle].First - HiddenBefore[middle] <= row)
-                {
-                    low = middle + 1;
-                }
-                else
-                {
-                    high = middle;
-                }
-            }
+            int low = Sorted.FirstAfter(Hidden.Length, this, static (lines, k) => lines.Hidden[k].First - lines.HiddenBefore[k], row);
             return row + HiddenBefore[low];
         }
 
         /// <summary>The last folded range starting at or before a line, or -1.</summary>
-        public int RangeAtOrBefore(int line)
-        {
-            int low = 0;
-            int high = Hidden.Length;
-            while (low < high)
-            {
-                int middle = (low + high) / 2;
-                if (Hidden[middle].First <= line)
-                {
-                    low = middle + 1;
-                }
-                else
-                {
-                    high = middle;
-                }
-            }
-            return low - 1;
-        }
+        public int RangeAtOrBefore(int line) => Sorted.FirstAfter(Hidden, static r => r.First, line) - 1;
     }
 }
