@@ -604,17 +604,20 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
   needs a trigger of its own, or it ranks below Fluent's.
 - A visual inconsistency is fixed once, in a shared place (a token, a base style, a helper), never per control:
   Passenger's own consistency settles a design question. The shared pieces: dialogs `DialogFooter` (`Of`, `Listed`,
-  `Answers`, `Bar`, `Page`) in a `Border.footerBar`; lists in a page `Border.framed`; rules `Passenger.Separator`
-  (`Passenger.Divider` between panels); menus' value in force `MenuChoice` (`Holding` makes its submenu as it opens); a
-  menu the menu key opens `ListMenus.PlaceForKeys`; tool window tabs `ToolTabs.Tab`; popups' widths `PopupFrame`, titles
-  `popupTitle`; every row `ListRow.Height` (24); empty states `TextBlock.emptyText` (with an action's link `EmptyState`); toolbar icon buttons
-  `ToolButtons.Of`/`Toggle` (never focusable); muted words `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`, lists `Plural.Listed`;
-  rounded borders `Border.kindBadge`, `tag` or `box`, never a literal radius; lists of what runs `RunRows`, Details tabs
-  `DetailsTables`, merged consoles `MergedLog` (a console's Find `OutputView.Find`); a tree window's Expand and Collapse
-  All `ToolWindow.ExpandAll`/`CollapseAll`; a toolbar down a side `ToolColumn`; scrollbars `ControlThemes.axaml`; the
-  focus ring `FocusRing`; a window's icon `AppIcon`; a list's rows `ReusedRows` (`Use`, `Showing`), their icons
-  `RowIcon` (a tree row's chevron and icon `RowGlyphs`), drawn as `PathIcon` draws for a fraction of its cost, never
-  `PathIcon` (UiRulesTests). A row hears its item only while shown (`Observable.FollowWhileShown`).
+  `Answers`, `Bar`, `Page`, `Default`, `Cancel`, `OkCancel`, a step's page `Headed`, a popup's answers `Popup`) in a
+  `Border.footerBar`; lists in a page `Border.framed`; rules `Passenger.Separator` (`Passenger.Divider` between panels);
+  menus' value in force `MenuChoice` (`Holding` makes its submenu as it opens); a menu the menu key opens
+  `ListMenus.PlaceForKeys`; tool window tabs `ToolTabs.Tab`; popups' widths `PopupFrame`, titles `popupTitle`; every row
+  `ListRow.Height` (24); empty states `TextBlock.emptyText` (with an action's link `EmptyState`); toolbar icon buttons
+  `ToolButtons.Of`/`Toggle` (never focusable); a table's column titles `ColumnTitles.Of` (its rows `Row`); a bar over an
+  editor `ToolBars.OverEditor`; words over what they speak of `Banner`; rows a person checks `CheckRows`; muted words
+  `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`, lists `Plural.Listed`; rounded borders `Border.kindBadge`,
+  `tag` or `box`, never a literal radius; lists of what runs `RunRows`, Details tabs `DetailsTables`, merged consoles
+  `MergedLog` (a console's Find `OutputView.Find`); a tree window's Expand and Collapse All
+  `ToolWindow.ExpandAll`/`CollapseAll`; a toolbar down a side `ToolColumn`; scrollbars `ControlThemes.axaml`; the focus
+  ring `FocusRing`; a window's icon `AppIcon`; a list's rows `ReusedRows` (`Use`, `Showing`), their icons `RowIcon` (a
+  tree row's chevron and icon `RowGlyphs`), drawn as `PathIcon` draws for a fraction of its cost, never `PathIcon`
+  (UiRulesTests). A row hears its item only while shown (`Observable.FollowWhileShown`).
 - `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, and every window is an `IdeWindow`,
   which fits the working area of its owner's screen as it shows (`WindowFit`; one shown with no owner through
   `FitToScreen`).
