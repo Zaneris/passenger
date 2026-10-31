@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
-using Microsoft.CodeAnalysis.CSharp.Symbols;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -62,15 +61,10 @@ public partial class ManagedDebugger
             .ToDictionary(parameter => parameter.SequenceNumber, parameter => reader.GetString(parameter.Name));
         return string.Join(", ", parameterTypes
             .Select((type, index) => parameterNames.TryGetValue(index + 1, out string? name) && name.Length > 0 ? $"{type} {name}"
-                : IsClosure(reader, parameterHandles[index]) ? null
+                : ModuleMetadataReader.IsClosure(reader, parameterHandles[index]) ? null
                 : type)
             .OfType<string>());
     }
-
-    /// <summary>Whether a type is a closure the compiler made for a lambda or a local function.</summary>
-    private static bool IsClosure(MetadataReader reader, EntityHandle type) =>
-        type.Kind is HandleKind.TypeDefinition
-        && GeneratedNameParser.GetKind(reader.GetString(reader.GetTypeDefinition((TypeDefinitionHandle)type).Name)) is GeneratedNameKind.LambdaDisplayClass;
 
     /// <summary>A frame's type with the type arguments it runs with, its nested types joined by '.', a nullable spelled out.</summary>
     private static string GetFormattedTypeName(MetadataReader reader, TypeDefinitionHandle handle, IReadOnlyList<string> typeArguments)

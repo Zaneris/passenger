@@ -239,6 +239,98 @@ public sealed class HotReloadEditsTests : IClassFixture<HotReloadEditsTests.Tick
         }
     }
 
+    /// <summary>A lambda made to capture a parameter it did not, while a tick is paused at its pet line or in the Describe
+    /// that line calls: the closure the new code makes at Tick's start is one the paused tick never made, so that tick
+    /// finishes in the code it began in, rather than reading the parameter from a closure that is not there, and the next
+    /// tick runs the new lambda.</summary>
+    [AvaloniaTheory]
+    [InlineData(11, 8, "at Tick's pet line")]
+    [InlineData(31, 32, "in Describe")]
+    public void A_tick_part_way_through_when_a_lambda_captures_a_new_variable_finishes_in_its_old_code(int line, int column, string paused)
+    {
+        MainWindow window = Open();
+        try
+        {
+            window.OpenFile(DemoPath);
+            TextPosition stop = new(line, column);
+            window.EditorArea.CodeEditor.GoTo(stop);
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Debug);
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.Debugger.Stop is not null, $"the program to stop {paused}");
+            Ui.Settle();
+            Replace(window, "x => $\"lambda {x}\"", "x => $\"lambda captured {x} {i}\"");
+            HotReloadOutcome outcome = Ui.Await(window.Debugger.ApplyChangesAsync(), "Hot Reload to apply the edit", TimeSpan.FromMinutes(2));
+            TestContext.Current.TestOutputHelper?.WriteLine($"a lambda capturing a new variable, paused {paused}: {outcome.Result}: {outcome.Said}");
+            Assert.True(outcome.Result == HotReloadResult.Applied, $"A lambda capturing a new variable should apply: {outcome.Said}");
+            int before = Output(window).Length;
+            window.EditorArea.CodeEditor.GoTo(stop);
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => Output(window)[before..].Contains("lambda captured", StringComparison.Ordinal) || window.Debugger.Session?.State != DebugState.Running,
+                $"the next tick to run the new lambda ({Output(window)[before..]})");
+            Assert.True(window.Debugger.Session?.State == DebugState.Running && Output(window)[before..].Contains("generic 1", StringComparison.Ordinal),
+                $"The tick paused {paused} should finish in its old code and the next run the new lambda: {window.Debugger.Session?.State} {window.Debugger.Stop?.Reason} {window.Debugger.Stop?.Exception} ({Output(window)[before..]})");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>A lambda that captures Tick's parameter made to capture a new local too, while a tick of that code is paused
+    /// in Describe: the closure the tick made has no field for the local, which the new code would read as never set, so
+    /// that tick finishes in the code it began in, and the next prints the local.</summary>
+    [AvaloniaFact]
+    public void A_tick_part_way_through_when_its_closure_takes_a_new_variable_finishes_in_its_old_code()
+    {
+        MainWindow window = Open();
+        try
+        {
+            string program = Path.Combine(PathNames.Canonical(project.Folder), "Program.cs");
+            TextPosition slept = new(3, 4);
+            TextPosition described = new(31, 32);
+            window.OpenFile(program);
+            window.EditorArea.CodeEditor.GoTo(slept);
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Debug);
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.Debugger.Stop is not null, "the program to stop between ticks");
+            Ui.Settle();
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            window.OpenFile(DemoPath);
+            Replace(window, "x => $\"lambda {x}\"", "x => $\"lambda captured {x} {i}\"");
+            HotReloadOutcome captured = Ui.Await(window.Debugger.ApplyChangesAsync(), "Hot Reload to apply the lambda capturing Tick's parameter", TimeSpan.FromMinutes(2));
+            Assert.True(captured.Result == HotReloadResult.Applied, $"A lambda capturing a new variable should apply: {captured.Said}");
+            window.OpenFile(DemoPath);
+            window.EditorArea.CodeEditor.GoTo(described);
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.Debugger.Stop is not null && Output(window).Contains("lambda captured 2", StringComparison.Ordinal),
+                $"the next tick to stop in Describe ({Output(window)})");
+            Ui.Settle();
+            window.OpenFile(DemoPath);
+            Replace(window, "Console.WriteLine($\"tick {i}\");", "string word = \"worded\"; Console.WriteLine($\"tick {i}\");");
+            Replace(window, "x => $\"lambda captured {x} {i}\"", "x => $\"lambda captured {x} {i} {word}\"");
+            Replace(window, "Echo($\"generic {i}\")", "Echo($\"generic {i} [{word}]\")");
+            HotReloadOutcome outcome = Ui.Await(window.Debugger.ApplyChangesAsync(), "Hot Reload to apply the closure's new variable", TimeSpan.FromMinutes(2));
+            TestContext.Current.TestOutputHelper?.WriteLine($"a closure taking a new variable, paused in Describe: {outcome.Result}: {outcome.Said}");
+            Assert.True(outcome.Result == HotReloadResult.Applied, $"A lambda capturing a new local beside a parameter should apply: {outcome.Said}");
+            int before = Output(window).Length;
+            window.OpenFile(DemoPath);
+            window.EditorArea.CodeEditor.GoTo(described);
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => Output(window)[before..].Contains("[worded]", StringComparison.Ordinal) || window.Debugger.Session?.State != DebugState.Running,
+                $"the next tick to print the new variable ({Output(window)[before..]})");
+            string after = Output(window)[before..];
+            Assert.True(window.Debugger.Session?.State == DebugState.Running && after.Contains("generic 2", StringComparison.Ordinal) && !after.Contains("generic 2 [", StringComparison.Ordinal),
+                $"The tick paused in Describe should finish in its old code, not read the variable its closure never took: {window.Debugger.Session?.State} {window.Debugger.Stop?.Exception} ({after})");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     private string DemoPath => Path.Combine(PathNames.Canonical(project.Folder), "Demo.cs");
 
     private static string Output(MainWindow window) => window.Debugger.Output().ToString();

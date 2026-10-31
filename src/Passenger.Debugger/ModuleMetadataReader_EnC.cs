@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
+using Microsoft.CodeAnalysis.CSharp.Symbols;
 
 namespace Passenger.Debugger;
 
@@ -47,6 +48,9 @@ public partial class ModuleMetadataReader
 
         /// <summary>Each new body's local variables' signature, by its method's token.</summary>
         public Dictionary<int, StandaloneSignatureHandle> Locals { get; } = [];
+
+        /// <summary>The types the update gave fields, by token.</summary>
+        public HashSet<int> GaveFields { get; } = [];
 
         /// <summary>Lines moved with no change to their code, by document name: from each old line (from zero) on, lines
         /// move to the new line's, up to the next.</summary>
@@ -95,6 +99,14 @@ public partial class ModuleMetadataReader
         {
             using MetadataReaderProvider metadata = MetadataReaderProvider.FromMetadataImage(ImmutableArray.Create(metadataDelta));
             MetadataReader reader = metadata.GetMetadataReader();
+            foreach (EditAndContinueLogEntry entry in reader.GetEditAndContinueLogEntries())
+            {
+                // An AddField entry names the type the field after it is added to.
+                if (entry.Operation == EditAndContinueOperation.AddField)
+                {
+                    generation.GaveFields.Add(MetadataTokens.GetToken(entry.Handle));
+                }
+            }
             int row = 1;
             foreach (EntityHandle handle in reader.GetEditAndContinueMapEntries())
             {
@@ -442,18 +454,7 @@ public partial class ModuleMetadataReader
     /// Empty where the body is not read (a module with no image) or its signature is not in that metadata.</summary>
     internal ImmutableArray<DeclaredType?> LocalTypes(int methodToken, int? version = null)
     {
-        int generation = GenerationOf(methodToken, version);
-        StandaloneSignatureHandle locals = default;
-        if (generation > 0)
-        {
-            _generations[generation - 1].Locals.TryGetValue(methodToken, out locals);
-        }
-        else if (_peReader is not null && MetadataTokens.GetRowNumber(MetadataTokens.MethodDefinitionHandle(methodToken)) <= _imageMetadataReader.GetTableRowCount(TableIndex.MethodDef)
-            && _imageMetadataReader.GetMethodDefinition(MetadataTokens.MethodDefinitionHandle(methodToken)).RelativeVirtualAddress is int rva and not 0)
-        {
-            locals = _peReader.GetMethodBody(rva).LocalSignature;
-        }
-        if (locals.IsNil || MetadataTokens.GetRowNumber(locals) > _peMetadataReader.GetTableRowCount(TableIndex.StandAloneSig))
+        if (LocalSignature(methodToken, version) is not { IsNil: false } locals)
         {
             return [];
         }
@@ -465,6 +466,141 @@ public partial class ModuleMetadataReader
         {
             return [];
         }
+    }
+
+    /// <summary>A method's local variables' signature at a version (the newest without one): the update's that last changed
+    /// it, else the image's; nil for a body with no locals, null where the body is not read (a module with no image) or its
+    /// signature is not in the metadata the updates made.</summary>
+    private StandaloneSignatureHandle? LocalSignature(int methodToken, int? version)
+    {
+        int generation = GenerationOf(methodToken, version);
+        StandaloneSignatureHandle locals;
+        if (generation > 0)
+        {
+            if (!_generations[generation - 1].Locals.TryGetValue(methodToken, out locals))
+            {
+                return null;
+            }
+        }
+        else if (_peReader is not null && MetadataTokens.GetRowNumber(MetadataTokens.MethodDefinitionHandle(methodToken)) <= _imageMetadataReader.GetTableRowCount(TableIndex.MethodDef)
+            && _imageMetadataReader.GetMethodDefinition(MetadataTokens.MethodDefinitionHandle(methodToken)).RelativeVirtualAddress is int rva and not 0)
+        {
+            locals = _peReader.GetMethodBody(rva).LocalSignature;
+        }
+        else
+        {
+            return null;
+        }
+        return !locals.IsNil && MetadataTokens.GetRowNumber(locals) > _peMetadataReader.GetTableRowCount(TableIndex.StandAloneSig) ? null : locals;
+    }
+
+    /// <summary>Whether a frame of a method's code at one version, at an IL offset, holds each closure the code at another
+    /// version holds at another offset: in the same slot, of the same type, given no field since. A closure the newer code
+    /// makes before that offset (for a variable it newly captures) would be null there, and a field given since never
+    /// filled. True where either's locals are not read.</summary>
+    internal bool HoldsClosuresOf(int methodToken, int from, int fromOffset, int to, int toOffset)
+    {
+        if (ClosuresAt(methodToken, to, toOffset) is not { } needed || ClosuresAt(methodToken, from, fromOffset) is not { } held)
+        {
+            return true;
+        }
+        int made = GenerationOf(methodToken, from);
+        int now = GenerationOf(methodToken, to);
+        foreach ((int slot, int type) in needed)
+        {
+            if (!held.TryGetValue(slot, out int had) || had != type)
+            {
+                return false;
+            }
+            for (int g = made + 1; g <= now; g++)
+            {
+                if (_generations[g - 1].GaveFields.Contains(type))
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /// <summary>The closures a method's code at a version holds at an IL offset: each local whose type the compiler made for
+    /// a lambda's or a local function's captures, by its slot, with its type's token, in scope there as the method's debug
+    /// information says (anywhere, where it puts the slot in no scope). Null where its locals are not read.</summary>
+    private Dictionary<int, int>? ClosuresAt(int methodToken, int version, int ilOffset)
+    {
+        if (LocalSignature(methodToken, version) is not { } locals)
+        {
+            return null;
+        }
+        Dictionary<int, int> closures = [];
+        if (locals.IsNil)
+        {
+            return closures;
+        }
+        ImmutableArray<int> types;
+        try
+        {
+            types = _peMetadataReader.GetStandaloneSignature(locals).DecodeLocalSignature(TypeTokens.Instance, null);
+        }
+        catch (BadImageFormatException)
+        {
+            return null;
+        }
+        HashSet<int> scoped = [];
+        HashSet<int> here = [];
+        if (DebugOf(methodToken, version) is { Reader: { } reader } debug)
+        {
+            foreach (LocalScopeHandle handle in reader.GetLocalScopes(debug.Handle))
+            {
+                LocalScope scope = reader.GetLocalScope(handle);
+                bool within = ilOffset >= scope.StartOffset && ilOffset < scope.EndOffset;
+                foreach (LocalVariableHandle variable in scope.GetLocalVariables())
+                {
+                    int slot = reader.GetLocalVariable(variable).Index;
+                    scoped.Add(slot);
+                    if (within)
+                    {
+                        here.Add(slot);
+                    }
+                }
+            }
+        }
+        for (int slot = 0; slot < types.Length; slot++)
+        {
+            if (types[slot] != 0 && (here.Contains(slot) || !scoped.Contains(slot)) && IsClosure(_peMetadataReader, MetadataTokens.EntityHandle(types[slot])))
+            {
+                closures[slot] = types[slot];
+            }
+        }
+        return closures;
+    }
+
+    /// <summary>Whether a type is a closure the compiler made for a lambda or a local function.</summary>
+    internal static bool IsClosure(MetadataReader reader, EntityHandle type) =>
+        type.Kind is HandleKind.TypeDefinition && MetadataTokens.GetRowNumber(type) <= reader.GetTableRowCount(TableIndex.TypeDef)
+        && GeneratedNameParser.GetKind(reader.GetString(reader.GetTypeDefinition((TypeDefinitionHandle)type).Name)) is GeneratedNameKind.LambdaDisplayClass;
+
+    /// <summary>A signature's types as the token of the type definition each is, whatever its type arguments, held in place
+    /// or by reference; 0 for any other.</summary>
+    private sealed class TypeTokens : ISignatureTypeProvider<int, object?>
+    {
+        public static TypeTokens Instance { get; } = new();
+
+        public int GetPrimitiveType(PrimitiveTypeCode typeCode) => 0;
+        public int GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) => MetadataTokens.GetToken(handle);
+        public int GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) => 0;
+        public int GetTypeFromSpecification(MetadataReader reader, object? genericContext, TypeSpecificationHandle handle, byte rawTypeKind) =>
+            reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
+        public int GetGenericInstantiation(int genericType, ImmutableArray<int> typeArguments) => genericType;
+        public int GetSZArrayType(int elementType) => 0;
+        public int GetArrayType(int elementType, ArrayShape shape) => 0;
+        public int GetByReferenceType(int elementType) => elementType;
+        public int GetPinnedType(int elementType) => elementType;
+        public int GetModifiedType(int modifier, int unmodifiedType, bool isRequired) => unmodifiedType;
+        public int GetPointerType(int elementType) => 0;
+        public int GetFunctionPointerType(MethodSignature<int> signature) => 0;
+        public int GetGenericMethodParameter(object? genericContext, int index) => 0;
+        public int GetGenericTypeParameter(object? genericContext, int index) => 0;
     }
 
     /// <summary>Whether an IL offset of a method at a version lies in one of its catch, finally, fault or filter blocks,

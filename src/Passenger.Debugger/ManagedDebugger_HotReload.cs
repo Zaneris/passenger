@@ -32,9 +32,10 @@ public sealed record ModuleApplied(Guid Module, string Name, bool Applied, strin
 /// callbacks (SetJITCompilerFlags), an update is applied with ICorDebugModule2.ApplyChanges while the program is held (a
 /// running one stopped for it), the module's debug information takes the update's (<see cref="ModuleMetadataReader.AddGeneration"/>),
 /// and a frame in a method's old code moves to the new code at a statement's start (FunctionRemapOpportunity): one Roslyn
-/// mapped, the one after an active statement it was part way through, or one the update left as it was. The runtime
-/// offers a frame of old code the new at every statement it reaches and has no way to stop offering, so a frame left in
-/// the old code runs it a stop at a time. The runtime's capabilities are read from its CoreLib, never assumed.</summary>
+/// mapped, the one after an active statement it was part way through, or one the update left as it was, where it holds
+/// the closures the new code holds there. The runtime offers a frame of old code the new at every statement it reaches
+/// and has no way to stop offering, so a frame left in the old code runs it a stop at a time. The runtime's capabilities
+/// are read from its CoreLib, never assumed.</summary>
 public partial class ManagedDebugger
 {
     /// <summary>Whether the launch asked for Hot Reload: the user's modules get Edit and Continue as they load.</summary>
@@ -54,7 +55,7 @@ public partial class ManagedDebugger
     private readonly HashSet<(Guid Module, int Token, int Version)> _newestRead = [];
 
     /// <summary>The old code of each method the last update to its module changed in which Roslyn placed a frame (so the
-    /// method's locals and closures carry over to the new code), when it was the method's newest.</summary>
+    /// method's locals carry over to the new code), when it was the method's newest.</summary>
     private readonly HashSet<(Guid Module, int Token, int Version)> _placedFrames = [];
 
     /// <summary>The first line (from zero) the last update to each module changed in each document it edits.</summary>
@@ -410,18 +411,26 @@ public partial class ManagedDebugger
 
     /// <summary>A frame running a method's old code reaches a point after an update: at a statement's start that Roslyn
     /// mapped (an active statement's) or that follows the active statement the frame was part way through, or, the frame
-    /// not stepping, one the update left as it was, it goes on there in the new code; otherwise it runs on in the old code,
-    /// which the runtime offers again at its next statement.</summary>
+    /// not stepping, one the update left as it was, it goes on there in the new code, so long as it holds the closures the
+    /// new code holds there; otherwise it runs on in the old code, which the runtime offers again at its next statement.</summary>
     private void HandleFunctionRemapOpportunity(FunctionRemapOpportunityCorDebugManagedCallbackEventArgs remap)
     {
         try
         {
             ICorDebugFunction old = remap.OldFunction;
             int token = old.Token;
-            if (FindModule(old.Module) is { } module && old is ICorDebugFunction2 oldVersion && oldVersion.TryGetVersionNumber(out uint from) is Cor.S_OK
-                && remap.NewFunction is ICorDebugFunction2 newVersion && newVersion.TryGetVersionNumber(out uint to) is Cor.S_OK
-                && RemapTarget(module, token, (int)from, (int)to, (int)remap.OldILOffset, remap.Thread.Id, stepping: Stepping is (int steppingThread, _) && steppingThread == remap.Thread.Id) is { Document: not null } there
-                && remap.Thread.ActiveFrame is ICorDebugILFrame2 frame)
+            if (FindModule(old.Module) is not { } module || old is not ICorDebugFunction2 oldVersion || oldVersion.TryGetVersionNumber(out uint from) is not Cor.S_OK
+                || remap.NewFunction is not ICorDebugFunction2 newVersion || newVersion.TryGetVersionNumber(out uint to) is not Cor.S_OK
+                || RemapTarget(module, token, (int)from, (int)to, (int)remap.OldILOffset, remap.Thread.Id, stepping: Stepping is (int steppingThread, _) && steppingThread == remap.Thread.Id) is not { Document: not null } there
+                || remap.Thread.ActiveFrame is not ICorDebugILFrame2 frame)
+            {
+                _logger?.Invoke($"  The old code runs on from IL_{remap.OldILOffset:X4}: no statement of the new code is known to start there");
+            }
+            else if (!module.MetadataReader.HoldsClosuresOf(token, (int)from, (int)remap.OldILOffset, (int)to, there.Offset))
+            {
+                _logger?.Invoke($"  The old code runs on from IL_{remap.OldILOffset:X4}: v{to} IL_{there.Offset:X4} holds a closure the frame never made, or a field of one it never filled");
+            }
+            else
             {
                 // A step's stepper is the old frame's: it goes first, and is made again at FunctionRemapComplete.
                 if (_stepper is not null && Stepping is (int stepping, _) && stepping == remap.Thread.Id)
@@ -439,10 +448,6 @@ public partial class ManagedDebugger
                     SetupStepper(remap.Thread, _lastStep);
                 }
             }
-            else
-            {
-                _logger?.Invoke($"  The old code runs on from IL_{remap.OldILOffset:X4}: no statement of the new code is known to start there");
-            }
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
@@ -455,7 +460,7 @@ public partial class ManagedDebugger
     /// active statement there became; for a frame that was part way through an active statement, at the statement after
     /// it, the one after what it became; or, not mid-step, the same statement where the update left the method's text as
     /// it was up to that statement's end (the first line the update changed in its document after it), in old code whose
-    /// frames Roslyn placed (so its locals and closures carry over); else none.</summary>
+    /// frames Roslyn placed (so its locals carry over); else none.</summary>
     private ModuleMetadataReader.Point? RemapTarget(ModuleInfo module, int token, int from, int to, int ilOffset, int thread, bool stepping)
     {
         Guid mvid = module.MetadataReader.Mvid;

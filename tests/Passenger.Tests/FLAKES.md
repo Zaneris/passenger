@@ -28,6 +28,23 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-10-30
+
+- `HotReloadEditsTests`' `Each_edit_to_a_running_program_applies_as_the_runtime_allows` (chain "bodies of methods, lambdas,
+  async methods, records and generics"), this Mac, one of four runs while landing #1020, report lane (#1039): "Waited 90 s
+  for the program to print 'lambda captured' once a lambda capturing a new variable applied", its output ending at "pet
+  Rex". The update landed while `Tick` was part way through a statement after the lambda's, and the debugger moved the
+  frame into the new code at its next statement, as Roslyn mapped it; but the new code makes the closure for the newly
+  captured `i` at the method's start, which the frame had passed, so `Echo`'s line read `i` through a null closure and
+  stopped the program on a NullReferenceException (the engine's log: the remap, then the exception). A local newly
+  captured beside `i`, a field the update gave the closure the frame held, read as never set. **A race in the IDE**, met
+  every time a call of the method is under way: a frame moves to the new code only where it holds each closure the new
+  code holds there, in the same slot, of the same type and given no field since, and otherwise finishes in its old code
+  (in this commit, with tests paused at `Tick`'s `Describe` line and in `Describe`, and in `Describe` as a local is
+  captured beside `i`, each failing so on main every time). The chain alone passed 12 of 12 on main beside two CPU
+  burners and two other agents' builds and tests (an update landed in a `Tick` once, at another edit); after it, the
+  class, its new tests among them, passed 20 of 20 beside the same.
+
 ## 2026-10-29
 
 - `McpAttachTimingTests`' `A_call_that_ends_while_its_word_to_a_slow_agent_is_still_written_comes_back_after_that_word`,
