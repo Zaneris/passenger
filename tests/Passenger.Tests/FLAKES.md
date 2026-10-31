@@ -30,6 +30,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-31
 
+- `ProjectLoadTests`' `A_package_with_a_known_vulnerability_is_a_warning_in_the_status_bar_and_problems_with_its_advisory_and_nuget_offers_its_fix`,
+  CI Linux x64, run 41208501263 (c1e3b8c6), gate (#1060): "Clicking the advisory's link opened []". Roslyn's server
+  logged the project's load warning again after Problems listed it, and each report made every row of the tab shown
+  anew (`ProblemsModel.Refresh`), resetting the list and unchoosing its row: landing between the press on the link and
+  its release (each runs the window's queued work first), the reset moved the pressed link's container to the group's
+  row, so the release opened nothing. On the Linux VM it failed 2 of 3 runs so, the warning unchosen before the click
+  or its link hidden as the click aimed, the report caught in the act by a trace of the rows' changes. **A race in the
+  IDE**: a refresh of the tab shown keeps the rows it makes alike, a group taking its new count, and the row chosen
+  among them, so a report saying what Problems lists tells the list nothing (in this commit, with a case pressing the
+  link as the load is reported again, which on main opened nothing). After it, 10 of 10 on the Linux VM idle and 10
+  of 10 with two CPU burners on its two cores, 10 of 10 on this Mac.
+
 - `AspireStandInTests`' `An_agent_is_told_the_failed_bindings_of_an_Avalonia_app_the_AppHost_runs_as_a_service`, then
   the class's next tests, the Windows VM (Windows 11 on Arm), not CI (#1059): "The process cannot access the file
   …\Bindings because it is being used by another process" from each next test's `SharedProject.Reset`. Listing every

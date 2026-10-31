@@ -48,6 +48,20 @@ public sealed class ProblemRow(int depth, string label, string? detail, Problem?
             Raise(nameof(Detail));
         }
     }
+
+    /// <summary>Whether a row made again is this one: the same problem, or the same group, at the same depth, whatever its
+    /// detail says now.</summary>
+    internal bool IsSame(ProblemRow made) => Depth == made.Depth && Label == made.Label && Problem == made.Problem;
+
+    /// <summary>Takes the detail the row made again says (a group's count), as this row stays listed in its place.</summary>
+    internal void Retell(string? detail)
+    {
+        if (Detail != detail)
+        {
+            Detail = detail;
+            Raise(nameof(Detail));
+        }
+    }
 }
 
 /// <summary>What the Problems window lists, kept whether or not its view is built: the current file's problems as they
@@ -77,6 +91,9 @@ public sealed class ProblemsModel
     private IReadOnlyList<Problem> containerFiles = [];
     private string? fileName;
     private ProblemRow? chosen;
+
+    /// <summary>The tab the rows were made for, whose rows a refresh keeps where it makes them again alike.</summary>
+    private ProblemsTab? rowsOf;
 
     public ProblemsModel() => Refresh();
 
@@ -575,10 +592,16 @@ public sealed class ProblemsModel
         }
     }
 
+    /// <summary>The shown tab's rows made again: another tab's replace them all, unchosen; the same tab's keep the rows
+    /// they make alike, and the row chosen while it is one of them.</summary>
     private void Refresh()
     {
         List<ProblemRow> made = [];
-        ChosenRow = null;
+        bool again = rowsOf == Shown;
+        if (!again)
+        {
+            ChosenRow = null;
+        }
         switch (Shown)
         {
             case ProblemsTab.File:
@@ -644,7 +667,16 @@ public sealed class ProblemsModel
                 EmptyText = "No problems from the last build";
                 break;
         }
-        rows.ReplaceAll(made);
+        rowsOf = Shown;
+        if (again)
+        {
+            rows.Become(made);
+            Forget();
+        }
+        else
+        {
+            rows.ReplaceAll(made);
+        }
         TabsChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -725,6 +757,47 @@ internal sealed class ProblemRows : ObservableCollection<ProblemRow>
         All.Clear();
         All.AddRange(made);
         Changed(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+    }
+
+    /// <summary>The rows made again: those the same at the start and the end are kept, each taking its new detail, and only
+    /// the rows between are taken out and put in, so a report that changed nothing tells the list nothing and the list goes
+    /// on showing each row kept where it was.</summary>
+    public void Become(List<ProblemRow> made)
+    {
+        CheckReentrancy();
+        int start = 0;
+        while (start < Count && start < made.Count && All[start].IsSame(made[start]))
+        {
+            start++;
+        }
+        int end = 0;
+        while (end < Count - start && end < made.Count - start && All[Count - 1 - end].IsSame(made[made.Count - 1 - end]))
+        {
+            end++;
+        }
+        int gone = Count - start - end;
+        int come = made.Count - start - end;
+        if (start + end == 0 && (gone > 0 || come > 0))
+        {
+            ReplaceAll(made);
+            return;
+        }
+        for (int i = 0; i < start; i++)
+        {
+            All[i].Retell(made[i].Detail);
+        }
+        for (int i = 1; i <= end; i++)
+        {
+            All[Count - i].Retell(made[made.Count - i].Detail);
+        }
+        if (gone > 0)
+        {
+            RemoveRange(start, gone);
+        }
+        if (come > 0)
+        {
+            InsertRange(start, made.GetRange(start, come));
+        }
     }
 
     private void Changed(NotifyCollectionChangedEventArgs change)

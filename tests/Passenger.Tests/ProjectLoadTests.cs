@@ -116,6 +116,39 @@ public sealed class ProjectLoadTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A link in Problems pressed as the projects' load is reported again opens once let go, whether the report
+    /// says the same, adds another project's warning below or another of the project's own: the rows the report makes
+    /// alike stay the rows the list shows, so the pressed link's row is still the row under the pointer.</summary>
+    [AvaloniaFact]
+    public void A_link_in_problems_pressed_as_the_load_is_reported_again_opens_its_advisory_once_let_go()
+    {
+        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
+        ProblemsModel problems = window.BottomPanel.Problems;
+        Problem warning = new(ProblemSeverity.Warning, Warned, null, project, new TextPosition(0, 0), "Web") { Link = new Uri(Advisory) };
+        Problem zeta = new(ProblemSeverity.Warning, "Zeta's restore was slow", null, Path.Combine(folder, "Zeta", "Zeta.csproj"), new TextPosition(0, 0), "Zeta");
+        Problem second = warning with { Message = "Web's restore was slow", Link = null };
+        problems.ShowToolset([warning]);
+        problems.Reveal(ProblemsTab.Toolset, p => p == warning);
+        window.Perform(AppActions.ShowProblems);
+        Ui.Settle();
+        (string Said, Problem[] Again)[] reports = [("the same warning", [warning]), ("another project's warning too", [warning, zeta]), ("another of the project's own too", [warning, zeta, second])];
+        for (int i = 0; i < reports.Length; i++)
+        {
+            Button link = Links(window.ProblemsWindow).Single(b => b.IsEffectivelyVisible && (string?)b.Content == Advisory);
+            // Each press at its own place along the link, so none is the second of a double click.
+            Point at = link.TranslatePoint(new Point(link.Bounds.Width * (i + 1) / (reports.Length + 1), link.Bounds.Height / 2), window)!.Value;
+            int opened = window.Browsed.Count;
+            window.MouseDown(at, MouseButton.Left);
+            problems.ShowToolset(reports[i].Again);
+            window.MouseUp(at, MouseButton.Left);
+            Ui.Settle();
+            Assert.True(window.Browsed.Count == opened + 1 && window.Browsed[^1] == new Uri(Advisory),
+                $"The advisory's link, pressed as the load was reported again with {reports[i].Said}, opened [{string.Join(", ", window.Browsed.Skip(opened))}] once let go");
+        }
+        Assert.True(problems.Selected == warning, $"Problems' choice of the warning became {problems.Selected?.Message ?? "nothing"} as the load was reported again");
+        window.Close();
+    }
+
     /// <summary>An advisory's address is the feed's to name, in any scheme: only an http or https one is a link, and one that
     /// would launch a program (a file: address) is words that open nothing.</summary>
     [Gate]
