@@ -14,7 +14,7 @@ namespace Passenger.Languages.TextMate;
 public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, IDisposable
 {
     /// <summary>A line longer than this (minified, generated) is left plain, read only for the state it ends in, once a pass
-    /// within <see cref="LongLineTime"/>.</summary>
+    /// within <see cref="LongLineTime"/>, and once more where that runs out.</summary>
     private const int LongestLine = 20_000;
 
     /// <summary>How much of the first long line a grammar's long rules read is read first with the time any line has, so
@@ -82,8 +82,8 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
     /// kept the colours found and ended in the state it began in.</summary>
     public long LinesOutOfTime => Interlocked.Read(ref linesOutOfTime);
 
-    /// <summary>How many times the grammar read a line too long to colour, each once within <see cref="LongLineTime"/>, and
-    /// how many of those ran out of it, ending in the state they began in.</summary>
+    /// <summary>How many times the grammar read a line too long to colour, each within <see cref="LongLineTime"/> and once
+    /// more where that ran out, and how many of those ran out of it both times, ending in the state they began in.</summary>
     public (long Read, long OutOfTime) LongLines => (Interlocked.Read(ref longLinesRead), Interlocked.Read(ref longLinesOutOfTime));
 
     /// <summary>Why the grammar could not colour the file, when it could not.</summary>
@@ -350,9 +350,9 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         return new TokenLine(scratch.Count == 0 ? [] : [.. scratch], next);
     }
 
-    /// <summary>The state a line longer than <see cref="LongestLine"/> ends in, read once by the grammar's long rules within
-    /// <paramref name="longLimit"/>, no hold of the grammar's own rules kept meanwhile; past that time, the state it began
-    /// in, so a rule it was stopped inside never reaches the lines after it.</summary>
+    /// <summary>The state a line longer than <see cref="LongestLine"/> ends in, read by the grammar's long rules within
+    /// <paramref name="longLimit"/>, and once more past it, no hold of the grammar's own rules kept meanwhile; past that
+    /// time twice, the state it began in, so a rule it was stopped inside never reaches the lines after it.</summary>
     private StateStack EndOfLong(TextSnapshot text, LineSpan span, StateStack? state, TimeSpan limit, TimeSpan longLimit, ref char[] buffer)
     {
         if (buffer.Length < span.Length)
@@ -373,6 +373,12 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
             }
             rules.TimeBudget = longLimit;
             _ = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), before, out StateStack next);
+            if (!rules.StoppedEarly)
+            {
+                return next;
+            }
+            // Once more: a first read pays for the scanners of the rules it reaches, and the machine's pauses come and go.
+            _ = rules.TokenizeLineEncoded(buffer.AsSpan(0, span.Length), before, out next);
             if (!rules.StoppedEarly)
             {
                 return next;

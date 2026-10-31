@@ -76,6 +76,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   Neither race: **the test**, which presses the platform's first shortcut for each action now (in this commit). After
   it, 10 of 10 on the Linux VM and on the Windows VM, and it passes on this Mac.
 
+- `FileColoursTests`' `A_line_too_long_to_colour_that_opens_a_comment_leaves_the_next_line_in_the_comment`, CI Windows
+  x64, run 41154974796 (b628b1f3), report lane (#1053): "The line after a 30,023-character line opening a comment is
+  coloured Text: the long line's comment never reached it". A line over 20,000 characters was read once a pass within a
+  tenth of a line's time, 100 ms, ending in the state it began in past it (#949); this one takes 20 to 30 ms of it warm on
+  this Mac and over 30 cold (with a 30 ms budget its first read failed 4 of 4, a second read of it in the same window
+  passed), so on the slower Windows runner, loaded by the MCP tests' Passengers beside it, the one read ran out, as it did
+  once in three on this Mac under load. **The IDE**, on a busy machine: a long line whose time runs out is read once more,
+  its rules' scanners made by then and the machine's pause past, before it ends in the state it began in (with a 30 ms
+  budget, 3 of 3 after it); and **the test** held the IDE to a developer's machine's time on a machine the run counts 2.5
+  times slower, which it now scales as every limit is (in this commit). It passed 6 of 6 alone on the idle Windows VM on
+  main; after it, 10 of 10 there and on this Mac.
+
 - `McpLanguagesTests`' `An_agent_reads_navigates_renames_and_refactors_avalonia_xaml_through_passengers_own_xaml_and_a_library_type_decompiled_once`,
   CI Windows x64, run 41154974796 (b628b1f3), report lane (#1052): "Expected: "Renamed in 2 files: MainWindow.axaml,
   MainWindow.a"··· Actual: "This can't be renamed"". The agent renamed the button Go to Start from the XAML, which wrote

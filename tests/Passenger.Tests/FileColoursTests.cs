@@ -296,10 +296,15 @@ public sealed class FileColoursTests : FileColoursFolder
     }
 
     /// <summary>A line too long to colour, a script's holding a long string, that opens a block comment closed on the next
-    /// line: the next line's text is coloured as the comment it is in, and the code after the comment as code.</summary>
+    /// line, read within a long line's time as this machine has it: the next line's text is coloured as the comment it is
+    /// in, and the code after the comment as code.</summary>
     [AvaloniaFact]
     public void A_line_too_long_to_colour_that_opens_a_comment_leaves_the_next_line_in_the_comment()
     {
+        string? was = Environment.GetEnvironmentVariable(TextMateHighlighter.LineTimeVariable);
+        // The line takes 20 to 50 ms of a developer's machine's 100: the run's machine has as many times that as it is slower.
+        Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable,
+            ((int)TextMateHighlighter.LineTime.Scaled().TotalMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture));
         MainWindow window = Window();
         try
         {
@@ -312,6 +317,7 @@ public sealed class FileColoursTests : FileColoursFolder
         }
         finally
         {
+            Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, was);
             window.Close();
         }
     }
