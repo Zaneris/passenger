@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-31
 
+- `ProfilerTests`' `A_trace_of_allocations_and_collections_alone_lists_them`, CI Linux x64, run 41154974796 (b628b1f3),
+  report lane (#1056): "The byte arrays allocated are listed with 108,768 bytes, not the 8 MB allocated". The trace held
+  one small object's allocation tick for the byte arrays and none of the 80 arrays of 100 KB the test allocated: on
+  Linux the runtime leaves most of a large object's ticks out of an EventPipe session once its process has allocated
+  large objects before (a plain program on the Linux VM lost them in 21 of 30 sessions after its first, and never a
+  small array's; never on this Mac), and TraceEvent's own parser finds none in the file either. Neither race nor the
+  IDE's: **the runtime**, and **the test**, which records 80,000 arrays of 100 bytes now (in this commit). Before it, 4
+  of 20 runs on the Linux VM after AspireStandInTests' merged-log test failed so, none of 20 alone; after it, 20 of 20
+  there after that test, and 10 of 10 on this Mac.
+
 - `FileBasedProgramsTests`' `A_file_of_top_level_statements_alone_with_no_directive_is_a_program_that_completes_runs_and_debugs`,
   CI Linux x64, run 41154974796 (b628b1f3), report lane (#1046): "dotnet restore …/héllo app.cs exited with code 1: …
   NU1101: Unable to find package Microsoft.AspNetCore.App.Runtime.linux-x64". Not the accent or the space: a program's

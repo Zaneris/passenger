@@ -1060,8 +1060,9 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         }
     }
 
-    /// <summary>This process's allocations of 8 MB of byte arrays and three full collections, recorded by an EventPipe session
-    /// of its own into a .nettrace with the runtime's GC events alone: no sampler, so no samples.</summary>
+    /// <summary>This process's allocations of 8 MB of small byte arrays and three full collections, recorded by an EventPipe
+    /// session of its own into a .nettrace with the runtime's GC events alone: no sampler, so no samples. Small, since on Linux
+    /// the runtime can leave most large objects' ticks out once its process has allocated large objects before.</summary>
     private static async Task RecordMemory(string trace)
     {
         Microsoft.Diagnostics.NETCore.Client.DiagnosticsClient client = new(Environment.ProcessId);
@@ -1072,10 +1073,10 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             using FileStream file = File.Create(trace);
             session.EventStream.CopyTo(file);
         });
-        List<byte[]> kept = [];
-        for (int i = 0; i < 80; i++)
+        List<byte[]> kept = new(80_000);
+        for (int i = 0; i < 80_000; i++)
         {
-            kept.Add(new byte[100_000]);
+            kept.Add(new byte[100]);
         }
         for (int i = 0; i < 3; i++)
         {
