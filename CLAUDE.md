@@ -81,11 +81,12 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
 - **Every program Passenger starts goes through `ChildProcesses`** (`Command`/`DotnetCommand`, then `Start`,
   `StartAsync`, `RunAsync`, or `AnswerAsync` for a question one line answers; `Kill` ends it with all it started), so
   none outlives the IDE (`Lifeline`), each given its folder as the disk names it, PWD too; on Windows every child shares
-  the IDE's UTF-8 console, made windowless where it has none (`SharedConsole`); a child's lines are heard through
-  `ChildProcesses.Hear`, never Process's `Begin*ReadLine` (banned: its disposal faults a read under it). Started
-  elsewhere: the terminal's shell (Porta.Pty), vstest.console, Velopack's Update.exe and an agent's `--mcp-attach`
-  Passenger (`StartApart`); a program run in the terminal is `Adopt`ed. Passenger's own standard input is taken at its
-  start (`StandardInput`, fd 0 then the null device), so nothing it starts reads it.
+  the IDE's UTF-8 console, made windowless where it has none (`SharedConsole`); a console reads a child through
+  `ChildProcesses.Output`/`Errors` (on macOS and Linux its pipe through a socket, a waiting read allocating nothing), a
+  child's lines are heard through `ChildProcesses.Hear`, never Process's `Begin*ReadLine` (banned: its disposal faults a
+  read under it). Started elsewhere: the terminal's shell (Porta.Pty), vstest.console, Velopack's Update.exe and an
+  agent's `--mcp-attach` Passenger (`StartApart`); a program run in the terminal is `Adopt`ed. Passenger's own standard
+  input is taken at its start (`StandardInput`, fd 0 then the null device), so nothing it starts reads it.
 - **No secret on a command line** (any process can read it): give it through the environment, or don't make it. Secrets
   everywhere (Details, logs, consoles, hints, agents' answers, `ChildProcesses.Shown`'s echoes) are masked by one rule,
   `ContainerSecrets`.
