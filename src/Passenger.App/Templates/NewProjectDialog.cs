@@ -1,4 +1,3 @@
-using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -76,7 +75,7 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly ComboBox framework = new() { Classes = { StyleClasses.Form } };
     private readonly ComboBox language = new() { Classes = { StyleClasses.Form } };
     private readonly Control languageRow;
-    private readonly StackPanel options = new() { Spacing = 10 };
+    private readonly TemplateOptions options = new();
     private readonly TextBlock command = new() { Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly Control details;
     private readonly Control offer;
@@ -101,11 +100,6 @@ public sealed class NewProjectDialog : IdeWindow
 
     /// <summary>Why no container can be set up here (no container engine's command), once asked; null while it can.</summary>
     private string? noEngine;
-
-    /// <summary>The shown options' values, and those the person set, which another template with the option keeps.</summary>
-    private readonly Dictionary<string, string> values = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> byPerson = new(StringComparer.Ordinal);
-    private readonly List<(TemplateOption Option, Control Row, Control Editor)> shown = [];
 
     /// <summary>The Type last chosen in each family, by its key, which choosing the family again opens on.</summary>
     private readonly Dictionary<string, string> typeOf = new(StringComparer.Ordinal);
@@ -227,8 +221,9 @@ public sealed class NewProjectDialog : IdeWindow
         details = new StackPanel
         {
             Spacing = 10,
-            Children = { Row("Target framework:", framework), languageRow, options, setupRow, Row(null, new StackPanel { Spacing = 4, Children = { setupNote, installSetup } }), Row(null, command) },
+            Children = { Row("Target framework:", framework), languageRow, options.Panel, setupRow, Row(null, new StackPanel { Spacing = 4, Children = { setupNote, installSetup } }), Row(null, command) },
         };
+        options.Changed += ShowCommand;
         install.Click += (_, _) => IdeErrors.Observe(InstallAsync());
         installSetup.Click += (_, _) =>
         {
@@ -381,10 +376,10 @@ public sealed class NewProjectDialog : IdeWindow
     public string? Language => language.SelectedItem as string;
 
     /// <summary>The labels of the template's options shown now.</summary>
-    public IReadOnlyList<string> OptionLabels => [.. shown.Select(s => s.Option.Label)];
+    public IReadOnlyList<string> OptionLabels => options.Labels;
 
     /// <summary>The control that sets an option, by its label, for a click; null when none is shown.</summary>
-    public Control? OptionEditor(string label) => shown.FirstOrDefault(s => s.Option.Label == label).Editor;
+    public Control? OptionEditor(string label) => options.Editor(label);
 
     /// <summary>How the project made is to run, set up once it is open: none for a template that is no service.</summary>
     public ProjectSetup Setup
@@ -743,23 +738,7 @@ public sealed class NewProjectDialog : IdeWindow
         {
             return $"{what} already exists in this location: {root} is not empty";
         }
-        foreach ((TemplateOption option, _, _) in shown.Where(s => s.Editor.IsEnabled))
-        {
-            string value = values.GetValueOrDefault(option.Name, option.Default);
-            if (option.Required && value.Length == 0)
-            {
-                return $"{option.Label} is needed";
-            }
-            if (option.Kind == TemplateOptionKind.Integer && value.Length > 0 && !long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
-            {
-                return $"{option.Label}: please enter an integer number";
-            }
-            if (option.Kind == TemplateOptionKind.Float && value.Length > 0 && !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
-            {
-                return $"{option.Label}: please enter a float number";
-            }
-        }
-        return null;
+        return options.WhyNot();
     }
 
     /// <summary>dotnet new's arguments for the project: its template by short name, name and folder (none in the line the
@@ -785,13 +764,7 @@ public sealed class NewProjectDialog : IdeWindow
         {
             arguments.AddRange([$"--{option}", target]);
         }
-        foreach ((TemplateOption each, _, Control editor) in shown)
-        {
-            if (editor.IsEnabled && values.TryGetValue(each.Name, out string? value) && !string.Equals(value, each.Default, StringComparison.OrdinalIgnoreCase))
-            {
-                arguments.AddRange([$"--{each.Option}", value]);
-            }
-        }
+        arguments.AddRange(options.Arguments());
         return arguments;
     }
 
@@ -1136,7 +1109,7 @@ public sealed class NewProjectDialog : IdeWindow
         languageRow.IsVisible = template.Languages.Count > 1;
         heading.Text = template.Name;
         description.Text = Variant().Description;
-        ShowOptions(Variant());
+        options.Show(Variant());
         ShowSetup();
         ShowWhere();
     }
@@ -1233,90 +1206,9 @@ public sealed class NewProjectDialog : IdeWindow
         }
     }
 
-    /// <summary>The template's options, each a checkbox, a list of its choices, or a box for text.</summary>
-    private void ShowOptions(TemplateVariant variant)
-    {
-        options.Children.Clear();
-        shown.Clear();
-        values.Clear();
-        foreach (TemplateOption option in variant.Options)
-        {
-            string value = byPerson.TryGetValue(option.Name, out string? kept) && (option.Kind != TemplateOptionKind.Choice || option.Choices.Any(c => c.Value == kept))
-                ? kept : option.Default;
-            values[option.Name] = value;
-            Control editor;
-            Control row;
-            switch (option.Kind)
-            {
-                case TemplateOptionKind.Bool:
-                    CheckBox box = new() { Content = option.Label, IsChecked = IsTrue(value) != option.Inverted };
-                    box.IsCheckedChanged += (_, _) => Changed(option, (box.IsChecked == true) != option.Inverted ? "true" : "false");
-                    editor = box;
-                    row = Row(null, box);
-                    break;
-                case TemplateOptionKind.Choice:
-                    ComboBox choices = new() { Classes = { StyleClasses.Form }, ItemsSource = option.Choices.Select(c => c.Label).ToList() };
-                    choices.SelectedIndex = Math.Max(0, option.Choices.ToList().FindIndex(c => c.Value.Equals(value, StringComparison.OrdinalIgnoreCase)));
-                    choices.SelectionChanged += (_, _) =>
-                    {
-                        if (!setting && choices.SelectedIndex >= 0)
-                        {
-                            Changed(option, option.Choices[choices.SelectedIndex].Value);
-                        }
-                    };
-                    editor = choices;
-                    row = Row($"{option.Label}:", choices);
-                    break;
-                default:
-                    TextBox text = new() { Classes = { StyleClasses.Search }, Text = value, MaxWidth = 360, HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 240 };
-                    text.TextChanged += (_, _) => Changed(option, text.Text ?? string.Empty);
-                    editor = text;
-                    row = Row($"{option.Label}:", text);
-                    break;
-            }
-            if (option.Description is { Length: > 0 } said)
-            {
-                ToolTip.SetTip(row, said);
-            }
-            options.Children.Add(row);
-            shown.Add((option, row, editor));
-        }
-        Enable();
-    }
-
-    /// <summary>What a project has of an option its template turns off, where that is not the option's value: VSTest for a
-    /// test template's Test runner, as a test project runs on the Testing Platform only where its template sets that up.</summary>
-    private static string? WhenOff(TemplateOption option) => option.Name.Equals("TestRunner", StringComparison.OrdinalIgnoreCase)
-        ? option.Choices.FirstOrDefault(c => c.Value.Equals("VSTest", StringComparison.OrdinalIgnoreCase))?.Value
-        : null;
-
-    private void Changed(TemplateOption option, string value)
-    {
-        values[option.Name] = value;
-        byPerson[option.Name] = value;
-        Enable();
-    }
-
-    /// <summary>Enables each option its template's condition allows with the others as they are now; a list turned off
-    /// shows what the project will have (<see cref="WhenOff"/>), its value kept for when it is on again.</summary>
-    private void Enable()
-    {
-        foreach ((TemplateOption option, Control row, Control editor) in shown)
-        {
-            editor.IsEnabled = ProjectTemplates.IsEnabled(option.EnabledWhen, values);
-            row.Opacity = editor.IsEnabled ? 1 : 0.55;
-            if (editor is ComboBox choices)
-            {
-                string value = (editor.IsEnabled ? null : WhenOff(option)) ?? values.GetValueOrDefault(option.Name, option.Default);
-                int at = option.Choices.ToList().FindIndex(c => c.Value.Equals(value, StringComparison.OrdinalIgnoreCase));
-                bool was = setting;
-                setting = true;
-                choices.SelectedIndex = Math.Max(0, at);
-                setting = was;
-            }
-        }
+    /// <summary>The command line Create runs, as the dialog shows it.</summary>
+    private void ShowCommand() =>
         command.Text = template is null ? string.Empty : $"dotnet new {string.Join(' ', Arguments(null).Select(ChildProcesses.Quote))}";
-    }
 
     /// <summary>A name typed: the project's follows the solution's until the person types one of its own.</summary>
     private void NameChanged(bool solution)
@@ -1339,10 +1231,7 @@ public sealed class NewProjectDialog : IdeWindow
         where.Text = root is null ? string.Empty
             : target is null ? $"The solution will be created in {root}"
             : $"The project will be created in {root} and added to {into}";
-        if (template is not null)
-        {
-            Enable();
-        }
+        ShowCommand();
     }
 
     /// <summary>The right side for a template: its details once installed, else the offer of its package; a solution
@@ -1399,8 +1288,6 @@ public sealed class NewProjectDialog : IdeWindow
         }
     }
 
-    private static bool IsTrue(string value) => value.Equals("true", StringComparison.OrdinalIgnoreCase);
-
     private void Fail(string? why)
     {
         problem.Text = why;
@@ -1415,13 +1302,13 @@ public sealed class NewProjectDialog : IdeWindow
         install.IsEnabled = !busy;
         installSetup.IsEnabled = !busy;
         list.IsEnabled = !busy;
-        foreach (Control field in (Control[])[search, typeChooser, solutionName, projectName, directory, browse, sameDirectory, format, framework, language, options, setup])
+        foreach (Control field in (Control[])[search, typeChooser, solutionName, projectName, directory, browse, sameDirectory, format, framework, language, options.Panel, setup])
         {
             field.IsEnabled = !busy;
         }
         if (!busy && template is not null)
         {
-            Enable();
+            ShowCommand();
             ShowSetup();
         }
     }
@@ -1492,15 +1379,7 @@ public sealed class NewProjectDialog : IdeWindow
         return rule;
     }
 
-    /// <summary>A row of the right side: its label (none for a checkbox, which carries its own) and what sets it.</summary>
-    private static Control Row(string? label, Control editor)
-    {
-        if (editor is ComboBox)
-        {
-            editor.HorizontalAlignment = HorizontalAlignment.Left;
-        }
-        return FormRows.Of(label, editor);
-    }
+    private static Control Row(string? label, Control editor) => TemplateOptions.Row(label, editor);
 
     private async Task BrowseAsync()
     {

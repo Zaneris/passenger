@@ -117,25 +117,27 @@ public sealed class TemplateFamiliesTests : IDisposable
         Ui.Click(dialog.FamilyRow("Unit Test")!);
         Assert.Equal("xunit", dialog.Chosen?.ShortName);
         Assert.Equal(["xUnit", "NUnit", "MSTest"], dialog.TypeNames.Take(3));
-        Assert.Equal(["xUnit.net version", TestRunner], dialog.OptionLabels);
+        Leading(dialog, ["xUnit.net version", TestRunner]);
+        // Its ide.host.json's options first, then the rest of its parameters, as LangVersion.
+        Assert.Contains("Language version", dialog.OptionLabels);
         Assert.StartsWith("dotnet new xunit ", dialog.Command, StringComparison.Ordinal);
 
         Choose(dialog, "NUnit");
-        Assert.Equal([TestRunner], dialog.OptionLabels);
+        Leading(dialog, [TestRunner]);
         Assert.StartsWith("dotnet new nunit ", dialog.Command, StringComparison.Ordinal);
         Assert.Equal("VSTest", Value(dialog, TestRunner));
         Pick(dialog, TestRunner, Platform);
         Assert.Contains($"--test-runner {Platform}", dialog.Command, StringComparison.Ordinal);
 
         Choose(dialog, "MSTest");
-        Assert.Equal(["Use MSTest.Sdk", TestRunner, "Testing extensions profile", "Use explicit Program.cs file", "Coverage tool", "Fixture"], dialog.OptionLabels);
+        Leading(dialog, ["Use MSTest.Sdk", TestRunner, "Testing extensions profile", "Use explicit Program.cs file", "Coverage tool", "Fixture"]);
         Assert.Equal(Platform, Value(dialog, TestRunner));
         Assert.StartsWith("dotnet new mstest ", dialog.Command, StringComparison.Ordinal);
         Assert.Contains($"--test-runner {Platform}", dialog.Command, StringComparison.Ordinal);
         Pick(dialog, "Fixture", "TestInitialize");
 
         Choose(dialog, "xUnit");
-        Assert.Equal(["xUnit.net version", TestRunner], dialog.OptionLabels);
+        Leading(dialog, ["xUnit.net version", TestRunner]);
         // xUnit v2 turns its runner off, its project running on VSTest; v3 takes the value set again.
         Assert.Equal("VSTest", Value(dialog, TestRunner));
         Pick(dialog, "xUnit.net version", "v3");
@@ -252,6 +254,103 @@ public sealed class TemplateFamiliesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A template whose ide.host.json shows two of its options still offers the parameters it leaves out after
+    /// them, as dotnet new's command line does, but one its command line hides and one a computed symbol makes the same
+    /// switch as one shown; an option only an IDE's host reads goes to the command line through the parameter that does.</summary>
+    [AvaloniaFact]
+    public void A_template_with_an_ide_host_json_offers_the_parameters_it_leaves_out_each_switch_once()
+    {
+        using IDisposable theme = TestsTheme();
+        string probe = WriteHostProbeTemplate();
+        bool installed = false;
+        try
+        {
+            DotnetNew(["install", probe]);
+            installed = true;
+            ProjectTemplates.Forget();
+            MainWindow window = Started();
+            Ui.Click(window.Welcome.NewSolutionButton);
+            NewProjectDialog dialog = Opened(window);
+            Search(dialog, "probehost");
+            Assert.Equal("probehost", dialog.Chosen?.ShortName);
+            Assert.Equal(["Use the full kind", "Include extras", "Greeting"], dialog.OptionLabels);
+
+            Ui.Click(dialog.OptionEditor("Use the full kind")!);
+            Ui.Click(dialog.OptionEditor("Include extras")!);
+            Assert.Contains("--use-minimal false", dialog.Command, StringComparison.Ordinal);
+            Assert.Contains("--bare true", dialog.Command, StringComparison.Ordinal);
+            Assert.DoesNotContain("--include-extras", dialog.Command, StringComparison.Ordinal);
+            dialog.Cancel();
+            window.Close();
+        }
+        finally
+        {
+            if (installed)
+            {
+                DotnetNew(["uninstall", probe]);
+            }
+            ProjectTemplates.Forget();
+        }
+    }
+
+    /// <summary>A project template of the tests' own with an ide.host.json, in the test's folder: Probe Host App
+    /// (probehost), whose ide.host.json shows UseMinimal (as its opposite) and IncludeExtras, which only an IDE's host reads,
+    /// the command line's Bare doing it there; UseFull restates UseMinimal, Greeting is in no host file and Secret is hidden
+    /// from the command line.</summary>
+    private string WriteHostProbeTemplate()
+    {
+        string folder = Directory.CreateDirectory(Path.Combine(place, "HostProbeTemplate", ".template.config")).Parent!.FullName;
+        File.WriteAllText(Path.Combine(folder, ".template.config", "template.json"), """
+            {
+              "$schema": "http://json.schemastore.org/template",
+              "author": "Passenger's tests",
+              "classifications": [ "Probe" ],
+              "identity": "Passenger.Tests.ProbeHost.CSharp",
+              "groupIdentity": "Passenger.Tests.ProbeHost",
+              "name": "Probe Host App",
+              "shortName": "probehost",
+              "sourceName": "ProbeHost",
+              "preferNameDirectory": true,
+              "tags": { "language": "C#", "type": "project" },
+              "symbols": {
+                "UseMinimal": { "type": "parameter", "datatype": "bool", "defaultValue": "true", "description": "Whether to stay minimal." },
+                "UseFull": { "type": "parameter", "datatype": "bool", "defaultValue": "false", "description": "Whether to go full." },
+                "UsingFull": { "type": "computed", "value": "(UseFull || !UseMinimal)" },
+                "IncludeExtras": { "type": "parameter", "datatype": "bool", "defaultValue": "true", "description": "Whether to include extras." },
+                "Bare": { "type": "parameter", "datatype": "bool", "defaultValue": "false", "description": "Whether to leave the extras out." },
+                "Extras": { "type": "computed", "value": "((IncludeExtras && (HostIdentifier != \"dotnetcli\" && HostIdentifier != \"dotnetcli-preview\")) || (!Bare && (HostIdentifier == \"dotnetcli\" || HostIdentifier == \"dotnetcli-preview\")))" },
+                "Greeting": { "type": "parameter", "datatype": "string", "defaultValue": "Hello", "displayName": "Greeting", "description": "What it says." },
+                "Secret": { "type": "parameter", "datatype": "string", "defaultValue": "", "description": "Hidden from the command line." },
+                "HostIdentifier": { "type": "bind", "binding": "host:HostIdentifier" }
+              }
+            }
+            """);
+        File.WriteAllText(Path.Combine(folder, ".template.config", "ide.host.json"), """
+            {
+              "$schema": "http://json.schemastore.org/ide.host",
+              "symbolInfo": [
+                { "id": "UseMinimal", "name": { "text": "Use the full kind" }, "invertBoolean": true, "isVisible": true },
+                { "id": "IncludeExtras", "name": { "text": "Include extras" }, "isVisible": true }
+              ]
+            }
+            """);
+        File.WriteAllText(Path.Combine(folder, ".template.config", "dotnetcli.host.json"), """
+            {
+              "$schema": "http://json.schemastore.org/dotnetcli.host",
+              "symbolInfo": {
+                "UseMinimal": { "longName": "use-minimal", "isHidden": true },
+                "UseFull": { "longName": "use-full" },
+                "IncludeExtras": { "longName": "include-extras", "isHidden": true },
+                "Bare": { "longName": "bare" },
+                "Greeting": { "longName": "greeting" },
+                "Secret": { "longName": "secret", "isHidden": true }
+              }
+            }
+            """);
+        File.WriteAllText(Path.Combine(folder, "ProbeHost.csproj"), TestProjects.Library());
+        return PathNames.Canonical(folder);
+    }
+
     /// <summary>A test project template of the tests' own, in the test's folder: Probe Test Project (probetest), classified
     /// as a test.</summary>
     private string WriteProbeTemplate()
@@ -299,6 +398,11 @@ public sealed class TemplateFamiliesTests : IDisposable
         dialog.Query = query;
         Ui.Settle();
     }
+
+    /// <summary>The options a template's ide.host.json shows, first and in its order.</summary>
+    private static void Leading(NewProjectDialog dialog, string[] labels) =>
+        Assert.True(dialog.OptionLabels.Take(labels.Length).SequenceEqual(labels),
+            $"{dialog.Chosen?.Name} shows [{string.Join(", ", dialog.OptionLabels)}], not its ide.host.json's [{string.Join(", ", labels)}] first");
 
     private static TemplateFamily Family(NewProjectDialog dialog, string name) =>
         dialog.Families.FirstOrDefault(f => f.Name == name)

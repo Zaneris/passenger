@@ -21,7 +21,7 @@ public sealed record TemplateCatalog(string Sdk, IReadOnlyList<TemplateFamily> F
     {
         static string Variant(TemplateVariant v) =>
             $"{v.Identity}:{v.Language}:{string.Join(',', v.Frameworks)}:{v.DefaultFramework}:{v.Description}:"
-            + string.Join(',', v.Options.Select(o => $"{o.Name}={o.Default}/{o.Label}/{o.Kind}/{o.Choices.Count}/{o.EnabledWhen}"));
+            + string.Join(',', v.Options.Select(o => $"{o.Name}={o.Default}/{o.Label}/{o.Kind}/{o.Choices.Count}/{o.EnabledWhen}/{o.Through}"));
         IEnumerable<string> types = families.SelectMany(f => f.Types.Select(t =>
             $"{f.Name}|{t.TypeName}|{t.Name}|{string.Join(',', t.ShortNames)}|{t.IsSolution}|{t.Pack?.Id}|{t.DefaultName}|{string.Join(';', t.Variants.Select(Variant))}"));
         return string.Join('\n', [sdk, string.Join(',', formats), format, .. types]);
@@ -87,15 +87,21 @@ public enum TemplateOptionKind
 /// name for it, whether the checkbox means its opposite (ide.host.json's <c>invertBoolean</c>), and when it is
 /// enabled.</summary>
 public sealed record TemplateOption(string Name, string Option, string Label, string? Description, TemplateOptionKind Kind, string Default,
-    IReadOnlyList<TemplateChoice> Choices, bool Inverted, bool Required, string? EnabledWhen);
+    IReadOnlyList<TemplateChoice> Choices, bool Inverted, bool Required, string? EnabledWhen)
+{
+    /// <summary>Where the template reads the option only from an IDE's host and the command line sets the same through
+    /// another (Blazor's Include sample pages, the command line's --empty): that one's name and whether it is the opposite;
+    /// null where the command line takes the option itself.</summary>
+    public (string Option, bool Opposite)? Through { get; init; }
+}
 
 public sealed record TemplateChoice(string Value, string Label, string? Description);
 
 /// <summary>Reads the templates from what <c>dotnet new</c> itself keeps: <c>dotnet new list</c> brings its cache of the
 /// installed templates up to date, and the cache (templatecache.json, per SDK under DOTNET_CLI_HOME or the home folder)
-/// has each template's parameters. The options shown are those a template's ide.host.json makes visible. Read once per
-/// SDK, ahead of the dialog and again on a change (ProjectTemplates.Ahead.cs), with the kinds of
-/// <see cref="TemplatePacks"/> not installed, in families.</summary>
+/// has each template's parameters. The options shown are every parameter the command line takes, those a template's
+/// ide.host.json makes visible first, with its labels. Read once per SDK, ahead of the dialog and again on a change
+/// (ProjectTemplates.Ahead.cs), with the kinds of <see cref="TemplatePacks"/> not installed, in families.</summary>
 public static partial class ProjectTemplates
 {
     private static readonly ConcurrentDictionary<(string Sdk, string? Hive), Lazy<Task<TemplateCatalog>>> Read = new();
@@ -103,10 +109,10 @@ public static partial class ProjectTemplates
     /// <summary>A member's name read in any letter case, as ide.host.json files write them both ways.</summary>
     private const bool AnyCase = true;
 
-    /// <summary>What the dialog asks for itself (the name, the framework, the language), or a person never sets.</summary>
+    /// <summary>What the dialog asks or sets for itself: the name, the framework, the language, the restore, the host.</summary>
     private static readonly HashSet<string> NotShown = new(StringComparer.OrdinalIgnoreCase)
     {
-        "name", "type", "language", "Framework", "TargetFrameworkOverride", "skipRestore", "langVersion", "HostIdentifier",
+        "name", "type", "language", "Framework", "skipRestore", "HostIdentifier",
     };
 
     private static volatile string? customHive;
@@ -189,7 +195,7 @@ public static partial class ProjectTemplates
         {
             return true;
         }
-        List<string> tokens = [.. Regex.Matches(condition, @"""[^""]*""|'[^']*'|==|!=|&&|\|\||[!()]|[^\s!=&|()""']+").Select(m => m.Value)];
+        List<string> tokens = Tokens(condition);
         int at = 0;
         try
         {
@@ -264,6 +270,10 @@ public static partial class ProjectTemplates
             return false;
         }
     }
+
+    /// <summary>A template's condition or computed value as its tokens: quoted texts, operators, brackets and words.</summary>
+    private static List<string> Tokens(string expression) =>
+        [.. Regex.Matches(expression, @"""[^""]*""|'[^']*'|==|!=|&&|\|\||[!()]|[^\s!=&|()""']+").Select(m => m.Value)];
 
     /// <summary>dotnet new list, which brings dotnet new's cache up to date, then the cache.</summary>
     private static async Task<TemplateCatalog> ReadAsync(string folder, string sdk, string? custom)
@@ -391,7 +401,7 @@ public static partial class ProjectTemplates
         List<TemplateOption> options = [];
         if (ide.Read(template) is { } host)
         {
-            // An IDE's options are the ones the template's ide.host.json makes visible, in its order.
+            // ide.host.json's visible options come first, in its order, with its labels and inversions.
             foreach (JsonElement symbol in JsonMembers.Items(host, "symbolInfo", AnyCase))
             {
                 if (JsonMembers.Scalar(symbol, "id", AnyCase) is { } id && Bool(symbol, "isVisible") && !NotShown.Contains(id) && parameters.TryGetValue(id, out JsonElement parameter)
@@ -406,15 +416,28 @@ public static partial class ProjectTemplates
                 options.Add(configure);
             }
         }
-        else
+        IReadOnlyList<Alike> alike = options.Count > 0 ? Alikes(ide.Computed(template), parameters) : [];
+        foreach ((string name, JsonElement parameter) in parameters)
         {
-            foreach ((string name, JsonElement parameter) in parameters)
+            bool hidden = cli.TryGetValue(name, out JsonElement symbol) && Bool(symbol, "isHidden");
+            if (NotShown.Contains(name) || hidden || options.Any(o => o.Name == name))
             {
-                bool hidden = cli.TryGetValue(name, out JsonElement symbol) && Bool(symbol, "isHidden");
-                if (!NotShown.Contains(name) && !hidden && Option(parameter, cli, null, inverted: false, label: null) is { } option)
+                continue;
+            }
+            // One a computed symbol makes the same switch as an option shown is that option.
+            int shown = options.FindIndex(o => alike.Any(a => a.Shown == o.Name && a.Other == name));
+            if (shown >= 0)
+            {
+                Alike same = alike.First(a => a.Shown == options[shown].Name && a.Other == name);
+                if (same.ShownByIdeAlone && same.Opposite is { } opposite)
                 {
-                    options.Add(option);
+                    options[shown] = options[shown] with { Through = (LongName(cli, name), opposite) };
                 }
+                continue;
+            }
+            if (Option(parameter, cli, null, inverted: false, label: null) is { } option)
+            {
+                options.Add(option);
             }
         }
         return new TemplateVariant(JsonMembers.Scalar(template, "Identity", AnyCase)!, Tag(template, "language"), Int(template, "Precedence"), JsonMembers.Scalar(template, "Description", AnyCase) ?? string.Empty,
@@ -422,6 +445,85 @@ public static partial class ProjectTemplates
         {
             SkipRestoreOption = parameters.ContainsKey("skipRestore") ? LongName(cli, "skipRestore") : null,
         };
+    }
+
+    /// <summary>Two parameters a computed symbol makes one switch, each alone in a term of its "or" (webapi's UsingControllers:
+    /// UseControllers || !UseMinimalAPIs): whether the first's term holds only for an IDE's host (it asks HostIdentifier !=),
+    /// and whether one's value is the other's opposite, unknown where a term compares rather than tests one.</summary>
+    private sealed record Alike(string Shown, string Other, bool ShownByIdeAlone, bool? Opposite);
+
+    /// <summary>Every pair of parameters the computed symbols make one switch, each pair both ways.</summary>
+    private static List<Alike> Alikes(IReadOnlyList<string> computed, Dictionary<string, JsonElement> parameters)
+    {
+        List<Alike> alike = [];
+        foreach (string value in computed)
+        {
+            List<(string Name, bool IdeAlone, bool? Negated)> terms = [];
+            foreach (List<string> term in Terms(value))
+            {
+                List<int> named = [.. Enumerable.Range(0, term.Count).Where(i => term[i] != "HostIdentifier" && parameters.ContainsKey(term[i]))];
+                if (named.Select(i => term[i]).Distinct(StringComparer.Ordinal).Count() != 1)
+                {
+                    continue;
+                }
+                int at = named[0];
+                bool compared = named.Count > 1 || term.ElementAtOrDefault(at + 1) is "==" or "!=" || term.ElementAtOrDefault(at - 1) is "==" or "!=";
+                int negations = 0;
+                for (int before = at - 1; before >= 0 && term[before] is "!" or "("; before--)
+                {
+                    negations += term[before] == "!" ? 1 : 0;
+                }
+                bool ideAlone = Enumerable.Range(0, term.Count - 1).Any(i => term[i] == "HostIdentifier" && term[i + 1] == "!=");
+                terms.Add((term[at], ideAlone, compared ? null : negations % 2 == 1));
+            }
+            foreach ((string name, bool ideAlone, bool? negated) in terms)
+            {
+                foreach ((string other, _, bool? otherNegated) in terms.Where(t => t.Name != name))
+                {
+                    alike.Add(new Alike(name, other, ideAlone, negated is { } one && otherNegated is { } two ? one != two : null));
+                }
+            }
+        }
+        return alike;
+    }
+
+    /// <summary>The terms of an expression's top "or", each as its tokens, the brackets around the whole taken off.</summary>
+    private static List<List<string>> Terms(string expression)
+    {
+        List<string> tokens = Tokens(expression);
+        while (tokens.Count >= 2 && tokens[0] == "(" && Closing(tokens, 0) == tokens.Count - 1)
+        {
+            tokens = tokens[1..^1];
+        }
+        List<List<string>> terms = [[]];
+        int depth = 0;
+        foreach (string token in tokens)
+        {
+            depth += token == "(" ? 1 : token == ")" ? -1 : 0;
+            if (token == "||" && depth == 0)
+            {
+                terms.Add([]);
+            }
+            else
+            {
+                terms[^1].Add(token);
+            }
+        }
+        return terms;
+
+        static int Closing(List<string> tokens, int open)
+        {
+            int depth = 0;
+            for (int i = open; i < tokens.Count; i++)
+            {
+                depth += tokens[i] == "(" ? 1 : tokens[i] == ")" ? -1 : 0;
+                if (depth == 0)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
     }
 
     /// <summary>A framework Passenger builds for here: no .NET Framework (net48), and Windows' own only on Windows.</summary>
@@ -530,13 +632,25 @@ public static partial class ProjectTemplates
     /// <summary>A whole number as dotnet new's files write it, a number or its text; 0 when it is neither.</summary>
     private static int Int(JsonElement? element, string name) => int.TryParse(JsonMembers.Scalar(element, name, AnyCase), out int value) ? value : 0;
 
-    /// <summary>The ide.host.json beside each template's template.json, in its package (or folder), each package opened once.</summary>
+    /// <summary>A template's own files, beside its template.json in its package (or folder): its ide.host.json and the
+    /// computed symbols of its template.json, each package opened once.</summary>
     private sealed class HostFiles : IDisposable
     {
         private readonly Dictionary<string, ZipArchive?> packages = new(StringComparer.Ordinal);
         private readonly List<JsonDocument> read = [];
 
-        public JsonElement? Read(JsonElement template)
+        public JsonElement? Read(JsonElement template) => Parsed(template, "ide.host.json");
+
+        /// <summary>The values of its template.json's computed symbols; none where it cannot be read.</summary>
+        public IReadOnlyList<string> Computed(JsonElement template) =>
+            Parsed(template, null) is { } config && JsonMembers.Object(config, "symbols", AnyCase) is { ValueKind: JsonValueKind.Object } symbols
+                ? [.. symbols.EnumerateObject().Where(s => JsonMembers.Scalar(s.Value, "type", AnyCase) == "computed")
+                    .Select(s => JsonMembers.Scalar(s.Value, "value", AnyCase)).OfType<string>()]
+                : [];
+
+        /// <summary>A file beside the template's template.json (the template.json itself given null), parsed; null where
+        /// it is not there or cannot be read.</summary>
+        private JsonElement? Parsed(JsonElement template, string? beside)
         {
             if (JsonMembers.Scalar(template, "MountPointUri", AnyCase) is not { } mount || JsonMembers.Scalar(template, "ConfigPlace", AnyCase) is not { } place)
             {
@@ -546,7 +660,8 @@ public static partial class ProjectTemplates
             {
                 mount = uri.LocalPath;
             }
-            string entry = $"{place.TrimStart('/')[..(place.TrimStart('/').LastIndexOf('/') + 1)]}ide.host.json";
+            string config = place.TrimStart('/');
+            string entry = beside is null ? config : $"{config[..(config.LastIndexOf('/') + 1)]}{beside}";
             try
             {
                 string? text = null;
