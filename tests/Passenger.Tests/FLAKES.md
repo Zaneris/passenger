@@ -28,6 +28,19 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-10-31
+
+- `PauseTests`' `An_interpolation_paused_in_a_sleep_writes_numbers_in_the_programs_culture_and_refuses_a_value_only_its_ToString_writes`,
+  CI Windows x64, run 41154974796 (b628b1f3), report lane (#1045): "Paused in its sleep, $"{count}" answered "-1234" and
+  $"{ratio:N1}" "1 234,5", where the program wrote asleep -1234 1�234,5 dreaming". The debugger's answer was right, its
+  group separator U+202F as the program's fr-FR culture holds it (not the separators the issue guessed at); the program's
+  own line was wrong as it reached the Debug Console: on Windows a debugged program had a console of its own, shown in
+  no window, whose code page is the system's (437 on an English Windows), so .NET wrote its redirected output in it, the
+  narrow no-break space as a byte that is no UTF-8, and the adapter, reading UTF-8, made it U+FFFD. **A bug in the IDE**,
+  met by every character outside that code page a program debugged on Windows writes: the program shares the adapter's
+  own windowless console, set to UTF-8 first (in this commit). It failed on the Windows VM every time before; after it,
+  10 of 10 there and 10 of 10 on this Mac.
+
 ## 2026-10-30
 
 - `UiRulesTests`' `A_window_opens_inside_a_small_screens_working_area_centred_and_one_placed_past_its_edge_is_brought_onto_it`,

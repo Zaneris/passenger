@@ -165,14 +165,18 @@ public sealed partial class SuspendedLaunch : IDisposable
         }
     }
 
+    /// <summary>On Windows the program shares the adapter's own console where it has one, set first to read and write UTF-8
+    /// as the adapter does: a .NET program reads its redirected input and writes its output in its console's code page,
+    /// which a console made for it alone takes from the system (437 in English).</summary>
     [SupportedOSPlatform("windows")]
     private static SuspendedLaunch StartOnWindows(string program, IReadOnlyList<string> arguments, string? folder, IReadOnlyDictionary<string, string> variables)
     {
+        bool shared = SetConsoleOutputCP(Utf8CodePage) && SetConsoleCP(Utf8CodePage);
         ProcessStartInfo start = new(program, arguments)
         {
             WorkingDirectory = folder ?? Environment.CurrentDirectory,
             UseShellExecute = false,
-            CreateNoWindow = true,
+            CreateNoWindow = !shared,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -492,4 +496,16 @@ public sealed partial class SuspendedLaunch : IDisposable
     [LibraryImport("kernel32", EntryPoint = "SetHandleInformation", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetHandleInformation(nint handle, uint mask, uint flags);
+
+    private const uint Utf8CodePage = 65001; // CP_UTF8
+
+    /// <summary>Sets the code page the console this process is attached to writes in; false where it has no console.</summary>
+    [LibraryImport("kernel32", EntryPoint = "SetConsoleOutputCP", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetConsoleOutputCP(uint codePage);
+
+    /// <summary>Sets the code page the console this process is attached to reads in; false where it has no console.</summary>
+    [LibraryImport("kernel32", EntryPoint = "SetConsoleCP", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetConsoleCP(uint codePage);
 }
