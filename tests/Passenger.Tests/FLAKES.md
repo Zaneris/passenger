@@ -30,6 +30,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-10-31
 
+- `AspireStandInTests`' `Profile_of_an_AppHost_gives_up_on_a_service_past_its_time_saying_so`, CI macOS, run 41154974796
+  (b628b1f3), report lane (#1057): "Profile's time limit was said as " with nothing after it, as in release run
+  40127831310 below. Since 50ce6ce4 the limit fell due on a timer of its own from DCP's ask, and only there: a start
+  that landed before the timer ran was taken for one in time, so where the timer ran a second late (the runner too busy
+  to run it, as far as can be told) the API, built by the tests before, was profiled. **A race in the IDE**: a start
+  that lands or fails reads the clock against the limit too, whichever comes first deciding (in this commit, with a
+  case holding the limit's timer past Profile's answer, which fails so without the clock's reading). On main 15 of 15 on
+  this Mac, 5 of them with one processor seen; after it, both cases 10 of 10 on this Mac and 20 of 20 on the Linux VM.
+
 - `ProfilerTests`' `A_trace_of_allocations_and_collections_alone_lists_them`, CI Linux x64, run 41154974796 (b628b1f3),
   report lane (#1056): "The byte arrays allocated are listed with 108,768 bytes, not the 8 MB allocated". The trace held
   one small object's allocation tick for the byte arrays and none of the 80 arrays of 100 KB the test allocated: on

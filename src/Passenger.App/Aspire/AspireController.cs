@@ -108,6 +108,13 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     /// said as the time limit it is.</summary>
     public TimeSpan ProfileLimit { get; set; } = TimeSpan.FromMinutes(1);
 
+    /// <summary>What the next profile's time limit waits for besides its time (<see cref="HoldNextProfileLimit"/>).</summary>
+    private Task? limitHeld;
+
+    /// <summary>Holds the timer of the next profile's time limit from falling due until <paramref name="until"/> ends too, as
+    /// a machine too busy to run it would, for a test of a start that lands past the limit before its timer runs.</summary>
+    public void HoldNextProfileLimit(Task until) => limitHeld = until;
+
     /// <summary>Whether the Debug window's chosen tab is another program's than any service's (a plain launch beside the
     /// AppHost), which the Aspire window's resources read again do not take back: only a person's choice of a resource does.</summary>
     public bool OtherProgramChosen { get; private set; }
@@ -796,14 +803,15 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         catch (Exception error) when (profiling)
         {
-            app.ProfileStarted.TrySetResult(error is OperationCanceledException ? BuildRunController.StoppedStarting(app.Name) : error.Message);
+            app.ProfileStarted.TrySetResult(app.PastProfileLimit() ?? (error is OperationCanceledException ? BuildRunController.StoppedStarting(app.Name) : error.Message));
             throw;
         }
     }
 
     /// <summary>Whether this start is the one Profile of its configuration records: the first asked for of its run's AppHosts,
-    /// or of the service Profile chose; claimed, the profile's time limit counts from now and falls due on its own timer, so
-    /// a start that lands after it is past it however late Profile's start looks again.</summary>
+    /// or of the service Profile chose; claimed, the profile's time limit counts from now and falls due on its own timer or,
+    /// by the clock, as the start lands or fails, whichever comes first, so a start that ends after it is past it however
+    /// late the timer or Profile's start runs.</summary>
     private bool ClaimsProfile(AspireAppRun app, AspireProjectLaunch request)
     {
         string path = PathNames.Canonical(request.ProjectPath);
@@ -817,9 +825,16 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         app.ProfileClaimed = true;
         string service = name ?? Path.GetFileNameWithoutExtension(path);
         TimeSpan limit = Waits.Of(ProfileLimit);
+        string past = $"{service} did not start under the profiler within {limit.TotalSeconds:0.##} s of its AppHost asking for it";
+        app.ProfileDue = (Stopwatch.GetTimestamp(), limit, past);
         app.ProfileAsked.TrySetResult(service);
-        IdeErrors.Observe(Task.Delay(limit, app.Lifetime.Token).ContinueWith(_ => app.ProfileStarted.TrySetResult(
-            $"{service} did not start under the profiler within {limit.TotalSeconds:0.##} s of its AppHost asking for it"),
+        Task due = Task.Delay(limit, app.Lifetime.Token);
+        if (limitHeld is { } held)
+        {
+            limitHeld = null;
+            due = Task.WhenAll(due, held);
+        }
+        IdeErrors.Observe(due.ContinueWith(_ => app.ProfileStarted.TrySetResult(past),
             CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
         return true;
     }
@@ -950,7 +965,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             cancellation.ThrowIfCancellationRequested();
             if (profiling)
             {
-                app.ProfileStarted.TrySetResult(null);
+                app.ProfileStarted.TrySetResult(app.PastProfileLimit());
             }
             Changed?.Invoke(this, EventArgs.Empty);
             return new AspireProjectSession(resource.Id, resource.ProcessId);
@@ -1324,6 +1339,16 @@ public sealed class AspireAppRun : ServiceRun
     internal string DashboardApiKey { get; set; } = string.Empty;
     public override Telemetry.TelemetrySource? Telemetry => DashboardEndpoint is { } endpoint && DashboardApiKey.Length > 0 ? new(endpoint, DashboardApiKey) : null;
     internal bool ProfileClaimed { get; set; }
+
+    /// <summary>When DCP asked for the service Profile records (a Stopwatch timestamp), its time limit, and the words of a
+    /// start past it; null until asked.</summary>
+    internal (long Asked, TimeSpan Limit, string Past)? ProfileDue { get; set; }
+
+    /// <summary>The words of the profile's time limit where a start ending now (landed or failed) is past it by the clock,
+    /// else null.</summary>
+    internal string? PastProfileLimit() =>
+        ProfileDue is { } due && Stopwatch.GetElapsedTime(due.Asked) >= due.Limit ? due.Past : null;
+
     internal (string AppHost, string Name)? ProfileTarget { get; init; }
 
     /// <summary>The inputs of the AppHost's build as it began (the build its first services run too), the projects it
