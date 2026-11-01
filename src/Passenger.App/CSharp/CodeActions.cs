@@ -5,6 +5,7 @@ using Passenger.App.Xaml;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Lsp;
+using Passenger.Roslyn.Extension;
 using Passenger.Text;
 
 namespace Passenger.App.CSharp;
@@ -453,8 +454,17 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         // The open files as the request went: what is typed meanwhile carries the answer on.
         using Asked asked = WorkspaceEdits.Track(context.Editors);
+        // A Godot script's member by any of Godot's names for it is renamed from the code's own, its other names following.
+        GodotNamesFound? godot = component is null ? await context.Languages.CSharp.GodotNamesAsync(document, context.Now(document), at.Offset, uses: true) : null;
+        (string own, string written, string? misnamed) = godot is null ? (name, name, null) : CSharpAssist.GodotRenamed(godot, name);
+        if (misnamed is not null)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {misnamed}");
+        }
         // Asked of the server running now: one there before may have been started again since.
-        System.Text.Json.JsonElement? renamed = component is null ? await context.Now(document).RenameAsync(at.Offset, name)
+        System.Text.Json.JsonElement? renamed = godot is { Via: not GodotNameVia.Own, Symbol: { Path: { } declaring, At: { } declared } } && context.CSharp?.Session is { } godotServer
+            ? await godotServer.RenameAsync(new UriSpan(DocumentUris.FromPath(declaring), declared, declared), own)
+            : component is null ? await context.Now(document).RenameAsync(at.Offset, name)
             : context.CSharp?.Session is { } session ? await session.RenameAsync(component.Name, name) : null;
         if (renamed is not { } edit)
         {
@@ -463,19 +473,25 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
                 : new RefactorOutcome("This can't be renamed", null, [], []);
         }
         TypeRename.Markup markup = type is null ? new([], null) : await TypeRename.MarkupAsync(context.Xaml?.Invoke(), type, name, renameFiles);
+        NamedSymbol? symbol = component is null && document.Language == Languages.Language.CSharp ? godot?.Symbol ?? await context.Now(document).SymbolAtAsync(at.Offset) : null;
         // Its uses in XAML, found where it is declared still: a binding's path, x:DataType, x:Static, a handler, a tag.
-        (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> inXaml, string? unfollowed) = component is null && document.Language == Languages.Language.CSharp
-            ? await context.Languages.Xaml.CodeRenameAsync(await context.Now(document).SymbolAtAsync(at.Offset), name, asked) : ([], null);
+        (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> inXaml, string? unfollowed) = symbol is not null
+            ? await context.Languages.Xaml.CodeRenameAsync(symbol, own, asked) : ([], null);
         if (unfollowed is not null)
         {
             return RefactorOutcome.Refused($"Rename was not applied: {unfollowed}");
         }
         // Its uses in a Godot project's scenes: a connection's method or signal, an exported member's key.
-        (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> inScenes, string? unscened) = component is null && document.Language == Languages.Language.CSharp
-            ? await context.Languages.CSharp.GodotRenameAsync(await context.Now(document).SymbolAtAsync(at.Offset), name) : ([], null);
+        (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> inScenes, string? unscened) = symbol is not null
+            ? await context.Languages.CSharp.GodotRenameAsync(symbol, own) : ([], null);
         if (unscened is not null)
         {
             return RefactorOutcome.Refused($"Rename was not applied: {unscened}");
+        }
+        // Its uses in the code by Godot's other names for it, which no rename of its own name reaches.
+        if (godot is { Uses.Count: > 0 })
+        {
+            edit = TypeRename.With(edit, CSharpAssist.GodotNameEdits(godot, written));
         }
         if (await StaleAsync(document, edit, asked, patience) is { } stale)
         {

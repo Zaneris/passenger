@@ -10,9 +10,10 @@ namespace Passenger.App.CSharp;
 
 /// <summary>A Godot project's C# symbols as its scenes name them: a script's method a connection calls, a <c>[Signal]</c>
 /// delegate a connection is made to, an <c>[Export]</c> member a node or resource sets, and a script's class its scenes
-/// load (<see cref="GodotNamed"/>). Find Usages lists those places of the scenes beside the code's, a C# rename renames
-/// them in the one command of Undo the code's rename is, and a script whose file a rename moves is followed by the scenes
-/// that load it, its <c>.uid</c> moving beside it.</summary>
+/// load (<see cref="GodotNamed"/>); and as the code names them by Godot's other names, those its source generator writes
+/// and the strings its calls take (<see cref="GodotNamesAsync"/>). Find Usages lists those places beside the code's, a C#
+/// rename from any of the names renames them all in the one command of Undo the code's rename is, and a script whose file
+/// a rename moves is followed by the scenes that load it, its <c>.uid</c> moving beside it.</summary>
 internal sealed partial class CSharpAssist
 {
     internal enum GodotKind
@@ -133,10 +134,19 @@ internal sealed partial class CSharpAssist
         return [.. found.OrderBy(f => f.Key, StringComparer.Ordinal).Select(f => (scenes.FileOf(f.Key) ?? f.Key, scenes.Files[f.Key].Text, (IReadOnlyList<TextRange>)f.Value))];
     }
 
-    /// <summary>Where the scenes name the C# symbol at an offset (<see cref="GodotUses"/>), as places for the Find window;
-    /// none for a symbol they never name.</summary>
-    internal async Task<IReadOnlyList<LspLocation>> GodotUsesAsync(OpenDocument document, LspDocument lsp, int offset) =>
-        document.Language == Languages.Language.CSharp ? GodotLocations(await GodotNamedAsync(await lsp.SymbolAtAsync(offset))) : [];
+    /// <summary>Where the scenes name the C# member at an offset (<see cref="GodotUses"/>) and where the code names it by
+    /// Godot's other names for it (<see cref="GodotNamesAsync"/>), as places for the Find window; none for a member neither does.</summary>
+    internal async Task<IReadOnlyList<LspLocation>> GodotUsesAsync(OpenDocument document, LspDocument lsp, int offset)
+    {
+        if (document.Language != Languages.Language.CSharp)
+        {
+            return [];
+        }
+        GodotNamesFound? names = await GodotNamesAsync(document, lsp, offset, uses: true);
+        IReadOnlyList<LspLocation> scenes = GodotLocations(await GodotNamedAsync(names?.Symbol ?? await lsp.SymbolAtAsync(offset)));
+        return names is null ? scenes : [.. scenes, .. names.Uses.Select(u => new LspLocation(DocumentUris.FromPath(u.Path),
+            new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character))))];
+    }
 
     internal static IReadOnlyList<LspLocation> GodotLocations(GodotNamed? named) => named is null ? [] : [.. GodotUses(named).SelectMany(file =>
     {
@@ -170,6 +180,55 @@ internal sealed partial class CSharpAssist
             return (file.Path, (IReadOnlyList<LspTextEdit>)[.. file.Uses.Select(use => new LspTextEdit(lines.RangeOf(use), written))]);
         })], null);
     }
+
+    /// <summary>The member of a Godot script's code at an offset by any name Godot knows it by (<see cref="GodotGenerated"/>):
+    /// its own, one Godot's source generator writes for it, or a string Godot's calls take; with its uses by those other
+    /// names when <paramref name="uses"/>. Null for an offset on none, and in a file of no Godot project.</summary>
+    internal async Task<GodotNamesFound?> GodotNamesAsync(OpenDocument document, LspDocument lsp, int offset, bool uses)
+    {
+        if (document.Language != Languages.Language.CSharp || context.CSharp?.GodotOf?.Invoke(document.Path) is null)
+        {
+            return null;
+        }
+        try
+        {
+            GodotNamesFound found = await lsp.ExtensionAsync<GodotNamesFound>(Handlers.GodotNames, new GodotNamesAsked(lsp.PlaceOf(offset), uses));
+            return found.Symbol is null ? null : found;
+        }
+        catch (LanguageServerFailed)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>What a Godot script's member renamed from one of its names to <paramref name="name"/> is called: the code's
+    /// own name (a signal's delegate's, ending with EventHandler as Godot's source generator needs) and the name Godot
+    /// knows it by, which its other names take; or why the name cannot be.</summary>
+    internal static (string Own, string Written, string? Problem) GodotRenamed(GodotNamesFound found, string name)
+    {
+        const string handler = "EventHandler";
+        const string emit = "EmitSignal";
+        if (found.Kind != GodotNameKind.Signal)
+        {
+            return (name, name, null);
+        }
+        return found.Via switch
+        {
+            GodotNameVia.Own when !name.EndsWith(handler, StringComparison.Ordinal) || name.Length == handler.Length =>
+                (name, name, $"{found.Written}{handler} is a [Signal] delegate, whose name ends with {handler} for Godot's source generator"),
+            GodotNameVia.Own => (name, name[..^handler.Length], null),
+            GodotNameVia.Emit when !name.StartsWith(emit, StringComparison.Ordinal) || name.Length == emit.Length =>
+                (name, name, $"{emit}{found.Written} is what Godot's source generator writes to emit the signal {found.Written}, so its name starts with {emit}"),
+            GodotNameVia.Emit => (name[emit.Length..] + handler, name[emit.Length..], null),
+            _ => (name + handler, name, null),
+        };
+    }
+
+    /// <summary>The edits a Godot script's member's other names take as it is renamed to <paramref name="written"/>, by
+    /// file, in the server's places.</summary>
+    internal static IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> GodotNameEdits(GodotNamesFound found, string written) =>
+        [.. found.Uses.GroupBy(u => u.Path, PathNames.Comparer).Select(file => (file.Key, (IReadOnlyList<LspTextEdit>)[.. file.Select(u =>
+            new LspTextEdit(new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character)), u.Before + written))]))];
 
     /// <summary>Where Go to Declaration goes from a member Godot's source generator writes for a script, to the member of
     /// the code it stands for: <c>SignalName.X</c> and a <c>[Signal]</c>'s event <c>X</c> to the delegate XEventHandler,

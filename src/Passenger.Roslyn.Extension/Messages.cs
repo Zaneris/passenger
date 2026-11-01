@@ -35,13 +35,14 @@ public static class Handlers
     public const string GeneratedTexts = "Passenger.Roslyn.Extension.GeneratedTexts";
     public const string JsInteropCalls = "Passenger.Roslyn.Extension.JsInteropCalls";
     public const string GodotCode = "Passenger.Roslyn.Extension.GodotCode";
+    public const string GodotNames = "Passenger.Roslyn.Extension.GodotNames";
 
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
-        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode,
+        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames,
     ];
 }
 
@@ -402,6 +403,52 @@ public sealed record GodotSignature(
     [property: JsonPropertyName("path")] string? Path,
     [property: JsonPropertyName("at")] Place? At,
     [property: JsonPropertyName("end")] Place? End);
+
+/// <summary>The member of a Godot script's code at a caret asked for, with its uses by Godot's other names for it when
+/// <paramref name="Uses"/>.</summary>
+public sealed record GodotNamesAsked([property: JsonPropertyName("at")] Place At, [property: JsonPropertyName("uses")] bool Uses);
+
+/// <summary>What Godot's names for a script's member name: a signal (a <c>[Signal]</c> delegate's), a method, or a
+/// property or field.</summary>
+public enum GodotNameKind
+{
+    Signal,
+    Method,
+    Property,
+}
+
+/// <summary>Which of Godot's names for a member a caret was on: the code's own, the event a signal's delegate makes, a
+/// <c>SignalName</c>, <c>MethodName</c> or <c>PropertyName</c> field, a signal's <c>EmitSignalX</c>, or a string Godot's
+/// calls take.</summary>
+public enum GodotNameVia
+{
+    Own,
+    Event,
+    Name,
+    Emit,
+    String,
+}
+
+/// <summary>A Godot script's member at a caret: the code's own symbol, what it is, the name Godot knows it by (a signal's,
+/// its delegate's less EventHandler), which of its names the caret was on, and, when asked, every use of it by Godot's
+/// other names; none where the caret is on no such member.</summary>
+public sealed record GodotNamesFound(
+    [property: JsonPropertyName("symbol")] NamedSymbol? Symbol,
+    [property: JsonPropertyName("kind")] GodotNameKind Kind,
+    [property: JsonPropertyName("written")] string Written,
+    [property: JsonPropertyName("via")] GodotNameVia Via,
+    [property: JsonPropertyName("uses")] IReadOnlyList<GodotNameUse> Uses)
+{
+    public static readonly GodotNamesFound None = new(null, GodotNameKind.Signal, string.Empty, GodotNameVia.Own, []);
+}
+
+/// <summary>A use of a member by one of Godot's other names for it, in a file of the solution's own: where the name is
+/// written, and what it holds before the member's name (<c>EmitSignal</c> for an EmitSignalX).</summary>
+public sealed record GodotNameUse(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("before")] string Before);
 
 /// <summary>The projects whose web routes are asked for, by their project files' paths; none asks for every project's.</summary>
 public sealed record RoutesRequest([property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);

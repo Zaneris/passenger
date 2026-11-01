@@ -356,7 +356,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         Roslyn.Extension.NamedSymbol? named = component?.Symbol
             ?? (served.Document.Language == Languages.Language.CSharp ? await server.Lsp.SymbolAtAsync(offset, cancel) : null);
         string? taken = named is null ? null : $"{named.Shown} ({named.Kind})";
-        found = [.. found, .. await window.Assist.Languages.Xaml.CodeUsesAsync(named), .. CSharpAssist.GodotLocations(await window.Assist.Languages.CSharp.GodotNamedAsync(named))];
+        HashSet<(string, LspPosition)> answered = [.. found.Select(u => (new Uri(u.Uri).LocalPath, u.Range.Start))];
+        IReadOnlyList<LspLocation> godot = component is null ? await window.Assist.Languages.CSharp.GodotUsesAsync(served.Document, server.Lsp, offset) : [];
+        found = [.. found, .. await window.Assist.Languages.Xaml.CodeUsesAsync(named), .. godot.Where(u => !answered.Contains((new Uri(u.Uri).LocalPath, u.Range.Start)))];
         // Answered now, saying which files that could use it the server has yet to take in.
         IReadOnlyList<(string Path, string Project)> untaken = server.Web is null && Session.CSharp is { } csharp ? await csharp.UntakenAsync(served.Document, offset, cancel) : [];
         return ByFile(taken, await Places(found, cancel)) with { Note = untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Relative(u.Path))]) : null };

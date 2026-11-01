@@ -150,7 +150,8 @@ public static class TypeRename
     /// <summary>A workspace edit with one more file's edit after its own, in the shape it came in.</summary>
     public static JsonElement With(JsonElement edit, string path, LspTextEdit change) => With(edit, [(path, [change])]);
 
-    /// <summary>A workspace edit with more files' edits after its own, in the shape it came in.</summary>
+    /// <summary>A workspace edit with more files' edits after its own, in the shape it came in: a file it edits already
+    /// takes them among its own, placed in the same text.</summary>
     public static JsonElement With(JsonElement edit, IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> files)
     {
         JsonObject whole = JsonNode.Parse(edit.GetRawText()) as JsonObject ?? [];
@@ -160,6 +161,15 @@ public static class TypeRename
             JsonNode[] added = [.. changes.Select(c => JsonSerializer.SerializeToNode(c, Json.Options)!)];
             if (whole["documentChanges"] is JsonArray documents)
             {
+                if (documents.OfType<JsonObject>().FirstOrDefault(d => d["edits"] is JsonArray && d["textDocument"]?["uri"]?.GetValue<string>() is { } named
+                    && PathNames.Same(DocumentUris.ToPath(named), path)) is { } own && own["edits"] is JsonArray edits)
+                {
+                    // One array's edits are all placed in the text before any of them, sorted as a server sends them.
+                    List<JsonNode> sorted = [.. edits.Select(e => e!.DeepClone()), .. added];
+                    sorted.Sort((a, b) => Start(a).CompareTo(Start(b)));
+                    own["edits"] = new JsonArray([.. sorted]);
+                    continue;
+                }
                 documents.Add(new JsonObject { ["textDocument"] = new JsonObject { ["uri"] = uri, ["version"] = null }, ["edits"] = new JsonArray(added) });
                 continue;
             }
@@ -180,6 +190,9 @@ public static class TypeRename
             }
         }
         return JsonSerializer.SerializeToElement(whole, Json.Options);
+
+        static (int, int) Start(JsonNode? edit) =>
+            edit?["range"]?["start"] is { } start ? (start["line"]?.GetValue<int>() ?? 0, start["character"]?.GetValue<int>() ?? 0) : (0, 0);
     }
 
     /// <summary>The type declared at a place the server gave in a file, with its <c>x:Class</c> name; null when none is. A

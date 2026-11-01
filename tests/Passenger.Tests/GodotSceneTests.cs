@@ -3,6 +3,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Passenger.App;
+using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
@@ -32,6 +33,9 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
         public partial class Main : Node2D
         {
+            [Signal]
+            public delegate void ScoredEventHandler(int points);
+
             [Export]
             public float Speed { get; set; } = 1;
 
@@ -46,6 +50,14 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
                 PackedScene player = GD.Load<PackedScene>("res://player.tscn");
                 PackedScene gone = GD.Load<PackedScene>("res://gone.tscn");
                 Callable started = new(this, MethodName.OnStartPressed);
+                Scored += OnScored;
+                EmitSignal(SignalName.Scored, 1);
+                EmitSignalScored(2);
+                EmitSignal("Scored", 3);
+            }
+
+            private void OnScored(int points)
+            {
             }
 
             private void OnStartPressed()
@@ -59,17 +71,39 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
         """;
 
+    /// <summary>The script of the scene's HUD, which follows Main's signal through its event and its name.</summary>
+    internal const string HudScript = """
+        using Godot;
+
+        public partial class Hud : CanvasLayer
+        {
+            public override void _Ready()
+            {
+                Main main = GetParent<Main>();
+                main.Scored += points => GetNode<Label>("Score").Text = points.ToString();
+                bool connected = main.IsConnected(Main.SignalName.Scored, new Callable(this, MethodName.OnScored));
+            }
+
+            private void OnScored(int points)
+            {
+            }
+        }
+
+        """;
+
     internal const string Scene = """
-        [gd_scene load_steps=3 format=3]
+        [gd_scene load_steps=4 format=3]
 
         [ext_resource type="Script" path="res://Main.cs" id="1_main"]
         [ext_resource type="PackedScene" path="res://player.tscn" id="2_player"]
+        [ext_resource type="Script" path="res://Hud.cs" id="3_hud"]
 
         [node name="Main" type="Node2D"]
         script = ExtResource("1_main")
         Speed = 2.5
 
         [node name="Hud" type="CanvasLayer" parent="."]
+        script = ExtResource("3_hud")
 
         [node name="Score" type="Label" parent="Hud"]
         unique_name_in_owner = true
@@ -81,6 +115,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         [connection signal="pressed" from="Hud/Start" to="." method="OnStartPressed"]
         [connection signal="pressed" from="Hud/Start" to="." method="OnQuitPressed"]
         [connection signal="toggled" from="Hud/Start" to="." method="OnStartPressed"]
+        [connection signal="Scored" from="." to="Hud" method="OnScored"]
 
         """;
 
@@ -96,6 +131,8 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     private string ScriptPath => game.PathOf("Main.cs");
 
     private string ScenePath => game.PathOf("main.tscn");
+
+    private string HudPath => game.PathOf("Hud.cs");
 
     /// <summary>The line (from one) of a scene's text that a piece of it is on.</summary>
     internal static int LineOf(string text, string piece) => Array.FindIndex(text.Split('\n'), l => l.Contains(piece, StringComparison.Ordinal)) + 1;
@@ -269,6 +306,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
                 () => $"the scene's connections to call the renamed handler ({window.Status}): {File.ReadAllText(ScenePath)}", TimeSpan.FromMinutes(1));
             Assert.DoesNotContain("OnStartPressed", File.ReadAllText(ScenePath), StringComparison.Ordinal);
             Assert.Contains("private void OnPlayPressed()", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            Assert.Contains("new(this, MethodName.OnPlayPressed)", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
 
             window.Confirm = (_, _, _) => Task.FromResult(true);
             editor.Focus();
@@ -280,6 +318,95 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         {
             window.Close();
         }
+    }
+
+    /// <summary>Find Usages of a signal's delegate lists its uses by what Godot's source generator makes of it and the scene's
+    /// connection; its rename renames those wherever the code uses them (its event, its SignalName, its EmitSignal call) and
+    /// the strings Godot's calls take naming it, in its own script and another, and the scene's connection to it: the game
+    /// then builds with no error, and one Undo puts every file back.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_signal_renames_its_event_SignalName_and_strings_in_every_script_and_the_game_builds()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "void Scor");
+            Ui.Run(window, AppActions.FindUsages);
+            int emitted = LineOf(Script, "EmitSignalScored(2)") - 1;
+            Ui.WaitFor(() => window.Find.Rows.Any(r => r.Usage is { } u && u.Path.EndsWith("Hud.cs", StringComparison.Ordinal))
+                && window.Find.Rows.Any(r => r.Usage is { } u && u.Path.EndsWith("Main.cs", StringComparison.Ordinal) && u.Line == emitted)
+                && window.Find.Rows.Any(r => r.Usage is { } u && u.Path.EndsWith("main.tscn", StringComparison.Ordinal)),
+                () => $"Find Usages of the signal to list its uses by its event and names and the scene's connection ({window.Status}): {string.Join("; ", window.Find.Rows.Select(r => r.Usage).OfType<Usage>().Select(u => $"{u.Path}:{u.Line + 1}"))}");
+
+            Ui.PlaceAfter(editor, "void Scor");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "ScoredEventHandler", () => $"Rename's box on the signal's delegate ({window.Assist.Renaming}; {window.Status})");
+            window.KeyTextInput("GoalEventHandler");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => File.ReadAllText(ScenePath).Contains("signal=\"Goal\"", StringComparison.Ordinal) && File.ReadAllText(HudPath).Contains("main.Goal +=", StringComparison.Ordinal),
+                () => $"the scene's connection and the HUD's script to follow the signal ({window.Status}): {File.ReadAllText(HudPath)}", TimeSpan.FromMinutes(1));
+            string code = editor.Document.Snapshot.ToString();
+            Assert.Contains("public delegate void GoalEventHandler(int points);", code, StringComparison.Ordinal);
+            Assert.Contains("Goal += OnScored;", code, StringComparison.Ordinal);
+            Assert.Contains("EmitSignal(SignalName.Goal, 1);", code, StringComparison.Ordinal);
+            Assert.Contains("EmitSignalGoal(2);", code, StringComparison.Ordinal);
+            Assert.Contains("EmitSignal(\"Goal\", 3);", code, StringComparison.Ordinal);
+            Assert.Contains("main.IsConnected(Main.SignalName.Goal, ", File.ReadAllText(HudPath), StringComparison.Ordinal);
+            Built(window);
+
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            editor.Focus();
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => File.ReadAllText(ScenePath) == Scene && File.ReadAllText(HudPath) == HudScript,
+                () => $"Undo to put the scene and the HUD's script back ({window.Status}): {File.ReadAllText(HudPath)}");
+            Assert.Equal(Script, editor.Document.Snapshot.ToString());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Rename from a use of a signal's event, in a script other than the one declaring it, renames the signal: its
+    /// delegate takes the new name with EventHandler after it, and every other name of it and the scene follow, so the game builds.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_signals_event_from_its_use_renames_the_signal_everywhere()
+    {
+        MainWindow window = game.Open(HudPath);
+        try
+        {
+            Ui.WaitFor(() => window.CSharpService?.For(window.EditorArea.Active!)?.Lsp is not null, "the HUD's script to be open in the language server");
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, "main.Scor");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "Scored", () => $"Rename's box on the signal's event ({window.Assist.Renaming}; {window.Status})");
+            window.KeyTextInput("Goal");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => File.ReadAllText(ScriptPath).Contains("delegate void GoalEventHandler(int points);", StringComparison.Ordinal),
+                () => $"the signal's delegate to take the new name ({window.Status}): {File.ReadAllText(ScriptPath)}", TimeSpan.FromMinutes(1));
+            string main = File.ReadAllText(ScriptPath);
+            Assert.Contains("Goal += OnScored;", main, StringComparison.Ordinal);
+            Assert.Contains("EmitSignal(SignalName.Goal, 1);", main, StringComparison.Ordinal);
+            Assert.Contains("EmitSignalGoal(2);", main, StringComparison.Ordinal);
+            Assert.Contains("EmitSignal(\"Goal\", 3);", main, StringComparison.Ordinal);
+            Assert.Contains("main.Goal += points", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            Assert.Contains("Main.SignalName.Goal", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            Assert.Contains("[connection signal=\"Goal\" from=\".\" to=\"Hud\" method=\"OnScored\"]", File.ReadAllText(ScenePath), StringComparison.Ordinal);
+            Built(window);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The game built through the window, failing with the build's errors where it does not build.</summary>
+    private static void Built(MainWindow window)
+    {
+        BuildOutcome built = Ui.Await(window.BuildAsync(), "the game's build", TimeSpan.FromMinutes(3));
+        Assert.True(built.Succeeded, $"the game to build: {built.Message}; {string.Join("; ", built.Problems.Select(p => p.Message))}");
     }
 
     /// <summary>The card the pointer resting on a piece of the shown file brings, once it says <paramref name="until"/>.</summary>
@@ -310,6 +437,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             }
             GodotTests.Game.Make(Folder, version, packages, Script, Scene);
             File.WriteAllText(PathOf("player.tscn"), Player);
+            File.WriteAllText(PathOf("Hud.cs"), HudScript);
         }
 
         public GodotFound? Godot { get; }
