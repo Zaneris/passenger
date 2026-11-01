@@ -321,7 +321,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   edited in place as `ConfigurationEdit`s), `LaunchPlan` (one resolution for Run, Debug, Profile, Hot Reload and a
   debugged test host; a RunCommand naming another program run as `dotnet run` runs it, `OtherProgram`; a Blazor Web
   App's client no program of its own, `ProjectModel.IsBrowserClient`; a Passenger it launches keeps its state in the
-  launcher's `sandbox/`), `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build
+  launcher's `sandbox/`; a Godot project's game and editor through `GodotLaunch`, on the Godot `GodotExecutables`
+  finds), `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build
   under way waited out first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia previewers
   holding its output (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time
   (`ConsoleWritten`).
@@ -448,6 +449,9 @@ site-shots` retakes its images.
   attach and recording are kept by `ServiceRun.KeyOf`. DCP names each replica with a random suffix every AppHost run,
   and its index never reaches the IDE: a replica's identity lasts one run, so a choice for one replica is every
   replica's next run.
+- **Godot** starts .NET through hostfxr itself and runs no startup hook, so a Run of a game takes no Hot Reload (Debug
+  applies edits); its game's assembly comes from a stream (no `Location`). It writes logs and editor settings under the
+  user's folders, on macOS whatever XDG says: a test gives it HOME/APPDATA of its own and always `--headless`.
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
