@@ -1028,6 +1028,10 @@ public sealed class RunConfigurationsDialog : IdeWindow
         {
             origin += $": a field changed here is kept with the folder over its {SourceName(shown)}, the rest follow it.";
         }
+        if (shown.GodotEditor && project?.GodotFolder is not null)
+        {
+            origin = $"{origin} Hot Reload: {GodotLaunch.EditorReloads}.".Trim();
+        }
         return whyNot is { } why ? $"{origin} It cannot run here: {why}.".Trim() : origin;
     }
 

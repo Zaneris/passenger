@@ -15,10 +15,10 @@ public static class GodotLaunch
         ? GodotExecutables.At(program, SettingsDialog.PlaceOfPage(SettingsDialog.GodotPage), OperatingSystem.IsWindows())
         : GodotExecutables.Find(null);
 
-    /// <summary>Why Run takes no Hot Reload for a Godot game: dotnet watch's agent comes into a program as a startup hook,
-    /// which .NET runs only for a program it starts at its Main, and Godot starts it as a host of its own.</summary>
-    public const string WithoutHotReload = "Godot starts .NET itself and runs no startup hook, which is how dotnet watch applies changes: "
-        + "Debug the game, and Hot Reload applies them through the debugger";
+    /// <summary>What Hot Reload is to Godot's editor, which loads the project's C# (its tool scripts) into a context it can
+    /// unload, and loads it again from each new build by itself (its assembly watcher): a build applies an edit there.</summary>
+    public const string EditorReloads = "Godot's editor loads the project's C# into a context it unloads, and loads it again from each new build: "
+        + "Build the project to apply an edit to its tool scripts, which start again with the new build";
 
     /// <summary>What a setting's line runs, as Settings says it under the box: the Godot found (or chosen) with its version as
     /// it answers, and that it is a .NET build, which runs C#; or why none would run a C# game.</summary>

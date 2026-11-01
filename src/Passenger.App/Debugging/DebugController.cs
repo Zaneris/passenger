@@ -920,7 +920,7 @@ public sealed class DebugController : IDisposable
     }
 
     /// <summary>A program run with Hot Reload through the debugger rather than dotnet watch (a container run's service, whose
-    /// image has no SDK): attached quietly, no breakpoint sent and no stop shown, so Apply Hot Reload Changes and a save
+    /// image has no SDK; a Godot game, which runs no startup hook): attached quietly, no breakpoint sent and no stop shown, so Apply Hot Reload Changes and a save
     /// apply the edits to it; ended with its run. Its built lines follow the edits for a restart on its build.</summary>
     public sealed record RunningReload(string Name, DebugSession Session, HotReload Reload, BuiltLines Lines, Action<string, bool> Says) : IHotReloadTarget
     {
@@ -936,8 +936,8 @@ public sealed class DebugController : IDisposable
     /// <summary>The programs run with Hot Reload through the debugger, while they run.</summary>
     public IReadOnlyList<RunningReload> Running => running;
 
-    /// <summary>Attaches quietly for Hot Reload alone to a program run, which a container run's Run with Hot Reload held at its
-    /// start with DOTNET_MODIFIABLE_ASSEMBLIES=debug: the attach lets it go. What its applies come to is said by
+    /// <summary>Attaches quietly for Hot Reload alone to a program run, which Run with Hot Reload (a container run's, a Godot
+    /// game's) held at its start with DOTNET_MODIFIABLE_ASSEMBLIES=debug: the attach lets it go. What its applies come to is said by
     /// <paramref name="says"/>, where its output is. Null once attached, else why not.</summary>
     public async Task<string?> AttachForHotReloadAsync(int processId, string name, Action<string, bool> says, AdapterPlace? place = null,
         CancellationToken cancellation = default, BuiltEdits? edits = null)

@@ -900,6 +900,8 @@ public sealed partial class BuildRunController
             }
         }
         using IDisposable held = BackgroundWork.Scope();
+        // The edits made since its build saved the files, followed for a Godot game's Hot Reload.
+        BuiltEdits? edits = null;
         try
         {
             if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
@@ -912,8 +914,14 @@ public sealed partial class BuildRunController
             bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.Program.Length == 0;
             bool godot = chosen.RunsGodot(session.Projects);
             bool watched = wanted && !godot;
+            // A Godot game takes its edits through the debugger, attached quietly as it starts held; Godot's editor loads its builds itself.
+            bool reloaded = wanted && godot && !chosen.GodotEditor;
             watching = watched;
-            (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, arguments, work, build: !watched);
+            (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, arguments, work, build: !watched, reading: reloaded ? () =>
+            {
+                edits?.Dispose();
+                edits = session.Debug.Building(hotReload: true);
+            } : null);
             if (plan is null)
             {
                 return Said(problem!);
@@ -932,8 +940,8 @@ public sealed partial class BuildRunController
             // A Godot game's, with Passenger as its remote debugger.
             (plan, Godot.GodotGame? game) = session.Listened(plan);
             session.RunPlan = plan;
-            string running = watched ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
-                : wanted && godot ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.WithoutHotReload}"
+            string running = watched || reloaded ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
+                : wanted && godot ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.EditorReloads}"
                 : $"Running {chosen.Name}";
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
             LaunchPlan launched = session.InspectedRun(plan, watched);
@@ -942,6 +950,14 @@ public sealed partial class BuildRunController
             Dictionary<string, string> variables = watched
                 ? new Dictionary<string, string>(launched.Environment) { ["DOTNET_WATCH_SUPPRESS_EMOJIS"] = "1", ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "true" }
                 : new Dictionary<string, string>(launched.Environment);
+            if (reloaded)
+            {
+                // Held at its runtime's start until the debugger attaches, so each of its modules takes Edit and Continue as it loads.
+                foreach ((string name, string value) in HeldStart.Variables(changeable: true))
+                {
+                    variables[name] = value;
+                }
+            }
             if (plan.Console == ConsoleKind.Terminal)
             {
                 // The terminal's text is the program's own: its failed bindings are in Problems alone.
@@ -950,6 +966,10 @@ public sealed partial class BuildRunController
                 if (refused is null && session.InTerminal is { } inTerminal)
                 {
                     parts.OpenBrowser(plan, inTerminal.Ended);
+                    if (reloaded)
+                    {
+                        await AttachForHotReloadAsync(chosen.Name, inTerminal.ProcessId, null, work, Take(ref edits), running);
+                    }
                 }
                 EndWith(inspected, refused is null && session.InTerminal is { } run ? run.Ended : Task.CompletedTask);
                 EndWith(game, refused is null && session.InTerminal is { } played ? played.Ended : Task.CompletedTask);
@@ -974,12 +994,63 @@ public sealed partial class BuildRunController
             }
             EndWith(inspected, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
             EndWith(game, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
+            if (notStarted is null && reloaded && session.Runner.ProcessId is int id)
+            {
+                await AttachForHotReloadAsync(chosen.Name, id, parts.Views.Run.Sink, work, Take(ref edits), running);
+            }
             return notStarted;
         }
         finally
         {
+            edits?.Dispose();
             work.Dispose();
         }
+    }
+
+    /// <summary>Whether Run runs the Godot game of configuration <paramref name="name"/> with Hot Reload through the debugger.</summary>
+    public bool RunsGameWithHotReload(string name) => RunsOwnProgram(name) && session.RunPlan is { Godot: not null, GodotEditor: false }
+        && session.Debug.Running.Any(r => r.Name == name);
+
+    /// <summary>Restarts the Godot game Run runs with Hot Reload so the edits Hot Reload could not apply run: built and started
+    /// again, held and attached to again, while its configuration is still the one chosen. True once it runs again.</summary>
+    public async Task<bool> RestartGameForEditAsync(string name)
+    {
+        if (!RunsGameWithHotReload(name) || session.Configurations.Chosen?.Name != name)
+        {
+            return false;
+        }
+        parts.Say($"Hot Reload: restarting {name} to apply the changes");
+        return await RunAsync(hotReload: true) is null;
+    }
+
+    /// <summary>Edits followed for a session, handed over once: the session that takes them lets them go.</summary>
+    private static BuiltEdits? Take(ref BuiltEdits? edits)
+    {
+        BuiltEdits? taken = edits;
+        edits = null;
+        return taken;
+    }
+
+    /// <summary>A Godot game Run started held for Hot Reload, attached to quietly (<see cref="DebugController.AttachForHotReloadAsync"/>),
+    /// which lets it go: what its applies come to is said in <paramref name="console"/> (null for the terminal's tab, whose
+    /// text is the game's own) and the status bar, which says <paramref name="running"/> once attached. One the debugger
+    /// cannot reach is let go and runs without Hot Reload, saying why.</summary>
+    private async Task AttachForHotReloadAsync(string name, int processId, ConsoleSink? console, Working work, BuiltEdits? edits, string running)
+    {
+        work.Say($"Attaching to {name} for Hot Reload…");
+        string? refused = await session.Debug.AttachForHotReloadAsync(processId, name, (line, error) =>
+        {
+            console?.Write($"{line}\n", error ? ConsoleStream.Error : ConsoleStream.Output);
+            parts.Say(line);
+        }, cancellation: work.Stopping, edits: edits);
+        if (refused is null)
+        {
+            parts.Say(running);
+            return;
+        }
+        // Held at its start, it would wait for good for a debugger that is not coming.
+        await HeldStart.LetGoAsync(processId);
+        parts.Say($"Running {name} without Hot Reload: {refused}");
     }
 
     /// <summary>The Run console (or the terminal's tab) for a start of a configuration: free; the same configuration's program

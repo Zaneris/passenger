@@ -41,7 +41,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     /// <c>--remote-debug</c> among the arguments that start it; the plan as it is, and no game, for any other.</summary>
     public static (LaunchPlan Plan, GodotGame? Game) Listen(LaunchPlan plan)
     {
-        if (plan.Godot is not { } folder || plan.Arguments.Take(plan.Leading).Contains("--editor"))
+        if (plan.Godot is not { } folder || plan.GodotEditor)
         {
             return (plan, null);
         }

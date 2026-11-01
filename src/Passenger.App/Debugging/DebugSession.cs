@@ -209,8 +209,8 @@ public sealed class DebugSession
         breakpoints.BindingErrorsChanged += OnFunctionsChanged;
     }
 
-    /// <summary>Attached for Hot Reload alone (a container run's service under Run with Hot Reload): no breakpoint is sent,
-    /// no exception stops it, and the breakpoints never hear of it, until it debugs (<see cref="DebugAsync"/>).</summary>
+    /// <summary>Attached for Hot Reload alone (a container run's service or a Godot game under Run with Hot Reload): no
+    /// breakpoint is sent, no exception stops it, and the breakpoints never hear of it, until it debugs (<see cref="DebugAsync"/>).</summary>
     public bool Quiet { get; private set; }
 
     /// <summary>A quiet session made one that debugs its program as it runs (Attach to a service it runs with Hot Reload):

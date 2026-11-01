@@ -87,8 +87,8 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     private string ScriptPath => Path.Combine(PathNames.Canonical(game.Folder), "Main.cs");
 
     /// <summary>The project's generated configurations are its game and Godot's editor on it, each on the Godot found with
-    /// --path naming the project; Run of the game builds it and starts it there, its words in the Run console, and with Hot
-    /// Reload on for Run it runs the game the same, Apply Hot Reload Changes saying why the debugger is the way to apply edits.</summary>
+    /// --path naming the project; Run of the game builds it and starts it there, its words in the Run console, Apply Hot
+    /// Reload Changes saying it runs without Hot Reload; the editor's configuration says what Hot Reload is to Godot's editor.</summary>
     [AvaloniaFact]
     public void Run_starts_the_game_on_Godot_from_its_configuration_beside_one_for_Godots_editor()
     {
@@ -111,14 +111,47 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             // Passenger listens for the game as its remote debugger, on loopback.
             Assert.Contains($"{game.Godot.Executable} --path {folder} {Passenger.App.Godot.GodotGame.RemoteDebug} tcp://127.0.0.1:", Run(window), StringComparison.Ordinal);
             Assert.Contains(" --headless\n", Run(window), StringComparison.Ordinal);
-            Assert.Equal(MainWindow.GodotRunsWithout("Spinner on Godot"), window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context()));
+            Assert.StartsWith("This program runs without Hot Reload: Run it with Hot Reload on", window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context()));
             Stop(window);
 
-            Ui.Launched(window, window.Builds.RunAsync(hotReload: true), "the game's start with Hot Reload on", TimeSpan.FromMinutes(3));
-            Assert.Equal($"Running Spinner on Godot without Hot Reload: {GodotLaunch.WithoutHotReload}", window.Status);
-            Ui.WaitFor(() => Run(window).Contains("frame 10", StringComparison.Ordinal), () => $"the game to run with Hot Reload on ({Run(window)})", TimeSpan.FromMinutes(1));
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Assert.True(dialog.Choose(edited.Name), $"Edit Configurations lists no {edited.Name}");
+            Ui.WaitFor(() => dialog.Note.Contains($"Hot Reload: {GodotLaunch.EditorReloads}.", StringComparison.Ordinal),
+                () => $"the editor's configuration to say what Hot Reload is to Godot's editor ({dialog.Note})");
+            dialog.Close();
+            Ui.Settle();
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Run with Hot Reload on starts the game held for a quiet debugger, nothing of a debug session shown: an edit to
+    /// the method its _Process calls, applied by Apply Hot Reload Changes, is what the game then prints in the Run console.</summary>
+    [AvaloniaFact]
+    public void Run_with_Hot_Reload_on_applies_an_edit_to_the_running_game_through_a_quiet_debugger()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Choose(window, Generated(window, "Spinner"));
+            Ui.Launched(window, window.Builds.RunAsync(hotReload: true), "the game's build and start with Hot Reload on", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => window.Debugger.Running.Any(r => r.Name == "Spinner on Godot") && Run(window).Contains("frame 10", StringComparison.Ordinal),
+                () => $"the game to run with the debugger attached for Hot Reload ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
+            Assert.Equal("Running Spinner on Godot with Hot Reload: a save applies its changes", window.Status);
+            Assert.False(window.Debugger.IsDebugging, "Run with Hot Reload showed a debug session");
             Assert.DoesNotContain("dotnet watch", Run(window), StringComparison.Ordinal);
+            Assert.Null(window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context()));
+
+            Typing.Replace(window, "{Greeting} {frames}", "tick {frames}");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Debugger.LastApplied is not null, "Hot Reload to say what it applied");
+            Assert.True(window.Debugger.LastApplied!.Result == HotReloadResult.Applied, $"The edit to the game's script was not applied: {window.Debugger.LastApplied.Said}");
+            Ui.WaitFor(() => Run(window).Contains("tick ", StringComparison.Ordinal), () => $"the game to print what the edited method prints ({Run(window)})", TimeSpan.FromMinutes(1));
+            Assert.False(window.Debugger.IsDebugging, "Hot Reload's apply showed a debug session");
             Stop(window);
+            Ui.WaitFor(() => window.Debugger.Running.Count == 0, "the quiet session to end with the game");
         }
         finally
         {

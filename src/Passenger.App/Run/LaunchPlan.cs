@@ -79,6 +79,9 @@ public sealed partial record LaunchPlan
     /// <summary>The version of the Godot a Godot game's plan runs on, where known.</summary>
     public string? GodotVersion { get; init; }
 
+    /// <summary>Whether the plan runs Godot's editor on its project (<c>--editor</c> among the arguments that start it).</summary>
+    public bool GodotEditor => Godot is not null && Arguments.Take(Leading).Contains("--editor");
+
     /// <summary>The program as its messages name it: the project's assembly, else the executable, without its extension.</summary>
     public string ProgramName => System.IO.Path.GetFileNameWithoutExtension(Built ?? Program);
 
