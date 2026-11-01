@@ -24,6 +24,15 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     private readonly CancellationTokenSource ending = new();
     private readonly SemaphoreSlim writing = new(1, 1);
     private NetworkStream? stream;
+
+    /// <summary>When the game last sent a message (a <see cref="System.Diagnostics.Stopwatch"/> timestamp), written as its
+    /// messages are read: whether it went on talking is what a question it left unanswered says.</summary>
+    private long lastHeard;
+
+    /// <summary>The last error the game raised that was none of Passenger's helper's, and when: what a question it left
+    /// unanswered meanwhile says.</summary>
+    private (long At, string Said)? lastRaised;
+
     private TaskCompletionSource<GodotNode?>? treeAsked;
     private readonly Dictionary<ulong, TaskCompletionSource<GodotObjectState>> objectsAsked = [];
     private readonly Dictionary<ulong, GodotObjectState> inspected = [];
@@ -195,6 +204,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
                 }
                 byte[] body = new byte[length];
                 await stream.ReadExactlyAsync(body, ending.Token);
+                Interlocked.Exchange(ref lastHeard, System.Diagnostics.Stopwatch.GetTimestamp());
                 GodotMessage message;
                 try
                 {
@@ -373,6 +383,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             case GodotWords.Error when GodotError.Read(message.Data) is { } error && Scripts?.Claims(error) == true:
                 break;
             case GodotWords.Error when GodotError.Read(message.Data) is { } error:
+                lastRaised = (System.Diagnostics.Stopwatch.GetTimestamp(), error.Said);
                 Raised?.Invoke(this, error);
                 break;
             case GodotWords.Screenshotted when message.Data is [long id, long width, long height, string path]:
@@ -461,18 +472,29 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     /// <summary>Sets a property of an object to a value, which the game takes as it next reads its messages.</summary>
     public Task SetPropertyAsync(ulong id, string property, object? value) => SendAsync(GodotWords.SetObjectProperty, (long)id, property, value);
 
-    /// <summary>The answer to a question of the game's, <paramref name="what"/> naming the question its refusal says went unanswered.</summary>
+    /// <summary>The answer to a question of the game's, <paramref name="what"/> naming the question its refusal says went
+    /// unanswered; the refusal says too whether the game went on sending its other messages meanwhile (a question lost, else a
+    /// game or a connection held still), and the last error it raised meanwhile.</summary>
     private async Task<T> Answer<T>(Task<T> asked, string? what = null)
     {
+        long since = System.Diagnostics.Stopwatch.GetTimestamp();
+        TimeSpan limit = Waits.Of(AnswerLimit);
         try
         {
-            return await asked.WaitAsync(Waits.Of(AnswerLimit));
+            return await asked.WaitAsync(limit);
         }
         catch (TimeoutException)
         {
-            throw new LiveAppException(Debugged is { State: Debugging.DebugState.Paused }
-                ? $"{Name} is paused, and answers once it runs"
-                : $"{Name} did not answer{(what is null ? string.Empty : $" {what}")} in {AnswerLimit.TotalSeconds:0} s");
+            if (Debugged is { State: Debugging.DebugState.Paused })
+            {
+                throw new LiveAppException($"{Name} is paused, and answers once it runs");
+            }
+            long heard = Interlocked.Read(ref lastHeard);
+            string meanwhile = heard > since
+                ? $", though it went on sending its other messages, the last {System.Diagnostics.Stopwatch.GetElapsedTime(heard).TotalSeconds:0.#} s ago"
+                : ", and sent nothing else meanwhile";
+            string raised = lastRaised is { } error && error.At > since ? $"; the last error it raised meanwhile: {error.Said}" : string.Empty;
+            throw new LiveAppException($"{Name} did not answer{(what is null ? string.Empty : $" {what}")} in {limit.TotalSeconds:0} s{meanwhile}{raised}");
         }
     }
 
