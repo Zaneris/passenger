@@ -513,28 +513,67 @@ public sealed class ProjectSession : IAsyncDisposable
     /// (<see cref="ToolWindows.DebugTab.App"/>), ended with its debugging, so several debugged at once each keep theirs.</summary>
     public LiveApp? LiveApp => Aspire.SelectedService is not null ? Aspire.SelectedInspection : Debug.Chosen?.App;
 
-    /// <summary>What the Live Visual Tree shows: the inspected app (<see cref="LiveApp"/>), else the Godot game Run, Debug or
-    /// Profile started last (<see cref="Game"/>).</summary>
+    /// <summary>What the Live Visual Tree shows: the inspected app (<see cref="LiveApp"/>), else the Godot game chosen
+    /// (<see cref="Game"/>).</summary>
     public ILiveTreeSource? LiveSource => (ILiveTreeSource?)LiveApp ?? Game;
 
-    /// <summary>The Godot game Run, Debug or Profile started last, which Passenger is the remote debugger of: its scene tree,
-    /// errors and monitors; null before one. A launch of another ends its connection, as the folder's end does.</summary>
+    /// <summary>The Godot game chosen among those running (<see cref="Games"/>), the one started last unless another was
+    /// chosen, which Passenger is the remote debugger of: its scene tree, errors and monitors; null before one. Once it
+    /// ends it stays chosen, saying so, unless another still runs, which is chosen in its place.</summary>
     public Godot.GodotGame? Game { get; private set; }
 
-    /// <summary>A plan as a launch starts it, a Godot game's with Passenger listening for it as its remote debugger (<see cref="Game"/>
-    /// from then on, which the launch ends with its program); any other plan as it is, and no game.</summary>
+    private readonly List<Godot.GodotGame> games = [];
+
+    /// <summary>The Godot games Run, Debug and Profile started that have not ended, the first started first: each a source the
+    /// Live Visual Tree can be given (<see cref="ChooseGame"/>). Each ends with its launch's program, and all with the folder.</summary>
+    public IReadOnlyList<Godot.GodotGame> Games => games;
+
+    /// <summary>Chooses a running game as the one the Live Visual Tree and agents' tools follow.</summary>
+    public void ChooseGame(Godot.GodotGame game)
+    {
+        UiThread.Check();
+        if (games.Contains(game) && Game != game)
+        {
+            Game = game;
+            LiveAppChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>A plan as a launch starts it, a Godot game's with Passenger listening for it as its remote debugger, the game
+    /// chosen (<see cref="Game"/>) and among <see cref="Games"/> until the launch ends it with its program; any other plan as
+    /// it is, and no game.</summary>
     public (LaunchPlan Plan, Godot.GodotGame? Game) Listened(LaunchPlan plan)
     {
         UiThread.Check();
         (LaunchPlan listened, Godot.GodotGame? game) = Godot.GodotGame.Listen(plan);
         if (game is not null)
         {
-            Game?.Dispose();
+            if (Game is { State: LiveAppState.Ended } ended && !games.Contains(ended))
+            {
+                ended.Dispose();
+            }
+            games.Add(game);
+            game.StateChanged += (_, _) => OnGameState(game);
             Game = game;
             GameStarted?.Invoke(this, game);
             LiveAppChanged?.Invoke(this, EventArgs.Empty);
         }
         return (listened, game);
+    }
+
+    /// <summary>A game that ended leaves <see cref="Games"/>; where it was chosen and another runs, the newest of those is.</summary>
+    private void OnGameState(Godot.GodotGame game)
+    {
+        if (game.State != LiveAppState.Ended || !games.Remove(game) || IsEnded)
+        {
+            return;
+        }
+        if (Game == game && games.Count > 0)
+        {
+            Game = games[^1];
+            game.Dispose();
+        }
+        LiveAppChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>A Godot game was launched, Passenger listening for it.</summary>
@@ -1264,6 +1303,10 @@ public sealed class ProjectSession : IAsyncDisposable
         }
         RunApp?.Dispose();
         ProfiledApp?.Dispose();
+        foreach (Godot.GodotGame running in games.ToList())
+        {
+            running.Dispose();
+        }
         Game?.Dispose();
         Tests.Stop();
         parts.Add(("the test runner", Tests.DisposeAsync().AsTask()));

@@ -104,6 +104,14 @@ public sealed class LiveTreeController
         made.ShowMonitors(monitorsShown);
         made.SelectElement.IsVisible = app is not Godot.GodotGame;
         made.SelectElement.IsChecked = picking;
+        made.SourceChosen += (_, at) =>
+        {
+            if (session is { LiveApp: null } current && at < current.Games.Count)
+            {
+                current.ChooseGame(current.Games[at]);
+            }
+        };
+        ShowSources();
         return made;
     }
 
@@ -209,8 +217,22 @@ public sealed class LiveTreeController
             }
         }
         Follow(session?.LiveSource);
+        ShowSources();
         OnDebugState();
         OnPropertiesChanged(null, EventArgs.Empty);
+    }
+
+    /// <summary>The running games the chooser offers, while no Avalonia or WPF app is followed: each by its configuration's
+    /// name, with its process where two share one.</summary>
+    private void ShowSources()
+    {
+        if (view is null)
+        {
+            return;
+        }
+        IReadOnlyList<Godot.GodotGame> games = session is { LiveApp: null } current ? current.Games : [];
+        string[] names = [.. games.Select(g => games.Count(other => other.Name == g.Name) > 1 && g.ProcessId is int pid ? $"{g.Name} ({pid})" : g.Name)];
+        view.ShowSources(names, app is Godot.GodotGame game ? games.ToList().IndexOf(game) : -1);
     }
 
     private void OnSelectedDebugStateChanged(object? sender, EventArgs e) => OnDebugState();
@@ -454,13 +476,74 @@ public sealed class LiveTreeController
     /// <summary>What the window says while it follows nothing.</summary>
     public const string NothingShown = "Debug an Avalonia or WPF app to see its windows and controls here, or run a Godot game to see its nodes.";
 
-    /// <summary>A game's monitors came: its status line says them.</summary>
+    /// <summary>A game's monitors came, once a second: its status line says them, and while the window is shown its tree
+    /// is asked again, so a node the game renames, moves, adds or frees shows without Refresh; nothing is asked while it is
+    /// hidden or the game paused.</summary>
     private void OnMonitors(object? sender, EventArgs e)
     {
         if (sender == app && app is Godot.GodotGame { State: LiveAppState.Connected } game)
         {
             ShowMonitors(game.Monitors?.Said);
+            ShowSources();
+            if (window.IsShown && !Paused && !following)
+            {
+                IdeErrors.Observe(FollowAsync(game));
+            }
         }
+    }
+
+    /// <summary>A tree asked for by the game's period is under way.</summary>
+    private bool following;
+
+    /// <summary>The game's tree asked again by its period: shown only where it differs from the one shown, the node chosen
+    /// kept chosen, its details left as they are (a value being typed among them), unless it left the game.</summary>
+    private async Task FollowAsync(Godot.GodotGame game)
+    {
+        following = true;
+        int ask = ++treeAsks;
+        AppTree next;
+        try
+        {
+            next = await game.TreeAsync();
+        }
+        catch (LiveAppException)
+        {
+            // The period asks again in a second; Refresh says why.
+            return;
+        }
+        finally
+        {
+            following = false;
+        }
+        if (ask != treeAsks || app != game || (tree is not null && Same(tree.Roots, next.Roots)))
+        {
+            return;
+        }
+        ShowTree(next);
+        if (chosen is long id && !View.Choose(id))
+        {
+            Choose(null);
+            ShowDetails(null, "The node chosen has left the game.");
+        }
+    }
+
+    /// <summary>Whether two trees name the same elements, by id, type, name and whether each shows, in the same places.</summary>
+    private static bool Same(IReadOnlyList<Element> shown, IReadOnlyList<Element> next)
+    {
+        if (shown.Count != next.Count)
+        {
+            return false;
+        }
+        for (int i = 0; i < shown.Count; i++)
+        {
+            Element a = shown[i];
+            Element b = next[i];
+            if (a.Id != b.Id || a.Type != b.Type || a.Name != b.Name || a.Visible != b.Visible || !Same(a.Children, b.Children))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>A property of the chosen element set to what the person typed, its details asked again to show what the

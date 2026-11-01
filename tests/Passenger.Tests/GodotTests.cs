@@ -288,6 +288,108 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         }
     }
 
+    /// <summary>The Live Visual Tree follows the game as it changes while it is shown: the node the script renames after five
+    /// seconds shows by its new name before the one it adds to the root after fifteen, neither asked for by Refresh, and
+    /// the added one shows too.</summary>
+    [AvaloniaFact]
+    public void The_tree_follows_the_game_a_node_it_renames_and_one_it_adds_showing_without_Refresh()
+    {
+        File.WriteAllText(ScriptPath, """
+            using Godot;
+
+            public partial class Main : Node
+            {
+                private ulong started;
+                private bool renamed;
+                private bool added;
+
+                public override void _Ready()
+                {
+                    started = Time.GetTicksMsec();
+                }
+
+                public override void _Process(double delta)
+                {
+                    ulong now = Time.GetTicksMsec() - started;
+                    if (!renamed && now > 5000)
+                    {
+                        renamed = true;
+                        Name = "Renamed";
+                    }
+                    if (!added && now > 15000)
+                    {
+                        added = true;
+                        GetTree().Root.CallDeferred(Node.MethodName.AddChild, new Node { Name = "Added" });
+                    }
+                }
+            }
+
+            """);
+        MainWindow window = game.Open(null, languageServer: false);
+        try
+        {
+            Choose(window, Generated(window, "Spinner"));
+            Ui.Launched(window, window.RunAsync(), "the game's build and start", TimeSpan.FromMinutes(3));
+            Passenger.App.LiveTree.LiveTreeView tree = window.LiveTree;
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Main"),
+                () => $"the Live Visual Tree to show the game's Main node ({window.LiveSource?.State}; {string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
+
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Renamed"),
+                () => $"the node the game renamed to show by its new name ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
+            Assert.True(!tree.Rows.Any(r => r.Element.Name is "Main" or "Added"),
+                $"The rename was to show by itself, before the node added ten seconds later: {string.Join(", ", tree.Rows.Select(r => r.Element.Name))}");
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Added"),
+                () => $"the node the game added to show ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Two games launched at once (Debug on the main scene, and again on another) are each a source of the Live Visual Tree:
+    /// the chooser offers both, the one started last shown first, and each chosen in turn shows its own nodes.</summary>
+    [AvaloniaFact]
+    public void Two_games_launched_are_each_a_source_the_Live_Visual_Tree_shows_chosen_in_turn()
+    {
+        File.WriteAllText(Path.Combine(game.Folder, "other.tscn"), "[gd_scene format=3]\n\n[node name=\"Other\" type=\"Node\"]\n");
+        MainWindow window = game.Open(null, languageServer: false);
+        try
+        {
+            RunConfiguration generated = Generated(window, "Spinner");
+            RunConfiguration main = generated with { Name = "Main on Godot", Generated = false, Arguments = "--headless", Environment = new(game.Homes) };
+            RunConfiguration other = main with { Name = "Other on Godot", Arguments = "--headless res://other.tscn", BuildBeforeLaunch = false };
+            window.SetConfigurations([main, other], main.Name);
+            Passenger.App.LiveTree.LiveTreeView tree = window.LiveTree;
+            Ui.Launched(window, window.DebugAsync(), "the first game's build and start under the debugger", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Main"),
+                () => $"the first game's Main node ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
+            Assert.False(tree.Sources.IsVisible, "The chooser shows with one game running");
+
+            window.SetConfigurations([main, other], other.Name);
+            Ui.Launched(window, window.DebugAsync(), "the second game's start under the debugger", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => tree.Sources.IsVisible && tree.SourceNames.Count == 2 && tree.Rows.Any(r => r.Element.Name == "Other"),
+                () => $"the chooser to offer both games, the second shown ({string.Join(", ", tree.SourceNames)}; {string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
+
+            tree.Sources.SelectedIndex = 0;
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Main") && !tree.Rows.Any(r => r.Element.Name == "Other"),
+                () => $"the first game's nodes once it is chosen ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
+            Assert.True(window.Session.Game == window.Session.Games[0], "The game chosen in the Live Visual Tree is not the one agents' tools follow");
+            tree.Sources.SelectedIndex = 1;
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Other") && !tree.Rows.Any(r => r.Element.Name == "Main"),
+                () => $"the second game's nodes once it is chosen again ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
+            // Stop ends the chosen session; the other is ended in turn.
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => window.Session.Games.Count < 2, "the second game to end");
+        }
+        finally
+        {
+            End(window);
+            File.Delete(Path.Combine(game.Folder, "other.tscn"));
+        }
+    }
+
     /// <summary>Settings › Godot says the Godot found, with the version it answers and that it runs C#; a Godot too old for the
     /// project's Godot.NET.Sdk (a stand-in answering 4.6.1 to --version) is refused before Run starts anything, naming both.</summary>
     [AvaloniaFact]

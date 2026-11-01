@@ -79,8 +79,17 @@ public sealed class LiveTreeView : DockPanel
         SelectElement.Click += (_, _) => PickRequested?.Invoke(this, SelectElement.IsChecked == true);
         Button refresh = ToolButtons.Of(AppActions.LiveTreeRefresh, IconKeys.Rerun, "Refresh", _ => RefreshRequested?.Invoke(this, EventArgs.Empty));
         status = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+        sources = new ComboBox { Classes = { StyleClasses.Compact }, MinWidth = 130, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0), IsVisible = false };
+        ToolTip.SetTip(sources, "The running game whose nodes are shown");
+        sources.SelectionChanged += (_, _) =>
+        {
+            if (!choosingSource && sources.SelectedIndex >= 0)
+            {
+                SourceChosen?.Invoke(this, sources.SelectedIndex);
+            }
+        };
         DockPanel top = new() { Margin = new Thickness(6, 0) };
-        StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { SelectElement, refresh } };
+        StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { SelectElement, refresh, sources } };
         DockPanel.SetDock(buttons, Dock.Left);
         top.Children.Add(buttons);
         top.Children.Add(status);
@@ -330,6 +339,37 @@ public sealed class LiveTreeView : DockPanel
         monitors.Text = text;
         monitors.IsVisible = text is not null;
     }
+
+    private readonly ComboBox sources;
+    private bool choosingSource;
+
+    /// <summary>The sources the window can show, by their names, the one shown chosen; hidden with fewer than two.</summary>
+    public void ShowSources(IReadOnlyList<string> names, int shown)
+    {
+        choosingSource = true;
+        try
+        {
+            if (!names.SequenceEqual(SourceNames))
+            {
+                sources.ItemsSource = names.ToList();
+            }
+            sources.SelectedIndex = shown;
+            sources.IsVisible = names.Count > 1;
+        }
+        finally
+        {
+            choosingSource = false;
+        }
+    }
+
+    /// <summary>The sources offered, while the chooser shows.</summary>
+    public IReadOnlyList<string> SourceNames => sources.ItemsSource is IEnumerable<string> names ? [.. names] : [];
+
+    /// <summary>The chooser, shown while more than one source runs.</summary>
+    public ComboBox Sources => sources;
+
+    /// <summary>A source chosen in the chooser, by its place among <see cref="SourceNames"/>.</summary>
+    public event EventHandler<int>? SourceChosen;
 
     /// <summary>The game's monitors as shown, while they are.</summary>
     public string? MonitorsLine => monitors.IsVisible ? monitors.Text : null;
