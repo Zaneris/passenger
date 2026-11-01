@@ -321,7 +321,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   landed is pulled again once it does (`CSharpService.GodotProjectsChanged`). A server's own command (TypeScript's
   refactorings, ESLint's fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one
   command of Undo.
-- **Web languages.** `WebLanguages` (one Node.js server per kind; every per-kind switch names each kind), `JsonSchemas`
+- **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
+  `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
   runs one tsserver (`useSyntaxServer` never): a syntax server answers rename and usages from the open files alone.
   typescript-language-server keeps a file's first `formattingOptions` answer while it runs, so each open file tells
@@ -471,9 +472,11 @@ site-shots` retakes its images.
   from a stream (no `Location`). It writes logs and editor settings under the user's folders, on macOS whatever XDG
   says: a test gives it HOME/APPDATA of its own and always `--headless`. Its debug peer takes only `[name, thread id 1,
   data]` messages, its packed strings end with a NUL, `scene:inspect_objects` answers a few objects at most (inspect one
-  at a time), a warning comes as an error with its flag set, and a headless game has no picture. An agent's input and
-  layout reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing;
-  `PassengerTools.Godot.cs`).
+  at a time), a warning comes as an error with its flag set, and a headless game has no picture. Its language server
+  takes whole texts only, reads `Content-Length` at a fixed offset of the header, needs `rootPath` and has no shutdown;
+  a headless editor writes `editor_layout.cfg` and `ide_messaging_meta.txt` into the project, which `GodotScripts` puts
+  back. An agent's input and layout reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by
+  live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
