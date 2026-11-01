@@ -1149,9 +1149,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.Output, Title = "A console's last lines", ReadOnly = true), Description(
         "The last lines of a console. of run (the default): what Run's program wrote (under Hot Reload, dotnet watch's words " +
         "too) or a terminal configuration's tab; with resource, that one's own; with requests, the running web apps' requests " +
-        "and their SQL. of debug (the default with session): the debugged program's. of build: the last build's MSBuild " +
-        "output, as it runs too. of terminal: the IDE terminal's tab shown, its scrollback and screen (a full-screen program's " +
-        "too).")]
+        "and their SQL. of debug (the default with session, or while a program is debugged and Run's is not running): the " +
+        "debugged program's. Either's first line names whose output it is. of build: the last build's MSBuild output, as it " +
+        "runs too. of terminal: the IDE terminal's tab shown, its scrollback and screen (a full-screen program's too).")]
     public Task<string> Output(string? of = null, int lines = 200, string? resource = null, bool requests = false, string? session = null,
         CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
@@ -1159,7 +1159,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new ArgumentException($"lines is {lines}: a console's last lines are 1 or more");
         }
-        switch (of ?? (session is null ? "run" : "debug"))
+        // Unnamed, the console of the program most likely meant: a debugged one before a run that has ended.
+        bool debugged = session is not null || (resource is null && !requests && !Builds.IsRunning && Session.Debug.IsDebugging);
+        switch (of ?? (debugged ? "debug" : "run"))
         {
             case "build":
                 return Tail(Session.Builder.Shown(), lines);
@@ -1192,8 +1194,27 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             console.Flush();
             return Tail(console.Document.Snapshot, lines);
         }
-        return Builds.Containers is { } running ? $"{await ServicesAsync(running, cancel)}\n{RunOutput(lines)}" : RunOutput(lines);
+        return Builds.Containers is { } running ? $"{await ServicesAsync(running, cancel)}\n{RunOutput(lines)}" : RunHeaded(lines);
     });
+
+    /// <summary>output's run: the console's last lines under a line naming the program Run last started and how it stands,
+    /// and any program debugged meanwhile, whose console is output's debug.</summary>
+    private string RunHeaded(int lines)
+    {
+        string output = RunOutput(lines);
+        if (Session.RunPlan?.Name is not { } name)
+        {
+            return output;
+        }
+        IRunningProgram program = Session.RunProgram;
+        Task<int> ended = program.Ended;
+        string stands = program.IsRunning ? $"{name}, running"
+            : ended.IsCompletedSuccessfully ? BuildRunController.RunEnded(name, ended.Result)
+            : $"{name}, not running";
+        string[] debugged = [.. Session.Debug.Tabs.Where(t => t.IsLive && t.Session is not null).Select(t => t.Name)];
+        string also = debugged.Length > 0 ? $"; debugged meanwhile, output of debug: {Plural.Listed(debugged)}" : string.Empty;
+        return $"{stands}{also}:\n{output}";
+    }
 
     /// <summary>A container run's services as the engine has them now, one line each as a resource's run says them
     /// (<see cref="ResourceAnswer"/>): its state, health and ports.</summary>
@@ -1914,8 +1935,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// configuration's tab, scrollback and screen.</summary>
     private string DebugOutput(int lines, string? session)
     {
-        DebugSession? debugged = session is null ? Unnamed() : TabFor(session)?.Session;
-        return debugged?.Terminal is { } inTerminal ? Tail(inTerminal.Session, lines) : Tail(Session.Debug.Output(debugged), lines);
+        ToolWindows.DebugTab? tab = TabFor(session);
+        DebugSession? debugged = tab?.Session;
+        string output = debugged?.Terminal is { } inTerminal ? Tail(inTerminal.Session, lines) : Tail(Session.Debug.Output(debugged), lines);
+        return tab is null ? output : $"{tab.Name}, debugged, {StateOf(tab)}:\n{output}";
     }
 
     // The IDE itself
@@ -2142,8 +2165,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>The programs debugged and each one's state, as debug_state lists them.</summary>
     private string Listed() => string.Join(", ", Sessions());
 
-    private IReadOnlyList<string> Sessions() =>
-        [.. Session.Debug.Tabs.Select(t => $"{t.Name}: {(t.IsLive && t.Session is { } live ? live.State.ToString().ToLowerInvariant() : "ended")}")];
+    private IReadOnlyList<string> Sessions() => [.. Session.Debug.Tabs.Select(t => $"{t.Name}: {StateOf(t)}")];
+
+    /// <summary>A debugged program's state as an agent reads it: paused, running, starting, or ended.</summary>
+    private static string StateOf(ToolWindows.DebugTab tab) => tab.IsLive && tab.Session is { } live ? live.State.ToString().ToLowerInvariant() : "ended";
 
     /// <summary>Where the debugger is in a session's program (the chosen one's by default), from its own model: the session's
     /// state in its words, and while paused the stop with its shown frame's locals; with several programs debugged, which one

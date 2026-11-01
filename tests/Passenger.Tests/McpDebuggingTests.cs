@@ -356,6 +356,36 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(3, set.GetProperty("line").GetInt32());
     }
 
+    /// <summary>An agent's output naming no console, once a program Run started has ended and while another is debugged,
+    /// answers the debugged program's lines under a line naming it, never the ended run's; once that one has ended too, the
+    /// run's, under a line naming it and how it ended.</summary>
+    [Fact]
+    public async Task An_agents_output_naming_no_console_answers_the_program_debugged_naming_it_not_the_run_that_ended()
+    {
+        await TakeFolderAsync();
+        Write("Program.cs", "Console.WriteLine($\"said {args[0]}\");\nConsole.WriteLine(\"then\");\n");
+        Write("Properties/launchSettings.json", "{\n  \"profiles\": {\n"
+            + "    \"Ran\": { \"commandName\": \"Project\", \"commandLineArgs\": \"ran\" },\n"
+            + "    \"Debugged\": { \"commandName\": \"Project\", \"commandLineArgs\": \"debugged\" }\n  }\n}\n");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = "Sum: Ran", ["waitSeconds"] = 120 });
+        Assert.True(ran.GetProperty("exitCode").GetInt32() == 0 && ran.GetProperty("output").GetString()!.Contains("said ran", StringComparison.Ordinal), $"The first program's run answered: {ran}");
+
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 2 });
+        JsonElement stop = await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Sum: Debugged" });
+        Assert.Equal("paused", stop.GetProperty("state").GetString());
+        string output = string.Empty;
+        await Waiting.UntilAsync(async () => (output = (await Call(client, McpTools.Output)).GetString()!).Contains("said debugged", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(30), Cancel, TimeSpan.FromMilliseconds(200));
+        Assert.True(output.StartsWith("Sum: Debugged, debugged, paused:\n", StringComparison.Ordinal) && output.Contains("said debugged", StringComparison.Ordinal)
+            && !output.Contains("said ran", StringComparison.Ordinal), $"output naming no console, while a program is debugged after another ran, answered:\n{output}");
+
+        Assert.Equal("not debugging", (await Call(client, McpTools.DebugContinue)).GetProperty("state").GetString());
+        output = (await Call(client, McpTools.Output)).GetString()!;
+        Assert.True(output.StartsWith("Sum: Ran exited with code 0:\n", StringComparison.Ordinal) && output.Contains("said ran", StringComparison.Ordinal),
+            $"output naming no console, once the debugged program had ended too, answered:\n{output}");
+    }
+
     /// <summary>An agent's debug_start of a web app, which serves until it is stopped, answers once the app's host has
     /// started, running and saying where it listens, rather than waiting out its time for a stop or an end that never
     /// comes; the app answers there.</summary>
