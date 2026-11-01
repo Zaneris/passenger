@@ -37,6 +37,8 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// them.</summary>
     public bool MainMenuBar { get; init; }
 
+    /// <summary>The code font by its family's name, or null for the one Passenger carries.</summary>
+    public string? EditorFontFamily { get; init; }
     public double EditorFontSize { get; init; } = 13;
     public double EditorLineSpacing { get; init; } = 1.2;
     public bool Ligatures { get; init; }

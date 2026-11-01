@@ -132,7 +132,7 @@ public sealed class PostfixTemplatesPane : DockPanel
             Children = { all, new TextBlock { Text = Language, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center } },
         };
         CheckBox on = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
-        TextBlock name = new() { FontFamily = CodeEditor.CodeFont, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+        TextBlock name = new TextBlock { FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) }.InCodeFont();
         TextBlock example = new() { Classes = { StyleClasses.Muted }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         SetDock(on, Dock.Left);
         SetDock(name, Dock.Left);
@@ -173,5 +173,5 @@ public sealed class PostfixTemplatesPane : DockPanel
         });
     }
 
-    private static TextBox Code() => new() { IsReadOnly = true, FontFamily = CodeEditor.CodeFont, FontSize = 12.5, Classes = { StyleClasses.Search }, Focusable = false };
+    private static TextBox Code() => new TextBox { IsReadOnly = true, FontSize = 12.5, Classes = { StyleClasses.Search }, Focusable = false }.InCodeFont();
 }

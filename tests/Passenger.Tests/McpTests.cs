@@ -804,6 +804,26 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("gamma", (await Call(client, McpTools.TerminalRun, new() { ["command"] = "echo gamma" })).GetString()!, StringComparison.Ordinal);
     }
 
+    /// <summary>settings lists the code fonts an agent may give the editor, the carried one first, and settings_set takes one
+    /// of them and refuses a family that is not installed, as Settings does, nothing changed.</summary>
+    [Fact]
+    public async Task Settings_lists_the_code_fonts_an_agent_may_choose_and_settings_set_refuses_one_not_installed()
+    {
+        string folder = TestFolders.Create("mcp-fonts-");
+        DeleteAtEnd(folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement listed = (await Call(client, McpTools.Settings)).GetProperty("settings").EnumerateArray().Single(s => s.GetProperty("name").GetString() == "editorFontFamily");
+        string[] fonts = [.. listed.GetProperty("choices").EnumerateArray().Select(c => c.GetString()!)];
+        Assert.True(fonts is [_, ..] && fonts[0] == CodeFonts.Carried, $"settings listed the editor's fonts as: {listed.GetRawText()}");
+
+        CallToolResult refused = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["editorFontFamily"] = "Passenger Missing Font" } });
+        Assert.True(refused.IsError == true && Text(refused).Contains("Font family Passenger Missing Font (Settings | Editor) is not a font installed on this computer", StringComparison.Ordinal),
+            $"settings_set of a font family not installed answered: {Text(refused)}");
+        string font = fonts[^1];
+        JsonElement changed = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["editorFontFamily"] = font } })).EnumerateArray());
+        Assert.Equal(font, changed.GetProperty("after").GetString());
+    }
+
     /// <summary>A rebase stopped on a conflict that the agent resolves is still said by vcs_status, and vcs_commit refuses to
     /// commit beside it, naming Continue Rebase and Abort Rebase: no commit of the agent's takes the place of the rebase's
     /// on its detached head, and the rebase is still in progress.</summary>

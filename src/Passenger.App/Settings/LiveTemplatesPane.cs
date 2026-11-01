@@ -80,12 +80,11 @@ public sealed class LiveTemplatesPane : DockPanel
             AcceptsReturn = true,
             AcceptsTab = true,
             TextWrapping = TextWrapping.NoWrap,
-            FontFamily = CodeEditor.CodeFont,
             FontSize = 12.5,
             VerticalContentAlignment = VerticalAlignment.Top,
             Classes = { StyleClasses.Search },
             Margin = new Thickness(0, 10, 0, 0),
-        };
+        }.InCodeFont();
         TextBox.TextChanged += (_, _) => Edit(t => WithText(t, (TextBox.Text ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal)));
 
         StackPanel rows = new()

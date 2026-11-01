@@ -16,8 +16,8 @@ namespace Passenger.Editor;
 /// line it changed.</summary>
 public sealed partial class CodeEditor : Control
 {
-    /// <summary>The code font, JetBrains Mono: the editor's and the terminal's, and code's wherever the window shows
-    /// it.</summary>
+    /// <summary>The code font Passenger carries, JetBrains Mono: the editor's, the terminal's and code's wherever the
+    /// window shows it, unless Settings puts another in force (<see cref="CodeFonts"/>).</summary>
     public static readonly FontFamily CodeFont = new("avares://Passenger.Editor/Fonts#JetBrains Mono");
 
     public static readonly StyledProperty<double> FontSizeProperty =
@@ -111,6 +111,7 @@ public sealed partial class CodeEditor : Control
             RunWith(palette.LineNumberCurrent),
             RunWith(palette.LineNumber));
         annotationRuns = (ItalicRunWith(palette.Annotation), ItalicRunWith(palette.Error));
+        CodeFonts.Follow(this, FontFamilyProperty);
     }
 
     /// <summary>Raised when the view scrolls.</summary>

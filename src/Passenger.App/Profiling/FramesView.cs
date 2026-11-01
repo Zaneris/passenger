@@ -258,7 +258,7 @@ public sealed class FramesView : DockPanel
     }
 
     private static TextBlock Number() =>
-        new() { FontFamily = CodeEditor.CodeFont, FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        new TextBlock { FontSize = 12, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
 
     /// <summary>A number in its cell, muted where it is nothing.</summary>
     private static void Put(TextBlock cell, string text)

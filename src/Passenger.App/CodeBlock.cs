@@ -11,6 +11,6 @@ public static class CodeBlock
     public static Border Of(string text) => new()
     {
         Classes = { StyleClasses.Code },
-        Child = new SelectableTextBlock { Text = text, FontFamily = CodeEditor.CodeFont, FontSize = 12, TextWrapping = TextWrapping.Wrap },
+        Child = new SelectableTextBlock { Text = text, FontSize = 12, TextWrapping = TextWrapping.Wrap }.InCodeFont(),
     };
 }

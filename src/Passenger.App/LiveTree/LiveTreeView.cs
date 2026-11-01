@@ -525,7 +525,7 @@ public sealed class LiveTreeView : DockPanel
         dot.Bind(Avalonia.Controls.Shapes.Shape.FillProperty, dot.GetResourceObservable(TokenKeys.Editor_Breakpoint));
         DockPanel.SetDock(dot, Dock.Left);
         DockPanel name = new() { Margin = new Thickness(0, 0, 8, 0), Children = { dot, label } };
-        TextBlock shown = new() { FontFamily = CodeEditor.CodeFont, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock shown = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         Grid.SetColumn(shown, 1);
         TextBlock linked = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
         Button link = new() { Classes = { StyleClasses.Link }, Content = linked, HorizontalAlignment = HorizontalAlignment.Left };
@@ -589,7 +589,7 @@ public sealed class LiveTreeView : DockPanel
             DockPanel.SetDock(link, Dock.Right);
             top.Children.Add(link);
         }
-        TextBlock selector = new() { Text = style.Selector, FontFamily = CodeEditor.CodeFont, FontSize = 12.5, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap };
+        TextBlock selector = new TextBlock { Text = style.Selector, FontSize = 12.5, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap }.InCodeFont();
         top.Children.Add(selector);
         block.Children.Add(top);
         block.Children.Add(new TextBlock { Text = $"{style.Kind} · {style.Origin}", Classes = { StyleClasses.Muted }, FontSize = 11, TextWrapping = TextWrapping.Wrap });
@@ -610,7 +610,7 @@ public sealed class LiveTreeView : DockPanel
     private Control Setter(SetterReport setter)
     {
         StackPanel line = new() { Margin = new Thickness(14, 0, 0, 0) };
-        TextBlock text = new() { Text = $"{setter.Property}: {setter.Value}", FontFamily = CodeEditor.CodeFont, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        TextBlock text = new TextBlock { Text = $"{setter.Property}: {setter.Value}", FontSize = 12, TextWrapping = TextWrapping.Wrap }.InCodeFont();
         switch (setter.State)
         {
             case SetterStates.Overridden:
@@ -679,7 +679,7 @@ public sealed class LiveTreeView : DockPanel
         Border content = new()
         {
             Padding = new Thickness(10, 6),
-            Child = new TextBlock { Text = text, FontFamily = CodeEditor.CodeFont, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center },
+            Child = new TextBlock { Text = text, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center }.InCodeFont(),
         };
         content.Bind(Border.BackgroundProperty, content.GetResourceObservable(TokenKeys.Selected));
         return content;
@@ -689,7 +689,7 @@ public sealed class LiveTreeView : DockPanel
     {
         Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("140,*") };
         TextBlock label = new() { Text = name, Classes = { StyleClasses.Muted } };
-        TextBlock shown = new() { Text = value, FontFamily = CodeEditor.CodeFont, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock shown = new TextBlock { Text = value, FontSize = 12, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         Grid.SetColumn(shown, 1);
         grid.Children.Add(label);
         grid.Children.Add(shown);

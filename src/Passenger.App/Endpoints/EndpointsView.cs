@@ -543,7 +543,7 @@ public sealed class EndpointsView : DockPanel
     /// <summary>A method's tag, in its method's colour.</summary>
     internal static Border MethodTag(string method)
     {
-        TextBlock text = new() { Text = method, FontFamily = CodeEditor.CodeFont, FontSize = 11, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock text = new TextBlock { Text = method, FontSize = 11, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(MethodColour(method)));
         return new Border { Classes = { StyleClasses.Tag }, MinWidth = 52, Padding = new Thickness(4, 1), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
     }

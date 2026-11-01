@@ -37,8 +37,6 @@ public sealed class CellGrid : Control
     /// <summary>How many laid-out texts are kept: some screens' worth, after which they are laid out afresh.</summary>
     private const int KeptTexts = 8192;
 
-    private static readonly Typeface Plain = new(CodeEditor.CodeFont);
-    private static readonly Typeface Bold = new(CodeEditor.CodeFont, FontStyle.Normal, FontWeight.SemiBold);
     private static readonly Cursor SizeColumn = new(StandardCursorType.SizeWestEast);
 
     private readonly ScrollBar vertical = new() { Orientation = Orientation.Vertical, AllowAutoHide = true };
@@ -52,6 +50,8 @@ public sealed class CellGrid : Control
 
     private double gutter;
     private double charWidth;
+    private Typeface plain = new(CodeEditor.CodeFont);
+    private Typeface bold = new(CodeEditor.CodeFont, FontStyle.Normal, FontWeight.SemiBold);
     private Vector scroll;
     private bool updatingBars;
     private Palette? palette;
@@ -84,7 +84,7 @@ public sealed class CellGrid : Control
             ShowMenu(e.TryGetPosition(this, out Point at) ? at : null);
             e.Handled = true;
         };
-        charWidth = CodeEditor.MeasureFont(Plain, FontSize).CharWidth;
+        charWidth = CodeEditor.MeasureFont(plain, FontSize).CharWidth;
     }
 
     /// <summary>The cells' menu while it is open.</summary>
@@ -595,7 +595,24 @@ public sealed class CellGrid : Control
     {
         palette = null;
         texts.Clear();
+        FollowFont();
         InvalidateVisual();
+    }
+
+    /// <summary>The code font in force taken for the cells, each column fitted again to its width when it changed.</summary>
+    private void FollowFont()
+    {
+        FontFamily font = this.TryFindResource(CodeFonts.Key, out object? found) && found is FontFamily family ? family : CodeEditor.CodeFont;
+        if (font.Equals(plain.FontFamily))
+        {
+            return;
+        }
+        plain = new Typeface(font);
+        bold = new Typeface(font, FontStyle.Normal, FontWeight.SemiBold);
+        charWidth = CodeEditor.MeasureFont(plain, FontSize).CharWidth;
+        Fit();
+        scroll = ClampScroll(scroll);
+        InvalidateArrange();
     }
 
     public override void Render(DrawingContext context)
@@ -666,7 +683,7 @@ public sealed class CellGrid : Control
                 {
                     context.FillRectangle(colours.HeaderChosen, place);
                 }
-                if (Text(-1, column, place.Width, Bold, colours.HeaderText) is { } name)
+                if (Text(-1, column, place.Width, bold, colours.HeaderText) is { } name)
                 {
                     DrawText(context, name, place, number: false);
                 }
@@ -685,7 +702,7 @@ public sealed class CellGrid : Control
                 {
                     context.FillRectangle(colours.HeaderChosen, place);
                 }
-                DrawText(context, Text(row, Gutter, gutter, Plain, colours.RowNumber)!, place, number: true);
+                DrawText(context, Text(row, Gutter, gutter, plain, colours.RowNumber)!, place, number: true);
             }
         }
         context.FillRectangle(colours.Edge, new Rect(0, RowHeight - 1, bounds.Width, 1));
@@ -699,7 +716,7 @@ public sealed class CellGrid : Control
             context.FillRectangle(Spot((row, column)) == currentMatch ? colours.SearchCurrent : colours.SearchMatch, place);
         }
         bool number = table!.IsNumber(row, column);
-        if (Text(row, column, place.Width, Plain, number ? colours.Number : colours.Text) is { } text)
+        if (Text(row, column, place.Width, plain, number ? colours.Number : colours.Text) is { } text)
         {
             DrawText(context, text, place, number);
         }

@@ -81,7 +81,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         query = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Text to find", Text = initial ?? string.Empty };
         matchCase = Option(OptionGlyph(IconKeys.MatchCase), "Match case (Alt+C)");
         words = Option(OptionGlyph(IconKeys.WholeWord), "Words (Alt+O)");
-        regex = Option(new TextBlock { Text = ".*", FontFamily = CodeEditor.CodeFont, FontWeight = FontWeight.Bold, FontSize = 12 }, "Regex (Alt+X)");
+        regex = Option(new TextBlock { Text = ".*", FontWeight = FontWeight.Bold, FontSize = 12 }.InCodeFont(), "Regex (Alt+X)");
         DockPanel find = new() { Margin = new Thickness(10, 0, 10, 6) };
         StackPanel toggles = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 0, 0, 0), Children = { matchCase, words, regex } };
         DockPanel.SetDock(toggles, Dock.Right);
@@ -591,15 +591,14 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         Avalonia.Controls.Documents.Run before = new();
         Avalonia.Controls.Documents.Run matched = new() { FontWeight = FontWeight.Bold };
         Avalonia.Controls.Documents.Run after = new();
-        TextBlock text = new()
+        TextBlock text = new TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            FontFamily = CodeEditor.CodeFont,
             FontSize = 12,
             FontFeatures = CSharp.Fonts.Features(ligatures),
             Inlines = [before, matched, after],
-        };
+        }.InCodeFont();
         TextBlock where = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 4, 0), FontSize = 12 };
         where.Classes.Add(StyleClasses.Muted);
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(8, 0) };

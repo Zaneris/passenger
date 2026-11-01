@@ -717,7 +717,7 @@ public sealed class ProfilerView : DockPanel
     /// <summary>Words in the code font, at the size of a row's numbers.</summary>
     private static TextBlock Mono(TextBlock block)
     {
-        block.FontFamily = CodeEditor.CodeFont;
+        block.InCodeFont();
         block.FontSize = 12;
         return block;
     }

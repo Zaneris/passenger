@@ -104,6 +104,7 @@ public sealed partial class TerminalView : Control
             }
         };
         ContextMenu = Menu();
+        CodeFonts.Follow(this, FontFamilyProperty);
     }
 
     /// <summary>The terminal's menu: Copy, Paste and Clear Buffer, with their keys.</summary>

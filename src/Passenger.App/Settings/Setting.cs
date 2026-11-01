@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Editor;
 
 namespace Passenger.App.Settings;
 
@@ -150,4 +151,84 @@ public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSetti
     public override string? Refused(AppSettings was, AppSettings now) => get(now) is { } line && line != get(was) && Run.CommandLine.NamesNoProgram(line)
         ? $"{Row!.Label} {line.Trim()} ({SettingsDialog.PlaceOfPage(Row.Page)}) {NamesNone}"
         : null;
+}
+
+/// <summary>A font family to show code in, by name (<paramref name="property"/>'s), chosen from a drop-down of the carried
+/// font and the installed ones whose characters take one width (<see cref="CodeFonts"/>), each named in its own face, the
+/// list filled once they are found off the UI thread; null for the first choice, <paramref name="none"/>'s (the carried
+/// font where it names none). A name not installed or not monospaced is refused, saying why.</summary>
+public sealed class FontSetting(string property, Func<AppSettings, string?> get, Func<AppSettings, string?, AppSettings> set, string? none, SettingRow row)
+    : Setting(row)
+{
+    /// <summary>The AppSettings property it reads.</summary>
+    public string Property => property;
+
+    /// <summary>The names it takes, the carried font's first.</summary>
+    public static async Task<IReadOnlyList<string>> ChoicesAsync() => [CodeFonts.Carried, .. await CodeFonts.InstalledAsync()];
+
+    public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change)
+    {
+        string? chosen = Trimmed(get(now));
+        ComboBox box = new() { Classes = { StyleClasses.Form }, MaxDropDownHeight = 360 };
+        ReusedRows.Use(box, () =>
+        {
+            TextBlock shown = new() { VerticalAlignment = VerticalAlignment.Center };
+            return shown.Showing<Choice>(choice =>
+            {
+                shown.Text = choice.Shown;
+                shown.FontFamily = choice.Face;
+            });
+        });
+        bool filling = false;
+        Fill(null);
+        box.SelectionChanged += (_, _) =>
+        {
+            if (!filling && box.SelectedItem is Choice choice)
+            {
+                chosen = choice.Name;
+                change(s => set(s, choice.Name));
+            }
+        };
+        IdeErrors.Observe(FillAsync());
+        return box;
+
+        async Task FillAsync() => Fill(await CodeFonts.InstalledAsync());
+
+        // Before the installed fonts are found, the list holds the first choice and the one in force.
+        void Fill(IReadOnlyList<string>? installed)
+        {
+            List<Choice> choices = [none is null ? new(null, CodeFonts.Carried, CodeEditor.CodeFont) : new(null, none, FontFamily.Default)];
+            if (none is not null)
+            {
+                choices.Add(new(CodeFonts.Carried, CodeFonts.Carried, CodeEditor.CodeFont));
+            }
+            choices.AddRange((installed ?? []).Select(name => new Choice(name, name, new FontFamily(name))));
+            int at = choices.FindIndex(c => string.Equals(c.Name, chosen, StringComparison.OrdinalIgnoreCase));
+            if (at < 0 && chosen is not null)
+            {
+                string shown = installed is null ? chosen : $"{chosen} ({(CodeFonts.IsInstalled(chosen) ? "not monospaced" : "not installed")})";
+                choices.Insert(1, new(chosen, shown, CodeFonts.Named(chosen) ?? FontFamily.Default));
+                at = 1;
+            }
+            filling = true;
+            box.ItemsSource = choices;
+            box.SelectedIndex = Math.Max(0, at);
+            filling = false;
+        }
+    }
+
+    public override AppSettings Clamp(AppSettings settings) => set(settings, Trimmed(get(settings)));
+
+    public override string? Refused(AppSettings was, AppSettings now) =>
+        Trimmed(get(now)) is { } name && !string.Equals(name, Trimmed(get(was)), StringComparison.OrdinalIgnoreCase) && CodeFonts.WhyNot(name) is { } why
+            ? $"{Row!.Label} {name} ({SettingsDialog.PlaceOfPage(Row.Page)}) {why}"
+            : null;
+
+    private static string? Trimmed(string? name) => string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+
+    /// <summary>A row of the list: the name it sets (null for the first), the words shown, and the face they are shown in.</summary>
+    private sealed record Choice(string? Name, string Shown, FontFamily Face)
+    {
+        public override string ToString() => Shown;
+    }
 }

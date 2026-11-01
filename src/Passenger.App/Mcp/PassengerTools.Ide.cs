@@ -29,16 +29,19 @@ public sealed partial class PassengerTools
     [McpServerTool(Name = McpTools.Settings, Title = "The IDE's settings", ReadOnly = true), Description(
         "Every setting the Settings dialog has, by its settings.json name (editorFontSize, theme...), with its value, kind, " +
         "choices and range; kept is false for an --mcp Passenger's own defaults, kept nowhere.")]
-    public Task<SettingsInfo> GetSettings(CancellationToken cancel = default) => OnUi(cancel, () =>
+    public Task<SettingsInfo> GetSettings(CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         JsonObject values = SettingsNode(window.Settings);
-        return Task.FromResult(new SettingsInfo(window.SettingsKept, [.. SettingProperties.Select(p =>
+        IReadOnlyList<string> fonts = await FontSetting.ChoicesAsync();
+        return new SettingsInfo(window.SettingsKept, [.. SettingProperties.Select(p =>
         {
             Type type = Nullable.GetUnderlyingType(p.Value.PropertyType) ?? p.Value.PropertyType;
             (double Min, double Max)? range = SettingRange(p.Key, p.Value);
-            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value),
-                type.IsEnum ? Enum.GetNames(type) : null, range?.Min, range?.Max);
-        })]));
+            IReadOnlyList<string>? choices = type.IsEnum ? Enum.GetNames(type)
+                : Declared.All.OfType<FontSetting>().Any(f => f.Property == p.Value.Name) ? fonts
+                : null;
+            return new SettingInfo(p.Key, JsonSerializer.SerializeToElement(values[p.Key]), SettingKind(p.Value), choices, range?.Min, range?.Max);
+        })]);
     });
 
     [McpServerTool(Name = McpTools.SettingsSet, Title = "Change settings", Destructive = true), Description(

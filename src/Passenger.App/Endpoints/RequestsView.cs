@@ -250,13 +250,12 @@ public sealed class RequestsView : DockPanel
         private readonly TextBlock outcome = Muted(string.Empty);
         private readonly Border slow = Marked("slow", TokenKeys.Error);
         private readonly Border repeated = Marked(string.Empty, TokenKeys.Warning);
-        private readonly TextBlock text = new()
+        private readonly TextBlock text = new TextBlock
         {
-            FontFamily = CodeEditor.CodeFont,
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-        };
+        }.InCodeFont();
 
         public CommandLine()
         {

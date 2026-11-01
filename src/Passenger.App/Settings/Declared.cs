@@ -44,6 +44,10 @@ public static class Declared
         new(D.EditorPage, "Colour scheme", "colour color scheme syntax highlighting code colours rider keywords strings comments",
             "The colours the code is drawn in: the theme's own, or Rider's, Dark or Light as the theme is. The editor keeps the theme's background."));
 
+    public static readonly FontSetting EditorFontFamily = new(nameof(AppSettings.EditorFontFamily), s => s.EditorFontFamily, (s, v) => s with { EditorFontFamily = v }, null,
+        new(D.EditorPage, "Font family", "font family typeface monospace monospaced code",
+            "The font code is shown in: the editor's, the terminal's unless it has its own, and code's in popups and tool windows."));
+
     public static readonly NumberSetting EditorFontSize = new(s => s.EditorFontSize, (s, v) => s with { EditorFontSize = v },
         AppSettings.MinFontSize, AppSettings.MaxFontSize, 1, new(D.EditorPage, "Font size", "font size text"));
 

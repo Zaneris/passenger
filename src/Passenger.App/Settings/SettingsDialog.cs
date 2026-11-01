@@ -281,6 +281,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.CheckForUpdates);
 
         Add(Declared.ColourScheme);
+        Add(Declared.EditorFontFamily);
         Add(Declared.EditorFontSize);
         Add(Declared.EditorLineSpacing);
         Add(Declared.Ligatures);
