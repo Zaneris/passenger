@@ -1913,6 +1913,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             return Variable(expression, set.Value, set.Type, set.VariablesReference, expression) with { Frame = below };
         }
         EvaluateResponse result = await paused.EvaluateAsync(expression, chosen.Id, "repl", letThreadsRun);
+        if (letThreadsRun)
+        {
+            // The window shows where the threads are now, as it does after its own.
+            await Session.Debug.ThreadsRanAsync(paused, expression, result);
+        }
         return Variable(expression, result.Result, result.Type, result.VariablesReference, expression) with { Frame = below, PassedOver = result.PassedOver };
     });
 

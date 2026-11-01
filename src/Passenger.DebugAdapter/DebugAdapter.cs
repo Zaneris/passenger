@@ -157,6 +157,7 @@ public sealed class DebugAdapter
                 VariablesReference = value.VariablesReference,
                 PresentationHint = ToProtocol(value.PresentationHint),
                 PassedOver = value.PassedOver,
+                ImplicitOff = value.ImplicitOff,
             };
         });
         // Set Next Statement: a target per line (or column), in the last stopped thread's method, its id the IL offset goto takes.

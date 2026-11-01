@@ -961,6 +961,68 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         static VariableNode? Watch(Passenger.App.ToolWindows.DebugModel view) => view.Tree.Rows.FirstOrDefault(r => r.Role == VariableRole.Watch && r.Name == "locked.Value");
     }
 
+    /// <summary>Stopped in the lock debuggee (LoopingConsoleApp locked) while its Holder thread sleeps holding the lock, as
+    /// Holder's frame in Call Stack shows: once a watch waiting on the lock has run with every thread let go, Threads lists
+    /// the thread Holder started meanwhile, the stopped thread's frame staying chosen, and Variables says its values were
+    /// read before every thread ran, implicit evaluation staying off; Read Again reads them anew, the words gone, and
+    /// Holder's frame in Call Stack has moved past the lock.</summary>
+    [AvaloniaFact]
+    public void After_a_watch_runs_with_every_thread_let_go_threads_and_call_stack_show_where_the_threads_are_now()
+    {
+        const string Looping = "LoopingConsoleApp";
+        // A folder of its own, never the class's restored ones, which are all Sum.
+        fresh = PathNames.Canonical(TestFolders.Create("locked-"));
+        Restore.Run(Debugging.Helpers.Debuggees.CopyTo(Looping, fresh));
+        MainWindow window = Ui.OpenFolder(fresh, languageServer: false);
+        window.OpenFile(Program);
+        Ui.Settle();
+        window.SetConfigurations([new Passenger.App.Run.RunConfiguration { Name = "Locked", Project = Path.Combine(PathNames.Canonical(fresh), $"{Looping}.csproj"), Arguments = "locked" }], "Locked");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(Debugging.Helpers.Debuggees.Line(Looping, "stop while the lock is held") - 1, 4));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        Passenger.App.ToolWindows.DebugModel view = window.BottomPanel.Debug;
+        WaitDebugging(window, () => window.Debugger.Stop is not null && view.Threads.Any(t => t.Name == "Holder"), "the stop while Holder holds the lock");
+        int sleeps = Debugging.Helpers.Debuggees.Line(Looping, "the holder sleeps holding the lock");
+        int waits = Debugging.Helpers.Debuggees.Line(Looping, "the holder waits once it has let go");
+        ComboBox threads = window.DebugWindow.GetVisualDescendants().OfType<ComboBox>().First(c => ReferenceEquals(c.ItemsSource, view.Threads));
+        DapThread stopped = view.Threads.First(t => t.Id == window.Debugger.Session!.StoppedThread);
+
+        threads.SelectedItem = view.Threads.First(t => t.Name == "Holder");
+        Ui.WaitFor(() => view.Frames.Any(f => f.Line == sleeps), () => $"Holder's frame in the lock in Call Stack: {Frames(view)}");
+        threads.SelectedItem = view.Threads.First(t => t.Id == stopped.Id);
+        Ui.WaitFor(() => view.SelectedFrame?.Line == Debugging.Helpers.Debuggees.Line(Looping, "stop while the lock is held"), () => $"the stopped thread's frame chosen again: {Frames(view)}");
+        Ui.Run(window, AppActions.Evaluate);
+        window.KeyTextInput("locked.Value");
+        Ui.Press(window, OperatingSystem.IsMacOS() ? "meta shift Enter" : "control shift Enter");
+        Ui.WaitFor(() => Watch(view) is { NeedsThreads: true }, () => $"the watch to say it needs another thread to run: {Watch(view)?.Value}", TimeSpan.FromSeconds(30));
+        Assert.Null(view.Moved);
+        Assert.DoesNotContain(view.Threads, t => t.Name == "Let go");
+
+        Control row = Ui.Row(window.DebugWindow.VariablesList, Watch(view)!);
+        Ui.Click(row.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, VariablesList.RunWithThreads)));
+        Ui.WaitFor(() => Watch(view)?.Value == "\"read under the lock\"" && view.Moved is not null, () => $"the watch run with every thread let go, and Variables' words of it: {Watch(view)?.Value}, {view.Moved}", TimeSpan.FromSeconds(30));
+        Assert.True(view.Threads.Any(t => t.Name == "Let go"), $"Threads lists only {string.Join(", ", view.Threads.Select(t => t.Name))}, not the thread Holder started while every thread ran");
+        Assert.Equal(stopped.Id, (threads.SelectedItem as DapThread)?.Id);
+        Assert.Equal(Debugging.Helpers.Debuggees.Line(Looping, "stop while the lock is held"), view.SelectedFrame?.Line);
+        Assert.Equal("Every thread ran while locked.Value was evaluated, so the values read before it may have moved, and implicit evaluation stays off until the program runs on", view.Moved);
+        Banner said = window.DebugWindow.GetVisualDescendants().OfType<Banner>().Single();
+        Assert.Equal(view.Moved, said.Said);
+
+        Ui.Click(said.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, Passenger.App.ToolWindows.DebugView.ReadAgain)));
+        Ui.WaitFor(() => view.Moved is null && said.Said is null, () => $"Read Again to read the values anew, the words over them gone: {view.Moved}");
+        Watched(view, "locked.Value", "\"read under the lock\"", "the watch read anew with the other threads held, Holder having let go of the lock");
+        threads.SelectedItem = view.Threads.First(t => t.Name == "Holder");
+        Ui.WaitFor(() => view.Frames.Any(f => f.Line == waits), () => $"Holder's frame past the lock in Call Stack: {Frames(view)}");
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+
+        static VariableNode? Watch(Passenger.App.ToolWindows.DebugModel view) => view.Tree.Rows.FirstOrDefault(r => r.Role == VariableRole.Watch && r.Name == "locked.Value");
+
+        static string Frames(Passenger.App.ToolWindows.DebugModel view) => string.Join("; ", view.Frames.Select(f => $"{f.Name}:{f.Line}"));
+    }
+
     [AvaloniaFact]
     public void A_condition_typed_into_a_breakpoints_popup_decides_where_it_stops()
     {

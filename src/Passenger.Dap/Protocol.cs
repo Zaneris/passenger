@@ -321,6 +321,10 @@ public sealed record EvaluateResponse
     /// <summary>Passenger's own: what other threads met and passed over while an evaluation ran with every thread let go
     /// (a breakpoint, an exception), said in words; null where they met none.</summary>
     public string? PassedOver { get; init; }
+
+    /// <summary>Passenger's own: why implicit evaluation stays off once an evaluation with every thread let go has ended, in
+    /// words; null where it is on, or the others were held.</summary>
+    public string? ImplicitOff { get; init; }
 }
 
 /// <summary>Where a paused thread could go on from in a source at a line (Set Next Statement's question).</summary>

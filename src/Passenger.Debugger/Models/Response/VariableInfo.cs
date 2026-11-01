@@ -22,6 +22,10 @@ public class VariableInfo
     /// go; null where they met none, or the others were held.</summary>
     public string? PassedOver { get; set; }
 
+    /// <summary>Why implicit evaluation stays off once an evaluation with every thread let go has ended; null where it is on,
+    /// or the others were held.</summary>
+    public string? ImplicitOff { get; set; }
+
     /// <summary>The member this row is, by the name C# reaches it by from its owner's expression; null for a row reached
     /// otherwise.</summary>
     internal string? Member { get; set; }

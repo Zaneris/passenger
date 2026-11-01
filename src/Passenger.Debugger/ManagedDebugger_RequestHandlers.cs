@@ -995,6 +995,10 @@ public partial class ManagedDebugger
             {
                 value.PassedOver = $"While it ran with every thread let go, other threads passed over {string.Join(", ", EvalStatus.PassedOver.Distinct())}, which did not stop";
             }
+            if (letThreadsRun)
+            {
+                value.ImplicitOff = EvalStatus.ImplicitOff;
+            }
             return value;
         }
         finally

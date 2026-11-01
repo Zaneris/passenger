@@ -125,6 +125,7 @@ public sealed class DebugController : IDisposable
         EventHandler<(VariableNode Node, string Value)> set = (_, request) => IdeErrors.Observe(SetValue(request.Node, request.Value));
         EventHandler<VariableNode> watchData = (_, node) => IdeErrors.Observe(ToggleDataBreakpointAsync(node));
         EventHandler<VariableNode> ranAgain = (_, node) => IdeErrors.Observe(RunWithThreadsAsync(node, view.Tree));
+        EventHandler readAgain = (_, _) => IdeErrors.Observe(ShowVariables());
         EventHandler<VariableNode> textOpened = (_, node) => TextOpened?.Invoke(this, node.Value);
         EventHandler<DebugTab> tabChosen = (_, tab) => IdeErrors.Observe(ChooseAsync(tab));
         EventHandler<DebugTab> tabClosed = (_, tab) => IdeErrors.Observe(CloseTabAsync(tab));
@@ -142,6 +143,7 @@ public sealed class DebugController : IDisposable
         view.PlaceOf = PlaceOf;
         view.DataBreakpointRequested += watchData;
         view.RunWithThreadsRequested += ranAgain;
+        view.ReadAgainRequested += readAgain;
         view.TextOpened += textOpened;
         Breakpoints.DataChanged += (_, _) => TellRefusedData();
         view.WatchRemoved += unwatched;
@@ -158,6 +160,7 @@ public sealed class DebugController : IDisposable
             view.SetValueRequested -= set;
             view.DataBreakpointRequested -= watchData;
             view.RunWithThreadsRequested -= ranAgain;
+            view.ReadAgainRequested -= readAgain;
             view.TextOpened -= textOpened;
             view.WatchRemoved -= unwatched;
         };
@@ -2047,6 +2050,7 @@ public sealed class DebugController : IDisposable
         view.ShowDetachable(session.Attached && session.State is DebugState.Running or DebugState.Paused);
         // Every stop is new and every run lets the last one's frames and values go: none is asked of again.
         NextShown();
+        view.SayMoved(null);
         frame = null;
         Stop = null;
         clearing.Stop();
@@ -2425,6 +2429,7 @@ public sealed class DebugController : IDisposable
         if (frame == current && stop == shown)
         {
             view.Tree.Show(rows);
+            view.SayMoved(null);
             ShowInlineValues(current, values);
             LocalsShown();
         }
@@ -2559,6 +2564,55 @@ public sealed class DebugController : IDisposable
         if (read.PassedOver is { } passed)
         {
             Message?.Invoke(this, passed);
+        }
+        await ThreadsRanAsync(session, expression, read);
+    }
+
+    /// <summary>Once an evaluation has run with every thread of the chosen session let go (the window's, or an agent's):
+    /// Threads and Call Stack as they are now, the shown thread's chosen frame kept where it still is, or else its top one
+    /// chosen and its values read; where the frame was kept, Variables says its values were read before every thread ran.</summary>
+    public async Task ThreadsRanAsync(DebugSession session, string expression, EvaluateResponse read)
+    {
+        UiThread.Check();
+        using IDisposable held = BackgroundWork.Scope();
+        if (disposed || Session != session || session.State != DebugState.Paused || session.StoppedThread is not int stopped)
+        {
+            return;
+        }
+        int stop = shown;
+        IReadOnlyList<DapThread> threads;
+        int thread;
+        IReadOnlyList<DapStackFrame> stack;
+        try
+        {
+            threads = await session.ThreadsAsync();
+            // The shown thread, unless it ended meanwhile.
+            thread = view.SelectedThread is { } picked && threads.Any(t => t.Id == picked.Id) ? picked.Id : stopped;
+            stack = await session.StackTraceAsync(thread);
+        }
+        catch (DapException)
+        {
+            // The program went on or ended first: its next stop is shown whole.
+            return;
+        }
+        if (stop != shown || Session != session)
+        {
+            return;
+        }
+        if (frame is { } current && stack.FirstOrDefault(f => f.Id == current.Id && f.Name == current.Name && f.Line == current.Line && f.Column == current.Column) is { } kept)
+        {
+            frame = kept;
+            view.ShowFrames(threads, threads.FirstOrDefault(t => t.Id == thread), stack, kept);
+            string off = read.ImplicitOff is null ? string.Empty : ", and implicit evaluation stays off until the program runs on";
+            view.SayMoved($"Every thread ran while {expression} was evaluated, so the values read before it may have moved{off}");
+            return;
+        }
+        // Its thread moved under an evaluation on another: shown where it is now, its editor left where it was.
+        DapStackFrame? top = stack.FirstOrDefault(f => f.Source?.Path is not null) ?? stack.FirstOrDefault();
+        view.ShowFrames(threads, threads.FirstOrDefault(t => t.Id == thread), stack, top);
+        if (top is not null)
+        {
+            await ChooseFrame(top, navigate: false);
         }
     }
 

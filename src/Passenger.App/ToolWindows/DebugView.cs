@@ -102,7 +102,12 @@ public sealed class DebugView : DockPanel, IOwnKeys
         variables.TextOpened += (_, node) => model.OpenText(node);
         ListMenus.Attach(frames, FramesMenu);
         ListMenus.Attach(threads, ThreadsMenu);
-        DockPanel variablesPane = new() { Children = { evaluate, variables } };
+        // Over the values, once every thread ran in an evaluation: those read before it may have moved.
+        Banner moved = new();
+        moved.Link(ReadAgain, model.ReadAgain);
+        moved.Say(model.Moved);
+        model.MovedChanged += (_, _) => moved.Say(model.Moved);
+        DockPanel variablesPane = new() { Children = { evaluate, moved, variables } };
 
         // The frames a third of the window and the variables the rest, so a narrow window narrows both.
         Grid split = new() { ColumnDefinitions = new ColumnDefinitions("*,1,2*") };
@@ -178,6 +183,9 @@ public sealed class DebugView : DockPanel, IOwnKeys
             evaluate.Text = text;
         }
     }
+
+    /// <summary>The link over Variables that reads the frame's values anew once every thread ran in an evaluation.</summary>
+    public const string ReadAgain = "Read Again";
 
     /// <summary>The window header's own tools: the sessions' tabs.</summary>
     public Control HeaderTools { get; }
