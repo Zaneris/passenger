@@ -33,8 +33,8 @@ public sealed partial class CSharpDocument
 
     /// <summary>The file read against the scenes its scripts run in (<see cref="GodotChecks.Findings"/>): a GetNode path no node
     /// answers, or whose node is not of the type asked for, each an error naming the scene and line; a res:// path no file
-    /// answers; a scene's connection to a method its script lacks, or one taking other parameters than its signal gives.
-    /// None for a file of no Godot project, which asks nothing.</summary>
+    /// answers; a scene's connection to a method its script lacks, or one taking other parameters than its signal gives; a
+    /// string naming a member a script lacks. None for a file of no Godot project, which asks nothing.</summary>
     internal async Task<IReadOnlyList<Diagnostic>> GodotFindingsAsync(CancellationToken cancel)
     {
         godotFolder = Lsp is null ? null : service.GodotOf?.Invoke(document.Path);

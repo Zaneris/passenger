@@ -54,6 +54,9 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
                 EmitSignal(SignalName.Scored, 1);
                 EmitSignalScored(2);
                 EmitSignal("Scored", 3);
+                Connect(SignalName.Scored, new Callable(this, "OnScord"));
+                Connect("Scored", new Callable(this, "OnStartPressed"));
+                EmitSignal("Scord");
             }
 
             private void OnScored(int points)
@@ -288,6 +291,43 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>A string Godot's calls take naming a method or a signal Main lacks is an error where it is written, as is a
+    /// method connected by strings to a signal it takes other arguments than; Go to Declaration from a string naming a signal
+    /// goes to its delegate, and from one naming a method to the method.</summary>
+    [AvaloniaFact]
+    public void A_string_named_connection_to_a_missing_method_is_marked_and_its_strings_lead_to_what_they_name()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            string method = "Main has no method 'OnScord'";
+            string signal = "Main has no signal 'Scord'";
+            string wrong = "'Scored', which gives 1 (int), is connected to 'OnStartPressed', which takes none";
+            Ui.WaitFor(() => Marked(window).Contains(method) && Marked(window).Contains(signal) && Marked(window).Contains(wrong),
+                () => $"the strings naming a missing method and signal, and the connection of other arguments, to be marked: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
+            TextSnapshot text = window.EditorArea.Active!.Text.Snapshot;
+            Marker missing = window.EditorArea.Active.Markers.First(m => m.Message == method);
+            Assert.Equal("OnScord", text.GetText(missing.Range.Start, missing.Range.Length));
+            Marker connected = window.EditorArea.Active.Markers.First(m => m.Message == wrong);
+            Assert.Equal("OnStartPressed", text.GetText(connected.Range.Start, connected.Range.Length));
+            Assert.DoesNotContain(Marked(window), m => m.Contains("'Scored' takes", StringComparison.Ordinal));
+
+            CodeEditor code = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(code, "Connect(\"Scor");
+            Ui.Run(window, AppActions.GoToDeclaration);
+            Ui.WaitFor(() => code.Document.Snapshot.GetLineText(code.CaretPosition.Line).Contains("delegate void ScoredEventHandler", StringComparison.Ordinal),
+                () => $"Go to Declaration from the signal's string to go to its delegate ({code.Document.Snapshot.GetLineText(code.CaretPosition.Line)}; {window.Status})");
+            Ui.PlaceAfter(code, "new Callable(this, \"OnStartPr");
+            Ui.Run(window, AppActions.GoToDeclaration);
+            Ui.WaitFor(() => code.Document.Snapshot.GetLineText(code.CaretPosition.Line).Contains("private void OnStartPressed()", StringComparison.Ordinal),
+                () => $"Go to Declaration from the method's string to go to the method ({code.Document.Snapshot.GetLineText(code.CaretPosition.Line)}; {window.Status})");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Rename of the handler in the code renames the method the scene's connections call, one step of Undo with the code's.</summary>
     [AvaloniaFact]
     public void Renaming_a_handler_renames_the_method_its_scenes_connections_call()
@@ -307,6 +347,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             Assert.DoesNotContain("OnStartPressed", File.ReadAllText(ScenePath), StringComparison.Ordinal);
             Assert.Contains("private void OnPlayPressed()", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
             Assert.Contains("new(this, MethodName.OnPlayPressed)", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            Assert.Contains("new Callable(this, \"OnPlayPressed\")", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
 
             window.Confirm = (_, _, _) => Task.FromResult(true);
             editor.Focus();
@@ -353,6 +394,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             Assert.Contains("EmitSignal(SignalName.Goal, 1);", code, StringComparison.Ordinal);
             Assert.Contains("EmitSignalGoal(2);", code, StringComparison.Ordinal);
             Assert.Contains("EmitSignal(\"Goal\", 3);", code, StringComparison.Ordinal);
+            Assert.Contains("Connect(\"Goal\", new Callable(", code, StringComparison.Ordinal);
             Assert.Contains("main.IsConnected(Main.SignalName.Goal, ", File.ReadAllText(HudPath), StringComparison.Ordinal);
             Built(window);
 

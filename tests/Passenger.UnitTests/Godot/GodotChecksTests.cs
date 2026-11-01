@@ -7,7 +7,7 @@ namespace Passenger.UnitTests.Godot;
 /// <summary>What a Godot project's C# and its scenes say of each other, the code as Passenger's extension answers for it:
 /// what is asked of the code for the scenes a script runs in, and what is wrong: a GetNode path no scene's node answers, a
 /// node not of the type asked for, a res:// path no file answers, a connection to a method the script lacks or one of other
-/// parameters than its signal gives.</summary>
+/// parameters than its signal gives, a string naming a member a script lacks.</summary>
 public class GodotChecksTests
 {
     private const string Scene = """
@@ -106,5 +106,46 @@ public class GodotChecksTests
         ], findings.Select(f => (f.At, f.Message)));
         found = Found(asked, [], methods: [new GodotSignature("OnPressed", [], 0, null, null, null), new GodotSignature("OnToggled", ["bool", "string"], 2, null, null, null)]);
         Assert.Empty(GodotChecks.Findings(scenes, asked, found, _ => true));
+    }
+
+    /// <summary>A string naming a member a script's class lacks is an error, as is an EmitSignal giving a signal other
+    /// arguments than it takes and a Callable's method connected by a string to a signal of other arguments; an engine
+    /// class's object, which its script may give more, and strings that hold are not marked.</summary>
+    [Fact]
+    public void A_string_naming_a_member_a_script_lacks_or_of_other_arguments_is_an_error()
+    {
+        GodotScenes scenes = Scenes();
+        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotSignature scored = new("Scored", ["int"], 1, "/game/Main.cs", new Place(4, 25), new Place(4, 43));
+        GodotSignature onScored = new("OnScored", ["int"], 1, "/game/Main.cs", new Place(9, 17), new Place(9, 25));
+        GodotSignature onStart = new("OnStart", [], 0, "/game/Main.cs", new Place(11, 17), new Place(11, 24));
+        GodotStringRead Read(GodotNameKind kind, string name, int line, bool script, GodotSignature? found, int? given = null, int? signal = null) =>
+            new(kind, name, new Place(line, 10), new Place(line, 10 + name.Length), true, script ? "Main" : "Button", script, found, given, signal);
+        GodotCodeFound found = Found(asked, [], methods: [null, null]) with
+        {
+            Strings =
+            [
+                Read(GodotNameKind.Method, "OnScord", 20, script: true, null),
+                Read(GodotNameKind.Signal, "Scord", 21, script: true, null),
+                Read(GodotNameKind.Property, "Spd", 22, script: true, null),
+                Read(GodotNameKind.Signal, "presed", 23, script: false, null),
+                Read(GodotNameKind.Signal, "Scored", 24, script: true, scored, given: 0),
+                Read(GodotNameKind.Signal, "Scored", 25, script: true, scored, given: 1),
+                Read(GodotNameKind.Signal, "Scored", 26, script: true, scored),
+                Read(GodotNameKind.Method, "OnStart", 26, script: true, onStart, signal: 6),
+                Read(GodotNameKind.Signal, "Scored", 27, script: true, scored),
+                Read(GodotNameKind.Method, "OnScored", 27, script: true, onScored, signal: 8),
+            ],
+        };
+        IReadOnlyList<GodotChecks.Finding> findings = [.. GodotChecks.Findings(scenes, asked, found, _ => true).Where(f => f.At.Line >= 20)];
+        Assert.Equal(
+        [
+            (20, "Main has no method 'OnScord'"),
+            (21, "Main has no signal 'Scord'"),
+            (22, "Main has no property 'Spd'"),
+            (24, "'Scored' takes 1 (int), but this EmitSignal gives it none"),
+            (26, "'Scored', which gives 1 (int), is connected to 'OnStart', which takes none"),
+        ], findings.Select(f => (f.At.Line, f.Message)));
+        Assert.All(findings, f => Assert.True(f.Error));
     }
 }

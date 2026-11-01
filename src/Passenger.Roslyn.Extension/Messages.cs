@@ -326,7 +326,8 @@ public sealed record GodotMemberAsked(
     [property: JsonPropertyName("name")] string Name);
 
 /// <summary>What a Godot project's C# file holds that its scenes speak of: its classes Godot can run, its calls of
-/// GetNode, its res:// paths; and what was asked of the project's types, each list in the order asked.</summary>
+/// GetNode, its res:// paths, the strings Godot's calls take naming signals, methods and properties; and what was asked of
+/// the project's types, each list in the order asked.</summary>
 public sealed record GodotCodeFound(
     [property: JsonPropertyName("classes")] IReadOnlyList<GodotClassFound> Classes,
     [property: JsonPropertyName("calls")] IReadOnlyList<GodotNodeCall> Calls,
@@ -337,7 +338,28 @@ public sealed record GodotCodeFound(
     [property: JsonPropertyName("methods")] IReadOnlyList<GodotSignature?> Methods)
 {
     public static readonly GodotCodeFound None = new([], [], [], [], [], [], []);
+
+    [JsonPropertyName("strings")]
+    public IReadOnlyList<GodotStringRead> Strings { get; init; } = [];
 }
+
+/// <summary>A string Godot's calls take naming a signal, a method or a property (<c>EmitSignal("Scored")</c>,
+/// <c>new Callable(this, "OnScored")</c>, <c>Set("Speed", 2)</c>), as the file gives it: what it names, where it is written
+/// (its characters, when <paramref name="Exact"/>), the class of the object it names it on as shown, whether that is a
+/// script's class (whose members the code declares, so one it lacks is known missing), the member found, how many
+/// arguments an EmitSignal gives the signal (null for another call, or one given as an array), and, for a Callable's method
+/// given to a Connect of a signal named by a string, that string's read by its index among these.</summary>
+public sealed record GodotStringRead(
+    [property: JsonPropertyName("kind")] GodotNameKind Kind,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("exact")] bool Exact,
+    [property: JsonPropertyName("on")] string On,
+    [property: JsonPropertyName("script")] bool Script,
+    [property: JsonPropertyName("found")] GodotSignature? Found,
+    [property: JsonPropertyName("given")] int? Given,
+    [property: JsonPropertyName("signal")] int? Signal);
 
 /// <summary>A class of the file that derives from GodotObject: its name, full name and where its name is written, its first
 /// engine class by Godot's name, the scripts its code runs as (res://: its own, and those of the classes deriving from it),

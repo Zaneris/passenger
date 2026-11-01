@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Extensions;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
 using static Passenger.Roslyn.Extension.SyntaxReads;
 
@@ -60,7 +61,54 @@ internal static class GodotSource
         List<GodotChain?> scriptChains = [.. asked.Scripts.Select(s => scripts[s] is { } type ? new GodotChain(s, [.. Lineage(type)], engine.First(type) is { } first ? engine.NameOf(first) : null, type.Name) : null)];
         List<GodotSignature?> signals = [.. asked.Signals.Select(s => Signal(engine, s.Script is null ? null : scripts[s.Script], s.Engine, s.Name))];
         List<GodotSignature?> methods = [.. asked.Methods.Select(m => Method(engine, m.Script is null ? null : scripts[m.Script], m.Engine, m.Name))];
-        return new GodotCodeFound(classes, calls, resources, chains, scriptChains, signals, methods);
+        return new GodotCodeFound(classes, calls, resources, chains, scriptChains, signals, methods) { Strings = Strings(root, model, engine, godotObject, text, cancel) };
+    }
+
+    /// <summary>The file's strings Godot's calls take naming a signal, a method or a property (<see cref="GodotGenerated.NameCall"/>),
+    /// each with the member it names found on its object's class (a script's own, or its engine class's), an EmitSignal's
+    /// count of arguments, and a Connect's Callable joined to the signal it is connected to.</summary>
+    private static IReadOnlyList<GodotStringRead> Strings(SyntaxNode root, SemanticModel model, Engine engine, INamedTypeSymbol godotObject, SourceText text, CancellationToken cancel)
+    {
+        List<GodotStringRead> reads = [];
+        Dictionary<int, int> byStart = [];
+        List<(int Signal, int Method)> joined = [];
+        foreach (SyntaxToken token in root.DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken)))
+        {
+            if (GodotGenerated.NameCall(token, model, cancel) is not { On: INamedTypeSymbol on } call)
+            {
+                continue;
+            }
+            bool script = !engine.Owns(on) && on.Locations.Any(l => l.IsInSource) && Derives(on, godotObject);
+            INamedTypeSymbol? own = script ? on : null;
+            string? engineClass = script ? null : engine.First(on) is { } first ? engine.NameOf(first) : null;
+            string name = token.ValueText;
+            GodotSignature? found = call.Kind switch
+            {
+                GodotNameKind.Signal => Signal(engine, own, engineClass, name),
+                GodotNameKind.Method => Method(engine, own, engineClass, name),
+                _ => Property(engine, own, engineClass, name),
+            };
+            // An EmitSignal's arguments after the signal, unless they are given as one array or span.
+            int? given = call.Kind == GodotNameKind.Signal && call.Method.Name == "EmitSignal" && token.Parent?.Parent?.Parent is ArgumentListSyntax list
+                && call.Arguments.FirstOrDefault(a => a.Parameter?.IsParams == true) is { ArgumentKind: not ArgumentKind.Explicit } ? list.Arguments.Count - 1 : null;
+            bool exact = GodotGenerated.Exact(token);
+            byStart[token.SpanStart] = reads.Count;
+            if (call.Kind == GodotNameKind.Signal && call.Arguments.FirstOrDefault(a => a.Parameter?.Type is { Name: "Callable", ContainingNamespace.Name: Namespace })?.Value is { } callable
+                && GodotGenerated.Unconverted(callable) is IObjectCreationOperation { Arguments: [_, { Value: var method }] } && GodotGenerated.Unconverted(method) is ILiteralOperation { Syntax: LiteralExpressionSyntax literal })
+            {
+                joined.Add((reads.Count, literal.Token.SpanStart));
+            }
+            reads.Add(new GodotStringRead(call.Kind, name, PlaceAt(text, exact ? token.SpanStart + 1 : token.SpanStart), PlaceAt(text, exact ? token.Span.End - 1 : token.Span.End), exact,
+                on.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), script, found, given, null));
+        }
+        foreach ((int signal, int method) in joined)
+        {
+            if (byStart.TryGetValue(method, out int index) && reads[index].Kind == GodotNameKind.Method)
+            {
+                reads[index] = reads[index] with { Signal = signal };
+            }
+        }
+        return reads;
     }
 
     /// <summary>A class of the file: its place, engine class, scripts, exports and signals.</summary>
@@ -181,6 +229,29 @@ internal static class GodotSource
             if (type.GetMembers().OfType<IMethodSymbol>().FirstOrDefault(m => m.MethodKind == MethodKind.Ordinary && Plain(m.Name) == wanted) is { } method)
             {
                 return Signature(name, method, null, source: false);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>A property on a node Godot's Get and Set name: its script's property or field of the name (in its class or a
+    /// base of the code's), else its engine class's by the snake_case name; its type as its one parameter.</summary>
+    private static GodotSignature? Property(Engine engine, INamedTypeSymbol? script, string? engineClass, string name)
+    {
+        for (INamedTypeSymbol? type = script; type is not null && !engine.Owns(type); type = type.BaseType)
+        {
+            if (type.GetMembers(name).FirstOrDefault(m => m is IPropertySymbol or IFieldSymbol && !m.IsImplicitlyDeclared) is { } own)
+            {
+                string shown = ((own as IPropertySymbol)?.Type ?? ((IFieldSymbol)own).Type).ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+                return Declared(own) is { } at ? new GodotSignature(name, [shown], 0, at.Path, at.At, at.End) : new GodotSignature(name, [shown], 0, null, null, null);
+            }
+        }
+        string wanted = Plain(name);
+        for (INamedTypeSymbol? type = (script is null ? null : engine.First(script)) ?? (engineClass is null ? null : engine.Type(engineClass)); type is not null; type = type.BaseType)
+        {
+            if (type.GetMembers().OfType<IPropertySymbol>().FirstOrDefault(p => Plain(p.Name) == wanted) is { } property)
+            {
+                return new GodotSignature(name, [property.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)], 0, null, null, null);
             }
         }
         return null;

@@ -173,13 +173,22 @@ internal sealed partial class CSharpAssist
 
     private static bool SameFile(string left, string right) => PathNames.Same(left, right) || PathNames.Same(PathNames.Canonical(left), right);
 
-    /// <summary>Where Go to Declaration goes from a Godot path's string: a res:// path's file; a GetNode path's node, in each
-    /// scene its script runs in that has it. Null anywhere else.</summary>
+    /// <summary>Where Go to Declaration goes from a Godot string: a script's signal, method or property a string Godot's calls
+    /// take names; a res:// path's file; a GetNode path's node, in each scene its script runs in that has it. Null anywhere else.</summary>
     private async Task<Declared?> GodotDeclaredAsync(LspDocument lsp, OpenDocument document, int offset)
     {
         TextSnapshot asked = lsp.Text.Snapshot;
-        if (!InString(asked, offset) || context.CSharp is not { } csharp || csharp.GodotOf?.Invoke(document.Path) is null
-            || await csharp.GodotAsync(document.Path, CancellationToken.None) is not { } read || lsp.Text.Snapshot != asked)
+        if (!InString(asked, offset) || context.CSharp is not { } csharp || csharp.GodotOf?.Invoke(document.Path) is null)
+        {
+            return null;
+        }
+        // A string Godot's calls take naming a script's signal, method or property goes to its declaration.
+        if (await GodotNamesAsync(document, lsp, offset, uses: false) is { Via: GodotNameVia.String, Symbol: { Path: { } declaring, At: { } place } })
+        {
+            LspPosition at = new(place.Line, place.Character);
+            return new Declared([new LspLocation(DocumentUris.FromPath(declaring), new LspRange(at, at))], Refusals.NoDeclaration);
+        }
+        if (await csharp.GodotAsync(document.Path, CancellationToken.None) is not { } read || lsp.Text.Snapshot != asked)
         {
             return null;
         }

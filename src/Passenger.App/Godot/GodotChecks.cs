@@ -11,8 +11,9 @@ internal sealed record GodotRead(string Folder, GodotScenes Scenes, GodotCodeReq
 /// (<see cref="GodotSource"/>) and its scenes by Passenger's own reader (<see cref="GodotScenes"/>): what to ask the
 /// extension of the project's types for the scenes the file's scripts run in (<see cref="Asks"/>), and what is wrong
 /// (<see cref="Findings"/>): a GetNode path no node answers in any scene a script runs in, one whose node is not of the
-/// type asked for, a res:// path no file answers, and a scene's connection to a method the script lacks, or that takes
-/// other parameters than its signal gives. Pure: it reads only what it is given (and whether a file is there).</summary>
+/// type asked for, a res:// path no file answers, a scene's connection to a method the script lacks, or that takes other
+/// parameters than its signal gives, and a string Godot's calls take naming a member a script lacks or connecting one of
+/// other arguments. Pure: it reads only what it is given (and whether a file is there).</summary>
 internal static class GodotChecks
 {
     /// <summary>One finding: where it is in the file (the server's places), whether it is an error, and its words.</summary>
@@ -99,6 +100,13 @@ internal static class GodotChecks
             if ((read.Path.EndsWith('/') || last.Contains('.')) && scenes.FileOf(named) is { } file && !exists(file))
             {
                 findings.Add(new Finding(read.At, read.End, true, $"No {(named.EndsWith('/') ? "folder" : "file")} {named} is in the Godot project"));
+            }
+        }
+        foreach (GodotStringRead read in found.Strings)
+        {
+            if (StringFinding(found, read) is { } finding)
+            {
+                findings.Add(finding);
             }
         }
         for (int i = 0; i < found.Classes.Count; i++)
@@ -200,10 +208,37 @@ internal static class GodotChecks
             return null;
         }
         bool here = method.At is not null && method.Path is not null && SameFile(method.Path, asked.Path);
-        string takes = method.Parameters.Count == 0 ? "takes none" : $"takes {method.Parameters.Count} ({string.Join(", ", method.Parameters)})";
-        string gives = given == 0 ? "gives no arguments" : $"gives {given} ({string.Join(", ", signal.Parameters.Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Binds))).Take(Math.Max(0, given)))})";
+        string takes = Takes(method.Parameters);
+        string gives = Gives(given, signal.Parameters.Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Binds))));
         return new Finding(here ? method.At! : type.At, here ? method.End! : type.End, true, $"{where} connects {from}'s {connection.Signal}, which {gives}, to {connection.Method}, which {takes}");
     }
+
+    /// <summary>A string Godot's calls take naming a member: one a script's class lacks, a signal an EmitSignal gives other
+    /// arguments than it carries, or a method connected by a Connect to a signal named by a string that takes other
+    /// arguments than the signal gives; null where it holds, or what it names is not known (an engine class's object, which
+    /// a script may give more).</summary>
+    private static Finding? StringFinding(GodotCodeFound found, GodotStringRead read)
+    {
+        if (read.Found is not { } member)
+        {
+            string what = read.Kind switch { GodotNameKind.Signal => "signal", GodotNameKind.Method => "method", _ => "property" };
+            return read.Script ? new Finding(read.At, read.End, true, $"{read.On} has no {what} '{read.Name}'") : null;
+        }
+        if (read.Given is { } given && (given < member.Required || given > member.Parameters.Count))
+        {
+            return new Finding(read.At, read.End, true, $"'{read.Name}' {Takes(member.Parameters)}, but this EmitSignal gives it {(given == 0 ? "none" : given.ToString(System.Globalization.CultureInfo.InvariantCulture))}");
+        }
+        if (read.Signal is { } index && index < found.Strings.Count && found.Strings[index].Found is { } signal
+            && (signal.Parameters.Count < member.Required || signal.Parameters.Count > member.Parameters.Count))
+        {
+            return new Finding(read.At, read.End, true, $"'{found.Strings[index].Name}', which {Gives(signal.Parameters.Count, signal.Parameters)}, is connected to '{read.Name}', which {Takes(member.Parameters)}");
+        }
+        return null;
+    }
+
+    private static string Gives(int given, IEnumerable<string> types) => given == 0 ? "gives no arguments" : $"gives {given} ({string.Join(", ", types.Take(given))})";
+
+    private static string Takes(IReadOnlyList<string> parameters) => parameters.Count == 0 ? "takes none" : $"takes {parameters.Count} ({string.Join(", ", parameters)})";
 
     private static int IndexOf(IReadOnlyList<GodotMemberAsked> asked, GodotMemberAsked one)
     {
