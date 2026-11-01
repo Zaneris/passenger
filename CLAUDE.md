@@ -182,8 +182,9 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
 - **One way out to the system:** a browser only through `MainWindow.Browse`, the file manager only through
   `ShowInFileManager` (both recorded for tests).
 - **Shortcuts follow Rider's**: its Visual Studio (Windows) or Visual Studio OSX (macOS) keymap, and its VS Code keymaps
-  for that preset, resolved as IntelliJ does (own list, then plugins' descriptors, then the parent); a keypad key Rider
-  binds beside a main key is bound too. A key IntelliJ gives two actions by place goes to one, said where it's bound;
+  and IntelliJ's own (`$default`, `Mac OS X 10.5+`) for those presets, resolved as IntelliJ does (own list, then
+  plugins' descriptors, then the parent); a keypad key Rider binds beside a main key is bound too, and a modifier tapped
+  twice is a shortcut (`shift , shift`, `Shortcut.IsDoubleTap`). A key IntelliJ gives two actions by place goes to one, said where it's bound;
   the place takes it through `AppActions.KeysIn`. Mouse gestures too: `Keymap.Bind` takes Rider's mouse notation (`meta
   shift button1`), an editor asks its window's keymap (`CodeEditor.GesturesProperty`) and names no IDE action, and the
   side buttons run window-wide (`IdeKeys`).
