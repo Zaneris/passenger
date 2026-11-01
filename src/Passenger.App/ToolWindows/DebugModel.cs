@@ -122,6 +122,9 @@ public sealed class DebugModel
     /// <summary>Set Data Breakpoint, or Remove Data Breakpoint, chosen on a row.</summary>
     public event EventHandler<VariableNode>? DataBreakpointRequested;
 
+    /// <summary>A row to run again with every thread let go (<see cref="VariablesList.RunWithThreadsRequested"/>).</summary>
+    public event EventHandler<VariableNode>? RunWithThreadsRequested;
+
     /// <summary>A query's SQL, read, to open whole in a read-only editor tab.</summary>
     public event EventHandler<VariableNode>? TextOpened;
 
@@ -342,6 +345,8 @@ public sealed class DebugModel
     internal void Unwatch(string expression) => WatchRemoved?.Invoke(this, expression);
 
     internal void SetValue(VariableNode node, string value) => SetValueRequested?.Invoke(this, (node, value));
+
+    internal void RunWithThreads(VariableNode node) => RunWithThreadsRequested?.Invoke(this, node);
 
     internal void ToggleDataBreakpoint(VariableNode node) => DataBreakpointRequested?.Invoke(this, node);
 

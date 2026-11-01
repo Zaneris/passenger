@@ -18,6 +18,10 @@ public class VariableInfo
     public required int VariablesReference { get; set; }
     public VariablePresentationHint? PresentationHint { get; set; }
 
+    /// <summary>What other threads met and passed over while the evaluation that read this value ran with every thread let
+    /// go; null where they met none, or the others were held.</summary>
+    public string? PassedOver { get; set; }
+
     /// <summary>The member this row is, by the name C# reaches it by from its owner's expression; null for a row reached
     /// otherwise.</summary>
     internal string? Member { get; set; }

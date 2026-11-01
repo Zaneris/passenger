@@ -97,6 +97,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         variables.EvaluateRequested += (_, request) => model.Evaluate(request.Expression, request.Watch);
         variables.WatchRemoved += (_, watch) => model.Unwatch(watch);
         variables.SetValueRequested += (_, request) => model.SetValue(request.Node, request.Value);
+        variables.RunWithThreadsRequested += (_, node) => model.RunWithThreads(node);
         variables.DataBreakpointRequested += (_, node) => model.ToggleDataBreakpoint(node);
         variables.TextOpened += (_, node) => model.OpenText(node);
         ListMenus.Attach(frames, FramesMenu);

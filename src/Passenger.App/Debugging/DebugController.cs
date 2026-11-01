@@ -123,6 +123,7 @@ public sealed class DebugController : IDisposable
         EventHandler<(string Expression, bool Watch)> evaluated = (_, request) => IdeErrors.Observe(Evaluate(request.Expression, request.Watch));
         EventHandler<(VariableNode Node, string Value)> set = (_, request) => IdeErrors.Observe(SetValue(request.Node, request.Value));
         EventHandler<VariableNode> watchData = (_, node) => IdeErrors.Observe(ToggleDataBreakpointAsync(node));
+        EventHandler<VariableNode> ranAgain = (_, node) => IdeErrors.Observe(RunWithThreadsAsync(node, view.Tree));
         EventHandler<VariableNode> textOpened = (_, node) => TextOpened?.Invoke(this, node.Value);
         EventHandler<DebugTab> tabChosen = (_, tab) => IdeErrors.Observe(ChooseAsync(tab));
         EventHandler<DebugTab> tabClosed = (_, tab) => IdeErrors.Observe(CloseTabAsync(tab));
@@ -139,6 +140,7 @@ public sealed class DebugController : IDisposable
         view.DataWatch = DataWatchAsync;
         view.PlaceOf = PlaceOf;
         view.DataBreakpointRequested += watchData;
+        view.RunWithThreadsRequested += ranAgain;
         view.TextOpened += textOpened;
         Breakpoints.DataChanged += (_, _) => TellRefusedData();
         view.WatchRemoved += unwatched;
@@ -154,6 +156,7 @@ public sealed class DebugController : IDisposable
             view.EvaluateRequested -= evaluated;
             view.SetValueRequested -= set;
             view.DataBreakpointRequested -= watchData;
+            view.RunWithThreadsRequested -= ranAgain;
             view.TextOpened -= textOpened;
             view.WatchRemoved -= unwatched;
         };
@@ -1743,7 +1746,8 @@ public sealed class DebugController : IDisposable
             string code = $"{expression} = {(value.Type is { Length: > 0 } type && value.Result != type ? $"{{{type}}} " : "")}{VariableNode.Cut(value.Result)}";
             return new CSharp.DebuggerHover(code)
             {
-                Values = value.VariablesReference > 0 ? HoverValues(session, at, stop, expression, value) : null,
+                // One that did not end with the other threads held is a row too, to be run again from its link.
+                Values = value.VariablesReference > 0 || VariableNode.SaysNeedsThreads(value.PresentationHint) ? HoverValues(session, at, stop, expression, value) : null,
                 Gone = gone,
             };
         }
@@ -1773,10 +1777,15 @@ public sealed class DebugController : IDisposable
         list.EvaluateRequested += (_, request) => IdeErrors.Observe(Evaluate(request.Expression, request.Watch));
         list.DataBreakpointRequested += (_, node) => IdeErrors.Observe(ToggleDataBreakpointAsync(node));
         list.SetValueRequested += (_, request) => IdeErrors.Observe(SetHoveredAsync(request.Node, request.Value));
+        list.RunWithThreadsRequested += (_, node) => IdeErrors.Observe(RunWithThreadsAsync(node, tree, at));
         list.TextOpened += (_, node) => TextOpened?.Invoke(this, node.Value);
         return list;
 
-        VariableNode Hovered(EvaluateResponse read) => new(expression, read.Result, read.Type, read.VariablesReference, 0, VariableRole.Value) { EvaluateName = expression };
+        VariableNode Hovered(EvaluateResponse read) => new(expression, read.Result, read.Type, read.VariablesReference, 0, VariableRole.Value)
+        {
+            EvaluateName = expression,
+            NeedsThreads = VariableNode.SaysNeedsThreads(read.PresentationHint),
+        };
 
         async Task SetHoveredAsync(VariableNode node, string typed)
         {
@@ -2362,11 +2371,52 @@ public sealed class DebugController : IDisposable
         try
         {
             EvaluateResponse value = await session.EvaluateAsync(expression, frame.Id, role == VariableRole.Watch ? "watch" : "repl");
-            return new VariableNode(expression, value.Result, value.Type, value.VariablesReference, 0, role);
+            return new VariableNode(expression, value.Result, value.Type, value.VariablesReference, 0, role) { NeedsThreads = VariableNode.SaysNeedsThreads(value.PresentationHint) };
         }
         catch (DapException error)
         {
             return new VariableNode(expression, error.Reason, null, 0, 0, role == VariableRole.Watch ? VariableRole.Watch : VariableRole.Error);
+        }
+    }
+
+    /// <summary>Runs a row's expression again with every thread of the program let go, as the person chose on a row whose
+    /// evaluation did not end with the others held: what it reads takes the row's place in <paramref name="tree"/> (the
+    /// Variables view's, or a hover card's read in <paramref name="within"/>), and what the other threads passed over
+    /// meanwhile is said. Nothing else runs an evaluation so.</summary>
+    public async Task RunWithThreadsAsync(VariableNode node, VariablesTree tree, DapStackFrame? within = null)
+    {
+        UiThread.Check();
+        if (Session is not { State: DebugState.Paused } session || (within ?? frame) is not { } current)
+        {
+            Message?.Invoke(this, $"{VariablesList.RunWithThreads}: {NotPaused() ?? "The program is not paused"}");
+            return;
+        }
+        if (node.Expression is not { } expression)
+        {
+            Message?.Invoke(this, $"{VariablesList.RunWithThreads}: {node.NoExpression}");
+            return;
+        }
+        // Held until the row is in, so a picture taken after the choice shows what it read.
+        using IDisposable held = BackgroundWork.Scope();
+        int stop = shown;
+        EvaluateResponse read;
+        try
+        {
+            read = await session.EvaluateAsync(expression, current.Id, node.Role == VariableRole.Watch ? "watch" : "repl", letThreadsRun: true);
+        }
+        catch (DapException error)
+        {
+            Message?.Invoke(this, $"Could not run {expression} with every thread: {error.Reason}");
+            return;
+        }
+        if (stop != shown)
+        {
+            return;
+        }
+        tree.Replace(node, VariableNode.RanAgain(node, read));
+        if (read.PassedOver is { } passed)
+        {
+            Message?.Invoke(this, passed);
         }
     }
 

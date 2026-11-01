@@ -824,8 +824,10 @@ public sealed class DebugSession
     }
 
     /// <summary>An expression's value in a frame; context is watch, hover or repl.</summary>
-    public Task<EvaluateResponse> EvaluateAsync(string expression, int? frameId, string context) =>
-        connection.RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, context));
+    /// <summary>An expression's value in a frame; with <paramref name="letThreadsRun"/>, run with every thread of the program
+    /// let go, which only the person asks for.</summary>
+    public Task<EvaluateResponse> EvaluateAsync(string expression, int? frameId, string context, bool letThreadsRun = false) =>
+        connection.RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, context, letThreadsRun ? true : null));
 
     /// <summary>Sets the paused program going (a continue or a step), saying it runs at once, as the adapter takes it ahead
     /// of what the stop still reads: a request it refuses throws its reason, and the stop is shown again as it was, the

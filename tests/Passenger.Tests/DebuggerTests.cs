@@ -849,6 +849,54 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
+    /// <summary>A watch of a property read under a lock another thread holds never ends while that thread is held, and says
+    /// it probably needs another thread to run, as it does again when the values are shown again, nothing having run that
+    /// thread; its link runs it again with every thread let go, giving its value, after which a watch on that thread works.</summary>
+    [AvaloniaFact]
+    public void A_watch_waiting_on_a_lock_another_thread_holds_runs_again_with_every_thread_let_go_from_its_link()
+    {
+        Write("Program.cs", "Locked locked = new();\nLocked.Hold();\nConsole.WriteLine(\"locked\");\nConsole.WriteLine(locked.Value);\n\n"
+            + "sealed class Locked\n{\n    private static readonly object Gate = new();\n    public static bool LetGo;\n\n"
+            + "    public string Value\n    {\n        get\n        {\n            lock (Gate)\n            {\n                return \"read under the lock\";\n            }\n        }\n    }\n\n"
+            + "    public static void Hold()\n    {\n        using ManualResetEventSlim held = new();\n        Thread holder = new(() =>\n        {\n"
+            + "            lock (Gate)\n            {\n                held.Set();\n                Thread.Sleep(1000);\n            }\n            LetGo = true;\n"
+            + "        }) { IsBackground = true };\n        holder.Start();\n        held.Wait();\n    }\n}\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.GoTo(new TextPosition(2, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        StartDebugging(window);
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused && Row(window, "locked") is not null, "the stop while the other thread holds the lock");
+        Passenger.App.ToolWindows.DebugModel view = window.BottomPanel.Debug;
+
+        Ui.Run(window, AppActions.Evaluate);
+        window.KeyTextInput("locked.Value");
+        Ui.Press(window, OperatingSystem.IsMacOS() ? "meta shift Enter" : "control shift Enter");
+        Ui.WaitFor(() => Watch(view) is { NeedsThreads: true }, () => $"the watch to say it needs another thread to run: {Watch(view)?.Value}", TimeSpan.FromSeconds(30));
+        Assert.Contains("needs another thread", Watch(view)!.Value, StringComparison.Ordinal);
+        // Shown again, the watch is evaluated as before, with the other threads held: still waiting, nothing ran the holder.
+        VariableNode first = Watch(view)!;
+        Ui.Await(window.Debugger.RefreshAsync(), "the values shown again");
+        Ui.WaitFor(() => Watch(view) is { } again && again != first, "the watch evaluated again");
+        Assert.True(Watch(view) is { NeedsThreads: true }, $"Shown again, the watch read {Watch(view)?.Value}, where nothing was to let the thread holding the lock run");
+
+        Control row = Ui.Row(window.DebugWindow.VariablesList, Watch(view)!);
+        Button link = row.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, VariablesList.RunWithThreads));
+        Ui.Click(link);
+        Ui.WaitFor(() => Watch(view)?.Value == "\"read under the lock\"", () => $"the watch run with every thread let go to give its value: {Watch(view)?.Value}", TimeSpan.FromSeconds(30));
+        Assert.False(Watch(view)!.NeedsThreads, "The value read with every thread let go still offered to run again");
+
+        Ui.Run(window, AppActions.Evaluate);
+        window.KeyTextInput("Locked.LetGo");
+        Ui.Press(window, OperatingSystem.IsMacOS() ? "meta shift Enter" : "control shift Enter");
+        Watched(view, "Locked.LetGo", "true", "a later watch on the thread, once the other has let go of the lock");
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+
+        static VariableNode? Watch(Passenger.App.ToolWindows.DebugModel view) => view.Tree.Rows.FirstOrDefault(r => r.Role == VariableRole.Watch && r.Name == "locked.Value");
+    }
+
     [AvaloniaFact]
     public void A_condition_typed_into_a_breakpoints_popup_decides_where_it_stops()
     {

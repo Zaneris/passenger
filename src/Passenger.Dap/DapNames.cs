@@ -119,6 +119,15 @@ public static class DapRows
     public const string ReturnValue = "$ReturnValue";
 }
 
+/// <summary>Passenger's own attributes of a value's presentation hint, beside the protocol's, written once for both ends.</summary>
+[IdentifierHome]
+public static class DapAttributes
+{
+    /// <summary>A failed evaluation that timed out with every other thread held, which probably needs another thread to run:
+    /// the person may run it again with every thread let go (evaluate's letThreadsRun).</summary>
+    public const string NeedsThreads = "needsThreads";
+}
+
 /// <summary>When an exception stops the program, an exception option's and an exceptionInfo answer's break mode, by the
 /// protocol's names: each written once for both ends.</summary>
 [IdentifierHome]

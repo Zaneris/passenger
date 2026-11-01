@@ -12,8 +12,9 @@ namespace Passenger.App.Debugging;
 /// <summary>A stop's values as rows of a <see cref="VariablesTree"/>: the one list the Debug window's Variables view and the
 /// debugger's hover card both are. A row's chevron, Right or Enter opens it (its members asked of the debugger the first
 /// time) and Left closes it; a double-click opens what has members and sets what has none (an EF Core query's SQL, read,
-/// opens in a tab); F2 types a new value in its row; Delete takes a watch away; and its menu is the Variables and
-/// Watches menu. What a row asks for it raises, for the debugger to do.</summary>
+/// opens in a tab); F2 types a new value in its row; Delete takes a watch away; a value that did not end with the other
+/// threads held runs again with every thread let go from its link; and its menu is the Variables and Watches menu. What a
+/// row asks for it raises, for the debugger to do.</summary>
 public sealed class VariablesList : ListBox
 {
     // Styled as the ListBox it is, so the theme's ListBox.tree reaches it.
@@ -101,6 +102,13 @@ public sealed class VariablesList : ListBox
 
     /// <summary>Set Data Breakpoint, or Remove Data Breakpoint, chosen on a row.</summary>
     public event EventHandler<VariableNode>? DataBreakpointRequested;
+
+    /// <summary>A row whose evaluation did not end with the other threads held, to run again with every thread let go: its
+    /// link, or its menu's item, chosen.</summary>
+    public event EventHandler<VariableNode>? RunWithThreadsRequested;
+
+    /// <summary>What a row that needs another thread to run offers, as its link and its menu's item.</summary>
+    public const string RunWithThreads = "Run with every thread";
 
     /// <summary>What Set Data Breakpoint offers on a row, the debugger asked: the menu's item says so once it answers.</summary>
     public Func<VariableNode, Task<DataWatchOffer>>? DataWatch { get; set; }
@@ -190,6 +198,11 @@ public sealed class VariablesList : ListBox
             Saying(ListMenus.Item("Add to Watches", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, true)), node.Expression is not null && node.Role != VariableRole.Watch), node.NoExpression),
             Saying(ListMenus.Item("Inspect", null, () => EvaluateRequested?.Invoke(this, (node.Expression!, false)), node.Expression is not null), node.NoExpression),
         ]);
+        if (node.NeedsThreads)
+        {
+            items.Add(new Separator());
+            items.Add(Saying(ListMenus.Item(RunWithThreadsItem, null, () => RunWithThreadsRequested?.Invoke(this, node), node.Expression is not null), node.NoExpression));
+        }
         if (node.Role == VariableRole.Watch)
         {
             items.Add(new Separator());
@@ -206,6 +219,9 @@ public sealed class VariablesList : ListBox
         }
         return items;
     }
+
+    /// <summary>The menu's item for <see cref="RunWithThreads"/>.</summary>
+    public const string RunWithThreadsItem = "Run Again with Every Thread";
 
     /// <summary>An item greyed where the row's value cannot take it, saying why (<paramref name="why"/>).</summary>
     private static MenuItem Saying(MenuItem item, string? why)
@@ -240,11 +256,22 @@ public sealed class VariablesList : ListBox
         type.Classes.Add(StyleClasses.Muted);
         TextBlock value = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 900 };
         TextBox editor = new() { Classes = { StyleClasses.Search }, MinHeight = 22, Height = 22, MinWidth = 240, Padding = new Thickness(6, 0), IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
+        // Before the words saying why, which a narrow row cuts first.
+        Button again = new() { Classes = { StyleClasses.Link }, Content = RunWithThreads, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
+        ToolTip.SetTip(again, "Evaluates it again with every other thread of the program running meanwhile, which changes what they hold");
         // Narrower than its row, the value gives way first, ending in an ellipsis, then its type.
         ShrinkingRow row = new()
         {
             Height = ListRow.Height,
-            Children = { toggle, icon, name, new TextBlock { Text = " = ", VerticalAlignment = VerticalAlignment.Center }, type, value, editor },
+            Children = { toggle, icon, name, new TextBlock { Text = " = ", VerticalAlignment = VerticalAlignment.Center }, type, again, value, editor },
+        };
+        again.Click += (_, e) =>
+        {
+            if (row.DataContext is VariableNode { NeedsThreads: true, Expression: not null } node)
+            {
+                RunWithThreadsRequested?.Invoke(this, node);
+                e.Handled = true;
+            }
         };
         toggle.PointerPressed += (_, e) =>
         {
@@ -298,6 +325,7 @@ public sealed class VariablesList : ListBox
                 editing = node.IsEditing;
                 editor.IsVisible = editing;
                 value.IsVisible = type.IsVisible = !editing;
+                again.IsVisible = !editing && node is { NeedsThreads: true, Expression: not null };
                 if (editing)
                 {
                     // It starts from the value as shown, all of it chosen, so typing replaces it and an arrow edits it.
@@ -331,6 +359,7 @@ public sealed class VariablesList : ListBox
             ToolTip.SetTip(value, node.Lines);
             editor.IsVisible = false;
             value.IsVisible = type.IsVisible = true;
+            again.IsVisible = node is { NeedsThreads: true, Expression: not null };
         }
     }
 }

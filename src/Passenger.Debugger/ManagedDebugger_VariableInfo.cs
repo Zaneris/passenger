@@ -458,7 +458,7 @@ public partial class ManagedDebugger
     {
         foreach (VariableInfo row in rows)
         {
-            if (row.PresentationHint?.Attributes is AttributesValue.FailedEvaluation)
+            if (row.PresentationHint?.Attributes is AttributesValue.FailedEvaluation or AttributesValue.FailedNeedingThreads)
             {
                 continue;
             }
@@ -864,17 +864,22 @@ public partial class ManagedDebugger
             EvaluateName = expression,
             Value = shown,
             Type = type,
-            PresentationHint = failed ? FailedRead : null,
+            PresentationHint = failed ? FailedHint(shown) : null,
             VariablesReference = GetVariablesReference(opens?.Invoke() ?? value, type, threadId, stackDepth, proxy, namesPointee ? name : null, declared, expression),
         };
     }
 
     /// <summary>A row saying why its value could not be read, which opens to nothing.</summary>
     private static VariableInfo FailedRow(string name, string why, string? type = null) =>
-        new() { Name = name, Value = why, Type = type, PresentationHint = FailedRead, VariablesReference = 0 };
+        new() { Name = name, Value = why, Type = type, PresentationHint = FailedHint(why), VariablesReference = 0 };
 
-    /// <summary>The hint of a row whose value is why it could not be read.</summary>
+    /// <summary>The hint of a row whose value is why it could not be read, marked where that says it probably needs another
+    /// thread to run, to be run again with every thread let go.</summary>
+    private static VariablePresentationHint FailedHint(string why) => why.Contains(Extensions.NeedsThreads, StringComparison.Ordinal) ? FailedNeedingThreads : FailedRead;
+
     private static readonly VariablePresentationHint FailedRead = new() { Attributes = AttributesValue.FailedEvaluation };
+
+    private static readonly VariablePresentationHint FailedNeedingThreads = new() { Attributes = AttributesValue.FailedNeedingThreads };
 
     /// <summary>A row the debugger adds to group values under it (<see cref="DapRows"/>' own, a range of an array's
     /// elements), which no expression reaches and which opens to <paramref name="opens"/>.</summary>

@@ -64,6 +64,13 @@ public sealed class VariableNode(string name, string value, string? type, int re
         : IsVirtual || Name is DapRows.RawView or DapRows.StaticMembers or DapRows.Results ? "The debugger adds this row to group the values under it, and no expression reaches it"
         : "No C# expression reaches this value from the frame";
 
+    /// <summary>The debugger says this row's evaluation did not end with every other thread of the program held, as it
+    /// probably needs another thread to run: the person may run it again with every thread let go.</summary>
+    public bool NeedsThreads { get; init; }
+
+    /// <summary>Whether a value the debugger read says it needs another thread to run (<see cref="NeedsThreads"/>).</summary>
+    public static bool SaysNeedsThreads(DapPresentationHint? hint) => hint?.Attributes?.Contains(DapAttributes.NeedsThreads) == true;
+
     /// <summary>The debugger says this row's expression reaches only a copy it made to show the value (an element of a
     /// HashSet, through its debugger view): one set there would leave the program's own as it was.</summary>
     public bool IsCopy { get; init; }
@@ -127,6 +134,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
             IsVirtual = variable.PresentationHint?.Kind == "virtual",
             IsCopy = variable.PresentationHint?.Attributes?.Contains("readOnly") == true,
             IsLazy = variable.PresentationHint?.Lazy == true && variable.VariablesReference > 0,
+            NeedsThreads = SaysNeedsThreads(variable.PresentationHint),
         };
 
     /// <summary>A lazy row as what it read: the debugger's one variable in its place, by its name, or why it read none.</summary>
@@ -139,6 +147,19 @@ public sealed class VariableNode(string name, string value, string? type, int re
             IsVirtual = lazy.IsVirtual,
             IsCopy = lazy.IsCopy,
             WasRead = true,
+            NeedsThreads = SaysNeedsThreads(read?.PresentationHint),
+        };
+
+    /// <summary>A row as its expression read again with every thread let go, in its place: a watch stays a watch.</summary>
+    public static VariableNode RanAgain(VariableNode row, EvaluateResponse read) =>
+        new(row.Name, read.Result, read.Type, read.VariablesReference, row.Depth,
+            row.Role == VariableRole.Watch ? VariableRole.Watch : read.PresentationHint?.Attributes?.Contains("failedEvaluation") == true ? VariableRole.Error : VariableRole.Value)
+        {
+            Parent = row.Parent,
+            EvaluateName = row.EvaluateName,
+            IsVirtual = row.IsVirtual,
+            IsCopy = row.IsCopy,
+            NeedsThreads = SaysNeedsThreads(read.PresentationHint),
         };
 }
 
@@ -260,6 +281,20 @@ public sealed class VariablesTree
         if (at >= 0)
         {
             Rows[at] = read;
+        }
+    }
+
+    /// <summary>Puts a row read again in the place of the one it was, in its parent's children too.</summary>
+    public void Replace(VariableNode row, VariableNode now)
+    {
+        if (row.Parent?.Children is { } siblings && siblings.IndexOf(row) is >= 0 and int among)
+        {
+            siblings[among] = now;
+        }
+        int at = Rows.IndexOf(row);
+        if (at >= 0)
+        {
+            Rows[at] = now;
         }
     }
 

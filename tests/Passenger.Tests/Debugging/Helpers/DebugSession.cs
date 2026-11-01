@@ -355,8 +355,8 @@ public sealed class DebugSession : IAsyncDisposable
     public async Task<List<DapVariable>> VariablesAsync(int variablesReference) =>
         [.. (await RequestAsync<VariablesResponse>(DapCommands.Variables, new VariablesArguments(variablesReference))).Variables];
 
-    public Task<EvaluateResponse> EvaluateAsync(int frameId, string expression) =>
-        RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, "repl"));
+    public Task<EvaluateResponse> EvaluateAsync(int frameId, string expression, bool letThreadsRun = false) =>
+        RequestAsync<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments(expression, frameId, "repl", letThreadsRun ? true : null));
 
     public async Task<DebugSession> ContinueAsync()
     {

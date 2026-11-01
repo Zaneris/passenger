@@ -10,7 +10,15 @@
 // together, either first; with "race throws" the second throws and catches an exception there too, and the call runs on
 // a while longer each turn, so over the turns the step's end meets the exception's handler found. With "returns" it calls
 // a method that returns a value each turn, which a debugger attaches to (LoopingConsoleAppOptimized is it built optimized).
-// With "asleep" it writes its numbers in a culture of its own and a value by its own ToString, then sleeps for good.
+// With "asleep" it writes its numbers in a culture of its own and a value by its own ToString, then sleeps for good. With
+// "locked" a second thread holds a lock a property is read under, letting it go only as it runs on.
+if (args is ["locked"])
+{
+    Locked locked = new();
+    Locked.Hold();
+    Console.WriteLine("locked"); // stop while the lock is held
+    return;
+}
 if (args is ["count"])
 {
     Thread counting = new(() =>
@@ -128,6 +136,43 @@ internal static class Returning
     public static long Twice(long turn)
     {
         return turn * 2; // returns twice the turn
+    }
+}
+
+// A property read under a lock a second thread holds for a second once it has taken it: an evaluation of it never ends
+// while that thread is held still.
+internal sealed class Locked
+{
+    private static readonly object Gate = new();
+
+    // Set once the holder has let go of the lock, read with no code run.
+    public static bool LetGo;
+
+    public string Value
+    {
+        get
+        {
+            lock (Gate)
+            {
+                return "read under the lock";
+            }
+        }
+    }
+
+    public static void Hold()
+    {
+        using ManualResetEventSlim held = new();
+        Thread holder = new(() =>
+        {
+            lock (Gate)
+            {
+                held.Set();
+                Thread.Sleep(1000);
+            }
+            LetGo = true;
+        }) { IsBackground = true };
+        holder.Start();
+        held.Wait();
     }
 }
 

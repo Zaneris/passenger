@@ -148,13 +148,15 @@ public sealed class DebugAdapter
         connection.Handle<EvaluateArguments, EvaluateResponse>(DapCommands.Evaluate, async arguments =>
         {
             // A hover, or a value the client shows of itself, is an implicit evaluation.
-            VariableInfo value = await Read(() => debugger.Evaluate(arguments.Expression, arguments.FrameId, implicitly: arguments.Context is "hover" or "variables"));
+            VariableInfo value = await Read(() => debugger.Evaluate(arguments.Expression, arguments.FrameId, implicitly: arguments.Context is "hover" or "variables",
+                letThreadsRun: arguments.LetThreadsRun is true));
             return new EvaluateResponse
             {
                 Result = value.Value,
                 Type = value.Type,
                 VariablesReference = value.VariablesReference,
                 PresentationHint = ToProtocol(value.PresentationHint),
+                PassedOver = value.PassedOver,
             };
         });
         // Set Next Statement: a target per line (or column), in the last stopped thread's method, its id the IL offset goto takes.
@@ -181,7 +183,7 @@ public sealed class DebugAdapter
         connection.Handle<SetExpressionArguments, SetExpressionResponse>(DapCommands.SetExpression, async arguments =>
         {
             VariableInfo assigned = await Locked(() => debugger.Assign(arguments.Expression, arguments.Value, arguments.FrameId));
-            if (assigned.PresentationHint?.Attributes == AttributesValue.FailedEvaluation)
+            if (assigned.PresentationHint?.Attributes is AttributesValue.FailedEvaluation or AttributesValue.FailedNeedingThreads)
             {
                 throw new InvalidOperationException(assigned.Value.StartsWith("error: ", StringComparison.Ordinal) ? assigned.Value["error: ".Length..] : assigned.Value);
             }
@@ -728,6 +730,7 @@ public sealed class DebugAdapter
         {
             null or AttributesValue.None => null,
             AttributesValue.FailedEvaluation => ["failedEvaluation"],
+            AttributesValue.FailedNeedingThreads => ["failedEvaluation", DapAttributes.NeedsThreads],
             AttributesValue.ReadOnly => ["readOnly"],
             _ => throw new ArgumentOutOfRangeException(nameof(hint), h.Attributes, null),
         };

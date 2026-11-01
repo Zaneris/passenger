@@ -1823,9 +1823,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "Evaluates a C# expression, which may call the program's methods, in a frame of the stopped thread (by default the " +
         "stop's, whose locals debug_state lists), as the Debug window's evaluate box does; a result with members has a " +
         "reference debug_state opens. With value, a C# expression, assigns it to expression (a local, member or element) as " +
-        "Set Value does, answering what it now is.")]
+        "Set Value does, answering what it now is. With letThreadsRun, one that said it probably needs another thread runs " +
+        "with every thread let go, as the row's Run with every thread does, what they meet meanwhile passed over.")]
     public Task<VariableInfo> DebugEvaluate(string expression, int? frame = null, string? session = null,
-        string? value = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
+        string? value = null, bool letThreadsRun = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         DebugSession paused = await Paused(session, choose: value is not null);
         (DapStackFrame chosen, string? below) = frame is int at ? (await FrameAt(paused, at), null) : await StopFrameAsync(paused);
@@ -1835,8 +1836,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await Session.Debug.RefreshAsync();
             return Variable(expression, set.Value, set.Type, set.VariablesReference, expression) with { Frame = below };
         }
-        EvaluateResponse result = await paused.EvaluateAsync(expression, chosen.Id, "repl");
-        return Variable(expression, result.Result, result.Type, result.VariablesReference, expression) with { Frame = below };
+        EvaluateResponse result = await paused.EvaluateAsync(expression, chosen.Id, "repl", letThreadsRun);
+        return Variable(expression, result.Result, result.Type, result.VariablesReference, expression) with { Frame = below, PassedOver = result.PassedOver };
     });
 
     private Task<IReadOnlyList<VariableInfo>> DebugVariables(int reference, string? session, CancellationToken cancel) => OnUi(cancel, async () =>
@@ -2823,6 +2824,9 @@ public sealed record VariableInfo(string Name, string Value, string? Type, int R
 
     /// <summary>The frame debug_evaluate used by default where it is not the top, as debug_state lists it.</summary>
     public string? Frame { get; init; }
+
+    /// <summary>What other threads passed over while debug_evaluate ran with every thread let go.</summary>
+    public string? PassedOver { get; init; }
 }
 
 /// <summary>A .NET program the debugger can attach to, as Attach to Process lists it, its command line's secrets masked.</summary>

@@ -299,7 +299,9 @@ public sealed record DapVariable
 /// value read only as it is opened (its reference then names one variable, the value in its place).</summary>
 public sealed record DapPresentationHint(string? Kind = null, IReadOnlyList<string>? Attributes = null, string? Visibility = null, bool? Lazy = null);
 
-public sealed record EvaluateArguments(string Expression, int? FrameId = null, string? Context = null);
+/// <summary>An evaluation; Passenger's own <paramref name="LetThreadsRun"/> runs it with every thread of the program let go,
+/// which the person asks for where one with the others held did not end (<see cref="DapAttributes.NeedsThreads"/>).</summary>
+public sealed record EvaluateArguments(string Expression, int? FrameId = null, string? Context = null, bool? LetThreadsRun = null);
 
 public sealed record EvaluateResponse
 {
@@ -307,6 +309,10 @@ public sealed record EvaluateResponse
     public string? Type { get; init; }
     public int VariablesReference { get; init; }
     public DapPresentationHint? PresentationHint { get; init; }
+
+    /// <summary>Passenger's own: what other threads met and passed over while an evaluation ran with every thread let go
+    /// (a breakpoint, an exception), said in words; null where they met none.</summary>
+    public string? PassedOver { get; init; }
 }
 
 /// <summary>Where a paused thread could go on from in a source at a line (Set Next Statement's question).</summary>

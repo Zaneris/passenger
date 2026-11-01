@@ -117,6 +117,36 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("2", sum.Result);
     }
 
+    /// <summary>Stopped while a second thread holds a lock: a property read under it never ends with that thread held, and
+    /// says it probably needs another thread, as does the next evaluation on the thread while it runs on, nothing having let
+    /// that thread run; run again with every thread let go, the one left running returns first and the property gives its
+    /// value, after which the thread evaluates as ever.</summary>
+    [Fact]
+    public async Task An_evaluation_waiting_on_a_lock_another_thread_holds_runs_again_with_every_thread_let_go()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await Start(host, ["locked"], host => host.BreakpointsAsync(Debuggees.Line(Looping, "stop while the lock is held"), Debuggees.Source(Looping, "Program.cs")));
+        StoppedEvent stopped = await host.WaitForStoppedEvent();
+        int frame = (await host.TopFrameAsync(stopped.ThreadId!.Value)).Id;
+
+        EvaluateResponse stuck = await host.EvaluateAsync(frame, "locked.Value");
+        Assert.True(NeedsThreads(stuck), $"A property read under a lock a held thread holds was answered \"{stuck.Result}\", not marked as needing another thread to run");
+        // Still running, the first shows that nothing let the thread holding the lock run.
+        EvaluateResponse refused = await host.EvaluateAsync(frame, "locked.Value");
+        Assert.True(NeedsThreads(refused), $"An evaluation on the thread while the first runs on was answered \"{refused.Result}\", not marked as needing another thread to run");
+
+        EvaluateResponse ran = await host.EvaluateAsync(frame, "locked.Value", letThreadsRun: true);
+        Assert.True(ran.Result == "\"read under the lock\"", $"Run with every thread let go, the property was answered \"{ran.Result}\"; the engine's log:\n{host.EngineLog()}");
+        Assert.Equal("true", (await host.EvaluateAsync(frame, "Locked.LetGo")).Result);
+        DapStackFrame top = await host.TopFrameAsync(stopped.ThreadId!.Value);
+        Assert.True(top.Line == stopped.Line, $"With every thread let go, the stopped thread itself ran on from line {stopped.Line} to {top.Line}");
+        EvaluateResponse again = await host.EvaluateAsync(frame, "locked.Value");
+        Assert.True(again.Result == "\"read under the lock\"", $"After the run with every thread let go, the thread's next evaluation was answered \"{again.Result}\"");
+
+        static bool NeedsThreads(EvaluateResponse answer) => answer.PresentationHint?.Attributes is { } attributes && attributes.Contains("failedEvaluation")
+            && attributes.Contains(DapAttributes.NeedsThreads) && answer.Result.Contains("needs another thread", StringComparison.Ordinal);
+    }
+
     [Gate]
     [Fact]
     public async Task A_condition_that_calls_a_method_stops_a_parallel_loop_on_its_matching_iteration()

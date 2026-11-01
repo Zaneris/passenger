@@ -335,13 +335,7 @@ public partial class ManagedDebugger
     /// thread is free for evaluations again, and the program goes on, from the stop the evaluation began at.</summary>
     private void LetGoAbandonedEvaluation(CorDebugManagedCallbackEventArgs callbackEvent)
     {
-        ICorDebugThread thread = EvaluationThread(callbackEvent)!;
-        EvalStatus.DueAt.Remove(thread.Id);
-        if (EvalStatus.Abandoned.Remove(thread.Id, out ICorDebugEval? eval) && eval.TryGetResult(out ICorDebugValue? value) is Cor.S_OK && value is ICorDebugHandleValue handle)
-        {
-            handle.TryDispose();
-        }
-        _logger?.Invoke($"The evaluation given up on thread {thread.Id} has returned; its end is let go");
+        ICorDebugThread thread = ForgetAbandonedEvaluation(callbackEvent);
         if (_stepAfterEvaluation is (int stepping, StepType type) && stepping == thread.Id)
         {
             // The evaluation's session is over (the runtime ends it before it tells of the end), so this stepper is the stop's.
@@ -349,6 +343,19 @@ public partial class ManagedDebugger
             SetupStepper(thread, type, EnumerateFramesForThread(thread).First());
         }
         Continue(clearVariables: false);
+    }
+
+    /// <summary>Lets go of an evaluation given up whose end has come, its value and its place among those given up; its thread.</summary>
+    private ICorDebugThread ForgetAbandonedEvaluation(CorDebugManagedCallbackEventArgs callbackEvent)
+    {
+        ICorDebugThread thread = EvaluationThread(callbackEvent)!;
+        EvalStatus.DueAt.Remove(thread.Id);
+        if (EvalStatus.Abandoned.Remove(thread.Id, out ICorDebugEval? eval) && eval.TryGetResult(out ICorDebugValue? value) is Cor.S_OK && value is ICorDebugHandleValue handle)
+        {
+            handle.TryDispose();
+        }
+        _logger?.Invoke($"The evaluation given up on thread {thread.Id} has returned; its end is let go");
+        return thread;
     }
 
     /// <summary>An event put off while the symbols of the code its thread stopped in were decompiled off the engine's lock,
@@ -1331,6 +1338,13 @@ internal sealed class EvalStatus
 
     /// <summary>Set while an evaluation asked for by name runs (the Evaluate window, a watch), which runs code regardless.</summary>
     internal bool Explicit { get; set; }
+
+    /// <summary>Set while an evaluation the person asked to run with every thread let go runs: the other threads run with
+    /// it, and what they meet meanwhile (a breakpoint, an exception) is passed over, said in <see cref="PassedOver"/>.</summary>
+    internal bool LetThreadsRun { get; set; }
+
+    /// <summary>What other threads met and passed over while an evaluation ran with every thread let go.</summary>
+    internal List<string> PassedOver { get; } = [];
 
     private readonly Lock leavingGate = new();
     private CancellationTokenSource leaving = new();

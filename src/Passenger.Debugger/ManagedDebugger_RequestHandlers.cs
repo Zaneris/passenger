@@ -975,9 +975,34 @@ public partial class ManagedDebugger
     }
 
     /// <summary>An expression's value in a frame. One asked for by name (the Evaluate window, a watch) runs the code it needs
-    /// even once implicit evaluation is off; one the IDE asks of itself (a hover) does not.</summary>
-    public Task<VariableInfo> Evaluate(string expression, int? frameId, bool implicitly = false) =>
-        Evaluate(expression, frameId, expression.Trim(), implicitly);
+    /// even once implicit evaluation is off; one the IDE asks of itself (a hover) does not. One the person asks to run with
+    /// every thread let go (<paramref name="letThreadsRun"/>) does, first letting one left running on its thread return, and
+    /// says what the other threads passed over meanwhile.</summary>
+    public async Task<VariableInfo> Evaluate(string expression, int? frameId, bool implicitly = false, bool letThreadsRun = false)
+    {
+        EvalStatus.LetThreadsRun = letThreadsRun;
+        EvalStatus.PassedOver.Clear();
+        try
+        {
+            // Before anything is read, as letting the program run leaves no value read before it good.
+            if (letThreadsRun && frameId is int id && _frameReferenceManager.GetFrameInfoById(id) is var (threadId, _) && EvalStatus.Abandoned.ContainsKey(threadId.Value)
+                && _threads.GetValueOrDefault(threadId.Value)?.Thread is { } thread && !await LetAbandonedReturnAsync(thread))
+            {
+                return FailedRow(expression.Trim(), $"The evaluation left running on this thread has not returned {Extensions.EvaluationTimeout.TotalSeconds:0.#} s after every thread was let go, so no other can run on it until it does");
+            }
+            VariableInfo value = await Evaluate(expression, frameId, expression.Trim(), implicitly);
+            if (EvalStatus.PassedOver.Count > 0)
+            {
+                value.PassedOver = $"While it ran with every thread let go, other threads passed over {string.Join(", ", EvalStatus.PassedOver.Distinct())}, which did not stop";
+            }
+            return value;
+        }
+        finally
+        {
+            EvalStatus.LetThreadsRun = false;
+            EvalStatus.PassedOver.Clear();
+        }
+    }
 
     /// <summary>Set Value: what an expression names takes a value, by their assignment's one evaluation, whose own value is
     /// the answer, so the target runs once. A real number with no suffix, as a float's or a decimal's is shown, takes the one
