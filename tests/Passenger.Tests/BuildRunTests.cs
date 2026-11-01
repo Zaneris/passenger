@@ -1392,6 +1392,62 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>Under Run with Hot Reload, a web project whose profile launches the browser opens its launch URL once,
+    /// through the window, once it listens; dotnet watch opens none of its own, which would run the program its
+    /// DOTNET_WATCH_BROWSER_PATH names: a stand-in here, writing where it was sent.</summary>
+    [AvaloniaFact]
+    public void Under_hot_reload_a_web_project_whose_profile_launches_the_browser_opens_it_once_through_the_window_and_never_through_dotnet_watch()
+    {
+        int port = AspireApp.FreePort();
+        Write("Sample.slnx", "<Solution>\n  <Project Path=\"src/Hello/Hello.csproj\" />\n  <Project Path=\"src/Site/Site.csproj\" />\n</Solution>\n");
+        Write("src/Site/Site.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
+        Write("src/Site/Program.cs", "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/orders\", () => \"Orders\");\napp.Run();\n");
+        string sent = Path.Combine(Folder, "dotnet-watch-browsed");
+        string browser;
+        if (OperatingSystem.IsWindows())
+        {
+            browser = Path.Combine(Folder, "browser.cmd");
+            File.WriteAllText(browser, $"@echo off\r\necho %* >> \"{sent}\"\r\n");
+        }
+        else
+        {
+            browser = Path.Combine(Folder, "browser");
+            File.WriteAllText(browser, $"#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{sent}'\n");
+            File.SetUnixFileMode(browser, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        System.Text.Json.Nodes.JsonObject profiles = new()
+        {
+            ["Browse"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["commandName"] = "Project", ["launchBrowser"] = true, ["launchUrl"] = "orders", ["applicationUrl"] = $"http://127.0.0.1:{port}",
+                ["environmentVariables"] = new System.Text.Json.Nodes.JsonObject { ["DOTNET_WATCH_BROWSER_PATH"] = browser },
+            },
+        };
+        Write("src/Site/Properties/launchSettings.json", new System.Text.Json.Nodes.JsonObject { ["profiles"] = profiles }.ToJsonString());
+        Restore.Run(Path.Combine(Folder, "src", "Site"));
+        MainWindow window = Open();
+        window.ApplySettings(window.Settings with { HotReload = true });
+        try
+        {
+            Assert.True(window.SelectConfiguration("Site: Browse"));
+            window.Perform(AppActions.RunProgram);
+            WaitWatched(window, () => window.Browsed.Count > 0, "the browser to open once the site listens under dotnet watch", TimeSpan.FromMinutes(3));
+            Uri opened = Assert.Single(window.Browsed);
+            Assert.Equal($"http://127.0.0.1:{port}/orders", opened.AbsoluteUri);
+            WaitWatched(window, () => Output(window).Contains("Now listening on:", StringComparison.Ordinal) && Output(window).Contains("Waiting for changes", StringComparison.Ordinal),
+                "dotnet watch to watch the listening site", TimeSpan.FromMinutes(1));
+            Ui.Hold(TimeSpan.FromSeconds(2), "the site listening under dotnet watch, which launches its own browser as the site says it listens");
+            Assert.False(File.Exists(sent), $"dotnet watch opened a browser of its own at {(File.Exists(sent) ? File.ReadAllText(sent).Trim() : null)}, beside the window's");
+            Assert.Single(window.Browsed);
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning, "the site to stop");
+            window.Close();
+        }
+    }
+
     /// <summary>The pointer brought to rest on a character of a console.</summary>
     private static void Rest(MainWindow window, CodeEditor editor, int offset)
     {

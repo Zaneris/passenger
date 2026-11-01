@@ -979,8 +979,12 @@ public sealed partial class BuildRunController
             LaunchPlan launched = session.InspectedRun(plan, watched);
             LiveApp? inspected = session.RunApp;
             ShowBindings();
+            // dotnet watch opens no browser of its own: the plan's opens through the window once the program listens.
             Dictionary<string, string> variables = watched
-                ? new Dictionary<string, string>(launched.Environment) { ["DOTNET_WATCH_SUPPRESS_EMOJIS"] = "1", ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "true" }
+                ? new Dictionary<string, string>(launched.Environment)
+                {
+                    ["DOTNET_WATCH_SUPPRESS_EMOJIS"] = "1", ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "true", ["DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER"] = "1",
+                }
                 : new Dictionary<string, string>(launched.Environment);
             if (reloaded)
             {
