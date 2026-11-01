@@ -276,10 +276,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   A run keeps its newest three memory snapshots' objects (`KeptSnapshots`). A heap dump is Passenger's own (`DumpTool`,
   deleted only once its writer and reader end, `DeleteAfterAsync`; leftovers swept, `Sweep`): the runtime's createdump
   writes into the program's stdout, and Windows' dumps only its parent.
-- `Passenger.Inspector` (+`.Wpf`): the Live Visual Tree's helper, loaded into the app by a startup hook, answering over
-  a Unix socket (`Protocol.cs` compiled into both ends; what both say in `Serving.cs`'s `Words`, an agent's input aimed
-  by `Driving<T, TTop>.At`, Select Element ended by `Picking<T>`). `Passenger.WpfPreview` (Windows only),
-  `Passenger.TestFrames` (pictures of a failed headless test), `Passenger.Terminal` (the VT emulator, Porta.Pty).
+- `Passenger.UpdateHandlers`: the startup hook that calls a debugged program's update handlers after Hot Reload, carried
+  under `updatehandlers/`. `Passenger.Inspector` (+`.Wpf`): the Live Visual Tree's helper, loaded into the app by a
+  startup hook, answering over a Unix socket (`Protocol.cs` compiled into both ends; what both say in `Serving.cs`'s
+  `Words`, an agent's input aimed by `Driving<T, TTop>.At`, Select Element ended by `Picking<T>`).
+  `Passenger.WpfPreview` (Windows only), `Passenger.TestFrames` (pictures of a failed headless test),
+  `Passenger.Terminal` (the VT emulator, Porta.Pty).
 - `Passenger.Analyzers`: the PSG rules (`Rules.cs`); a rule goes on only where nothing it flags is left.
 - `tools/`: the notices, the web servers without Node.js, the test runner and shard scripts, packaging, site shots.
 
@@ -349,9 +351,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   never built in the window, a member row's cast from the declared type read from metadata (`DeclaredType`). A session's
   built lines and Hot Reload begin at its build's save (`DebugController.Building`, `BuiltEdits`). The debugger's own
   rows are named in `DapRows`, break modes in `DapBreakModes`; an engine row is built by `ValueRow` (`FailedRow`,
-  `GroupRow`), CoreLib found by `ManagedDebugger.CoreLib`. Every kind of breakpoint is refused, matched and hit through
-  one pipeline (`IHitBreakpoint`: `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a lambda on its
-  statement's line keeps the lambda's column (`LambdaBreakpoints`).
+  `GroupRow`), CoreLib found by `ManagedDebugger.CoreLib`. A breakpoint's words, in the gutter's hover, Problems and MCP
+  alike, come from `BreakpointStates`. Every kind of breakpoint is refused, matched and hit through one pipeline
+  (`IHitBreakpoint`: `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a lambda on its statement's
+  line keeps the lambda's column (`LambdaBreakpoints`).
 - **Tests window.** `TestFinder` (tests from code before any build), `TestRunners`; `VsTestRunner` is the only file that
   knows VSTest's object model. A run from the editor, a filter or the Explorer chooses its tests once its build has
   ended (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and line
@@ -421,8 +424,10 @@ site-shots` retakes its images.
   value a step reads there is boxed at its stop (`BoxUnboxed`). Letting threads run during a request voids every value
   read before it, so an evaluation left running returns first (`LetAbandonedReturnAsync`), and its end holds the program
   at the stop shown: never Continue there.
-- **Hot Reload** drives the server's `EditAndContinueService` from the extension; CoreCLR lets no debugger go once Edit
-  and Continue changed a program, so the debugger never lets go of a program Hot Reload changed
+- **Hot Reload** drives the server's `EditAndContinueService` from the extension, and a debugged program's
+  MetadataUpdateHandlers run after each apply through Passenger's startup hook (`Passenger.UpdateHandlers`,
+  `UpdateHandlerHook`; never the runtime's own agent, which refuses under a debugger); CoreCLR lets no debugger go once
+  Edit and Continue changed a program, so the debugger never lets go of a program Hot Reload changed
   (`DebugController.LetsNoDebuggerGo`; Detach refused, such a service restarted, leaving the folder asks, then stops it:
   `MainWindow.HeldByLeaving`), and a build's edits are kept for each program it starts later (`Kept`/`Copied`); a
   session takes edits only for the projects of modules its program has loaded (others frozen), and `StaleCallers` blocks
