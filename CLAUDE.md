@@ -216,11 +216,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   `FrameworkNames`, `PrimitiveTypes` (the one table of primitives; the debugger's element types through
   `MetadataTypeNames.ElementTypeOf`, a generic name closed through `CSharpTypeNames.Closed`).
 - `Passenger.Text`: the rope (every version a thread-safe snapshot), `TextDocument`, every editing command as a pure
-  function to an `EditPlan`, `FuzzyMatch` (allocates nothing), `Outline` (a tree's rows in reading order, kept where
-  unchanged), `FileText`, `XmlEntities` (every XML value decoded and escaped, never `SecurityElement.Escape` or a hand
-  Replace), `RoslynLines` (Roslyn's line breaks, which `ServerLines` takes), and anchors (`AnchorAt`/`RangeAt`/`MarkAt`,
-  `AnchoredList`; moved before `Changed`, each handler isolated): hold a place in the text with one, never your own
-  `TextEditing.Map*`.
+  function to an `EditPlan` (the end tag typing writes, `TextEditing.CloseTag`, over `MarkupIndent`'s reading),
+  `FuzzyMatch` (allocates nothing), `Outline` (a tree's rows in reading order, kept where unchanged), `FileText`,
+  `XmlEntities` (every XML value decoded and escaped, never `SecurityElement.Escape` or a hand Replace), `RoslynLines`
+  (Roslyn's line breaks, which `ServerLines` takes), and anchors (`AnchorAt`/`RangeAt`/`MarkAt`, `AnchoredList`; moved
+  before `Changed`, each handler isolated): hold a place in the text with one, never your own `TextEditing.Map*`.
 - `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets; modifier words read by
   `Keystroke.ModifierOf`, an agent's too); the code font in force is the resource `CodeFonts.Key` (Settings › Editor),
   shown through `CodeFonts.InCodeFont` (`Follow` for a control's own property), `CodeEditor.CodeFont` the carried
@@ -309,8 +309,9 @@ Projects in `src/`; `find_symbol` finds the rest:
   read-only copy under the state's cache (`GeneratedCode`; an agent's tools on one answer from its text,
   `PassengerTools.NotGenerated`), never opened in the server, which would freeze its text into the compilation. A C#
   symbol's uses in XAML come from one finder, `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to Declaration's
-  resolver) and `CodeSymbol`. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through
-  `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
+  resolver) and `CodeSymbol`, a C# rename's edits there from it too (`XamlService.RenamesAsync`). A server's own command
+  (TypeScript's refactorings, ESLint's fixes) runs through `ServerCommands`, the edits it sends back
+  (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
   runs one tsserver (`useSyntaxServer` never): a syntax server answers rename and usages from the open files alone.
