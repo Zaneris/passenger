@@ -310,9 +310,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   `PassengerTools.NotGenerated`), never opened in the server, which would freeze its text into the compilation. A C#
   symbol's uses in XAML come from one finder, `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to Declaration's
   resolver) and `CodeSymbol`, a C# rename's edits there from it too (`XamlService.RenamesAsync`). A JS interop call's
-  function comes from Roslyn's binding in the extension (`JsInteropCalls`) over `JsFunctions`. A server's own command
-  (TypeScript's refactorings, ESLint's fixes) runs through `ServerCommands`, the edits it sends back
-  (`workspace/applyEdit`) one command of Undo.
+  function comes from Roslyn's binding in the extension (`JsInteropCalls`) over `JsFunctions`. A multi-targeted
+  project's framework is one choice (`TargetFrameworkChoices`, kept in `WorkspaceState`) that the XAML preview's build
+  (`XamlPreview.Output`), XAML's restore target and C#'s context (`CSharpService.ChosenContext`) follow: never a
+  framework's output taken by its newest write. A server's own command (TypeScript's refactorings, ESLint's fixes) runs
+  through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
   runs one tsserver (`useSyntaxServer` never): a syntax server answers rename and usages from the open files alone.
