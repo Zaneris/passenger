@@ -162,6 +162,37 @@ public static partial class DotnetProcesses
         }
     }
 
+    /// <summary>Why macOS lets no other program read a process's memory (a dump, a heap's snapshot), even a program of its
+    /// own user's: its executable is signed with the hardened runtime and without the get-task-allow entitlement, as an app
+    /// notarized for release is (Godot's own builds among them). Null where it may be read, it cannot be asked, or off macOS.</summary>
+    public static unsafe string? WhyUnreadable(int id)
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return null;
+        }
+        uint flags = 0;
+        if (CodeSigning(id, CodeSigningStatus, &flags, sizeof(uint)) != 0 || (flags & HardenedRuntime) == 0 || (flags & GetTaskAllow) != 0)
+        {
+            return null;
+        }
+        string? executable = Libc.ExecutableOf(id);
+        // An app's executable is its bundle's, which is what is signed.
+        int bundle = executable?.IndexOf(".app/Contents/MacOS/", StringComparison.Ordinal) ?? -1;
+        string named = executable is null ? $"process {id}" : PathNames.Shown(bundle > 0 ? executable[..(bundle + ".app".Length)] : executable, null);
+        return $"{named} is signed with macOS's hardened runtime and without the com.apple.security.get-task-allow entitlement, so macOS lets no other "
+            + "program read its memory: signed again with that entitlement (as a native debugger needs), or run on Linux or Windows, it can be";
+    }
+
+    /// <summary>csops' question of a process's code signing flags (CS_OPS_STATUS), and the flags of the hardened runtime
+    /// (CS_RUNTIME) and of get-task-allow (CS_GET_TASK_ALLOW).</summary>
+    private const uint CodeSigningStatus = 0;
+    private const uint HardenedRuntime = 0x10000;
+    private const uint GetTaskAllow = 0x4;
+
+    [LibraryImport("libc", EntryPoint = "csops")]
+    private static unsafe partial int CodeSigning(int pid, uint operation, void* answer, nuint size);
+
     /// <summary>The folder of the CoreCLR a process runs on (its libcoreclr or coreclr.dll, where the runtime's own tools lie
     /// beside it), read from the modules it has mapped; null when it has gone, is not readable, or maps none (a single-file
     /// app's runtime is inside its executable).</summary>

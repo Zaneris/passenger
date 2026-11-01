@@ -62,6 +62,11 @@ internal sealed class HeapHistory : IAsyncDisposable
                 DumpTool.Sweep();
                 return DumpTool.Find(processId);
             }, cancel);
+            // Neither Passenger's createdump nor the runtime's own can read such a program.
+            if (DotnetProcesses.WhyUnreadable(processId) is { } unreadable)
+            {
+                throw new InvalidOperationException(unreadable);
+            }
             if (dumpTool is (_, string why) && !intoOutput)
             {
                 throw new DumpIntoOutputException($"Only the program's runtime can write its memory snapshot, as {why}, and it writes "

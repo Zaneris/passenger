@@ -99,7 +99,7 @@ public sealed class ProfilerCommands
         });
         parts.Actions.Add(new IdeAction(AppActions.MemorySnapshot, "Get Memory Snapshot", "Run", context => IdeErrors.Observe(MemorySnapshotAsync()))
         {
-            WhyNot = _ => Session.Profiling is null ? NoneProfiling : Held(ToTakeHeap),
+            WhyNot = _ => Session.Profiling is not { } run ? NoneProfiling : Held(ToTakeHeap) ?? run.WhyNoHeap,
         });
     }
 
@@ -1029,6 +1029,11 @@ public sealed class ProfilerCommands
         {
             parts.Say(paused);
             return (null, paused);
+        }
+        if (run.WhyNoHeap is { } unreadable)
+        {
+            parts.Say($"No memory snapshot: {unreadable}");
+            return (null, unreadable);
         }
         string name = profilingName;
         if (parts.Actions.Work.Begin(AppActions.MemorySnapshot, $"Taking a memory snapshot of {name}…") is not { } work)

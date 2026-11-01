@@ -504,6 +504,12 @@ public sealed class ProfilingSession : IAsyncDisposable
         return await BackgroundWork.Run(Read, cancellation);
     }
 
+    /// <summary>Why no memory snapshot of the program can be taken whatever is tried (<see cref="DotnetProcesses.WhyUnreadable"/>),
+    /// asked of the program once; null where one may be, or for a program elsewhere, whose snapshots its container's tools take.</summary>
+    public string? WhyNoHeap => Place is not null ? null : (whyNoHeap ??= [DotnetProcesses.WhyUnreadable(ProcessId)])[0];
+
+    private string?[]? whyNoHeap;
+
     /// <summary>What the program's heap holds now, comparable object by object with the run's earlier ones; the run
     /// goes on. Where only the program's runtime can write it, putting createdump's lines into the program's output, it
     /// is taken only <paramref name="intoOutput"/>, else a <see cref="DumpIntoOutputException"/> says so first.</summary>

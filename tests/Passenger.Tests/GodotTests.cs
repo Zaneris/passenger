@@ -238,17 +238,18 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         }
     }
 
-    /// <summary>The GDScript of <see cref="Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions"/>:
+    /// <summary>The GDScript of <see cref="Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions_and_a_memory_snapshot_lists_what_the_script_made"/>:
     /// it makes a C# Ledger as it starts and keeps it, and each frame spins in a function of its own, then has the Ledger spin.</summary>
     private const string Wanderer = "extends Node\n\nvar ledger\nvar total := 0\n\nfunc _ready():\n\tledger = load(\"res://Ledger.cs\").new()\n\n"
         + "func _process(_delta):\n\twander()\n\ttotal += ledger.Tally(400000)\n\nfunc wander():\n\tvar sum := 0\n\tfor i in 60000:\n\t\tsum += i\n\ttotal = sum\n";
 
     /// <summary>Profile of a game whose GDScript and C# each spin in a function of their own records Godot's frames beside the
-    /// samples: the Frames page names the GDScript function at its line with its calls
+    /// samples: a memory snapshot lists the C# Ledger the GDScript made (refused saying why on macOS, where a Godot signed for
+    /// release lets no program read its memory), and the Frames page names the GDScript function at its line with its calls
     /// and time, the C# loop the engine called and the C# method GDScript called with their sampled time, says the headless
     /// game drew nothing, and opens the script at the function's line.</summary>
     [AvaloniaFact]
-    public void Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions()
+    public void Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions_and_a_memory_snapshot_lists_what_the_script_made()
     {
         string wanderer = Path.Combine(game.Folder, "wander.gd");
         string ledger = Path.Combine(game.Folder, "Ledger.cs");
@@ -291,6 +292,25 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             Ui.WaitFor(() => Run(window).Contains("frame 300", StringComparison.Ordinal), () => $"the profiled game to run its scripts ({Run(window)})", TimeSpan.FromMinutes(1));
 
             Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
+            Avalonia.Controls.Button take = view.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => b.Content as string == "Get Memory Snapshot");
+            // Where only the runtime can write it, into the game's output (Linux's ptrace_scope), that is let.
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Ui.Click(take, settle: false);
+            Ui.WaitFor(() => view.Memory is not null || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,
+                "the game's memory snapshot", TimeSpan.FromMinutes(2));
+            if (DotnetProcesses.WhyUnreadable(window.Profiling!.ProcessId) is { } unreadable)
+            {
+                // A Godot signed for release on macOS lets no program read its memory: the snapshot is refused saying so, and greyed.
+                Assert.Equal($"No memory snapshot: {unreadable}", window.Status);
+                Assert.Equal(unreadable, window.Actions.WhyNot(AppActions.MemorySnapshot, window.Actions.Context()));
+            }
+            else
+            {
+                Assert.True(view.Memory is not null, window.Status);
+                Assert.True(view.HeapTypes.Any(t => t.Name == "Ledger" && t.Count == 1),
+                    $"The game's memory snapshot lists no Ledger, which its GDScript made: {string.Join(", ", view.HeapTypes.Take(30).Select(t => $"{t.Name} {t.Count}"))}");
+            }
+
             Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the game's snapshot", TimeSpan.FromMinutes(2));
             Assert.True(read.Snapshot is { Game: not null, GameFrames.Count: > 100 }, $"{read.Message}: {read.Snapshot?.GameFrames.Count} of Godot's frames, {read.Snapshot?.Game?.Why}");
             view.ShowPage(Passenger.App.Profiling.ProfilerPage.Frames);
