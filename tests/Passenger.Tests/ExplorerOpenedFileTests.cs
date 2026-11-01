@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Explorer;
+using Passenger.App.Settings;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -12,7 +13,7 @@ namespace Passenger.Tests;
 /// <summary>The Explorer and the file shown: Select Opened File chooses it again, by its key or its header's button,
 /// however the rows were chosen since, in the Files view where the solution does not hold it; Always Select Opened File,
 /// in its options, has it follow the file shown or keep its row; Open Files with Single Click opens a file on a plain
-/// click, the keys kept on its row.</summary>
+/// click, the keys kept on its row; Settings › Explorer holds the same options.</summary>
 public sealed class ExplorerOpenedFileTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("explorer-opened-"));
@@ -158,12 +159,80 @@ public sealed class ExplorerOpenedFileTests : IDisposable
             $"{what} showed {window.EditorArea.Active?.Name}, where it opens nothing and {Path.GetFileName(path)} stays shown");
     }
 
+    /// <summary>Settings › Explorer holds the Explorer's options, each the value its options menu shows: a search finds
+    /// them, one changed in Settings is checked in the menu and works, and one the menu changes is cleared in Settings.</summary>
+    [AvaloniaFact]
+    public void Settings_explorer_page_holds_the_explorers_options_each_the_value_its_menu_shows()
+    {
+        const string Follow = "Always select opened file";
+        const string Click = "Open files with single click";
+        const string Nest = "Show files with the same names as nested";
+        string order = At("Shop.App/Models/Order.cs");
+        MainWindow window = Open();
+        try
+        {
+            SettingsDialog dialog = window.ShowSettings();
+            Ui.Settle();
+            dialog.Query = "single click";
+            Ui.Settle();
+            Assert.Equal([SettingsDialog.ExplorerPage], dialog.Pages);
+            dialog.Query = "file nesting";
+            Ui.Settle();
+            Assert.Equal([SettingsDialog.ExplorerPage], dialog.Pages);
+            dialog.Query = string.Empty;
+            dialog.Page = SettingsDialog.ExplorerPage;
+            Ui.Settle();
+            Assert.Equal([Follow, Click, Nest], dialog.Shown);
+            Assert.True(Checked(dialog, Follow) && !Checked(dialog, Click) && Checked(dialog, Nest),
+                $"Settings › Explorer shows {Follow} {Checked(dialog, Follow)}, {Click} {Checked(dialog, Click)} and {Nest} {Checked(dialog, Nest)}, where they start on, off and on");
+            Ui.Click(SettingsTests.Editor<CheckBox>(dialog, Click));
+            dialog.Ok();
+            Ui.Settle();
+            Assert.True(window.Settings.OpenFilesWithSingleClick && OptionChecked(window, "Open Files with Single Click"),
+                "Open files with single click checked in Settings is not checked in the Explorer's options");
+            Ui.Click(Ui.Row(window.ExplorerView, Row(window, order)));
+            Assert.True(window.EditorArea.Active?.Path == order, $"A click on Order.cs with single click on from Settings showed {window.EditorArea.Active?.Name}");
+
+            ChooseOption(window, "Always Select Opened File");
+            dialog = window.ShowSettings();
+            Ui.Settle();
+            dialog.Page = SettingsDialog.ExplorerPage;
+            Ui.Settle();
+            Assert.True(!Checked(dialog, Follow) && Checked(dialog, Click), $"Settings › Explorer shows {Follow} {Checked(dialog, Follow)} after the options menu cleared it");
+            dialog.Close();
+            Ui.Settle();
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { AlwaysSelectOpenedFile = true, OpenFilesWithSingleClick = false });
+            window.Close();
+        }
+
+        static bool Checked(SettingsDialog dialog, string label) => SettingsTests.Editor<CheckBox>(dialog, label).IsChecked == true;
+    }
+
     /// <summary>An item of the Explorer's options in its header, chosen as a person chooses it.</summary>
     internal static void ChooseOption(MainWindow window, string item)
     {
+        OpenOptions(window);
+        Ui.Choose(window.DockHost.OpenOptions, item);
+    }
+
+    /// <summary>Whether an item of the Explorer's options shows checked, its menu opened as a person opens it and closed again.</summary>
+    private static bool OptionChecked(MainWindow window, string item)
+    {
+        OpenOptions(window);
+        MenuFlyout menu = window.DockHost.OpenOptions ?? throw new Xunit.Sdk.XunitException("The Explorer's Options opened no menu");
+        bool on = menu.Items.OfType<MenuItem>().First(m => m.Header as string == item).IsChecked;
+        menu.Hide();
+        Ui.Settle();
+        return on;
+    }
+
+    private static void OpenOptions(MainWindow window)
+    {
         Control pane = window.ExplorerView.GetVisualAncestors().OfType<Control>().First(a => a.GetType().Name == "ToolPane");
         Ui.Click(pane.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Options"));
-        Ui.Choose(window.DockHost.OpenOptions, item);
     }
 
     /// <summary>A button of the Explorer's header, by the action it runs.</summary>

@@ -40,6 +40,21 @@ public static class Declared
             + "copy built from source says in the status bar that it is out. Nothing is sent but the requests, which name "
             + "Passenger and its version."));
 
+    public static readonly ToggleSetting AlwaysSelectOpenedFile = new(s => s.AlwaysSelectOpenedFile, (s, v) => s with { AlwaysSelectOpenedFile = v },
+        new(D.ExplorerPage, "Always select opened file", "explorer solution view tree follow track sync locate active file tab autoscroll from source",
+            "The Explorer chooses the file shown as a tab is switched to or a file opened. Off, it keeps the row chosen until "
+            + "Select Opened File asks for the file shown. Its options menu turns this on and off too."));
+
+    public static readonly ToggleSetting OpenFilesWithSingleClick = new(s => s.OpenFilesWithSingleClick, (s, v) => s with { OpenFilesWithSingleClick = v },
+        new(D.ExplorerPage, "Open files with single click", "explorer solution view tree one click preview",
+            "A plain click on a file's row opens it, the keys staying in the Explorer. Off, a double-click or Enter opens it. "
+            + "Its options menu turns this on and off too."));
+
+    public static readonly ToggleSetting NestFiles = new(s => s.NestFiles, (s, v) => s with { NestFiles = v },
+        new(D.ExplorerPage, "Show files with the same names as nested", "explorer solution view file nesting nested dependent code-behind group appsettings razor",
+            "A file whose name carries another's, as Counter.razor.cs carries Counter.razor, shows under it in the Solution view. "
+            + "File Nesting… in the Explorer's options lists the rules."));
+
     public static readonly ChoiceSetting<ColourScheme> ColourScheme = new(s => s.ColourScheme, (s, v) => s with { ColourScheme = v }, D.ColourSchemeChoices,
         new(D.EditorPage, "Colour scheme", "colour color scheme syntax highlighting code colours rider keywords strings comments",
             "The colours the code is drawn in: the theme's own, or Rider's, Dark or Light as the theme is. The editor keeps the theme's background."));
@@ -281,12 +296,6 @@ public static class Declared
     public static readonly ChoiceSetting<Passenger.Editor.KeymapPreset> Keymap = new(s => s.Keymap, (s, v) => s with { Keymap = v });
 
     public static readonly ChoiceSetting<DiffHighlighting> DiffHighlighting = new(s => s.DiffHighlighting, (s, v) => s with { DiffHighlighting = v });
-
-    /// <summary>The Explorer's options menu turns it on and off.</summary>
-    public static readonly ToggleSetting AlwaysSelectOpenedFile = new(s => s.AlwaysSelectOpenedFile, (s, v) => s with { AlwaysSelectOpenedFile = v });
-
-    /// <summary>The Explorer's options menu turns it on and off.</summary>
-    public static readonly ToggleSetting OpenFilesWithSingleClick = new(s => s.OpenFilesWithSingleClick, (s, v) => s with { OpenFilesWithSingleClick = v });
 
     /// <summary>An enum's values with the names Settings gives them, in the enum's order.</summary>
     private static (T Value, string Name)[] Named<T>(string[] names) where T : struct, Enum => [.. Enum.GetValues<T>().Zip(names)];

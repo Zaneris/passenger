@@ -15,6 +15,7 @@ public sealed partial class SettingsDialog : IdeWindow
     public const string Appearance = "Appearance";
     public const string SystemPage = "System Settings";
     public const string UpdatesPage = "Updates";
+    public const string ExplorerPage = "Explorer";
     public const string EditorPage = "Editor";
     public const string CodeFoldingPage = "Code Folding";
     public const string LiveTemplatesPage = "Live Templates";
@@ -55,7 +56,7 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <summary>The names of <see cref="DiscordShown"/>'s choices, in its order.</summary>
     public static readonly string[] DiscordChoices = ["Passenger only", "The solution", "The solution and the file"];
 
-    private static readonly string[] Order = [Appearance, SystemPage, UpdatesPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, LiveTemplatesPage,
+    private static readonly string[] Order = [Appearance, SystemPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, LiveTemplatesPage,
         BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, DockerPage, GodotPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
 
     /// <summary>The names of Attributes format's choices, in <see cref="Passenger.Xaml.Features.XamlAttributeStyle"/>'s
@@ -280,6 +281,10 @@ public sealed partial class SettingsDialog : IdeWindow
             "autosave files idle inactive seconds");
 
         Add(Declared.CheckForUpdates);
+
+        Add(Declared.AlwaysSelectOpenedFile);
+        Add(Declared.OpenFilesWithSingleClick);
+        Add(Declared.NestFiles);
 
         Add(Declared.ColourScheme);
         Add(Declared.EditorFontFamily);
