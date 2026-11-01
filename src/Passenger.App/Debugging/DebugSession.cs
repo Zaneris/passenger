@@ -25,7 +25,7 @@ public sealed class DebugSession
     private const int ErrorLines = 40;
 
     /// <summary>Why a breakpoint on a line written since the build is not sent: the program has no code of it.</summary>
-    private const string NotBuilt = "The breakpoint will not currently be hit: its line was written after the program being debugged was built.";
+    private const string NotBuilt = "Its line was written after the program being debugged was built: restart debugging to build it";
 
     private readonly Process adapter;
     private readonly DapConnection connection;

@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.App.Editors;
 using Passenger.App.LiveTree;
+using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
@@ -1647,6 +1648,39 @@ public sealed class DebugController : IDisposable
         document.Saved += OnSaved;
         FollowLambdas(document);
         UpdateMarks(document);
+    }
+
+    /// <summary>The line breakpoints the programs debugged will not stop at, as Problems lists them: each at its line, with
+    /// why and how to put it right (<see cref="BreakpointStates.Problem"/>); none while nothing is debugged.</summary>
+    public IReadOnlyList<Problem> BreakpointProblems()
+    {
+        UiThread.Check();
+        bool debugging = IsDebugging;
+        List<Problem> problems = [];
+        foreach (string path in Breakpoints.Files)
+        {
+            foreach (LineBreakpoint breakpoint in Breakpoints.In(path))
+            {
+                if (BreakpointStates.Problem(breakpoint, debugging, Breakpoints.Muted) is { } why)
+                {
+                    problems.Add(new Problem(ProblemSeverity.Warning, why, null, path, new TextPosition(breakpoint.Line, 0), null));
+                }
+            }
+        }
+        return problems;
+    }
+
+    /// <summary>What the gutter's hover says of the breakpoints on a line (from zero) of a file: each one's state and what it
+    /// carries (<see cref="BreakpointStates"/>); null for a line with none.</summary>
+    public IReadOnlyList<string>? GutterWords(string path, int line)
+    {
+        UiThread.Check();
+        List<string> words = [];
+        foreach (LineBreakpoint breakpoint in Breakpoints.In(path).Where(b => b.Line == line))
+        {
+            words.AddRange(BreakpointStates.Words(breakpoint, IsDebugging, Breakpoints.Muted));
+        }
+        return words.Count == 0 ? null : words;
     }
 
     /// <summary>Makes an open C# file's breakpoints whose lambdas are gone from its text as it stands their lines' own

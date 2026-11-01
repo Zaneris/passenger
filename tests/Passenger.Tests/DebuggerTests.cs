@@ -8,6 +8,7 @@ using Avalonia.VisualTree;
 using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Editor;
@@ -242,6 +243,69 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.Empty(window.Debugger.Breakpoints.In(Program));
         Assert.Empty(editor.LineMarks);
         window.Close();
+    }
+
+    /// <summary>A breakpoint says its state where a person looks: the gutter's hover over one before debugging, one bound, one
+    /// the debugger moved to the nearest line with code, one on a line with no code and one on a line written after the build,
+    /// the last two with why and how to put it right; Problems' Breakpoints lists those two at their lines, and the hover
+    /// says what a breakpoint carries.</summary>
+    [AvaloniaFact]
+    public void A_breakpoints_hover_says_it_is_bound_moved_or_not_bound_and_why_and_problems_lists_those_that_will_not_stop()
+    {
+        Write("Program.cs", "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += i;\n}\n\nConsole.WriteLine($\"total {total}\");\n\n"
+            + "static class Notes\n{\n    // Nothing runs here.\n}\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        foreach (int line in (int[])[3, 5, 10])
+        {
+            editor.GoTo(new TextPosition(line, 0));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+        }
+        LineBreakpoint carrying = window.Debugger.Breakpoints.In(Program).Single(b => b.Line == 3);
+        window.Debugger.Breakpoints.Update(carrying, enabled: true, suspend: true, "i > 0", null, null);
+        Assert.Equal("Breakpoint: it binds as the program is debugged\nCondition: i > 0", Hovered(window, editor, 3));
+
+        StartDebugging(window);
+        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused, "the program to stop at the bound breakpoint");
+        Ui.WaitFor(() => editor.LineMarks.Contains(new LineMark(10, LineMarkKind.BreakpointInvalid)), "the breakpoint on the line with no code refused");
+        Assert.Equal("Breakpoint, bound: the program stops here\nCondition: i > 0", Hovered(window, editor, 3));
+        Assert.Equal("Breakpoint, moved to line 7, the nearest line with code: the program stops there", Hovered(window, editor, 5));
+        string noCode = Hovered(window, editor, 10);
+        Assert.StartsWith("Breakpoint, not bound: it will not stop the program\nIts line has no code to stop at", noCode, StringComparison.Ordinal);
+        Assert.EndsWith("put the breakpoint on a line with a statement", noCode, StringComparison.Ordinal);
+
+        editor.GoTo(new TextPosition(0, 0));
+        editor.Focus();
+        Ui.Press(window, "Enter");
+        editor.GoTo(new TextPosition(0, 0));
+        Ui.Run(window, AppActions.ToggleBreakpoint);
+        Ui.WaitFor(() => editor.LineMarks.Contains(new LineMark(0, LineMarkKind.BreakpointInvalid)), "the new line's breakpoint refused");
+        Assert.Equal("Breakpoint, not bound: it will not stop the program\nIts line was written after the program being debugged was built: restart debugging to build it",
+            Hovered(window, editor, 0));
+
+        Ui.WaitFor(() => window.BottomPanel.Problems.BreakpointProblems.Count == 2, () => $"Problems' Breakpoints listing the two that will not stop; it lists {string.Join("; ", window.BottomPanel.Problems.BreakpointProblems.Select(p => p.Message))}");
+        Assert.Equal([0, 11], window.BottomPanel.Problems.BreakpointProblems.Select(p => p.Position.Line));
+        Assert.All(window.BottomPanel.Problems.BreakpointProblems, p => Assert.Equal(Program, p.Path));
+        Assert.StartsWith("Breakpoint not bound: Its line was written after", window.BottomPanel.Problems.BreakpointProblems[0].Message, StringComparison.Ordinal);
+        Assert.StartsWith("Breakpoint not bound: Its line has no code to stop at", window.BottomPanel.Problems.BreakpointProblems[1].Message, StringComparison.Ordinal);
+        window.BottomPanel.Problems.Shown = ProblemsTab.Breakpoints;
+        Assert.Contains(window.BottomPanel.Problems.Rows, r => r.Problem?.Position.Line == 11);
+
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        Ui.WaitFor(() => window.BottomPanel.Problems.BreakpointProblems.Count == 0, "Problems' Breakpoints emptied as the session ended");
+        window.Close();
+    }
+
+    /// <summary>What the hover card says with the pointer rested on the gutter beside a line (from zero).</summary>
+    private static string Hovered(MainWindow window, CodeEditor editor, int line)
+    {
+        window.MouseMove(new Point(0, 0), RawInputModifiers.None);
+        Ui.WaitFor(() => window.Assist.HoverText is null, "the last card gone as the pointer left the editor");
+        Point at = editor.PointOf(editor.Document.Snapshot.GetLineStart(line));
+        window.MouseMove(editor.TranslatePoint(new Point(4, at.Y + editor.LineHeight / 2), window)!.Value, RawInputModifiers.None);
+        Ui.WaitFor(() => window.Assist.HoverText is not null, $"the card of the gutter beside line {line + 1}");
+        return window.Assist.HoverText!;
     }
 
     [AvaloniaFact]

@@ -130,6 +130,10 @@ public sealed partial class CodeEditor : Control
 
     public event EventHandler? HoverEnded;
 
+    /// <summary>The pointer has rested on the gutter beside a line (from zero): where it is, for the card of what the
+    /// gutter shows there. Raised once per rest; moving off clears it (<see cref="HoverEnded"/>).</summary>
+    public event EventHandler<GutterClick>? GutterHovered;
+
     /// <summary>The context menu is asked for: by a right-click on the text, at its point, or from the keyboard (the menu
     /// key, Shift+F10), with no point, at the caret.</summary>
     public event EventHandler<Point?>? ContextMenuRequested;

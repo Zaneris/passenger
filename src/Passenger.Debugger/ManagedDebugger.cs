@@ -812,6 +812,7 @@ public partial class ManagedDebugger
         // Never just a file of the same name (SourcePaths), nor one named less well than a module it is bound in.
         int best = bp.Bindings.Count == 0 ? 0 : bp.Bindings.Max(binding => binding.Module.MetadataReader.DocumentMatch(bp.FilePath));
         string? why = null;
+        bool held = false;
         IEnumerable<ModuleInfo> candidates = loaded is null ? _modules.Values : [loaded];
         foreach ((ModuleInfo module, int score) in candidates
             .Where(m => m.MetadataReader.HasSymbols && !bp.Bindings.Any(binding => ReferenceEquals(binding.Module, m)))
@@ -824,6 +825,7 @@ public partial class ManagedDebugger
             {
                 break;
             }
+            held = true;
             (bool bound, string? refused) = BindIn(bp, module);
             if (bound)
             {
@@ -834,16 +836,25 @@ public partial class ManagedDebugger
 
         if (bp.Bindings.Count > 0)
         {
+            bp.Unbindable = false;
             return true;
         }
         bp.Verified = false;
-        bp.Message = why ?? "The breakpoint will not currently be hit. No symbols have been loaded for this document.";
-        if (why is null)
+        // A module that holds the file's code and bound nothing there will not; any other may yet load.
+        bp.Unbindable = held || bp.Unbindable;
+        bp.Message = why ?? (bp.Unbindable ? NoCode : NoModuleYet);
+        if (!held)
         {
             _logger?.Invoke($"Breakpoint at {bp.FilePath}:{bp.Line} - no symbols found");
         }
         return false;
     }
+
+    /// <summary>Why a line breakpoint is pending: no module loaded holds its file's code yet.</summary>
+    internal const string NoModuleYet = "No module loaded yet holds this file's code: the breakpoint binds as one loads";
+
+    /// <summary>Why a line breakpoint does not bind where its file's code is loaded: its line has none.</summary>
+    internal const string NoCode = "Its line has no code to stop at in the program as built: put the breakpoint on a line with a statement";
 
     /// <summary>Binds a line breakpoint in one module, at the line and column asked for: false with no reason where the
     /// module has no code there, with one where it will not take it. The breakpoint shows the place of its first binding.</summary>
@@ -861,7 +872,7 @@ public partial class ManagedDebugger
             if (module.MetadataReader.IsHidden(resolved.MethodToken)
                 || (_justMyCode && module.IsUserCode && module.MetadataReader.IsNonUserCode(resolved.MethodToken)))
             {
-                return (false, "The breakpoint will not be hit: the method is marked [DebuggerStepThrough], [DebuggerNonUserCode] or [DebuggerHidden], which Just My Code passes over.");
+                return (false, "Its method is marked [DebuggerStepThrough], [DebuggerNonUserCode] or [DebuggerHidden], which Just My Code passes over: turn Just My Code off to stop there");
             }
 
             ICorDebugFunctionBreakpoint corBreakpoint = TryGetEntryBreakpoint(module, resolved.MethodToken, resolved.BindOffset)
@@ -890,7 +901,7 @@ public partial class ManagedDebugger
         {
             // One module's failure to bind the breakpoint is its own, said on it, never the binding of those beside it.
             _logger?.Invoke($"Error binding breakpoint at {bp.FilePath}:{line} in {module.ModuleName}: {ex}");
-            return (false, $"Error binding breakpoint: {ex.Message}");
+            return (false, $"The debugger could not bind it: {ex.Message}");
         }
     }
 
@@ -903,8 +914,11 @@ public partial class ManagedDebugger
             if (bp.Verified)
             {
                 TryBindBreakpoint(bp, loaded);
+                continue;
             }
-            else if (TryBindBreakpoint(bp))
+            // Bound now, or found to have no code where its file's code loaded: the client hears either.
+            (bool unbindable, string? said) = (bp.Unbindable, bp.Message);
+            if (TryBindBreakpoint(bp) || bp.Unbindable != unbindable || bp.Message != said)
             {
                 OnBreakpointChanged?.Invoke(bp);
             }

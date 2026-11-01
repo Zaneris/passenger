@@ -688,7 +688,7 @@ public sealed class DebugAdapter
             EndColumn = bound && breakpoint.EndColumn is int endColumn ? ColumnOut(endColumn) : null,
             Offset = isEvent && bound ? 0 : null,
             Message = breakpoint.Message,
-            Reason = breakpoint.Refused ? "failed" : null,
+            Reason = breakpoint.Refused || breakpoint.Unbindable ? "failed" : breakpoint.Verified ? null : "pending",
             Source = source,
         };
     }

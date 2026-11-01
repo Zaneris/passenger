@@ -434,6 +434,17 @@ public partial class MainWindow
     {
         Debugging.DebugController debugger = next.Debug;
         BindHotReload(next);
+        // Problems' Breakpoints follows what the debuggers say of each breakpoint, and the sessions coming and going.
+        void ListBreakpoints()
+        {
+            if (session == next && next.Debug == debugger)
+            {
+                Bottom.Problems.ShowBreakpoints(debugger.BreakpointProblems());
+            }
+        }
+        debugger.Breakpoints.Changed += (_, _) => ListBreakpoints();
+        debugger.StateChanged += (_, _) => ListBreakpoints();
+        ListBreakpoints();
         debugger.ActionRequested += (_, action) =>
         {
             if (session == next && next.Debug == debugger)

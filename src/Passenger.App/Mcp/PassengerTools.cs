@@ -2146,7 +2146,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         if (session.State != DebugState.Paused || session.StoppedThread is null)
         {
-            return new DebugSnapshot(session.State, null, null, [], [], null, summary);
+            return new DebugSnapshot(session.State, null, null, [], [], null, summary) { Unbound = Unbound() };
         }
         bool shown = debugger.Session == session;
         (IReadOnlyList<DapStackFrame> frames, DapStackFrame? top) = await StopFramesAsync(session);
@@ -2186,8 +2186,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             exception)
         {
             BindingValues = shown ? await BindingValuesShownAsync() : null,
+            Unbound = Unbound(),
         };
     }
+
+    /// <summary>The breakpoints the programs debugged will not stop at, path:line: why, as Problems' Breakpoints lists them;
+    /// null with none.</summary>
+    private IReadOnlyList<string>? Unbound() =>
+        Session.Debug.BreakpointProblems() is { Count: > 0 } problems ? [.. problems.Select(p => $"{Relative(p.Path!)}:{p.Position.Line + 1}: {p.Message}")] : null;
 
     /// <summary>A stop's frames as an agent reads them, each by its index (which debug_evaluate's frame takes): the folder's
     /// own code by its place, and a run of any other (a framework's, with or without source: an Avalonia click is some 25
@@ -2322,10 +2328,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
     }
 
-    private IReadOnlyList<BreakpointInfo> Breakpoints(string? path) =>
-        [.. (path is null ? Session.Debug.Breakpoints.All : Session.Debug.Breakpoints.In(path))
-            .Select(b => new BreakpointInfo(Relative(b.Path), b.Line + 1, b.Enabled, b.Status.ToString().ToLowerInvariant(), b.Condition, b.HitCondition, b.LogMessage, b.Suspend, b.Message,
-                Attribute: b.Attribute, Column: b.Column + 1))];
+    /// <summary>The line breakpoints of a file (or all), each in the words the gutter's hover says it (<see cref="BreakpointStates"/>).</summary>
+    private IReadOnlyList<BreakpointInfo> Breakpoints(string? path)
+    {
+        DebugController debugger = Session.Debug;
+        return [.. (path is null ? debugger.Breakpoints.All : debugger.Breakpoints.In(path))
+            .Select(b => new BreakpointInfo(Relative(b.Path), b.Line + 1, b.Enabled, BreakpointStates.StateOf(b, debugger.IsDebugging, debugger.Breakpoints.Muted), b.Condition,
+                b.HitCondition, b.LogMessage, b.Suspend, b.Status == BreakpointStatus.Bound ? null : b.Message, Attribute: b.Attribute, Column: b.Column + 1))];
+    }
 
     private IReadOnlyList<BreakpointInfo> DataBreakpoints() =>
         [.. Session.Debug.Breakpoints.Data.Select(b => new BreakpointInfo(null, null, b.Enabled, b.Status.ToString().ToLowerInvariant(), b.Condition, b.HitCondition,
@@ -2865,6 +2875,9 @@ public sealed record DebugSnapshot(
 
     /// <summary>A debugged test run that ended as the program went on: its tally and failures, as tests_run answers them.</summary>
     public TestRunInfo? Tests { get; init; }
+
+    /// <summary>The breakpoints the programs debugged will not stop at, each path:line: why and how to put it right.</summary>
+    public IReadOnlyList<string>? Unbound { get; init; }
 
     /// <summary>With several programs debugged, the one this is.</summary>
     public string? Session { get; init; }

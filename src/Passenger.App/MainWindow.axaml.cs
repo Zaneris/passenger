@@ -266,6 +266,7 @@ public partial class MainWindow : IdeWindow
         assist.DebuggerValue = async (offset, cancel) => Editors.Active is { } shown && Debugging.XamlBreakpoints.Compiled(shown.Path)
             ? bindingValues!.HoverAt(shown, offset)
             : await session.Debug.HoverAt(offset, cancel);
+        assist.GutterWords = line => Editors.Active is { } beside ? session.Debug.GutterWords(beside.Path, line) : null;
         // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys.
         assist.EditorFixes = (file, offset) => [.. Passenger.App.LiveTree.BindingErrors.Fixes(file, offset, session.FailedBindings.Select(b => b.Failure)),
             .. session.Web?.Checks.Fixes(file, offset) ?? [], .. assist.AspireFixes(file, offset), .. assist.ComposeReadFixes(file, offset), .. MigrationFixes(file, offset),

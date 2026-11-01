@@ -12,8 +12,9 @@ namespace Passenger.App.Debugging;
 /// end.</summary>
 public abstract class Breakpoint
 {
-    /// <summary>What each session's debugger last said of it, by the session.</summary>
-    private readonly Dictionary<object, (BreakpointStatus Status, string? Message)> said = [];
+    /// <summary>What each session's debugger last said of it, by the session, with how many lines below its own a line
+    /// breakpoint bound.</summary>
+    private readonly Dictionary<object, (BreakpointStatus Status, string? Message, int? Line)> said = [];
 
     public bool Enabled { get; internal set; } = true;
     public string? Condition { get; internal set; }
@@ -33,10 +34,15 @@ public abstract class Breakpoint
     /// <summary>The debugger's word on a breakpoint that will not be hit ("no symbols loaded").</summary>
     public string? Message { get; private set; }
 
-    /// <summary>Records what one session's debugger said of it.</summary>
-    internal void Tell(object session, BreakpointStatus status, string? message)
+    /// <summary>How many lines below its own a line breakpoint bound (above, for less than zero), where the debugger moved it
+    /// to the nearest line with code; zero at its own, null while it is not bound. Kept as a distance, so it goes with the
+    /// breakpoint's line as edits above it move both.</summary>
+    public int? MovedBy { get; private set; }
+
+    /// <summary>Records what one session's debugger said of it, and how far from its own line a line breakpoint bound.</summary>
+    internal void Tell(object session, BreakpointStatus status, string? message, int? movedBy = null)
     {
-        said[session] = (status, message);
+        said[session] = (status, message, movedBy);
         Merge();
     }
 
@@ -51,10 +57,14 @@ public abstract class Breakpoint
         return true;
     }
 
-    private void Merge() => (Status, Message) = said.Count == 0 ? (BreakpointStatus.Unknown, null)
-        : said.Values.Any(s => s.Status == BreakpointStatus.Bound) ? said.Values.First(s => s.Status == BreakpointStatus.Bound)
-        : said.Values.Any(s => s.Status == BreakpointStatus.Unknown) ? said.Values.First(s => s.Status == BreakpointStatus.Unknown)
-        : said.Values.First();
+    private void Merge()
+    {
+        (Status, Message, int? moved) = said.Count == 0 ? (BreakpointStatus.Unknown, null, null)
+            : said.Values.Any(s => s.Status == BreakpointStatus.Bound) ? said.Values.First(s => s.Status == BreakpointStatus.Bound)
+            : said.Values.Any(s => s.Status == BreakpointStatus.Unknown) ? said.Values.First(s => s.Status == BreakpointStatus.Unknown)
+            : said.Values.First();
+        MovedBy = Status == BreakpointStatus.Bound ? moved : null;
+    }
 
     /// <summary>How the Breakpoints window and the popup name it: "Program.cs:7", "Any exception".</summary>
     public abstract string Location { get; }
@@ -730,7 +740,7 @@ public sealed class BreakpointStore
     {
         for (int i = 0; i < Math.Min(reports.Count, sent.Count); i++)
         {
-            sent[i].Tell(session, reports[i].Status, reports[i].Message);
+            sent[i].Tell(session, reports[i].Status, reports[i].Message, reports[i].Line is int bound ? bound - sent[i].Line : null);
         }
         Changed?.Invoke(this, path);
     }

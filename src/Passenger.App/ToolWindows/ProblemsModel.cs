@@ -7,8 +7,8 @@ using Passenger.App.Run;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>Which of Problems' tabs: the current file's, the solution's (with solution-wide analysis on), the projects'
-/// load problems (Toolset, Environment), the last build's, or the bindings that failed in the Avalonia apps run and
-/// debugged last.</summary>
+/// load problems (Toolset, Environment), the last build's, the bindings that failed in the Avalonia apps run and debugged
+/// last, and the rest below.</summary>
 public enum ProblemsTab
 {
     File,
@@ -26,6 +26,9 @@ public enum ProblemsTab
 
     /// <summary>The errors and warnings the Godot game launched last raised as it ran, by file.</summary>
     Godot,
+
+    /// <summary>The breakpoints the programs debugged will not stop at, each at its line with why and how to put it right.</summary>
+    Breakpoints,
 }
 
 /// <summary>A row of Problems: a group (a project or a file, with its count) or a problem, at its depth. A problem of the
@@ -70,9 +73,10 @@ public sealed class ProblemRow(int depth, string label, string? detail, Problem?
 /// <summary>What the Problems window lists, kept whether or not its view is built: the current file's problems as they
 /// are typed, the whole solution's with solution-wide analysis on (by project, then file), the warnings and errors the
 /// projects loaded with (Toolset, Environment, by project), the last build's apart from them, the bindings that failed in
-/// a running Avalonia app (by XAML file, each once with its control, property, path and count), Hot Reload's edits and
-/// the container engine's problems, each a tab with its count, the shown tab's rows and the one chosen. Builds, servers,
-/// bindings and containers write here; <see cref="ProblemsView"/> shows it once the window is first shown.</summary>
+/// a running Avalonia app (by XAML file, each once with its control, property, path and count), Hot Reload's edits, the
+/// container engine's problems and the breakpoints the programs debugged will not stop at, each a tab with its count, the
+/// shown tab's rows and the one chosen. Builds, servers, bindings, containers and the debugger write here;
+/// <see cref="ProblemsView"/> shows it once the window is first shown.</summary>
 public sealed class ProblemsModel
 {
     private readonly ProblemRows rows = [];
@@ -96,6 +100,9 @@ public sealed class ProblemsModel
     private IReadOnlyList<Problem> containers = [];
     private IReadOnlyList<Problem> containerFiles = [];
     private IReadOnlyList<Problem>? godot;
+
+    /// <summary>The breakpoints the programs debugged will not stop at.</summary>
+    private IReadOnlyList<Problem> breakpoints = [];
     private string? fileName;
     private ProblemRow? chosen;
 
@@ -205,6 +212,7 @@ public sealed class ProblemsModel
         ProblemsTab.HotReload => hotReload ?? [],
         ProblemsTab.Containers => containers.Concat(containerFiles),
         ProblemsTab.Godot => godot ?? [],
+        ProblemsTab.Breakpoints => breakpoints,
         _ => Problems,
     };
 
@@ -261,6 +269,7 @@ public sealed class ProblemsModel
         ProblemsTab.HotReload => "Hot Reload",
         ProblemsTab.Containers => "Containers",
         ProblemsTab.Godot => "Godot",
+        ProblemsTab.Breakpoints => "Breakpoints",
         _ => "Build",
     };
 
@@ -276,6 +285,7 @@ public sealed class ProblemsModel
             ProblemsTab.HotReload => (TitleOf(tab), hotReload?.Count ?? 0),
             ProblemsTab.Containers => (TitleOf(tab), containers.Count + containerFiles.Count),
             ProblemsTab.Godot => (TitleOf(tab), godot?.Count ?? 0),
+            ProblemsTab.Breakpoints => (TitleOf(tab), breakpoints.Count),
             _ => (TitleOf(tab), Problems.Count),
         };
         // A filter counts what it shows.
@@ -291,6 +301,7 @@ public sealed class ProblemsModel
         ProblemsTab.HotReload => hotReload is not null,
         ProblemsTab.Containers => containers.Count + containerFiles.Count > 0 || Shown == ProblemsTab.Containers,
         ProblemsTab.Godot => godot is not null,
+        ProblemsTab.Breakpoints => breakpoints.Count > 0 || Shown == ProblemsTab.Breakpoints,
         _ => true,
     };
 
@@ -599,6 +610,21 @@ public sealed class ProblemsModel
         Refresh();
     }
 
+    /// <summary>The breakpoints the programs debugged will not stop at (<see cref="Debugging.BreakpointStates.Problem"/>), each at
+    /// its line, by file: the tab shows while there are any.</summary>
+    public void ShowBreakpoints(IReadOnlyList<Problem> problems)
+    {
+        if (problems.SequenceEqual(breakpoints))
+        {
+            return;
+        }
+        breakpoints = Ordered(problems);
+        Refresh();
+    }
+
+    /// <summary>The breakpoints the programs debugged will not stop at, as the Breakpoints tab lists them.</summary>
+    public IReadOnlyList<Problem> BreakpointProblems => breakpoints;
+
     /// <summary>The errors and warnings the Godot game launched last raised, in the order it raised them.</summary>
     public IReadOnlyList<Problem> GodotProblems => godot ?? [];
 
@@ -767,6 +793,10 @@ public sealed class ProblemsModel
             case ProblemsTab.Godot:
                 Grouped(made, (godot ?? []).Where(Filter.Passes));
                 EmptyText = "The Godot game has raised no error or warning";
+                break;
+            case ProblemsTab.Breakpoints:
+                Grouped(made, breakpoints.Where(Filter.Passes));
+                EmptyText = "Every breakpoint binds, or may yet as its code loads";
                 break;
             default:
                 Grouped(made, Problems.Where(Filter.Passes));

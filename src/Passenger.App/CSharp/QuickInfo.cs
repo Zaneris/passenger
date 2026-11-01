@@ -81,6 +81,10 @@ internal sealed class QuickInfo
     /// instead of the symbol's description; in a debugged app's .axaml file, a binding's.</summary>
     public Func<int, CancellationToken, Task<DebuggerHover?>>? DebuggerValue { get; set; }
 
+    /// <summary>What the gutter says beside a line (from zero) of the file shown, a line of words each (a breakpoint's
+    /// state); null where it says nothing.</summary>
+    public Func<int, IReadOnlyList<string>?>? GutterWords { get; set; }
+
     /// <summary>Whether a card of a value is in use: it has the keys, its menu is open, or a value is being typed in it.</summary>
     public bool ValuesInUse => hoverCard.IsVisible && hoverCard.Values is { } values && (hoverCard.IsKeyboardFocusWithin || values.IsInUse);
 
@@ -305,6 +309,24 @@ internal sealed class QuickInfo
             // A server that no longer has the hint (the file changed since) shows no card for it.
             hoverCard.IsVisible = false;
         }
+    }
+
+    /// <summary>The card for what the gutter shows beside a line the pointer rests on (<see cref="GutterWords"/>), hung under
+    /// the line; none where it says nothing.</summary>
+    public void ShowGutter(int line, Point point)
+    {
+        hovering?.Cancel();
+        ForgetValues();
+        hoverCard.Clear();
+        TextSnapshot text = Editor.Document.Snapshot;
+        if (GutterWords?.Invoke(line) is not { Count: > 0 } words || completing() || line >= text.LineCount)
+        {
+            hoverCard.IsVisible = false;
+            return;
+        }
+        hoverCard.AddText(string.Join('\n', words));
+        hoverCard.IsVisible = true;
+        popups.Place(hoverCard, new Point(point.X, Editor.PointOf(text.GetLineStart(line)).Y), above: false);
     }
 
     public void Hide()

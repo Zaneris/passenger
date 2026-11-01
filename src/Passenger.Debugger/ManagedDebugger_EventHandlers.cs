@@ -211,7 +211,8 @@ public partial class ManagedDebugger
             }
             else
             {
-                breakpoint.Message = "The breakpoint will not currently be hit. No symbols have been loaded for this document.";
+                breakpoint.Message = NoModuleYet;
+                breakpoint.Unbindable = false;
                 TryBindBreakpoint(breakpoint);
             }
             OnBreakpointChanged?.Invoke(breakpoint);

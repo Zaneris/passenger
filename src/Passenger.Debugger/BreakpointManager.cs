@@ -54,6 +54,10 @@ public class BreakpointManager
 
         /// <summary>The debugger will not take it as it is (a condition or hit count it cannot read), as its message says.</summary>
         public bool Refused { get; set; }
+
+        /// <summary>Unbound though a module loaded holds its file's code: no code at its line, or a method that will not
+        /// take it, as its message says. A module loaded later may still bind it.</summary>
+        public bool Unbindable { get; set; }
     }
 
     /// <summary>A breakpoint bound in one method of one module, and where it is in the source. Its module is told apart from

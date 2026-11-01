@@ -83,6 +83,13 @@ public sealed class CodeAssist
                     IdeErrors.Observe(e.Hint is { } hint ? quickInfo.ShowHint(hint, e.Point) : quickInfo.Show(e.Offset, e.Point));
                 }
             };
+            editor.GutterHovered += (_, e) =>
+            {
+                if (editor == Editor && !quickInfo.ValuesInUse)
+                {
+                    quickInfo.ShowGutter(e.Line, e.Position);
+                }
+            };
             editor.HoverEnded += (_, _) => quickInfo.PointerLeft();
             editor.Typed += (_, text) =>
             {
@@ -218,6 +225,13 @@ public sealed class CodeAssist
     {
         get => quickInfo.DebuggerValue;
         set => quickInfo.DebuggerValue = value;
+    }
+
+    /// <summary>What the gutter's hover says beside a line of the file shown (<see cref="QuickInfo.GutterWords"/>).</summary>
+    public Func<int, IReadOnlyList<string>?>? GutterWords
+    {
+        get => quickInfo.GutterWords;
+        set => quickInfo.GutterWords = value;
     }
 
     /// <summary>The window's JavaScript, TypeScript, HTML, CSS and JSON, for a web file shown.</summary>
