@@ -499,16 +499,19 @@ public static class AppActions
     /// change, since every tip and menu reads it; a caller reads it and never binds into it.</summary>
     public static Keymap Keymap() => inForce ??= Keymap(Preset, UserShortcuts);
 
-    /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two actions told
-    /// apart by where it is pressed and the keymap gives it to the other: Show Diff (Commit window, Git log) and Compare
-    /// Files (Explorer) take Duplicate's keys ($default's Ctrl+D, Cmd+D on macOS; none in VS Code's), the Debug window's
-    /// evaluate box adds a watch by Complete Statement's (Start New Line Before's in VS Code's), a tool window takes Escape
-    /// for Focus Editor ($default's); the action's own once the person gives it some.</summary>
+    /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two actions by
+    /// place and the keymap gives it to the other: Show Diff and Compare Files take Duplicate's (none in VS Code's), the
+    /// evaluate box's Add to Watches Complete Statement's (Start New Line Before's in VS Code's), a tool window Escape for
+    /// Focus Editor; outside Visual Studio's, New Item Generate's and Edit Breakpoint View Breakpoints', and IntelliJ IDEA's
+    /// Rerun on the Mac Replace's Cmd+R. The action's own once the person gives it some.</summary>
     public static string KeysIn(string id) => UserShortcuts.ContainsKey(id) ? id : id switch
     {
         ShowDiff or CompareFiles when Preset != KeymapPreset.VSCode => EditorActions.Duplicate,
         AddToWatches => Preset == KeymapPreset.VSCode ? EditorActions.StartNewLineBefore : CompleteStatement,
         FocusEditor => EditorActions.Escape,
+        NewItem when Preset != KeymapPreset.VisualStudio => Generate,
+        EditBreakpoint when Preset != KeymapPreset.VisualStudio => ViewBreakpoints,
+        Rerun when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => Replace,
         _ => id,
     };
 

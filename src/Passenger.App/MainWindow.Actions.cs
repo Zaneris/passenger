@@ -401,6 +401,24 @@ public partial class MainWindow
         file.Syntax is { } syntax ? Testing.TestsAtCaret.At(syntax.Current, line, testGutter.Knows) : null;
 
     /// <summary>Adds one of the window's actions, listed in one place of the menus if given.</summary>
+    /// <summary>A key the keymap gives one action where another takes it by place (<see cref="AppActions.KeysIn"/>): New
+    /// Item in the Explorer, Rerun in the Run window, Edit Breakpoint on a breakpoint's line. True once taken.</summary>
+    private bool PlaceTakes(string action)
+    {
+        ActionContext context = actions!.Context();
+        string? taken = Here(A.NewItem, ExplorerHasKeys(context))
+            ?? Here(A.Rerun, context.ToolWindow?.Id == ToolWindowIds.Run)
+            ?? Here(A.EditBreakpoint, context is { ToolWindow: null, File: { } file } && session.Debug.Breakpoints.In(file.Path).Any(b => b.Line == context.Caret.Line));
+        if (taken is null)
+        {
+            return false;
+        }
+        Request(taken, context);
+        return true;
+
+        string? Here(string id, bool place) => place && id != action && AppActions.KeysIn(id) == action ? id : null;
+    }
+
     private void Add(string id, string title, string group, Action<ActionContext> run, Func<ActionContext, string?>? whyNot = null, (string Path, int Group, int Order)? menu = null,
         IReadOnlyList<string>? words = null, string? works = null) =>
         actions!.Add(new IdeAction(id, title, group, run)

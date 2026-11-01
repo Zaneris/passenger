@@ -20,6 +20,8 @@ public partial class MainWindow
         {
             WhyNot = c => RowOf(c) is { } row ? NewGoesIn(row) is null ? $"Nothing new goes in {row.Name}" : null
                 : NewItemPlace(c) is null ? Refusals.NoFolder : null,
+            // Shown in the Explorer's menus, where it takes the keys.
+            KeysOf = () => AppActions.KeysIn(AppActions.NewItem) is var keys && keys != AppActions.NewItem ? keys : null,
         });
     }
 

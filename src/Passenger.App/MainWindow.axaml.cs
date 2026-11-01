@@ -395,7 +395,7 @@ public partial class MainWindow : IdeWindow
         {
             if (!shifted)
             {
-                if (!BranchesTake(action))
+                if (!BranchesTake(action) && !PlaceTakes(action))
                 {
                     Request(action);
                 }

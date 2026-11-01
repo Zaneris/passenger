@@ -419,7 +419,8 @@ public sealed class KeymapDispatcher(Keymap keymap, Func<long>? milliseconds = n
 {
     private readonly Func<long> now = milliseconds ?? (static () => Environment.TickCount64);
 
-    private const long DoubleTapMs = 500;
+    /// <summary>The most time between a modifier's two taps that makes them a double tap.</summary>
+    public const long DoubleTapMs = 500;
 
     private Keystroke? pending;
 
