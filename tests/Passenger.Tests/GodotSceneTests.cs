@@ -328,6 +328,37 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>An open scene is marked where Godot would not load what it says: its connection to a method Main lacks, and
+    /// the one of other arguments than the handler takes, where it writes them; and an external resource whose file is not
+    /// there, once typed so and the typing pauses. The HUD's connection, which holds, is not marked.</summary>
+    [AvaloniaFact]
+    public void An_open_scene_marks_a_missing_resource_and_a_broken_connection()
+    {
+        MainWindow window = game.Open(ScenePath);
+        try
+        {
+            string method = "Main, a Node2D (Main.cs), has no method OnQuitPressed";
+            string wrong = "toggled gives 1 (bool), but OnStartPressed takes none";
+            Ui.WaitFor(() => Marked(window).Contains(method) && Marked(window).Contains(wrong),
+                () => $"the scene's connections to a missing method and of other arguments to be marked: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
+            TextSnapshot text = window.EditorArea.Active!.Text.Snapshot;
+            Marker missing = window.EditorArea.Active.Markers.First(m => m.Message == method);
+            Assert.Equal("OnQuitPressed", text.GetText(missing.Range.Start, missing.Range.Length));
+            Assert.DoesNotContain(Marked(window), m => m.Contains("Scored", StringComparison.Ordinal) || m.Contains("OnScored", StringComparison.Ordinal));
+
+            Typing.Replace(window, "res://player.tscn", "res://plaer.tscn");
+            string gone = "No file res://plaer.tscn is in the Godot project";
+            Ui.WaitFor(() => Marked(window).Contains(gone), () => $"the external resource of no file to be marked: {string.Join("; ", Marked(window))}");
+            text = window.EditorArea.Active.Text.Snapshot;
+            Marker resource = window.EditorArea.Active.Markers.First(m => m.Message == gone);
+            Assert.Equal("res://plaer.tscn", text.GetText(resource.Range.Start, resource.Range.Length));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Rename of the handler in the code renames the method the scene's connections call, one step of Undo with the code's.</summary>
     [AvaloniaFact]
     public void Renaming_a_handler_renames_the_method_its_scenes_connections_call()

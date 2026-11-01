@@ -1659,6 +1659,28 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>The folder's Godot scenes and resources, read once and followed; none without a session.</summary>
     public Godot.GodotSceneIndex? GodotScenes { get; init; }
 
+    /// <summary>A Godot project's C# file was read against its scenes, as a pull of it read it: what the open scenes are
+    /// read against may have changed.</summary>
+    public Action? GodotCodeRead { get; init; }
+
+    /// <summary>What Passenger's extension answers of a Godot project's code for a scene's connections, asked through one of
+    /// its C# files (<see cref="Godot.GodotChecks.SceneAsks"/>); null without the server, or when it cannot answer.</summary>
+    internal async Task<Roslyn.Extension.GodotCodeFound?> GodotSceneCodeAsync(Roslyn.Extension.GodotCodeRequest asked, CancellationToken cancel)
+    {
+        if (session is not { } roslyn)
+        {
+            return null;
+        }
+        try
+        {
+            return await roslyn.ExtensionAsync<Roslyn.Extension.GodotCodeFound>(Roslyn.Extension.Handlers.GodotCode, asked, cancel);
+        }
+        catch (LanguageServerFailed)
+        {
+            return null;
+        }
+    }
+
     /// <summary>A Godot scene or resource came, went or was written: each open file of a Godot project pulls again.</summary>
     internal void GodotScenesChanged() => Each(document => document.GodotChanged());
 

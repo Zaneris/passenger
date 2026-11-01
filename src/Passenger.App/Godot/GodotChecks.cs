@@ -60,6 +60,97 @@ internal static class GodotChecks
         return new GodotCodeRequest(path, [.. engine], [.. written], [.. signals.Distinct()], [.. methods.Distinct()]);
     }
 
+    /// <summary>What to ask of the extension for a scene's own connections, through a C# file of its project
+    /// (<paramref name="path"/>): every engine class and C# script of its tree, and each connection's signal and method.</summary>
+    public static GodotCodeRequest SceneAsks(string path, GodotScenes scenes, string scene)
+    {
+        IReadOnlyList<GodotTreeNode> nodes = scenes.Tree(scene) is { } root ? [.. root.Below()] : [];
+        List<Connected> connections = [.. Connections(scenes, scene)];
+        return new GodotCodeRequest(path, [.. nodes.Select(n => n.Type).OfType<string>().Distinct(StringComparer.Ordinal)],
+            [.. nodes.Select(n => n.Script).Where(IsCSharp).OfType<string>().Distinct(StringComparer.Ordinal)],
+            [.. connections.Select(SignalAsked).Distinct()], [.. connections.Select(MethodAsked).Distinct()]);
+    }
+
+    /// <summary>One finding in a scene's own text: where (offsets of the file), whether it is an error, and its words.</summary>
+    public sealed record SceneFinding(int Start, int End, bool Error, string Message);
+
+    /// <summary>What is wrong in a scene or resource as Godot would load it, by what the extension answered of its connections
+    /// (<see cref="SceneAsks"/>): an external resource whose file is not there, an ExtResource no external resource of the
+    /// file has, a node whose parent is not in the scene (which Godot drops), a connection's end no node answers, and a
+    /// connection to a method its receiving node lacks, from a signal its sending node lacks, or of other arguments than the
+    /// method takes; a node whose script is not C# is never said to lack a member, which its script may give it.</summary>
+    public static IReadOnlyList<SceneFinding> SceneFindings(GodotScenes scenes, string scene, GodotCodeRequest asked, GodotCodeFound found, Func<string, bool> exists)
+    {
+        List<SceneFinding> findings = [];
+        if (!scenes.Files.TryGetValue(scene, out GodotFile? file))
+        {
+            return findings;
+        }
+        foreach (GodotExternal external in file.Externals)
+        {
+            if (external.Path is { } path && scenes.FileOf(path) is { } named && !exists(named) && external.Section.Attribute("path")?.Value is { } value)
+            {
+                findings.Add(new SceneFinding(value.TextStart, value.TextEnd, true, $"No file {path} is in the Godot project"));
+            }
+        }
+        foreach (GodotSection section in file.Sections)
+        {
+            foreach (GodotEntry entry in section.Attributes.Concat(section.Properties))
+            {
+                if (entry.Value is { Call: "ExtResource", Text: { } id } value && file.External(id) is null && section.Tag != "ext_resource")
+                {
+                    findings.Add(new SceneFinding(value.TextStart, value.TextEnd, true, $"No ext_resource of this file has the id \"{id}\""));
+                }
+            }
+        }
+        if (scenes.Tree(scene) is not { } root)
+        {
+            return findings;
+        }
+        foreach (Passenger.Workspace.GodotNode node in file.Nodes)
+        {
+            if (node.Parent is { } parent && GodotScenes.Resolve(root, parent) is { Found: null, Unknown: false } && node.Section.Attribute("parent")?.Value is { } value)
+            {
+                findings.Add(new SceneFinding(value.TextStart, value.TextEnd, true, $"No node '{parent}' is in the scene, so Godot leaves {node.Name} out"));
+            }
+        }
+        foreach (Connected connected in Connections(scenes, scene))
+        {
+            GodotConnection connection = connected.Connection;
+            foreach ((string key, string path, GodotTreeNode? end) in new[] { ("from", connection.From, connected.From), ("to", connection.To, connected.To) })
+            {
+                if (end is null && !GodotScenes.Resolve(root, path).Unknown && connection.Section.Attribute(key)?.Value is { } value)
+                {
+                    findings.Add(new SceneFinding(value.TextStart, value.TextEnd, true, $"No node '{path}' is in the scene"));
+                }
+            }
+            int methodAt = Known(connected.To) ? IndexOf(asked.Methods, MethodAsked(connected)) : -1;
+            int signalAt = Known(connected.From) ? IndexOf(asked.Signals, SignalAsked(connected)) : -1;
+            bool methodKnown = methodAt >= 0 && methodAt < found.Methods.Count;
+            bool signalKnown = signalAt >= 0 && signalAt < found.Signals.Count;
+            GodotSignature? method = methodKnown ? found.Methods[methodAt] : null;
+            GodotSignature? signal = signalKnown ? found.Signals[signalAt] : null;
+            if (methodKnown && method is null && connection.Section.Attribute("method")?.Value is { } named)
+            {
+                findings.Add(new SceneFinding(named.TextStart, named.TextEnd, true, $"{connected.To!.Name}, {Article(Shown(connected.To))}, has no method {connection.Method}"));
+            }
+            if (signalKnown && signal is null && connection.Section.Attribute("signal")?.Value is { } emitted)
+            {
+                findings.Add(new SceneFinding(emitted.TextStart, emitted.TextEnd, true, $"{connected.From!.Name}, {Article(Shown(connected.From))}, has no signal {connection.Signal}"));
+            }
+            int given = (signal?.Parameters.Count ?? 0) + connection.Binds - connection.Unbinds;
+            if (method is not null && signal is not null && (given < method.Required || given > method.Parameters.Count) && connection.Section.Attribute("method")?.Value is { } called)
+            {
+                findings.Add(new SceneFinding(called.TextStart, called.TextEnd, true,
+                    $"{connection.Signal} {Gives(given, signal.Parameters.Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Binds))))}, but {connection.Method} {Takes(method.Parameters)}"));
+            }
+        }
+        return findings;
+
+        // A node whose members the code says: one with no script, of a known engine class, or one with a C# script.
+        static bool Known(GodotTreeNode? node) => node is not null && (node.Script is null ? node.Type is not null : IsCSharp(node.Script));
+    }
+
     public static GodotMemberAsked SignalAsked(Connected connected) =>
         new(connected.From?.Type, IsCSharp(connected.From?.Script) ? connected.From!.Script : null, connected.Connection.Signal);
 

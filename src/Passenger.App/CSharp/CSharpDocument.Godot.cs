@@ -44,6 +44,7 @@ public sealed partial class CSharpDocument
         }
         IReadOnlyList<GodotChecks.Finding> findings = await BackgroundWork.Run(
             () => GodotChecks.Findings(read.Scenes, read.Asked, read.Found, path => File.Exists(path) || Directory.Exists(path)), cancel);
+        service.GodotCodeRead?.Invoke();
         return [.. findings.Select(f => new Diagnostic
         {
             Range = new LspRange(new LspPosition(f.At.Line, f.At.Character), new LspPosition(f.End.Line, f.End.Character)),

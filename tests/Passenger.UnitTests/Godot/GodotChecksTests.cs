@@ -148,4 +148,64 @@ public class GodotChecksTests
         ], findings.Select(f => (f.At.Line, f.Message)));
         Assert.All(findings, f => Assert.True(f.Error));
     }
+
+    /// <summary>A scene's own text is marked where Godot would not load it: an external resource of no file, an ExtResource
+    /// of no id, a node under one the scene lacks, a connection's end no node answers, and a connection to a method the C#
+    /// script lacks, from a signal the engine class lacks, or of other arguments; a node of a GDScript is never said to lack one.</summary>
+    [Fact]
+    public void A_scene_is_marked_where_godot_would_not_load_its_resources_nodes_and_connections()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [ext_resource type="Script" path="res://Main.cs" id="1"]
+            [ext_resource type="Texture2D" path="res://gone.png" id="2"]
+            [ext_resource type="Script" path="res://hud.gd" id="3"]
+
+            [node name="Main" type="Node2D"]
+            script = ExtResource("1")
+
+            [node name="Hud" type="CanvasLayer" parent="."]
+            script = ExtResource("3")
+
+            [node name="Icon" type="Sprite2D" parent="."]
+            texture = ExtResource("9")
+
+            [node name="Lost" type="Label" parent="Gone"]
+
+            [connection signal="pressed" from="Hud" to="." method="OnPressed"]
+            [connection signal="visibility_changed" from="Icon" to="." method="OnShown"]
+            [connection signal="presed" from="Icon" to="Hud" method="anything"]
+            [connection signal="ready" from="Nowhere" to="." method="OnShown"]
+            [connection signal="texture_changed" from="Icon" to="." method="OnToggled"]
+
+            """;
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) });
+        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/Main.cs", scenes, "res://main.tscn");
+        Assert.Equal(["Node2D", "CanvasLayer", "Sprite2D"], asked.Engine);
+        Assert.Equal(["res://Main.cs"], asked.Scripts);
+        GodotSignature? Signal(GodotMemberAsked a) => a.Name switch
+        {
+            "visibility_changed" or "texture_changed" => new GodotSignature(a.Name, [], 0, null, null, null),
+            _ => null,
+        };
+        GodotSignature? Method(GodotMemberAsked a) => a.Name switch
+        {
+            "OnShown" => new GodotSignature(a.Name, [], 0, null, null, null),
+            "OnToggled" => new GodotSignature(a.Name, ["bool"], 1, null, null, null),
+            _ => null,
+        };
+        GodotCodeFound found = new([], [], [], [], [], [.. asked.Signals.Select(Signal)], [.. asked.Methods.Select(Method)]);
+        IReadOnlyList<GodotChecks.SceneFinding> findings = GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, found, path => !path.EndsWith("gone.png", StringComparison.Ordinal));
+        Assert.Equal(
+        [
+            ("res://gone.png", "No file res://gone.png is in the Godot project"),
+            ("9", "No ext_resource of this file has the id \"9\""),
+            ("Gone", "No node 'Gone' is in the scene, so Godot leaves Lost out"),
+            ("OnPressed", "Main, a Node2D (Main.cs), has no method OnPressed"),
+            ("presed", "Icon, a Sprite2D, has no signal presed"),
+            ("Nowhere", "No node 'Nowhere' is in the scene"),
+            ("OnToggled", "texture_changed gives no arguments, but OnToggled takes 1 (bool)"),
+        ], findings.Select(f => (scene[f.Start..f.End], f.Message)));
+    }
 }
