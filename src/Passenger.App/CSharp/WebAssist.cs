@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Passenger.App.Editors;
 using Passenger.App.Web;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -11,7 +12,8 @@ namespace Passenger.App.CSharp;
 
 /// <summary>The same popups and commands over a JavaScript, TypeScript, HTML, CSS or JSON file, answered by its
 /// language server (<see cref="WebLanguages"/>): completion after the server's own trigger characters, names that run
-/// on through the language's own characters, and, where the JSON server has none, Go to Declaration from a package.json
+/// on through the language's own characters, a component's scoped stylesheet completing its markup's elements, classes
+/// and ids first (<see cref="ScopedCss"/>), and, where the JSON server has none, Go to Declaration from a package.json
 /// dependency to its installed package and Rename of a JSON property, a package.json script's runs with it.</summary>
 internal sealed partial class WebAssist(AssistContext context, PopupPlacement popups, CodeCompletion completion, ParameterInfo parameters, CodeActions actions) : LanguageAssist
 {
@@ -35,9 +37,34 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         }
         if (web.Lsp is { } lsp)
         {
-            await completion.ServerListAsync(lsp, trigger, incomplete, web);
+            string? markup = context.Editors.Active is { } shown ? ScopedCss.MarkupOf(shown.Path) : null;
+            await completion.ServerListAsync(lsp, trigger, incomplete, web, markup is null ? null : (asked, caret, cancel) => ScopedItemsAsync(markup, asked, caret, cancel));
         }
         return true;
+    }
+
+    /// <summary>What a component's scoped stylesheet lists first where a selector is written: the elements its markup writes,
+    /// after a '.' the classes it gives, after a '#' its ids; null elsewhere, or for markup that cannot be read.</summary>
+    private async Task<CodeCompletion.OwnItems?> ScopedItemsAsync(string markup, TextSnapshot asked, int caret, CancellationToken cancel)
+    {
+        OpenTexts texts = context.Editors.Texts();
+        return await BackgroundWork.Run(() =>
+        {
+            if (ScopedCss.SelectorAt(asked.ToString(), caret) is not ({ } start, var mark) || texts.TextOf(markup) is not { } written)
+            {
+                return (CodeCompletion.OwnItems?)null;
+            }
+            (IReadOnlyList<string> elements, IReadOnlyList<string> classes, IReadOnlyList<string> ids) = ScopedCss.Names(written.ToString());
+            (IReadOnlyList<string> names, CompletionItemKind kind) = mark switch
+            {
+                '.' => (classes, CompletionItemKind.Value),
+                '#' => (ids, CompletionItemKind.Value),
+                _ => (elements, CompletionItemKind.Keyword),
+            };
+            string detail = $"in {Path.GetFileName(markup)}";
+            return names.Count == 0 ? null
+                : new CodeCompletion.OwnItems(start, [.. names.Select(n => new CompletionItem { Label = n, Kind = kind, Detail = detail, SortText = "!" + n })], null);
+        }, cancel);
     }
 
     public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)

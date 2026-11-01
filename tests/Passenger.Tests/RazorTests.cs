@@ -469,8 +469,8 @@ internal static class BlazorApp
 
 /// <summary>The Blazor app the Razor and web tests open, restored once a class and never built, its warm server shared
 /// (<see cref="SharedProject"/>): for Razor, a component that takes parameters and a page that sets them, a component whose
-/// code is all in its code-behind, a component calling JavaScript with its collocated script, and a Razor Page whose
-/// markup misnames a member of its model; for the web languages,
+/// code is all in its code-behind, a component calling JavaScript with its collocated script and scoped stylesheet, and a
+/// Razor Page whose markup misnames a member of its model; for the web languages,
 /// the files a web project carries beside its C#: wwwroot/js/site.js, TypeScript under Scripts/ with its tsconfig.json,
 /// wwwroot/css/site.css and an SCSS and a Less stylesheet beside it, a package.json with a dependency installed in
 /// node_modules, a component with a &lt;style&gt; and a &lt;script&gt;, and VS Code's settings and a dev container, each
@@ -505,10 +505,13 @@ public sealed class BlazorShop : SharedProject
 
     /// <summary>A component calling JavaScript through JS interop: a function of the app's scripts, one of its collocated script,
     /// and one of that script imported as a module.</summary>
-    public const string Bell = "@page \"/bell\"\n@inject IJSRuntime JS\n\n<button @onclick=\"RingAsync\">Ring</button>\n\n@code {\n"
+    public const string Bell = "@page \"/bell\"\n@inject IJSRuntime JS\n\n<div class=\"bell ringing\" id=\"chime\">\n    <button @onclick=\"RingAsync\">Ring</button>\n</div>\n\n@code {\n"
         + "    private IJSObjectReference? module;\n\n    private async Task RingAsync()\n    {\n        await JS.InvokeVoidAsync(\"greet\", \"Ada\");\n"
         + "        await JS.InvokeVoidAsync(\"ring\", 3);\n        module = await JS.InvokeAsync<IJSObjectReference>(\"import\", \"./Components/Pages/Bell.razor.js\");\n"
         + "        await module.InvokeVoidAsync(\"hush\");\n    }\n}\n";
+
+    /// <summary>The component's scoped stylesheet: a rule through <c>::deep</c>, and an empty one, which the CSS server warns of.</summary>
+    public const string BellStyle = ".bell ::deep button {\n    color: #1b6ec2;\n}\n\n#chime {\n}\n";
 
     /// <summary>The component's collocated script.</summary>
     public const string BellScript = "// Rings the bell, and hushes it.\nexport function ring(times) {\n    console.log(\"ring \".repeat(times));\n}\n\n"
@@ -544,6 +547,7 @@ public sealed class BlazorShop : SharedProject
         ("Components/Pages/Styled.razor", Component),
         ("Components/Pages/Bell.razor", Bell),
         ("Components/Pages/Bell.razor.js", BellScript),
+        ("Components/Pages/Bell.razor.css", BellStyle),
         (".vscode/settings.json", VsCodeSettings),
         (".devcontainer/devcontainer.json", DevContainer),
     ];
