@@ -74,6 +74,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// scrolls.</summary>
     public bool WheelZoom { get; init; }
     public double TerminalFontSize { get; init; } = 13;
+    /// <summary>The terminal's own font by its family's name, or null for the code font in force.</summary>
     public string? TerminalFontFamily { get; init; }
     public bool TerminalCopyOnSelection { get; init; }
     public bool TerminalCursorBlinking { get; init; }
@@ -351,7 +352,6 @@ public sealed record AppSettings : IStateDocument<AppSettings>
         AppSettings defaults = new();
         AppSettings clamped = this with
         {
-            TerminalFontFamily = string.IsNullOrWhiteSpace(TerminalFontFamily) ? null : TerminalFontFamily.Trim(),
             Shortcuts = Readable(Shortcuts),
             VSCodeShortcuts = Readable(VSCodeShortcuts),
             LiveTemplates = (LiveTemplates ?? []).Where(t => t.Value is not null).ToDictionary(t => t.Key, t => t.Value.Clamped()),

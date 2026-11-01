@@ -352,10 +352,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.BuildKitChecks);
 
         Add(Declared.TerminalFontSize);
-        TextBox terminalFont = new() { Classes = { StyleClasses.Search }, Text = Working.TerminalFontFamily ?? string.Empty, PlaceholderText = "JetBrains Mono", Width = 320 };
-        terminalFont.TextChanged += (_, _) => Change(s => s with { TerminalFontFamily = terminalFont.Text });
-        Add(TerminalPage, "Font family", terminalFont, "font family name typeface shell",
-            "An installed monospace font. Blank, unavailable or proportional fonts use bundled JetBrains Mono.");
+        Add(Declared.TerminalFontFamily);
         Add(Declared.TerminalCopyOnSelection);
         Add(Declared.TerminalCursorBlinking);
         Add(Declared.TerminalCursorStyle);

@@ -233,6 +233,9 @@ public static class Declared
     public static readonly NumberSetting TerminalFontSize = new(s => s.TerminalFontSize, (s, v) => s with { TerminalFontSize = v },
         AppSettings.MinFontSize, AppSettings.MaxFontSize, 1, new(D.TerminalPage, "Font size", "font size shell"));
 
+    public static readonly FontSetting TerminalFontFamily = new(nameof(AppSettings.TerminalFontFamily), s => s.TerminalFontFamily, (s, v) => s with { TerminalFontFamily = v },
+        "Same as the editor", new(D.TerminalPage, "Font family", "font family typeface monospace monospaced shell"));
+
     public static readonly ProgramSetting TerminalShell = new(s => s.TerminalShell, (s, v) => s with { TerminalShell = v },
         () => Passenger.Terminal.TerminalSession.DefaultShell().App, new(D.TerminalPage, "Shell path", "shell zsh bash powershell program"));
 
