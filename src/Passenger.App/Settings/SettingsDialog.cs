@@ -293,6 +293,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.Ligatures);
         Add(Declared.ShowLineNumbers);
         Add(Declared.RainbowBraces);
+        Add(Declared.CloseTags);
         Add(Declared.SolutionWideAnalysis);
         Add(Declared.ParameterHints);
         Add(Declared.TypeHints);

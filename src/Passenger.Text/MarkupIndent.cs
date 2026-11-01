@@ -14,7 +14,8 @@ public enum MarkupKind
 /// <summary>The indentation Enter gives a new line in markup, from the tags before the caret: a level in from the
 /// element the caret is inside, the element's own on a line its end tag starts, and under a tag's first attribute
 /// inside the tag. HTML's elements whose end tag may be left out (li, p, td, ...) close as its parser has them. The text is
-/// read into a pooled buffer and its tags' names kept as places in it, so an Enter makes no string of the text or a tag.</summary>
+/// read into a pooled buffer and its tags' names kept as places in it, so an Enter makes no string of the text or a tag.
+/// The same reading tells the end tags typing completes where a start tag ends, and which element is open at a place.</summary>
 internal static class MarkupIndent
 {
     /// <summary>The text an XML file's Enter reads back from the caret first, then four times as much, and so on, until it
@@ -78,6 +79,119 @@ internal static class MarkupIndent
             default:
                 return null;
         }
+    }
+
+    /// <summary>Where the start tag that runs to <paramref name="at"/> begins (its '&lt;'), <paramref name="at"/> among its
+    /// name and attributes, outside their quotes; null anywhere else (an end tag, a comment, a declaration, a script, an
+    /// element's content).</summary>
+    public static int? StartTagAt(TextSnapshot text, int at, MarkupKind kind) => PlaceAt(text, at, kind) is { Kind: PlaceKind.Tag } place ? place.Tag : null;
+
+    /// <summary>Where the start tag of the innermost element open at <paramref name="at"/> begins; null at the top level, or
+    /// outside an element's content.</summary>
+    public static int? OpenAt(TextSnapshot text, int at, MarkupKind kind) => PlaceAt(text, at, kind) is { Kind: PlaceKind.Content, Parent: >= 0 } place ? place.Parent : null;
+
+    private static Place PlaceAt(TextSnapshot text, int at, MarkupKind kind) => kind == MarkupKind.Xml ? Back(text, at, null) : ReadWhole(text, at, kind, null);
+
+    /// <summary>Whether an end tag after <paramref name="at"/>, where the start tag of an element named
+    /// <paramref name="name"/> has just ended, closes that element: read forwards, the elements started after it paired with
+    /// their end tags, one of its name comes before any end tag of an element holding it (an HTML script's or style's
+    /// first end tag being its own). Read a stretch at a time into a pooled buffer, four times as much each, as far as that.</summary>
+    public static bool ClosedAfter(TextSnapshot text, int at, ReadOnlySpan<char> name, MarkupKind kind)
+    {
+        for (int reach = FirstReach; ; reach *= 4)
+        {
+            int length = Math.Min(reach, text.Length - at);
+            bool whole = at + length == text.Length;
+            char[] chars = ArrayPool<char>.Shared.Rent(Math.Max(1, length));
+            try
+            {
+                Span<char> s = chars.AsSpan(0, length);
+                text.CopyTo(at, s);
+                if (Forward(s, name, kind) is { } closed)
+                {
+                    return closed;
+                }
+                if (whole)
+                {
+                    return false;
+                }
+            }
+            finally
+            {
+                ArrayPool<char>.Shared.Return(chars);
+            }
+        }
+    }
+
+    /// <summary>Whether <paramref name="s"/>, the text after a start tag of <paramref name="name"/>, closes its element
+    /// (<see cref="ClosedAfter"/>); null where it ends before saying.</summary>
+    private static bool? Forward(ReadOnlySpan<char> s, ReadOnlySpan<char> name, MarkupKind kind)
+    {
+        if (kind == MarkupKind.Html && RawText.Contains(name))
+        {
+            return EndTagOf(s, name, 0) >= 0 ? true : null;
+        }
+        StringComparison names = kind == MarkupKind.Html ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        List<Open> open = [];
+        int i = 0;
+        while (i < s.Length && s[i..].IndexOf('<') is var found and >= 0)
+        {
+            int lt = i + found;
+            if ((Skip(s, lt, "<!--", "-->") ?? Skip(s, lt, "<![CDATA[", "]]>") ?? Skip(s, lt, "<?", "?>") ?? (s[lt..].StartsWith("<!") ? MarkupNames.DeclarationEnd(s, lt) : null)) is { } past)
+            {
+                if (past < 0)
+                {
+                    return null;
+                }
+                i = past;
+                continue;
+            }
+            bool endTag = lt + 1 < s.Length && s[lt + 1] == '/';
+            int nameStart = lt + (endTag ? 2 : 1);
+            int nameEnd = nameStart;
+            while (nameEnd < s.Length && MarkupNames.IsNameChar(s[nameEnd]))
+            {
+                nameEnd++;
+            }
+            if (nameEnd == nameStart)
+            {
+                i = lt + 1;
+                continue;
+            }
+            int gt = TagEnd(s, nameEnd, s.Length).End;
+            if (gt == s.Length)
+            {
+                return null;
+            }
+            i = gt + 1;
+            ReadOnlySpan<char> tag = s[nameStart..nameEnd];
+            if (endTag)
+            {
+                int match = LastOpen(s, open, tag, names);
+                if (match < 0)
+                {
+                    // Not one started since: its own, or one holding it, which it was left open inside.
+                    return tag.Equals(name, names);
+                }
+                open.RemoveRange(match, open.Count - match);
+                continue;
+            }
+            if (s[gt - 1] == '/' || (kind == MarkupKind.Html && MarkupNames.IsVoid(tag)))
+            {
+                continue;
+            }
+            open.Add(new Open(nameStart, nameEnd - nameStart, lt, gt + 1));
+            if (kind == MarkupKind.Html && RawText.Contains(tag))
+            {
+                int close = EndTagOf(s, tag, gt + 1);
+                if (close < 0)
+                {
+                    return null;
+                }
+                i = close;
+            }
+        }
+        return null;
     }
 
     private enum PlaceKind

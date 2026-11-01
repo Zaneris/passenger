@@ -137,6 +137,7 @@ public partial class MainWindow
         editor.ShowParameterHints = with.ParameterHints;
         editor.ShowTypeHints = with.TypeHints;
         editor.RainbowBraces = with.RainbowBraces;
+        editor.ClosesTags = with.CloseTags;
         editor.WrapIndent = with.SoftWrapIndent;
         editor.ZoomsWithWheel = with.WheelZoom;
         editor.InvalidateVisual();

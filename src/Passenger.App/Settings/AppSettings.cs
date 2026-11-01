@@ -47,6 +47,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>Rainbow braces: brackets coloured by how deeply they nest.</summary>
     public bool RainbowBraces { get; init; } = true;
 
+    /// <summary>In XAML, XML, MSBuild's files and HTML, a start tag's '>' writes its end tag after the caret, and "&lt;/"
+    /// the open element's name.</summary>
+    public bool CloseTags { get; init; } = true;
+
     /// <summary>Parameter name hints: an argument's parameter shown before it where the call does not say it.</summary>
     public bool ParameterHints { get; init; } = true;
 

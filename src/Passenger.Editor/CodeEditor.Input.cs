@@ -63,6 +63,10 @@ public sealed partial class CodeEditor
         preedit = string.Empty;
         preeditCursor = null;
         Apply(TextEditing.Type(document.Snapshot, selections, typed));
+        if (ClosesTags && TextEditing.CloseTag(document.Snapshot, selections, typed, Markup) is { } closing)
+        {
+            Apply(closing);
+        }
         e.Handled = true;
         Typed?.Invoke(this, typed);
     }

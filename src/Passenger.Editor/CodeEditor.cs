@@ -343,6 +343,10 @@ public sealed partial class CodeEditor : Control
     /// <summary>Which markup this document's language is, whose tags Enter's indentation follows; none for code.</summary>
     public MarkupKind Markup { get; set; }
 
+    /// <summary>Whether typing in <see cref="Markup"/> completes end tags: a start tag's '>' writes its end tag after the
+    /// caret, and "&lt;/" the open element's name (<see cref="TextEditing.CloseTag"/>), each a step of Undo of its own.</summary>
+    public bool ClosesTags { get; set; } = true;
+
     public bool IsReadOnly { get; set; }
 
     /// <summary>Whether the gutter shows line numbers; a console's output goes without.</summary>
