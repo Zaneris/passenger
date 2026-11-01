@@ -230,6 +230,58 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         }
     }
 
+    /// <summary>Settings › Godot says the Godot found, with the version it answers and that it runs C#; a Godot too old for the
+    /// project's Godot.NET.Sdk (a stand-in answering 4.6.1 to --version) is refused before Run starts anything, naming both.</summary>
+    [AvaloniaFact]
+    public void Settings_say_the_Godot_found_with_its_version_and_one_too_old_for_the_projects_sdk_is_refused_before_a_start()
+    {
+        MainWindow window = game.Open(null, languageServer: false);
+        try
+        {
+            GodotFound godot = game.Godot!;
+            string version = Ui.AwaitPumped(GodotExecutables.VersionAsync(godot), "the version the Godot found answers", TimeSpan.FromMinutes(1))!;
+            Passenger.App.Settings.SettingsDialog dialog = window.ShowSettings();
+            dialog.Page = Passenger.App.Settings.SettingsDialog.GodotPage;
+            string said = $"Godot {version}, a .NET build, which runs C#, from {godot.From}: {godot.Executable}";
+            Ui.WaitFor(() => dialog.GetVisualDescendants().OfType<Avalonia.Controls.TextBlock>().Any(t => t.IsEffectivelyVisible && t.Text == said),
+                () => $"Settings › Godot to say {said} ({string.Join(" | ", dialog.GetVisualDescendants().OfType<Avalonia.Controls.TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text))})",
+                TimeSpan.FromMinutes(1));
+            dialog.Close();
+            Ui.Settle();
+
+            window.ApplySettings(window.Settings with { GodotExecutable = StandIn("4.6.1") });
+            Choose(window, Generated(window, "Spinner"));
+            string? refused = Ui.AwaitPumped(window.RunAsync(), "Run of the game on a Godot too old for it", TimeSpan.FromMinutes(3));
+            Assert.Equal($"Spinner on Godot cannot run: it builds with Godot.NET.Sdk {version}, newer than the Godot 4.6.1 that runs it: run it on Godot {version} or newer, "
+                + $"or build it with Godot.NET.Sdk 4.6.1", refused);
+            Assert.False(window.IsRunning, "Run started the game on a Godot too old for its Godot.NET.Sdk");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { GodotExecutable = null });
+            End(window);
+        }
+    }
+
+    /// <summary>A stand-in Godot of a .NET build (a GodotSharp beside it) that answers --version with a version given, and
+    /// does nothing else: its path.</summary>
+    private static string StandIn(string version)
+    {
+        string folder = TestFolders.Create("old-godot-");
+        Directory.CreateDirectory(Path.Combine(folder, "GodotSharp", "Api"));
+        string answer = $"{version}.stable.mono.official.standin";
+        if (OperatingSystem.IsWindows())
+        {
+            string batch = Path.Combine(folder, "godot.cmd");
+            File.WriteAllText(batch, $"@echo {answer}\r\n");
+            return batch;
+        }
+        string script = Path.Combine(folder, "godot");
+        File.WriteAllText(script, $"#!/bin/sh\necho {answer}\n");
+        File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return script;
+    }
+
     /// <summary>A configuration the folder generated, by its name.</summary>
     private static RunConfiguration Generated(MainWindow window, string name)
     {

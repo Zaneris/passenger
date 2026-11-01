@@ -20,6 +20,23 @@ public static class GodotLaunch
     public const string WithoutHotReload = "Godot starts .NET itself and runs no startup hook, which is how dotnet watch applies changes: "
         + "Debug the game, and Hot Reload applies them through the debugger";
 
+    /// <summary>What a setting's line runs, as Settings says it under the box: the Godot found (or chosen) with its version as
+    /// it answers, and that it is a .NET build, which runs C#; or why none would run a C# game.</summary>
+    public static async Task<string> DescribedAsync(string? setting)
+    {
+        GodotFound? found = await BackgroundWork.Run(() => Found(setting));
+        if (found is null)
+        {
+            return $"{char.ToUpperInvariant(NotFound[0])}{NotFound[1..]}";
+        }
+        if (found.WhyNot is { } why)
+        {
+            return $"{char.ToUpperInvariant(why[0])}{why[1..]}";
+        }
+        string version = await GodotExecutables.VersionAsync(found) is { } said ? $"Godot {said}" : "Godot, its version unsaid";
+        return $"{version}, a .NET build, which runs C#{(setting is null ? $", from {found.From}" : string.Empty)}: {found.Executable}";
+    }
+
     /// <summary>Why no Godot runs a Godot project's game, in words for the person.</summary>
     public static string NotFound =>
         $"no Godot was found to run it: install Godot's .NET build, then choose its executable in {SettingsDialog.PlaceOfPage(SettingsDialog.GodotPage)}, set {GodotExecutables.Variable} to it, or put it on the PATH";
@@ -44,10 +61,10 @@ public static class GodotLaunch
     /// <summary>The plan of a Godot project's configuration that names no program of its own: its game, or its editor
     /// (<see cref="RunConfiguration.GodotEditor"/>), on the Godot found, the configuration's arguments after those that
     /// start it, in its working folder or else the Godot project's. Throws a <see cref="LaunchException"/> saying why it
-    /// cannot: no project.godot, no Godot found or one that cannot run C#, no scene for the game to start in, or a
-    /// project.godot that loads another assembly than the project builds.</summary>
-    internal static LaunchPlan Plan(RunConfiguration configuration, ProjectModel project, string folder, string target, string? framework, Func<string, string> expand,
-        IReadOnlyDictionary<string, string> environment, string? setting)
+    /// cannot: no project.godot, no Godot found or one that cannot run C#, a Godot.NET.Sdk (<paramref name="sdk"/>) the Godot
+    /// is too old for, no scene for the game to start in, or a project.godot that loads another assembly than the project builds.</summary>
+    internal static async Task<LaunchPlan> PlanAsync(RunConfiguration configuration, ProjectModel project, string folder, string target, string? framework,
+        Func<string, string> expand, IReadOnlyDictionary<string, string> environment, string? setting, string? sdk, CancellationToken cancel)
     {
         GodotProject game = GodotProject.Read(folder)
             ?? throw new LaunchException($"{configuration.Name} cannot run: {folder} holds no {GodotProject.FileName}, which makes it the Godot project Godot runs");
@@ -55,6 +72,11 @@ public static class GodotLaunch
         if (found.WhyNot is { } why)
         {
             throw new LaunchException($"{configuration.Name} cannot run: {why}");
+        }
+        string? version = await GodotExecutables.VersionAsync(found, cancel);
+        if (sdk is { Length: > 0 } && version is not null && GodotExecutables.Mismatch(sdk, version) is { } mismatch)
+        {
+            throw new LaunchException($"{configuration.Name} cannot run: {mismatch}");
         }
         string built = Path.GetFileNameWithoutExtension(target);
         if (game.AssemblyName is { Length: > 0 } loaded && !string.Equals(loaded, built, StringComparison.OrdinalIgnoreCase))
@@ -92,7 +114,7 @@ public static class GodotLaunch
             Built = target,
             Console = configuration.Console,
             Godot = folder,
-            GodotVersion = found.Version,
+            GodotVersion = version,
         };
     }
 

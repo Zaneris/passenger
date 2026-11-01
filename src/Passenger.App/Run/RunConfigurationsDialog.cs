@@ -1208,7 +1208,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     {
         null => $"Godot, which is not found: {GodotLaunch.NotFound}",
         { WhyNot: { } why } found => $"{found.Executable}, which cannot run it: {why}",
-        { } found => $"Godot: {found.Executable}",
+        { } found => $"Godot{(found.Version is { } version ? $" {version}" : string.Empty)}, a .NET build: {found.Executable}",
     };
 
     private static TextBox Field(string? placeholder = null) => new() { Classes = { StyleClasses.Search }, PlaceholderText = placeholder };

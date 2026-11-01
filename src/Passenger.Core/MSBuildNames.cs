@@ -73,6 +73,9 @@ public static class MSBuildNames
     /// <summary>The program dotnet run starts.</summary>
     public const string RunCommand = "RunCommand";
 
+    /// <summary>The version of Godot.NET.Sdk a Godot project builds with, as the SDK sets it.</summary>
+    public const string GodotSdkVersion = "PackageVersion_Godot_NET_Sdk";
+
     /// <summary>The arguments dotnet run gives it (StartArguments' too).</summary>
     public const string RunArguments = "RunArguments";
 

@@ -120,8 +120,10 @@ public sealed class ChoiceSetting<T> : Setting where T : struct, Enum
 
 /// <summary>A program to start and its arguments, written as one command line (<see cref="Run.CommandLine"/>), or null for
 /// the one Passenger finds, <paramref name="found"/>'s, which an empty box shows; a line naming no program (quotes round
-/// nothing) is refused, saying why under the box.</summary>
-public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSettings, string?, AppSettings> set, Func<string> found, SettingRow row) : Setting(row)
+/// nothing) is refused, saying why under the box. Where it is given <paramref name="described"/>, what the line in force
+/// runs (its version, say) is said under the box as it is typed, once found off the UI thread.</summary>
+public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSettings, string?, AppSettings> set, Func<string> found, SettingRow row,
+    Func<string?, Task<string>>? described = null) : Setting(row)
 {
     /// <summary>Why a line naming no program is refused.</summary>
     private const string NamesNone = "names no program to start: the program's path comes first, its arguments after it";
@@ -131,18 +133,35 @@ public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSetti
         TextBox line = new() { Classes = { StyleClasses.Search }, Text = get(now) ?? string.Empty, PlaceholderText = found(), Width = 320 };
         TextBlock problem = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 320, HorizontalAlignment = HorizontalAlignment.Left };
         problem.Bind(TextBlock.ForegroundProperty, problem.GetResourceObservable(TokenKeys.Error));
+        TextBlock runs = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, MaxWidth = 320, HorizontalAlignment = HorizontalAlignment.Left, IsVisible = described is not null };
+        int asked = 0;
         Said();
         line.TextChanged += (_, _) =>
         {
             change(s => set(s, string.IsNullOrWhiteSpace(line.Text) ? null : line.Text.Trim()));
             Said();
         };
-        return new StackPanel { Spacing = 4, Children = { line, problem } };
+        return new StackPanel { Spacing = 4, Children = { line, problem, runs } };
+
+        // What the line runs, the last asked winning.
+        async Task DescribeAsync(string? typed)
+        {
+            int mine = ++asked;
+            string words = await described!(typed);
+            if (mine == asked)
+            {
+                runs.Text = words;
+            }
+        }
 
         void Said()
         {
             problem.IsVisible = Run.CommandLine.NamesNoProgram(line.Text);
             problem.Text = problem.IsVisible ? $"This {NamesNone}" : null;
+            if (described is not null && !problem.IsVisible)
+            {
+                IdeErrors.Observe(DescribeAsync(string.IsNullOrWhiteSpace(line.Text) ? null : line.Text.Trim()));
+            }
         }
     }
 

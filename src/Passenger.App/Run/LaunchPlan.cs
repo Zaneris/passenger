@@ -125,6 +125,10 @@ public sealed partial record LaunchPlan
             throw new LaunchException($"{configuration.Name} cannot run here: {windows}");
         }
         HashSet<string> names = new(StringComparer.OrdinalIgnoreCase) { CarriedProperties.TargetPath, MSBuildNames.ProjectDir, MSBuildNames.RunWorkingDirectory, MSBuildNames.RunArguments, MSBuildNames.RunCommand };
+        if (project.GodotFolder is not null)
+        {
+            names.Add(MSBuildNames.GodotSdkVersion);
+        }
         foreach (string text in (string[])[configuration.Program, configuration.Arguments, configuration.WorkingDirectory, .. configuration.Environment.Values])
         {
             foreach (Match macro in Macro().Matches(text))
@@ -151,7 +155,8 @@ public sealed partial record LaunchPlan
             : throw new LaunchException($"MSBuild could not say what {project.Name} builds"));
         if (configuration.Program.Length == 0 && project.GodotFolder is { } game)
         {
-            return GodotLaunch.Plan(configuration, project, game, target, framework, Expand, Variables(), godot);
+            return await GodotLaunch.PlanAsync(configuration, project, game, target, framework, Expand, Variables(), godot,
+                properties.GetValueOrDefault(MSBuildNames.GodotSdkVersion), cancel);
         }
         List<string> arguments = [.. CommandLine.Split(Expand(configuration.Arguments))];
         IReadOnlyList<string> ofProject = [];

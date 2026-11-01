@@ -82,6 +82,39 @@ public sealed class GodotExecutablesTests : IDisposable
         Assert.Equal($"{godot} is Godot 3, whose C# runs on Mono: Passenger runs C# on Godot 4's .NET build", found.WhyNot);
     }
 
+    [Theory]
+    [InlineData("4.7.2.stable.mono.official.ed1daf0bf", "4.7.2", true)]
+    [InlineData("4.3.stable.official.77dcf97d8", "4.3", false)]
+    [InlineData("4.5.beta2.mono.custom_build.1a2b3c", "4.5", true)]
+    [InlineData("  4.7.2.stable.mono.official.ed1daf0bf\r", "4.7.2", true)]
+    public void Godots_answer_to_version_gives_its_version_and_whether_it_runs_CSharp(string answer, string version, bool dotnet)
+    {
+        Assert.Equal((version, dotnet), GodotExecutables.ReadVersion(answer));
+    }
+
+    [Theory]
+    [InlineData("Godot Engine v4.7.2.stable.mono.official.ed1daf0bf - https://godotengine.org")]
+    [InlineData("WARNING: something")]
+    [InlineData("4.7.2")]
+    public void A_line_that_is_no_answer_to_version_gives_none(string line)
+    {
+        Assert.Null(GodotExecutables.ReadVersion(line));
+    }
+
+    [Theory]
+    [InlineData("4.7.2", "4.7.2", null)]
+    [InlineData("4.7.1", "4.7.2", null)]
+    [InlineData("4.6", "4.7.2", null)]
+    [InlineData("4.8.0", "4.7.2", "it builds with Godot.NET.Sdk 4.8.0, newer than the Godot 4.7.2 that runs it: run it on Godot 4.8.0 or newer, or build it with Godot.NET.Sdk 4.7.2")]
+    [InlineData("4.7.2", "4.7", "it builds with Godot.NET.Sdk 4.7.2, newer than the Godot 4.7 that runs it: run it on Godot 4.7.2 or newer, or build it with Godot.NET.Sdk 4.7")]
+    [InlineData("3.6.0", "4.7.2", "it builds with Godot.NET.Sdk 3.6.0, for Godot 3, and the Godot that runs it is 4.7.2")]
+    [InlineData("4.8.0-beta.1", "4.7.2", "it builds with Godot.NET.Sdk 4.8.0-beta.1, newer than the Godot 4.7.2 that runs it: run it on Godot 4.8.0-beta.1 or newer, or build it with Godot.NET.Sdk 4.7.2")]
+    [InlineData("unknown", "4.7.2", null)]
+    public void A_projects_Godot_NET_Sdk_newer_than_its_Godot_or_of_another_major_version_says_both(string sdk, string godot, string? said)
+    {
+        Assert.Equal(said, GodotExecutables.Mismatch(sdk, godot));
+    }
+
     private string Folder(string name) => Directory.CreateDirectory(Path.Combine(root, name)).FullName;
 
     private static string Touch(string file)

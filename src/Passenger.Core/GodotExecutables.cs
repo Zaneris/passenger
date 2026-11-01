@@ -264,6 +264,74 @@ public static partial class GodotExecutables
     private static Version Comparable(string? version) =>
         System.Version.TryParse(version?.Split('-')[0], out Version? parsed) ? parsed : new Version(0, 0);
 
+    /// <summary>The versions each Godot answered, by its executable and when it was last written.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string, DateTime), Lazy<Task<string?>>> Answered = new();
+
+    /// <summary>The version a Godot's executable answers <c>--version</c> with, asked headless once per executable as it
+    /// is written, else the one its files gave (<see cref="GodotFound.Version"/>).</summary>
+    public static async Task<string?> VersionAsync(GodotFound found, CancellationToken cancel = default)
+    {
+        if (!found.Exists)
+        {
+            return found.Version;
+        }
+        (string, DateTime) key = (found.Executable, File.GetLastWriteTimeUtc(found.Executable));
+        // Not held, every asker's: on the first one's thread, a thread that never runs again would hold the rest.
+        Lazy<Task<string?>> once = Answered.GetOrAdd(key, _ => new Lazy<Task<string?>>(() => BackgroundWork.Unheld(() => AskVersionAsync(found.Executable))));
+        return await once.Value.WaitAsync(cancel).ConfigureAwait(false) ?? found.Version;
+    }
+
+    private static async Task<string?> AskVersionAsync(string executable)
+    {
+        try
+        {
+            ChildAnswer answer = await ChildProcesses.AnswerAsync(ChildProcesses.Command(executable, ["--headless", "--version"]),
+                line => ReadVersion(line) is not null, limit: TimeSpan.FromSeconds(20)).ConfigureAwait(false);
+            return answer.Answer is { } line ? ReadVersion(line)?.Version : null;
+        }
+        catch (Exception unasked) when (unasked is System.ComponentModel.Win32Exception or IOException or TimeoutException or OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>What a Godot's answer to <c>--version</c> says ("4.7.2.stable.mono.official.ed1daf0bf"): its version as
+    /// numbers ("4.7.2"; "4.3" for a first release), and whether it is a .NET build ("mono" among its words); null for a line
+    /// that is no such answer.</summary>
+    public static (string Version, bool Dotnet)? ReadVersion(string answer) =>
+        VersionAnswer().Match(answer.Trim()) is { Success: true } match
+            ? (match.Groups["version"].Value, match.Groups["words"].Value.Split('.').Contains("mono", StringComparer.Ordinal))
+            : null;
+
+    /// <summary>Why a project built with a Godot.NET.Sdk of one version cannot run on a Godot of another, in words naming
+    /// both: an SDK of another major version, or newer than the Godot (whose GodotSharp it then builds against has APIs the
+    /// running engine lacks); null when it can, or where either version cannot be read.</summary>
+    public static string? Mismatch(string sdk, string godot)
+    {
+        if (Numbers(sdk) is not { } built || Numbers(godot) is not { } running)
+        {
+            return null;
+        }
+        return built.Major != running.Major
+            ? $"it builds with Godot.NET.Sdk {sdk}, for Godot {built.Major}, and the Godot that runs it is {godot}"
+            : built > running
+                ? $"it builds with Godot.NET.Sdk {sdk}, newer than the Godot {godot} that runs it: run it on Godot {sdk} or newer, or build it with Godot.NET.Sdk {godot}"
+                : null;
+    }
+
+    /// <summary>A version's numbers ("4.7" as 4.7.0), its words after a dash left out; null for none.</summary>
+    private static Version? Numbers(string version)
+    {
+        string[] parts = version.Split('-')[0].Split('.');
+        return parts.Length is >= 2 and <= 4 && parts.All(p => int.TryParse(p, System.Globalization.CultureInfo.InvariantCulture, out _))
+            ? new Version(int.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture), int.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture),
+                parts.Length > 2 ? int.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture) : 0)
+            : null;
+    }
+
+    [GeneratedRegex(@"^(?<version>\d+\.\d+(?:\.\d+)?)\.(?<words>[A-Za-z][\w.]*)$")]
+    private static partial Regex VersionAnswer();
+
     [GeneratedRegex(@"^GodotSharp\.(\d+\.\d+(?:\.\d+)*(?:-[0-9A-Za-z.]+)?)\.nupkg$", RegexOptions.IgnoreCase)]
     private static partial Regex PackageVersion();
 
