@@ -8,7 +8,7 @@ using Passenger.Text;
 namespace Passenger.Languages;
 
 /// <summary>What answers for a language's files beyond the editor: the C# language server (C# and Razor), Passenger's
-/// XAML, an MSBuild evaluation, one of the web languages' servers, or nothing.</summary>
+/// XAML, an MSBuild evaluation, one of the web languages' servers, Godot's for GDScript, or nothing.</summary>
 public enum LanguageService
 {
     None,
@@ -21,6 +21,7 @@ public enum LanguageService
     Json,
     Dockerfile,
     Yaml,
+    GDScript,
 }
 
 /// <summary>A file name a language claims, matched without regard to case: a name, or one <c>*</c> standing for any run
@@ -199,9 +200,10 @@ public sealed class Language
     public static readonly Language Http = new("http", "HTTP", ["*.http", "*.rest"], line: "#",
         grammar: new("source.http", "http.tmLanguage.json"));
 
-    /// <summary>GDScript, Godot's own language, indented with tabs as Godot's editor writes it.</summary>
+    /// <summary>GDScript, Godot's own language, indented with tabs as Godot's editor writes it, answered by the server in
+    /// Godot's editor.</summary>
     public static readonly Language GDScript = new("gdscript", "GDScript", ["*.gd"], line: "#", tabs: true,
-        grammar: new("source.gdscript", "GDScript.tmLanguage.json"));
+        grammar: new("source.gdscript", "GDScript.tmLanguage.json"), service: LanguageService.GDScript);
 
     /// <summary>Godot's text resources: a scene (told to a server as <c>gdscene</c>), a resource, a project's settings and
     /// an import's, whose embedded scripts and shaders are coloured as their own files are.</summary>

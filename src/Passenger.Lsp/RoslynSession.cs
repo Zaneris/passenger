@@ -901,6 +901,13 @@ public sealed class LspDocument : IDisposable
     {
         ServerLines before = ServerLines.Of(e.Before);
         ServerLines.After(e);
+        if (Server.TakesWholeTexts)
+        {
+            // A server that takes only whole texts (Godot's) reads a change's text as the document's.
+            Sent(e.Version, changed: !session.Pushes.EachText || Changes(e));
+            Server.Notify(LspMethods.DidChange, new DidChangeTextDocumentParams(new VersionedTextDocumentIdentifier(Uri, e.Version), [new(null, e.After.ToString())]));
+            return;
+        }
         List<TextDocumentContentChangeEvent> changes = [];
         for (int last = e.Edits.Count - 1; last >= 0;)
         {

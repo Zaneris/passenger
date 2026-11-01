@@ -45,6 +45,9 @@ public sealed record SessionSetup(
     /// <summary>Where the Dockerfile server asks for image tags in Docker Hub's place: the window's.</summary>
     public Uri? DockerHub { get; init; }
 
+    /// <summary>The variables a Godot editor started for GDScript runs with beyond the IDE's own: the window's.</summary>
+    public IReadOnlyDictionary<string, string>? GodotEnvironment { get; init; }
+
     /// <summary>Whether the session starts the C# language server: the window's <see cref="MainWindow.StartsLanguageServer"/>.</summary>
     public bool StartsLanguageServer { get; init; } = true;
 
@@ -189,7 +192,7 @@ public sealed class ProjectSession : IAsyncDisposable
         session.Index.Changed += (_, change) => session.AspireFiles.CameAndWent(folder, change.Came, change.Gone);
         session.Index.Build(folder);
         session.Watcher = new FolderWatcher(folder, setup.Watching);
-        session.Web = new Web.WebLanguages(folder, setup.Settings, setup.Engine) { DockerHub = setup.DockerHub };
+        session.Web = new Web.WebLanguages(folder, setup.Settings, setup.Engine) { DockerHub = setup.DockerHub, GodotEnvironment = setup.GodotEnvironment ?? new Dictionary<string, string>() };
         // A compose file's check reads what each .NET service's project reads, once the language server has loaded it.
         session.Web.Checks.Code = () => new Containers.ComposeCode(session.Projects, session.CSharp is { IsReady: true } csharp ? csharp.Session : null);
         session.Web.Checks.GapsChanged += (_, _) => session.CSharp?.ComposeGapsChanged();

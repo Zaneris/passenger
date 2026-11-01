@@ -51,6 +51,7 @@ public partial class MainWindow
     {
         ContainerTools = () => ContainerToolsFrom ?? Containers.ContainerToolsSource.Default(Releases),
         DockerHub = DockerHub,
+        GodotEnvironment = GodotEnvironment,
         StartsLanguageServer = StartsLanguageServer,
         HeadStart = headStart,
     };
@@ -70,6 +71,10 @@ public partial class MainWindow
     /// <summary>Where this window's Dockerfile server asks for image tags in Docker Hub's place: the one given, else
     /// the place <c>PASSENGER_DOCKER_HUB</c> names, else Docker Hub's own.</summary>
     public Uri? DockerHub { get; init; }
+
+    /// <summary>The variables a Godot editor this window starts for GDScript's language server runs with beyond the IDE's
+    /// own: a test's user folders for Godot, so it keeps its settings and caches there.</summary>
+    public IReadOnlyDictionary<string, string>? GodotEnvironment { get; init; }
 
     /// <summary>What the builds and runs of this window's sessions show themselves in and start with.</summary>
     private BuildRunParts BuildRunParts() => new(Bottom, Editors, Dock, () => settings, Say, ShowInTerminal,

@@ -28,7 +28,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// <summary>The file's checks held while its server starts: until it is connected, or cannot start.</summary>
     private OpenDocument.CheckHold? waiting;
 
-    /// <summary>The file's checks held, for the Dockerfile, YAML and TypeScript servers, which push a file's diagnostics
+    /// <summary>The file's checks held, for the Dockerfile, YAML, TypeScript and GDScript servers, which push a file's diagnostics
     /// after each change of it, from the change until a push answering it lands or TypeScript finds the text clean
     /// (<see cref="QuietAsync"/>): what an agent's diagnostics and a screenshot wait for. Given up once its limit passes
     /// (<see cref="PushLimit"/>), the file is said to lack the server's answer until one lands.</summary>
@@ -155,7 +155,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
     /// <summary>Holds the file's checks until its server's push for the text as it stands (<see cref="awaitingPush"/>).</summary>
     private void AwaitPush()
     {
-        if (Lsp is null || Kind is not (WebServerKind.Dockerfile or WebServerKind.Yaml or WebServerKind.TypeScript))
+        if (Lsp is null || Kind is not (WebServerKind.Dockerfile or WebServerKind.Yaml or WebServerKind.TypeScript or WebServerKind.GDScript))
         {
             return;
         }
@@ -378,10 +378,16 @@ public sealed class WebDocument : IServerDocument, IDisposable
     }
 
     /// <summary>A diagnostic with its code before its message: TypeScript's as TS2322 (from its own server, or the HTML
-    /// server's script), none for the rest, whose codes are lint rules' names or the JSON server's numbers.</summary>
+    /// server's script), a GDScript warning's as Godot names it (UNUSED_PARAMETER, which its message begins with), none
+    /// for the rest, whose codes are lint rules' names or the JSON server's numbers.</summary>
     private static Diagnostic Named(Diagnostic diagnostic)
     {
         string? code = diagnostic is { CodeIsNumber: true, Code: { } number } && diagnostic.Source is "typescript" or "ts" or "js" ? $"TS{number}" : null;
+        string message = diagnostic.Message;
+        if (Godot.GodotServerWords.Warning(message) is ({ } warning, { } said))
+        {
+            (code, message) = (warning, said);
+        }
         return new Diagnostic
         {
             Range = diagnostic.Range,
@@ -389,7 +395,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
             Code = code,
             CodeDescription = diagnostic.CodeDescription,
             Source = diagnostic.Source,
-            Message = diagnostic.Message,
+            Message = message,
             Tags = diagnostic.Tags,
             Data = diagnostic.Data,
         };

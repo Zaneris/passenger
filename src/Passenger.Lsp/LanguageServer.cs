@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using Passenger.Core;
 using StreamJsonRpc;
@@ -6,7 +8,7 @@ using StreamJsonRpc;
 namespace Passenger.Lsp;
 
 /// <summary>A language server process and the JSON-RPC connection to it over its standard input and
-/// output. Requests and notifications go out typed, and each failure of the server's comes back as a
+/// output, or over TCP on a loopback port (Godot's, in its editor: one Passenger started, or the person's own). Requests and notifications go out typed, and each failure of the server's comes back as a
 /// <see cref="LanguageServerFailed"/>, the connection's own exceptions never past this class; what the server asks of
 /// the client (its settings, a capability it registers, a refresh) is answered here and surfaced as events, each raised
 /// on any thread, as is what it tells the person (<see cref="Logged"/>, <see cref="Shown"/>, <see cref="Progressed"/>).
@@ -28,7 +30,11 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>Servers started in this IDE, for the handshake salt of each one's MSBuild nodes.</summary>
     private static int started;
 
-    private readonly Process process;
+    /// <summary>The server's process, null for one another program runs, reached on its port alone.</summary>
+    private readonly Process? process;
+
+    /// <summary>The connection to a server reached over TCP, null for one on its standard input and output.</summary>
+    private readonly TcpClient? socket;
     private readonly JsonRpc rpc;
     private readonly CountedMessages messages;
     private readonly ClientTarget client;
@@ -67,9 +73,10 @@ public sealed class LanguageServer : IAsyncDisposable
     private CommandRun? commandRun;
     private readonly SemaphoreSlim commandRuns = new(1, 1);
 
-    private LanguageServer(Process process, JsonRpc rpc, CountedMessages messages, ClientTarget client, ServerLog log, Task errorsHeard, string logFolder,
-        IReadOnlyDictionary<string, object>? options, Func<string?, object?>? configure = null, Func<string, CancellationToken, Task<string>>? content = null)
+    private LanguageServer(Process? process, TcpClient? socket, string who, JsonRpc rpc, CountedMessages messages, ClientTarget client, ServerLog log, Task errorsHeard,
+        string logFolder, IReadOnlyDictionary<string, object>? options, Func<string?, object?>? configure = null, Func<string, CancellationToken, Task<string>>? content = null)
     {
+        this.socket = socket;
         this.configure = configure;
         this.content = content;
         this.options = new Dictionary<string, object>(options ?? new Dictionary<string, object>(), StringComparer.Ordinal);
@@ -81,8 +88,8 @@ public sealed class LanguageServer : IAsyncDisposable
         this.errorsHeard = errorsHeard;
         LogFolder = logFolder;
         WatchedFiles = new WatchedFiles(this);
-        ProcessId = process.Id;
-        who = $"{Named(process.StartInfo)}, process {process.Id}";
+        ProcessId = process?.Id ?? 0;
+        this.who = who;
         rpc.Disconnected += (_, e) =>
         {
             if (!disposing)
@@ -111,8 +118,12 @@ public sealed class LanguageServer : IAsyncDisposable
     /// where it runs from the app's own roslyn/, and for every other server.</summary>
     public string? ServerCopy { get; private set; }
 
-    /// <summary>The server's process id, kept once the process is gone.</summary>
+    /// <summary>The server's process id, kept once the process is gone; 0 for a server another program runs.</summary>
     public int ProcessId { get; }
+
+    /// <summary>The folder the server said it works on as it was initialized, where that is another than the one it was
+    /// started for (<see cref="LspMethods.GodotChangeWorkspace"/>: a Godot editor open on another project); else null.</summary>
+    public string? OtherFolder { get; private set; }
 
     /// <summary>A message the server logged (<c>window/logMessage</c>), every one of which is in its own log too; raised on
     /// any thread.</summary>
@@ -368,7 +379,7 @@ public sealed class LanguageServer : IAsyncDisposable
         {
             try
             {
-                return killed || process.HasExited;
+                return killed || (process is null ? ended is not null || socket is not { Connected: true } : process.HasExited);
             }
             catch (InvalidOperationException)
             {
@@ -448,8 +459,107 @@ public sealed class LanguageServer : IAsyncDisposable
     public static Task<LanguageServer> StartAsync(ServerStart start, CancellationToken cancel)
     {
         Directory.CreateDirectory(start.LogFolder);
-        return StartCoreAsync(start.Process, start.Folder, start.LogFolder, start.Capabilities, start.InitializationOptions, null,
-            start.Configuration ?? (_ => null), start.Content, cancel);
+        return start.Port is { } port
+            ? StartOnPortAsync(start, port, cancel)
+            : StartCoreAsync(start.Process ?? throw new ArgumentException("A server on its standard input and output needs its program", nameof(start)), start.Folder,
+                start.LogFolder, start.Capabilities, start.InitializationOptions, null, start.Configuration ?? (_ => null), start.Content, cancel);
+    }
+
+    /// <summary>A server reached over TCP on a loopback port: its program started first where the start names one, its
+    /// output and errors heard into its log, and connected to once it listens; else the one already listening there.</summary>
+    private static async Task<LanguageServer> StartOnPortAsync(ServerStart start, int port, CancellationToken cancel)
+    {
+        Process? process = null;
+        if (start.Process is { } program)
+        {
+            program.RedirectStandardInput = true;
+            program.RedirectStandardOutput = true;
+            program.RedirectStandardError = true;
+            process = ChildProcesses.Start(program);
+            ChildProcesses.HoldFamily(process);
+        }
+        ServerLog log;
+        try
+        {
+            log = process is null ? ServerLog.Begin(start.LogFolder, $"port{port}") : ServerLog.Begin(start.LogFolder, process.Id);
+        }
+        catch
+        {
+            if (process is not null)
+            {
+                End(process);
+            }
+            throw;
+        }
+        Task heard = process is null ? Task.CompletedTask : HearAllAsync(process, log);
+        UnawaitedWork.Observe(heard);
+        TcpClient socket;
+        try
+        {
+            socket = await ConnectAsync(port, process, start.Listening, cancel).ConfigureAwait(false);
+        }
+        catch
+        {
+            if (process is not null)
+            {
+                End(process);
+            }
+            log.Dispose();
+            throw;
+        }
+        SocketStream stream = new(socket.GetStream());
+        TracedStream input = new(stream, process?.Id ?? port, "-->", static () => Trace);
+        TracedStream output = new(stream, process?.Id ?? port, "<--", static () => Trace, across: input);
+        string who = process is null ? $"the server on port {port}" : $"{Named(process.StartInfo)}, process {process.Id} on port {port}";
+        return await ConnectedAsync(process, socket, who, input, output, log, heard, start.Folder, start.LogFolder, start.Capabilities, start.InitializationOptions,
+            null, start.Configuration ?? (_ => null), start.Content, start.TellsRootPath, cancel).ConfigureAwait(false);
+    }
+
+    /// <summary>The connection to a server listening on a loopback port, tried while the program started to serve there
+    /// runs, until it listens or <paramref name="limit"/> passes; tried once where no program was started.</summary>
+    private static async Task<TcpClient> ConnectAsync(int port, Process? process, TimeSpan limit, CancellationToken cancel)
+    {
+        long began = Stopwatch.GetTimestamp();
+        while (true)
+        {
+            TcpClient client = new() { NoDelay = true };
+            try
+            {
+                await client.ConnectAsync(IPAddress.Loopback, port, cancel).ConfigureAwait(false);
+                return client;
+            }
+            catch (SocketException refused)
+            {
+                client.Dispose();
+                if (process is null)
+                {
+                    throw new LanguageServerFailed($"nothing listens on port {port}", LspMethods.Initialize, refused) { Ended = true };
+                }
+                if (process.HasExited)
+                {
+                    throw new LanguageServerFailed($"it ended ({ExitCodes.Said(process.ExitCode)}) before it listened on port {port}", LspMethods.Initialize, refused) { Ended = true };
+                }
+                if (Stopwatch.GetElapsedTime(began) > limit)
+                {
+                    throw new LanguageServerFailed($"it did not listen on port {port} in {limit.TotalSeconds:0} s", LspMethods.Initialize, refused);
+                }
+            }
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancel).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>A server program's output and errors heard into its log to their end, which closes the log: one reached
+    /// over TCP says nothing of the protocol on them.</summary>
+    private static async Task HearAllAsync(Process process, ServerLog log)
+    {
+        try
+        {
+            await ChildProcesses.Hear(process, output: log.Write, errors: log.Write).ConfigureAwait(false);
+        }
+        finally
+        {
+            log.Dispose();
+        }
     }
 
     private static async Task<LanguageServer> StartCoreAsync(ProcessStartInfo start, string folder, string logFolder, JsonElement capabilities,
@@ -477,7 +587,16 @@ public sealed class LanguageServer : IAsyncDisposable
         }
         Task errorsHeard = HearErrorsAsync(process, log);
         UnawaitedWork.Observe(errorsHeard);
+        return await ConnectedAsync(process, null, $"{Named(process.StartInfo)}, process {process.Id}", input, output, log, errorsHeard, folder, logFolder, capabilities,
+            initializationOptions, options, configure, content, false, cancel).ConfigureAwait(false);
+    }
 
+    /// <summary>The JSON-RPC connection made over a server's streams, initialized for a folder; a start given up or failed
+    /// leaves no server behind.</summary>
+    private static async Task<LanguageServer> ConnectedAsync(Process? process, TcpClient? socket, string who, TracedStream input, TracedStream output, ServerLog log,
+        Task errorsHeard, string folder, string logFolder, JsonElement capabilities, object? initializationOptions, IReadOnlyDictionary<string, object>? options,
+        Func<string?, object?>? configure, Func<string, CancellationToken, Task<string>>? content, bool rootPath, CancellationToken cancel)
+    {
         SystemTextJsonFormatter formatter = new() { JsonSerializerOptions = Json.Options };
         CountedMessages handler = new(input, output, formatter);
         ClientTarget client = new();
@@ -485,7 +604,7 @@ public sealed class LanguageServer : IAsyncDisposable
         JsonRpc rpc = new(handler) { SynchronizationContext = new Microsoft.VisualStudio.Threading.NonConcurrentSynchronizationContext(sticky: false) };
         ToldCancellation.Use(rpc);
         rpc.AddLocalRpcTarget(client, new JsonRpcTargetOptions { UseSingleObjectParameterDeserialization = true });
-        LanguageServer server2 = new(process, rpc, handler, client, log, errorsHeard, logFolder, options, configure, content);
+        LanguageServer server2 = new(process, socket, who, rpc, handler, client, log, errorsHeard, logFolder, options, configure, content);
         client.Owner = server2;
         rpc.StartListening();
 
@@ -493,7 +612,7 @@ public sealed class LanguageServer : IAsyncDisposable
         {
             string root = DocumentUris.FromPath(folder);
             InitializeParams initialize = new(Environment.ProcessId, root, [new WorkspaceFolder(root, Path.GetFileName(folder))], capabilities,
-                InitializationOptions: initializationOptions);
+                InitializationOptions: initializationOptions, RootPath: rootPath ? folder : null);
             // Given up at once, not cancelled: a start given up ends the server, so it fails with the connection, unseen.
             Task<JsonElement> answer = rpc.InvokeWithParameterObjectAsync<JsonElement>(LspMethods.Initialize, initialize, CancellationToken.None);
             UnawaitedWork.Dismiss(answer);
@@ -504,6 +623,8 @@ public sealed class LanguageServer : IAsyncDisposable
                 server2.Legend = legend.Deserialize<SemanticTokensLegend>(Json.Options);
             }
             cancel.ThrowIfCancellationRequested();
+            // What it said before its answer (Godot's word of the folder it works on) is heard before its start returns.
+            await server2.HandledSoFarAsync().ConfigureAwait(false);
             await rpc.NotifyWithParameterObjectAsync(LspMethods.Initialized, new { }).ConfigureAwait(false);
         }
         catch (Exception error)
@@ -531,7 +652,11 @@ public sealed class LanguageServer : IAsyncDisposable
         disposing = true;
         watch.Dispose();
         rpc.Dispose();
-        End(process);
+        socket?.Dispose();
+        if (process is not null)
+        {
+            End(process);
+        }
         log.Dispose();
     }
 
@@ -540,6 +665,14 @@ public sealed class LanguageServer : IAsyncDisposable
     public bool Provides(string capability) =>
         Capabilities.ValueKind == JsonValueKind.Object && Capabilities.TryGetProperty(capability, out JsonElement value)
         && value.ValueKind is not (JsonValueKind.False or JsonValueKind.Null or JsonValueKind.Undefined);
+
+    /// <summary>Whether the server takes each change of a document as its whole text (<c>textDocumentSync</c>'s change kind
+    /// Full, Godot's), not as the edits made.</summary>
+    public bool TakesWholeTexts => Capabilities.ValueKind == JsonValueKind.Object && Capabilities.TryGetProperty("textDocumentSync", out JsonElement sync)
+        && (sync.ValueKind == JsonValueKind.Number ? sync.GetInt32() == FullSync : JsonMembers.Number(sync, "change") == FullSync);
+
+    /// <summary>LSP's document sync by whole texts.</summary>
+    private const int FullSync = 1;
 
     /// <summary>The characters after which the server offers completion unasked (<c>completionProvider.triggerCharacters</c>).</summary>
     public IReadOnlyList<string> CompletionTriggers =>
@@ -782,8 +915,12 @@ public sealed class LanguageServer : IAsyncDisposable
     {
         disposing = true;
         killed = true;
+        socket?.Dispose();
         // Its tree and its process group, so a BuildHost it was loading with goes too.
-        ChildProcesses.Kill(process);
+        if (process is not null)
+        {
+            ChildProcesses.Kill(process);
+        }
     }
 
     /// <summary>Checks the server, at most once in <see cref="SlowRequest"/>, while a request has waited that long; runs
@@ -896,7 +1033,10 @@ public sealed class LanguageServer : IAsyncDisposable
     {
         disposing = true;
         // However it goes, a write into the pipes closed under it included (Node's SIGPIPE, 141), it did not fail.
-        ChildProcesses.Ending(process);
+        if (process is not null)
+        {
+            ChildProcesses.Ending(process);
+        }
         watch.Dispose();
         try
         {
@@ -914,6 +1054,13 @@ public sealed class LanguageServer : IAsyncDisposable
         {
         }
         rpc.Dispose();
+        socket?.Dispose();
+        if (process is null)
+        {
+            // Another program's server goes on without this connection.
+            log.Dispose();
+            return;
+        }
         using (CancellationTokenSource limit = new(TimeSpan.FromSeconds(2)))
         {
             // Its error stream read into its log to its end too, which holds its last words.
@@ -947,6 +1094,82 @@ public sealed class LanguageServer : IAsyncDisposable
         ["csharp_enable_inlay_hints_for_collection_expressions"] = false,
     };
 
+    /// <summary>A server's socket read as its pipe is: the connection reset or aborted by the other end (the server's program
+    /// gone) is the end of the stream, as a pipe's writer gone is, never a fault of the read nothing awaits; a write after it
+    /// fails, as the connection lost.</summary>
+    private sealed class SocketStream(NetworkStream inner) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            try
+            {
+                return inner.Read(buffer);
+            }
+            catch (IOException reset) when (Ended(reset))
+            {
+                return 0;
+            }
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                return await inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            }
+            catch (IOException reset) when (Ended(reset))
+            {
+                return 0;
+            }
+        }
+
+        public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
+
+        public override void Write(ReadOnlySpan<byte> buffer) => inner.Write(buffer);
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            inner.WriteAsync(buffer, offset, count, cancellationToken);
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+            inner.WriteAsync(buffer, cancellationToken);
+
+        public override void Flush() => inner.Flush();
+
+        public override Task FlushAsync(CancellationToken cancellationToken) => inner.FlushAsync(cancellationToken);
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        private static bool Ended(IOException error) =>
+            error.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset or SocketError.ConnectionAborted or SocketError.Shutdown };
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                inner.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+    }
+
     /// <summary>The server's log: its standard error and the messages it logs (a project load that never ends says where
     /// it stopped), a file to each server, since Windows lets no second writer open a file one has open and a server
     /// started again while the last one's log is still held would otherwise fail to start. Shared for reading and
@@ -963,7 +1186,11 @@ public sealed class LanguageServer : IAsyncDisposable
         /// <summary>A new server's log, named by when it began, so the names sort oldest first, and by its process, the id
         /// the IDE's log names when it ends; the oldest logs past <see cref="Kept"/> are deleted, but those of servers
         /// still running (another window's, another IDE's on the same settings).</summary>
-        public static ServerLog Begin(string folder, int processId)
+        public static ServerLog Begin(string folder, int processId) => Begin(folder, processId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        /// <summary>A new server's log named by what it is (<c>port6005</c> for one another program runs), which no process
+        /// keeps from deletion.</summary>
+        public static ServerLog Begin(string folder, string named)
         {
             string[] older;
             try
@@ -985,7 +1212,7 @@ public sealed class LanguageServer : IAsyncDisposable
                     // Open somewhere that shares no deletion (a reader on Windows): it goes another time.
                 }
             }
-            return new ServerLog(Path.Combine(folder, $"server-{DateTime.Now:yyyyMMdd-HHmmss}-{processId}.log"));
+            return new ServerLog(Path.Combine(folder, $"server-{DateTime.Now:yyyyMMdd-HHmmss}-{named}.log"));
         }
 
         /// <summary>Whether a log's process, the last part of its name, is running: its own or, its id reused, another's,
@@ -1081,6 +1308,16 @@ public sealed class LanguageServer : IAsyncDisposable
                     List<string?> named = diagnosticSources.Where(s => s is not null).ToList();
                     return named.Count > 0 ? named : [null];
                 }
+            }
+        }
+
+        /// <summary>Godot's word that it works on another folder than it was told: its own project's.</summary>
+        [JsonRpcMethod(LspMethods.GodotChangeWorkspace)]
+        public void GodotChangeWorkspace(JsonElement said)
+        {
+            if (Owner is { } owner && JsonMembers.Text(said, "path") is { } path)
+            {
+                owner.OtherFolder = path;
             }
         }
 
