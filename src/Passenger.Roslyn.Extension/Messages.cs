@@ -36,13 +36,14 @@ public static class Handlers
     public const string JsInteropCalls = "Passenger.Roslyn.Extension.JsInteropCalls";
     public const string GodotCode = "Passenger.Roslyn.Extension.GodotCode";
     public const string GodotNames = "Passenger.Roslyn.Extension.GodotNames";
+    public const string GodotPaths = "Passenger.Roslyn.Extension.GodotPaths";
 
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
-        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames,
+        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames, GodotPaths,
     ];
 }
 
@@ -477,6 +478,19 @@ public sealed record GodotNameUse(
     [property: JsonPropertyName("at")] Place At,
     [property: JsonPropertyName("end")] Place End,
     [property: JsonPropertyName("before")] string Before);
+
+/// <summary>The res:// strings asked for in the C# of the projects of a Godot project's folder: those naming one of the
+/// paths, a folder's (ending in '/') any path inside it.</summary>
+public sealed record GodotPathsAsked([property: JsonPropertyName("folder")] string Folder, [property: JsonPropertyName("paths")] IReadOnlyList<string> Paths);
+
+/// <summary>Each res:// string found, in its file, with what it says and where its characters are written.</summary>
+public sealed record GodotPathsFound([property: JsonPropertyName("uses")] IReadOnlyList<GodotPathUse> Uses);
+
+public sealed record GodotPathUse(
+    [property: JsonPropertyName("file")] string File,
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End);
 
 /// <summary>The projects whose web routes are asked for, by their project files' paths; none asks for every project's.</summary>
 public sealed record RoutesRequest([property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);

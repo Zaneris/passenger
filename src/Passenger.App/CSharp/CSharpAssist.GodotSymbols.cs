@@ -313,4 +313,76 @@ internal sealed partial class CSharpAssist
         }
         return (files, beside);
     }
+
+    /// <summary>The edits the Godot projects' files take once files and folders of theirs have moved (the Explorer's move or
+    /// rename, already made): every res:// path naming a moved file, or a file inside a moved folder, written anew in each
+    /// scene, resource and project.godot and in each C# string; by file at its path now, in the server's places. With the
+    /// .uid and .import files beside each moved file, which go with it, an .import's own path to its file following.</summary>
+    internal async Task<(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, IReadOnlyList<(string From, string To)> Beside)> GodotFollowAsync(
+        IReadOnlyList<(string From, string To)> moved)
+    {
+        List<(string, IReadOnlyList<LspTextEdit>)> files = [];
+        List<(string, string)> beside = [];
+        if (context.CSharp is not { GodotScenes: { } index, GodotOf: { } godotOf } csharp)
+        {
+            return (files, beside);
+        }
+        // The index takes the moves in first, so the scenes are read where they are now.
+        index.CameOrWent([.. moved.SelectMany(m => new[] { m.From, m.To })]);
+        foreach (IGrouping<string, (string From, string To)> project in moved.Where(m => godotOf(m.To) is { } folder && PathNames.Same(godotOf(m.From) ?? string.Empty, folder))
+            .GroupBy(m => godotOf(m.To)!, PathNames.Comparer))
+        {
+            string folder = project.Key;
+            List<(string From, string To)> paths = [];
+            foreach ((string from, string to) in project)
+            {
+                bool isFolder = Directory.Exists(to);
+                if (GodotScenes.ResPathOf(folder, from) is { } was && GodotScenes.ResPathOf(folder, to) is { } now)
+                {
+                    paths.Add(isFolder ? (was + "/", now + "/") : (was, now));
+                }
+                foreach (string kept in isFolder ? [] : new[] { ".uid", ".import" })
+                {
+                    if (File.Exists(from + kept) && !File.Exists(to + kept))
+                    {
+                        beside.Add((from + kept, to + kept));
+                    }
+                }
+            }
+            if (paths.Count == 0)
+            {
+                continue;
+            }
+            GodotScenes scenes = await index.ScenesAsync(folder);
+            // Each text the moves reach, at its path once every move is made: the scenes, project.godot, the .import files moving.
+            List<(string Path, string? Text)> texts = [.. scenes.Files.Select(f => (scenes.FileOf(f.Key)!, (string?)f.Value.Text)),
+                (Path.Combine(folder, "project.godot"), context.Editors.TextOf(Path.Combine(folder, "project.godot"))?.ToString()),
+                .. beside.Where(b => b.Item1.EndsWith(".import", StringComparison.OrdinalIgnoreCase)).Select(b => (b.Item2, context.Editors.TextOf(b.Item1)?.ToString()))];
+            IReadOnlyList<(string Path, string Text, IReadOnlyList<TextEdit> Edits)> edited = await BackgroundWork.Run(() => (IReadOnlyList<(string, string, IReadOnlyList<TextEdit>)>)
+                [.. texts.Where(t => t.Text is not null).Select(t => (t.Path, t.Text!, GodotScenes.MovedEdits(GodotFile.Parse(t.Text!), paths))).Where(t => t.Item3.Count > 0)]);
+            foreach ((string path, string text, IReadOnlyList<TextEdit> edits) in edited)
+            {
+                ServerLines lines = ServerLines.Of(TextSnapshot.From(text));
+                files.Add((path, [.. edits.Select(e => new LspTextEdit(lines.RangeOf(new TextRange(e.Start, e.Length)), e.Text))]));
+            }
+            if (csharp.Session is { } session)
+            {
+                GodotPathsFound found;
+                try
+                {
+                    found = await session.ExtensionAsync<GodotPathsFound>(Handlers.GodotPaths, new GodotPathsAsked(folder, [.. paths.Select(p => p.From)]));
+                }
+                catch (LanguageServerFailed)
+                {
+                    continue;
+                }
+                // A C# file moved itself is written where it went, which the server may not know yet.
+                string Now(string file) => moved.FirstOrDefault(m => PathNames.Within(file, m.From)) is { From: not null } move ? PathNames.Moved(file, move.From, move.To) : file;
+                files.AddRange(found.Uses.Where(u => GodotScenes.Moved(paths, u.Path) is not null).GroupBy(u => Now(u.File), PathNames.Comparer).Select(file => (file.Key,
+                    (IReadOnlyList<LspTextEdit>)[.. file.Select(u => new LspTextEdit(new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character)),
+                        GodotScenes.Moved(paths, u.Path)!))])));
+            }
+        }
+        return (files, beside);
+    }
 }

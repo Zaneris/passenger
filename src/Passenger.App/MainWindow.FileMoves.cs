@@ -161,7 +161,7 @@ public partial class MainWindow
                 }
             }
         }
-        if (FollowMoved(moved, recording) is { } unfollowed)
+        if ((FollowMoved(moved, recording) ?? (recording is null ? null : await FollowGodotAsync(moved, recording))) is { } unfollowed)
         {
             refused.Add(unfollowed);
         }
@@ -281,6 +281,41 @@ public partial class MainWindow
             session.CameOrWent([.. moved.Select(m => m.To)], readAgain: true);
         }
         return null;
+    }
+
+    /// <summary>The Godot projects' files follow files and folders of theirs moved within the move's command
+    /// (<see cref="CSharpAssist.GodotFollowAsync"/>): every res:// path naming one written anew in its scenes, resources,
+    /// project.godot and C#, and the .uid and .import files beside a moved file moved with it. Null once they follow, else
+    /// why one could not.</summary>
+    private async Task<string?> FollowGodotAsync(IReadOnlyList<(string From, string To)> moved, CommandHistory.Recording recording)
+    {
+        if (moved.Count == 0 || !moved.Any(m => session.GodotOf(m.To) is not null))
+        {
+            return null;
+        }
+        (IReadOnlyList<(string Path, IReadOnlyList<Lsp.LspTextEdit> Edits)> files, IReadOnlyList<(string From, string To)> beside) = await assist.Languages.CSharp.GodotFollowAsync(moved);
+        foreach ((string from, string to) in beside)
+        {
+            if (recording.Move(from, to) is { } refused)
+            {
+                return $"{Path.GetFileName(from)} could not go with {Path.GetFileNameWithoutExtension(to)}: {refused}";
+            }
+        }
+        if (files.Count == 0)
+        {
+            return null;
+        }
+        System.Text.Json.JsonElement edit = TypeRename.With(System.Text.Json.JsonSerializer.SerializeToElement(new { changes = new Dictionary<string, object>() }), files);
+        List<string> dropped = [];
+        try
+        {
+            await FollowingAsync([.. files.Select(f => f.Path)], recording, () => WorkspaceEdits.ApplyAsCommand(Editors, edit, recording, null, dropped));
+        }
+        catch (WorkspaceEditFailed failed)
+        {
+            return failed.Message;
+        }
+        return dropped.Count > 0 ? $"{string.Join(", ", dropped)} could not follow the files moved: it was edited meanwhile" : null;
     }
 
     private static string? Taken(string into, string name) =>

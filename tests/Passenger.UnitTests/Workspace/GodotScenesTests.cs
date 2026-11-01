@@ -199,4 +199,46 @@ public class GodotScenesTests
         }
         return text;
     }
+
+    /// <summary>As files and folders move, every res:// path a Godot text file gives naming one follows it: an external
+    /// resource's, a sub-resource's with its "::", a property's, project.godot's main scene and an autoload's after its '*',
+    /// and a path inside a moved folder; a call's argument, a path none moved and a uid are left as they are.</summary>
+    [Fact]
+    public void A_moved_files_and_folders_res_paths_follow_them_in_every_godot_file()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [ext_resource type="PackedScene" uid="uid://bplayer" path="res://player.tscn" id="1"]
+            [ext_resource type="Texture2D" path="res://art/icon.svg" id="2"]
+            [ext_resource type="Script" path="res://Main.cs" id="3"]
+
+            [node name="Main" type="Node2D"]
+            level = "res://art/level.tres::1"
+            label = NodePath("res://player.tscn")
+
+            """;
+        const string project = """
+            [application]
+
+            run/main_scene="res://player.tscn"
+
+            [autoload]
+
+            Global="*res://art/global.gd"
+
+            """;
+        IReadOnlyList<(string, string)> moves = [("res://player.tscn", "res://actors/player.tscn"), ("res://art/", "res://assets/art/")];
+        Assert.Equal("res://assets/art/level.tres::1", GodotScenes.Moved(moves, "res://art/level.tres::1"));
+        Assert.Null(GodotScenes.Moved(moves, "res://artist.tscn"));
+        Assert.Equal(["res://actors/player.tscn", "res://assets/art/icon.svg", "res://assets/art/level.tres::1"], Applied(scene, moves));
+        Assert.Equal(["res://actors/player.tscn", "res://assets/art/global.gd"], Applied(project, moves));
+
+        static IReadOnlyList<string> Applied(string text, IReadOnlyList<(string, string)> moves)
+        {
+            IReadOnlyList<TextEdit> edits = GodotScenes.MovedEdits(GodotFile.Parse(text), moves);
+            Assert.All(edits, e => Assert.StartsWith("res://", text.Substring(e.Start, e.Length), StringComparison.Ordinal));
+            return [.. edits.Select(e => e.Text)];
+        }
+    }
 }

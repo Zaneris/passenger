@@ -442,6 +442,46 @@ public sealed class GodotScenes
         }
     }
 
+    /// <summary>A res:// path once files and folders moved (each by its res:// path, a folder's ending in '/'): a moved file's
+    /// new path, a path inside a moved folder under its new one, a sub-resource's "::" kept; null for a path none moved.</summary>
+    public static string? Moved(IReadOnlyList<(string From, string To)> moves, string res)
+    {
+        int sub = res.IndexOf("::", StringComparison.Ordinal);
+        string file = sub < 0 ? res : res[..sub];
+        foreach ((string from, string to) in moves)
+        {
+            if (from.EndsWith('/') ? file.StartsWith(from, StringComparison.Ordinal) : file == from)
+            {
+                return (from.EndsWith('/') ? to + file[from.Length..] : to) + (sub < 0 ? string.Empty : res[sub..]);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>The edits a Godot text file (a scene, a resource, project.godot, an .import) takes as files and folders move
+    /// (<see cref="Moved"/>): each string it gives a res:// path in that names one moved, an external resource's path, a
+    /// property's, an autoload's after its '*'.</summary>
+    public static IReadOnlyList<TextEdit> MovedEdits(GodotFile file, IReadOnlyList<(string From, string To)> moves)
+    {
+        List<TextEdit> edits = [];
+        foreach (GodotSection section in file.Sections)
+        {
+            foreach (GodotEntry entry in section.Attributes.Concat(section.Properties))
+            {
+                if (entry.Value is not { Call: null, Plain: true, Text: { } text } value)
+                {
+                    continue;
+                }
+                int star = text.StartsWith("*res://", StringComparison.Ordinal) ? 1 : 0;
+                if ((star == 1 || text.StartsWith("res://", StringComparison.Ordinal)) && Moved(moves, text[star..]) is { } now)
+                {
+                    edits.Add(new TextEdit(value.TextStart + star, value.TextEnd - value.TextStart - star, now));
+                }
+            }
+        }
+        return edits;
+    }
+
     /// <summary>Where a path from the scene's root ("Hud/Score/Label", "." for the root) names the last name of another
     /// (<paramref name="through"/>, "Hud/Score"): that name's place in it; null where it does not lead through it.</summary>
     internal static (int Start, int Length)? Segment(string path, string through)

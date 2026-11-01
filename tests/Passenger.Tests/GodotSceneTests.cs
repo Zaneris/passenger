@@ -416,6 +416,49 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>A scene moved in the Explorer takes every res:// path naming it along, the external resource of the scene
+    /// instancing it and the code's string, as one command Undo in the Explorer takes back whole.</summary>
+    [AvaloniaFact]
+    public void A_scene_moved_in_the_explorer_is_followed_by_every_res_path_naming_it()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
+            CodeEditor code = window.EditorArea.CodeEditor;
+            Choose(window, game.PathOf("player.tscn"));
+            Ui.Run(window, EditorActions.Cut);
+            Choose(window, game.PathOf("actors"));
+            Ui.Run(window, EditorActions.Paste);
+            Ui.WaitFor(() => File.Exists(game.PathOf(Path.Combine("actors", "player.tscn"))) && File.ReadAllText(ScenePath).Contains("path=\"res://actors/player.tscn\"", StringComparison.Ordinal),
+                () => $"the scene instancing the player to follow its move ({window.Status}): {File.ReadAllText(ScenePath)}");
+            Assert.StartsWith("Moved player.tscn to actors", window.Status, StringComparison.Ordinal);
+            Assert.Equal("Moved player.tscn to actors", window.Status);
+            Assert.Contains("GD.Load<PackedScene>(\"res://actors/player.tscn\")", code.Document.Snapshot.ToString(), StringComparison.Ordinal);
+
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Choose(window, game.PathOf("actors"));
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => File.Exists(game.PathOf("player.tscn")) && File.ReadAllText(ScenePath) == Scene,
+                () => $"Undo to move the player back and put the scene back ({window.Status}): {File.ReadAllText(ScenePath)}");
+            Assert.Contains("GD.Load<PackedScene>(\"res://player.tscn\")", code.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The Explorer's row of a file or folder chosen, with the keys.</summary>
+    private static void Choose(MainWindow window, string path)
+    {
+        string shown = PathNames.Canonical(path);
+        window.ExplorerView.Reveal(shown);
+        Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Path is { } row && PathNames.Same(row, shown)),
+            () => $"the Explorer to show {Path.GetFileName(path)}: {string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Path))}");
+        Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path is { } row && PathNames.Same(row, shown)));
+    }
+
     /// <summary>A res:// string in a scene completes from the project's files as its "res://" is typed, the scene itself and
     /// Godot's own folders left out, and the file chosen goes in whole in place of the string.</summary>
     [AvaloniaFact]
@@ -593,6 +636,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             File.WriteAllText(PathOf("player.tscn"), Player);
             File.WriteAllText(PathOf("Hud.cs"), HudScript);
             File.WriteAllText(PathOf("Main.cs.uid"), "uid://cmain1\n");
+            Directory.CreateDirectory(PathOf("actors"));
         }
 
         public GodotFound? Godot { get; }

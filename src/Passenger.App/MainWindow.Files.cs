@@ -416,6 +416,10 @@ public partial class MainWindow
         {
             return failed;
         }
+        if (await FollowGodotAsync([.. moves.Select(m => (m.From, PathNames.Canonical(m.To)))], recording) is { } ungodot)
+        {
+            status.Text = ungodot;
+        }
         Explorer.Reveal(PathNames.Canonical(target));
         if (await recording.LandedAsync(waiting => status.Text = waiting) is [(string unfollowed, Exception refused), ..])
         {
@@ -733,6 +737,7 @@ public partial class MainWindow
         session.MSBuild.FilesCameOrWent();
         session.CSharp?.FilesCameOrWent(named);
         session.Xaml.CameOrWent(named);
+        session.GodotScenes.CameOrWent(named);
         if (Folder is { } folder)
         {
             session.Index.Apply(folder, named);

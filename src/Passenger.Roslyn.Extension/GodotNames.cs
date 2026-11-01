@@ -17,6 +17,13 @@ public sealed class GodotNames : IExtensionDocumentMessageHandler<GodotNamesAske
         GodotGenerated.AtAsync(context.Solution, document, message, cancellationToken);
 }
 
+/// <summary>The res:// strings of a Godot project's C# naming files or folders asked for (<see cref="GodotGenerated.PathsAsync"/>).</summary>
+public sealed class GodotPaths : IExtensionWorkspaceMessageHandler<GodotPathsAsked, GodotPathsFound>
+{
+    public Task<GodotPathsFound> ExecuteAsync(GodotPathsAsked message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+        GodotGenerated.PathsAsync(context.Solution, message, cancellationToken);
+}
+
 /// <summary>A Godot script's signals, methods and properties by the names Godot's source generator gives them beside the
 /// code's own (a <c>[Signal]</c> delegate XEventHandler's event X, <c>SignalName.X</c> and <c>EmitSignalX</c>; a method's
 /// <c>MethodName.X</c>; a property's or field's <c>PropertyName.X</c>) and by the strings Godot's own calls take for them
@@ -171,6 +178,40 @@ internal static class GodotGenerated
             }
         }
         return uses;
+    }
+
+    /// <summary>The strings written as their characters in the C# of the projects in a Godot project's folder that give a
+    /// res:// path naming one asked for, or inside a folder asked for; each once, though a project builds it for several
+    /// frameworks.</summary>
+    public static async Task<GodotPathsFound> PathsAsync(Solution solution, GodotPathsAsked asked, CancellationToken cancel)
+    {
+        List<GodotPathUse> uses = [];
+        HashSet<(string, int)> seen = [];
+        foreach (Project project in solution.Projects.Where(p => System.IO.Path.GetDirectoryName(p.FilePath) is { } home
+            && (SamePath(home, asked.Folder) || Passenger.Core.PathNames.IsUnder(home, asked.Folder))))
+        {
+            foreach (Document document in project.Documents)
+            {
+                if (document.FilePath is not { Length: > 0 } path || await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root)
+                {
+                    continue;
+                }
+                SourceText? text = null;
+                foreach (SyntaxToken token in root.DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken) && Exact(t)
+                    && t.ValueText.StartsWith("res://", StringComparison.Ordinal) && asked.Paths.Any(p => Names(p, t.ValueText))))
+                {
+                    if (seen.Add((path, token.SpanStart)))
+                    {
+                        text ??= await document.GetTextAsync(cancel).ConfigureAwait(false);
+                        uses.Add(new GodotPathUse(path, token.ValueText, PlaceAt(text, token.SpanStart + 1), PlaceAt(text, token.Span.End - 1)));
+                    }
+                }
+            }
+        }
+        return new GodotPathsFound(uses);
+
+        static bool Names(string asked, string res) => asked.EndsWith('/') ? res.StartsWith(asked, StringComparison.Ordinal)
+            : res == asked || res.StartsWith(asked + "::", StringComparison.Ordinal);
     }
 
     /// <summary>What a string literal names as Godot's own calls take it (<see cref="NameCall"/>): what it names and the type
