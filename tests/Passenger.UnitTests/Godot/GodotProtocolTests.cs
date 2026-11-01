@@ -142,6 +142,12 @@ public class GodotProtocolTests
     [InlineData(GodotType.Bool, "True", "true")]
     [InlineData(GodotType.NodePath, "/root/Main:position", "/root/Main:position")]
     [InlineData(GodotType.String, " kept as typed ", " kept as typed ")]
+    [InlineData(GodotType.Transform2D, "x: (1, 0), y: (0, 1), origin: (100, 50.5)", "x: (1, 0), y: (0, 1), origin: (100, 50.5)")]
+    [InlineData(GodotType.Transform2D, "1, 0, 0, 1, 100, 50", "x: (1, 0), y: (0, 1), origin: (100, 50)")]
+    [InlineData(GodotType.Transform3D, "basis: ((1, 0, 0), (0, 1, 0), (0, 0, 1)), origin: (1e2, -2, 3)", "basis: ((1, 0, 0), (0, 1, 0), (0, 0, 1)), origin: (100, -2, 3)")]
+    [InlineData(GodotType.Aabb, "position: (0, 0, 0), size: (2, 2, 2)", "position: (0, 0, 0), size: (2, 2, 2)")]
+    [InlineData(GodotType.Plane, "normal: (0, 1, 0), d: 4", "normal: (0, 1, 0), d: 4")]
+    [InlineData(GodotType.Quaternion, "(0, 0, 0, 1)", "(0, 0, 0, 1)")]
     public void A_typed_value_reads_as_its_type_does(GodotType type, string text, string shown)
     {
         (object? value, string? whyNot) = GodotVariant.Parse(type, text);

@@ -554,12 +554,31 @@ public static class GodotVariant
         string[] strings => $"[{string.Join(", ", strings.Select(s => $"\"{s}\""))}]",
         byte[] packed => $"[{packed.Length} bytes]",
         System.Array packed => $"[{string.Join(", ", packed.Cast<object?>().Select(i => i is float f ? Number(f) : Shown(i, quoted: true)))}]",
+        GodotMath { Type: GodotType.Transform2D or GodotType.Basis or GodotType.Transform3D or GodotType.Aabb or GodotType.Plane or GodotType.Projection } math => Parts(math),
         _ => value.ToString() ?? string.Empty,
     };
 
+    /// <summary>A value of several vectors in its parts, as it is typed back: a 2D transform's x and y axes and origin, a
+    /// basis's rows, a 3D transform's basis and origin, a box's position and size, a plane's normal and distance, a
+    /// projection's columns.</summary>
+    private static string Parts(GodotMath math)
+    {
+        string Of(int from, int count) => $"({string.Join(", ", math.Values.Skip(from).Take(count).Select(Number))})";
+        return math.Type switch
+        {
+            GodotType.Transform2D => $"x: {Of(0, 2)}, y: {Of(2, 2)}, origin: {Of(4, 2)}",
+            GodotType.Basis => $"({Of(0, 3)}, {Of(3, 3)}, {Of(6, 3)})",
+            GodotType.Transform3D => $"basis: ({Of(0, 3)}, {Of(3, 3)}, {Of(6, 3)}), origin: {Of(9, 3)}",
+            GodotType.Aabb => $"position: {Of(0, 3)}, size: {Of(3, 3)}",
+            GodotType.Plane => $"normal: {Of(0, 3)}, d: {Number(math.Values[3])}",
+            _ => $"({Of(0, 4)}, {Of(4, 4)}, {Of(8, 4)}, {Of(12, 4)})",
+        };
+    }
+
     /// <summary>The value of a type a text gives, as a person types it: true or false, a number, the text itself for a string
-    /// or a name, a path for a node path, and a vector's or colour's numbers with or without their parentheses, separated by
-    /// commas; null with why not for text the type does not read or a type text cannot give.</summary>
+    /// or a name, a path for a node path, and the numbers of a vector, colour, rectangle, transform, basis, box, plane,
+    /// quaternion or projection separated by commas, their parentheses and parts' names as <see cref="Shown"/> writes
+    /// them or left out; null with why not for text the type does not read or a type text cannot give.</summary>
     public static (object? Value, string? WhyNot) Parse(GodotType type, string text)
     {
         string trimmed = text.Trim();
@@ -580,12 +599,27 @@ public static class GodotVariant
                 return double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out double real) ? (real, null) : (null, "a number");
         }
         int count = Count(type);
-        if (count == 0 || type is GodotType.Transform2D or GodotType.Aabb or GodotType.Basis or GodotType.Transform3D or GodotType.Projection
-            or GodotType.Plane or GodotType.Quaternion)
+        if (count == 0)
         {
             return (null, $"a {type} is not set from text");
         }
-        string[] parts = trimmed.TrimStart('(').TrimEnd(')').Split(',', StringSplitOptions.TrimEntries);
+        StringBuilder numbersOnly = new();
+        for (int i = 0; i < trimmed.Length; i++)
+        {
+            char c = trimmed[i];
+            if (char.IsAsciiLetter(c) && c is not ('e' or 'E') || c == '_')
+            {
+                // A part's name ("origin:") is passed over up to its colon; an exponent's e stays with its number.
+                int colon = trimmed.IndexOf(':', i);
+                i = colon < 0 ? i : colon;
+                continue;
+            }
+            if (c is not ('(' or ')'))
+            {
+                numbersOnly.Append(c);
+            }
+        }
+        string[] parts = numbersOnly.ToString().Split(',', StringSplitOptions.TrimEntries);
         bool integers = type is GodotType.Vector2I or GodotType.Rect2I or GodotType.Vector3I or GodotType.Vector4I;
         List<double> numbers = [];
         foreach (string part in parts)

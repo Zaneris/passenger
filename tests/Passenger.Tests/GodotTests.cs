@@ -348,6 +348,54 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         }
     }
 
+    /// <summary>A node's values of several parts are set from the properties pane in the form it shows them: a Node2D's
+    /// position (a Vector2 of its transform) and a Transform2D the script exports, each read back as the game then holds it.</summary>
+    [AvaloniaFact]
+    public void A_nodes_position_and_a_transform_are_set_from_the_properties_pane()
+    {
+        File.WriteAllText(ScriptPath, """
+            using Godot;
+
+            public partial class Main : Node2D
+            {
+                [Export]
+                public Transform2D Placed { get; set; } = Transform2D.Identity;
+            }
+
+            """);
+        File.WriteAllText(Path.Combine(game.Folder, "main.tscn"), Scene.Replace("type=\"Node\"", "type=\"Node2D\"", StringComparison.Ordinal));
+        MainWindow window = game.Open(null, languageServer: false);
+        try
+        {
+            Choose(window, Generated(window, "Spinner"));
+            Ui.Launched(window, window.RunAsync(), "the game's build and start", TimeSpan.FromMinutes(3));
+            Passenger.App.LiveTree.LiveTreeView tree = window.LiveTree;
+            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Main"),
+                () => $"the game's Main node ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
+            tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Main");
+            Ui.WaitFor(() => tree.PropertyRows.Any(p => p.Name == "position") && tree.PropertyRows.Any(p => p.Name == "Placed"),
+                () => $"Main's position and Placed ({string.Join(", ", tree.PropertyRows.Select(p => p.Name))})");
+
+            foreach ((string name, string typed) in (IEnumerable<(string, string)>)[("position", "(100, 50)"), ("Placed", "x: (1, 0), y: (0, 1), origin: (7, 8)")])
+            {
+                tree.PropertyList.SelectedItem = tree.PropertyRows.First(p => p.Name == name);
+                tree.Edit(tree.PropertyRows.First(p => p.Name == name));
+                Ui.WaitFor(() => tree.Editing is { IsVisible: true }, () => $"{name}'s value to become a box to type in ({window.Status})");
+                tree.Editing!.Focus();
+                tree.Editing.SelectAll();
+                window.KeyTextInput(typed);
+                Ui.Press(window, "ENTER");
+                Ui.WaitFor(() => tree.PropertyRows.Any(p => p.Name == name && p.Value == typed),
+                    () => $"{name}'s row to show {typed} as the game now holds it ({tree.PropertyRows.FirstOrDefault(p => p.Name == name)?.Value}; {window.Status})");
+            }
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>Two games launched at once (Debug on the main scene, and again on another) are each a source of the Live Visual Tree:
     /// the chooser offers both, the one started last shown first, and each chosen in turn shows its own nodes.</summary>
     [AvaloniaFact]

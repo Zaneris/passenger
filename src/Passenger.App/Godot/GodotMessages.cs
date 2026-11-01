@@ -111,7 +111,8 @@ public sealed record GodotProperty(string Name, GodotType Type, long Hint, strin
     public bool Settable => (Usage & ReadOnlyFlag) == 0 && Hint != TooBig && Name != "script"
         && Type is GodotType.Bool or GodotType.Int or GodotType.Float or GodotType.String or GodotType.StringName or GodotType.NodePath
             or GodotType.Vector2 or GodotType.Vector2I or GodotType.Vector3 or GodotType.Vector3I or GodotType.Vector4 or GodotType.Vector4I
-            or GodotType.Rect2 or GodotType.Rect2I or GodotType.Color;
+            or GodotType.Rect2 or GodotType.Rect2I or GodotType.Color or GodotType.Transform2D or GodotType.Basis or GodotType.Transform3D
+            or GodotType.Aabb or GodotType.Plane or GodotType.Quaternion or GodotType.Projection;
 
     /// <summary>The properties an object's data holds (each of name, type, hint, hint string, usage and value), its
     /// categories and groups taken as the headings of those after them rather than as properties.</summary>
