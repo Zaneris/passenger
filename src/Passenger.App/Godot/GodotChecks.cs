@@ -11,18 +11,24 @@ internal sealed record GodotRead(string Folder, GodotScenes Scenes, GodotCodeReq
 /// (<see cref="GodotSource"/>) and its scenes by Passenger's own reader (<see cref="GodotScenes"/>): what to ask the
 /// extension of the project's types for the scenes the file's scripts run in (<see cref="Asks"/>), and what is wrong
 /// (<see cref="Findings"/>): a GetNode path no node answers in any scene a script runs in, one whose node is not of the
-/// type asked for, and a res:// path no file answers. Pure: it reads only what it is given (and whether a file is there).</summary>
+/// type asked for, a res:// path no file answers, and a scene's connection to a method the script lacks, or that takes
+/// other parameters than its signal gives. Pure: it reads only what it is given (and whether a file is there).</summary>
 internal static class GodotChecks
 {
     /// <summary>One finding: where it is in the file (the server's places), whether it is an error, and its words.</summary>
     public sealed record Finding(Place At, Place End, bool Error, string Message);
 
+    /// <summary>A connection a scene writes, with the nodes its tree finds for its ends; null for an end it finds none of.</summary>
+    public sealed record Connected(string Scene, GodotConnection Connection, GodotTreeNode? From, GodotTreeNode? To);
+
     /// <summary>What to ask of the extension for a file whose code runs as some scripts: every engine class and C# script of
-    /// the scenes they run in.</summary>
+    /// the scenes they run in, and the signals and methods their connections to those scripts' nodes name.</summary>
     public static GodotCodeRequest Asks(string path, GodotScenes scenes, IEnumerable<string> scripts)
     {
         HashSet<string> engine = new(StringComparer.Ordinal);
         HashSet<string> written = new(StringComparer.Ordinal);
+        List<GodotMemberAsked> signals = [];
+        List<GodotMemberAsked> methods = [];
         HashSet<string> runs = new(StringComparer.Ordinal);
         foreach (string script in scripts.Distinct(StringComparer.Ordinal))
         {
@@ -44,8 +50,32 @@ internal static class GodotChecks
                     }
                 }
             }
+            foreach (Connected connected in runs.SelectMany(scene => Connections(scenes, scene)).Where(c => c.To?.Script == script))
+            {
+                signals.Add(SignalAsked(connected));
+                methods.Add(MethodAsked(connected));
+            }
         }
-        return new GodotCodeRequest(path, [.. engine], [.. written]);
+        return new GodotCodeRequest(path, [.. engine], [.. written], [.. signals.Distinct()], [.. methods.Distinct()]);
+    }
+
+    public static GodotMemberAsked SignalAsked(Connected connected) =>
+        new(connected.From?.Type, IsCSharp(connected.From?.Script) ? connected.From!.Script : null, connected.Connection.Signal);
+
+    public static GodotMemberAsked MethodAsked(Connected connected) =>
+        new(connected.To?.Type, IsCSharp(connected.To?.Script) ? connected.To!.Script : null, connected.Connection.Method);
+
+    /// <summary>A scene's own connections, each with the nodes its tree finds for its ends.</summary>
+    public static IEnumerable<Connected> Connections(GodotScenes scenes, string scene)
+    {
+        if (!scenes.Files.TryGetValue(scene, out GodotFile? file) || scenes.Tree(scene) is not { } root)
+        {
+            yield break;
+        }
+        foreach (GodotConnection connection in file.Connections)
+        {
+            yield return new Connected(scene, connection, GodotScenes.Resolve(root, connection.From).Found, GodotScenes.Resolve(root, connection.To).Found);
+        }
     }
 
     /// <summary>Whether a script is C#'s, which the extension reads.</summary>
@@ -69,6 +99,24 @@ internal static class GodotChecks
             if ((read.Path.EndsWith('/') || last.Contains('.')) && scenes.FileOf(named) is { } file && !exists(file))
             {
                 findings.Add(new Finding(read.At, read.End, true, $"No {(named.EndsWith('/') ? "folder" : "file")} {named} is in the Godot project"));
+            }
+        }
+        for (int i = 0; i < found.Classes.Count; i++)
+        {
+            GodotClassFound type = found.Classes[i];
+            HashSet<string> runs = new(StringComparer.Ordinal);
+            foreach (string script in type.Scripts)
+            {
+                foreach (string scene in scenes.RunsOf(script).Select(r => r.Scene).Where(runs.Add))
+                {
+                    foreach (Connected connected in Connections(scenes, scene).Where(c => c.To?.Script == script))
+                    {
+                        if (Connection(asked, found, type, connected) is { } finding)
+                        {
+                            findings.Add(finding);
+                        }
+                    }
+                }
             }
         }
         return findings;
@@ -118,6 +166,58 @@ internal static class GodotChecks
         }
         return null;
     }
+
+    /// <summary>A connection's finding in its receiving script's file: a method the script lacks (at the class's name), one
+    /// whose parameters are not as many as the signal gives with its binds (at the method's name, where this file declares
+    /// it), or a signal its sending node does not have; null where it holds, or what it needs is not known.</summary>
+    private static Finding? Connection(GodotCodeRequest asked, GodotCodeFound found, GodotClassFound type, Connected connected)
+    {
+        GodotConnection connection = connected.Connection;
+        string where = $"{System.IO.Path.GetFileName(connected.Scene)}:{connection.Section.Line + 1}";
+        string from = connection.From == "." ? connected.From?.Name ?? connection.From : connection.From;
+        int methodAt = IndexOf(asked.Methods, MethodAsked(connected));
+        int signalAt = IndexOf(asked.Signals, SignalAsked(connected));
+        GodotSignature? method = methodAt >= 0 && methodAt < found.Methods.Count ? found.Methods[methodAt] : null;
+        GodotSignature? signal = signalAt >= 0 && signalAt < found.Signals.Count ? found.Signals[signalAt] : null;
+        if (methodAt < 0 || methodAt >= found.Methods.Count)
+        {
+            return null;
+        }
+        if (method is null)
+        {
+            return new Finding(type.At, type.End, true, $"{where} connects {from}'s {connection.Signal} to {connection.Method}, which {type.Name} has no method of");
+        }
+        if (signal is null)
+        {
+            bool known = connected.From is { } sender && (sender.Script is null || IsCSharp(sender.Script)) && sender.Type is not null;
+            return known && signalAt >= 0 && signalAt < found.Signals.Count
+                ? new Finding(type.At, type.End, true, $"{where} connects {from}'s {connection.Signal}, a signal {from} ({Shown(connected.From!)}) has none of, to {connection.Method}")
+                : null;
+        }
+        int given = signal.Parameters.Count + connection.Binds - connection.Unbinds;
+        if (given >= method.Required && given <= method.Parameters.Count)
+        {
+            return null;
+        }
+        bool here = method.At is not null && method.Path is not null && SameFile(method.Path, asked.Path);
+        string takes = method.Parameters.Count == 0 ? "takes none" : $"takes {method.Parameters.Count} ({string.Join(", ", method.Parameters)})";
+        string gives = given == 0 ? "gives no arguments" : $"gives {given} ({string.Join(", ", signal.Parameters.Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Binds))).Take(Math.Max(0, given)))})";
+        return new Finding(here ? method.At! : type.At, here ? method.End! : type.End, true, $"{where} connects {from}'s {connection.Signal}, which {gives}, to {connection.Method}, which {takes}");
+    }
+
+    private static int IndexOf(IReadOnlyList<GodotMemberAsked> asked, GodotMemberAsked one)
+    {
+        for (int i = 0; i < asked.Count; i++)
+        {
+            if (asked[i] == one)
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static bool SameFile(string left, string right) => Core.PathNames.Same(left, right) || Core.PathNames.Same(Core.PathNames.Canonical(left), Core.PathNames.Canonical(right));
 
     /// <summary>Whether a node is of a type: its engine class's chain holds an engine type, its C# script's class's chain a
     /// type of the code; null where what it is is not known.</summary>

@@ -8,20 +8,23 @@ using Passenger.Workspace;
 
 namespace Passenger.App.CSharp;
 
-/// <summary>A Godot project's C# symbols as its scenes name them: an <c>[Export]</c> member a node or resource sets, and a
-/// script's class its scenes load (<see cref="GodotNamed"/>). Find Usages lists those places of the scenes beside the
-/// code's, a C# rename renames them in the one command of Undo the code's rename is, and a script whose file a rename moves
-/// is followed by the scenes that load it, its <c>.uid</c> moving beside it.</summary>
+/// <summary>A Godot project's C# symbols as its scenes name them: a script's method a connection calls, a <c>[Signal]</c>
+/// delegate a connection is made to, an <c>[Export]</c> member a node or resource sets, and a script's class its scenes
+/// load (<see cref="GodotNamed"/>). Find Usages lists those places of the scenes beside the code's, a C# rename renames
+/// them in the one command of Undo the code's rename is, and a script whose file a rename moves is followed by the scenes
+/// that load it, its <c>.uid</c> moving beside it.</summary>
 internal sealed partial class CSharpAssist
 {
     internal enum GodotKind
     {
+        Method,
+        Signal,
         Export,
         Script,
     }
 
     /// <summary>A symbol the scenes name: the scenes read from its declaring file, its class, what it is, and its name as the
-    /// scenes write it.</summary>
+    /// scenes write it (a signal's less EventHandler).</summary>
     internal sealed record GodotNamed(GodotRead Read, GodotClassFound Type, GodotKind Kind, string Name);
 
     /// <summary>What a symbol the server named is to the Godot scenes; null for one they never name, or one of no Godot project.</summary>
@@ -46,6 +49,14 @@ internal sealed partial class CSharpAssist
             {
                 continue;
             }
+            if (id.StartsWith("M:", StringComparison.Ordinal))
+            {
+                return new GodotNamed(read, type, GodotKind.Method, name);
+            }
+            if (id.StartsWith("T:", StringComparison.Ordinal) && name.EndsWith("EventHandler", StringComparison.Ordinal) && type.Signals.Any(s => s.Name + "EventHandler" == name))
+            {
+                return new GodotNamed(read, type, GodotKind.Signal, name[..^"EventHandler".Length]);
+            }
             if (id[0] is 'P' or 'F' && type.Exports.Any(e => e.Name == name))
             {
                 return new GodotNamed(read, type, GodotKind.Export, name);
@@ -54,8 +65,8 @@ internal sealed partial class CSharpAssist
         return null;
     }
 
-    /// <summary>Where the scenes name a symbol, by file: each node and resource setting an exported member (its key), each
-    /// scene loading a script (its path); with each place's range.</summary>
+    /// <summary>Where the scenes name a symbol, by file: each connection calling a method or made to a signal, each node and
+    /// resource setting an exported member (its key), each scene loading a script (its path); with each place's range.</summary>
     internal static IReadOnlyList<(string Path, string Text, IReadOnlyList<TextRange> Uses)> GodotUses(GodotNamed named)
     {
         GodotScenes scenes = named.Read.Scenes;
@@ -72,7 +83,20 @@ internal sealed partial class CSharpAssist
                 list.Add(new TextRange(start, end - start));
             }
         }
-        if (named.Kind == GodotKind.Export)
+        HashSet<string> runs = [.. scripts.SelectMany(scenes.RunsOf).Select(r => r.Scene)];
+        if (named.Kind is GodotKind.Method or GodotKind.Signal)
+        {
+            foreach (GodotChecks.Connected connected in runs.Order(StringComparer.Ordinal).SelectMany(scene => GodotChecks.Connections(scenes, scene)))
+            {
+                bool method = named.Kind == GodotKind.Method && connected.To?.Script is { } to && scripts.Contains(to) && connected.Connection.Method == named.Name;
+                bool signal = named.Kind == GodotKind.Signal && connected.From?.Script is { } from && scripts.Contains(from) && connected.Connection.Signal == named.Name;
+                if ((method || signal) && connected.Connection.Section.Attribute(method ? "method" : "signal")?.Value is { Plain: true } value)
+                {
+                    Add(connected.Scene, value.TextStart, value.TextEnd);
+                }
+            }
+        }
+        else if (named.Kind == GodotKind.Export)
         {
             foreach ((string scene, GodotTreeNode node) in scripts.SelectMany(scenes.RunsOf))
             {
@@ -121,9 +145,10 @@ internal sealed partial class CSharpAssist
         return file.Uses.Select(use => new LspLocation(uri, lines.RangeOf(use)));
     })];
 
-    /// <summary>The edits the scenes take as a C# symbol they name is renamed to <paramref name="name"/>: an exported member's
-    /// key where it is set; or why the rename cannot follow them. None for a script's class, whose scenes follow its file
-    /// instead (<see cref="GodotMovedAsync"/>).</summary>
+    /// <summary>The edits the scenes take as a C# symbol they name is renamed to <paramref name="name"/>: a connection's method
+    /// or signal, an exported member's key where it is set; or why the rename cannot follow them (a <c>[Signal]</c> delegate's
+    /// name that would not end with EventHandler, which Godot's source generator needs). None for a script's class, whose
+    /// scenes follow its file instead (<see cref="GodotMovedAsync"/>).</summary>
     internal async Task<(IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> Files, string? Problem)> GodotRenameAsync(NamedSymbol? symbol, string name)
     {
         if (await GodotNamedAsync(symbol) is not { Kind: not GodotKind.Script } named)
@@ -131,11 +156,63 @@ internal sealed partial class CSharpAssist
             return ([], null);
         }
         string written = name;
+        if (named.Kind == GodotKind.Signal)
+        {
+            if (!name.EndsWith("EventHandler", StringComparison.Ordinal) || name.Length == "EventHandler".Length)
+            {
+                return ([], $"{named.Name}EventHandler is a [Signal] delegate, whose name ends with EventHandler for Godot's source generator");
+            }
+            written = name[..^"EventHandler".Length];
+        }
         return ([.. GodotUses(named).Select(file =>
         {
             ServerLines lines = ServerLines.Of(TextSnapshot.From(file.Text));
             return (file.Path, (IReadOnlyList<LspTextEdit>)[.. file.Uses.Select(use => new LspTextEdit(lines.RangeOf(use), written))]);
         })], null);
+    }
+
+    /// <summary>Where Go to Declaration goes from a member Godot's source generator writes for a script, to the member of
+    /// the code it stands for: <c>SignalName.X</c> and a <c>[Signal]</c>'s event <c>X</c> to the delegate XEventHandler,
+    /// <c>MethodName.X</c> and <c>PropertyName.X</c> to X; null where the server's places are not all a generator's, or the
+    /// symbol is none of those.</summary>
+    private async Task<Declared?> GodotGeneratedDeclaredAsync(LspDocument lsp, OpenDocument document, int offset, IReadOnlyList<LspLocation> found)
+    {
+        if (found.Count == 0 || !found.All(f => DocumentUris.GeneratedName(f.Uri) is not null) || context.CSharp is not { Session: { } session } csharp
+            || csharp.GodotOf?.Invoke(document.Path) is null || await lsp.SymbolAtAsync(offset) is not { Id: { Length: > 2 } id })
+        {
+            return null;
+        }
+        string member = id[2..].Split('(')[0];
+        int dot = member.LastIndexOf('.');
+        string container = dot < 0 ? string.Empty : member[..dot];
+        int inner = container.LastIndexOf('.');
+        string owner = inner < 0 ? container : container[..inner];
+        string named = member[(dot + 1)..];
+        string? declared = (id[0], inner < 0 ? container : container[(inner + 1)..]) switch
+        {
+            ('F', "SignalName") => $"{Simple(owner)}.{named}EventHandler",
+            ('F', "MethodName" or "PropertyName") => $"{Simple(owner)}.{named}",
+            ('E', _) when container.Length > 0 => $"{Simple(container)}.{named}EventHandler",
+            _ => null,
+        };
+        if (declared is null)
+        {
+            return null;
+        }
+        SymbolsFound symbols;
+        try
+        {
+            symbols = await session.SymbolsNamedAsync(declared, 5);
+        }
+        catch (LanguageServerFailed)
+        {
+            return null;
+        }
+        IReadOnlyList<LspLocation> places = [.. symbols.Symbols.Where(s => s.Path is not null && s.At is not null && !GeneratedCode.IsCopy(s.Path))
+            .Select(s => new LspLocation(DocumentUris.FromPath(s.Path!), new LspRange(new LspPosition(s.At!.Line, s.At.Character), new LspPosition(s.At.Line, s.At.Character))))];
+        return places.Count == 0 ? null : new Declared(places, Refusals.NoDeclaration);
+
+        static string Simple(string full) => full[(full.LastIndexOf('.') + 1)..];
     }
 
     /// <summary>The edits the scenes take as a rename moves files of a Godot project: each scene's or resource's res:// path

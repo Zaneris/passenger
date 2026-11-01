@@ -100,7 +100,8 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         return true;
     }
 
-    /// <summary>Aspire's, a configuration read's, a localized key's, a JS interop call's and a Godot path's places first; then the server's, where a Dockerfile's
+    /// <summary>Aspire's, a configuration read's, a localized key's, a JS interop call's and a Godot path's places first; then the server's, a Godot
+    /// script's generated member going to the code's (<see cref="GodotGeneratedDeclaredAsync"/>), where a Dockerfile's
     /// FROM that names no stage goes to its image's registry page, a XAML element's generated field to its name, and any other
     /// place in a source generator's code to its copy (<see cref="GeneratedCode"/>).</summary>
     public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
@@ -115,6 +116,10 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
             return own;
         }
         IReadOnlyList<LspLocation> found = await lsp.DefinitionAsync(offset);
+        if (await GodotGeneratedDeclaredAsync(lsp, document, offset, found) is { } script)
+        {
+            return script;
+        }
         if (found.Count == 0 && context.WebOf(document) is { Kind: WebServerKind.Dockerfile } && WebAssist.FromImageAt(document.Text.Snapshot, offset) is ({ } image, { } page))
         {
             return new Declared([], $"The image {image}") { Page = page };

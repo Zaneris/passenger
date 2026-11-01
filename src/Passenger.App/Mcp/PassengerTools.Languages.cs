@@ -43,8 +43,8 @@ public sealed partial class PassengerTools
     private const string MSBuildHas = "definition goes to where a property, item, target, import or SDK is defined, symbol_info says a property's "
         + "value and where it was set, outline gives its elements, and diagnostics its evaluation's problems";
 
-    private const string GodotHas = "definition goes from a res:// path or ExtResource to its file and from a node path to its node; rename "
-        + "renames a node's name in its scenes and the code's GetNode paths";
+    private const string GodotHas = "definition goes from a res:// path or ExtResource to its file, from a node path to its node, and from a "
+        + "connection's method or signal to its C#; rename renames a node's name in its scenes and the code's GetNode paths";
 
     /// <summary>The file opened as the editor would, with the service that answers for it once that can: a XAML file's
     /// project read, the C# server's workspace loaded. A file no service reads is refused at once, saying which do.</summary>

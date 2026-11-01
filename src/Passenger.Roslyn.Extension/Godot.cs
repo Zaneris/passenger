@@ -18,9 +18,10 @@ public sealed class GodotCode : IExtensionWorkspaceMessageHandler<GodotCodeReque
 
 /// <summary>A Godot project's C# as Roslyn binds it against GodotSharp, never by names alone: the file's classes Godot runs
 /// as scripts (each class's script path is the one Godot's source generator gives it, <c>[ScriptPath]</c>), their
-/// <c>[Export]</c> members, the calls of Node's GetNode and GetNodeOrNull on the node the code runs on with the type each
-/// asks for, and the res:// paths its strings give; and of the project's types what the scenes ask: an engine class's
-/// chain by Godot's names (<c>[GodotClassName]</c>, else the C# name), and a script's class's.</summary>
+/// <c>[Export]</c> members and <c>[Signal]</c> delegates, the calls of Node's GetNode and GetNodeOrNull on the node the
+/// code runs on with the type each asks for, and the res:// paths its strings give; and of the project's types what the
+/// scenes ask: an engine class's chain by Godot's names (<c>[GodotClassName]</c>, else the C# name), a script's class's,
+/// and a node's signal or method by the name a scene writes (an engine one's snake_case, a script's own as declared).</summary>
 internal static class GodotSource
 {
     private const string Namespace = "Godot";
@@ -52,15 +53,17 @@ internal static class GodotSource
         List<GodotChain> chains = [.. asked.Engine.Distinct(StringComparer.Ordinal).Select(name => engine.Type(name) is { } type
             ? new GodotChain(name, [.. engine.Chain(type)], name, type.Name) : null).OfType<GodotChain>()];
         Dictionary<string, INamedTypeSymbol?> scripts = new(StringComparer.Ordinal);
-        foreach (string script in asked.Scripts.Distinct(StringComparer.Ordinal))
+        foreach (string script in asked.Scripts.Concat(asked.Signals.Select(s => s.Script)).Concat(asked.Methods.Select(m => m.Script)).OfType<string>().Distinct(StringComparer.Ordinal))
         {
             scripts[script] = ScriptClass(compilation, script, cancel);
         }
         List<GodotChain?> scriptChains = [.. asked.Scripts.Select(s => scripts[s] is { } type ? new GodotChain(s, [.. Lineage(type)], engine.First(type) is { } first ? engine.NameOf(first) : null, type.Name) : null)];
-        return new GodotCodeFound(classes, calls, resources, chains, scriptChains);
+        List<GodotSignature?> signals = [.. asked.Signals.Select(s => Signal(engine, s.Script is null ? null : scripts[s.Script], s.Engine, s.Name))];
+        List<GodotSignature?> methods = [.. asked.Methods.Select(m => Method(engine, m.Script is null ? null : scripts[m.Script], m.Engine, m.Name))];
+        return new GodotCodeFound(classes, calls, resources, chains, scriptChains, signals, methods);
     }
 
-    /// <summary>A class of the file: its place, engine class, scripts and exports.</summary>
+    /// <summary>A class of the file: its place, engine class, scripts, exports and signals.</summary>
     private static async Task<GodotClassFound> ClassAsync(INamedTypeSymbol type, Solution solution, Engine engine, string path, SourceText text, CancellationToken cancel)
     {
         List<string> scripts = [.. ScriptPath(type) is { } own ? [own] : Array.Empty<string>()];
@@ -83,8 +86,16 @@ internal static class GodotSource
                     ?? ((IFieldSymbol)member).Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), at.Path, at.At, at.End));
             }
         }
+        List<GodotMember> signals = [];
+        foreach (INamedTypeSymbol signal in type.GetTypeMembers().Where(d => d.TypeKind == TypeKind.Delegate && Has(d, "SignalAttribute")))
+        {
+            if (Declared(signal) is { } at)
+            {
+                signals.Add(new GodotMember(SignalName(signal), Parameters(signal.DelegateInvokeMethod), at.Path, at.At, at.End));
+            }
+        }
         return new GodotClassFound(type.Name, Full(type), here ? PlaceAt(text, span.Start) : new Place(0, 0), here ? PlaceAt(text, span.End) : new Place(0, 0),
-            engine.First(type) is { } first ? engine.NameOf(first) : null, scripts, exports);
+            engine.First(type) is { } first ? engine.NameOf(first) : null, scripts, exports, signals);
     }
 
     /// <summary>The calls of Node's GetNode and GetNodeOrNull, given a constant path, on the node a class of the file runs on
@@ -131,6 +142,60 @@ internal static class GodotSource
         type.GetAttributes().FirstOrDefault(a => a.AttributeClass is { Name: "ScriptPathAttribute", ContainingNamespace.Name: Namespace })?.ConstructorArguments
             is [{ Value: string path }] ? path : null;
 
+    /// <summary>A signal on a node: its script's <c>[Signal]</c> delegate of the name (in its class or a base of the code's),
+    /// else its engine class's event of the name, by the script's first engine class or the node's own.</summary>
+    private static GodotSignature? Signal(Engine engine, INamedTypeSymbol? script, string? engineClass, string name)
+    {
+        for (INamedTypeSymbol? type = script; type is not null && !engine.Owns(type); type = type.BaseType)
+        {
+            if (type.GetTypeMembers(name + "EventHandler").FirstOrDefault(d => d.TypeKind == TypeKind.Delegate && Has(d, "SignalAttribute")) is { DelegateInvokeMethod: { } invoke } signal)
+            {
+                return Signature(name, invoke, signal, source: true);
+            }
+        }
+        string wanted = Plain(name);
+        for (INamedTypeSymbol? type = (script is null ? null : engine.First(script)) ?? (engineClass is null ? null : engine.Type(engineClass)); type is not null; type = type.BaseType)
+        {
+            if (type.GetMembers().OfType<IEventSymbol>().FirstOrDefault(e => Plain(e.Name) == wanted) is { Type: INamedTypeSymbol { DelegateInvokeMethod: { } invoke } })
+            {
+                return Signature(name, invoke, null, source: false);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>A method on a node a signal can call: its script's of the name (in its class or a base of the code's), else
+    /// its engine class's by the scene's snake_case name.</summary>
+    private static GodotSignature? Method(Engine engine, INamedTypeSymbol? script, string? engineClass, string name)
+    {
+        for (INamedTypeSymbol? type = script; type is not null && !engine.Owns(type); type = type.BaseType)
+        {
+            if (type.GetMembers(name).OfType<IMethodSymbol>().FirstOrDefault(m => m.MethodKind == MethodKind.Ordinary && !m.IsImplicitlyDeclared) is { } own)
+            {
+                return Signature(name, own, own, source: true);
+            }
+        }
+        string wanted = Plain(name);
+        for (INamedTypeSymbol? type = (script is null ? null : engine.First(script)) ?? (engineClass is null ? null : engine.Type(engineClass)); type is not null; type = type.BaseType)
+        {
+            if (type.GetMembers().OfType<IMethodSymbol>().FirstOrDefault(m => m.MethodKind == MethodKind.Ordinary && Plain(m.Name) == wanted) is { } method)
+            {
+                return Signature(name, method, null, source: false);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>A signal's or method's parameters, and how many a call must give: every one of a script's method (Godot calls
+    /// it with exactly as many), those without a default of an engine's; with where it is declared in the code.</summary>
+    private static GodotSignature Signature(string name, IMethodSymbol method, ISymbol? declared, bool source)
+    {
+        List<string> parameters = [.. method.Parameters.Select(p => p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat))];
+        int required = source ? parameters.Count : method.Parameters.Count(p => !p.HasExplicitDefaultValue && !p.IsParams);
+        return declared is not null && Declared(declared) is { } at ? new GodotSignature(name, parameters, required, at.Path, at.At, at.End)
+            : new GodotSignature(name, parameters, required, null, null, null);
+    }
+
     /// <summary>Where a symbol's name is written in the code, by its file's path; null for one only a generator writes.</summary>
     private static (string Path, Place At, Place End)? Declared(ISymbol symbol)
     {
@@ -155,6 +220,17 @@ internal static class GodotSource
         }
         return null;
     }
+
+    private static string Parameters(IMethodSymbol? invoke) =>
+        $"({string.Join(", ", invoke?.Parameters.Select(p => $"{p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} {p.Name}") ?? [])})";
+
+    /// <summary>A <c>[Signal]</c> delegate's signal: its name less EventHandler, as Godot's source generator names it.</summary>
+    private static string SignalName(INamedTypeSymbol signal) =>
+        signal.Name.EndsWith("EventHandler", StringComparison.Ordinal) ? signal.Name[..^"EventHandler".Length] : signal.Name;
+
+    /// <summary>A name with its underscores and letter case left aside, as an engine member's C# name and a scene's
+    /// snake_case meet (body_entered, BodyEntered).</summary>
+    private static string Plain(string name) => name.Replace("_", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 
     private static bool Has(ISymbol symbol, string attribute) =>
         symbol.GetAttributes().Any(a => a.AttributeClass is { } type && type.Name == attribute && type.ContainingNamespace.Name == Namespace);

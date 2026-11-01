@@ -10,8 +10,9 @@ namespace Passenger.App.CSharp;
 
 /// <summary>A Godot project's text scenes and resources, as their own (<see cref="GodotFile"/>): Go to Declaration from a
 /// res:// path or an <c>ExtResource</c> goes to its file, from a node path (a node's parent, a connection's ends, a NodePath)
-/// to the node's section; Rename on a node's name renames it in every scene and every GetNode path of the code that names
-/// it (<see cref="CSharpAssist.RenameNodesAsync"/>).</summary>
+/// to the node's section, from a connection's method to the C# method its receiving node's script declares and from its
+/// signal to the <c>[Signal]</c> delegate its sending node's script declares; Rename on a node's name renames it in every
+/// scene and every GetNode path of the code that names it (<see cref="CSharpAssist.RenameNodesAsync"/>).</summary>
 internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, CodeNavigation navigation, CSharpAssist csharp) : LanguageAssist
 {
     /// <summary>A scene or resource of a Godot project open: its project's folder and res:// path, the scenes as they stand
@@ -64,7 +65,8 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
         return null;
     }
 
-    /// <summary>Where an entry of a section leads: a res:// path's or ExtResource's file, a node path's node.</summary>
+    /// <summary>Where an entry of a section leads: a res:// path's or ExtResource's file, a node path's node, a connection's
+    /// method or signal in the code.</summary>
     private async Task<Declared?> EntryDeclaredAsync(GodotScenes scenes, string res, GodotFile file, GodotSection section, GodotEntry entry)
     {
         GodotValue value = entry.Value;
@@ -79,6 +81,10 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
         if (scenes.Tree(res) is not { } root)
         {
             return null;
+        }
+        if (section.Tag == "connection" && entry.Key is "method" or "signal" && file.Connections.FirstOrDefault(c => c.Section == section) is { } connection)
+        {
+            return await ConnectionDeclaredAsync(scenes, res, connection, entry.Key == "method");
         }
         GodotTreeNode? node = (section.Tag, entry.Key) switch
         {
@@ -104,6 +110,33 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
         return scenes.FileOf(scene) is { } path
             ? new Declared(Declared.Served([(path, new TextPosition(declared.Section.Line, 0))], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
             : new Declared([], Refusals.NoDeclaration);
+    }
+
+    /// <summary>A connection's method in the code of its receiving node's script, or its signal's <c>[Signal]</c> delegate in
+    /// its sending node's: asked of the extension for that script's file as its scenes are read.</summary>
+    private async Task<Declared?> ConnectionDeclaredAsync(GodotScenes scenes, string res, GodotConnection connection, bool method)
+    {
+        GodotChecks.Connected connected = GodotChecks.Connections(scenes, res).First(c => c.Connection.Section == connection.Section);
+        GodotTreeNode? node = method ? connected.To : connected.From;
+        string what = method ? $"No method {connection.Method}" : $"No signal {connection.Signal}";
+        if (node?.Script is not { } script || !GodotChecks.IsCSharp(script) || scenes.FileOf(script) is not { } code || context.CSharp is not { } service)
+        {
+            return new Declared([], $"{what} is declared in C#: {(node is null ? "the scene has no node there" : $"{node.Name} has no C# script")}");
+        }
+        if (await service.GodotAsync(code, CancellationToken.None) is not { } read)
+        {
+            return new Declared([], $"{what}: the C# language server cannot read {Path.GetFileName(code)}");
+        }
+        GodotMemberAsked asked = method ? GodotChecks.MethodAsked(connected) : GodotChecks.SignalAsked(connected);
+        IReadOnlyList<GodotMemberAsked> list = method ? read.Asked.Methods : read.Asked.Signals;
+        IReadOnlyList<GodotSignature?> found = method ? read.Found.Methods : read.Found.Signals;
+        int index = list.ToList().IndexOf(asked);
+        if (index < 0 || index >= found.Count || found[index] is not { Path: { } path, At: { } at })
+        {
+            return new Declared([], $"{what} is declared in {Path.GetFileName(code)}");
+        }
+        return new Declared([new LspLocation(DocumentUris.FromPath(path), new LspRange(new LspPosition(at.Line, at.Character), new LspPosition(at.Line, at.Character)))],
+            Refusals.NoDeclaration);
     }
 
     /// <summary>Rename on a node's name in a scene: its box, then the node renamed everywhere that names it.</summary>
@@ -154,7 +187,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
             if (section.Section.Attribute("name")?.Value is { } name && name.Start <= offset && offset <= name.End
                 && root.Below().FirstOrDefault(n => n.Written.Any(w => w.Scene == res && w.Node.Section.Start == section.Section.Start)) is { } node)
             {
-                return (new GodotRead(scenes.Folder, scenes, new GodotCodeRequest(document.Path, [], []), GodotCodeFound.None), node);
+                return (new GodotRead(scenes.Folder, scenes, new GodotCodeRequest(document.Path, [], [], [], []), GodotCodeFound.None), node);
             }
         }
         return null;
