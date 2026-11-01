@@ -54,7 +54,7 @@ public sealed class AssetPreviewTests : IDisposable
         Image image = Assert.Single(preview.GetVisualDescendants().OfType<Image>());
         Assert.Same(document.Asset.Bitmap, image.Source);
         Assert.True(image.IsEffectivelyVisible && image.Bounds.Width > 0 && image.Bounds.Height > 0, "The decoded image has no visible room");
-        Assert.Equal(Stretch.Uniform, image.Stretch);
+        Assert.True(preview.Picture?.Zoom == 1, $"A small image shows at {preview.Picture?.Zoom:P0}, where it is never enlarged until it is zoomed");
         Assert.Contains(preview.GetVisualDescendants().OfType<TextBlock>(), text => text.Text!.Contains($"{width} × {height} pixels", StringComparison.Ordinal));
         window.Close();
     }
@@ -82,6 +82,59 @@ public sealed class AssetPreviewTests : IDisposable
         Point ground = preview.TranslatePoint(new Point(1, preview.Bounds.Height / 2), window)!.Value;
         Assert.Equal(Colors.Red, Ui.Pixel(window, red));
         Assert.Equal(Ui.Pixel(window, ground), Ui.Pixel(window, clear));
+        window.Close();
+    }
+
+    /// <summary>An image's preview zooms as a person zooms it: the keys step it in, each pixel a square of its own colour,
+    /// to its actual size and in again with the wheel and the command modifier, and Fit Zoom to Window fills the pane with
+    /// it, its red square red and its blue ground blue at every zoom.</summary>
+    [AvaloniaFact]
+    public void An_image_preview_zooms_in_to_its_actual_size_and_to_fit_drawing_its_pixels_as_they_are()
+    {
+        using (SKBitmap bitmap = new(100, 75))
+        {
+            bitmap.Erase(SKColors.Blue);
+            using SKCanvas canvas = new(bitmap);
+            using SKPaint paint = new() { Color = SKColors.Red };
+            canvas.DrawRect(25, 25, 25, 25, paint);
+            using SKImage source = SKImage.FromBitmap(bitmap);
+            using SKData encoded = source.Encode(SKEncodedImageFormat.Png, 100);
+            File.WriteAllBytes(Path.Combine(folder, "square.png"), encoded.ToArray());
+        }
+        MainWindow window = Open();
+        Assert.Null(window.OpenFile("square.png"));
+        Ui.Settle();
+        AssetPreviewControl preview = Preview(window.EditorArea.ActiveGroup);
+        ZoomedPicture picture = preview.Picture!;
+        Image image = Assert.Single(preview.GetVisualDescendants().OfType<Image>());
+        Assert.Equal(new Size(100, 75), picture.DrawnSize);
+        void Drawn(string when)
+        {
+            double zoom = picture.Zoom;
+            Color red = Ui.Pixel(window, image.TranslatePoint(new Point(37 * zoom, 37 * zoom), window)!.Value);
+            Color blue = Ui.Pixel(window, image.TranslatePoint(new Point(10 * zoom, 65 * zoom), window)!.Value);
+            Assert.True(red == Colors.Red && blue == Colors.Blue, $"{when}, at {zoom:P0}, the preview draws {red} in its red square and {blue} on its blue ground");
+        }
+
+        Assert.True(preview.Focus());
+        string command = OperatingSystem.IsMacOS() ? "meta" : "control";
+        for (int i = 0; i < 5; i++)
+        {
+            Ui.Press(window, $"{command} EQUALS");
+        }
+        Assert.Equal(new Size(400, 300), picture.DrawnSize);
+        Drawn("Zoomed in five steps");
+        Ui.Press(window, $"{command} SLASH");
+        Assert.Equal(new Size(100, 75), picture.DrawnSize);
+        window.MouseWheel(picture.TranslatePoint(new Point(picture.Bounds.Width / 2, picture.Bounds.Height / 2), window)!.Value, new Vector(0, 1),
+            OperatingSystem.IsMacOS() ? Avalonia.Input.RawInputModifiers.Meta : Avalonia.Input.RawInputModifiers.Control);
+        Ui.Settle();
+        Assert.Equal(new Size(125, 93.75), picture.DrawnSize);
+
+        Ui.Click(preview.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) as string == "Fit Zoom to Window"));
+        Assert.True(picture.Zoom > 2 && Math.Abs(Math.Min(picture.Bounds.Width - picture.DrawnSize.Width, picture.Bounds.Height - picture.DrawnSize.Height) - (2 * ZoomedPicture.Gap) - 2) < 1,
+            $"Fit Zoom to Window drew the picture {picture.DrawnSize} in a pane of {picture.Bounds.Size}");
+        Drawn("Fitted to the pane");
         window.Close();
     }
 
