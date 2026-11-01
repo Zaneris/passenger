@@ -1269,10 +1269,12 @@ public static class Ui
         Settle();
     }
 
-    /// <summary>Two clicks in quick succession at the same place, as a person opens what a row holds.</summary>
+    /// <summary>Two clicks in quick succession at the same place, as a person opens what a row holds, apart from a click or
+    /// a drag's press there before them, so neither is counted a third.</summary>
     public static void DoubleClick(Control control, Point? at = null)
     {
         (TopLevel top, Point point) = Aim(control, at);
+        Apart(top, point);
         for (int i = 0; i < 2; i++)
         {
             top.MouseDown(point, MouseButton.Left);

@@ -140,14 +140,14 @@ public sealed class ExplorerOpenedFileTests : IDisposable
             Ui.Click(Ui.Row(window.ExplorerView, nesting).GetVisualDescendants().OfType<RowGlyphs>().Single(), new Point(9, ListRow.Height / 2));
             Assert.True(nesting.IsExpanded, "A click on appsettings.json's chevron left the file nested under it hidden");
             Shown(window, order, "A click on appsettings.json's chevron");
+            Point from = Ui.Centre(Ui.Row(window.ExplorerView, Row(window, product)), window);
+            Ui.Drag(window, from, from + new Vector(40, 0), MouseButton.Left, RawInputModifiers.None);
+            Assert.True(File.Exists(product), "A drag of Product.cs along its own row moved it");
+            Shown(window, order, "A drag of Product.cs");
 
             Ui.DoubleClick(Ui.Row(window.ExplorerView, Row(window, product)));
             Assert.True(window.EditorArea.Active?.Path == product && window.EditorArea.CodeEditor.IsKeyboardFocusWithin,
                 $"A double-click on Product.cs showed {window.EditorArea.Active?.Name}, the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name}, where the editor takes them");
-            Point from = Ui.Centre(Ui.Row(window.ExplorerView, Row(window, order)), window);
-            Ui.Drag(window, from, from + new Vector(40, 0), MouseButton.Left, RawInputModifiers.None);
-            Assert.True(File.Exists(order), "A drag of Order.cs along its own row moved it");
-            Shown(window, product, "A drag of Order.cs");
         }
         finally
         {
