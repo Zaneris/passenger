@@ -455,10 +455,14 @@ site-shots` retakes its images.
   attach and recording are kept by `ServiceRun.KeyOf`. DCP names each replica with a random suffix every AppHost run,
   and its index never reaches the IDE: a replica's identity lasts one run, so a choice for one replica is every
   replica's next run.
-- **Godot** starts .NET through hostfxr itself and runs no startup hook, so a Run of a game takes no Hot Reload (Debug
-  applies edits); its game's assembly comes from a stream (no `Location`). It writes logs and editor settings under the
-  user's folders, on macOS whatever XDG says: a test gives it HOME/APPDATA of its own and always `--headless`. Its
-  debug peer takes only `[name, thread id 1, data]` messages, and its packed strings end with a NUL.
+- **Godot** starts .NET through hostfxr itself and runs no startup hook, so a game's Hot Reload, under Run too, goes
+  through the debugger (a quiet one under Run, `AttachForHotReloadAsync`), never dotnet watch; its game's assembly comes
+  from a stream (no `Location`). It writes logs and editor settings under the user's folders, on macOS whatever XDG
+  says: a test gives it HOME/APPDATA of its own and always `--headless`. Its debug peer takes only `[name, thread id 1,
+  data]` messages, its packed strings end with a NUL, `scene:inspect_objects` answers a few objects at most (inspect one
+  at a time), a warning comes as an error with its flag set, and a headless game has no picture. An agent's input and
+  layout reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing;
+  `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
