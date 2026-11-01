@@ -9,7 +9,7 @@ public sealed class IndentConversionTests
     private static string Converted(string text, IndentOptions from, IndentOptions to)
     {
         TextSnapshot snapshot = TextSnapshot.From(text);
-        return snapshot.Apply(Indentation.Convert(snapshot, from, to)).ToString();
+        return snapshot.Apply(Indentation.Convert(snapshot, from, to).Edits).ToString();
     }
 
     [Fact]
@@ -36,8 +36,17 @@ public sealed class IndentConversionTests
     public void A_line_already_written_so_and_a_whitespace_run_longer_than_a_read_are_handled()
     {
         TextSnapshot tabbed = TextSnapshot.From("\tx\n\t\ty\n");
-        Assert.Empty(Indentation.Convert(tabbed, new IndentOptions(4, true, 4), new IndentOptions(4, true, 4)));
+        Assert.Empty(Indentation.Convert(tabbed, new IndentOptions(4, true, 4), new IndentOptions(4, true, 4)).Edits);
         string deep = new string(' ', 400) + "z\n";
         Assert.Equal(new string('\t', 100) + "z\n", Converted(deep, new IndentOptions(4), new IndentOptions(4, UseTabs: true, TabWidth: 4)));
+    }
+
+    [Fact]
+    public void A_line_kept_is_left_as_it_is_and_counted_only_where_it_would_have_changed()
+    {
+        TextSnapshot text = TextSnapshot.From("a\n    b\n    c\n\td\n    e\n");
+        (List<TextEdit> edits, int kept) = Indentation.Convert(text, new IndentOptions(4), new IndentOptions(4, UseTabs: true, TabWidth: 4), new HashSet<int> { 2, 3 });
+        Assert.Equal("a\n\tb\n    c\n\td\n\te\n", text.Apply(edits).ToString());
+        Assert.Equal(1, kept);
     }
 }

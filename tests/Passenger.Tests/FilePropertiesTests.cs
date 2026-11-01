@@ -292,6 +292,30 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The indent widget's conversion leaves alone the lines that begin inside a string, whose whitespace is the
+    /// string's: a C# verbatim string's and a raw string's, its closing line with them, and an XML file's CDATA section's;
+    /// the status bar says how many it left.</summary>
+    [AvaloniaFact]
+    public void Converting_indentation_leaves_the_lines_inside_strings_and_says_how_many()
+    {
+        const string Code = "class Strings\n{\n    string Verbatim = @\"one\n    two\";\n    string Raw = \"\"\"\n        three\n        \"\"\";\n    void Run()\n    {\n    }\n}\n";
+        Write("Strings.cs", Code);
+        MainWindow window = Open("Strings.cs");
+        Click(window, "IndentButton");
+        Choose(window, "Convert Indentation to Tabs");
+        Assert.Equal("class Strings\n{\n\tstring Verbatim = @\"one\n    two\";\n\tstring Raw = \"\"\"\n        three\n        \"\"\";\n\tvoid Run()\n\t{\n\t}\n}\n", Text(window));
+        Assert.Equal("Converted the indentation of 5 lines of Strings.cs to tabs, a tab a level; 3 lines inside strings left as they are", window.Status);
+
+        Write("page.xml", "<root>\n    <script><![CDATA[\n        keep();\n    ]]></script>\n    <item />\n</root>\n");
+        window.OpenFile("page.xml");
+        Ui.Settle();
+        Click(window, "IndentButton");
+        Choose(window, "Convert Indentation to Tabs");
+        Assert.Equal("<root>\n\t<script><![CDATA[\n        keep();\n    ]]></script>\n\t<item />\n</root>\n", Text(window));
+        Assert.Equal("Converted the indentation of 2 lines of page.xml to tabs, a tab a level; 2 lines inside strings left as they are", window.Status);
+        window.Close();
+    }
+
     /// <summary>A click on the caret's place in the status bar opens Go to Line:Column, and the line given is where the
     /// caret goes.</summary>
     [AvaloniaFact]

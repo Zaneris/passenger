@@ -130,6 +130,34 @@ public sealed partial class TextMateHighlighter : IHighlighter, IBraceMatcher, I
         return spans;
     }
 
+    /// <summary>Whether the grammar has read the whole of <paramref name="text"/> as it stands, so the states lines end in are
+    /// known for every line.</summary>
+    public bool HasRead(TextSnapshot text) => table is { Complete: true } && ReferenceEquals(tableText, text) && since.Count == 0;
+
+    /// <summary>The lines of <paramref name="text"/> that begin inside one of the grammar's strings (a CDATA section, a
+    /// template literal, a heredoc, a block scalar), whose leading whitespace is the string's own; null until the grammar
+    /// has read the whole text as it stands (<see cref="HasRead"/>).</summary>
+    public IReadOnlySet<int>? StringLines(TextSnapshot text)
+    {
+        if (!HasRead(text) || table is not { } lines)
+        {
+            return null;
+        }
+        HashSet<int> inside = [];
+        for (int line = 1; line < lines.Count; line++)
+        {
+            for (AttributedScopeStack? scope = lines[line - 1].End?.Scopes; scope is not null; scope = scope.Parent)
+            {
+                if (scope.ScopeName.StartsWith("string.", StringComparison.Ordinal))
+                {
+                    inside.Add(line);
+                    break;
+                }
+            }
+        }
+        return inside;
+    }
+
     public void Dispose()
     {
         disposed = true;

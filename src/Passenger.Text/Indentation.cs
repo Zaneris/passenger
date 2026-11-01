@@ -206,10 +206,12 @@ public static class Indentation
 
     /// <summary>Every line's leading spaces and tabs written again in <paramref name="to"/>'s characters, at the columns they
     /// reach with tabs <paramref name="from"/>'s width; what follows on the line (alignment within it, a comment's) is left
-    /// as it is. One edit per line it changes, in order.</summary>
-    public static List<TextEdit> Convert(TextSnapshot text, IndentOptions from, IndentOptions to)
+    /// as it is, and so is each line <paramref name="kept"/> names (one that begins inside a string, whose whitespace is the
+    /// string's). One edit per line it changes, in order, and how many lines kept it would have changed.</summary>
+    public static (List<TextEdit> Edits, int Kept) Convert(TextSnapshot text, IndentOptions from, IndentOptions to, IReadOnlySet<int>? kept = null)
     {
         List<TextEdit> edits = [];
+        int left = 0;
         Span<char> start = stackalloc char[256];
         for (int i = 0; i < text.LineCount; i++)
         {
@@ -224,12 +226,18 @@ public static class Indentation
                 continue;
             }
             string now = to.Whitespace(from.Columns(was));
-            if (!was.SequenceEqual(now))
+            if (was.SequenceEqual(now))
             {
-                edits.Add(new TextEdit(line.Start, was.Length, now));
+                continue;
             }
+            if (kept?.Contains(i) == true)
+            {
+                left++;
+                continue;
+            }
+            edits.Add(new TextEdit(line.Start, was.Length, now));
         }
-        return edits;
+        return (edits, left);
     }
 
     /// <summary>How many spaces and tabs begin a run of text.</summary>

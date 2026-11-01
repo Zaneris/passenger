@@ -126,6 +126,9 @@ public static class Refusals
     public static string Generated(string name, string? origin = null) =>
         $"{name} is a source generator's code{(origin is null ? string.Empty : $", {origin},")} copied to read: the C# language server answers in the code it is made from";
 
+    /// <summary>A file whose grammar has yet to read it whole, so the lines inside its strings are not yet known.</summary>
+    public static string ReadingStrings(string name) => $"{name} is still being read, to tell the lines inside its strings";
+
     /// <summary>Why the file shown cannot be saved: none is shown, it is read-only, or it has nothing to save.</summary>
     public static string? NeedsUnsaved(ActionContext context) =>
         context.File is not { } file ? NoFile : file.IsReadOnly ? ReadOnly(file.Name) : file.IsModified ? null : $"{file.Name} is saved";

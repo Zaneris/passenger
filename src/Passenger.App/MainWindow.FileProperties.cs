@@ -32,7 +32,8 @@ public partial class MainWindow
         {
             actions.Add(new IdeAction(id, tabs ? "Convert Indentation to Tabs" : "Convert Indentation to Spaces", "IDE", context => ConvertIndentation(context.File!, tabs))
             {
-                WhyNot = context => Refusals.NeedsLines(context) ?? (context.File!.IsReadOnly ? Refusals.ReadOnly(context.File.Name) : null),
+                WhyNot = context => Refusals.NeedsLines(context)
+                    ?? (context.File!.IsReadOnly ? Refusals.ReadOnly(context.File.Name) : !context.File.KnowsStrings ? Refusals.ReadingStrings(context.File.Name) : null),
                 Words = [tabs ? "Tabify" : "Untabify"],
             });
         }
@@ -119,10 +120,11 @@ public partial class MainWindow
     private void ConvertIndentation(OpenDocument document, bool tabs)
     {
         string kind = tabs ? "tabs" : "spaces";
-        int lines = document.ConvertIndentation(tabs);
-        status.Text = lines == 0
-            ? $"Every line of {document.Name} already indents with {kind}"
+        (int lines, int inStrings) = document.ConvertIndentation(tabs);
+        string said = lines == 0
+            ? $"Every line of {document.Name} outside its strings already indents with {kind}"
             : $"Converted the indentation of {Core.Plural.Of(lines, "line")} of {document.Name} to {kind}, {(tabs ? "a tab" : Core.Plural.Of(document.Indentation.Options.Size, "space"))} a level";
+        status.Text = inStrings == 0 ? said : $"{said}; {Core.Plural.Of(inStrings, "line")} inside strings left as {(inStrings == 1 ? "it is" : "they are")}";
     }
 
     private void ChooseIndent(OpenDocument document, IndentOptions? options)

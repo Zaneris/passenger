@@ -9,6 +9,7 @@ using Passenger.Editor;
 using Passenger.Languages;
 using Passenger.Languages.CSharp;
 using Passenger.Languages.Markup;
+using Passenger.Languages.TextMate;
 using Passenger.Lsp;
 using Passenger.Text;
 using Passenger.Workspace;
@@ -719,9 +720,10 @@ public sealed class OpenDocument : Observable
     private IndentOptions? chosenIndent;
 
     /// <summary>Every line's indentation written in tabs, or in spaces, at the file's indent size, alignment within a line
-    /// left as it is, as one undoable step that makes it the indentation chosen for the file, the choice before back on
-    /// Undo. How many lines changed; none changes nothing, and a read-only file is refused.</summary>
-    public int ConvertIndentation(bool toTabs)
+    /// and each line that begins inside a string (<see cref="LinesInStrings"/>) left as they are, as one undoable step that
+    /// makes it the indentation chosen for the file, the choice before back on Undo. How many lines changed and how many
+    /// inside strings were left; none changed changes nothing, and a read-only file is refused.</summary>
+    public (int Changed, int InStrings) ConvertIndentation(bool toTabs)
     {
         if (IsReadOnly)
         {
@@ -731,18 +733,32 @@ public sealed class OpenDocument : Observable
         // Tabs as wide as a level, so the lines stand where they stood.
         IndentOptions to = new(from.Size, toTabs, toTabs ? from.Size : from.TabWidth);
         TextSnapshot before = Text.Snapshot;
-        List<TextEdit> edits = Passenger.Text.Indentation.Convert(before, from, to);
+        (List<TextEdit> edits, int inStrings) = Passenger.Text.Indentation.Convert(before, from, to, LinesInStrings());
         if (edits.Count == 0)
         {
-            return 0;
+            return (0, inStrings);
         }
         IndentOptions? was = chosenIndent;
         int length = before.Length + edits.Sum(e => e.Text.Length - e.Length);
         SelectionSet carets = Selections;
         Text.Perform(edits, carets, TextEditing.MapThrough(carets, edits).Clamp(length), () => ChosenIndent = was, () => ChosenIndent = to);
         ChosenIndent = to;
-        return edits.Count;
+        return (edits.Count, inStrings);
     }
+
+    /// <summary>Whether the lines that begin inside a string are known for the text as it stands: C#'s from its syntax at
+    /// once, another language's once its grammar has read the whole file.</summary>
+    public bool KnowsStrings => parser is not TextMateHighlighter grammar || grammar.HasRead(Text.Snapshot);
+
+    /// <summary>The lines that begin inside a string, whose leading whitespace is the string's text: C#'s verbatim and raw
+    /// strings from its syntax, another language's from where its grammar's states say a string runs on; none for a file
+    /// with neither.</summary>
+    private IReadOnlySet<int>? LinesInStrings() => parser switch
+    {
+        CSharpHighlighter csharp => StringLines.Of(csharp.Current.Root, csharp.Current.Text),
+        TextMateHighlighter grammar => grammar.StringLines(Text.Snapshot),
+        _ => null,
+    };
 
     /// <summary>The indentation the file has with none chosen.</summary>
     public FileIndent Unchosen => FileIndent.Choose(Conventions, detected, Language.Indent);
