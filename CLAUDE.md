@@ -590,16 +590,17 @@ not end on the session's thread (`await Task.Yield()` before throwing). A sleepi
 `caffeinate -is`.
 
 **Collections and shared projects** (`Collections.cs`). Window tests run one at a time on the session's thread. Beside
-them run only the debug adapter's protocol tests (`DebugSession.Collection`) and `Beside` classes (no window, nothing the
-process shares changed, nothing held to a time). A class with a test held to a time, or that debugs through the window,
-is `[Collection(Alone.Name)]`, run last with nothing beside it. A class sharing one project derives from `SharedProject`:
-one warm language server, the files put back before each test (with times that keep MSBuild honest), a new file through
-`project.Write` (which ends the server, unless the class passes `loadsAgain`), `InitializeAsync` overridden with
-`PrepareAsync(restore: false)` where nothing
-reads a restore, `PrepareAsync(byRealPath: true)` where projects name each other by real path. A class fixture is made
-off the UI thread, a window test's class on it, and xunit v3 calls only `DisposeAsync` on a class with both. Fresh restored folders come from `RestoredFolders`. A test asking
-nothing of C# opens without the language server (`Ui.OpenFolder(folder, languageServer: false)`, `McpRig.Start(…,
-languageServer: false)`).
+them run only the debug adapter's protocol tests (`DebugSession.Collection`) and `Beside` classes (no window, nothing
+the process shares changed, nothing held to a time). A class with a test held to a time, or that debugs through the
+window, is `[Collection(Alone.Name)]`, run last with nothing beside it. A class sharing one project derives from
+`SharedProject`: one warm language server, the files put back before each test (with times that keep MSBuild honest), a
+new file through `project.Write` (which ends the server, unless the class passes `loadsAgain`), `InitializeAsync`
+overridden with `PrepareAsync(restore: false)` where nothing reads a restore, `PrepareAsync(byRealPath: true)` where
+projects name each other by real path. A class fixture is made off the UI thread, a window test's class on it, and xunit
+v3 calls only `DisposeAsync` on a class with both. Fresh restored folders come from `RestoredFolders`, which hands a
+later test a folder the first taker's `write` made: every test of a class writes the same. A test asking nothing of C#
+opens without the language server (`Ui.OpenFolder(folder, languageServer: false)`, `McpRig.Start(…, languageServer:
+false)`).
 
 **Runs.** `just test` deals the classes outside Alone to N processes by `TestTimes.json` (each with its own run folder;
 the container classes in one process), then the Alone classes in one. CI deals each system's gate to two shards and its
