@@ -359,6 +359,30 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>A res:// string in a scene completes from the project's files as its "res://" is typed, the scene itself and
+    /// Godot's own folders left out, and the file chosen goes in whole in place of the string.</summary>
+    [AvaloniaFact]
+    public void A_res_path_in_a_scene_completes_from_the_projects_files()
+    {
+        MainWindow window = game.Open(ScenePath);
+        try
+        {
+            Typing.Replace(window, "res://player.tscn", "res://");
+            Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("res://player.tscn") && window.Assist.CompletionLabels.Contains("res://Hud.cs"),
+                () => $"the project's files to be offered: {string.Join(", ", window.Assist.CompletionLabels)}");
+            Assert.DoesNotContain("res://main.tscn", window.Assist.CompletionLabels);
+            Assert.DoesNotContain(window.Assist.CompletionLabels, l => l.StartsWith("res://.godot/", StringComparison.Ordinal));
+            window.KeyTextInput("pla");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.EditorArea.CodeEditor.Document.Snapshot.ToString().Contains("path=\"res://player.tscn\" id=\"2_player\"]", StringComparison.Ordinal),
+                () => $"the chosen file to take the string's place: {window.EditorArea.CodeEditor.Document.Snapshot}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Rename of the handler in the code renames the method the scene's connections call, one step of Undo with the code's.</summary>
     [AvaloniaFact]
     public void Renaming_a_handler_renames_the_method_its_scenes_connections_call()

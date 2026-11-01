@@ -1,6 +1,7 @@
 using Passenger.App.Godot;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Lsp;
 using Passenger.Roslyn.Extension;
 using Passenger.Text;
@@ -12,9 +13,96 @@ namespace Passenger.App.CSharp;
 /// res:// path or an <c>ExtResource</c> goes to its file, from a node path (a node's parent, a connection's ends, a NodePath)
 /// to the node's section, from a connection's method to the C# method its receiving node's script declares and from its
 /// signal to the <c>[Signal]</c> delegate its sending node's script declares; Rename on a node's name renames it in every
-/// scene and every GetNode path of the code that names it (<see cref="CSharpAssist.RenameNodesAsync"/>).</summary>
-internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, CodeNavigation navigation, CSharpAssist csharp) : LanguageAssist
+/// scene and every GetNode path of the code that names it (<see cref="CSharpAssist.RenameNodesAsync"/>); and a res:// string
+/// completes from the project's files.</summary>
+internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, CodeCompletion completion, CodeNavigation navigation, CSharpAssist csharp) : LanguageAssist
 {
+    /// <summary>The characters a res:// path holds beyond a name's, which narrow its list rather than close it.</summary>
+    private const string PathCharacters = "/.:-";
+
+    /// <summary>Whether a file is a text scene or resource of a Godot project.</summary>
+    private bool IsScene(OpenDocument document) => GodotFile.IsText(document.Path) && context.CSharp?.GodotOf?.Invoke(document.Path) is not null;
+
+    /// <summary>A '/' typed in a scene's res:// string opens its list of the project's files.</summary>
+    public override bool Typed(string text)
+    {
+        if (context.Editors.Active is not { } shown || !IsScene(shown))
+        {
+            return false;
+        }
+        if (text[^1] == '/' && ResString(shown.Text.Snapshot, context.Caret, begun: true) is not null)
+        {
+            IdeErrors.Observe(completion.Start(null));
+        }
+        return true;
+    }
+
+    /// <summary>The project's files where a scene's string the caret is in begins res:// (those Godot keeps beside each file and
+    /// in its own folders left out), replacing the whole string.</summary>
+    public override async Task<bool> CompleteAsync(string? trigger, bool incomplete)
+    {
+        if (context.Editors.Active is not { } shown || !IsScene(shown))
+        {
+            return false;
+        }
+        CancellationTokenSource cancel = completion.Asking();
+        int caret = context.Caret;
+        TextSnapshot asked = shown.Text.Snapshot;
+        if (ResString(asked, caret) is not ({ } start, { } end) || context.CSharp is not { GodotScenes: { } index, GodotOf: { } godotOf } || godotOf(shown.Path) is not { } folder)
+        {
+            completion.Close();
+            return true;
+        }
+        IReadOnlyList<CompletionItem> files = await BackgroundWork.Run(() => (IReadOnlyList<CompletionItem>)[.. index.FilesUnder(folder)
+            .Where(f => !PathNames.Same(f, shown.Path)).Select(f => GodotScenes.ResPathOf(folder, f)).OfType<string>().Order(StringComparer.Ordinal)
+            .Select(res => new CompletionItem { Label = res, Kind = CompletionItemKind.File, Detail = Path.GetExtension(res), FilterText = res, SortText = " " + res })]);
+        if (cancel.IsCancellationRequested || context.Editors.Active != shown || shown.Text.Snapshot != asked || files.Count == 0)
+        {
+            return true;
+        }
+        completion.Open(new CodeCompletion.Completion(files, start, [], false)
+        {
+            Own = this,
+            WordCharacters = PathCharacters,
+            Tail = caret < end ? asked.GetText(caret, end - caret) : string.Empty,
+        });
+        return true;
+    }
+
+    /// <summary>A file's res:// path in place of the string's characters typed from <paramref name="start"/> and those after
+    /// the caret up to its closing quote.</summary>
+    public override void Commit(CompletionItem item, int start)
+    {
+        TextSnapshot text = context.Editor.Document.Snapshot;
+        int caret = context.Caret;
+        int end = ResString(text, caret) is (_, { } close) && close >= caret ? close : caret;
+        context.Editor.ApplyEdits([new TextEdit(start, Math.Max(0, end - start), item.Label)], SelectionSet.Single(start + item.Label.Length));
+    }
+
+    /// <summary>The string on the caret's line it is in, where its characters start and end (its closing quote, else the
+    /// line's end), when what is typed before the caret begins res:// or, unless <paramref name="begun"/>, could still; null
+    /// anywhere else.</summary>
+    private static (int Start, int End)? ResString(TextSnapshot text, int caret, bool begun = false)
+    {
+        int line = text.GetLineFromOffset(Math.Min(caret, text.Length));
+        int lineStart = text.GetLineStart(line);
+        string row = text.GetLineText(line);
+        int column = Math.Min(caret - lineStart, row.Length);
+        int quotes = row[..column].Count(c => c == '"');
+        if (quotes % 2 == 0)
+        {
+            return null;
+        }
+        int open = row.LastIndexOf('"', column - 1);
+        string typed = row[(open + 1)..column];
+        if (!(!begun && "res://".StartsWith(typed, StringComparison.Ordinal) || typed.StartsWith("res://", StringComparison.Ordinal)))
+        {
+            return null;
+        }
+        int close = row.IndexOf('"', column);
+        return (lineStart + open + 1, lineStart + (close < 0 ? row.Length : close));
+    }
+
     /// <summary>A scene or resource of a Godot project open: its project's folder and res:// path, the scenes as they stand
     /// (the file among them as the editor has it), and the file read; null for any other file.</summary>
     private async Task<(GodotScenes Scenes, string Res, GodotFile File)?> SceneOfAsync(OpenDocument document)
