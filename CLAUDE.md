@@ -322,7 +322,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   debugged test host; a RunCommand naming another program run as `dotnet run` runs it, `OtherProgram`; a Blazor Web
   App's client no program of its own, `ProjectModel.IsBrowserClient`; a Passenger it launches keeps its state in the
   launcher's `sandbox/`; a Godot project's game and editor through `GodotLaunch`, on the Godot `GodotExecutables`
-  finds), `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build
+  finds, a launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (`ILiveTreeSource`,
+  `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build
   under way waited out first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia previewers
   holding its output (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time
   (`ConsoleWritten`).
@@ -454,7 +455,8 @@ site-shots` retakes its images.
   replica's next run.
 - **Godot** starts .NET through hostfxr itself and runs no startup hook, so a Run of a game takes no Hot Reload (Debug
   applies edits); its game's assembly comes from a stream (no `Location`). It writes logs and editor settings under the
-  user's folders, on macOS whatever XDG says: a test gives it HOME/APPDATA of its own and always `--headless`.
+  user's folders, on macOS whatever XDG says: a test gives it HOME/APPDATA of its own and always `--headless`. Its
+  debug peer takes only `[name, thread id 1, data]` messages, and its packed strings end with a NUL.
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
