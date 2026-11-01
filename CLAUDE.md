@@ -355,15 +355,18 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
   environment only; Endpoints sends nothing but on Test or Send, and a send taking the person's environment asks first.
   `ResourceFiles` is the one reader of `.resx` and `xlf/*.xlf`.
-- **Debugging.** `DebugController` (a `DebugTab` per session, several at once), `DebugSession`, `BreakpointStore`;
-  Variables and the hover card are one list; a row's expression is the debugger's `evaluateName` (`RowExpressions`),
-  never built in the window, a member row's cast from the declared type read from metadata (`DeclaredType`). A session's
-  built lines and Hot Reload begin at its build's save (`DebugController.Building`, `BuiltEdits`). The debugger's own
-  rows are named in `DapRows`, break modes in `DapBreakModes`; an engine row is built by `ValueRow` (`FailedRow`,
-  `GroupRow`), CoreLib found by `ManagedDebugger.CoreLib`. A breakpoint's words, in the gutter's hover, Problems and MCP
-  alike, come from `BreakpointStates`. Every kind of breakpoint is refused, matched and hit through one pipeline
-  (`IHitBreakpoint`: `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a lambda on its statement's
-  line keeps the lambda's column (`LambdaBreakpoints`).
+- **Debugging.** `DebugController` (a `DebugTab` per session, several at once), `DebugSession` (its adapter an
+  `AdapterEnd`: `ProcessEnd` the engine's, `InProcessEnd` one inside the IDE such as `GodotScriptAdapter`, a game's
+  GDScript over its debug connection; `DebugSession.Engine` sends each file's breakpoints to the adapter that runs it; a
+  game's GDScript tab is its C# tab's `Companion`), `BreakpointStore`; Variables and the hover card are one list; a
+  row's expression is the debugger's `evaluateName` (`RowExpressions`), never built in the window, a member row's cast
+  from the declared type read from metadata (`DeclaredType`). A session's built lines and Hot Reload begin at its
+  build's save (`DebugController.Building`, `BuiltEdits`). The debugger's own rows are named in `DapRows`, break modes
+  in `DapBreakModes`; an engine row is built by `ValueRow` (`FailedRow`, `GroupRow`), CoreLib found by
+  `ManagedDebugger.CoreLib`. A breakpoint's words, in the gutter's hover, Problems and MCP alike, come from
+  `BreakpointStates`. Every kind of breakpoint is refused, matched and hit through one pipeline (`IHitBreakpoint`:
+  `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a lambda on its statement's line keeps the
+  lambda's column (`LambdaBreakpoints`).
 - **Tests window.** `TestFinder` (tests from code before any build), `TestRunners`; `VsTestRunner` is the only file that
   knows VSTest's object model. A run from the editor, a filter or the Explorer chooses its tests once its build has
   ended (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and line
@@ -479,8 +482,11 @@ site-shots` retakes its images.
   at a time), a warning comes as an error with its flag set, and a headless game has no picture. Its language server
   takes whole texts only, reads `Content-Length` at a fixed offset of the header, needs `rootPath` and has no shutdown;
   a headless editor writes `editor_layout.cfg` and `ide_messaging_meta.txt` into the project, which `GodotScripts` puts
-  back. An agent's input and layout reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by
-  live editing; `PassengerTools.Godot.cs`).
+  back (`PASSENGER_GODOT_HOME` gives that editor the run's user folders). Its script debugger: a message to a stopped
+  thread carries the thread's id; an `evaluate` in a frame with no instance, or a `break` sent while stopped, leaves the
+  debug loop and lets the game go on; an evaluation's errors come after its answer, so each is followed by a
+  `get_stack_dump`; `reload_scripts` keeps members by name, an added one null. An agent's input and layout reach a game
+  through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
