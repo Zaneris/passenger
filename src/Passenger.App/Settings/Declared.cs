@@ -279,6 +279,9 @@ public static class Declared
     /// <summary>The Explorer's options menu turns it on and off.</summary>
     public static readonly ToggleSetting AlwaysSelectOpenedFile = new(s => s.AlwaysSelectOpenedFile, (s, v) => s with { AlwaysSelectOpenedFile = v });
 
+    /// <summary>The Explorer's options menu turns it on and off.</summary>
+    public static readonly ToggleSetting OpenFilesWithSingleClick = new(s => s.OpenFilesWithSingleClick, (s, v) => s with { OpenFilesWithSingleClick = v });
+
     /// <summary>An enum's values with the names Settings gives them, in the enum's order.</summary>
     private static (T Value, string Name)[] Named<T>(string[] names) where T : struct, Enum => [.. Enum.GetValues<T>().Zip(names)];
 }

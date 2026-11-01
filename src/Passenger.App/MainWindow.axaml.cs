@@ -114,6 +114,13 @@ public partial class MainWindow : IdeWindow
         AddPreview();
         AddMarkdownPreview();
         Explorer.FileOpened += (_, path) => OpenFile(path);
+        Explorer.FileClicked += (_, path) =>
+        {
+            if (OpenFile(path) is null)
+            {
+                Explorer.FocusRows();
+            }
+        };
         Editors.ActiveChanged += (_, _) => FollowInExplorer();
         // An unbuilt Structure window asks for the file itself; a C# file's outline waits out the pause.
         Editors.ActiveChanged += (_, _) =>

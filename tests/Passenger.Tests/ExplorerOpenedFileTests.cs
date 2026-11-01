@@ -1,5 +1,7 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Explorer;
@@ -9,7 +11,8 @@ namespace Passenger.Tests;
 
 /// <summary>The Explorer and the file shown: Select Opened File chooses it again, by its key or its header's button,
 /// however the rows were chosen since, in the Files view where the solution does not hold it; Always Select Opened File,
-/// in its options, has it follow the file shown or keep its row.</summary>
+/// in its options, has it follow the file shown or keep its row; Open Files with Single Click opens a file on a plain
+/// click, the keys kept on its row.</summary>
 public sealed class ExplorerOpenedFileTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("explorer-opened-"));
@@ -23,6 +26,8 @@ public sealed class ExplorerOpenedFileTests : IDisposable
         TestFolders.Write(folder, "Shop.Core/Catalog/Product.cs", "namespace Shop.Core.Catalog;\n\npublic class Product\n{\n}\n");
         TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Shop.App/Shop.App.csproj\" />\n  <Project Path=\"Shop.Core/Shop.Core.csproj\" />\n</Solution>\n");
         TestFolders.Write(folder, "README.md", "# Shop\n");
+        TestFolders.Write(folder, "Shop.App/appsettings.json", "{\n}\n");
+        TestFolders.Write(folder, "Shop.App/appsettings.Development.json", "{\n}\n");
     }
 
     public void Dispose() => TestFolders.Delete(folder);
@@ -95,6 +100,62 @@ public sealed class ExplorerOpenedFileTests : IDisposable
             window.ApplySettings(window.Settings with { AlwaysSelectOpenedFile = true });
             window.Close();
         }
+    }
+
+    [AvaloniaFact]
+    public void With_open_files_with_single_click_a_plain_click_opens_a_file_keeping_the_keys_and_no_other_click_does()
+    {
+        string program = At("Shop.App/Program.cs");
+        string order = At("Shop.App/Models/Order.cs");
+        string product = At("Shop.Core/Catalog/Product.cs");
+        string settings = At("Shop.App/appsettings.json");
+        MainWindow window = Open();
+        try
+        {
+            window.OpenFile(program);
+            Ui.Settle();
+            Ui.ClickRow(window, Row(window, order));
+            Shown(window, program, "A click on Order.cs with Open Files with Single Click off");
+
+            ChooseOption(window, "Open Files with Single Click");
+            Assert.True(window.Settings.OpenFilesWithSingleClick, "Open Files with Single Click in the Explorer's options left it off");
+            Ui.Click(Ui.Row(window.ExplorerView, Row(window, order)));
+            Assert.True(window.EditorArea.Active?.Path == order && Chosen(window) == order && window.ExplorerView.Rows().IsKeyboardFocusWithin,
+                $"A click on Order.cs showed {window.EditorArea.Active?.Name} with {Chosen(window)} chosen and the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name}, "
+                + "where it opens Order.cs and the Explorer keeps the keys on its row");
+            Ui.Press(window, "UP");
+            Shown(window, order, "Up to the row above Order.cs");
+
+            RawInputModifiers command = OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control;
+            Ui.Click(Ui.Row(window.ExplorerView, Row(window, product)), modifiers: RawInputModifiers.Shift);
+            Shown(window, order, "A Shift-click on Product.cs, choosing a range of rows,");
+            Ui.Click(Ui.Row(window.ExplorerView, Row(window, product)), modifiers: command);
+            Shown(window, order, "A Cmd (Ctrl) click on Product.cs, choosing it beside the rest,");
+            ExplorerNode models = Row(window, At("Shop.App/Models"));
+            Ui.Click(Ui.Row(window.ExplorerView, models));
+            Assert.True(models.IsExpanded, "A click on the Models folder's row closed it");
+            Shown(window, order, "A click on the Models folder");
+            ExplorerNode nesting = Row(window, settings);
+            Ui.Click(Ui.Row(window.ExplorerView, nesting).GetVisualDescendants().OfType<RowGlyphs>().Single(), new Point(9, ListRow.Height / 2));
+            Assert.True(nesting.IsExpanded, "A click on appsettings.json's chevron left the file nested under it hidden");
+            Shown(window, order, "A click on appsettings.json's chevron");
+
+            Ui.DoubleClick(Ui.Row(window.ExplorerView, Row(window, product)));
+            Assert.True(window.EditorArea.Active?.Path == product && window.EditorArea.CodeEditor.IsKeyboardFocusWithin,
+                $"A double-click on Product.cs showed {window.EditorArea.Active?.Name}, the keys with {window.FocusManager?.GetFocusedElement()?.GetType().Name}, where the editor takes them");
+            Point from = Ui.Centre(Ui.Row(window.ExplorerView, Row(window, order)), window);
+            Ui.Drag(window, from, from + new Vector(40, 0), MouseButton.Left, RawInputModifiers.None);
+            Assert.True(File.Exists(order), "A drag of Order.cs along its own row moved it");
+            Shown(window, product, "A drag of Order.cs");
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { OpenFilesWithSingleClick = false });
+            window.Close();
+        }
+
+        static void Shown(MainWindow window, string path, string what) => Assert.True(window.EditorArea.Active?.Path == path,
+            $"{what} showed {window.EditorArea.Active?.Name}, where it opens nothing and {Path.GetFileName(path)} stays shown");
     }
 
     /// <summary>An item of the Explorer's options in its header, chosen as a person chooses it.</summary>

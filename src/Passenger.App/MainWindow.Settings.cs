@@ -93,6 +93,7 @@ public partial class MainWindow
         FollowTitleBar(next);
         FollowMainMenu(next);
         Explorer.NestFiles = next.NestFiles;
+        Explorer.OpensOnClick = next.OpenFilesWithSingleClick;
         if (next.AlwaysSelectOpenedFile && !before.AlwaysSelectOpenedFile && Editors.Active?.Path is { } shown)
         {
             Explorer.Reveal(shown);

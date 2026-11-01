@@ -316,6 +316,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// until its options turn it off.</summary>
     public bool AlwaysSelectOpenedFile { get; init; } = true;
 
+    /// <summary>The Explorer's Open Files with Single Click: a plain click on a file's row opens it, the keys left on the
+    /// row; off until its options turn it on.</summary>
+    public bool OpenFilesWithSingleClick { get; init; }
+
     /// <summary>The code style for XAML (the XML formatter's options, with an attribute order and empty-element style),
     /// which Reformat Code lays out Avalonia's and WPF's XAML by, a file's .editorconfig over it.</summary>
     public Passenger.Xaml.Features.XamlFormatSettings XamlFormat { get; init; } = new();

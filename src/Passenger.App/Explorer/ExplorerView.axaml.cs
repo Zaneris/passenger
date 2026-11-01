@@ -22,6 +22,9 @@ public partial class ExplorerView : UserControl
     private readonly DragGesture<IReadOnlyList<ExplorerNode>> drag;
     private bool copyHeld;
 
+    /// <summary>A plain left press on a file's row while one click opens files, which opens it once let go there.</summary>
+    private (ExplorerNode Row, Point At)? clicked;
+
     public ExplorerView()
     {
         InitializeComponent();
@@ -76,6 +79,12 @@ public partial class ExplorerView : UserControl
 
     /// <summary>A file chosen with a double-click or Enter.</summary>
     public event EventHandler<string>? FileOpened;
+
+    /// <summary>A file clicked once while <see cref="OpensOnClick"/>: to be shown, the keys left on its row.</summary>
+    public event EventHandler<string>? FileClicked;
+
+    /// <summary>Open Files with Single Click: a plain click on a file's row opens it, as a double-click does.</summary>
+    public bool OpensOnClick { get; set; }
 
     /// <summary>A row's right-click menu, which the window makes of its actions run on that row; none for a row with
     /// nothing to do.</summary>
@@ -390,6 +399,7 @@ public partial class ExplorerView : UserControl
     {
         if (sender is Control { DataContext: ExplorerNode { HasChildren: true } node })
         {
+            clicked = null;
             Tree.Toggle(node);
             e.Handled = true;
         }
@@ -421,11 +431,17 @@ public partial class ExplorerView : UserControl
         });
     }
 
-    /// <summary>A left press on a file or folder on disk may begin a drag of it, or of the rows chosen with it. The row is
-    /// the one pressed on, never one the scrollbar lies over, so a drag of the bar's thumb stays the bar's.</summary>
+    /// <summary>A left press on a file or folder on disk may begin a drag of it, or of the rows chosen with it, and a plain
+    /// one on a file a click that opens it (<see cref="OpensOnClick"/>). The row is the one pressed on, never one the
+    /// scrollbar lies over, so a drag of the bar's thumb stays the bar's.</summary>
     private void OnRowsPressed(object? sender, PointerPressedEventArgs e)
     {
-        if ((e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext is ExplorerNode { IsMovable: true } row)
+        ExplorerNode? pressed = (e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext as ExplorerNode;
+        PointerPoint point = e.GetCurrentPoint(Rows);
+        // Shift and Cmd (Ctrl) choose rows, and a second press is a double-click's.
+        clicked = OpensOnClick && pressed is { IsFile: true, Path: not null } && point.Properties.IsLeftButtonPressed
+            && e.KeyModifiers == KeyModifiers.None && e.ClickCount == 1 ? (pressed, point.Position) : null;
+        if (pressed is { IsMovable: true } row)
         {
             // The rows chosen as it was pressed: the list then chooses the row alone.
             IReadOnlyList<ExplorerNode> chosen = SelectedNodes;
@@ -442,6 +458,10 @@ public partial class ExplorerView : UserControl
             return;
         }
         copyHeld = CopyHeld(e.KeyModifiers);
+        if (clicked is { } press && ((Vector)(e.GetPosition(Rows) - press.At)).Length >= DragGesture<IReadOnlyList<ExplorerNode>>.Threshold)
+        {
+            clicked = null;
+        }
         // Once a drag, the pointer is the rows' until the release, wherever it goes.
         if (drag.Continue(e) && e.Pointer.Captured != Rows)
         {
@@ -452,13 +472,22 @@ public partial class ExplorerView : UserControl
     private void OnRowsReleased(object? sender, PointerReleasedEventArgs e)
     {
         copyHeld = CopyHeld(e.KeyModifiers);
-        if (drag.End(e))
+        bool dragged = drag.End(e);
+        if (dragged)
         {
             e.Handled = true;
         }
         if (e.Pointer.Captured == Rows)
         {
             e.Pointer.Capture(null);
+        }
+        if (clicked is { } press)
+        {
+            clicked = null;
+            if (!dragged && e.InitialPressMouseButton == MouseButton.Left && RowAt(e.GetPosition(Rows)) == press.Row && press.Row.Path is { } path)
+            {
+                FileClicked?.Invoke(this, path);
+            }
         }
     }
 

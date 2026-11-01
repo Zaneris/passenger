@@ -124,13 +124,16 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>The Explorer's own items atop its header's options: whether it follows the file shown, then its view's.</summary>
+    /// <summary>The Explorer's own items atop its header's options: whether it follows the file shown and opens a file on
+    /// one click, then its view's.</summary>
     private IReadOnlyList<Control> ExplorerOptions()
     {
         MenuItem follow = new() { Header = "Always Select Opened File", ToggleType = MenuItemToggleType.CheckBox, IsChecked = settings.AlwaysSelectOpenedFile };
         follow.Click += (_, _) => ApplySettings(settings with { AlwaysSelectOpenedFile = !settings.AlwaysSelectOpenedFile });
+        MenuItem click = new() { Header = "Open Files with Single Click", ToggleType = MenuItemToggleType.CheckBox, IsChecked = settings.OpenFilesWithSingleClick };
+        click.Click += (_, _) => ApplySettings(settings with { OpenFilesWithSingleClick = !settings.OpenFilesWithSingleClick });
         IReadOnlyList<Control> own = Explorer.Options();
-        return own.Count == 0 ? [follow] : [follow, new Separator(), .. own];
+        return own.Count == 0 ? [follow, click] : [follow, click, new Separator(), .. own];
     }
 
     /// <summary>One of the Explorer's own actions, on its row.</summary>
