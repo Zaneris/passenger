@@ -95,6 +95,9 @@ public static class AppActions
     public const string ShowLiveTree = "app.showLiveTree";
     public const string SelectElement = "app.liveTree.selectElement";
 
+    // Passenger made the script editor of the Godot found, in its editor settings: no key of Rider's.
+    public const string GodotScriptEditor = "app.godot.scriptEditor";
+
     // The Endpoints window over the folder's .http files, and Test of the request chosen there: no key of Rider's.
     public const string ShowEndpoints = "app.showEndpoints";
     public const string TestEndpoint = "app.endpoints.test";

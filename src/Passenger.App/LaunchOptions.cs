@@ -82,6 +82,11 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         for (int i = 0; i < args.Count; i++)
         {
             string flag = args[i];
+            if (flag.Length == 0)
+            {
+                // Names nothing: Godot's editor fills in an empty project for a script outside its project.
+                continue;
+            }
             given.Add(flag);
             if (!flag.StartsWith('-'))
             {

@@ -58,13 +58,13 @@ public static class GodotLaunch
         return words is [{ Length: > 0 } program, ..] ? (program, [.. words.Skip(1)]) : null;
     }
 
-    /// <summary>The plan of a Godot project's configuration that names no program of its own: its game, or its editor
-    /// (<see cref="RunConfiguration.GodotEditor"/>), on the Godot found, the configuration's arguments after those that
-    /// start it, in its working folder or else the Godot project's. Throws a <see cref="LaunchException"/> saying why it
-    /// cannot: no project.godot, no Godot found or one that cannot run C#, a Godot.NET.Sdk (<paramref name="sdk"/>) the Godot
-    /// is too old for, no scene for the game to start in, or a project.godot that loads another assembly than the project builds.</summary>
+    /// <summary>The plan of a Godot project's configuration that names no program of its own: its game, or its editor on the
+    /// scene of the file at hand (<see cref="GodotProject.SceneOf"/>), on the Godot found, the configuration's arguments after
+    /// those that start it, in its working folder or else the Godot project's. Throws a <see cref="LaunchException"/> saying
+    /// why not: no project.godot, no Godot that runs C#, a Godot.NET.Sdk (<paramref name="sdk"/>) newer than the Godot, no
+    /// scene for the game to start in, or a project.godot that loads another assembly than the project builds.</summary>
     internal static async Task<LaunchPlan> PlanAsync(RunConfiguration configuration, ProjectModel project, string folder, string target, string? framework,
-        Func<string, string> expand, IReadOnlyDictionary<string, string> environment, string? setting, string? sdk, CancellationToken cancel)
+        Func<string, string> expand, IReadOnlyDictionary<string, string> environment, string? setting, string? sdk, CancellationToken cancel, string? atHand = null)
     {
         GodotProject game = GodotProject.Read(folder)
             ?? throw new LaunchException($"{configuration.Name} cannot run: {folder} holds no {GodotProject.FileName}, which makes it the Godot project Godot runs");
@@ -94,6 +94,11 @@ public static class GodotLaunch
         if (configuration.GodotEditor)
         {
             arguments.Add("--editor");
+            // The scene at hand, or one its script is attached in, opens in the editor, unless the configuration names one.
+            if (atHand is not null && !own.Any(IsScene) && await BackgroundWork.Run(() => GodotProject.SceneOf(folder, atHand, game.MainScene)) is { } scene)
+            {
+                arguments.Add(GodotProject.ResourcePath(folder, scene));
+            }
         }
         int leading = arguments.Count;
         arguments.AddRange(own);
@@ -119,6 +124,5 @@ public static class GodotLaunch
     }
 
     /// <summary>Whether an argument names a scene for Godot to start in.</summary>
-    private static bool IsScene(string argument) =>
-        argument.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase) || argument.EndsWith(".scn", StringComparison.OrdinalIgnoreCase);
+    private static bool IsScene(string argument) => GodotProject.IsScene(argument);
 }

@@ -127,6 +127,31 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         }
     }
 
+    /// <summary>The editor's configuration opens the scene at hand in Godot's editor, and for the script at hand the scene
+    /// it is attached in.</summary>
+    [AvaloniaFact]
+    public void Godots_editor_opens_the_scene_at_hand_or_the_one_the_script_at_hand_is_attached_in()
+    {
+        MainWindow window = game.Open(null, languageServer: false);
+        try
+        {
+            string folder = PathNames.Canonical(game.Folder);
+            RunConfiguration edited = Generated(window, $"Spinner: {RunConfiguration.GodotEditorName}");
+            foreach (string atHand in (string[])["Main.cs", "main.tscn"])
+            {
+                Assert.Null(window.OpenFile(Path.Combine(folder, atHand)));
+                Ui.Settle();
+                (LaunchPlan? editor, string? problem) = Ui.Await(window.Builds.ResolvePlanAsync(edited, null), "the editor's plan", TimeSpan.FromMinutes(1));
+                Assert.True(editor?.Arguments.SequenceEqual(["--path", folder, "--editor", "res://main.tscn"]) == true,
+                    $"With {atHand} at hand, Godot's editor was to open res://main.tscn; {(editor is null ? $"it has no plan: {problem}" : $"it starts with {string.Join(' ', editor.Arguments)}")}");
+            }
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>Run with Hot Reload on starts the game held for a quiet debugger, nothing of a debug session shown: an edit to
     /// the method its _Process calls, applied by Apply Hot Reload Changes, is what the game then prints in the Run console.</summary>
     [AvaloniaFact]

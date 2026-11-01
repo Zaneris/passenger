@@ -87,6 +87,7 @@ public partial class MainWindow : IdeWindow
         AddBreadcrumbs();
         AddBookmarks();
         AddEndpoints();
+        AddGodotEditor();
         AddRoutes();
         AddRequestMarks();
         AddRequests();

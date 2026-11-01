@@ -697,7 +697,7 @@ public sealed partial class BuildRunController
         try
         {
             return (await LaunchPlan.ResolveAsync(arguments is null ? chosen : chosen with { Arguments = arguments }, session.Projects, session.Workspace, parts.StateFolder(), stop,
-                parts.Settings().GodotExecutable), null);
+                parts.Settings().GodotExecutable, parts.Editors.Active?.Path), null);
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
         {

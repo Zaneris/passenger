@@ -1,4 +1,5 @@
 using System.Text;
+using Passenger.Core;
 
 namespace Passenger.Workspace;
 
@@ -31,6 +32,62 @@ public sealed record GodotProject(string Folder, string? Name, string? MainScene
         Dictionary<string, string> values = Strings(text);
         return new GodotProject(folder, values.GetValueOrDefault("application/config/name"), values.GetValueOrDefault("application/run/main_scene"),
             values.GetValueOrDefault("dotnet/project/assembly_name"));
+    }
+
+    /// <summary>The scenes Godot's editor opens from its command line, as their extensions say.</summary>
+    public static bool IsScene(string path) =>
+        path.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".scn", StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith(".escn", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A project file's <c>res://</c> path.</summary>
+    public static string ResourcePath(string folder, string path) => "res://" + Path.GetRelativePath(folder, path).Replace('\\', '/');
+
+    /// <summary>The scene of a Godot project to open for a file of it: the file itself when it is a scene, else a text scene
+    /// that uses it as a resource (a script attached to one of its nodes), the main scene first, then by path; null for none.
+    /// Its own folders only, so neither Godot's cache (.godot) nor the build's output is read.</summary>
+    public static string? SceneOf(string folder, string file, string? mainScene)
+    {
+        if (!PathNames.IsUnder(file, folder))
+        {
+            return null;
+        }
+        if (IsScene(file))
+        {
+            return File.Exists(file) ? file : null;
+        }
+        string used = ResourcePath(folder, file);
+        List<string> scenes = [.. PathNames.FilesUnder(folder, ProjectFolders.Enters).SelectMany(f => f.Files)
+            .Where(f => f.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".escn", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(f => mainScene is not null && ResourcePath(folder, f) == mainScene ? 0 : 1).ThenBy(f => f, StringComparer.Ordinal)];
+        foreach (string scene in scenes)
+        {
+            try
+            {
+                if (Uses(File.ReadAllText(scene), used))
+                {
+                    return scene;
+                }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                // A scene that cannot be read names nothing to open.
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Whether a text scene names a resource by its <c>res://</c> path among its external resources.</summary>
+    public static bool Uses(string scene, string resource)
+    {
+        string named = $"path=\"{resource}\"";
+        foreach (string line in scene.Split('\n'))
+        {
+            if (line.StartsWith("[ext_resource", StringComparison.Ordinal) && line.Contains(named, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>Every value of the text that is a string, by its section and key ("application/config/name"); a key set
@@ -85,7 +142,7 @@ public sealed record GodotProject(string Folder, string? Name, string? MainScene
 
     /// <summary>A quoted string from its opening quote, its escapes read, and where the text goes on after it; one never
     /// closed runs to the text's end.</summary>
-    private static (string Value, int Next) Quoted(string text, int quote)
+    internal static (string Value, int Next) Quoted(string text, int quote)
     {
         StringBuilder value = new();
         int at = quote + 1;
@@ -106,7 +163,7 @@ public sealed record GodotProject(string Folder, string? Name, string? MainScene
     }
 
     /// <summary>Where a value other than a string ends: its line's end, or past the brackets it opens and the strings in them.</summary>
-    private static int ValueEnd(string text, int at)
+    internal static int ValueEnd(string text, int at)
     {
         int depth = 0;
         while (at < text.Length)
@@ -134,13 +191,13 @@ public sealed record GodotProject(string Folder, string? Name, string? MainScene
         return at;
     }
 
-    private static int LineEnd(string text, int at)
+    internal static int LineEnd(string text, int at)
     {
         int end = text.IndexOf('\n', at);
         return end < 0 ? text.Length : end + 1;
     }
 
-    private static int SkipBlank(string text, int at)
+    internal static int SkipBlank(string text, int at)
     {
         while (at < text.Length && char.IsWhiteSpace(text[at]))
         {
@@ -149,7 +206,7 @@ public sealed record GodotProject(string Folder, string? Name, string? MainScene
         return at;
     }
 
-    private static int SkipSpaces(string text, int at)
+    internal static int SkipSpaces(string text, int at)
     {
         while (at < text.Length && text[at] is ' ' or '\t')
         {

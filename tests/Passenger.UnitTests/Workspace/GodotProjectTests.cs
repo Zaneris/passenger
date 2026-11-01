@@ -61,4 +61,24 @@ public class GodotProjectTests
         Assert.True(project is { Name: "Second", MainScene: null, AssemblyName: null },
             $"project.godot read as {project}: a main scene commented out or set in another section would have the game refused for the wrong reason or run with none");
     }
+
+    [Fact]
+    public void A_scene_uses_a_script_its_external_resources_name_by_its_res_path()
+    {
+        const string Scene = """
+            [gd_scene load_steps=2 format=3 uid="uid://c1"]
+
+            [ext_resource type="Script" uid="uid://b2" path="res://Scripts/Player.cs" id="1_ab"]
+
+            [node name="Main" type="Node2D"]
+            script = ExtResource("1_ab")
+            description = "path=\"res://Scripts/Enemy.cs\""
+
+            """;
+
+        Assert.True(GodotProject.Uses(Scene, "res://Scripts/Player.cs") && !GodotProject.Uses(Scene, "res://Scripts/Enemy.cs") && !GodotProject.Uses(Scene, "res://Player.cs"),
+            "A scene was taken to use a script none of its external resources names, or not the one it names, so Godot's editor would open the wrong scene");
+        Assert.True(GodotProject.IsScene("res://main.tscn") && GodotProject.IsScene("Level.SCN") && !GodotProject.IsScene("Main.cs"),
+            "A scene was not told from a script by its extension");
+    }
 }

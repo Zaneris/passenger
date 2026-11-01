@@ -120,11 +120,11 @@ public sealed partial record LaunchPlan
 
     /// <summary>Works out what a configuration launches among the open folder's projects (of <paramref name="workspace"/>,
     /// whose solution's properties MSBuild is given), asking MSBuild, with no build, where the project builds, where and how
-    /// dotnet run runs it, and any property its values name; a Passenger it launches keeps its state in its sandbox/, a
-    /// Godot project's game runs on the Godot <paramref name="godot"/> (Settings' line) names or found (<see cref="GodotLaunch"/>).
-    /// Throws a <see cref="LaunchException"/> saying why it cannot: a profile's kind, a project unloaded, MSBuild, no Godot.</summary>
+    /// dotnet run runs it, and any property its values name; a Passenger it launches keeps its state in its sandbox/, a Godot
+    /// project runs on the Godot <paramref name="godot"/> names or found, its editor on the file at hand's scene (<see
+    /// cref="GodotLaunch"/>). Throws a <see cref="LaunchException"/> saying why not: a profile's kind, a project unloaded, MSBuild, no Godot.</summary>
     public static async Task<LaunchPlan> ResolveAsync(RunConfiguration configuration, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace, string stateFolder,
-        CancellationToken cancel = default, string? godot = null)
+        CancellationToken cancel = default, string? godot = null, string? atHand = null)
     {
         if (configuration.Unsupported is { } why)
         {
@@ -175,7 +175,7 @@ public sealed partial record LaunchPlan
         if (configuration.Program.Length == 0 && project.GodotFolder is { } game)
         {
             return await GodotLaunch.PlanAsync(configuration, project, game, target, framework, Expand, Variables(), godot,
-                properties.GetValueOrDefault(MSBuildNames.GodotSdkVersion), cancel);
+                properties.GetValueOrDefault(MSBuildNames.GodotSdkVersion), cancel, atHand);
         }
         List<string> arguments = [.. CommandLine.Split(Expand(configuration.Arguments))];
         IReadOnlyList<string> ofProject = [];

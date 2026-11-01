@@ -59,6 +59,9 @@ public static class Refusals
     /// closed.</summary>
     public static string NoFolderTo(string verb) => $"Nothing to {verb}: no folder is open";
 
+    /// <summary>An action on a Godot project asked for in a folder that holds none.</summary>
+    public const string NoGodotProject = "The open folder holds no Godot project (project.godot)";
+
     /// <summary>A build or publish asked for while another of the window's runs: one builds at a time.</summary>
     public const string Building = "Another build is running";
 
