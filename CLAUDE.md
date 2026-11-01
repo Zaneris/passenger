@@ -321,12 +321,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   edited in place as `ConfigurationEdit`s), `LaunchPlan` (one resolution for Run, Debug, Profile, Hot Reload and a
   debugged test host; a RunCommand naming another program run as `dotnet run` runs it, `OtherProgram`; a Blazor Web
   App's client no program of its own, `ProjectModel.IsBrowserClient`; a Passenger it launches keeps its state in the
-  launcher's `sandbox/`; a Godot project's game and editor through `GodotLaunch`, on the Godot `GodotExecutables`
-  finds, a launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (`ILiveTreeSource`,
-  `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's build skipped while what its last build read and wrote stands, a build
-  under way waited out first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia previewers
-  holding its output (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time
-  (`ConsoleWritten`).
+  launcher's `sandbox/`; a Godot project's game and editor through `GodotLaunch`, on the Godot `GodotExecutables` finds,
+  a launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (`ILiveTreeSource`,
+  `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's build skipped while
+  what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`; on Windows a build's
+  first step lets go of the Avalonia previewers holding its output (`BuildRunController.LettingGo`); a console's lines
+  are heard one stream at a time (`ConsoleWritten`).
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach,
   Restart and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time
   (`TakeStartAsync`); Stop ends every session and recording before the programs go.
