@@ -87,6 +87,11 @@
     <ProjectReference Include="../Passenger.TestFrames/Passenger.TestFrames.csproj" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
     <Compile Include="../Passenger.TestFrames/Variables.cs" Link="Testing/TestFramesVariables.cs" />
+    <!-- Built first and carried under updatehandlers/, never linked: a program debugged with Hot Reload loads it
+         (Debugging/UpdateHandlerHook.cs). It is built once for every platform. -->
+    <ProjectReference Include="../Passenger.UpdateHandlers/Passenger.UpdateHandlers.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
+    <Compile Include="../Passenger.UpdateHandlers/Wire.cs" Link="Debugging/UpdateHandlersWire.cs" />
     <!-- Built first and carried under host/, never linked: MSBuild's evaluation runs in its own process on the machine's
          dotnet (Passenger.Workspace's ProjectHost.cs), so it is built for none of the systems the app is published for. -->
     <ProjectReference Include="../Passenger.Host/Passenger.Host.csproj" ReferenceOutputAssembly="false" Private="false"
@@ -225,6 +230,19 @@
     <ItemGroup>
       <TestFramesFile Include="@(TestFramesAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(TestFramesAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
       <None Include="@(TestFramesFile)" Link="testframes/%(TestFramesFile.Filename)%(TestFramesFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The update handlers' hook becomes this project's output under updatehandlers/: its own assembly alone. -->
+  <Target Name="IncludeUpdateHandlers" BeforeTargets="AssignTargetPaths">
+    <MSBuild Projects="../Passenger.UpdateHandlers/Passenger.UpdateHandlers.csproj" Targets="GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="UpdateHandlersAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <UpdateHandlersFile Include="@(UpdateHandlersAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(UpdateHandlersAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
+      <None Include="@(UpdateHandlersFile)" Link="updatehandlers/%(UpdateHandlersFile.Filename)%(UpdateHandlersFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>

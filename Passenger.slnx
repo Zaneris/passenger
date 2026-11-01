@@ -19,6 +19,7 @@
     <Project Path="src/Passenger.Roslyn.Extension/Passenger.Roslyn.Extension.csproj" />
     <Project Path="src/Passenger.Terminal/Passenger.Terminal.csproj" />
     <Project Path="src/Passenger.TestFrames/Passenger.TestFrames.csproj" />
+    <Project Path="src/Passenger.UpdateHandlers/Passenger.UpdateHandlers.csproj" />
     <Project Path="src/Passenger.Text/Passenger.Text.csproj" />
     <Project Path="src/Passenger.Vcs/Passenger.Vcs.csproj" />
     <Project Path="src/Passenger.Workspace/Passenger.Workspace.csproj" />

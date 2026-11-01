@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Passenger's startup hook (DOTNET_STARTUP_HOOKS) in a program it debugs with Hot Reload, never in the program as built:
+       after the debugger applies an update, Passenger tells it over a socket, and it calls the program's
+       MetadataUpdateHandlers as the runtime's own Hot Reload agent does, so a Blazor component shows the edit at once.
+       Carried under updatehandlers/ beside Passenger, its own assembly alone, carrying nothing else. -->
+  <PropertyGroup>
+    <!-- The oldest .NET Passenger debugs a program's Hot Reload on, so it loads into any of them. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Passenger.UpdateHandlers</RootNamespace>
+    <!-- The calls into libc that OwnEnvironment makes are generated as unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The runtime's variables, and the startup hooks' rule (this hook first, taken out as it starts, out of the process's
+         own environment too), as Passenger names them. -->
+    <Compile Include="../Passenger.Core/RuntimeVariables.cs" Link="RuntimeVariables.cs" />
+    <Compile Include="../Passenger.Core/StartupHooks.cs" Link="StartupHooks.cs" />
+    <Compile Include="../Passenger.Core/OwnEnvironment.cs" Link="OwnEnvironment.cs" />
+  </ItemGroup>
+</Project>

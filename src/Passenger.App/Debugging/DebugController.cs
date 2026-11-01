@@ -500,6 +500,10 @@ public sealed class DebugController : IDisposable
         foreach ((IHotReloadTarget target, HotReloadOutcome its) in quiet)
         {
             target.Say($"Hot Reload: {its.Said}", Unapplied(its));
+            if (its.Result == HotReloadResult.Applied && target is RunningReload run && toldUnhandled.Add(run))
+            {
+                target.Say(HandlersUnreached, false);
+            }
         }
         // The program applied to is its own tab's, whichever is chosen now; one ended or restarted meanwhile is told nothing.
         DebugTab? applied = tabs.Count > 0 ? tabs[0].Tab : null;
@@ -519,6 +523,25 @@ public sealed class DebugController : IDisposable
 
         static bool Unapplied(HotReloadOutcome its) => its.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply);
     }
+
+    /// <summary>The program's update handlers told of an update it took, so a Blazor component renders it at once; a program
+    /// in a container or on another machine, which Passenger's hook cannot reach, says once that its handlers are not called.</summary>
+    private static void ToldHandlers(DebugTab tab, DebugSession session)
+    {
+        if (tab.Handlers is { } hook)
+        {
+            hook.Updated();
+        }
+        else if (session.Elsewhere && !tab.ToldUnhandled)
+        {
+            tab.ToldUnhandled = true;
+            tab.Console.Append($"{HandlersUnreached}\n");
+        }
+    }
+
+    /// <summary>Why a program in a container or on another machine shows an update only as its code next runs.</summary>
+    internal const string HandlersUnreached = "Hot Reload: Passenger's hook cannot reach a program in a container or on another machine, so its update handlers "
+        + "are not called: a Blazor component shows an edit only as it next renders";
 
     /// <summary>A tab's program that took an apply: the files' lines as the update was made of them are its program's from
     /// now (the built lines forget the edits it took in), their breakpoints are bound again in the new code, and a paused
@@ -542,6 +565,10 @@ public sealed class DebugController : IDisposable
             executionPoint = (now.Path, Built(now.Path, now.Line));
         }
         await session.SendBreakpointsAgainAsync(files);
+        if (its.Result == HotReloadResult.Applied)
+        {
+            ToldHandlers(tab, session);
+        }
         if (its.Result == HotReloadResult.Applied && session.State == DebugState.Paused && session.StoppedThread is int thread && tab == chosen && !disposed)
         {
             try
@@ -571,8 +598,14 @@ public sealed class DebugController : IDisposable
             ? arguments => run(plan.Name, arguments)
             : null;
         bool hotReloadOn = HotReloadOn();
+        // A program on this machine debugged with Hot Reload runs its update handlers as each update lands, through Passenger's hook.
+        UpdateHandlerHook? hook = null;
+        if (hotReloadOn && !elsewhere && place is null && UpdateHandlerHook.For(plan) is ({ } made, { } hooked))
+        {
+            (hook, plan) = (made, hooked);
+        }
         return OpenAsync((built, log, output, starting) => DebugSession.LaunchAsync(plan, Breakpoints, built, log, output, inTerminal, ColumnOf, hotReloadOn, starting, elsewhere, place),
-            plan.Name, launched: true, inTerminal: inTerminal is not null, hotReloadOn: hotReloadOn, tab: tab, app: app, plan: plan, edits: edits);
+            plan.Name, launched: true, inTerminal: inTerminal is not null, hotReloadOn: hotReloadOn, tab: tab, app: app, plan: plan, edits: edits, hook: hook);
     }
 
     /// <summary>The column (from one) a line (from zero) asks the debugger for, in the file's text (an open file's as it is
@@ -711,17 +744,23 @@ public sealed class DebugController : IDisposable
     /// Reload's changes together; its tab holds an inspected <paramref name="app"/> and given <paramref name="edits"/>.</summary>
     private async Task<string?> OpenAsync(Func<BuiltLines, Action<string>, Action<OutputEvent>, Action<DebugSession>, Task<DebugSession>> open, string name, bool launched,
         bool inTerminal = false, bool hotReloadOn = false, AdapterPlace? place = null, string? group = null, DebugTab? tab = null, LiveApp? app = null,
-        Run.LaunchPlan? plan = null, BuiltEdits? edits = null)
+        Run.LaunchPlan? plan = null, BuiltEdits? edits = null, UpdateHandlerHook? hook = null)
     {
         UiThread.Check();
+        // A start that opens no session lets go of its update handlers' hook with it.
+        string Unopened(string why)
+        {
+            hook?.Dispose();
+            return why;
+        }
         // A start that comes after its folder was left would open in the next folder's Debug window, which is not its own.
         if (disposed)
         {
-            return $"Could not debug {name}: its folder was closed";
+            return Unopened($"Could not debug {name}: its folder was closed");
         }
         if (ending)
         {
-            return "The workspace is ending";
+            return Unopened("The workspace is ending");
         }
         // A program debugged again takes its last session's place, which is let go first.
         if (tab is null && view.Sessions.FirstOrDefault(t => t.Name == name && t.IsLive) is { } again)
@@ -729,22 +768,29 @@ public sealed class DebugController : IDisposable
             if (again.Session is { Attached: true } held && HotReloadChanged(held))
             {
                 edits?.Dispose();
-                return LetsNoDebuggerGo(name);
+                return Unopened(LetsNoDebuggerGo(name));
             }
             await EndAsync(again);
             if (disposed)
             {
-                return $"Could not debug {name}: its folder was closed";
+                return Unopened($"Could not debug {name}: its folder was closed");
             }
         }
         if (disposed || ending)
         {
-            return "The workspace ended during launch";
+            return Unopened("The workspace ended during launch");
         }
         tab ??= Place(name);
         tab.Group = group ?? tab.Group;
         tab.App = app ?? tab.App;
         tab.Plan = plan;
+        tab.Handlers?.Dispose();
+        tab.Handlers = hook;
+        if (hook is not null)
+        {
+            DebugTab says = tab;
+            hook.Says = (line, error) => says.Console.Append($"{line}\n", error);
+        }
         // Followed since the build read the files where it began there, else from now: an edit made since is one Apply takes.
         BuiltEdits own = edits ?? Building(hotReloadOn);
         BuiltLines built = own.Lines;
@@ -934,6 +980,9 @@ public sealed class DebugController : IDisposable
     }
 
     private readonly List<RunningReload> running = [];
+
+    /// <summary>The programs run with Hot Reload told once that their update handlers are not called.</summary>
+    private readonly HashSet<RunningReload> toldUnhandled = [];
 
     /// <summary>The programs run with Hot Reload through the debugger, while they run.</summary>
     public IReadOnlyList<RunningReload> Running => running;
@@ -1906,6 +1955,8 @@ public sealed class DebugController : IDisposable
             StopFollowing(tab);
             tab.HasEnded = true;
             tab.HotReload?.End();
+            tab.Handlers?.Dispose();
+            tab.Handlers = null;
             tab.Lines = null;
         }
         tab.Console.Flush();

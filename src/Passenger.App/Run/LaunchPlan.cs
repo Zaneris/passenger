@@ -50,6 +50,9 @@ public sealed partial record LaunchPlan
 
     public string? Framework { get; init; }
 
+    /// <summary>The framework the program runs on ("net10.0"): the one chosen, else the project's own; null where unknown.</summary>
+    public string? RunsOn { get; init; }
+
     /// <summary>The build before launch, or null when the configuration launches what was built last.</summary>
     public BuildStep? Build { get; init; }
 
@@ -227,6 +230,7 @@ public sealed partial record LaunchPlan
             Project = project.Path,
             InBrowser = [.. project.WithReferenced(projects).Where(p => p.RunsInBrowser).Select(p => p.Path)],
             Framework = framework,
+            RunsOn = framework ?? project.TargetFrameworks.FirstOrDefault(),
             Build = configuration.BuildBeforeLaunch ? new BuildStep(project.Path, framework) : null,
             Built = built,
             Console = configuration.Console,

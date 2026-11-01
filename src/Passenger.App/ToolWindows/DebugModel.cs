@@ -57,6 +57,13 @@ public sealed class DebugTab(string name, OutputView console) : Observable, IHot
     /// <summary>The plan Debug launched its program by, where it serves; null for a program attached to.</summary>
     public Run.LaunchPlan? Plan { get; internal set; }
 
+    /// <summary>Passenger's hook in its program, told of each update Hot Reload applied so the program's update handlers run;
+    /// null for a program launched without it.</summary>
+    internal Debugging.UpdateHandlerHook? Handlers { get; set; }
+
+    /// <summary>Whether its console has said once that its program's update handlers are not called.</summary>
+    internal bool ToldUnhandled { get; set; }
+
     /// <summary>The programs it is debugged with (a container run's services, by its configuration's name): Hot Reload's
     /// changes go to each of them together.</summary>
     public string? Group { get; internal set; }
