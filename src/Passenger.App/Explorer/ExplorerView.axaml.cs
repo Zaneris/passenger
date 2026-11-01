@@ -32,6 +32,22 @@ public partial class ExplorerView : UserControl
     private readonly Border filterBar;
     private readonly Debounce filtering;
 
+    /// <summary>Under the rows, how many more files a filter matched than the tree shows.</summary>
+    private readonly TextBlock more = new() { Classes = { StyleClasses.EmptyText }, IsVisible = false };
+
+    /// <summary>Filters asked for, numbering each: only the newest one's answer lands.</summary>
+    private int asked;
+
+    /// <summary>The filter whose answer landed last, by its number.</summary>
+    private int answered;
+
+    /// <summary>The newest answer landed, its files by full path, which the rows are narrowed to again as they are made
+    /// anew; null while the filter is empty.</summary>
+    private ExplorerFilter.Matches? matched;
+
+    /// <summary>Down or Enter pressed in the filter before its answer landed, which then chooses the first file shown.</summary>
+    private bool chooseFirst;
+
     public ExplorerView()
     {
         InitializeComponent();
@@ -39,17 +55,16 @@ public partial class ExplorerView : UserControl
         filterBar = ToolWindows.ToolBars.Top(filter);
         filterBar.IsVisible = false;
         Body.Children.Add(filterBar);
-        filtering = new Debounce(FilterPause, () =>
-        {
-            ApplyFilter();
-            return Task.CompletedTask;
-        });
+        more.Margin = new Thickness(16, 6);
+        Grid.SetRow(more, 2);
+        Body.Children.Add(more);
+        filtering = new Debounce(FilterPause, MatchAsync);
         filter.TextChanged += (_, _) =>
         {
             if (string.IsNullOrWhiteSpace(filter.Text))
             {
                 filtering.Stop();
-                ApplyFilter();
+                IdeErrors.Observe(MatchAsync());
             }
             else
             {
@@ -167,7 +182,7 @@ public partial class ExplorerView : UserControl
         {
             Rows.SelectedItem = again;
         }
-        Refilter();
+        Narrow();
         if (revealing is { } waiting)
         {
             Reveal(waiting);
@@ -230,6 +245,9 @@ public partial class ExplorerView : UserControl
         Tree.Clear();
         Rows.IsVisible = false;
         filterBar.IsVisible = false;
+        answered = ++asked;
+        matched = null;
+        more.IsVisible = false;
         ShowHint();
     }
 
@@ -237,7 +255,7 @@ public partial class ExplorerView : UserControl
     public void RefreshFolders(IEnumerable<string> folders)
     {
         Tree.RefreshFolders(folders);
-        Refilter();
+        Narrow();
     }
 
     /// <summary>A project unloaded or loaded again: its row made anew, chosen again if it was, and every other row as it
@@ -250,7 +268,7 @@ public partial class ExplorerView : UserControl
             Refresh();
             return;
         }
-        Refilter();
+        Narrow();
         if (chosen && Tree.Rows.FirstOrDefault(r => r.Kind == NodeKind.Project && r.Path == project) is { } again)
         {
             Rows.SelectedItem = again;
@@ -272,7 +290,7 @@ public partial class ExplorerView : UserControl
         bool keys = Rows.IsKeyboardFocusWithin;
         Take(workspace);
         Tree.UpdateProjects(updated);
-        Refilter();
+        Narrow();
         if (revealing is { } waiting)
         {
             Reveal(waiting);
@@ -323,7 +341,7 @@ public partial class ExplorerView : UserControl
     private void OnViewSwitchClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         Show(!Tree.IsSolutionView);
-        Refilter();
+        Narrow();
     }
 
     /// <summary>"Show files with the same names as nested": the Solution view nests by name as well as by
@@ -380,9 +398,9 @@ public partial class ExplorerView : UserControl
         Rows.ContainerFromIndex(index)?.Focus();
     }
 
-    /// <summary>The folder's files whose names hold a text, by full path, which the filter shows: the window's index of
-    /// them, which leaves out build output and what the walks pass over.</summary>
-    public Func<string, IEnumerable<string>>? FilesNamed { get; set; }
+    /// <summary>The folder's indexed files by their paths from its root, as the window's index has them now, which the
+    /// filter reads off the window's thread: the index leaves out build output and what the walks pass over.</summary>
+    public Func<(string Root, IReadOnlyList<string> Files)?>? IndexedFiles { get; set; }
 
     /// <summary>The filter's text: the rows narrowed to the files whose names hold it, with their folders.</summary>
     public string FilterText
@@ -391,6 +409,10 @@ public partial class ExplorerView : UserControl
         set => filter.Text = value;
     }
 
+    /// <summary>What the line under the rows says of the files the filter matched beyond those the tree shows; null while
+    /// it shows them all.</summary>
+    public string? MoreMatched => more.IsVisible ? more.Text : null;
+
     /// <summary>Gives the filter the keys, its text chosen: Find's keys while the Explorer has them.</summary>
     public void FocusFilter()
     {
@@ -398,40 +420,94 @@ public partial class ExplorerView : UserControl
         filter.SelectAll();
     }
 
-    /// <summary>The filter applied again to the rows as they now are (read again, or the folder's files changed), while it
-    /// has text.</summary>
+    /// <summary>The filter matched again among the folder's files as they now are (walked, or files came and went), while
+    /// it has text.</summary>
     public void Refilter()
     {
         if (!string.IsNullOrWhiteSpace(filter.Text))
         {
-            ApplyFilter();
+            IdeErrors.Observe(MatchAsync());
         }
     }
 
-    /// <summary>The rows narrowed to the files the filter's text names, or, its text gone, every row again as it was open
-    /// before, the row chosen meanwhile shown where it is.</summary>
-    private void ApplyFilter()
+    /// <summary>The files the filter's text names found off the window's thread, then the rows narrowed to them, unless a
+    /// newer filter was asked for meanwhile; its text gone, every row again as it was open before, the row chosen meanwhile
+    /// shown where it is.</summary>
+    private async Task MatchAsync()
     {
+        int ask = ++asked;
         string text = FilterText.Trim();
-        if (text.Length > 0)
+        if (text.Length == 0)
         {
-            Tree.Filter(FilesNamed?.Invoke(text) ?? []);
-            ShowHint();
+            answered = ask;
+            matched = null;
+            chooseFirst = false;
+            Unnarrow();
             return;
         }
-        if (Tree.IsFiltered)
+        ExplorerFilter.Matches found = new([], 0);
+        if (IndexedFiles?.Invoke() is ({ } root, { } files))
         {
-            string? chosen = Selected?.Path;
-            Tree.Unfilter();
-            if (chosen is not null && Selected is null)
+            found = await BackgroundWork.Run(() =>
             {
-                Reveal(chosen);
-            }
-            else if (Selected is { } still)
-            {
-                Rows.ScrollIntoView(still);
-            }
-            ShowHint();
+                ExplorerFilter.Matches named = ExplorerFilter.Of(files, text);
+                return named with { Files = [.. named.Files.Select(f => Path.Combine(root, f))] };
+            });
+        }
+        if (ask != asked)
+        {
+            return;
+        }
+        answered = ask;
+        matched = found;
+        Narrow();
+        if (chooseFirst)
+        {
+            chooseFirst = false;
+            ChooseFirstFile();
+        }
+    }
+
+    /// <summary>The rows narrowed to the files of the answer landed, as the tree now is; nothing while none has.</summary>
+    private void Narrow()
+    {
+        if (matched is not { } found)
+        {
+            return;
+        }
+        Tree.Filter(found.Files);
+        more.Text = $"{found.More:N0} more {Plural.Noun(found.More, "file")} {(found.More == 1 ? "matches" : "match")}: a longer filter narrows them";
+        more.IsVisible = found.More > 0;
+        ShowHint();
+    }
+
+    /// <summary>Every row again, as it was open before the filter, the row chosen meanwhile kept in sight.</summary>
+    private void Unnarrow()
+    {
+        more.IsVisible = false;
+        if (!Tree.IsFiltered)
+        {
+            return;
+        }
+        string? chosen = Selected?.Path;
+        Tree.Unfilter();
+        if (chosen is not null && Selected is null)
+        {
+            Reveal(chosen);
+        }
+        else if (Selected is { } still)
+        {
+            Rows.ScrollIntoView(still);
+        }
+        ShowHint();
+    }
+
+    /// <summary>The first file shown chosen, where no row is.</summary>
+    private void ChooseFirstFile()
+    {
+        if (Selected is null && Tree.Rows.FirstOrDefault(r => r.IsFile) is { } first)
+        {
+            Rows.SelectedItem = first;
         }
     }
 
@@ -455,17 +531,19 @@ public partial class ExplorerView : UserControl
         {
             filter.Text = string.Empty;
         }
-        else
+        else if (filtering.IsWaiting || answered != asked)
         {
+            // The answer is yet to land: the first file it shows is chosen once it does.
+            chooseFirst = true;
             if (filtering.IsWaiting)
             {
                 filtering.Stop();
-                ApplyFilter();
+                IdeErrors.Observe(MatchAsync());
             }
-            if (Selected is null && Tree.Rows.FirstOrDefault(r => r.IsFile) is { } first)
-            {
-                Rows.SelectedItem = first;
-            }
+        }
+        else
+        {
+            ChooseFirstFile();
         }
         FocusRows();
         e.Handled = true;

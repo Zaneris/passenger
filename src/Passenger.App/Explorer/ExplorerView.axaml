@@ -14,8 +14,8 @@
             <TextBlock Classes="paneTitle" Text="Explorer" VerticalAlignment="Center" />
         </DockPanel>
         <!-- The filter's bar goes in the first row, after the tree among the parts, so the Explorer's action gives the
-             tree's row the keys and only Find's keys give them to the filter. -->
-        <Grid Name="Body" RowDefinitions="Auto,*">
+             tree's row the keys and only Find's keys give them to the filter; the last row says what it left out. -->
+        <Grid Name="Body" RowDefinitions="Auto,*,Auto">
             <Panel Name="Surface" Grid.Row="1">
                 <TextBlock Name="Hint" Classes="muted" Text="Nothing open"
                            HorizontalAlignment="Center" VerticalAlignment="Center" />

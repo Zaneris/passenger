@@ -136,10 +136,8 @@ public partial class MainWindow
         return own.Count == 0 ? [follow, click] : [follow, click, new Separator(), .. own];
     }
 
-    /// <summary>The folder's files whose names hold a text, by full path, as its index has them: the Explorer's filter's.</summary>
-    private IEnumerable<string> FilesNamed(string text) => session.Index.Root is { } root
-        ? session.Index.Files.Where(f => Path.GetFileName(f.AsSpan()).Contains(text, StringComparison.OrdinalIgnoreCase)).Select(f => Path.Combine(root, f))
-        : [];
+    /// <summary>The folder's indexed files by their paths from its root, as its index has them now: the Explorer's filter's.</summary>
+    private (string Root, IReadOnlyList<string> Files)? IndexedFiles() => session.Index.Root is { } root ? (root, session.Index.Files) : null;
 
     /// <summary>One of the Explorer's own actions, on its row.</summary>
     private void Row(string id, string title, Action<ExplorerNode> run, Func<ExplorerNode, string?> whyNot, Func<ExplorerNode, string>? titleIn = null) =>

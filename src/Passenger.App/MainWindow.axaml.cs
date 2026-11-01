@@ -114,7 +114,7 @@ public partial class MainWindow : IdeWindow
         AddPreview();
         AddMarkdownPreview();
         Explorer.FileOpened += (_, path) => OpenFile(path);
-        Explorer.FilesNamed = FilesNamed;
+        Explorer.IndexedFiles = IndexedFiles;
         Explorer.FileClicked += (_, path) =>
         {
             if (OpenFile(path) is null)

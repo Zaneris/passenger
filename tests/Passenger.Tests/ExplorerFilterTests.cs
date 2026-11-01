@@ -95,6 +95,80 @@ public sealed class ExplorerFilterTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A one-letter filter over a large folder narrows the tree to its first few hundred files and says how many
+    /// more match, the names matched off the window's thread: over 20,000 files it allocates on the UI thread under 8 bytes
+    /// for each file more than over 2,000, the least of three tries, where every file matched used to be placed in the tree.</summary>
+    [AvaloniaFact]
+    public void A_one_letter_filter_over_twenty_thousand_files_shows_the_first_of_them_and_costs_the_window_what_it_shows()
+    {
+        string small = PathNames.Canonical(TestFolders.Create("explorer-filter-small-"));
+        string large = PathNames.Canonical(TestFolders.Create("explorer-filter-large-"));
+        try
+        {
+            Areas(small, 10);
+            Areas(large, 100);
+            MainWindow window = new() { Width = 1000, Height = 700 };
+            window.Show();
+            (long few, int fewShown, string? fewMore) = OneLetter(window, small, 2000);
+            (long many, int manyShown, string? manyMore) = OneLetter(window, large, 20_000);
+            TestContext.Current.TestOutputHelper?.WriteLine($"A one-letter filter allocated {few / 1024} KB over 2,000 files, {many / 1024} KB over 20,000");
+            Assert.True(fewShown == ExplorerFilter.Most && manyShown == ExplorerFilter.Most,
+                $"A filter every file matches showed {fewShown} files over 2,000 and {manyShown} over 20,000, where the tree shows the first {ExplorerFilter.Most}");
+            Assert.Equal($"{1500:N0} more files match: a longer filter narrows them", fewMore);
+            Assert.Equal($"{19_500:N0} more files match: a longer filter narrows them", manyMore);
+            Assert.True(many - few < 8 * 18_000,
+                $"A one-letter filter over 20,000 files allocated {many / 1024} KB on the UI thread, against {few / 1024} KB over 2,000: 8 bytes or more for each file more");
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(small);
+            TestFolders.Delete(large);
+        }
+    }
+
+    /// <summary>The least a one-letter filter every file matches allocates on the UI thread of three tries, from Find's
+    /// keys to its rows drawn, each emptied after; and the files it shows and what it says of the rest.</summary>
+    private static (long Bytes, int Shown, string? More) OneLetter(MainWindow window, string root, int files)
+    {
+        window.OpenFolder(root);
+        Ui.WaitFor(() => window.FileIndex.Count >= files && !window.FileIndex.IsWalking && window.ExplorerView.Tree.Root is not null,
+            $"the folder's {files} files indexed and shown");
+        long least = long.MaxValue;
+        int shown = 0;
+        string? more = null;
+        for (int time = 0; time < 3; time++)
+        {
+            Ui.Click(Filter(window));
+            Ui.Settle();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            window.KeyTextInput("x");
+            Ui.Settle();
+            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            shown = window.ExplorerView.Tree.Rows.Count(r => r.IsFile);
+            more = window.ExplorerView.MoreMatched;
+            Ui.Press(window, "ESCAPE");
+            Ui.Settle();
+            Assert.True(window.ExplorerView.MoreMatched is null, $"The line under the rows still says \"{window.ExplorerView.MoreMatched}\" once the filter was emptied");
+        }
+        return (least, shown, more);
+    }
+
+    /// <summary>Areas of 200 empty files each, of eight kinds, in two folders by turns, every name holding an x.</summary>
+    private static void Areas(string root, int areas)
+    {
+        string[] kinds = ["Controller", "Service", "Repository", "ViewModel", "Handler", "Validator", "Mapper", "Options"];
+        for (int area = 0; area < areas; area++)
+        {
+            string dir = Path.Combine(root, $"Area{area}", area % 2 == 0 ? "Features" : "Infrastructure");
+            Directory.CreateDirectory(dir);
+            for (int i = 0; i < 200; i++)
+            {
+                File.WriteAllText(Path.Combine(dir, $"{kinds[i % kinds.Length]}{area}x{i}.cs"), string.Empty);
+            }
+        }
+    }
+
     private static TextBox Filter(MainWindow window) =>
         window.ExplorerView.GetVisualDescendants().OfType<TextBox>().Single(t => t.PlaceholderText?.EndsWith("to filter", StringComparison.Ordinal) == true);
 
