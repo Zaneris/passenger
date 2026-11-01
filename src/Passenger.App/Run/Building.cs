@@ -31,6 +31,9 @@ public enum ProblemSeverity
 {
     Error,
     Warning,
+
+    /// <summary>What a language server says of the code that is neither (a suggestion), listed after warnings.</summary>
+    Message,
 }
 
 /// <summary>How a build ended, as each caller hears it.</summary>

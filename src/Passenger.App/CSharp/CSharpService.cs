@@ -401,7 +401,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         ["tab_width"] = indent.TabWidth.ToString(System.Globalization.CultureInfo.InvariantCulture),
     };
 
-    /// <summary>Every error and warning the solution-wide analysis has found, by file, each where it starts as the editor
+    /// <summary>Every error, warning and message the solution-wide analysis has found, by file, each where it starts as the editor
     /// counts the file's lines; null with it off. An open file's are its own pull's, as they stand.</summary>
     public IReadOnlyList<SolutionProblem>? SolutionProblems
     {
@@ -427,7 +427,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
     }
 
-    /// <summary>One file's errors and warnings as <see cref="SolutionProblems"/> has them, for a file it said changed.</summary>
+    /// <summary>One file's problems as <see cref="SolutionProblems"/> has them, for a file it said changed.</summary>
     public IReadOnlyList<SolutionProblem> SolutionProblemsOf(string path) =>
         !solutionWide ? [] : OpenAt(path) is { } open ? OpenProblems(open.Key, open.Value) : analysed.GetValueOrDefault(path) ?? [];
 
@@ -444,7 +444,8 @@ public sealed partial class CSharpService : IAsyncDisposable
         return null;
     }
 
-    /// <summary>An open file's errors and warnings: its own pull's, which the workspace's leave out and which follow typing.</summary>
+    /// <summary>An open file's errors, warnings and messages: its own pull's, which the workspace's leave out and which follow
+    /// typing.</summary>
     private static List<SolutionProblem> OpenProblems(OpenDocument open, CSharpDocument features)
     {
         List<SolutionProblem> problems = [];
@@ -452,7 +453,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         ServerLines? lines = null;
         foreach (Diagnostic diagnostic in features.Diagnostics)
         {
-            if (diagnostic.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning && (seen ??= []).Add((diagnostic.Range, diagnostic.Message)))
+            if (Listed(diagnostic) && (seen ??= []).Add((diagnostic.Range, diagnostic.Message)))
             {
                 lines ??= ServerLines.Of(open.Text.Snapshot);
                 problems.Add(new SolutionProblem(open.Path, diagnostic, ServerPlaces.PositionOf(lines, diagnostic.Range.Start)));
@@ -460,6 +461,10 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
         return problems;
     }
+
+    /// <summary>Whether Problems lists a diagnostic: an error, a warning or a message, never a hint the editor alone shows.</summary>
+    private static bool Listed(Diagnostic diagnostic) =>
+        diagnostic.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning or DiagnosticSeverity.Information;
 
     /// <summary>An open file's own diagnostics arrived: the solution's problems include them.</summary>
     internal void FileProblemsChanged(OpenDocument document)
@@ -492,7 +497,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             List<SolutionProblem> problems = [];
             foreach (Diagnostic diagnostic in report.Items ?? [])
             {
-                if (diagnostic.Severity is not (DiagnosticSeverity.Error or DiagnosticSeverity.Warning))
+                if (!Listed(diagnostic))
                 {
                     continue;
                 }

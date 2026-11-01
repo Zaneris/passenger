@@ -131,12 +131,19 @@ public partial class MainWindow
         string? project = null;
         foreach (Marker marker in file.Markers)
         {
-            if (marker.Kind is not (MarkerKind.Error or MarkerKind.Warning))
+            ProblemSeverity? severity = marker.Kind switch
+            {
+                MarkerKind.Error => ProblemSeverity.Error,
+                MarkerKind.Warning => ProblemSeverity.Warning,
+                MarkerKind.Info => ProblemSeverity.Message,
+                _ => null,
+            };
+            if (severity is null)
             {
                 continue;
             }
             int start = Math.Min(marker.Range.Start, text.Length);
-            problems.Add(new Problem(marker.Kind == MarkerKind.Error ? ProblemSeverity.Error : ProblemSeverity.Warning, marker.Message, null,
+            problems.Add(new Problem(severity.Value, marker.Message, null,
                 file.Path, text.GetPosition(start), project ??= ProjectNameOf(file.Path)) { Link = marker.Link, LinkText = marker.LinkText });
         }
         Bottom.Problems.ShowFile(file.Name, problems);
@@ -166,7 +173,12 @@ public partial class MainWindow
 
     /// <summary>One of the solution's problems as Problems lists it, under its file's project.</summary>
     private static Problem ProblemOf(SolutionProblem problem, string project) => new(
-        problem.Diagnostic.Severity == DiagnosticSeverity.Error ? ProblemSeverity.Error : ProblemSeverity.Warning,
+        problem.Diagnostic.Severity switch
+        {
+            DiagnosticSeverity.Error => ProblemSeverity.Error,
+            DiagnosticSeverity.Warning => ProblemSeverity.Warning,
+            _ => ProblemSeverity.Message,
+        },
         problem.Diagnostic.Message,
         problem.Diagnostic.Code,
         problem.Path,

@@ -340,17 +340,7 @@ public sealed class TestsView : DockPanel
     /// those chosen.</summary>
     private ToggleButton Filter(string icon, string brush, string name, out TextBlock count)
     {
-        PathIcon mark = new();
-        mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(icon));
-        mark.Bind(PathIcon.ForegroundProperty, mark.GetResourceObservable(brush));
-        count = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
-        ToggleButton button = new()
-        {
-            Classes = { StyleClasses.Outcome },
-            Focusable = false,
-            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Children = { mark, count } },
-        };
-        ToolTip.SetTip(button, $"Filter {name}\nHold {(OperatingSystem.IsMacOS() ? "⌘" : "Ctrl")} to select multiple filters");
+        ToggleButton button = ToolButtons.Counted(icon, brush, $"Filter {name}\nHold {(OperatingSystem.IsMacOS() ? "⌘" : "Ctrl")} to select multiple filters", out count);
         button.AddHandler(PointerPressedEvent, (_, e) => adding = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta | KeyModifiers.Shift)) != 0,
             RoutingStrategies.Tunnel, handledEventsToo: true);
         return button;

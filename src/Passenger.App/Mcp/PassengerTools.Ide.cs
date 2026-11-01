@@ -482,10 +482,11 @@ public sealed partial class PassengerTools
         }
         ToolWindows.ProblemsModel view = window.BottomPanel.Problems;
         return new ProblemsInfo([.. view.ToolsetProblems.Select(Found)], [.. view.Problems.Select(Found)],
-            Session.CSharp?.SolutionProblems is { } solution ? [.. solution.Select(p => new Finding(p.Diagnostic.Severity == Lsp.DiagnosticSeverity.Error ? "error" : "warning", p.Diagnostic.Code,
+            Session.CSharp?.SolutionProblems is { } solution ? [.. solution.Where(p => p.Diagnostic.Severity is Lsp.DiagnosticSeverity.Error or Lsp.DiagnosticSeverity.Warning)
+                .Select(p => new Finding(p.Diagnostic.Severity == Lsp.DiagnosticSeverity.Error ? "error" : "warning", p.Diagnostic.Code,
                 p.Diagnostic.Message, Relative(p.Path), p.At.Line + 1, p.At.Column + 1))] : null);
 
-        Finding Found(Problem p) => new(p.Severity == ProblemSeverity.Error ? "error" : "warning", p.Code, p.Message,
+        Finding Found(Problem p) => new(p.Severity switch { ProblemSeverity.Error => "error", ProblemSeverity.Warning => "warning", _ => "info" }, p.Code, p.Message,
             p.Path is { } at ? Relative(at) : p.Project, p.Position.Line + 1, p.Position.Column + 1);
     });
 }

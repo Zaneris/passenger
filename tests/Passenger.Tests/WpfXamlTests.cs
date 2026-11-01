@@ -196,7 +196,7 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         Marker path = MarkerOn(editor, document, "Greting");
         Assert.Equal(MarkerKind.Warning, path.Kind);
         Assert.Equal("Cannot resolve property 'Greting' in data context of type MainViewModel", path.Message);
-        Ui.WaitFor(() => window.BottomPanel.Problems.FileProblems.Count == 4, "Problems listing the file's four problems");
+        Ui.WaitFor(() => window.BottomPanel.Problems.FileProblems.Count(p => p.Severity != Passenger.App.Run.ProblemSeverity.Message) == 4, "Problems listing the file's four problems");
         window.Close();
     }
 

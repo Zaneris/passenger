@@ -33,6 +33,24 @@ public static class ToolButtons
         return button;
     }
 
+    /// <summary>A list's filter for one kind of its rows (a test's outcome, a problem's severity): the kind's icon in its
+    /// colour and how many rows are of it, pressed while the kind is chosen; <paramref name="count"/> is the count's words.</summary>
+    public static ToggleButton Counted(string icon, string brush, string tip, out TextBlock count)
+    {
+        PathIcon mark = new();
+        mark.Bind(PathIcon.DataProperty, mark.GetResourceObservable(icon));
+        mark.Bind(PathIcon.ForegroundProperty, mark.GetResourceObservable(brush));
+        count = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+        ToggleButton button = new()
+        {
+            Classes = { StyleClasses.Outcome },
+            Focusable = false,
+            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Children = { mark, count } },
+        };
+        ToolTip.SetTip(button, tip);
+        return button;
+    }
+
     /// <summary>A toolbar's button that stays pressed while what it turns on is on (Mute Breakpoints, Select Element).</summary>
     public static ToggleButton Toggle(string icon, string tip) => Made(new ToggleButton(), icon, tip);
 

@@ -85,6 +85,9 @@ public sealed class ProblemsModel
     private IReadOnlyList<Problem>? solutionOrdered;
     private int solutionCount;
     private int solutionErrors;
+
+    /// <summary>How many of the solution's problems the filter shows.</summary>
+    private int solutionShown;
     private IReadOnlyList<Problem> toolset = [];
     private IReadOnlyList<BindingProblem> bindings = [];
     private IReadOnlyList<(string Said, string Why)> bindingsUntold = [];
@@ -169,6 +172,71 @@ public sealed class ProblemsModel
     /// <summary>The problem row chosen, if one is.</summary>
     public Problem? Selected => chosen?.Problem;
 
+    /// <summary>What every tab shows of its problems: the severities left on and the text they hold; its rows, the counts
+    /// on the tabs and the empty list's words follow it.</summary>
+    public ProblemFilter Filter
+    {
+        get;
+        set
+        {
+            if (value == field)
+            {
+                return;
+            }
+            field = value;
+            solutionShown = CountShown(solution?.Values.SelectMany(p => p) ?? [], solutionCount);
+            Refresh();
+        }
+    } = ProblemFilter.Default;
+
+    /// <summary>How many of these problems the filter shows, of <paramref name="all"/> of them.</summary>
+    private int CountShown(IEnumerable<Problem> problems, int all) => Filter.IsNone ? all : problems.Count(Filter.Passes);
+
+    /// <summary>The problems the filter shows, in their order.</summary>
+    private Problem[] Passing(Problem[] problems) => Filter.IsNone ? problems : Array.FindAll(problems, Filter.Passes);
+
+    /// <summary>A tab's problems, every one, as their lists keep them.</summary>
+    private IEnumerable<Problem> ProblemsOf(ProblemsTab tab) => tab switch
+    {
+        ProblemsTab.File => file,
+        ProblemsTab.Solution => solution?.Values.SelectMany(p => p) ?? [],
+        ProblemsTab.Toolset => toolset,
+        ProblemsTab.Bindings => bindings.Select(b => b.Problem),
+        ProblemsTab.HotReload => hotReload ?? [],
+        ProblemsTab.Containers => containers.Concat(containerFiles),
+        ProblemsTab.Godot => godot ?? [],
+        _ => Problems,
+    };
+
+    /// <summary>How many of the shown tab's problems of each severity hold the filter's text, as its severities' toggles
+    /// count them.</summary>
+    internal (int Errors, int Warnings, int Messages) SeverityCounts()
+    {
+        int errors = 0;
+        int warnings = 0;
+        int messages = 0;
+        foreach (Problem problem in ProblemsOf(Shown))
+        {
+            if (!Filter.Holds(problem))
+            {
+                continue;
+            }
+            switch (problem.Severity)
+            {
+                case ProblemSeverity.Error:
+                    errors++;
+                    break;
+                case ProblemSeverity.Warning:
+                    warnings++;
+                    break;
+                default:
+                    messages++;
+                    break;
+            }
+        }
+        return (errors, warnings, messages);
+    }
+
     /// <summary>What the last Hot Reload came to (its words, and its edits by file at their lines), in the Hot Reload tab,
     /// shown when it has problems.</summary>
     public void ShowHotReload(string said, IReadOnlyList<Problem> problems)
@@ -210,6 +278,8 @@ public sealed class ProblemsModel
             ProblemsTab.Godot => (TitleOf(tab), godot?.Count ?? 0),
             _ => (TitleOf(tab), Problems.Count),
         };
+        // A filter counts what it shows.
+        count = tab == ProblemsTab.Solution ? solutionShown : CountShown(ProblemsOf(tab), count);
         return count == 0 ? title : $"{title}  {count}";
     }
 
@@ -243,10 +313,14 @@ public sealed class ProblemsModel
     internal void Open(Uri link) => LinkClicked?.Invoke(this, link);
 
     /// <summary>A tab shown, the first of its problems <paramref name="which"/> picks chosen and scrolled to, as the status
-    /// bar's link to it goes there.</summary>
+    /// bar's link to it goes there; a filter that hides it is taken away.</summary>
     public void Reveal(ProblemsTab tab, Func<Problem, bool>? which = null)
     {
         Shown = tab;
+        if (which is not null && !rows.Any(r => r.Problem is { } shown && which(shown)) && ProblemsOf(tab).Any(p => which(p)))
+        {
+            Filter = ProblemFilter.Default with { Messages = Filter.Messages || ProblemsOf(tab).Any(p => which(p) && p.Severity == ProblemSeverity.Message) };
+        }
         if (which is not null && rows.FirstOrDefault(r => r.Problem is { } problem && which(problem)) is { } row)
         {
             chosen = row;
@@ -294,9 +368,14 @@ public sealed class ProblemsModel
             file = ordered;
             if (Shown == ProblemsTab.File)
             {
-                for (int i = 0; i < ordered.Length; i++)
+                // A problem moved holds the same words, so the filter shows the same ones, row for row.
+                int row = 0;
+                foreach (Problem problem in ordered)
                 {
-                    rows[i].MoveTo(ordered[i]);
+                    if (Filter.Passes(problem))
+                    {
+                        rows[row++].MoveTo(problem);
+                    }
                 }
             }
             return;
@@ -335,6 +414,7 @@ public sealed class ProblemsModel
         solutionOrdered = null;
         solutionCount = problems?.Count ?? 0;
         solutionErrors = problems?.Count(p => p.Severity == ProblemSeverity.Error) ?? 0;
+        solutionShown = CountShown(problems ?? [], solutionCount);
         if (solution is null && Shown == ProblemsTab.Solution)
         {
             Shown = ProblemsTab.File;
@@ -369,12 +449,17 @@ public sealed class ProblemsModel
         solutionOrdered = null;
         solutionCount += fresh.Length - old.Length;
         solutionErrors += fresh.Count(p => p.Severity == ProblemSeverity.Error) - old.Count(p => p.Severity == ProblemSeverity.Error);
+        // The rows are those the filter shows.
+        bool moved = old.Length > 0 && Moved(old, fresh);
+        old = Passing(old);
+        fresh = Passing(fresh);
+        solutionShown += fresh.Length - old.Length;
         if (Shown != ProblemsTab.Solution)
         {
             TabsChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
-        if (old.Length > 0 && Moved(old, fresh) && FileRowOf(path) is int at and >= 0)
+        if (moved && old.Length > 0 && FileRowOf(path) is int at and >= 0)
         {
             for (int i = 0; i < fresh.Length; i++)
             {
@@ -622,18 +707,18 @@ public sealed class ProblemsModel
         switch (Shown)
         {
             case ProblemsTab.File:
-                foreach (Problem problem in file)
+                foreach (Problem problem in file.Where(Filter.Passes))
                 {
                     made.Add(new ProblemRow(0, problem.Message, problem.Where, problem));
                 }
                 EmptyText = fileName is null ? Refusals.NoFile : "No problems in this file";
                 break;
             case ProblemsTab.Solution:
-                Grouped(made, SolutionProblems ?? []);
+                Grouped(made, (SolutionProblems ?? []).Where(Filter.Passes));
                 EmptyText = "No problems in the solution";
                 break;
             case ProblemsTab.Toolset:
-                foreach (IGrouping<string, Problem> project in toolset.GroupBy(p => p.Project ?? string.Empty).OrderBy(g => g.Key, StringComparer.Ordinal))
+                foreach (IGrouping<string, Problem> project in toolset.Where(Filter.Passes).GroupBy(p => p.Project ?? string.Empty).OrderBy(g => g.Key, StringComparer.Ordinal))
                 {
                     made.Add(new ProblemRow(0, project.Key, Count(project.Count()), null));
                     foreach (Problem problem in project)
@@ -644,7 +729,7 @@ public sealed class ProblemsModel
                 EmptyText = "The projects loaded without problems";
                 break;
             case ProblemsTab.Bindings:
-                foreach (IGrouping<string, BindingProblem> file in bindings.GroupBy(b => b.Problem.Path ?? string.Empty)
+                foreach (IGrouping<string, BindingProblem> file in bindings.Where(b => Filter.Passes(b.Problem)).GroupBy(b => b.Problem.Path ?? string.Empty)
                     .OrderBy(g => g.Key.Length == 0).ThenBy(g => g.Key, StringComparer.Ordinal))
                 {
                     made.Add(new ProblemRow(0, file.Key.Length > 0 ? System.IO.Path.GetFileName(file.Key) : "Not from XAML", Count(file.Count()), null));
@@ -661,15 +746,15 @@ public sealed class ProblemsModel
                 break;
             case ProblemsTab.HotReload:
                 made.Add(new ProblemRow(0, hotReloadSaid, null, null));
-                Grouped(made, hotReload ?? []);
+                Grouped(made, (hotReload ?? []).Where(Filter.Passes));
                 EmptyText = "Hot Reload applied every change";
                 break;
             case ProblemsTab.Containers:
-                foreach (Problem problem in containers)
+                foreach (Problem problem in containers.Where(Filter.Passes))
                 {
                     made.Add(new ProblemRow(0, problem.Message, null, problem));
                 }
-                foreach (IGrouping<string, Problem> path in containerFiles.GroupBy(p => p.Path ?? string.Empty).OrderBy(g => g.Key, StringComparer.Ordinal))
+                foreach (IGrouping<string, Problem> path in containerFiles.Where(Filter.Passes).GroupBy(p => p.Path ?? string.Empty).OrderBy(g => g.Key, StringComparer.Ordinal))
                 {
                     made.Add(new ProblemRow(0, System.IO.Path.GetFileName(path.Key), Count(path.Count()), null));
                     foreach (Problem problem in path)
@@ -680,13 +765,17 @@ public sealed class ProblemsModel
                 EmptyText = "The container engine has no problems";
                 break;
             case ProblemsTab.Godot:
-                Grouped(made, godot ?? []);
+                Grouped(made, (godot ?? []).Where(Filter.Passes));
                 EmptyText = "The Godot game has raised no error or warning";
                 break;
             default:
-                Grouped(made, Problems);
+                Grouped(made, Problems.Where(Filter.Passes));
                 EmptyText = "No problems from the last build";
                 break;
+        }
+        if (!Filter.IsNone && ProblemsOf(Shown).Any())
+        {
+            EmptyText = "No problems match the filter";
         }
         rowsOf = Shown;
         if (again)

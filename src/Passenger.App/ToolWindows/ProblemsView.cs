@@ -9,14 +9,24 @@ using Passenger.App.Run;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>The Problems window over its <see cref="ProblemsModel"/>, built as the window is first shown: a tab for each
-/// list with its count, the shown tab's rows, errors before warnings; a double-click or Enter goes to a problem, and the
-/// web address in its message is a link.</summary>
+/// list with its count, the shown tab's rows, errors before warnings and messages, and on the right a toggle for each
+/// severity with its count and the filter by text; a double-click or Enter goes to a problem, and the web address in its
+/// message is a link.</summary>
 public sealed class ProblemsView : DockPanel
 {
+    private static readonly (ProblemSeverity Severity, string Name, string Icon, string Brush)[] Severities =
+    [
+        (ProblemSeverity.Error, "Errors", IconKeys.Error, TokenKeys.Error),
+        (ProblemSeverity.Warning, "Warnings", IconKeys.Problems, TokenKeys.Warning),
+        (ProblemSeverity.Message, "Messages", IconKeys.Info, TokenKeys.Editor_Info),
+    ];
+
     private readonly ProblemsModel model;
     private readonly ListBox list;
     private readonly TextBlock empty;
+    private readonly TextBox search;
     private readonly Dictionary<ProblemsTab, ToggleButton> tabs = [];
+    private readonly Dictionary<ProblemSeverity, (ToggleButton Button, TextBlock Count)> severities = [];
     private bool following;
 
     public ProblemsView(ProblemsModel model)
@@ -30,8 +40,22 @@ public sealed class ProblemsView : DockPanel
             tabs[tab] = button;
             strip.Children.Add(button);
         }
-        Border bar = ToolBars.Top(strip);
-        Children.Add(bar);
+        search = FilterBox.Of();
+        search[DockProperty] = Dock.Right;
+        search.Width = 200;
+        search.Margin = new Thickness(6, 0);
+        search.Text = model.Filter.Text;
+        search.TextChanged += (_, _) => model.Filter = model.Filter with { Text = (search.Text ?? string.Empty).Trim() };
+        search.KeyDown += OnSearchKey;
+        StackPanel shown = new() { [DockProperty] = Dock.Right, Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+        foreach ((ProblemSeverity severity, string name, string icon, string brush) in Severities)
+        {
+            ToggleButton button = ToolButtons.Counted(icon, brush, $"Show {name}", out TextBlock count);
+            button.Click += (_, _) => model.Filter = model.Filter.Showing(severity, button.IsChecked == true);
+            severities[severity] = (button, count);
+            shown.Children.Add(button);
+        }
+        Border bar = ToolBars.Top(new DockPanel { Children = { search, shown, strip } });
         list = new ListBox
         {
             Classes = { StyleClasses.Tree },
@@ -39,7 +63,9 @@ public sealed class ProblemsView : DockPanel
         };
         ReusedRows.Use(list, Row);
         empty = new TextBlock { Classes = { StyleClasses.EmptyText } };
-        Children.Add(new Panel { Children = { empty, list } });
+        // The list comes first among the parts, so the window's action gives it the keys and Find's give them the filter.
+        Grid.SetRow(bar, 0);
+        Children.Add(new Grid { RowDefinitions = new RowDefinitions("Auto,*"), Children = { new Panel { [Grid.RowProperty] = 1, Children = { empty, list } }, bar } });
         list.DoubleTapped += (_, _) => Choose();
         list.AddHandler(KeyDownEvent, (_, e) =>
         {
@@ -107,6 +133,54 @@ public sealed class ProblemsView : DockPanel
         }
         empty.Text = model.EmptyText;
         empty.IsVisible = model.Rows.Count == 0;
+        // The filter taken away for a problem revealed.
+        if ((search.Text ?? string.Empty).Trim() != model.Filter.Text)
+        {
+            search.Text = model.Filter.Text;
+        }
+        (int errors, int warnings, int messages) = model.SeverityCounts();
+        foreach ((ProblemSeverity severity, (ToggleButton button, TextBlock count)) in severities)
+        {
+            count.Text = (severity switch { ProblemSeverity.Error => errors, ProblemSeverity.Warning => warnings, _ => messages })
+                .ToString(System.Globalization.CultureInfo.CurrentCulture);
+            button.IsChecked = model.Filter.Shows(severity);
+        }
+    }
+
+    /// <summary>Gives the filter the keys, its text chosen: Find's keys while Problems has them.</summary>
+    public void FocusSearch()
+    {
+        search.Focus();
+        search.SelectAll();
+    }
+
+    /// <summary>The filter's keys: Escape empties it, then gives the list the keys, as Down and Enter do, on the row chosen
+    /// or the first.</summary>
+    private void OnSearchKey(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyModifiers != KeyModifiers.None || e.Key is not (Key.Down or Key.Enter or Key.Escape))
+        {
+            return;
+        }
+        e.Handled = true;
+        if (e.Key == Key.Escape && !string.IsNullOrEmpty(search.Text))
+        {
+            search.Text = string.Empty;
+            return;
+        }
+        if (list.SelectedItem is null && model.Rows.FirstOrDefault(r => r.Problem is not null) is { } first)
+        {
+            list.SelectedItem = first;
+        }
+        if (list.SelectedItem is { } chosen)
+        {
+            list.ScrollIntoView(chosen);
+            list.ContainerFromItem(chosen)?.Focus();
+        }
+        else
+        {
+            list.Focus();
+        }
     }
 
     private void Choose()
@@ -152,8 +226,9 @@ public sealed class ProblemsView : DockPanel
             panel.Margin = new Thickness(8 + (row.Depth * 16), 0, 8, 0);
             Problem? problem = row.Problem;
             icon.IsVisible = problem is not null;
-            icon.DataKey = problem is null ? null : problem.Severity == ProblemSeverity.Error ? IconKeys.Error : IconKeys.Problems;
-            icon.ForegroundKey = problem is null ? null : problem.Severity == ProblemSeverity.Error ? TokenKeys.Error : TokenKeys.Warning;
+            int kind = problem is null ? -1 : Array.FindIndex(Severities, s => s.Severity == problem.Severity);
+            icon.DataKey = kind < 0 ? null : Severities[kind].Icon;
+            icon.ForegroundKey = kind < 0 ? null : Severities[kind].Brush;
             ToolTip.SetTip(panel, problem is null ? null : row.Label);
             text.FontWeight = problem is null && row.Depth == 0 ? FontWeight.SemiBold : FontWeight.Normal;
             text.TextTrimming = problem is null ? TextTrimming.None : TextTrimming.CharacterEllipsis;

@@ -300,13 +300,74 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         for (int i = 1; i <= 3; i++)
         {
             Ui.Press(window, "ENTER");
-            Assert.Equal([2 + i, 3 + i, 4 + i], problems.FileProblems.Select(p => p.Position.Line));
+            Assert.Equal([2 + i, 3 + i, 4 + i], problems.FileProblems.Where(p => p.Severity == ProblemSeverity.Error).Select(p => p.Position.Line));
             Assert.True(Shown().SequenceEqual(before), $"After {i} lines went in above the problems the File tab's rows were made again");
             Assert.Equal([$"Several.cs:{3 + i}:17", $"Several.cs:{4 + i}:18", $"Several.cs:{5 + i}:20"], Places());
         }
 
         Ui.Settle();
         Assert.Equal(["Several.cs:6:17", "Several.cs:7:18", "Several.cs:8:20"], Places());
+        window.Close();
+    }
+
+    /// <summary>Problems filtered as a person does it: Warnings turned off leaves the file's errors, the counts on its tab and
+    /// toggles following; Find's keys give the filter the keys and its text leaves the error that holds it, the warning that
+    /// holds it too staying hidden; Escape empties it and Warnings turned on lists all four again.</summary>
+    [AvaloniaFact]
+    public void Warnings_turned_off_and_a_filters_text_leave_only_the_matching_errors_and_the_counts_follow()
+    {
+        Write("Mixed.cs", "public class Mixed\n{\n    public int First = \"one\";\n    public int Second = missing;\n    public void A() { int unused; }\n    public void B() { int missingToo; }\n}\n");
+        MainWindow window = project.Open("Mixed.cs", w => w.Perform(AppActions.ShowProblems));
+        ProblemsModel problems = window.BottomPanel.Problems;
+        Ui.WaitFor(() => problems.FileProblems.Count(p => p.Severity == ProblemSeverity.Error) == 2 && problems.FileProblems.Count(p => p.Severity == ProblemSeverity.Warning) == 2,
+            "the file's two errors and two warnings");
+        Avalonia.Controls.Control view = window.ProblemsWindow;
+        Avalonia.Controls.Primitives.ToggleButton Toggle(string name) => Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view)
+            .OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(b => Avalonia.Controls.ToolTip.GetTip(b) as string == $"Show {name}");
+        string Count(string name) => Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(Toggle(name)).OfType<Avalonia.Controls.TextBlock>().Single().Text ?? string.Empty;
+        string FileTab() => (string)Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.Primitives.ToggleButton>()
+            .First(b => b.Content is string title && title.StartsWith("File", StringComparison.Ordinal)).Content!;
+        string[] Listed() => [.. problems.Rows.Where(r => r.Problem is not null).Select(r => r.Problem!.Code ?? r.Problem!.Message)];
+        // A message the server adds (a suggestion) is counted on its toggle, which a window starts with off.
+        int messages = problems.FileProblems.Count(p => p.Severity == ProblemSeverity.Message);
+        Assert.Equal(["2", "2", $"{messages}"], [Count("Errors"), Count("Warnings"), Count("Messages")]);
+        Assert.True(Toggle("Messages").IsChecked == false && FileTab() == "File: Mixed.cs  4" && problems.Rows.All(r => r.Problem?.Severity != ProblemSeverity.Message),
+            $"A window starts listing [{string.Join("; ", problems.Rows.Select(r => r.Label))}] under \"{FileTab()}\", where it lists the errors and warnings alone");
+
+        Ui.Click(Toggle("Warnings"));
+        Assert.True(problems.Rows.All(r => r.Problem?.Severity == ProblemSeverity.Error) && problems.Rows.Count == 2,
+            $"Warnings turned off left [{string.Join("; ", problems.Rows.Select(r => r.Label))}] listed, where only the two errors are");
+        Assert.True(Toggle("Warnings").IsChecked == false && FileTab() == "File: Mixed.cs  2", $"With Warnings off the File tab says \"{FileTab()}\", where it counts the two errors it lists");
+
+        Ui.Click(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.ListBoxItem>().First());
+        Ui.Run(window, AppActions.Find);
+        Avalonia.Controls.TextBox filter = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.TextBox>()
+            .Single(t => t.PlaceholderText?.EndsWith("to filter", StringComparison.Ordinal) == true);
+        Assert.True(filter.IsKeyboardFocusWithin, $"Find in Problems gave the keys to {window.FocusManager?.GetFocusedElement()?.GetType().Name}, not its filter");
+        window.KeyTextInput("missing");
+        Ui.Settle();
+        Assert.True(problems.Rows.Count == 1 && problems.Rows[0].Problem is { Severity: ProblemSeverity.Error } named && named.Message.Contains("'missing'", StringComparison.Ordinal),
+            $"Warnings off and the text \"missing\" left [{string.Join("; ", problems.Rows.Select(r => r.Label))}] listed, where only the error naming missing is");
+        Assert.Equal(["1", "1"], [Count("Errors"), Count("Warnings")]);
+        Assert.Equal("File: Mixed.cs  1", FileTab());
+
+        Ui.Press(window, "ESCAPE");
+        Ui.Click(Toggle("Warnings"));
+        Assert.True(Listed().Length == 4 && FileTab() == "File: Mixed.cs  4",
+            $"The filter emptied and Warnings back on list {Listed().Length} problems and the tab says \"{FileTab()}\"");
+        if (messages > 0)
+        {
+            Ui.Click(Toggle("Messages"));
+            Assert.True(Listed().Length == 4 + messages && FileTab() == $"File: Mixed.cs  {4 + messages}",
+                $"Messages turned on list {Listed().Length} problems and the tab says \"{FileTab()}\", where the file has {4 + messages}");
+        }
+
+        // A link to a warning (the status bar's) takes away the filter hiding it.
+        Ui.Click(Toggle("Warnings"));
+        problems.Reveal(ProblemsTab.File, p => p.Message.Contains("'unused'", StringComparison.Ordinal));
+        Ui.Settle();
+        Assert.True(Toggle("Warnings").IsChecked == true && problems.Selected?.Message.Contains("'unused'", StringComparison.Ordinal) == true,
+            $"A link to a warning Warnings hid chose {problems.Selected?.Message ?? "nothing"} with Warnings {(Toggle("Warnings").IsChecked == true ? "on" : "off")}");
         window.Close();
     }
 
@@ -324,7 +385,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Write("Warned.cs", warned.Append("    }\n}\n").ToString());
         MainWindow window = project.Open("Warned.cs", w => w.Perform(AppActions.ShowProblems));
         ProblemsModel problems = window.BottomPanel.Problems;
-        Ui.WaitFor(() => problems.FileProblems.Count == 3000, "the file's 3,000 warnings", TimeSpan.FromMinutes(2));
+        Ui.WaitFor(() => problems.FileProblems.Count(p => p.Severity == ProblemSeverity.Warning) == 3000, "the file's 3,000 warnings", TimeSpan.FromMinutes(2));
         Assert.Equal(new TextPosition(4, 12), problems.FileProblems[0].Position);
         Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
         editor.GoTo(new TextPosition(1, 1));
@@ -346,7 +407,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Assert.True(listed < Keys, $"The File tab listed the file's 3,000 problems again for each of {Keys} keys typed one straight after another");
 
         Ui.Settle();
-        Assert.Equal(3000, problems.FileProblems.Count);
+        Assert.Equal(3000, problems.FileProblems.Count(p => p.Severity == ProblemSeverity.Warning));
         Assert.Equal(new TextPosition(4 + Keys, 12), problems.FileProblems[0].Position);
         Assert.Equal(new TextPosition(4 + Keys + 2999, 12), problems.FileProblems[^1].Position);
         window.Close();
