@@ -174,12 +174,24 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// one keymap is never put over the other.</summary>
     public Dictionary<string, string[]> VSCodeShortcuts { get; init; } = [];
 
+    /// <summary>The person's shortcuts over the IntelliJ IDEA keymap's, kept apart from the others' as VS Code's are.</summary>
+    public Dictionary<string, string[]> IntelliJShortcuts { get; init; } = [];
+
     /// <summary>The person's shortcuts over the keymap they chose (a method, so the settings agents list leave it out).</summary>
-    public Dictionary<string, string[]> OwnShortcuts() => Keymap == Passenger.Editor.KeymapPreset.VSCode ? VSCodeShortcuts : Shortcuts;
+    public Dictionary<string, string[]> OwnShortcuts() => Keymap switch
+    {
+        Passenger.Editor.KeymapPreset.VSCode => VSCodeShortcuts,
+        Passenger.Editor.KeymapPreset.IntelliJ => IntelliJShortcuts,
+        _ => Shortcuts,
+    };
 
     /// <summary>These settings with these as the person's shortcuts over the keymap they chose.</summary>
-    public AppSettings WithOwnShortcuts(Dictionary<string, string[]> shortcuts) =>
-        Keymap == Passenger.Editor.KeymapPreset.VSCode ? this with { VSCodeShortcuts = shortcuts } : this with { Shortcuts = shortcuts };
+    public AppSettings WithOwnShortcuts(Dictionary<string, string[]> shortcuts) => Keymap switch
+    {
+        Passenger.Editor.KeymapPreset.VSCode => this with { VSCodeShortcuts = shortcuts },
+        Passenger.Editor.KeymapPreset.IntelliJ => this with { IntelliJShortcuts = shortcuts },
+        _ => this with { Shortcuts = shortcuts },
+    };
 
     /// <summary>The live templates as the person left them, by template: a built-in one's changes (its key the shortcut
     /// it ships with), and the whole of each they added (<see cref="TemplateChange"/>).</summary>
@@ -314,7 +326,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <see cref="Clamped"/> reads them: written so, the former id leaves the file, and an action's shortcuts reset stay so.</summary>
     public static void Renamed(JsonObject settings)
     {
-        foreach (string property in new[] { nameof(Shortcuts), nameof(VSCodeShortcuts) })
+        foreach (string property in new[] { nameof(Shortcuts), nameof(VSCodeShortcuts), nameof(IntelliJShortcuts) })
         {
             if (settings[StateFile.Options.PropertyNamingPolicy!.ConvertName(property)] is not JsonObject shortcuts)
             {
@@ -354,6 +366,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
         {
             Shortcuts = Readable(Shortcuts),
             VSCodeShortcuts = Readable(VSCodeShortcuts),
+            IntelliJShortcuts = Readable(IntelliJShortcuts),
             LiveTemplates = (LiveTemplates ?? []).Where(t => t.Value is not null).ToDictionary(t => t.Key, t => t.Value.Clamped()),
             PostfixTemplates = PostfixTemplates ?? [],
             NodeInterpreter = string.IsNullOrWhiteSpace(NodeInterpreter) ? null : NodeInterpreter.Trim(),

@@ -717,8 +717,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>Every button that runs one of the window's actions, the toolbar's and every tool window's, names in its tip
     /// the keys the keymap in force gives that action (<see cref="ActionTips"/>), and every tool window's Hide names Hide Tool
-    /// Window's keys or none: under Visual Studio's keymap and VS Code's, each chosen in turn, so no tip names a key that
-    /// does not run what it says.</summary>
+    /// Window's keys or none: under every keymap Settings offers, each chosen in turn, so no tip names a key that does not
+    /// run what it says.</summary>
     [AvaloniaFact]
     public void Every_action_buttons_tip_names_the_keys_the_keymap_in_force_gives_its_action()
     {
@@ -726,7 +726,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         try
         {
             window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
-            foreach (Passenger.Editor.KeymapPreset preset in (Passenger.Editor.KeymapPreset[])[Passenger.Editor.KeymapPreset.VisualStudio, Passenger.Editor.KeymapPreset.VSCode])
+            foreach (Passenger.Editor.KeymapPreset preset in SettingsDialog.KeymapChoices)
             {
                 window.ApplySettings(window.Settings with { Keymap = preset });
                 Ui.Settle();

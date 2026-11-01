@@ -188,7 +188,7 @@ A text control of its own over an immutable rope: multiple carets, folding, soft
 and surround templates, inlay hints, the symbol at the caret lit through the file, and splits and tabs in windows of
 their own. A key costs what it changed, not the file's size. Visual Studio's keys are the default, chords included,
 as Rider's Visual Studio keymap has them (Visual Studio OSX's on a Mac), so a Rider user finds them too; coming from VS
-Code, Settings, Keymap switches to VS Code's.
+Code or IntelliJ IDEA, Settings, Keymap switches to its keys, Search Everywhere's double Shift included.
 
 C# comes from Roslyn: its parser colours as you type, then the language server gives diagnostics, completion, hovers,
 signature help, quick fixes and refactorings (Change Signature, Extract Interface, Move, Pull Members Up, Safe Delete
