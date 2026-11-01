@@ -5,10 +5,10 @@ using Passenger.Core;
 
 namespace Passenger.App;
 
-/// <summary>Links: the Run, Debug, Build and Unit Tests consoles' stack frames, compiler messages and web addresses (a
-/// click opens the file at its line, or the address in the browser) and the terminal's (its file paths on Cmd+click,
-/// Ctrl+click elsewhere); and Open browser after launch, which opens a web project's launch URL once its program
-/// listens.</summary>
+/// <summary>Links: the Run, Debug, Build and Unit Tests consoles' stack frames, compiler messages, web addresses and the
+/// folder a publish landed in (a click opens the file at its line, the folder in the file manager, or the address in the
+/// browser) and the terminal's (its file paths on Cmd+click, Ctrl+click elsewhere); and Open browser after launch, which
+/// opens a web project's launch URL once its program listens.</summary>
 public partial class MainWindow
 {
     private readonly List<Uri> browsed = [];
@@ -91,7 +91,8 @@ public partial class MainWindow
         return folders;
     }
 
-    /// <summary>Opens what a link names: a file at its line and column in the editor, or an address in the browser.</summary>
+    /// <summary>Opens what a link names: a file at its line and column in the editor, a folder in the person's file
+    /// manager, or an address in the browser.</summary>
     public void OpenLink(LinkTarget target)
     {
         UiThread.Check();
@@ -111,6 +112,9 @@ public partial class MainWindow
                 {
                     Editors.CodeEditor.Focus();
                 }
+                break;
+            case FolderLink folder:
+                ShowInFileManager(folder.Path);
                 break;
             case WebLink web:
                 Browse(web.Address);

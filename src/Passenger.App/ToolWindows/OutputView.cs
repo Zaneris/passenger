@@ -15,7 +15,8 @@ namespace Passenger.App.ToolWindows;
 /// the run toolbar down its left side (rerun, stop, clear) and Find over its text. Output comes through its <see cref="Sink"/> from any thread;
 /// standard error is drawn in the error colour, a build's error and warning lines in their severities' colours, and what a
 /// person types goes to the program's <see cref="Input"/> a line at a time, in the input colour. It keeps a cycle buffer of
-/// text, the oldest lines dropped past it. Its file locations and web addresses are links (<see cref="Links"/>).</summary>
+/// text, the oldest lines dropped past it. Its file locations, web addresses and the folder a publish landed in are links
+/// (<see cref="Links"/>).</summary>
 public sealed class OutputView : DockPanel
 {
     /// <summary>The cycle buffer a console keeps by default: 1024 KB of text.</summary>
@@ -122,11 +123,11 @@ public sealed class OutputView : DockPanel
         return made;
     }
 
-    /// <summary>A link in the output was clicked: a file's place to open, or an address for the browser.</summary>
+    /// <summary>A link in the output was clicked: a file's place or a folder to open, or an address for the browser.</summary>
     public event EventHandler<LinkTarget>? LinkClicked;
 
-    /// <summary>The output's file locations and web addresses, found as it is drawn; its folders are where a relative path
-    /// is looked for.</summary>
+    /// <summary>The output's file locations, web addresses and the folder a publish landed in, found as it is drawn; its
+    /// folders are where a relative path is looked for.</summary>
     public ConsoleLinks Links { get; } = new();
 
     public event EventHandler? RerunClicked;

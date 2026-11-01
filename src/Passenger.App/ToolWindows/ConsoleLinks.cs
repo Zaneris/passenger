@@ -6,8 +6,8 @@ using Passenger.Text;
 
 namespace Passenger.App.ToolWindows;
 
-/// <summary>What a link in a console or the terminal opens: a file at a line and column (from zero) in the editor, or an
-/// address in the person's browser.</summary>
+/// <summary>What a link in a console or the terminal opens: a file at a line and column (from zero) in the editor, a
+/// folder in the person's file manager, or an address in the person's browser.</summary>
 public abstract record LinkTarget;
 
 public sealed record FileLink(string Path, TextPosition Position) : LinkTarget
@@ -19,6 +19,9 @@ public sealed record FileLink(string Path, TextPosition Position) : LinkTarget
     public bool CompiledLines { get; init; }
 }
 
+/// <summary>A folder a click shows in the person's file manager, such as where a publish landed.</summary>
+public sealed record FolderLink(string Path) : LinkTarget;
+
 public sealed record WebLink(Uri Address) : LinkTarget;
 
 /// <summary>A link in a line of text: where it starts in the line, how long it is, and what it opens. A hidden one (the
@@ -29,9 +32,10 @@ public readonly record struct FoundLink(int Start, int Length, LinkTarget Target
 /// /path/File.cs:line 12"), and a compiler's message ("File.cs(12,5): error ..."). The terminal's (<see cref="FilePaths"/>)
 /// add any path to a file, with a line and column after it or not. A path is a link only to a file there is, a relative
 /// one found under the folders given (the project's first); a stack frame's <c>/_/</c>, a deterministic build's name for
-/// the source root, is relative too. A line's links are kept while its text is the same, found again by its characters, and
-/// the editor's for a line while it starts where it did, so drawing it again and the pointer moving over it copy and make
-/// nothing. As a highlighter it colours them, for a view with no colours of its own.</summary>
+/// the source root, is relative too. A stretch of the IDE's own words is a link too (<see cref="Claim"/>), as the folder a
+/// publish landed in. A line's links are kept while its text is the same, found again by its characters, and the editor's
+/// for a line while it starts where it did, so drawing it again and the pointer moving over it copy and make nothing. As
+/// a highlighter it colours them, for a view with no colours of its own.</summary>
 public sealed partial class ConsoleLinks : IHighlighter
 {
     /// <summary>Lines longer than this have no links: output written without line breaks costs nothing more to draw.</summary>
@@ -41,6 +45,11 @@ public sealed partial class ConsoleLinks : IHighlighter
     private const int Kept = 2048;
 
     private readonly Dictionary<string, FoundLink[]> lines = [];
+
+    /// <summary>The links the IDE itself wrote, by the line's text, which no scan of the line's words would find again:
+    /// kept until the console's text goes (<see cref="Forget"/>), where a line found by its own words is forgotten sooner.</summary>
+    private readonly Dictionary<string, FoundLink[]> claimed = [];
+
     private readonly Dictionary<string, string?> files = new(PathNames.Comparer);
 
     /// <summary><see cref="lines"/> read by a line's characters, so a line kept is found with no string made of it.</summary>
@@ -68,13 +77,60 @@ public sealed partial class ConsoleLinks : IHighlighter
     public bool FilePaths { get; init; }
 
     /// <summary>Forgets what was found, for output from another program (another project's relative paths) or a file
-    /// made or deleted since.</summary>
+    /// made or deleted since, and the IDE's own claims with it.</summary>
     public void Forget()
     {
         lines.Clear();
+        claimed.Clear();
         files.Clear();
         given.Clear();
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Makes a stretch of a line the IDE itself wrote a link, found with the line's others as it is drawn: the
+    /// folder a publish landed in, whose words no console's pattern would know. A line's text is its key, so the same line
+    /// said again is linked the same. The claim is kept until the console's text goes (<see cref="Forget"/>), where a line
+    /// found by its own words is forgotten sooner; a line longer than a console links is not linked.</summary>
+    public void Claim(string line, int start, int length, LinkTarget target)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(start);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(length);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(start, line.Length);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, line.Length - start);
+        if (line.Length > LongestLine)
+        {
+            return;
+        }
+        FoundLink[] before = claimed.TryGetValue(line, out FoundLink[]? said) ? said : [];
+        FoundLink link = new(start, length, target);
+        if (before.Any(own => link.Start < own.Start + own.Length && own.Start < link.Start + link.Length))
+        {
+            return;
+        }
+        FoundLink[] found = [.. before, link];
+        Array.Sort(found, static (one, other) => one.Start.CompareTo(other.Start));
+        claimed[line] = found;
+        if (lines.TryGetValue(line, out FoundLink[]? cached))
+        {
+            // The line was drawn before the claim: its links take the IDE's own in, which win where they overlap.
+            lines[line] = Merged(found, cached);
+        }
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The links of a line: the IDE's own words, then what the line's text names where it does not overlap them.</summary>
+    private static FoundLink[] Merged(IReadOnlyList<FoundLink> said, IEnumerable<FoundLink> found)
+    {
+        List<FoundLink> links = [.. said];
+        foreach (FoundLink link in found)
+        {
+            if (!links.Any(own => link.Start < own.Start + own.Length && own.Start < link.Start + link.Length))
+            {
+                links.Add(link);
+            }
+        }
+        links.Sort(static (one, other) => one.Start.CompareTo(other.Start));
+        return [.. links];
     }
 
     /// <summary>The links over a stretch of a text, in the link colour.</summary>
@@ -210,7 +266,7 @@ public sealed partial class ConsoleLinks : IHighlighter
                 new FileLink(source, Position(message.Groups["line"], message.Groups["column"])) { CompiledLines = compiled }));
         }
         found.Sort((a, b) => a.Start.CompareTo(b.Start));
-        FoundLink[] links = [.. found];
+        FoundLink[] links = claimed.TryGetValue(line, out FoundLink[]? said) ? Merged(said, found) : [.. found];
         if (lines.Count >= Kept)
         {
             lines.Clear();
