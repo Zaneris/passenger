@@ -12,6 +12,8 @@ int ran = await Task.Run(RunAsync);
 Console.WriteLine($"ran {ran}");
 int[] both = await Task.WhenAll(TwiceAsync(1), TwiceAsync(2));
 Console.WriteLine($"both {both[0]} {both[1]}");
+int tripled = await TripleAsync(4);
+Console.WriteLine($"tripled {tripled}");
 await WaitForChildAsync();
 
 static async Task<int> OuterAsync(int n)
@@ -58,6 +60,14 @@ static async Task<int> TwiceAsync(int which)
 	await Task.Delay(which == 1 ? 200 : 10);
 	int second = first * 10;
 	return second;
+}
+
+// A ValueTask's run, which goes on after its await.
+static async ValueTask<int> TripleAsync(int n)
+{
+	await Task.Delay(10);
+	int product = n * 3;
+	return product;
 }
 
 // .NET 11's own Process.WaitForExitAsync is runtime-async: its await waits for the child, which ends once its input is

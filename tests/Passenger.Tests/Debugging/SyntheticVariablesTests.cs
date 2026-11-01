@@ -120,6 +120,49 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
         }
     }
 
+    /// <summary>Steps out of async methods compiled with state machines and with runtime async: a Task&lt;int&gt;'s, out of
+    /// its run after its await and before it, one that never suspends, and a ValueTask&lt;int&gt;'s, each listing the value
+    /// the method returned as a call's is, and naming it $ReturnValue.</summary>
+    [Theory]
+    [InlineData("StateMachineAsyncConsoleApp")]
+    [InlineData("RuntimeAsyncConsoleApp")]
+    public async Task A_step_out_of_an_async_method_lists_the_value_it_returned(string debuggee)
+    {
+        const string program = "RuntimeAsyncConsoleApp";
+        string source = Debuggees.Source(program, "Program.cs");
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host.InitializeAsync().LaunchAsync(Debuggees.Program(debuggee), stopAtEntry: false, justMyCode: true).WaitForInitializedEvent();
+        await host.RequestAsync(DapCommands.SetExceptionBreakpoints, new SetExceptionBreakpointsArguments([]));
+        await host.BreakpointsAsync(source,
+        [
+            new DapSourceBreakpoint(Debuggees.Line(program, "int doubled = before * 2;"), Condition: "before == 1"),
+            new DapSourceBreakpoint(Debuggees.Line(program, "int before = i;"), Condition: "i == 2"),
+            new DapSourceBreakpoint(Debuggees.Line(program, "int result = n + 1;")),
+            new DapSourceBreakpoint(Debuggees.Line(program, "int product = n * 3;")),
+        ]).ConfigurationDoneAsync();
+        (string Where, string Name, string Value)[] expected =
+        [
+            ("InnerAsync's run after its await", "InnerAsync() returned", "2"),
+            ("InnerAsync before its await", "InnerAsync() returned", "4"),
+            ("DoneAsync, which never suspends", "DoneAsync() returned", "4"),
+            ("TripleAsync's ValueTask", "TripleAsync() returned", "12"),
+        ];
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        foreach ((string where, string name, string value) in expected)
+        {
+            if (where != expected[0].Where)
+            {
+                stop = await host.ContinueAsync().WaitForStoppedEvent();
+            }
+            int thread = stop.ThreadId!.Value;
+            stop = await host.StepOutAsync(thread).WaitForStoppedEvent();
+            List<DapVariable> locals = await host.LocalsAsync(stop);
+            Assert.True(locals.FirstOrDefault() is { } returned && (returned.Name, returned.Value, returned.Type, returned.EvaluateName) == (name, value, "int", DapRows.ReturnValue),
+                $"{debuggee}: a step out of {where} stopped at line {stop.Line} without listing {name} = {value} first: {string.Join(", ", locals.Select(v => $"{v.Name} = {v.Value}"))}");
+            Assert.Equal(value, (await Evaluate(host, (await host.TopFrameAsync(stop.ThreadId!.Value)).Id, "$ReturnValue")).Result);
+        }
+    }
+
     [Fact]
     public async Task An_attached_programs_step_out_lists_what_the_method_returned()
     {

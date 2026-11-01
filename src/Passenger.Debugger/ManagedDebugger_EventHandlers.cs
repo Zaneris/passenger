@@ -440,6 +440,11 @@ public partial class ManagedDebugger
             await TakeValueReturnedTo(corThread, ilFrame);
             ilFrame = (ICorDebugILFrame)corThread.ActiveFrame;
         }
+        if (_unboxed is not null)
+        {
+            await BoxUnboxed(corThread);
+            ilFrame = (ICorDebugILFrame)corThread.ActiveFrame;
+        }
         ModuleInfo? module = FindModule(ilFrame.Function.Module);
         if (module is not null && module.MetadataReader.IsCurrentSequencePointHidden(ilFrame.Function.Token, ilFrame.IP.pnOffset, ModuleMetadataReader.VersionOf(ilFrame)))
         {

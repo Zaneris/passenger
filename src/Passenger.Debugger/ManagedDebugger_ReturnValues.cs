@@ -9,8 +9,9 @@ namespace Passenger.Debugger;
 /// expression: $ReturnValue the last, $ReturnValue1 on in the order they returned. ICorDebug reads a call's value only
 /// at the instruction after the call (ICorDebugCode3.GetReturnValueLiveOffset,
 /// ICorDebugILFrame3.GetReturnValueForILOffset), so a step over puts a breakpoint there for each call of its statement,
-/// and a step that returns to a caller reads the call it lands after. Each value is kept by a strong handle, a value
-/// type boxed first, as the registers it is read from are the program's again once it runs.</summary>
+/// and a step that returns to a caller reads the call it lands after; a step out of an async method reads what its task
+/// completed with, or a runtime-async method's local its closing brace returns. Each value is kept by a strong handle, a
+/// value type boxed first, as the registers it is read from are the program's again once it runs.</summary>
 public partial class ManagedDebugger
 {
     /// <summary>A value a call returned: the label of the method, a handle to the value (none for null, or for one that could
@@ -158,6 +159,99 @@ public partial class ManagedDebugger
         }
     }
 
+    /// <summary>The label of the async method whose state machine a frame runs, where its task gives a value (a Task&lt;T&gt;'s
+    /// or a ValueTask&lt;T&gt;'s): what a step out of it lists once its caller has the value (<see cref="TakeTaskResult"/>).</summary>
+    internal string? AsyncMethodGivingValue(ICorDebugILFrame frame) =>
+        FindModule(frame.Function.Module) is { } module && module.MetadataReader.GetStateMachineKickoffMethodToken(frame.Function.Token) is int kickoff
+        && module.MetadataReader.DescribeCall(kickoff) is { ReturnType: not ("void" or "Task" or "ValueTask") } method
+            ? MethodLabel(method.Name)
+            : null;
+
+    /// <summary>What a step out of an async method lists, read where its caller's await is told the method's task has
+    /// completed (Task.NotifyDebuggerOfWaitCompletion, its this the task): the task's result, kept as a call's value is.
+    /// Nothing for a task without one (a Task's, whose result is the runtime's VoidTaskResult).</summary>
+    internal void TakeTaskResult(ICorDebugThread thread, string method)
+    {
+        ICorDebugValue? result;
+        try
+        {
+            result = thread.ActiveFrame is ICorDebugILFrame frame && frame.Arguments is [ICorDebugReferenceValue { IsNull: false } task, ..]
+                && task.Dereference() is ICorDebugObjectValue completed
+                    ? ResultOf(completed)
+                    : null;
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            _logger?.Invoke($"What {method}'s task completed with could not be read: {error.Message}");
+            return;
+        }
+        if (result is null)
+        {
+            _logger?.Invoke($"{method}'s task completed with no value to show");
+            return;
+        }
+        // The await's notice is no place to run code.
+        TakeWithoutRunning(thread, result, method);
+    }
+
+    /// <summary>Keeps what a method a step leaves returned, read where its thread can run no code, or should not as its
+    /// step goes on: a value type is boxed at the step's stop (<see cref="BoxUnboxed"/>).</summary>
+    internal void TakeWithoutRunning(ICorDebugThread thread, ICorDebugValue value, string method)
+    {
+        TakeOn(thread);
+        (ReturnedValue? kept, Unboxed? unboxed) = Taken(value, method);
+        if (unboxed is not null)
+        {
+            _unboxed = unboxed;
+        }
+        else
+        {
+            _returned.Add(kept!);
+        }
+    }
+
+    /// <summary>A value type a step read where no code could run to box it, boxed at the step's stop.</summary>
+    private Unboxed? _unboxed;
+
+    /// <summary>Boxes the value a step read where no code could run, now that the step has stopped where code runs, on the
+    /// thread it goes on with, whose values it joins.</summary>
+    internal async Task BoxUnboxed(ICorDebugThread thread)
+    {
+        if (_unboxed is not { } value)
+        {
+            return;
+        }
+        _unboxed = null;
+        _returnedThread = thread.Id;
+        _returned.Add(await Box(value, thread));
+    }
+
+    /// <summary>The label of a runtime-async method a frame runs, where its task gives a value: what a step out of it lists,
+    /// read where it returns (<see cref="ModuleMetadataReader.ReturnsOfLocals"/>).</summary>
+    internal string? RuntimeAsyncMethodGivingValue(ICorDebugILFrame frame) =>
+        FindModule(frame.Function.Module) is { } module && module.MetadataReader.DescribeCall(frame.Function.Token) is { ReturnType: not ("void" or "Task" or "ValueTask") } method
+            ? MethodLabel(method.Name)
+            : null;
+
+    /// <summary>A task's result, the m_result its Task&lt;TResult&gt; holds; null for a task without one.</summary>
+    private ICorDebugValue? ResultOf(ICorDebugObjectValue task)
+    {
+        for (ICorDebugType? type = task.ExactType; type is not null; type = type.Base)
+        {
+            ICorDebugClass declaring = type.Class;
+            mdFieldDef field = declaring.Module.GetMetaDataInterface<IMetaDataImport>().EnumFieldsWithName(declaring.Token, "m_result").FirstOrDefault();
+            if (field.IsNil)
+            {
+                continue;
+            }
+            return FindModule(declaring.Module, reread: false) is { } module && IsCoreLib(module) && type.TypeParameters is [var resultType]
+                && GetCorDebugTypeFriendlyName(resultType) != "System.Threading.Tasks.VoidTaskResult"
+                    ? task.GetFieldValue(declaring, field)
+                    : null;
+        }
+        return null;
+    }
+
     /// <summary>The method a step begins in on a thread and its caller's frame; none where it returns nothing or has no caller.</summary>
     private StepBegan? BeganIn(ICorDebugThread thread)
     {
@@ -187,17 +281,35 @@ public partial class ManagedDebugger
 
     private async Task Take(ICorDebugThread thread, ICorDebugValue value, string method)
     {
+        TakeOn(thread);
+        _returned.Add(await Keep(value, thread, method));
+    }
+
+    /// <summary>Makes the thread's the values listed, forgetting another's.</summary>
+    private void TakeOn(ICorDebugThread thread)
+    {
         if (_returnedThread != thread.Id)
         {
             ForgetReturnedValues();
             _returnedThread = thread.Id;
         }
-        _returned.Add(await Keep(value, thread, method));
     }
 
     /// <summary>A value read from the registers, kept past the stop: a reference by a strong handle to its object, a value
     /// type by one to a box of it made by the program (its bytes read first, as the box's making runs the program).</summary>
     private async Task<ReturnedValue> Keep(ICorDebugValue value, ICorDebugThread thread, string method)
+    {
+        (ReturnedValue? kept, Unboxed? unboxed) = Taken(value, method);
+        return unboxed is null ? kept! : await Box(unboxed, thread);
+    }
+
+    /// <summary>A value type read but not yet boxed, which takes code run in the program, so a thread stopped where none can
+    /// run boxes it later: its method, its type and its bytes.</summary>
+    private sealed record Unboxed(string Method, ICorDebugType Type, byte[] Bytes, string TypeName, string AliasType);
+
+    /// <summary>A value read without running the program: a reference kept by a strong handle, a value type as its bytes,
+    /// for <see cref="Box"/>; a value that cannot be read, kept as lost.</summary>
+    private (ReturnedValue? Kept, Unboxed? Unboxed) Taken(ICorDebugValue value, string method)
     {
         ICorDebugType type = value.ExactType;
         string typeName = GetCorDebugTypeFriendlyName(type);
@@ -206,15 +318,30 @@ public partial class ManagedDebugger
         {
             if (value is ICorDebugReferenceValue reference)
             {
-                return reference.IsNull
+                return (reference.IsNull
                     ? new ReturnedValue(method, null, typeName, aliasType, null)
-                    : new ReturnedValue(method, ((ICorDebugHeapValue2)reference.Dereference()).CreateHandle(CorDebugHandleType.HANDLE_STRONG), typeName, aliasType, null);
+                    : new ReturnedValue(method, ((ICorDebugHeapValue2)reference.Dereference()).CreateHandle(CorDebugHandleType.HANDLE_STRONG), typeName, aliasType, null), null);
             }
+            byte[] bytes = (value.UnwrapDebugValue() as ICorDebugGenericValue ?? throw new InvalidOperationException($"The {typeName} returned cannot be read whole")).GetValueAsBytes();
+            return (null, new Unboxed(method, type, bytes, typeName, aliasType));
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            _logger?.Invoke($"What {method} returned could not be kept: {error.Message}");
+            return (new ReturnedValue(method, null, typeName, aliasType, $"{{{typeName}}}"), null);
+        }
+    }
+
+    /// <summary>A value type's bytes in a box the program makes, kept by a strong handle.</summary>
+    private async Task<ReturnedValue> Box(Unboxed value, ICorDebugThread thread)
+    {
+        (string method, ICorDebugType type, byte[] bytes, string typeName, string aliasType) = value;
+        try
+        {
             ICorDebugClass boxClass = type.Type is CorElementType.VALUETYPE
                 ? type.Class
                 : CorElementToValueClassMap.GetValueOrDefault(type.Type) ?? throw new InvalidOperationException($"No class to box a {typeName} in");
             ICorDebugType[] typeArguments = type.TypeParameters;
-            byte[] bytes = (value.UnwrapDebugValue() as ICorDebugGenericValue ?? throw new InvalidOperationException($"The {typeName} returned cannot be read whole")).GetValueAsBytes();
             ICorDebugValue boxed = await thread.CreateEval().NewParameterizedObjectNoConstructorAsync(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, boxClass,
                 typeArguments.Length, typeArguments.Length == 0 ? null : typeArguments, throwOnException: true) ?? throw new InvalidOperationException($"No box was made for the {typeName} returned");
             ICorDebugHandleValue handle = boxed as ICorDebugHandleValue ?? ((ICorDebugHeapValue2)boxed.UnwrapDebugValue()).CreateHandle(CorDebugHandleType.HANDLE_STRONG);
@@ -350,6 +477,7 @@ public partial class ManagedDebugger
         _returned.Clear();
         _returnedThread = null;
         _unshown = null;
+        _unboxed = null;
     }
 
     /// <summary>A type's assembly-qualified name, as the expression compiler takes an alias's type: the program's own

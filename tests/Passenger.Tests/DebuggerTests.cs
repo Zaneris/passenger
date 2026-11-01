@@ -804,6 +804,51 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
+    /// <summary>Step Out of an async method, its run gone on after its await, lists what it returned at the top of Variables
+    /// as a call's value is, and a watch names it $ReturnValue: a Task&lt;int&gt;'s, then a ValueTask&lt;int&gt;'s.</summary>
+    [AvaloniaFact]
+    public void Step_out_of_an_async_method_lists_what_its_task_or_value_task_returned()
+    {
+        Write("Program.cs", "int doubled = await DoubleAsync(21);\nint tripled = await TripleAsync(4);\nConsole.WriteLine($\"{doubled} {tripled}\");\n\n"
+            + "static async Task<int> DoubleAsync(int n)\n{\n    await Task.Delay(10);\n    int result = n * 2;\n    return result;\n}\n\n"
+            + "static async ValueTask<int> TripleAsync(int n)\n{\n    await Task.Delay(10);\n    int result = n * 3;\n    return result;\n}\n");
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        foreach (int line in (int[])[7, 14])
+        {
+            editor.GoTo(new TextPosition(line, 4));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+        }
+        Passenger.App.ToolWindows.DebugModel view = window.BottomPanel.Debug;
+        StartDebugging(window);
+        foreach ((int line, string name, string value, string kind) in ((int, string, string, string)[])[(7, "DoubleAsync() returned", "42", "Task<int>"), (14, "TripleAsync() returned", "12", "ValueTask<int>")])
+        {
+            if (line != 7)
+            {
+                Ui.Run(window, AppActions.Resume);
+            }
+            WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused && editor.LineMarks.Contains(new LineMark(line, LineMarkKind.ExecutionPoint)),
+                $"the stop in the {kind} method after its await");
+            Ui.Run(window, AppActions.StepOut);
+            Shows(view, name, value, $"what the {kind} method returned, after Step Out");
+            VariableNode returned = view.Tree.Rows.First(r => r.Depth == 0 && r.Role != VariableRole.Watch);
+            Assert.True(returned is { Name: var first, Type: "int", Expression: DapRows.ReturnValue, IsReturnValue: true } && first == name,
+                $"Stepped out of the {kind} method, the first value was {returned.Name} = {returned.Value} ({returned.Type}, {returned.Expression}), not what it returned");
+            if (line == 7)
+            {
+                // Kept, the watch reads the next step out's value too.
+                Ui.Run(window, AppActions.Evaluate);
+                window.KeyTextInput("$ReturnValue + 1");
+                Ui.Press(window, OperatingSystem.IsMacOS() ? "meta shift Enter" : "control shift Enter");
+            }
+            Watched(view, "$ReturnValue + 1", (int.Parse(value, System.Globalization.CultureInfo.InvariantCulture) + 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                $"a watch of what the {kind} method returned");
+        }
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_condition_typed_into_a_breakpoints_popup_decides_where_it_stops()
     {
