@@ -42,6 +42,7 @@ public partial class FindBar : UserControl
     {
         InitializeComponent();
         IsVisible = false;
+        RegexGlyph.InCodeFont();
         Query.TextChanged += (_, _) => Search(jump: true);
         MatchCase.IsCheckedChanged += (_, _) => Search(jump: true);
         WholeWords.IsCheckedChanged += (_, _) => Search(jump: true);

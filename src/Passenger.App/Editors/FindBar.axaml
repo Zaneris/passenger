@@ -16,7 +16,7 @@
                         <PathIcon Data="{StaticResource Icon.WholeWord}" />
                     </ToggleButton>
                     <ToggleButton Name="UseRegex" Classes="option" ToolTip.Tip="Regex">
-                        <TextBlock Text=".*" FontFamily="{DynamicResource Passenger.CodeFont}" FontWeight="Bold" FontSize="12" />
+                        <TextBlock Name="RegexGlyph" Text=".*" FontWeight="Bold" FontSize="12" />
                     </ToggleButton>
                 </StackPanel>
             </Panel>
