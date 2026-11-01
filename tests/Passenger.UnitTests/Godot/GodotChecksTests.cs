@@ -246,4 +246,39 @@ public class GodotChecksTests
             (6, "main.tscn:9 sets Target to 'Hud/Gone', which names no node: Hud has no child Gone"),
         ], GodotChecks.Findings(scenes, asked, found, _ => true).Select(f => (f.At.Line, f.Message)));
     }
+
+    /// <summary>A uid:// a string gives that no file has is an error once Godot keeps a cache of the project's uids (without
+    /// one, a uid may name a file Passenger does not read); one naming a file gone is one too; in a scene, an external
+    /// resource whose path is gone but whose uid names a file is a warning that Godot loads it by its uid.</summary>
+    [Fact]
+    public void A_uid_no_file_has_is_an_error_and_a_scenes_resource_found_by_its_uid_a_warning()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [ext_resource type="PackedScene" uid="uid://bplayer" path="res://old_player.tscn" id="1"]
+
+            [node name="Main" type="Node2D"]
+
+            [node name="Player" parent="." instance=ExtResource("1")]
+
+            """;
+        Dictionary<string, GodotFile> files = new()
+        {
+            ["res://main.tscn"] = GodotFile.Parse(scene),
+            ["res://player.tscn"] = GodotFile.Parse("[gd_scene format=3 uid=\"uid://bplayer\"]\n\n[node name=\"Player\" type=\"Node2D\"]\n"),
+        };
+        GodotScenes cached = new("/game", files, new Dictionary<string, string> { ["uid://cgone"] = "res://gone.tscn" }, cached: true);
+        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", cached, ["res://Main.cs"]);
+        GodotCodeFound found = Found(asked, [], [new GodotPathRead("uid://bplayer", At, End), new GodotPathRead("uid://bnone", At, End), new GodotPathRead("uid://cgone", At, End)]);
+        bool Exists(string path) => !path.EndsWith("gone.tscn", StringComparison.Ordinal) && !path.EndsWith("old_player.tscn", StringComparison.Ordinal);
+        Assert.Equal(["No file of the Godot project has uid://bnone", "uid://cgone is res://gone.tscn, which is not in the Godot project"],
+            GodotChecks.Findings(cached, asked, found, Exists).Select(f => f.Message));
+        GodotScenes uncached = new("/game", files);
+        Assert.Empty(GodotChecks.Findings(uncached, asked, found with { Resources = [new GodotPathRead("uid://bnone", At, End)] }, Exists));
+
+        GodotChecks.SceneFinding loaded = Assert.Single(GodotChecks.SceneFindings(cached, "res://main.tscn", GodotChecks.SceneAsks("/game/Main.cs", cached, "res://main.tscn"), GodotCodeFound.None, Exists));
+        Assert.Equal(("res://old_player.tscn", false, "No file res://old_player.tscn is in the Godot project: Godot loads uid://bplayer, res://player.tscn, by its uid"),
+            (scene[loaded.Start..loaded.End], loaded.Error, loaded.Message));
+    }
 }

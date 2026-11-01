@@ -88,9 +88,16 @@ internal static class GodotChecks
         }
         foreach (GodotExternal external in file.Externals)
         {
+            string? byUid = external.Uid is { } uid && scenes.ResOfUid(uid) is { } res && scenes.FileOf(res) is { } loaded && exists(loaded) ? res : null;
             if (external.Path is { } path && scenes.FileOf(path) is { } named && !exists(named) && external.Section.Attribute("path")?.Value is { } value)
             {
-                findings.Add(new SceneFinding(value.TextStart, value.TextEnd, true, $"No file {path} is in the Godot project"));
+                // Godot loads an external resource by its uid where one names a file, by its path only where none does.
+                findings.Add(byUid is null ? new SceneFinding(value.TextStart, value.TextEnd, true, $"No file {path} is in the Godot project")
+                    : new SceneFinding(value.TextStart, value.TextEnd, false, $"No file {path} is in the Godot project: Godot loads {external.Uid}, {byUid}, by its uid"));
+            }
+            else if (byUid is not null && external.Path is { } written && written != byUid && external.Section.Attribute("uid")?.Value is { } uidValue)
+            {
+                findings.Add(new SceneFinding(uidValue.TextStart, uidValue.TextEnd, false, $"{external.Uid} is {byUid}, which Godot loads in place of {written}"));
             }
         }
         foreach (GodotSection section in file.Sections)
@@ -188,6 +195,16 @@ internal static class GodotChecks
         {
             string last = read.Path.TrimEnd('/').Split('/')[^1];
             string named = read.Path.Split("::")[0];
+            if (named.StartsWith(GodotUids.Scheme, StringComparison.Ordinal))
+            {
+                // A uid none of the project's files has is known to name none only once Godot's editor has kept their cache.
+                if (scenes.ResOfUid(named) is { } res ? scenes.FileOf(res) is { } loaded && !exists(loaded) : scenes.KeepsUids)
+                {
+                    findings.Add(new Finding(read.At, read.End, true, scenes.ResOfUid(named) is { } gone ? $"{named} is {gone}, which is not in the Godot project"
+                        : $"No file of the Godot project has {named}"));
+                }
+                continue;
+            }
             if ((read.Path.EndsWith('/') || last.Contains('.')) && scenes.FileOf(named) is { } file && !exists(file))
             {
                 findings.Add(new Finding(read.At, read.End, true, $"No {(named.EndsWith('/') ? "folder" : "file")} {named} is in the Godot project"));

@@ -20,7 +20,7 @@ public sealed class GodotCode : IExtensionWorkspaceMessageHandler<GodotCodeReque
 /// <summary>A Godot project's C# as Roslyn binds it against GodotSharp, never by names alone: the file's classes Godot runs
 /// as scripts (each class's script path is the one Godot's source generator gives it, <c>[ScriptPath]</c>), their
 /// <c>[Export]</c> members and <c>[Signal]</c> delegates, the calls of Node's GetNode and GetNodeOrNull on the node the
-/// code runs on with the type each asks for, and the res:// paths its strings give; and of the project's types what the
+/// code runs on with the type each asks for, and the res:// paths and uid:// names its strings give; and of the project's types what the
 /// scenes ask: an engine class's chain by Godot's names (<c>[GodotClassName]</c>, else the C# name), a script's class's,
 /// and a node's signal or method by the name a scene writes (an engine one's snake_case, a script's own as declared).</summary>
 internal static class GodotSource
@@ -48,7 +48,8 @@ internal static class GodotSource
             classes.Add(await ClassAsync(type, solution, engine, asked.Path, text, cancel).ConfigureAwait(false));
         }
         List<GodotNodeCall> calls = [.. Calls(root, model, declared, engine, text, cancel)];
-        List<GodotPathRead> resources = [.. root.DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken) && t.ValueText.StartsWith("res://", StringComparison.Ordinal))
+        List<GodotPathRead> resources = [.. root.DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken)
+                && (t.ValueText.StartsWith("res://", StringComparison.Ordinal) || t.ValueText.StartsWith("uid://", StringComparison.Ordinal)))
             .Select(t => Exact(t) ? new GodotPathRead(t.ValueText, PlaceAt(text, t.SpanStart + 1), PlaceAt(text, t.Span.End - 1))
                 : new GodotPathRead(t.ValueText, PlaceAt(text, t.SpanStart), PlaceAt(text, t.Span.End)))];
         List<GodotChain> chains = [.. asked.Engine.Distinct(StringComparer.Ordinal).Select(name => engine.Type(name) is { } type

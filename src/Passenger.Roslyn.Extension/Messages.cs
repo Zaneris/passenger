@@ -408,7 +408,7 @@ public sealed record GodotTypeRef(
     [property: JsonPropertyName("engine")] bool Engine,
     [property: JsonPropertyName("shown")] string Shown);
 
-/// <summary>A res:// path a string of the file gives, and where its characters are written.</summary>
+/// <summary>A res:// path or uid:// name a string of the file gives, and where its characters are written.</summary>
 public sealed record GodotPathRead(
     [property: JsonPropertyName("path")] string Path,
     [property: JsonPropertyName("at")] Place At,

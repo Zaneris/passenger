@@ -109,7 +109,7 @@ internal sealed partial class CSharpAssist
     }
 
     /// <summary>What the hover card says of a Godot project's C#: the node a GetNode path names in each scene its script runs
-    /// in, or that none answers; an <c>[Export]</c> member's value in each scene and resource that sets it.</summary>
+    /// in, or that none answers; the file a uid:// names; an <c>[Export]</c> member's value in each scene and resource that sets it.</summary>
     private async Task<string?> GodotHoverAsync(OpenDocument document, int offset, CancellationToken cancel)
     {
         if (context.WebOf(document) is not null || context.CSharp is not { } csharp || csharp.For(document)?.Lsp is not { } lsp
@@ -128,6 +128,10 @@ internal sealed partial class CSharpAssist
                     : resolved.Unknown ? $"Not known from {Path.GetFileName(scene)}: the path leaves what it holds" : $"No node in {Path.GetFileName(scene)}");
             }
             return lines.Count == 0 ? null : string.Join('\n', [$"'{call.Path}' from {read.Found.Classes[call.Class].Name}:", .. lines.Distinct()]);
+        }
+        if (read.Found.Resources.FirstOrDefault(r => r.Path.StartsWith(GodotUids.Scheme, StringComparison.Ordinal) && OffsetOf(lsp, r.At) <= offset && offset <= OffsetOf(lsp, r.End)) is { } uid)
+        {
+            return read.Scenes.ResOfUid(uid.Path) is { } res ? $"{uid.Path} is {res}" : $"No file of the Godot project has {uid.Path}";
         }
         foreach (GodotClassFound type in read.Found.Classes)
         {

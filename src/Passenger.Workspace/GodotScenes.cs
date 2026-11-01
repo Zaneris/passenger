@@ -170,12 +170,35 @@ public sealed class GodotScenes
     private readonly Dictionary<string, GodotTreeNode?> trees = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IReadOnlyList<(string Scene, GodotTreeNode Node)>> runs = new(StringComparer.Ordinal);
     private readonly Lock building = new();
+    private readonly Lazy<IReadOnlyDictionary<string, string>> named;
 
-    public GodotScenes(string folder, IReadOnlyDictionary<string, GodotFile> files)
+    /// <summary>The scenes and resources by res:// path, and the uid:// names Godot keeps of the project's other files (its
+    /// .uid and .import files' and its cache's, <see cref="GodotUids"/>, uid by uid) beside those the files' headers give;
+    /// <paramref name="cached"/> when Godot's editor keeps a cache of them, so a uid none names is known to name no file.</summary>
+    public GodotScenes(string folder, IReadOnlyDictionary<string, GodotFile> files, IReadOnlyDictionary<string, string>? uids = null, bool cached = false)
     {
         Folder = folder;
         Files = files;
+        KeepsUids = cached;
+        named = new(() =>
+        {
+            Dictionary<string, string> all = new(uids ?? new Dictionary<string, string>(), StringComparer.Ordinal);
+            foreach ((string res, GodotFile file) in files)
+            {
+                if (file.Header?.Text("uid") is { } uid && uid.StartsWith(GodotUids.Scheme, StringComparison.Ordinal))
+                {
+                    all[uid] = res;
+                }
+            }
+            return all;
+        });
     }
+
+    /// <summary>Whether Godot's editor keeps a cache of the project's uids, so one no file has is known to name none.</summary>
+    public bool KeepsUids { get; }
+
+    /// <summary>The res:// path of the file a uid:// names, a scene's own header first; null for one no file has.</summary>
+    public string? ResOfUid(string uid) => named.Value.GetValueOrDefault(uid);
 
     /// <summary>The Godot project's folder, where its project.godot is: what res:// names.</summary>
     public string Folder { get; }
@@ -199,7 +222,10 @@ public sealed class GodotScenes
         return PathNames.IsUnder(full, folder) ? full : null;
     }
 
-    public string? FileOf(string res) => FileOf(Folder, res);
+    /// <summary>The file a res:// path, or a uid:// name of one, names; null for neither, or a uid no file has.</summary>
+    public string? FileOf(string res) => res.StartsWith(GodotUids.Scheme, StringComparison.Ordinal)
+        ? ResOfUid(res) is { } path ? FileOf(Folder, path) : null
+        : FileOf(Folder, res);
 
     public string? ResPathOf(string path) => ResPathOf(Folder, path);
 

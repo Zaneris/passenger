@@ -10,7 +10,7 @@ using Passenger.Workspace;
 namespace Passenger.App.CSharp;
 
 /// <summary>A Godot project's text scenes and resources, as their own (<see cref="GodotFile"/>): Go to Declaration from a
-/// res:// path or an <c>ExtResource</c> goes to its file, from a node path (a node's parent, a connection's ends, a NodePath)
+/// res:// path, a uid:// name or an <c>ExtResource</c> goes to its file, from a node path (a node's parent, a connection's ends, a NodePath)
 /// to the node's section, from a connection's method to the C# method its receiving node's script declares and from its
 /// signal to the <c>[Signal]</c> delegate its sending node's script declares; Rename on a node's name renames it in every
 /// scene and every GetNode path of the code that names it (<see cref="CSharpAssist.RenameNodesAsync"/>); and a res:// string
@@ -158,7 +158,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
     private async Task<Declared?> EntryDeclaredAsync(GodotScenes scenes, string res, GodotFile file, GodotSection section, GodotEntry entry)
     {
         GodotValue value = entry.Value;
-        if (value.Text is { } text && text.StartsWith("res://", StringComparison.Ordinal))
+        if (value.Text is { } text && (text.StartsWith("res://", StringComparison.Ordinal) || text.StartsWith(GodotUids.Scheme, StringComparison.Ordinal)))
         {
             return FileDeclared(scenes, text);
         }

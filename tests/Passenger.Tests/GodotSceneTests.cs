@@ -55,6 +55,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
                 Node2D sprite = GetNode<Node2D>("Player/Sprite");
                 PackedScene player = GD.Load<PackedScene>("res://player.tscn");
                 PackedScene gone = GD.Load<PackedScene>("res://gone.tscn");
+                PackedScene byUid = GD.Load<PackedScene>("uid://bplayer1");
                 Callable started = new(this, MethodName.OnStartPressed);
                 Scored += OnScored;
                 EmitSignal(SignalName.Scored, 1);
@@ -103,7 +104,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     internal const string Scene = """
         [gd_scene load_steps=4 format=3]
 
-        [ext_resource type="Script" path="res://Main.cs" id="1_main"]
+        [ext_resource type="Script" uid="uid://cmain1" path="res://Main.cs" id="1_main"]
         [ext_resource type="PackedScene" path="res://player.tscn" id="2_player"]
         [ext_resource type="Script" path="res://Hud.cs" id="3_hud"]
 
@@ -131,7 +132,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         """;
 
     internal const string Player = """
-        [gd_scene format=3]
+        [gd_scene format=3 uid="uid://bplayer1"]
 
         [node name="Player" type="CharacterBody2D"]
 
@@ -389,6 +390,32 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
+    /// <summary>A uid:// in the code leads to the scene whose header gives it, its card saying which, and one in a scene's
+    /// external resource to the script the .uid file beside it gives it to.</summary>
+    [AvaloniaFact]
+    public void A_uid_leads_to_its_file_from_the_code_and_from_a_scene()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
+            Hover(window, "uid://bplayer1", "uid://bplayer1 is res://player.tscn");
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "\"uid://bpla");
+            Ui.Run(window, AppActions.GoToDeclaration);
+            Ui.WaitFor(() => window.EditorArea.Active?.Name == "player.tscn", () => $"Go to Declaration from the uid to open player.tscn ({window.Status})");
+
+            window.OpenFile(ScenePath);
+            Ui.Settle();
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "uid=\"uid://cma");
+            Ui.Run(window, AppActions.GoToDeclaration);
+            Ui.WaitFor(() => window.EditorArea.Active?.Name == "Main.cs", () => $"Go to Declaration from the script's uid in the scene to open Main.cs ({window.Status})");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>A res:// string in a scene completes from the project's files as its "res://" is typed, the scene itself and
     /// Godot's own folders left out, and the file chosen goes in whole in place of the string.</summary>
     [AvaloniaFact]
@@ -565,6 +592,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             GodotTests.Game.Make(Folder, version, packages, Script, Scene);
             File.WriteAllText(PathOf("player.tscn"), Player);
             File.WriteAllText(PathOf("Hud.cs"), HudScript);
+            File.WriteAllText(PathOf("Main.cs.uid"), "uid://cmain1\n");
         }
 
         public GodotFound? Godot { get; }
