@@ -27,13 +27,24 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     private TaskCompletionSource<GodotNode?>? treeAsked;
     private readonly Dictionary<ulong, TaskCompletionSource<GodotObjectState>> objectsAsked = [];
     private readonly Dictionary<ulong, GodotObjectState> inspected = [];
+    private readonly Dictionary<long, TaskCompletionSource<(int Width, int Height, string Path)>> picturesAsked = [];
+    private readonly Dictionary<long, TaskCompletionSource<List<object?>>> agentAsked = [];
+    private long asks;
     private bool disposed;
 
-    private GodotGame(string name, string folder, string? version, TcpListener listener)
+    /// <summary>Passenger's helper sent for (<see cref="AskAsync"/>), done once the game is told to make it: another ask waits
+    /// for it rather than making a second.</summary>
+    private Task? bringing;
+
+    /// <summary>The id under which the game's live editing knows the path of Passenger's helper (<see cref="GodotAgent"/>).</summary>
+    private const long AgentPath = 7046;
+
+    private GodotGame(string name, string folder, string? version, bool headless, TcpListener listener)
     {
         Name = name;
         Folder = folder;
         Version = version;
+        Headless = headless;
         this.listener = listener;
     }
 
@@ -47,7 +58,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         }
         TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start(1);
-        GodotGame game = new(plan.Name, folder, plan.GodotVersion, listener);
+        bool headless = plan.Arguments.Contains("--headless")
+            || plan.Arguments.Zip(plan.Arguments.Skip(1)).Any(p => p is ("--display-driver", "headless"));
+        GodotGame game = new(plan.Name, folder, plan.GodotVersion, headless, listener);
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         List<string> arguments = [.. plan.Arguments];
         arguments.InsertRange(plan.Leading, [RemoteDebug, $"tcp://127.0.0.1:{port}"]);
@@ -63,6 +76,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
 
     /// <summary>The Godot version it runs on, where known.</summary>
     public string? Version { get; }
+
+    /// <summary>Whether Godot runs it headless (<c>--headless</c>), drawing nothing.</summary>
+    public bool Headless { get; }
 
     public LiveAppState State { get; private set; } = LiveAppState.Waiting;
 
@@ -164,6 +180,14 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             asked.TrySetException(new LiveAppException($"{Name} has ended"));
         }
         objectsAsked.Clear();
+        foreach (TaskCompletionSource<(int, int, string)> asked in picturesAsked.Values)
+        {
+            asked.TrySetException(new LiveAppException($"{Name} has ended"));
+        }
+        foreach (TaskCompletionSource<List<object?>> asked in agentAsked.Values)
+        {
+            asked.TrySetException(new LiveAppException($"{Name} has ended"));
+        }
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -191,8 +215,27 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
                     }
                 }
                 break;
+            case GodotWords.Error when GodotError.Read(message.Data) is { } error && error.Function == GodotWords.ScreenshotFunction && picturesAsked.Count > 0:
+                foreach (TaskCompletionSource<(int, int, string)> asked in picturesAsked.Values)
+                {
+                    asked.TrySetException(new LiveAppException($"Godot took no picture of {Name}: {error.Said}"));
+                }
+                break;
+            case GodotWords.Error when GodotError.Read(message.Data) is { } error && GodotAgent.Raised(error):
+                // Passenger's own helper failed: the asks waiting on it say so, and the game's problems stay its own.
+                foreach (TaskCompletionSource<List<object?>> asked in agentAsked.Values.Where(_ => !error.Warning))
+                {
+                    asked.TrySetException(new LiveAppException($"Passenger's helper in {Name} failed: {error.Said}"));
+                }
+                break;
             case GodotWords.Error when GodotError.Read(message.Data) is { } error:
                 Raised?.Invoke(this, error);
+                break;
+            case GodotWords.Screenshotted when message.Data is [long id, long width, long height, string path]:
+                picturesAsked.GetValueOrDefault(id)?.TrySetResult(((int)width, (int)height, path));
+                break;
+            case GodotAgent.Said when message.Data is List<object?> { Count: >= 2 } said && said[0] is long ask:
+                agentAsked.GetValueOrDefault(ask)?.TrySetResult(said);
                 break;
             case GodotWords.Monitors when GodotMonitors.Read(message.Data) is { } monitors:
                 bool moved = Monitors is { } was && was.Nodes != monitors.Nodes;
@@ -244,7 +287,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         TaskCompletionSource<GodotNode?> asked = treeAsked is { Task.IsCompleted: false } pending ? pending
             : treeAsked = new TaskCompletionSource<GodotNode?>(TaskCreationOptions.RunContinuationsAsynchronously);
         await SendAsync(GodotWords.RequestSceneTree);
-        return await Answer(asked.Task) ?? throw new LiveAppException($"{Name} sent a scene tree Passenger could not read");
+        return await Answer(asked.Task, "with its scene tree") ?? throw new LiveAppException($"{Name} sent a scene tree Passenger could not read");
     }
 
     /// <summary>A node's (or any object's) properties now.</summary>
@@ -256,13 +299,14 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             asked = objectsAsked[id] = new TaskCompletionSource<GodotObjectState>(TaskCreationOptions.RunContinuationsAsynchronously);
         }
         await SendAsync(GodotWords.InspectObjects, new List<object?> { (long)id }, false);
-        return await Answer(asked.Task);
+        return await Answer(asked.Task, "with the node's properties");
     }
 
     /// <summary>Sets a property of an object to a value, which the game takes as it next reads its messages.</summary>
     public Task SetPropertyAsync(ulong id, string property, object? value) => SendAsync(GodotWords.SetObjectProperty, (long)id, property, value);
 
-    private async Task<T> Answer<T>(Task<T> asked)
+    /// <summary>The answer to a question of the game's, <paramref name="what"/> naming the question its refusal says went unanswered.</summary>
+    private async Task<T> Answer<T>(Task<T> asked, string? what = null)
     {
         try
         {
@@ -272,7 +316,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         {
             throw new LiveAppException(Debugged is { State: Debugging.DebugState.Paused }
                 ? $"{Name} is paused, and answers once it runs"
-                : $"{Name} did not answer in {AnswerLimit.TotalSeconds:0} s");
+                : $"{Name} did not answer{(what is null ? string.Empty : $" {what}")} in {AnswerLimit.TotalSeconds:0} s");
         }
     }
 
@@ -282,10 +326,116 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         return new AppTree([ElementOf(root)]);
     }
 
-    /// <summary>A node as the tree shows it, a script's path that names its type ("res://Main.cs") by its file's name.</summary>
+    /// <summary>A node as the tree shows it, a script's path that names its type ("res://Main.cs") by its file's name;
+    /// Passenger's own helper left out.</summary>
     private static Element ElementOf(GodotNode node) =>
         new((long)node.Id, node.Type.StartsWith("res://", StringComparison.Ordinal) ? Path.GetFileName(node.Type) : node.Type, node.Name, [], false,
-            node.SceneFile.Length > 0, node.Visible, [.. node.Children.Select(ElementOf)]);
+            node.SceneFile.Length > 0, node.Visible, [.. node.Children.Where(c => !GodotAgent.Is(c)).Select(ElementOf)]);
+
+    /// <summary>Why a game Godot runs headless has no picture.</summary>
+    public string HeadlessPicture => $"{Name} runs headless (--headless among its arguments), and Godot draws nothing for a headless game, "
+        + "so there is no picture of it: run it without --headless to take one";
+
+    /// <summary>A PNG of the game's window as Godot draws it (its root viewport), and its size in pixels, the file Godot
+    /// wrote it to deleted once read; refused for a headless game, which draws nothing.</summary>
+    public async Task<(byte[] Png, int Width, int Height)> PictureAsync()
+    {
+        UiThread.Check();
+        if (Headless)
+        {
+            throw new LiveAppException(HeadlessPicture);
+        }
+        long ask = ++asks;
+        TaskCompletionSource<(int Width, int Height, string Path)> asked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        picturesAsked[ask] = asked;
+        try
+        {
+            await SendAsync(GodotWords.Screenshot, ask);
+            (int width, int height, string path) = await Answer(asked.Task, "with its picture");
+            try
+            {
+                return (await File.ReadAllBytesAsync(path), width, height);
+            }
+            catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+            {
+                throw new LiveAppException($"{Name}'s picture could not be read from {path}: {unread.Message}");
+            }
+            finally
+            {
+                Gone(path);
+            }
+        }
+        finally
+        {
+            picturesAsked.Remove(ask);
+        }
+
+        static void Gone(string path)
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception kept) when (kept is IOException or UnauthorizedAccessException)
+            {
+                // Godot's own temporary folder keeps it.
+            }
+        }
+    }
+
+    /// <summary>Asks Passenger's helper in the game (<see cref="GodotAgent"/>) to run one of its calls, bringing it in first
+    /// once, where the game's tree lacks it: through the live editing of a scene open once under the root, a node made beside
+    /// it and its script set from <see cref="GodotAgent.Written"/>. What it answered after its ask and done; a
+    /// <see cref="LiveAppException"/> saying why it did not do it.</summary>
+    public async Task<List<object?>> AskAsync(string call, params object?[] arguments)
+    {
+        UiThread.Check();
+        GodotNode tree = await SceneTreeAsync();
+        List<GodotNode> all = [.. tree.All()];
+        string scene = tree.Children.Select(c => c.SceneFile).FirstOrDefault(f => f.Length > 0 && all.Count(n => n.SceneFile == f) == 1)
+            ?? throw new LiveAppException($"{Name} has no scene open once under its root, beside which Passenger's helper comes into the game");
+        await SendAsync(GodotWords.LiveSetRoot, GodotAgent.PathOf("/root"), scene);
+        await SendAsync(GodotWords.LiveNodePath, GodotAgent.PathOf($"../{GodotAgent.NodeName}"), AgentPath);
+        if (bringing is null && !tree.Children.Any(GodotAgent.Is))
+        {
+            bringing = BringAsync();
+        }
+        if (bringing is { } brought)
+        {
+            try
+            {
+                await brought;
+            }
+            catch (Exception unwritten) when (unwritten is IOException or UnauthorizedAccessException)
+            {
+                bringing = null;
+                throw new LiveAppException($"Passenger's helper could not be written for {Name}: {unwritten.Message}");
+            }
+        }
+        long ask = ++asks;
+        TaskCompletionSource<List<object?>> asked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        agentAsked[ask] = asked;
+        try
+        {
+            await SendAsync(GodotWords.LiveNodeCall, [AgentPath, call, ask, .. arguments]);
+            List<object?> said = await Answer(asked.Task, $"Passenger's helper's {call}");
+            return said[1] is true ? said[2..]
+                : throw new LiveAppException(said is [_, _, string why, ..] ? why : $"Passenger's helper in {Name} did not say why it could not");
+        }
+        finally
+        {
+            agentAsked.Remove(ask);
+        }
+    }
+
+    /// <summary>Has the game make Passenger's helper beside the scene its live editing names, its script the file written.</summary>
+    private async Task BringAsync()
+    {
+        string script = await BackgroundWork.Run(GodotAgent.Written);
+        await SendAsync(GodotWords.LiveCreateNode, GodotAgent.PathOf(".."), "Node", GodotAgent.NodeName);
+        // Godot's own paths part their folders with '/' on every system.
+        await SendAsync(GodotWords.LiveNodePropertyResource, AgentPath, "script", script.Replace('\\', '/'));
+    }
 
     public async Task<ElementDetails> DetailsAsync(long element)
     {

@@ -374,6 +374,15 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             {
                 return;
             }
+            Make(Folder, version, packages, Script, Scene);
+        }
+
+        /// <summary>Writes a Godot 4 C# project named Spinner into a folder: its project.godot (the scene its game starts in
+        /// res://main.tscn), its project on the Godot.NET.Sdk of the Godot's version, its script Main.cs and scene, and a
+        /// nuget.config whose one source is the Godot's own packages.</summary>
+        internal static void Make(string folder, string version, string packages, string script, string scene)
+        {
+            string PathOf(string name) => Path.Combine(folder, name);
             string features = string.Join('.', version.Split('.').Take(2));
             File.WriteAllText(PathOf("project.godot"), $"""
                 ; Engine configuration file.
@@ -392,8 +401,8 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
                 """);
             File.WriteAllText(PathOf("Spinner.csproj"), $"<Project Sdk=\"Godot.NET.Sdk/{version}\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n"
                 + "    <EnableDynamicLoading>true</EnableDynamicLoading>\n  </PropertyGroup>\n</Project>\n");
-            File.WriteAllText(PathOf("Main.cs"), Script);
-            File.WriteAllText(PathOf("main.tscn"), Scene);
+            File.WriteAllText(PathOf("Main.cs"), script);
+            File.WriteAllText(PathOf("main.tscn"), scene);
             File.WriteAllText(PathOf("nuget.config"), $"""
                 <?xml version="1.0" encoding="utf-8"?>
                 <configuration>
@@ -420,7 +429,8 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
 
         public override ValueTask InitializeAsync() => Godot is { WhyNot: null } ? base.InitializeAsync() : ValueTask.CompletedTask;
 
-        private static Dictionary<string, string> Home(string home)
+        /// <summary>The variables that keep a Godot's user folders under <paramref name="home"/>.</summary>
+        internal static Dictionary<string, string> Home(string home)
         {
             string full = Directory.CreateDirectory(Path.GetFullPath(home)).FullName;
             return OperatingSystem.IsWindows()

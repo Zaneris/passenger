@@ -20,6 +20,8 @@
     <!-- MSBuild's own schemas (dotnet/msbuild, MIT), which the .NET SDK does not carry: the elements, properties, items,
          metadata and tasks the code help in project files offers and describes (MSBuild/MSBuildSchema.cs). -->
     <EmbeddedResource Include="MSBuild/Schemas/*.xsd" LogicalName="MSBuild/%(Filename)%(Extension)" />
+    <!-- Passenger's own helper in a Godot game it debugs, which Godot loads from the state's cache (Godot/GodotAgent.cs). -->
+    <EmbeddedResource Include="Godot/PassengerAgent.gd" LogicalName="Godot/PassengerAgent.gd" />
     <!-- Passenger's own Prettier runner (Web/Prettier.cs), carried beside the web language servers. -->
     <None Include="Web/prettier.cjs" Link="web/passenger/prettier.cjs" CopyToOutputDirectory="PreserveNewest" />
     <!-- Passenger's preload for the Dockerfile server, which keeps it from Docker Hub while Settings says so

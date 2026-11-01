@@ -43,6 +43,16 @@ public static class GodotWords
     public const string IgnoreErrorBreaks = "set_ignore_error_breaks";
     public const string DebugEnter = "debug_enter";
     public const string Continue = "continue";
+    public const string Screenshot = "scene:rq_screenshot";
+    public const string Screenshotted = "game_view:get_screenshot";
+    public const string LiveSetRoot = "scene:live_set_root";
+    public const string LiveNodePath = "scene:live_node_path";
+    public const string LiveCreateNode = "scene:live_create_node";
+    public const string LiveNodePropertyResource = "scene:live_node_prop_res";
+    public const string LiveNodeCall = "scene:live_node_call";
+
+    /// <summary>The function of Godot's that takes a picture of the game, whose errors say why it took none.</summary>
+    public const string ScreenshotFunction = "_msg_rq_screenshot";
 }
 
 /// <summary>A node of a running game's scene tree: its object's id, name, type (a script's class or path where it has one),

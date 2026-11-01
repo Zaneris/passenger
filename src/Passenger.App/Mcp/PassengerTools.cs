@@ -1074,6 +1074,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         Task<int> ended = builds.RunEnd;
         LiveTree.LiveApp? app = Session.RunApp;
+        // A Godot game Run started, Passenger its remote debugger.
+        Godot.GodotGame? game = Session.RunPlan is { Godot: not null, GodotEditor: false } ? Session.Game : null;
         HeardServing serving = HeardServing.Ran(Session);
         if (Session.Configurations.Chosen is { } host && Session.Aspire.IsAspire(host) && Session.Aspire.FindApp(host.Project) is { } aspireApp)
         {
@@ -1083,13 +1085,15 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         else
         {
             AgentCall.Say($"Running {name}: waiting up to {Math.Max(0, waitSeconds)} s for it to end, its UI to be up or its host to start");
-            // A window or a serving host never ends by itself; looked at every 50 ms, its words reaching the console unannounced.
-            await Until(() => ended.IsCompleted || app is { State: not LiveTree.LiveAppState.Waiting } || serving.Serves(), TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), cancel);
+            // A window, a serving host or a game's frames never end by themselves; looked at every 50 ms, its words reaching the console unannounced.
+            await Until(() => ended.IsCompleted || app is { State: not LiveTree.LiveAppState.Waiting } || game is { Monitors: not null } or { State: LiveTree.LiveAppState.Ended }
+                || serving.Serves(), TimeSpan.FromSeconds(Math.Max(0, waitSeconds)), cancel);
         }
         int? code = ended.IsCompletedSuccessfully ? ended.Result : null;
         string output = RunOutput(200);
         string status = code is int exit ? BuildRunController.RunEnded(name, exit)
             : app is { State: LiveTree.LiveAppState.Connected } ? $"Running {name}, its UI up: app_windows, app_screenshot and app_click look at it and use it"
+            : game is { State: LiveTree.LiveAppState.Connected, Monitors: not null } ? $"Running {name}, {GameUp}"
             : serving.Said is { } said ? $"Running {name}, {said}"
             : $"Running {name}";
         // What an Aspire run said of itself as it started (its HTTPS over HTTP).
@@ -1584,6 +1588,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return $"{refused}:\n{string.Join('\n', lines)}{(errors.Count > 10 ? $"\n… {errors.Count - 10} more: problems lists them" : "")}";
     }
 
+    /// <summary>What an answer says of a Godot game once it has connected to Passenger, its remote debugger.</summary>
+    private const string GameUp = "Passenger its remote debugger: app_tree, app_details and app_click look at its nodes and use them";
+
     /// <summary>How long a launched app whose UI is up is watched for a stop in its first layout.</summary>
     private static readonly TimeSpan LaunchSettle = TimeSpan.FromSeconds(2);
 
@@ -1595,12 +1602,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private async Task<DebugSnapshot> AfterLaunch(TimeSpan limit, CancellationToken cancel)
     {
         LiveTree.LiveApp? app = Session.LiveApp;
+        Godot.GodotGame? game = Session.Game is { Debugged: not null } debugged ? debugged : null;
         DateTime until = DateTime.UtcNow + limit;
         AgentCall.Say($"Debugging: waiting up to {limit.TotalSeconds:0} s for a stop, the program's end, its UI or its host's start");
         Func<bool> going = () => Session.Debug.Session is { State: DebugState.Running or DebugState.Starting };
         HeardServing serving = HeardServing.Debugged(Session.Debug);
         // Looked at every 50 ms: the session the launch makes can come after the wait begins, and the debugger tells of none.
-        await Until(() => !going() || app is { State: not LiveTree.LiveAppState.Waiting } || serving.Serves(), limit, cancel);
+        await Until(() => !going() || app is { State: not LiveTree.LiveAppState.Waiting } || game is { Monitors: not null } or { State: LiveTree.LiveAppState.Ended }
+            || serving.Serves(), limit, cancel);
         if (going() && app is { State: LiveTree.LiveAppState.Connected })
         {
             // A stop in the first layout, just after the inspector's hello, is waited for too; looked at every 50 ms.
@@ -1609,6 +1618,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         DebugSnapshot started = await AfterResume(TimeSpan.Zero, cancel);
         return started.Debugged != DebugState.Running ? started
             : app is { State: LiveTree.LiveAppState.Connected } ? started with { Status = $"{started.Status}, its UI up: app_windows, app_screenshot and app_click look at it and use it" }
+            : game is { State: LiveTree.LiveAppState.Connected, Monitors: not null } ? started with { Status = $"{started.Status}, {GameUp}" }
             : serving.Said is { } said ? started with { Status = $"{started.Status}, {said}" }
             : started;
     }
