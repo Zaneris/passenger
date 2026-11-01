@@ -88,6 +88,36 @@ public sealed class TablesTests : IDisposable
         Assert.Equal(text, File.ReadAllText(path));
     }
 
+    /// <summary>The keys sort too: the menu key on a table offers the chosen cell's column's sorts, the one in force checked,
+    /// as the header's menu does, and the rows sort as chosen and go back to the file's order.</summary>
+    [AvaloniaFact]
+    public void The_menu_key_sorts_by_the_chosen_cells_column_both_ways_and_back()
+    {
+        string path = Path.Combine(folder, "scores.csv");
+        File.WriteAllText(path, "Name,Score\nAda,7\nAlan,12\nGrace,3\n");
+        MainWindow window = Open(path);
+        CellGrid grid = Grid(window);
+        Ui.Click(grid, grid.SortArrow(1).Center + new Vector(-20, ListRow.Height * 2));
+        Assert.Equal(1, grid.Caret.Column);
+        string[] Names() => [.. Enumerable.Range(0, grid.Table!.RowCount).Select(row => grid.Table.Cell(row, 0))];
+        string[] Offered()
+        {
+            Ui.Run(window, AppActions.ShowContextMenu);
+            ContextMenu menu = grid.Menu ?? throw new Xunit.Sdk.XunitException("The menu key on the table opened no menu");
+            return [.. menu.Items.OfType<MenuItem>().Take(3).Select(i => $"{i.Header}{(i.IsChecked ? " (checked)" : "")}")];
+        }
+
+        Assert.Equal(["Sort Ascending", "Sort Descending", "File Order (checked)"], Offered());
+        Ui.Choose(grid.Menu!, "Sort Descending");
+        Ui.WaitFor(() => grid.Table?.Sort == (1, true), "the table sorted by Score, the most first");
+        Assert.Equal(["Alan", "Ada", "Grace"], Names());
+        Assert.Equal(["Sort Ascending", "Sort Descending (checked)", "File Order"], Offered());
+        Ui.Choose(grid.Menu!, "File Order");
+        Ui.WaitFor(() => grid.Table?.Sort is null, "the table in the file's order again");
+        Assert.Equal(["Ada", "Alan", "Grace"], Names());
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_workbook_shows_each_sheet_with_its_numbers_formatted_as_Excel_shows_them_and_is_never_written()
     {

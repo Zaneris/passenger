@@ -103,8 +103,9 @@ public sealed class CellGrid : Control
     /// which way, or null for the file's order.</summary>
     public event EventHandler<(int Column, bool Descending)?>? SortRequested;
 
-    /// <summary>The cells' menu, Copy and Select All with their keys, at the pointer, or from the keys under the caret's
-    /// cell; over a column's title, its sorts first, the one in force checked.</summary>
+    /// <summary>The cells' menu, Copy and Select All with their keys, at the pointer, or from the keys (the menu key,
+    /// Shift+F10) under the caret's cell; first the sorts of the column it opened on (the pointer's, or the caret's from the
+    /// keys), the one in force checked.</summary>
     private void ShowMenu(Point? at)
     {
         if (table is null)
@@ -121,9 +122,9 @@ public sealed class CellGrid : Control
                 ListMenus.Keyed("Select All", EditorActions.SelectAll, () => Execute(EditorActions.SelectAll), cells),
             },
         };
-        if (at is { } place && place.Y < RowHeight && place.X >= gutter && cells)
+        if (cells && (at is not { } place || place.X >= gutter))
         {
-            int column = ColumnAt(place.X - gutter + scroll.X);
+            int column = at is { } pointer ? ColumnAt(pointer.X - gutter + scroll.X) : caret.Column;
             (string Title, (int Column, bool Descending)? Sort)[] sorts = [("Sort Ascending", (column, false)), ("Sort Descending", (column, true)), ("File Order", null)];
             for (int i = 0; i < sorts.Length; i++)
             {
