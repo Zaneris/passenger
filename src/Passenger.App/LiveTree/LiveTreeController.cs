@@ -13,8 +13,9 @@ namespace Passenger.App.LiveTree;
 /// a place in a file, and the editors, whose text the app's XAML places are read in.</summary>
 public sealed record LiveTreeParts(DockHost Dock, ActionRegistry Actions, Action<string> Say, Action<string, TextPosition> Navigate, EditorArea Editors);
 
-/// <summary>The window's Live Visual Tree, over the session it has: it follows the Avalonia or WPF app of the Debug tab chosen
-/// (<see cref="ProjectSession.LiveApp"/>), shows its window as the app's UI comes up, and asks the app for its tree
+/// <summary>The window's Live Visual Tree, over the session it has: it follows the Avalonia or WPF app of the Debug tab chosen,
+/// else the Godot game launched last (<see cref="ProjectSession.LiveSource"/>), shows its window as the app's UI comes up,
+/// a game's monitors in its status line, and asks the app for its tree
 /// (again whenever its controls come and go), for the chosen control's details, for Select Element and for the outline over
 /// the control chosen. While the app is paused nothing is asked, since its UI thread answers nothing: the window keeps what
 /// it last had and says so, and asks again once the app runs. A UI-thread object of the window.</summary>
@@ -23,7 +24,7 @@ public sealed class LiveTreeController
     private readonly LiveTreeParts parts;
     private readonly ToolWindow window;
     private ProjectSession? session;
-    private LiveApp? app;
+    private ILiveTreeSource? app;
     private DebugController? followedDebugger;
     private long? chosen;
 
@@ -86,7 +87,12 @@ public sealed class LiveTreeController
         made.GoToRequested += (_, place) => GoTo(place);
         made.BreakRequested += (_, value) => ToggleBreak(value);
         made.Watched = value => details.Details is { } shown && Debugged() is { } debugged && session!.Debug.Breakpoints.FindProperty(debugged, shown.Id, value.Name) is not null;
-        made.WhyNotBreak = () => Debugged() is { State: not DebugState.Ended } ? null : "Break When Value Changes needs the app debugged";
+        made.WhyNotBreak = () => app is not LiveApp ? "Break When Value Changes watches an Avalonia or WPF app's properties"
+            : Debugged() is { State: not DebugState.Ended } ? null : "Break When Value Changes needs the app debugged";
+        made.WhyNotEdit = value => app is ILiveTreeValues values && details.Details is { } shown ? values.WhyNotSet(shown.Id, value) : "Only a Godot game's properties are set here";
+        made.ValueSet += (_, set) => IdeErrors.Observe(SetAsync(set.Value, set.Text));
+        made.NotEdited += (_, why) => parts.Say(why);
+        made.PropertiesAlone = app is Godot.GodotGame;
         made.ShowTree(tree);
         made.ShowDetails(details.Details, details.Problem);
         if (chosen is long id && tree is not null)
@@ -95,6 +101,8 @@ public sealed class LiveTreeController
         }
         made.ShowStatus(status.Message, status.Line);
         made.ShowBanner(banner);
+        made.ShowMonitors(monitorsShown);
+        made.SelectElement.IsVisible = app is not Godot.GodotGame;
         made.SelectElement.IsChecked = picking;
         return made;
     }
@@ -103,6 +111,15 @@ public sealed class LiveTreeController
     {
         status = (message, line);
         view?.ShowStatus(message, line);
+    }
+
+    /// <summary>The game's monitors as last shown, or null.</summary>
+    private string? monitorsShown;
+
+    private void ShowMonitors(string? text)
+    {
+        monitorsShown = text;
+        view?.ShowMonitors(text);
     }
 
     private void ShowBanner(string? text)
@@ -133,8 +150,8 @@ public sealed class LiveTreeController
         }
     }
 
-    /// <summary>The app the window follows, or null.</summary>
-    public LiveApp? App => app;
+    /// <summary>The app or game the window follows, or null.</summary>
+    public ILiveTreeSource? App => app;
 
     /// <summary>The control chosen in the tree (by the inspector's id for it), or null.</summary>
     public long? Chosen => chosen;
@@ -152,7 +169,12 @@ public sealed class LiveTreeController
     }
 
     /// <summary>The session debugging the app the window follows, which its property breakpoints are the elements of.</summary>
-    private DebugSession? Debugged() => app is not null ? session?.Debug.SessionOf(app) : null;
+    private DebugSession? Debugged() => app switch
+    {
+        LiveApp live => session?.Debug.SessionOf(live),
+        Godot.GodotGame game => game.Debugged,
+        _ => null,
+    };
 
     /// <summary>The window follows a session from now: the app of its chosen Debug tab, and whether that app is paused.</summary>
     public void Bind(ProjectSession next)
@@ -186,7 +208,7 @@ public sealed class LiveTreeController
                 followedDebugger.Breakpoints.PropertiesChanged += OnPropertiesChanged;
             }
         }
-        Follow(session?.LiveApp);
+        Follow(session?.LiveSource);
         OnDebugState();
         OnPropertiesChanged(null, EventArgs.Empty);
     }
@@ -343,7 +365,7 @@ public sealed class LiveTreeController
 
     private bool Paused => Debugged() is { State: DebugState.Paused };
 
-    private void Follow(LiveApp? next)
+    private void Follow(ILiveTreeSource? next)
     {
         if (app == next)
         {
@@ -353,21 +375,41 @@ public sealed class LiveTreeController
         {
             app.StateChanged -= OnAppState;
             app.TreeChanged -= OnTreeChanged;
-            app.Picked -= OnPicked;
+        }
+        if (app is LiveApp left)
+        {
+            left.Picked -= OnPicked;
+        }
+        if (app is Godot.GodotGame was)
+        {
+            was.MonitorsChanged -= OnMonitors;
         }
         app = next;
+        if (view is not null)
+        {
+            view.PropertiesAlone = next is Godot.GodotGame;
+            view.SelectElement.IsVisible = next is not Godot.GodotGame;
+        }
+        ShowMonitors((next as Godot.GodotGame)?.Monitors?.Said);
         Choose(null);
         treeAsks++;
         detailAsks++;
         Picking(false);
         ShowBanner(null);
         ShowTree(null);
-        ShowDetails(null, null);
+        ShowDetails(null, NoneChosen);
         if (next is not null)
         {
             next.StateChanged += OnAppState;
             next.TreeChanged += OnTreeChanged;
-            next.Picked += OnPicked;
+        }
+        if (next is LiveApp live)
+        {
+            live.Picked += OnPicked;
+        }
+        if (next is Godot.GodotGame game)
+        {
+            game.MonitorsChanged += OnMonitors;
         }
         ShowState();
         if (next is { State: LiveAppState.Connected })
@@ -384,7 +426,7 @@ public sealed class LiveTreeController
         switch (app)
         {
             case null:
-                ShowStatus("Debug an Avalonia or WPF app to see its windows and controls here.", null);
+                ShowStatus(NothingShown, null);
                 break;
             case { State: LiveAppState.Waiting }:
                 ShowStatus($"Waiting for {app.Name} to show its windows…", null);
@@ -394,8 +436,9 @@ public sealed class LiveTreeController
                 break;
             case { State: LiveAppState.Ended }:
                 ShowTree(null);
-                ShowDetails(null, null);
+                ShowDetails(null, NoneChosen);
                 ShowBanner(null);
+                ShowMonitors(null);
                 Picking(false);
                 ShowStatus($"{app.Name} has ended.", null);
                 break;
@@ -403,6 +446,43 @@ public sealed class LiveTreeController
                 ShowStatus(null, $"{app.Name} · {app.Framework}");
                 break;
         }
+    }
+
+    /// <summary>What the details say while no element is chosen: a game's are its nodes, chosen in the tree alone.</summary>
+    private string? NoneChosen => app is Godot.GodotGame ? "Choose a node in the tree." : null;
+
+    /// <summary>What the window says while it follows nothing.</summary>
+    public const string NothingShown = "Debug an Avalonia or WPF app to see its windows and controls here, or run a Godot game to see its nodes.";
+
+    /// <summary>A game's monitors came: its status line says them.</summary>
+    private void OnMonitors(object? sender, EventArgs e)
+    {
+        if (sender == app && app is Godot.GodotGame { State: LiveAppState.Connected } game)
+        {
+            ShowMonitors(game.Monitors?.Said);
+        }
+    }
+
+    /// <summary>A property of the chosen element set to what the person typed, its details asked again to show what the
+    /// app made of it; the status bar says what came of it.</summary>
+    private async Task SetAsync(PropertyValue value, string text)
+    {
+        if (app is not ILiveTreeValues values || details.Details is not { } shown)
+        {
+            return;
+        }
+        string element = shown.Name is { Length: > 0 } name ? $"{shown.Type} {name}" : shown.Type;
+        try
+        {
+            await values.SetAsync(shown.Id, value, text);
+        }
+        catch (LiveAppException error)
+        {
+            parts.Say($"{element}'s {value.Name} was not set: {error.Message}");
+            return;
+        }
+        parts.Say($"{element}'s {value.Name} set to {text}");
+        await ShowDetailsAsync(shown.Id);
     }
 
     private void OnAppState(object? sender, EventArgs e)
@@ -438,10 +518,10 @@ public sealed class LiveTreeController
         {
             IdeErrors.Observe(RefreshAsync());
         }
-        else if (!window.IsShown && WhyNotAsk() is null)
+        else if (!window.IsShown && WhyNotAsk() is null && app is LiveApp live)
         {
             // Nothing outlined in the app while the window that chose it is away.
-            IdeErrors.Observe(Unoutline(app!));
+            IdeErrors.Observe(Unoutline(live));
         }
     }
 
@@ -541,7 +621,7 @@ public sealed class LiveTreeController
         UiThread.Check();
         Choose(id);
         await ShowDetailsAsync(id);
-        if (app is { State: LiveAppState.Connected } live && !Paused)
+        if (app is LiveApp { State: LiveAppState.Connected } live && !Paused)
         {
             try
             {
@@ -599,7 +679,12 @@ public sealed class LiveTreeController
             parts.Say($"Select Element: {why}");
             return;
         }
-        LiveApp live = app!;
+        if (app is not LiveApp live)
+        {
+            Picking(false);
+            parts.Say($"Select Element: {app!.Name} is a Godot game, whose nodes are chosen in the tree");
+            return;
+        }
         try
         {
             await live.PickAsync(on);

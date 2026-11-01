@@ -76,6 +76,9 @@ public sealed partial record LaunchPlan
     /// null for any other plan.</summary>
     public string? Godot { get; init; }
 
+    /// <summary>The version of the Godot a Godot game's plan runs on, where known.</summary>
+    public string? GodotVersion { get; init; }
+
     /// <summary>The program as its messages name it: the project's assembly, else the executable, without its extension.</summary>
     public string ProgramName => System.IO.Path.GetFileNameWithoutExtension(Built ?? Program);
 

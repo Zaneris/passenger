@@ -133,6 +133,7 @@ public sealed partial class BuildRunController
         this.parts = parts;
         // A Debug tab that comes or goes brings its app's failed bindings to Problems, or takes them away.
         session.InspectedChanged += (_, _) => ShowBindings();
+        session.GameStarted += (_, game) => FollowGame(game);
         session.Builder.Line += (_, line) =>
         {
             (Problem? next, bool continued) = BuildOutput.Next(reading, line, builtPaths);
@@ -928,6 +929,8 @@ public sealed partial class BuildRunController
             work.Say($"Starting {chosen.Name}…");
             ran = chosen.Name;
             RunProject = Path.GetDirectoryName(plan.Project);
+            // A Godot game's, with Passenger as its remote debugger.
+            (plan, Godot.GodotGame? game) = session.Listened(plan);
             session.RunPlan = plan;
             string running = watched ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
                 : wanted && godot ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.WithoutHotReload}"
@@ -949,6 +952,7 @@ public sealed partial class BuildRunController
                     parts.OpenBrowser(plan, inTerminal.Ended);
                 }
                 EndWith(inspected, refused is null && session.InTerminal is { } run ? run.Ended : Task.CompletedTask);
+                EndWith(game, refused is null && session.InTerminal is { } played ? played.Ended : Task.CompletedTask);
                 return refused;
             }
             session.InTerminal = null;
@@ -969,6 +973,7 @@ public sealed partial class BuildRunController
                 parts.OpenBrowser(plan, session.Runner.Ended);
             }
             EndWith(inspected, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
+            EndWith(game, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
             return notStarted;
         }
         finally
@@ -1623,13 +1628,19 @@ public sealed partial class BuildRunController
         DebugProject = Path.GetDirectoryName(plan.Project);
         DebugController debug = session.Debug;
         // An Avalonia or WPF app is launched with the Live Visual Tree's inspector, held by its tab, ending with this debugging.
-        (LaunchPlan launched, LiveApp? inspected) = session.Inspected(plan);
+        (LaunchPlan listened, Godot.GodotGame? game) = session.Listened(plan);
+        (LaunchPlan launched, LiveApp? inspected) = session.Inspected(listened);
         Task<string?> starting = debug.StartAsync(launched, app: inspected, edits: edits);
         // Its tab, chosen as the start began, has the console its failed bindings are written to.
         WatchBindings(inspected, debug.Chosen?.Console);
         string? refused = await starting;
+        if (game is not null && refused is null)
+        {
+            game.Debugged = debug.SessionNamed(launched.Name);
+        }
         Task ended = refused is null ? DebugEnded(debug.SessionNamed(launched.Name)) : Task.CompletedTask;
         EndWith(inspected, ended);
+        EndWith(game, ended);
         if (refused is null)
         {
             parts.OpenBrowser(plan, ended);
@@ -1637,16 +1648,35 @@ public sealed partial class BuildRunController
         return refused;
     }
 
-    /// <summary>An app's inspector let go once its run or debugging ends: one that never connected (startup hooks turned off
-    /// in the app) waits no longer. Its failed bindings stay in Problems until the next launch of its kind.</summary>
-    private static void EndWith(LiveApp? app, Task ended)
+    /// <summary>The errors and warnings the last Godot game launched raised, in Problems' Godot tab as they come, each at the
+    /// first place of its stack in the project (a script's frame, else where the engine says it was raised), the newest
+    /// game's alone.</summary>
+    private void FollowGame(Godot.GodotGame game)
+    {
+        List<Problem> raised = [];
+        parts.Views.Problems.ShowGodot(raised);
+        game.Raised += (_, error) =>
+        {
+            if (session.Game != game || session.IsEnded)
+            {
+                return;
+            }
+            raised.Add(Godot.GodotProblems.Of(error, game));
+            parts.Views.Problems.ShowGodot([.. raised]);
+        };
+    }
+
+    /// <summary>An app's inspector (or a Godot game's debugger) let go once its run or debugging ends: one that never
+    /// connected (startup hooks turned off in the app, a game that failed first) waits no longer. Its failed bindings stay in
+    /// Problems until the next launch of its kind.</summary>
+    private static void EndWith(IDisposable? app, Task ended)
     {
         if (app is not null)
         {
             IdeErrors.Observe(EndWithAsync(app, ended));
         }
 
-        static async Task EndWithAsync(LiveApp app, Task ended)
+        static async Task EndWithAsync(IDisposable app, Task ended)
         {
             await ended;
             app.Dispose();

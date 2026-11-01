@@ -1,4 +1,6 @@
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Editors;
@@ -27,7 +29,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     }
 
     /// <summary>The script: each frame spins a few milliseconds in a loop that calls nothing, which the profiler's sampler can
-    /// stop in, and every tenth says its number.</summary>
+    /// stop in, every tenth says its greeting (a property the scene can set) and its number, and the twentieth raises an error.</summary>
     private const string Script = """
         using Godot;
 
@@ -37,6 +39,9 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
 
             private long spun;
 
+            [Export]
+            public string Greeting { get; set; } = "frame";
+
             public override void _Process(double delta)
             {
                 frames++;
@@ -45,11 +50,15 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
                 {
                     Say(frames);
                 }
+                if (frames == 20)
+                {
+                    GD.PushError("Spinner fell over");
+                }
             }
 
-            private static void Say(int frames)
+            private void Say(int frames)
             {
-                GD.Print($"frame {frames}");
+                GD.Print($"{Greeting} {frames}");
             }
 
             private void Spin()
@@ -99,7 +108,9 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             Choose(window, played);
             Ui.Launched(window, window.RunAsync(), "the game's build and start", TimeSpan.FromMinutes(3));
             Ui.WaitFor(() => Run(window).Contains("frame 10", StringComparison.Ordinal), () => $"the game to run its script ({Run(window)})", TimeSpan.FromMinutes(1));
-            Assert.Contains($"{game.Godot.Executable} --path {folder} --headless", Run(window), StringComparison.Ordinal);
+            // Passenger listens for the game as its remote debugger, on loopback.
+            Assert.Contains($"{game.Godot.Executable} --path {folder} {Passenger.App.Godot.GodotGame.RemoteDebug} tcp://127.0.0.1:", Run(window), StringComparison.Ordinal);
+            Assert.Contains(" --headless\n", Run(window), StringComparison.Ordinal);
             Assert.Equal(MainWindow.GodotRunsWithout("Spinner on Godot"), window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context()));
             Stop(window);
 
@@ -134,7 +145,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
 
             editor.GoTo(new TextPosition(line, 9));
             Ui.Run(window, AppActions.ToggleBreakpoint);
-            Typing.Replace(window, "frame {frames}", "tick {frames}");
+            Typing.Replace(window, "{Greeting} {frames}", "tick {frames}");
             Ui.Run(window, AppActions.ApplyHotReloadChanges);
             Ui.WaitFor(() => window.Debugger.LastApplied is not null, "Hot Reload to say what it applied");
             Assert.True(window.Debugger.LastApplied!.Result == HotReloadResult.Applied, $"The edit to the game's script was not applied: {window.Debugger.LastApplied.Said}");
@@ -169,6 +180,56 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         }
     }
 
+    /// <summary>Run makes Passenger the game's remote debugger: the Live Visual Tree shows its scene tree, the Main node's
+    /// script property typed there is what the game then prints, the error the script raises is in Problems at its line and
+    /// linked from Godot's words in the Run console, and the window's status line reads the game's monitors.</summary>
+    [AvaloniaFact]
+    public void The_running_games_tree_shows_its_nodes_a_property_typed_there_changes_it_its_error_links_to_its_line_and_its_monitors_read()
+    {
+        MainWindow window = game.Open(null, languageServer: false);
+        try
+        {
+            Choose(window, Generated(window, "Spinner"));
+            Ui.Launched(window, window.RunAsync(), "the game's build and start", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => window.LiveTree.Rows.Any(r => r.Element.Name == "Main"),
+                () => $"the Live Visual Tree to show the game's nodes ({window.LiveSource?.State}; {string.Join(", ", window.LiveTree.Rows.Select(r => r.Element.Name))})",
+                TimeSpan.FromMinutes(1));
+            Assert.Contains(window.LiveTree.Rows, r => r.Element.Name == "root" && r.Element.Type == "Window");
+
+            Passenger.App.LiveTree.LiveTreeView tree = window.LiveTree;
+            tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Main");
+            Ui.WaitFor(() => tree.PropertyRows.Any(p => p.Name == "Greeting"), () => $"Main's properties ({tree.Details?.Type}: {string.Join(", ", tree.PropertyRows.Select(p => p.Name))})");
+            Assert.Equal("frame", tree.PropertyRows.First(p => p.Name == "Greeting").Value);
+            Assert.True(tree.Details!.Source is { } script && PathNames.Same(script.File, ScriptPath), $"Main's link goes to {tree.Details.Source?.File}, not its script");
+            tree.PropertyList.SelectedItem = tree.PropertyRows.First(p => p.Name == "Greeting");
+            tree.Edit(tree.PropertyRows.First(p => p.Name == "Greeting"));
+            Ui.WaitFor(() => tree.Editing is { IsVisible: true }, "the Greeting's value to become a box to type in");
+            tree.Editing!.Focus();
+            tree.Editing.SelectAll();
+            window.KeyTextInput("hello");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => Run(window).Contains("hello ", StringComparison.Ordinal), () => $"the game to print the greeting typed ({Run(window)})", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => tree.PropertyRows.Any(p => p.Name == "Greeting" && p.Value == "hello"), "the Greeting's row to show what the game now holds");
+
+            int raised = LineOf(File.ReadAllText(ScriptPath), "GD.PushError");
+            Ui.WaitFor(() => window.BottomPanel.Problems.GodotProblems.Any(p => p.Message == "Spinner fell over"),
+                () => $"Problems' Godot tab to list the error ({string.Join("; ", window.BottomPanel.Problems.GodotProblems.Select(p => $"{p.Message} {p.Where}"))})");
+            Passenger.App.Run.Problem error = window.BottomPanel.Problems.GodotProblems.First(p => p.Message == "Spinner fell over");
+            Assert.True(PathNames.Same(error.Path!, ScriptPath) && error.Position.Line == raised - 1, $"The error is placed at {error.Path}:{error.Position.Line + 1}, not Main.cs:{raised}");
+            string at = Run(window).Split('\n').First(l => l.Contains("(res://Main.cs:", StringComparison.Ordinal)).TrimEnd('\r');
+            Passenger.App.ToolWindows.FileLink link = Assert.IsType<Passenger.App.ToolWindows.FileLink>(Assert.Single(window.BottomPanel.Run.Links.In(at)).Target);
+            Assert.True(PathNames.Same(link.Path, ScriptPath) && link.Position.Line == raised - 1, $"Godot's line '{at}' links to {link.Path}:{link.Position.Line + 1}");
+
+            Ui.WaitFor(() => window.Session.Game?.Monitors is { Objects: > 0, Nodes: >= 2 }, "the game's monitors");
+            Ui.WaitFor(() => tree.MonitorsLine?.Contains(" FPS · ", StringComparison.Ordinal) == true, () => $"the Live Visual Tree to read the game's monitors ({tree.MonitorsLine})");
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>A configuration the folder generated, by its name.</summary>
     private static RunConfiguration Generated(MainWindow window, string name)
     {
@@ -182,6 +243,8 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     private void Choose(MainWindow window, RunConfiguration generated) =>
         window.SetConfigurations([generated with { Name = $"{generated.Name} on Godot", Generated = false, Arguments = "--headless", Environment = new(game.Homes) }],
             $"{generated.Name} on Godot");
+
+    private static int LineOf(string text, string code) => Array.FindIndex(text.Split('\n'), l => l.Contains(code, StringComparison.Ordinal)) + 1;
 
     private static int LineOf(CodeEditor editor, string code)
     {

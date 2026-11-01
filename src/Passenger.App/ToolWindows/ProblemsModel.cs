@@ -23,6 +23,9 @@ public enum ProblemsTab
     /// <summary>The container engine's problems (no CLI, not running, Windows containers, no Compose v2), then what it
     /// finds in the open Dockerfiles and compose files, by file.</summary>
     Containers,
+
+    /// <summary>The errors and warnings the Godot game launched last raised as it ran, by file.</summary>
+    Godot,
 }
 
 /// <summary>A row of Problems: a group (a project or a file, with its count) or a problem, at its depth. A problem of the
@@ -89,6 +92,7 @@ public sealed class ProblemsModel
     private string hotReloadSaid = string.Empty;
     private IReadOnlyList<Problem> containers = [];
     private IReadOnlyList<Problem> containerFiles = [];
+    private IReadOnlyList<Problem>? godot;
     private string? fileName;
     private ProblemRow? chosen;
 
@@ -188,6 +192,7 @@ public sealed class ProblemsModel
         ProblemsTab.Bindings => "Bindings",
         ProblemsTab.HotReload => "Hot Reload",
         ProblemsTab.Containers => "Containers",
+        ProblemsTab.Godot => "Godot",
         _ => "Build",
     };
 
@@ -202,18 +207,20 @@ public sealed class ProblemsModel
             ProblemsTab.Bindings => (TitleOf(tab), bindings.Count),
             ProblemsTab.HotReload => (TitleOf(tab), hotReload?.Count ?? 0),
             ProblemsTab.Containers => (TitleOf(tab), containers.Count + containerFiles.Count),
+            ProblemsTab.Godot => (TitleOf(tab), godot?.Count ?? 0),
             _ => (TitleOf(tab), Problems.Count),
         };
         return count == 0 ? title : $"{title}  {count}";
     }
 
     /// <summary>Whether a tab's button shows: the Solution tab with solution-wide analysis on, Hot Reload's after one, the
-    /// Containers tab while it has problems or is shown.</summary>
+    /// Containers tab while it has problems or is shown, Godot's once a Godot game was launched.</summary>
     internal bool HasTab(ProblemsTab tab) => tab switch
     {
         ProblemsTab.Solution => solution is not null,
         ProblemsTab.HotReload => hotReload is not null,
         ProblemsTab.Containers => containers.Count + containerFiles.Count > 0 || Shown == ProblemsTab.Containers,
+        ProblemsTab.Godot => godot is not null,
         _ => true,
     };
 
@@ -500,6 +507,16 @@ public sealed class ProblemsModel
         Refresh();
     }
 
+    /// <summary>The errors and warnings the Godot game launched last raised, in Godot, its tab there from its launch on.</summary>
+    public void ShowGodot(IReadOnlyList<Problem> problems)
+    {
+        godot = problems;
+        Refresh();
+    }
+
+    /// <summary>The errors and warnings the Godot game launched last raised, in the order it raised them.</summary>
+    public IReadOnlyList<Problem> GodotProblems => godot ?? [];
+
     /// <summary>The container engine's problems, then those it finds in the open files.</summary>
     public IReadOnlyList<Problem> ContainerProblems => [.. containers, .. containerFiles];
 
@@ -661,6 +678,10 @@ public sealed class ProblemsModel
                     }
                 }
                 EmptyText = "The container engine has no problems";
+                break;
+            case ProblemsTab.Godot:
+                Grouped(made, godot ?? []);
+                EmptyText = "The Godot game has raised no error or warning";
                 break;
             default:
                 Grouped(made, Problems);

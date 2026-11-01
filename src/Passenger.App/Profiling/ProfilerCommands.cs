@@ -292,7 +292,8 @@ public sealed class ProfilerCommands
         }
         OutputView run = parts.RunConsole;
         // An Avalonia app is profiled with the inspector in it, which records its frames into the run's trace.
-        LaunchPlan launched = profiled.InspectedProfile(plan!);
+        (LaunchPlan listened, Godot.GodotGame? game) = profiled.Listened(plan!);
+        LaunchPlan launched = profiled.InspectedProfile(listened);
         LiveApp? inspected = profiled.ProfiledApp;
         using CancellationTokenSource stop = new();
         // The toolbar's Stop ends the start as the window's Kill does.
@@ -324,7 +325,11 @@ public sealed class ProfilerCommands
             profiled.Profiled = program;
             ConsoleInput? input = running.Input is { } writer ? ProgramInput.Of(writer) : null;
             // Only its end puts the run away, however that comes: a snapshot leaves the program running.
-            IdeErrors.Observe(running.ExitedAsync().ContinueWith(_ => UiThread.Post(() => Ended(profiled, program, inspected, input, landed)), TaskScheduler.Default));
+            IdeErrors.Observe(running.ExitedAsync().ContinueWith(_ => UiThread.Post(() =>
+            {
+                game?.Dispose();
+                Ended(profiled, program, inspected, input, landed);
+            }), TaskScheduler.Default));
             if (profiled.IsEnded)
             {
                 // Its folder was left as it started: it ends with the folder's other programs.
@@ -341,6 +346,7 @@ public sealed class ProfilerCommands
         {
             // Killed as it started, or its folder closed: the start ended the program and its port.
             inspected?.Dispose();
+            game?.Dispose();
             if (profiled.IsEnded)
             {
                 // Its Kill goes, unless the next folder's Profile has started since.
@@ -360,6 +366,7 @@ public sealed class ProfilerCommands
             or TimeoutException or System.ComponentModel.Win32Exception or DiagnosticsClientException)
         {
             inspected?.Dispose();
+            game?.Dispose();
             profiled.Profiling = null;
             View.Stopped(error.Message);
             return error.Message;

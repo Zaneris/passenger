@@ -43,7 +43,7 @@ public enum LiveAppKind
 /// socket of the launch's own; from before Main it tells of failed bindings, and once the UI is up says hello and answers on
 /// the UI thread (paused under the debugger, once it runs again). One launch's alone, never in the app as built. A UI-thread
 /// object: its events come on the UI thread.</summary>
-public sealed class LiveApp : IDisposable
+public sealed class LiveApp : ILiveTreeSource, IDisposable
 {
     /// <summary>The sockets this process has made, which number each one's name apart.</summary>
     private static int made;

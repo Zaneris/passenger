@@ -484,6 +484,33 @@ public sealed class ProjectSession : IAsyncDisposable
     /// (<see cref="ToolWindows.DebugTab.App"/>), ended with its debugging, so several debugged at once each keep theirs.</summary>
     public LiveApp? LiveApp => Aspire.SelectedService is not null ? Aspire.SelectedInspection : Debug.Chosen?.App;
 
+    /// <summary>What the Live Visual Tree shows: the inspected app (<see cref="LiveApp"/>), else the Godot game Run, Debug or
+    /// Profile started last (<see cref="Game"/>).</summary>
+    public ILiveTreeSource? LiveSource => (ILiveTreeSource?)LiveApp ?? Game;
+
+    /// <summary>The Godot game Run, Debug or Profile started last, which Passenger is the remote debugger of: its scene tree,
+    /// errors and monitors; null before one. A launch of another ends its connection, as the folder's end does.</summary>
+    public Godot.GodotGame? Game { get; private set; }
+
+    /// <summary>A plan as a launch starts it, a Godot game's with Passenger listening for it as its remote debugger (<see cref="Game"/>
+    /// from then on, which the launch ends with its program); any other plan as it is, and no game.</summary>
+    public (LaunchPlan Plan, Godot.GodotGame? Game) Listened(LaunchPlan plan)
+    {
+        UiThread.Check();
+        (LaunchPlan listened, Godot.GodotGame? game) = Godot.GodotGame.Listen(plan);
+        if (game is not null)
+        {
+            Game?.Dispose();
+            Game = game;
+            GameStarted?.Invoke(this, game);
+            LiveAppChanged?.Invoke(this, EventArgs.Empty);
+        }
+        return (listened, game);
+    }
+
+    /// <summary>A Godot game was launched, Passenger listening for it.</summary>
+    public event EventHandler<Godot.GodotGame>? GameStarted;
+
     /// <summary>The chosen Debug tab's app as <see cref="LiveAppChanged"/> last told it.</summary>
     private LiveApp? liveAppTold;
 
@@ -1196,6 +1223,7 @@ public sealed class ProjectSession : IAsyncDisposable
         }
         RunApp?.Dispose();
         ProfiledApp?.Dispose();
+        Game?.Dispose();
         Tests.Stop();
         parts.Add(("the test runner", Tests.DisposeAsync().AsTask()));
         parts.Add(("the language server", CSharp?.DisposeAsync().AsTask() ?? Task.CompletedTask));

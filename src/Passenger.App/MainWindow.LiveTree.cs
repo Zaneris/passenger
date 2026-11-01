@@ -11,7 +11,10 @@ public partial class MainWindow
     public LiveTreeView LiveTree => liveTree!.View;
 
     /// <summary>The Avalonia or WPF app the Live Visual Tree follows, or null.</summary>
-    public LiveApp? LiveApp => liveTree!.App;
+    public LiveApp? LiveApp => liveTree!.App as LiveApp;
+
+    /// <summary>What the Live Visual Tree follows: an Avalonia or WPF app, or a Godot game; null for nothing.</summary>
+    public ILiveTreeSource? LiveSource => liveTree!.App;
 
     /// <summary>The inspector in the debugged app told of the property breakpoints as they are now: what an agent's
     /// breakpoint_set waits for.</summary>

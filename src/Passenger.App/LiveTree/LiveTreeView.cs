@@ -12,6 +12,9 @@ using Passenger.App.ToolWindows;
 
 namespace Passenger.App.LiveTree;
 
+/// <summary>A value typed for a property of the element chosen.</summary>
+public sealed record PropertySet(PropertyValue Value, string Text);
+
 /// <summary>A row of the tree: an element at its depth, open or not.</summary>
 public sealed class LiveTreeRow(Element element, int depth, bool expanded) : Observable, ITreeRow
 {
@@ -49,6 +52,7 @@ public sealed class LiveTreeView : DockPanel
     private readonly ListBox tree;
     private readonly TextBlock placeholder;
     private readonly TextBlock status;
+    private readonly TextBlock monitors;
     private readonly Border banner;
     private readonly TextBlock bannerText;
     private readonly StackPanel heading;
@@ -82,6 +86,8 @@ public sealed class LiveTreeView : DockPanel
         top.Children.Add(status);
         Children.Add(ToolBars.Top(top));
 
+        monitors = new TextBlock { [DockProperty] = Dock.Top, Classes = { StyleClasses.Muted }, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(10, 4), IsVisible = false };
+        Children.Add(monitors);
         bannerText = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
         banner = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(10, 6), IsVisible = false, Child = bannerText };
         banner.Bind(Border.BackgroundProperty, banner.GetResourceObservable(TokenKeys.Banner));
@@ -144,6 +150,18 @@ public sealed class LiveTreeView : DockPanel
             {
                 GoToRequested?.Invoke(this, place);
             }
+            else if (properties.SelectedItem is PropertyValue value)
+            {
+                Edit(value);
+            }
+        };
+        properties.KeyDown += (_, e) =>
+        {
+            if (e.Key is Key.Enter or Key.F2 && editing is null && properties.SelectedItem is PropertyValue { Place: null } value && WhyNotEdit?.Invoke(value) is null)
+            {
+                e.Handled = true;
+                Edit(value);
+            }
         };
         ToolWindows.ListMenus.Attach(properties, PropertyMenu);
         styles = new StackPanel { Margin = new Thickness(10, 4, 10, 10), Spacing = 10 };
@@ -170,8 +188,56 @@ public sealed class LiveTreeView : DockPanel
         Children.Add(split);
         ShowPage(LiveTreePage.Properties);
         ShowDetails(null, null);
-        ShowStatus("Debug an Avalonia or WPF app to see its windows and controls here.", null);
+        ShowStatus(LiveTreeController.NothingShown, null);
     }
+
+    /// <summary>The property whose value is being typed, by its name, or null.</summary>
+    private string? editing;
+
+    /// <summary>Why a property's value cannot be typed here, or null when it can (a Godot game's).</summary>
+    public Func<PropertyValue, string?>? WhyNotEdit { get; set; }
+
+    /// <summary>A value typed for a property and taken with Enter.</summary>
+    public event EventHandler<PropertySet>? ValueSet;
+
+    /// <summary>Whether an element has properties alone, no styles, layout or defaults (a Godot game's node): the Properties
+    /// page shown, the others' tabs and the Defaults toggle hidden.</summary>
+    public bool PropertiesAlone
+    {
+        get;
+        set
+        {
+            field = value;
+            // Every property of a game's node is its own: none is at a default for the toggle to hide.
+            defaults.IsVisible = !value;
+            foreach ((LiveTreePage page, ToggleButton tab) in tabs)
+            {
+                tab.IsVisible = Details is not null && (!value || page == LiveTreePage.Properties);
+            }
+            if (value)
+            {
+                ShowPage(LiveTreePage.Properties);
+            }
+        }
+    }
+
+    /// <summary>A property's value made a box to type in, where it can be set; <see cref="NotEdited"/> says why where not.</summary>
+    public void Edit(PropertyValue value)
+    {
+        if (WhyNotEdit?.Invoke(value) is { } why)
+        {
+            NotEdited?.Invoke(this, why);
+            return;
+        }
+        editing = value.Name;
+        PropertiesRefreshed?.Invoke();
+    }
+
+    /// <summary>A property could not be edited, saying why.</summary>
+    public event EventHandler<string>? NotEdited;
+
+    /// <summary>The box a property's value is being typed in, while one is.</summary>
+    public TextBox? Editing { get; private set; }
 
     /// <summary>A control chosen in the tree.</summary>
     public event EventHandler<long>? ElementChosen;
@@ -258,6 +324,16 @@ public sealed class LiveTreeView : DockPanel
     }
 
     /// <summary>A note over the tree that what it shows is not live (the app paused), or none.</summary>
+    /// <summary>A running game's performance monitors, on a line of their own under the buttons; none for null.</summary>
+    public void ShowMonitors(string? text)
+    {
+        monitors.Text = text;
+        monitors.IsVisible = text is not null;
+    }
+
+    /// <summary>The game's monitors as shown, while they are.</summary>
+    public string? MonitorsLine => monitors.IsVisible ? monitors.Text : null;
+
     public void ShowBanner(string? text)
     {
         bannerText.Text = text ?? string.Empty;
@@ -331,9 +407,10 @@ public sealed class LiveTreeView : DockPanel
             return;
         }
         pages.IsVisible = true;
-        foreach (ToggleButton tab in tabs.Values)
+        editing = null;
+        foreach ((LiveTreePage page, ToggleButton tab) in tabs)
         {
-            tab.IsVisible = true;
+            tab.IsVisible = !PropertiesAlone || page == LiveTreePage.Properties;
         }
         StackPanel title = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
         title.Children.Add(new TextBlock { Text = details.Type, FontWeight = FontWeight.SemiBold, FontSize = 14 });
@@ -527,6 +604,8 @@ public sealed class LiveTreeView : DockPanel
         DockPanel name = new() { Margin = new Thickness(0, 0, 8, 0), Children = { dot, label } };
         TextBlock shown = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
         Grid.SetColumn(shown, 1);
+        TextBox editor = new TextBox { FontSize = 12, IsVisible = false, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        Grid.SetColumn(editor, 1);
         TextBlock linked = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
         Button link = new() { Classes = { StyleClasses.Link }, Content = linked, HorizontalAlignment = HorizontalAlignment.Left };
         link.Click += (_, _) =>
@@ -544,8 +623,34 @@ public sealed class LiveTreeView : DockPanel
         }
         grid.Children.Add(name);
         grid.Children.Add(shown);
+        grid.Children.Add(editor);
         grid.Children.Add(link);
         grid.Children.Add(source);
+        editor.KeyDown += (_, e) =>
+        {
+            if (grid.DataContext is not PropertyValue value || e.Key is not (Key.Enter or Key.Escape))
+            {
+                return;
+            }
+            e.Handled = true;
+            editing = null;
+            Editing = null;
+            if (e.Key == Key.Enter)
+            {
+                ValueSet?.Invoke(this, new PropertySet(value, editor.Text ?? string.Empty));
+            }
+            Show(value);
+            properties.Focus();
+        };
+        editor.LostFocus += (_, _) =>
+        {
+            if (grid.DataContext is PropertyValue value && editing == value.Name)
+            {
+                editing = null;
+                Editing = null;
+                Show(value);
+            }
+        };
         PropertiesRefreshed += () =>
         {
             if (grid.DataContext is PropertyValue value)
@@ -564,6 +669,19 @@ public sealed class LiveTreeView : DockPanel
             ToolTip.SetTip(label, $"{value.Name} ({value.Type}, from {value.Owner})");
             shown.Text = value.Value;
             ToolTip.SetTip(shown, value.Value);
+            bool typing = editing == value.Name;
+            if (typing && !editor.IsVisible)
+            {
+                editor.Text = value.Value;
+                Editing = editor;
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    editor.Focus();
+                    editor.SelectAll();
+                });
+            }
+            editor.IsVisible = typing;
+            shown.IsVisible = !typing;
             string from = value.Detail is { Length: > 0 } detail ? $"{value.Source} · {detail}" : value.Source;
             link.IsVisible = value.Place is not null;
             source.IsVisible = value.Place is null;

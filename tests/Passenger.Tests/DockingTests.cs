@@ -568,7 +568,7 @@ public sealed class DockingTests
         dock.Show(ToolWindowIds.LiveTree);
         Ui.Settle();
         Assert.Contains(window.LiveTree, dock.GetVisualDescendants());
-        Assert.Contains(window.LiveTree.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "Debug an Avalonia or WPF app to see its windows and controls here.");
+        Assert.Contains(window.LiveTree.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == Passenger.App.LiveTree.LiveTreeController.NothingShown);
         dock.Hide(ToolWindowIds.LiveTree);
         Ui.Settle();
 

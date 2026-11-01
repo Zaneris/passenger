@@ -92,6 +92,7 @@ public static class GodotLaunch
             Built = target,
             Console = configuration.Console,
             Godot = folder,
+            GodotVersion = found.Version,
         };
     }
 
