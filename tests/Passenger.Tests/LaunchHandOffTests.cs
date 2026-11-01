@@ -84,9 +84,9 @@ public sealed class LaunchHandOffTests
                 Assert.Fail($"The first launch, with no Passenger running, ended with exit code {first.ExitCode} rather than being the Passenger");
             }
 
-            Launched([project, "--file", folder, "--caret", "3:1"], state);
-
             string log = Path.Combine(state, "logs", "passenger.log");
+            Launched([project, "--file", folder, "--caret", "3:1"], state, () => File.Exists(log) ? Ui.Shared(log) : "no log");
+
             Ui.PumpUntil(() => File.Exists(log) && Ui.Shared(log).Contains("taken by the window on " + PathNames.Canonical(project), StringComparison.Ordinal),
                 $"the first launch's Passenger to say in its log that it took the second launch in its window on {project}");
         }
@@ -116,7 +116,7 @@ public sealed class LaunchHandOffTests
 
     /// <summary>A launch run with its input left open, so one that started a Passenger of its own rather than handing itself
     /// over would never end: fails unless it ended with exit code 0 within the limit, its window's loop run meanwhile.</summary>
-    private static void Launched(IReadOnlyList<string> arguments, string state)
+    private static void Launched(IReadOnlyList<string> arguments, string state, Func<string>? running = null)
     {
         using Process launch = Start(arguments, state);
         Task<string> error = launch.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
@@ -125,7 +125,7 @@ public sealed class LaunchHandOffTests
             bool ended = Ui.Pumped(() => launch.HasExited, TimeSpan.FromSeconds(60));
             string errors = ended ? Ui.AwaitPumped(error, "the launch's standard error to end") : string.Empty;
             Assert.True(ended && launch.ExitCode == 0, ended ? $"The launch ended with exit code {launch.ExitCode}: {errors}"
-                : "The launch was still running after 60 s: it started a Passenger of its own rather than handing itself to the one running");
+                : $"The launch was still running after 60 s: it started a Passenger of its own rather than handing itself to the one running{(running is null ? string.Empty : $"\nThe running one's log:\n{running()}")}");
         }
         finally
         {

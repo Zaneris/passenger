@@ -12,8 +12,8 @@ namespace Passenger.App;
 /// Passenger of its own, the lines each way <see cref="HandedLaunch"/>'s.</summary>
 public static partial class LaunchHandOff
 {
-    /// <summary>How long a running Passenger has to connect, take the launch and answer.</summary>
-    private static readonly TimeSpan AnswerLimit = TimeSpan.FromSeconds(15);
+    /// <summary>How long a running Passenger has to connect, take the launch and answer, as a busy one may take a while.</summary>
+    private static readonly TimeSpan AnswerLimit = TimeSpan.FromSeconds(30);
 
     /// <summary>Whether a launch is one to hand to a running Passenger: a person's window, never <c>--mcp</c>,
     /// <c>--headless</c> or a screenshot, nor one asking for a run of its own (<c>--no-mcp</c>, a theme, look or scheme),
@@ -40,7 +40,7 @@ public static partial class LaunchHandOff
             try
             {
                 using CancellationTokenSource limit = CancellationTokenSource.CreateLinkedTokenSource(cancel);
-                limit.CancelAfter(AnswerLimit);
+                limit.CancelAfter(Waits.Of(AnswerLimit));
                 await socket.ConnectAsync(new UnixDomainSocketEndPoint(path), limit.Token);
                 if (OperatingSystem.IsWindows() && Mcp.McpHost.ProcessOf(path) is int pid)
                 {
