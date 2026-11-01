@@ -96,14 +96,14 @@ public sealed class Language
 
     private Language([IdentifierOf(typeof(LanguageIds))] string id, string name, IReadOnlyList<FilePattern> patterns, string? line = null,
         (string Start, string End)? block = null, int indent = 4, GrammarFile? grammar = null, Func<TextDocument, IFoldFinder>? folds = null,
-        LanguageService service = LanguageService.None, MarkupKind markup = MarkupKind.None, bool reindentsPaste = true, bool parsed = false)
+        LanguageService service = LanguageService.None, MarkupKind markup = MarkupKind.None, bool reindentsPaste = true, bool parsed = false, bool tabs = false)
     {
         Id = id;
         Name = name;
         this.patterns = patterns;
         LineComment = line;
         BlockComment = block;
-        Indent = new IndentOptions(indent);
+        Indent = new IndentOptions(indent, tabs, indent);
         Grammar = grammar;
         Folds = folds;
         Service = service;
@@ -198,6 +198,19 @@ public sealed class Language
     /// XML body and a curl line by the grammars here (a GraphQL body's not being carried, it stays plain).</summary>
     public static readonly Language Http = new("http", "HTTP", ["*.http", "*.rest"], line: "#",
         grammar: new("source.http", "http.tmLanguage.json"));
+
+    /// <summary>GDScript, Godot's own language, indented with tabs as Godot's editor writes it.</summary>
+    public static readonly Language GDScript = new("gdscript", "GDScript", ["*.gd"], line: "#", tabs: true,
+        grammar: new("source.gdscript", "GDScript.tmLanguage.json"));
+
+    /// <summary>Godot's text resources: a scene (told to a server as <c>gdscene</c>), a resource, a project's settings and
+    /// an import's, whose embedded scripts and shaders are coloured as their own files are.</summary>
+    public static readonly Language GodotResource = new("gdresource", "Godot Resource",
+        [new FilePattern("*.tscn", "gdscene"), "*.tres", "project.godot", "*.import", "*.gdextension"], line: ";",
+        grammar: new("source.gdresource", "GDResource.tmLanguage.json"));
+
+    public static readonly Language GodotShader = new("gdshader", "Godot Shader", ["*.gdshader", "*.gdshaderinc"], line: "//", block: ("/*", "*/"),
+        grammar: new("source.gdshader", "GDShader.tmLanguage.json"));
 
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],
