@@ -130,8 +130,12 @@ internal static class GodotSource
         {
             if (Declared(member) is { } at)
             {
-                exports.Add(new GodotMember(member.Name, (member as IPropertySymbol)?.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)
-                    ?? ((IFieldSymbol)member).Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), at.Path, at.At, at.End));
+                ITypeSymbol of = (member as IPropertySymbol)?.Type ?? ((IFieldSymbol)member).Type;
+                // A NodePath names any node; a node's type, a node of it.
+                GodotTypeRef? node = of is INamedTypeSymbol { Name: "NodePath", ContainingNamespace.Name: Namespace } && engine.Type("Node") is { } any ? engine.Ref(any)
+                    : of is INamedTypeSymbol given && engine.Type("Node") is { } nodes && (SymbolEqualityComparer.Default.Equals(given, nodes) || Derives(given, nodes)) ? engine.Ref(given)
+                    : null;
+                exports.Add(new GodotMember(member.Name, of.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), at.Path, at.At, at.End) { Node = node });
             }
         }
         List<GodotMember> signals = [];

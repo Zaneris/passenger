@@ -381,7 +381,13 @@ public sealed record GodotMember(
     [property: JsonPropertyName("shown")] string Shown,
     [property: JsonPropertyName("path")] string Path,
     [property: JsonPropertyName("at")] Place At,
-    [property: JsonPropertyName("end")] Place End);
+    [property: JsonPropertyName("end")] Place End)
+{
+    /// <summary>For an exported member a scene sets to a node by its path, the type that node must be: a NodePath's any
+    /// node, a node type's that type; null for any other member.</summary>
+    [JsonPropertyName("node")]
+    public GodotTypeRef? Node { get; init; }
+}
 
 /// <summary>A call of GetNode or GetNodeOrNull on the node the code runs on: the path it is given and where its string is
 /// written (its characters, when <paramref name="Exact"/>: a string written as it says, no escape in it), the class it is

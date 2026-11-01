@@ -39,6 +39,12 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             [Export]
             public float Speed { get; set; } = 1;
 
+            [Export]
+            public Label Display { get; set; }
+
+            [Export]
+            public NodePath Target { get; set; }
+
             public override void _Ready()
             {
                 Label score = GetNode<Label>("Hud/Score");
@@ -104,6 +110,8 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         [node name="Main" type="Node2D"]
         script = ExtResource("1_main")
         Speed = 2.5
+        Display = NodePath("Player")
+        Target = NodePath("Hud/Gone")
 
         [node name="Hud" type="CanvasLayer" parent="."]
         script = ExtResource("3_hud")
@@ -352,6 +360,28 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             text = window.EditorArea.Active.Text.Snapshot;
             Marker resource = window.EditorArea.Active.Markers.First(m => m.Message == gone);
             Assert.Equal("res://plaer.tscn", text.GetText(resource.Range.Start, resource.Range.Length));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>An exported node the scene sets to a node of another type, and an exported NodePath it sets to a path no node
+    /// answers, are errors on the member's name naming the scene and its line.</summary>
+    [AvaloniaFact]
+    public void An_exported_node_set_to_a_node_of_another_type_or_to_no_node_is_marked()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            string typed = $"main.tscn:{LineOf(Scene, "Display = ")} sets Display to 'Player', a CharacterBody2D, not a Label";
+            string missing = $"main.tscn:{LineOf(Scene, "Target = ")} sets Target to 'Hud/Gone', which names no node: Hud has no child Gone";
+            Ui.WaitFor(() => Marked(window).Contains(typed) && Marked(window).Contains(missing),
+                () => $"the exported node of another type and the NodePath of no node to be marked: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
+            TextSnapshot text = window.EditorArea.Active!.Text.Snapshot;
+            Marker marker = window.EditorArea.Active.Markers.First(m => m.Message == typed);
+            Assert.Equal("Display", text.GetText(marker.Range.Start, marker.Range.Length));
         }
         finally
         {

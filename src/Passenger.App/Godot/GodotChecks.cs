@@ -200,6 +200,10 @@ internal static class GodotChecks
                 findings.Add(finding);
             }
         }
+        foreach (GodotClassFound type in found.Classes)
+        {
+            findings.AddRange(Exports(scenes, asked, found, type));
+        }
         for (int i = 0; i < found.Classes.Count; i++)
         {
             GodotClassFound type = found.Classes[i];
@@ -302,6 +306,47 @@ internal static class GodotChecks
         string takes = Takes(method.Parameters);
         string gives = Gives(given, signal.Parameters.Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Binds))));
         return new Finding(here ? method.At! : type.At, here ? method.End! : type.End, true, $"{where} connects {from}'s {connection.Signal}, which {gives}, to {connection.Method}, which {takes}");
+    }
+
+    /// <summary>Each scene's value of an exported member that names a node by its path (a NodePath, a node's type) that no
+    /// node answers from the node the script runs on, or that names a node not of the member's type: at the member's name
+    /// where this file declares it (else at its class's), naming the scene and line; a value set in one scene, read from each
+    /// tree that holds it, said once.</summary>
+    private static IEnumerable<Finding> Exports(GodotScenes scenes, GodotCodeRequest asked, GodotCodeFound found, GodotClassFound type)
+    {
+        HashSet<(string, int)> said = [];
+        foreach (GodotMember export in type.Exports.Where(e => e.Node is not null))
+        {
+            bool here = SameFile(export.Path, asked.Path);
+            foreach ((string scene, GodotTreeNode node) in type.Scripts.SelectMany(scenes.RunsOf))
+            {
+                foreach ((string written, Passenger.Workspace.GodotNode section) in node.Written)
+                {
+                    if (section.Section.Property(export.Name) is not { Value: { Call: "NodePath", Text: { Length: > 0 } path } } property
+                        || GodotScenes.Resolve(node, path) is not { Unknown: false } resolved || !scenes.Files.TryGetValue(written, out GodotFile? file))
+                    {
+                        continue;
+                    }
+                    string where = $"{System.IO.Path.GetFileName(written)}:{file.LineOf(property.KeyStart) + 1}";
+                    string? message = null;
+                    if (resolved.Found is not { } target)
+                    {
+                        (int start, int end) = resolved.Missing!.Value;
+                        string name = path[start..end];
+                        string under = resolved.Reached?.Name ?? node.Name;
+                        message = $"{where} sets {export.Name} to '{path}', which names no node: {under} has no {(name.StartsWith('%') ? $"unique node {name[1..]}" : $"child {name}")}";
+                    }
+                    else if (Fits(export.Node!, target, found) == false)
+                    {
+                        message = $"{where} sets {export.Name} to '{path}', {Article(Shown(target))}, not {Article(export.Node!.Shown)}";
+                    }
+                    if (message is not null && said.Add((written, property.KeyStart)))
+                    {
+                        yield return new Finding(here ? export.At : type.At, here ? export.End : type.End, true, message);
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>A string Godot's calls take naming a member: one a script's class lacks, a signal an EmitSignal gives other

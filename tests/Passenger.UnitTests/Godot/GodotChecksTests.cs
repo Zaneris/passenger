@@ -208,4 +208,42 @@ public class GodotChecksTests
             ("OnToggled", "texture_changed gives no arguments, but OnToggled takes 1 (bool)"),
         ], findings.Select(f => (scene[f.Start..f.End], f.Message)));
     }
+
+    /// <summary>An exported node a scene sets to a node of another type, or a NodePath it sets to no node, is an error at the
+    /// member's name naming the scene and line; one of the type, or a path leaving the tree, is not.</summary>
+    [Fact]
+    public void An_exported_node_set_to_another_type_or_no_node_is_an_error()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [ext_resource type="Script" path="res://Main.cs" id="1"]
+
+            [node name="Main" type="Node2D"]
+            script = ExtResource("1")
+            Display = NodePath("Hud")
+            Shown = NodePath("Hud/Score")
+            Target = NodePath("Hud/Gone")
+            Above = NodePath("../Away")
+
+            [node name="Hud" type="CanvasLayer" parent="."]
+
+            [node name="Score" type="Label" parent="Hud"]
+
+            """;
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) });
+        GodotTypeRef label = new("Label", true, "Label");
+        GodotTypeRef node = new("Node", true, "Node");
+        GodotMember Export(string name, GodotTypeRef type, int line) => new(name, type.Shown, "/game/Main.cs", new Place(line, 17), new Place(line, 17 + name.Length)) { Node = type };
+        GodotClassFound main = Main with { Exports = [Export("Display", label, 4), Export("Shown", label, 5), Export("Target", node, 6), Export("Above", node, 7)] };
+        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotCodeFound found = new([main], [], [],
+            [new GodotChain("Label", ["Label", "Control", "CanvasItem", "Node", "Object"], "Label", "Label"), new GodotChain("CanvasLayer", ["CanvasLayer", "Node", "Object"], "CanvasLayer", "CanvasLayer"),
+                new GodotChain("Node2D", ["Node2D", "CanvasItem", "Node", "Object"], "Node2D", "Node2D")], [], [], []);
+        Assert.Equal(
+        [
+            (4, "main.tscn:7 sets Display to 'Hud', a CanvasLayer, not a Label"),
+            (6, "main.tscn:9 sets Target to 'Hud/Gone', which names no node: Hud has no child Gone"),
+        ], GodotChecks.Findings(scenes, asked, found, _ => true).Select(f => (f.At.Line, f.Message)));
+    }
 }
