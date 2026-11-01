@@ -412,7 +412,10 @@ site-shots` retakes its images.
   on the thread passes by, so a step over one turns it off. A func-eval passes a by-ref value with no home of its own as
   a copy gone once the call returns: a callee that may keep the reference gets a home of the evaluation's
   (`PinnedArrayOfOneAsync`), or the evaluation refuses; a struct the evaluation stores is its own copy (`OwnAsync`),
-  never the frame's.
+  never the frame's. `Task.NotifyDebuggerOfWaitCompletion`'s breakpoint is no GC-safe point: nothing runs there, and a
+  value a step reads there is boxed at its stop (`BoxUnboxed`). Letting threads run during a request voids every value
+  read before it, so an evaluation left running returns first (`LetAbandonedReturnAsync`), and its end holds the program
+  at the stop shown: never Continue there.
 - **Hot Reload** drives the server's `EditAndContinueService` from the extension; CoreCLR lets no debugger go once Edit
   and Continue changed a program, so the debugger never lets go of a program Hot Reload changed
   (`DebugController.LetsNoDebuggerGo`; Detach refused, such a service restarted, leaving the folder asks, then stops it:
