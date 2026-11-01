@@ -78,12 +78,13 @@
     <Compile Include="../../src/Passenger.App/Debugging/XamlBreakpoints.cs" Link="App/XamlBreakpoints.cs" />
   </ItemGroup>
 
-  <!-- How a CSV's records and a workbook's cells are read, from their text and zip alone, compiled in since their
-       project is the app's. -->
+  <!-- How a CSV's records and a workbook's cells are read and sorted, from their text and zip alone, compiled in since
+       their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Tables/Table.cs" Link="App/Table.cs" />
     <Compile Include="../../src/Passenger.App/Tables/Workbook.cs" Link="App/Workbook.cs" />
     <Compile Include="../../src/Passenger.App/Tables/CellFormat.cs" Link="App/CellFormat.cs" />
+    <Compile Include="../../src/Passenger.App/Tables/TableSort.cs" Link="App/TableSort.cs" />
   </ItemGroup>
 
   <!-- How the Endpoints window reads an .http file, holds an answer to its criteria and sends a request to a running app,

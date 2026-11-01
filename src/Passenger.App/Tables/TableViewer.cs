@@ -45,6 +45,7 @@ public sealed class TableViewer
             }
         };
         Body = new Panel { IsVisible = false, Children = { View, message } };
+        View.SortRequested += (_, wanted) => file?.SortBy(wanted);
     }
 
     /// <summary>The bar over the editor, shown for a table file whether its table or its text shows.</summary>

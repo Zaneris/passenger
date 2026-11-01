@@ -23,6 +23,15 @@ public abstract class Table
     /// <summary>The number shown beside a row, counting from 1.</summary>
     public virtual int RowNumber(int row) => row + 1;
 
+    /// <summary>A cell as a sort compares it: a number, a date, text, or nothing.</summary>
+    public abstract CellValue ValueOf(int row, int column);
+
+    /// <summary>The table as its file has it, whatever order it is shown in.</summary>
+    public virtual Table Unsorted => this;
+
+    /// <summary>The column its rows are sorted by and which way; null in the file's own order.</summary>
+    public virtual (int Column, bool Descending)? Sort => null;
+
     /// <summary>A spreadsheet's name of a column: A to Z, then AA.</summary>
     public static string Letters(int column)
     {
@@ -35,6 +44,19 @@ public abstract class Table
         return new string(name[at..]);
     }
 }
+
+/// <summary>What a cell holds, as a sort compares it.</summary>
+public enum CellKind
+{
+    Empty,
+    Number,
+    Date,
+    Text,
+}
+
+/// <summary>A cell as a sort compares it: its kind, and a number's value or a date's day (OLE Automation's, as a
+/// workbook keeps it); text is compared as the cell shows it.</summary>
+public readonly record struct CellValue(CellKind Kind, double Value = 0);
 
 /// <summary>A CSV or TSV file's records, read as RFC 4180 reads them: a quoted field may hold the separator, quotes doubled
 /// and line breaks. Each field is kept as where it is in the text, unquoted only when drawn.</summary>
@@ -66,7 +88,32 @@ public sealed class CsvTable : Table
 
     public override string Cell(int row, int column) => Field(row + first, column);
 
-    public override bool IsNumber(int row, int column)
+    public override bool IsNumber(int row, int column) => Number(Unquoted(row, column)) is not null;
+
+    /// <summary>A field as a sort compares it: a number as <see cref="IsNumber"/> reads one, a date as the system's culture
+    /// or the invariant one writes it (ISO 8601's among them), else its text.</summary>
+    public override CellValue ValueOf(int row, int column)
+    {
+        ReadOnlySpan<char> field = Unquoted(row, column);
+        if (field.Length == 0)
+        {
+            return new CellValue(CellKind.Empty);
+        }
+        if (Number(field) is { } number)
+        {
+            return new CellValue(CellKind.Number, number);
+        }
+        const DateTimeStyles Dated = DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.NoCurrentDateDefault;
+        if (DateTime.TryParse(field, CultureInfo.CurrentCulture, Dated, out DateTime date) || DateTime.TryParse(field, CultureInfo.InvariantCulture, Dated, out date))
+        {
+            return new CellValue(CellKind.Date, date.ToOADate());
+        }
+        return new CellValue(CellKind.Text);
+    }
+
+    /// <summary>A field's words without the quotes around them or the spaces at their ends; a doubled quote inside is left
+    /// as it is, which no number or date holds.</summary>
+    private ReadOnlySpan<char> Unquoted(int row, int column)
     {
         ReadOnlySpan<char> field = Span(row + first, column);
         // Quoted as a number with thousands' commas must be ("1,234.50"), and Excel reads it as the number it is.
@@ -74,9 +121,11 @@ public sealed class CsvTable : Table
         {
             field = field[1..^1];
         }
-        field = field.Trim();
-        return field.Length > 0 && double.TryParse(field, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out _);
+        return field.Trim();
     }
+
+    private static double? Number(ReadOnlySpan<char> field) =>
+        field.Length > 0 && double.TryParse(field, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out double value) ? value : null;
 
     public override string Header(int column) => first == 1 ? Field(0, column) : Letters(column);
 
