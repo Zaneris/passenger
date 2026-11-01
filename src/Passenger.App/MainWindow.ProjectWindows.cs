@@ -27,6 +27,32 @@ public partial class MainWindow
     /// started as it is made, so a solution handed to Passenger opens from it whatever it has open.</summary>
     internal void StartBeside() => started = true;
 
+    /// <summary>Whether a person's launch another Passenger process hands over may come to this window
+    /// (<see cref="PassengerApp.TakeLaunch"/>): a person's window, never an agent's own (<c>--mcp</c>) or a screenshot's.</summary>
+    public bool TakesLaunches { get; init; } = true;
+
+    /// <summary>A launch's files opened in front, the person's own, the caret put in the last and the keys given to its
+    /// editor, as the command line's would be.</summary>
+    internal void TakeLaunch(IReadOnlyList<string> files, Text.TextPosition? caret)
+    {
+        UiThread.Check();
+        foreach (string file in files)
+        {
+            if (caret is { } place && file == files[^1])
+            {
+                NavigateTo(file, place);
+            }
+            else
+            {
+                OpenFile(file);
+            }
+        }
+        if (files.Count > 0 && Editors.Active?.Path is { } shown && PathNames.Same(shown, files[^1]))
+        {
+            FocusEditor();
+        }
+    }
+
     private void AddProjectWindows()
     {
         actions!.Add(new IdeAction(AppActions.NextProjectWindow, "Next Solution Window", "Window", _ => PassengerApp.Step(this, 1))

@@ -41,6 +41,9 @@ public sealed partial class McpProxy
     /// no What's New, which waits for a start of their own.</summary>
     public static bool StartedForAgent { get; private set; }
 
+    /// <summary>Whether <see cref="StartVariable"/> says headless: the test run's, whose launches show no window.</summary>
+    public static bool StartsHeadless => Environment.GetEnvironmentVariable(StartVariable) == "headless";
+
     /// <summary>The file of the session a relay hands the one taking its process's place from the updated app
     /// (<see cref="SessionFile"/>), which that one reads, removes and goes on with.</summary>
     [IdentifierHome]
@@ -890,7 +893,7 @@ public sealed partial class McpProxy
     private async Task LaunchAsync(CancellationToken cancel)
     {
         string self = Environment.ProcessPath ?? throw new NotJoined("Passenger cannot tell where it is installed, to start it.");
-        if (Environment.GetEnvironmentVariable(StartVariable) == "headless")
+        if (StartsHeadless)
         {
             ProcessStartInfo start = ChildProcesses.Command(self, ["--headless", here], here);
             start.Environment[StartedForVariable] = "agent";

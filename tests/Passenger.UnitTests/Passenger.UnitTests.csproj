@@ -37,6 +37,12 @@
     <Compile Include="../../src/Passenger.App/Containers/DockerfileStages.cs" Link="App/DockerfileStages.cs" />
   </ItemGroup>
 
+  <!-- What a launch handed to a running Passenger says, written and read as JSON alone, compiled in since its project is
+       the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/HandedLaunch.cs" Link="App/HandedLaunch.cs" />
+  </ItemGroup>
+
   <!-- Where an AppHost's dashboard is called from where it listens, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Aspire/DashboardAddress.cs" Link="App/DashboardAddress.cs" />

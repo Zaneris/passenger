@@ -116,6 +116,7 @@ public static class PassengerApp
         {
             StateFolder = like.StateFolder,
             AgentsAllowed = like.AgentsAllowed,
+            TakesLaunches = like.TakesLaunches,
             AgentAnswerLimit = like.AgentAnswerLimit,
             Autosaves = like.Autosaves,
             StartsLanguageServer = like.StartsLanguageServer,
@@ -240,6 +241,52 @@ public static class PassengerApp
         {
             from.Open(path);
         }
+    }
+
+    /// <summary>A person's launch another Passenger process handed over (<see cref="LaunchHandOff"/>): its files and caret
+    /// go to the innermost window whose folder holds what it names, else its folder or workspace opens as File, Open opens
+    /// one in a window of its own (the one in front when that has nothing open), a launch naming nothing going to the
+    /// window in front; that window comes forward, the person's own act. The answer the launch is told.</summary>
+    internal static string TakeLaunch(HandedLaunch launch)
+    {
+        UiThread.Check();
+        if (Fronts.LastOrDefault(w => w is { IsStarted: true, TakesLaunches: true }) is not { } from)
+        {
+            return HandedLaunch.Answer(null, "Passenger has no window ready to take it");
+        }
+        string? place = launch.Folder ?? (launch.Files.Count > 0 ? Path.GetDirectoryName(launch.Files[0]) : null);
+        MainWindow? holding = place is null ? from : Open
+            .Where(w => w.TakesLaunches && w.FolderHeld is { } held && PathNames.Within(place, held))
+            .MaxBy(w => w.FolderHeld!.Length);
+        MainWindow into;
+        if (holding is not null && (launch.Workspace is null || holding.WorkspaceModel?.OpenedAs is { } opened && PathNames.Same(opened, launch.Workspace)))
+        {
+            into = holding;
+        }
+        else if ((launch.Workspace ?? launch.Folder) is { } project)
+        {
+            into = OpenProject(project, OpenTarget.NewWindow, from);
+        }
+        else
+        {
+            into = from;
+        }
+        IdeErrors.Write($"Launch: handed over for {launch.Workspace ?? launch.Folder ?? "no folder"}"
+            + $"{(launch.Files.Count > 0 ? $", {Plural.Listed(launch.Files)}" : string.Empty)}, taken by the window on {into.FolderHeld ?? "no folder"}");
+        into.TakeLaunch(launch.Files, launch.Caret);
+        BringForward(into);
+        if (!into.IsActive)
+        {
+            // Where the system keeps the program in front there (macOS's cooperative activation), the window asks for the person.
+            IDisposable asked = Attention.Ask(into);
+            void Came(object? sender, EventArgs e)
+            {
+                into.Activated -= Came;
+                asked.Dispose();
+            }
+            into.Activated += Came;
+        }
+        return HandedLaunch.Answer(into.FolderHeld, null);
     }
 
     /// <summary>What the system asked to open before the first window started, taken once.</summary>

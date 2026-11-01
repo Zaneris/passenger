@@ -266,7 +266,7 @@ public static partial class McpHost
             .SetupWithoutStarting();
 
         // The agent's own IDE, which no other agent joins.
-        MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = false, AgentsOwn = true, StartsLanguageServer = StartsLanguageServer, HeadStart = ahead };
+        MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = false, AgentsOwn = true, TakesLaunches = false, StartsLanguageServer = StartsLanguageServer, HeadStart = ahead };
         IdeErrors.Write($"Passenger {Product.Version} ({Product.Commit ?? "no commit"}) for an agent, with no window shown: its window built "
             + $"{System.Diagnostics.Stopwatch.GetElapsedTime(Program.StartedAt).TotalSeconds:0.00} s after launch");
         window.SetRenderScaling(2);
@@ -283,8 +283,9 @@ public static partial class McpHost
     }
 
     /// <summary><c>--headless [PATH]</c>: a person's window on the headless platform, which <c>--mcp-attach</c> starts
-    /// in place of the installed app under <see cref="McpProxy.StartVariable"/>: it listens for agents and asks before
-    /// letting them in, as any window does, until the input given ends (<see cref="StandardInput.Take"/>).</summary>
+    /// in place of the installed app under <see cref="McpProxy.StartVariable"/>, as does a launch no running Passenger
+    /// took there: it listens for agents and asks before letting them in, as any window does, and takes launches, until
+    /// the input given ends (<see cref="StandardInput.Take"/>).</summary>
     public static int RunHeadless(LaunchOptions launch, Stream input)
     {
         IsHeadless = true;
@@ -298,7 +299,7 @@ public static partial class McpHost
             .AfterSetup(builder => Program.ApplyTheme(builder.Instance!, launch))
             .SetupWithoutStarting();
 
-        MainWindow window = new() { Width = 1600, Height = 1000 };
+        MainWindow window = new() { Width = 1600, Height = 1000, AgentsAllowed = launch.ListenForAgents };
         window.SetRenderScaling(2);
         window.Show();
         window.Start(launch);

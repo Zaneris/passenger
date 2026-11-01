@@ -76,13 +76,20 @@ public partial class MainWindow
 
     private void AddAgents()
     {
-        Opened += (_, _) => ListenForAgents(settings.McpServer);
+        Opened += (_, _) =>
+        {
+            ListenForAgents(settings.McpServer);
+            if (TakesLaunches)
+            {
+                Mcp.AppSocket.Listen();
+            }
+        };
         Closed += (_, _) =>
         {
             AgentsUnattended = false;
             agentSocket?.Dispose();
             agentSocket = null;
-            if (!PassengerApp.Windows.Any(w => w != this && w.AgentSocket is not null))
+            if (!PassengerApp.Windows.Any(w => w != this && (w.AgentSocket is not null || w.TakesLaunches)))
             {
                 Mcp.AppSocket.Close();
             }
