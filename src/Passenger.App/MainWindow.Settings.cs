@@ -93,6 +93,10 @@ public partial class MainWindow
         FollowTitleBar(next);
         FollowMainMenu(next);
         Explorer.NestFiles = next.NestFiles;
+        if (next.AlwaysSelectOpenedFile && !before.AlwaysSelectOpenedFile && Editors.Active?.Path is { } shown)
+        {
+            Explorer.Reveal(shown);
+        }
         assist.Templates = CSharp.TemplateSet.Of(next);
         assist.XamlFormat = next.XamlFormat;
         if (terminal is { } panel)

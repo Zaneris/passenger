@@ -337,12 +337,12 @@ public partial class MainWindow : IdeWindow
 
     private string? followed;
 
-    /// <summary>Chooses the file shown in the Explorer as another is shown, a tab switched to as well as a file opened;
-    /// a row chosen there meanwhile stays chosen until then.</summary>
+    /// <summary>Chooses the file shown in the Explorer as another is shown, a tab switched to as well as a file opened,
+    /// while Always Select Opened File is on; a row chosen there meanwhile stays chosen until then.</summary>
     private void FollowInExplorer()
     {
         string? shown = Editors.Active?.Path;
-        if (shown is not null && shown != followed)
+        if (shown is not null && shown != followed && settings.AlwaysSelectOpenedFile)
         {
             Explorer.Reveal(shown);
         }
@@ -360,7 +360,7 @@ public partial class MainWindow : IdeWindow
         }
         session.Opened(full);
         // Behind the file shown (an agent's), it is not the Explorer's to follow.
-        if (Editors.Active?.Path == full)
+        if (Editors.Active?.Path == full && settings.AlwaysSelectOpenedFile)
         {
             Explorer.Reveal(full);
         }
@@ -595,7 +595,8 @@ public partial class MainWindow : IdeWindow
         {
             Action = AppActions.FocusExplorer,
             HeaderTools = Explorer.TakeHeaderTools(),
-            Options = Explorer.Options,
+            Options = ExplorerOptions,
+            HeaderAction = (AppActions.SelectOpenedFile, IconKeys.Locate, SelectOpenedFileTitle),
             Chosen = () => Explorer.SelectedNodes,
             // Opening every row would read every folder on disk, build output and packages too: it closes them alone.
             CollapseAll = Explorer.Tree.CollapseAll,

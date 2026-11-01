@@ -16,6 +16,7 @@ public partial class MainWindow
 {
     private const string ExplorerGroup = "Explorer";
     private const string NoRow = "Nothing is chosen in the Explorer";
+    private const string SelectOpenedFileTitle = "Select Opened File";
 
     private void AddExplorerActions()
     {
@@ -82,9 +83,54 @@ public partial class MainWindow
             Menus = [new MenuPlace("Refactor", 1, 0)],
         });
 
+        actions.Add(new IdeAction(A.SelectOpenedFile, SelectOpenedFileTitle, ExplorerGroup, SelectOpenedFile)
+        {
+            WhyNot = c => c.File is null ? Refusals.NoFile : Explorer.Tree.Root is null ? Refusals.NoFolder : null,
+            Words = ["Locate in Explorer", "Sync with Active Document", "Scroll from Source"],
+        });
+
         static string? Holds(ExplorerNode row) => NewGoesIn(row) is null ? $"Nothing new goes in {row.Name}" : null;
         static string? Referencing(ExplorerNode row) => row.Kind == NodeKind.Project && !row.IsProgram ? row.Path
             : row.Kind == NodeKind.Dependencies && row.Owner is { } owner && !Passenger.Host.ProgramFiles.IsProgram(owner) ? owner : null;
+    }
+
+    /// <summary>Select Opened File: the Explorer shown with the file shown chosen in it, the keys on its row unless asked
+    /// from its header while they were elsewhere; an agent's shows it behind, the keys left where they are. A file neither
+    /// of its views shows is said.</summary>
+    private void SelectOpenedFile(ActionContext context)
+    {
+        string path = context.File!.Path;
+        bool keys = !context.ByAgent && (context.ToolWindow?.Id != ToolWindowIds.Explorer || Explorer.IsKeyboardFocusWithin);
+        if (context.ByAgent)
+        {
+            Dock.ShowBehind(ToolWindowIds.Explorer);
+        }
+        else
+        {
+            Dock.Show(ToolWindowIds.Explorer);
+        }
+        // A view just shown is laid out before its row is scrolled to.
+        Dock.UpdateLayout();
+        if (!Explorer.Locate(path))
+        {
+            string said = $"{Path.GetFileName(path)} is in neither the solution nor the folder";
+            status.Text = said;
+            ActionWork.Tell(false, said);
+            return;
+        }
+        if (keys)
+        {
+            Explorer.FocusRows();
+        }
+    }
+
+    /// <summary>The Explorer's own items atop its header's options: whether it follows the file shown, then its view's.</summary>
+    private IReadOnlyList<Control> ExplorerOptions()
+    {
+        MenuItem follow = new() { Header = "Always Select Opened File", ToggleType = MenuItemToggleType.CheckBox, IsChecked = settings.AlwaysSelectOpenedFile };
+        follow.Click += (_, _) => ApplySettings(settings with { AlwaysSelectOpenedFile = !settings.AlwaysSelectOpenedFile });
+        IReadOnlyList<Control> own = Explorer.Options();
+        return own.Count == 0 ? [follow] : [follow, new Separator(), .. own];
     }
 
     /// <summary>One of the Explorer's own actions, on its row.</summary>

@@ -293,8 +293,8 @@ public partial class ExplorerView : UserControl
     /// <summary>File Nesting... chosen in the Explorer's options: the window asks how files nest.</summary>
     public event EventHandler? NestingAsked;
 
-    /// <summary>The Explorer's own items atop its header's options: Appearance, with File Nesting... while the Solution
-    /// view shows.</summary>
+    /// <summary>Its view's items among its header's options: Appearance, with File Nesting... while the Solution view
+    /// shows.</summary>
     public IReadOnlyList<Control> Options()
     {
         if (!Tree.IsSolutionView)
@@ -343,6 +343,27 @@ public partial class ExplorerView : UserControl
 
     /// <summary>A file or folder to choose once the Solution view shows it.</summary>
     private string? revealing;
+
+    /// <summary>Chooses a file's row and scrolls to it, as Select Opened File asks: in the Solution view, else in the Files
+    /// view, switched to, where only the folder holds it; false, the view left as it was, where neither shows it.</summary>
+    public bool Locate(string path)
+    {
+        string full = PathNames.Canonical(path);
+        ExplorerNode? node = Tree.Reveal(full);
+        if (node is null && Tree.IsSolutionView && folder is not null && PathNames.IsUnder(full, folder) && File.Exists(full))
+        {
+            Show(solutionView: false);
+            node = Tree.Reveal(full);
+        }
+        if (node is null)
+        {
+            return false;
+        }
+        revealing = null;
+        Rows.SelectedItem = node;
+        Rows.ScrollIntoView(node);
+        return true;
+    }
 
     private void Activate(ExplorerNode node)
     {

@@ -173,6 +173,10 @@ public static class AppActions
     public const string FindPrevious = "app.findPrevious";
     public const string FocusExplorer = "app.focusExplorer";
 
+    // The file shown chosen in the Explorer: Rider's LocateInSolutionView in its Visual Studio keymaps (its own descriptor's
+    // Alt+Shift+L), SelectInProjectView in its VS Code keymaps (Ctrl+K, E; Cmd+K, E on macOS), no key in IntelliJ IDEA's.
+    public const string SelectOpenedFile = "app.explorer.selectOpenedFile";
+
     // The Explorer's own actions, on the row its menu opened on or the one chosen while it has the keys: NewFile, NewDir,
     // Class/Interface, the solution's own, Add Reference, Docker Support and Compose, Aspire Orchestration, NuGet, Manage
     // User Secrets (no keys of Rider's), Edit Project File, Unload and Reload Project, Compare Files (CompareTwoFiles, by
@@ -585,6 +589,7 @@ public static class AppActions
                 .Bind(FindNext, "F3", "meta alt PAGE_DOWN")
                 .Bind(FindPrevious, "shift F3", "meta alt PAGE_UP")
                 .Bind(FocusExplorer, "meta 1", "meta alt L")
+                .Bind(SelectOpenedFile, "alt shift L")
                 // CopyPaths: $default's Ctrl+Shift+C as Mac OS X 10.5+ takes it; RevealIn has none.
                 .Bind(CopyPath, "meta shift C")
                 .Bind(OpenInBrowser, "alt F2")
@@ -713,6 +718,7 @@ public static class AppActions
             .Bind(FindNext, "F3", "control alt PAGE_DOWN")
             .Bind(FindPrevious, "shift F3", "control alt PAGE_UP")
             .Bind(FocusExplorer, "alt 1", "control alt L")
+            .Bind(SelectOpenedFile, "alt shift L")
             .Bind(CopyPath, "control shift C")
             .Bind(OpenInBrowser, "control alt F2")
             .Bind(Build, "control shift B")
@@ -843,6 +849,7 @@ public static class AppActions
                 // Its third, Cmd+Shift+F5, is VS Code's Restart, Rerun here.
                 .Bind(FindPrevious, "meta shift G", "shift F3")
                 .Bind(FocusExplorer, "meta shift E")
+                .Bind(SelectOpenedFile, "meta K , E")
                 .Bind(CopyPath, "meta alt C", "meta K , P")
                 .Bind(RevealInFileManager, "meta K , R", "meta alt R")
                 .Bind(OpenInBrowser, "alt F2")
@@ -953,6 +960,7 @@ public static class AppActions
             .Bind(FindNext, "F3", "control K , control D")
             .Bind(FindPrevious, "shift F3", "control shift F3")
             .Bind(FocusExplorer, "control shift E")
+            .Bind(SelectOpenedFile, "control K , E")
             .Bind(CopyPath, "shift alt C", "control K , P")
             .Bind(RevealInFileManager, "shift alt R", "control K , R")
             .Bind(OpenInBrowser, "alt F2")

@@ -312,6 +312,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// (Counter.razor.cs under Counter.razor), on until the Explorer's File Nesting... turns it off.</summary>
     public bool NestFiles { get; init; } = true;
 
+    /// <summary>The Explorer's Always Select Opened File: the file shown chosen in it as another is shown or opened, on
+    /// until its options turn it off.</summary>
+    public bool AlwaysSelectOpenedFile { get; init; } = true;
+
     /// <summary>The code style for XAML (the XML formatter's options, with an attribute order and empty-element style),
     /// which Reformat Code lays out Avalonia's and WPF's XAML by, a file's .editorconfig over it.</summary>
     public Passenger.Xaml.Features.XamlFormatSettings XamlFormat { get; init; } = new();
