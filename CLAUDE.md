@@ -286,13 +286,15 @@ Projects in `src/`; `find_symbol` finds the rest:
 - `tools/`: the notices, the web servers without Node.js, the test runner and shard scripts, packaging, site shots.
 
 `src/Passenger.App`, by area:
-- **Shell.** `PassengerApp` (every open goes through `OpenProject`; a `.slnf` is `SolutionFilter`, the projects it leaves
-  out unloaded but never saved as the person's own), `ProjectSession` (one folder's services made and ended together; a
-  handler acts only while its session is bound, `Bind`), `StatusBar` (`StatusPlace` makes its words a
-  link; a message naming a Settings page takes it from `SettingsDialog.PlaceOfPage`), `IdeKeys` (the one keymap in every
-  window but a dialog; a part with keys of its own is an `IOwnKeys`). The
-  toolbar is the title bar: anything new on it goes inside `ToolbarStart` or `ToolbarEnd`, or Windows takes a press on
-  it for the caption's. Logs are `logs/` under the state root (`IdeLog`; Settings › Diagnostics turns on protocol traces).
+- **Shell.** `PassengerApp` (every open goes through `OpenProject`; a command-line launch goes to the running
+  Passenger's window over its app socket, `LaunchHandOff`/`HandedLaunch`, a window taking it only where
+  `MainWindow.TakesLaunches`; a `.slnf` is `SolutionFilter`, the projects it leaves out unloaded but never saved as the
+  person's own), `ProjectSession` (one folder's services made and ended together; a handler acts only while its session
+  is bound, `Bind`), `StatusBar` (`StatusPlace` makes its words a link; a message naming a Settings page takes it from
+  `SettingsDialog.PlaceOfPage`), `IdeKeys` (the one keymap in every window but a dialog; a part with keys of its own is
+  an `IOwnKeys`). The toolbar is the title bar: anything new on it goes inside `ToolbarStart` or `ToolbarEnd`, or
+  Windows takes a press on it for the caption's. Logs are `logs/` under the state root (`IdeLog`; Settings › Diagnostics
+  turns on protocol traces).
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; wire every editor through `ForEachEditor`;
   `CloseTab` is the one close); a preview holds no text (`HoldsText` false). The Markdown preview draws only the blocks
   near its sight (`MarkdownBlocks`), a page kept per tab, a scroll it sets going through `Jump`.
