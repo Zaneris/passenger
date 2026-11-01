@@ -113,6 +113,13 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         Assert.Equal("Renamed in 2 files: MainWindow.axaml, MainWindow.axaml.cs", fromCode);
         Assert.Contains("Begin.Content = \"Start\";", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml.cs")), StringComparison.Ordinal);
         Assert.Contains("<Button Name=\"Begin\"", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), StringComparison.Ordinal);
+        // A bound property renamed by its name takes the window's binding along.
+        string followed = (await Call(client, McpTools.Rename, new() { ["symbol"] = "MainViewModel.Greeting", ["newName"] = "Salutation" })).GetString()!;
+        Assert.True(followed.StartsWith("Renamed in 2 files: ", StringComparison.Ordinal)
+            && followed["Renamed in 2 files: ".Length..].Split(", ").Order(StringComparer.Ordinal).SequenceEqual(new[] { viewModel, "MainWindow.axaml" }.Order(StringComparer.Ordinal)),
+            $"The agent's rename of the bound property did not say it changed the view model and the window binding it: {followed}");
+        Assert.Contains("Text=\"{Binding Salutation}\"", File.ReadAllText(Path.Combine(gallery, "MainWindow.axaml")), StringComparison.Ordinal);
+        Assert.Contains("public string Salutation", File.ReadAllText(Path.Combine(gallery, viewModel)), StringComparison.Ordinal);
         await client.DisposeAsync();
 
         // A second session, as after a restart: the same version's file, not decompiled again.
@@ -211,6 +218,10 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         Assert.Equal("Renamed Go to Start in 2 files: MainWindow.xaml, MainWindow.xaml.cs", renamed);
         Assert.Contains("Start.Content = \"Start\";", File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml.cs")), StringComparison.Ordinal);
         Assert.Contains("ElementName=Start", File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml")), StringComparison.Ordinal);
+        // A property bound under the window's d:DataContext renamed by its name takes the binding along.
+        string followed = (await Call(client, McpTools.Rename, new() { ["symbol"] = "MainViewModel.Greeting", ["newName"] = "Salutation" })).GetString()!;
+        Assert.Contains("MainWindow.xaml", followed, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{Binding Salutation}\"", File.ReadAllText(Path.Combine(gallery, "MainWindow.xaml")), StringComparison.Ordinal);
     }
 
     /// <summary>A script, a stylesheet and a package.json, with the project's own ESLint and Prettier (the tests' packages

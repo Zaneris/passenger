@@ -148,24 +148,31 @@ public static class TypeRename
     }
 
     /// <summary>A workspace edit with one more file's edit after its own, in the shape it came in.</summary>
-    public static JsonElement With(JsonElement edit, string path, LspTextEdit change)
+    public static JsonElement With(JsonElement edit, string path, LspTextEdit change) => With(edit, [(path, [change])]);
+
+    /// <summary>A workspace edit with more files' edits after its own, in the shape it came in.</summary>
+    public static JsonElement With(JsonElement edit, IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> files)
     {
         JsonObject whole = JsonNode.Parse(edit.GetRawText()) as JsonObject ?? [];
-        string uri = DocumentUris.FromPath(path);
-        JsonNode added = JsonSerializer.SerializeToNode(change, Json.Options)!;
-        if (whole["documentChanges"] is JsonArray documents)
+        foreach ((string path, IReadOnlyList<LspTextEdit> changes) in files)
         {
-            documents.Add(new JsonObject { ["textDocument"] = new JsonObject { ["uri"] = uri, ["version"] = null }, ["edits"] = new JsonArray(added) });
-        }
-        else
-        {
+            string uri = DocumentUris.FromPath(path);
+            JsonNode[] added = [.. changes.Select(c => JsonSerializer.SerializeToNode(c, Json.Options)!)];
+            if (whole["documentChanges"] is JsonArray documents)
+            {
+                documents.Add(new JsonObject { ["textDocument"] = new JsonObject { ["uri"] = uri, ["version"] = null }, ["edits"] = new JsonArray(added) });
+                continue;
+            }
             if (whole["changes"] is not JsonObject byUri)
             {
                 whole["changes"] = byUri = [];
             }
             if (byUri[uri] is JsonArray already)
             {
-                already.Add(added);
+                foreach (JsonNode one in added)
+                {
+                    already.Add(one);
+                }
             }
             else
             {

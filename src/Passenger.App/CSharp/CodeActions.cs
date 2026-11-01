@@ -463,14 +463,26 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
                 : new RefactorOutcome("This can't be renamed", null, [], []);
         }
         TypeRename.Markup markup = type is null ? new([], null) : await TypeRename.MarkupAsync(context.Xaml?.Invoke(), type, name, renameFiles);
+        // Its uses in XAML, found where it is declared still: a binding's path, x:DataType, x:Static, a handler, a tag.
+        (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> inXaml, string? unfollowed) = component is null && document.Language == Languages.Language.CSharp
+            ? await context.Languages.Xaml.CodeRenameAsync(await context.Now(document).SymbolAtAsync(at.Offset), name, asked) : ([], null);
+        if (unfollowed is not null)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {unfollowed}");
+        }
         if (await StaleAsync(document, edit, asked, patience) is { } stale)
         {
             return RefactorOutcome.Refused($"Rename was not applied: {stale}");
         }
         Func<string, TextSnapshot?> answered = WorkspaceEdits.Answered(context.Editors, asked);
-        if (markup.ClassFile is { } xaml && type?.FullName is { } fullName && TypeRename.ClassEdit(xaml, answered(xaml), fullName, name) is { } named)
+        if (markup.ClassFile is { } xaml && type?.FullName is { } fullName && TypeRename.ClassEdit(xaml, answered(xaml), fullName, name) is { } named
+            && !inXaml.Any(f => PathNames.Same(f.Path, named.Path) && f.Edits.Any(e => e.Range == named.Edit.Range)))
         {
             edit = TypeRename.With(edit, named.Path, named.Edit);
+        }
+        if (inXaml.Count > 0)
+        {
+            edit = TypeRename.With(edit, inXaml);
         }
         IReadOnlyList<RefactoredFile> edited = await WorkspaceEdits.FilesAsync(context.Editors, edit, asked);
         List<(string From, string To)> moves = [.. (renameFiles ? type?.Files ?? [] : []).Select(f => (From: f, To: TypeRename.Renamed(f, name))).Concat(markup.Moves)

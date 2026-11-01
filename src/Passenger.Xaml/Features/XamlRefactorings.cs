@@ -129,6 +129,54 @@ public static partial class XamlRefactorings
             ? $"'{name}' names a {member.Kind.ToString().ToLowerInvariant()} of {owner.Name} already" : null;
     }
 
+    /// <summary>The edits a file's uses of a C# symbol (<see cref="XamlNavigation.Uses"/>) take as it is renamed to
+    /// <paramref name="name"/>: each use's last part, after its prefix, namespace or owner, as the new name spells it
+    /// (<see cref="CodeSymbol.Respells"/>), a use that does not spell the symbol's name left as it is. Instead why not, where a
+    /// use's new name would be another member's of the type it is read from, or the MVVM Toolkit would make none.</summary>
+    public static (IReadOnlyList<TextEdit> Edits, string? Problem) CodeRename(XamlFile file, CodeSymbol symbol, IReadOnlyList<TextRange> uses, string name)
+    {
+        List<TextEdit> edits = [];
+        string where = Path.GetFileName(file.Path);
+        foreach (TextRange use in uses)
+        {
+            ReadOnlySpan<char> written = file.Text.AsSpan(use.Start, use.Length);
+            int start = use.Start + (written.Length - written.TrimStart().Length);
+            written = written.Trim();
+            int last = written.LastIndexOfAny(".:|+");
+            string part = written[(last + 1)..].ToString();
+            if (!symbol.Respells(part, name, out string? renamed) || renamed == part)
+            {
+                continue;
+            }
+            int line = file.Text.AsSpan(0, use.Start).Count('\n') + 1;
+            if (renamed is null)
+            {
+                return ([], $"the MVVM Toolkit would make no property of '{name}' for the {part} {where} uses on line {line}");
+            }
+            if (TakenBy(file, symbol, use, renamed) is { } other)
+            {
+                return ([], $"'{renamed}' names another {other.Kind.ToString().ToLowerInvariant()} of {other.DeclaringType.Name}, which {where} would then use on line {line}");
+            }
+            edits.Add(new TextEdit(start + last + 1, part.Length, renamed));
+        }
+        return (edits, null);
+    }
+
+    /// <summary>The member of the type a use of a symbol's member is read from that the use's new name would name instead:
+    /// one of that name declared elsewhere (a method's overload aside, which its signature tells apart); null for none.</summary>
+    private static ClrMember? TakenBy(XamlFile file, CodeSymbol symbol, TextRange use, string renamed)
+    {
+        foreach (XamlTarget target in XamlNavigation.At(file, use.Start)?.Targets.Where(symbol.Is) ?? [])
+        {
+            if (target.Member is { } member && file.Types.MembersOf(member.DeclaringType).FirstOrDefault(m => m.Name == renamed && m.Kind != MemberKind.Constructor
+                && !symbol.IsDeclaredAs(m) && !(m.Kind == MemberKind.Method && member.Kind == MemberKind.Method)) is { } other)
+            {
+                return other;
+            }
+        }
+        return null;
+    }
+
     /// <summary>Where a new resource (or, for Avalonia's styles, a style) of the file can go: its own resources (or
     /// styles), the application's, and the resource dictionaries (or style files) the file reaches.</summary>
     public static IReadOnlyList<ResourcePlace> Places(XamlFile file, bool styles, Func<string, string?> textOf)

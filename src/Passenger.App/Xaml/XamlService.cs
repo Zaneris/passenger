@@ -489,6 +489,49 @@ public sealed class XamlService : IDisposable
     /// the UI thread.</summary>
     public async Task<IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextRange> Uses)>> UsesAsync(IEnumerable<string> projectFiles, CodeSymbol symbol)
     {
+        IReadOnlyList<XamlProject> read = await ReadAsync(projectFiles);
+        Func<string, TextSnapshot?> open = OpenSnapshots();
+        return read.Count == 0 ? [] : await BackgroundWork.Run(() => Uses(read, symbol, open).Select(f => (f.Path, f.Text, f.Uses)).ToList());
+    }
+
+    /// <summary>The edits the XAML of the projects given takes as a symbol of their C# is renamed to <paramref name="name"/>
+    /// (<see cref="XamlRefactorings.CodeRename"/>), its uses found as <see cref="UsesAsync"/> finds them, each open file's
+    /// in the text <paramref name="texts"/> gives (a rename's request's), else as on disk: by file, with the text the edits
+    /// are in; or why the rename cannot follow them.</summary>
+    public async Task<(IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextEdit> Edits)> Files, string? Problem)> RenamesAsync(
+        IEnumerable<string> projectFiles, CodeSymbol symbol, string name, Func<string, TextSnapshot?> texts)
+    {
+        IReadOnlyList<XamlProject> read = await ReadAsync(projectFiles);
+        if (read.Count == 0)
+        {
+            return ([], null);
+        }
+        return await BackgroundWork.Run(() => Renames(read, symbol, name, texts));
+    }
+
+    private static (IReadOnlyList<(string Path, TextSnapshot Text, IReadOnlyList<TextEdit> Edits)> Files, string? Problem) Renames(IReadOnlyList<XamlProject> read,
+        CodeSymbol symbol, string name, Func<string, TextSnapshot?> texts)
+    {
+        List<(string, TextSnapshot, IReadOnlyList<TextEdit>)> files = [];
+        foreach ((string path, TextSnapshot text, XamlFile file, IReadOnlyList<TextRange> uses) in Uses(read, symbol, texts))
+        {
+            (IReadOnlyList<TextEdit> edits, string? problem) = XamlRefactorings.CodeRename(file, symbol, uses, name);
+            if (problem is not null)
+            {
+                return ([], problem);
+            }
+            if (edits.Count > 0)
+            {
+                files.Add((path, text, edits));
+            }
+        }
+        return (files, null);
+    }
+
+    /// <summary>The projects given whose XAML has been read, each read first where no open file has had it read and its
+    /// folders hold XAML, with the C# typed in that they have yet to read taken in; none once the service has ended.</summary>
+    private async Task<IReadOnlyList<XamlProject>> ReadAsync(IEnumerable<string> projectFiles)
+    {
         UiThread.Check();
         if (disposed)
         {
@@ -529,13 +572,13 @@ public sealed class XamlService : IDisposable
                 read.Add(builder.Current);
             }
         }
-        Func<string, TextSnapshot?> open = OpenSnapshots();
-        return read.Count == 0 ? [] : await BackgroundWork.Run(() => Uses(read, symbol, open));
+        return read;
     }
 
-    private static List<(string Path, TextSnapshot Text, IReadOnlyList<TextRange> Uses)> Uses(IReadOnlyList<XamlProject> read, CodeSymbol symbol, Func<string, TextSnapshot?> open)
+    private static List<(string Path, TextSnapshot Text, XamlFile File, IReadOnlyList<TextRange> Uses)> Uses(IReadOnlyList<XamlProject> read, CodeSymbol symbol,
+        Func<string, TextSnapshot?> open)
     {
-        List<(string, TextSnapshot, IReadOnlyList<TextRange>)> found = [];
+        List<(string, TextSnapshot, XamlFile, IReadOnlyList<TextRange>)> found = [];
         HashSet<string> seen = new(PathNames.Comparer);
         foreach (XamlProject project in read)
         {
@@ -548,9 +591,9 @@ public sealed class XamlService : IDisposable
                 }
                 string written = text.ToString();
                 if (names.Any(n => written.Contains(n, StringComparison.OrdinalIgnoreCase))
-                    && XamlNavigation.Uses(XamlDocument.Read(path, written, project, null), names, symbol.Is) is { Count: > 0 } uses)
+                    && XamlDocument.Read(path, written, project, null) is var file && XamlNavigation.Uses(file, names, symbol.Is) is { Count: > 0 } uses)
                 {
-                    found.Add((path, text, uses));
+                    found.Add((path, text, file, uses));
                 }
             }
         }

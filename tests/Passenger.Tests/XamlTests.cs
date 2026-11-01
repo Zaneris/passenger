@@ -1417,6 +1417,120 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>The gallery's view model with a command and a static member beside the property its window binds.</summary>
+    private const string BoundViewModel = """
+        using System;
+        using System.Windows.Input;
+
+        namespace Gallery.ViewModels;
+
+        public class MainViewModel
+        {
+            public string Greeting { get; set; } = "Hello";
+
+            public Person Owner { get; } = new();
+
+            public int Count { get; set; }
+
+            public ICommand Save { get; } = new Relay();
+
+            public static string Motto => "Tea";
+        }
+
+        public class Person
+        {
+            public string Name { get; set; } = "Ada";
+
+            public int Age { get; set; }
+        }
+
+        public sealed class Relay : ICommand
+        {
+            public event EventHandler? CanExecuteChanged
+            {
+                add { }
+                remove { }
+            }
+
+            public bool CanExecute(object? parameter) => true;
+
+            public void Execute(object? parameter)
+            {
+            }
+        }
+
+        """;
+
+    /// <summary>The gallery's window binding the view model's property three ways under its x:DataType, its command, and its
+    /// static member through x:Static, its button's Click handled by the code-behind.</summary>
+    private static readonly string BoundWindow = Gallery.Handled(Gallery.Window).Replace("    <TextBlock Text=\"{Binding #Go.Content}\" />\n",
+        "    <TextBlock Text=\"{Binding #Go.Content}\" />\n        <TextBox Text=\"{Binding Path=Greeting, Mode=TwoWay}\" />\n"
+        + "        <TextBlock Text=\"{CompiledBinding Greeting}\" />\n        <TextBlock Text=\"{x:Static vm:MainViewModel.Motto}\" />\n"
+        + "        <Button Content=\"Save\" Command=\"{Binding Save}\" />\n", StringComparison.Ordinal);
+
+    /// <summary>A view model's property, command and static member and the window's handler, each renamed from its C# in the
+    /// window, take along the XAML that uses them (bindings by path under the window's x:DataType, a compiled binding,
+    /// x:Static, a Click), the window's XAML not open; one Undo puts the property's rename back in both files, and the app
+    /// builds once all are renamed, its compiled bindings and handler resolving each new name.</summary>
+    [AvaloniaFact]
+    public void Renaming_a_bound_property_a_command_a_static_member_and_a_handler_in_csharp_renames_the_xaml_using_them_and_the_app_builds()
+    {
+        app.Rewrite("ViewModels/MainViewModel.cs", BoundViewModel);
+        app.Rewrite("MainWindow.axaml", BoundWindow);
+        app.Rewrite("MainWindow.axaml.cs", Gallery.HandlingCodeBehind);
+        string view = app.PathOf("MainWindow.axaml");
+        MainWindow window = app.Open(app.PathOf("ViewModels/MainViewModel.cs"));
+        List<string> asked = [];
+        window.Confirm = (_, text, _) =>
+        {
+            asked.Add(text);
+            return Task.FromResult(true);
+        };
+        OpenDocument model = window.EditorArea.Active!;
+
+        RenameInCode(window, "string Gree", "Salutation");
+        string salutation = BoundWindow.Replace("Binding Greeting}", "Binding Salutation}", StringComparison.Ordinal)
+            .Replace("Path=Greeting", "Path=Salutation", StringComparison.Ordinal).Replace("CompiledBinding Greeting", "CompiledBinding Salutation", StringComparison.Ordinal);
+        Assert.True(File.ReadAllText(view) == salutation, $"The window's bindings did not follow the property's rename ({window.Status}):\n{File.ReadAllText(view)}");
+        Assert.Equal(BoundViewModel.Replace("string Greeting", "string Salutation", StringComparison.Ordinal), model.Text.Snapshot.ToString());
+        Assert.Equal("Renamed in 2 files", window.Status);
+
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.True(asked.Count == 1 && asked[0].StartsWith("Undo Rename Greeting to Salutation? It changes ", StringComparison.Ordinal), $"The person's Undo asked: {string.Join(" | ", asked)}");
+        Assert.True(File.ReadAllText(view) == BoundWindow, $"One Undo did not put the window's bindings back:\n{File.ReadAllText(view)}");
+        Assert.Equal(BoundViewModel, model.Text.Snapshot.ToString());
+
+        RenameInCode(window, "string Gree", "Salutation");
+        RenameInCode(window, "ICommand Sa", "Store");
+        RenameInCode(window, "string Mot", "Slogan");
+        window.OpenFile(app.PathOf("MainWindow.axaml.cs"));
+        Ui.Settle();
+        RenameInCode(window, "void OnG", "OnStart");
+        string all = salutation.Replace("Command=\"{Binding Save}\"", "Command=\"{Binding Store}\"", StringComparison.Ordinal)
+            .Replace("MainViewModel.Motto", "MainViewModel.Slogan", StringComparison.Ordinal).Replace("Click=\"OnGo\"", "Click=\"OnStart\"", StringComparison.Ordinal);
+        Assert.True(File.ReadAllText(view) == all, $"The window's XAML did not follow the command's, the static member's and the handler's renames ({window.Status}):\n{File.ReadAllText(view)}");
+
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        string said = $"{Ui.Said(window)}: {string.Join("; ", window.BottomPanel.Problems.Problems.Select(p => $"{p.Code} {p.Where} {p.Message}"))}";
+        Assert.True(window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true, $"The app did not build once its XAML followed the renames: {said}");
+        window.Close();
+    }
+
+    /// <summary>Rename at the end of a piece of the active file, the new name typed into its box and Enter pressed.</summary>
+    internal static void RenameInCode(MainWindow window, string after, string name)
+    {
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.Renaming is not null, "the rename box to open");
+        window.KeyTextInput(name);
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+    }
+
     /// <summary>Safe Delete's question names the XAML that would no longer compile, which the test then declines.</summary>
     private static void AssertListed(MainWindow window, string said, string where, string code)
     {

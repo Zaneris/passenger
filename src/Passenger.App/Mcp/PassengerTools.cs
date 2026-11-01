@@ -399,8 +399,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     [McpServerTool(Name = McpTools.Rename, Title = "Rename a symbol", Destructive = true), Description(
-        "Renames the symbol at a position everywhere it is used, as Rename does, and saves the files: a type's files named " +
-        "after it too (Foo.cs, Foo.Designer.cs, Foo.axaml) unless renameFiles is false, and always its XAML's x:Class and " +
+        "Renames the symbol at a position everywhere it is used, as Rename does, and saves the files: a C# symbol's XAML too " +
+        "(bindings, x:DataType, x:Static, handlers, tags), a type's files named " +
+        "after it (Foo.cs, Foo.Designer.cs, Foo.axaml) unless renameFiles is false, and always its XAML's x:Class and " +
         "Razor component (Foo.razor, Foo.razor.css); an Aspire resource's name where its AppHost " +
         "declares it and its services read it; a XAML element's name with its code-behind's uses; a JSON property (in " +
         "package.json's scripts, every npm run of one); a compose file's names, its override's too. MSBuild files have none.")]
