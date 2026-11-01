@@ -315,8 +315,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   function comes from Roslyn's binding in the extension (`JsInteropCalls`) over `JsFunctions`. A multi-targeted
   project's framework is one choice (`TargetFrameworkChoices`, kept in `WorkspaceState`) that the XAML preview's build
   (`XamlPreview.Output`), XAML's restore target and C#'s context (`CSharpService.ChosenContext`) follow: never a
-  framework's output taken by its newest write. A server's own command (TypeScript's refactorings, ESLint's fixes) runs
-  through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
+  framework's output taken by its newest write. A Godot game's C# is read against its scenes by `GodotScenes`
+  (Workspace: the reader, trees, paths, renames), followed through the watcher (`GodotSceneIndex`), the extension's
+  `GodotCode`, `GodotChecks`, and `GodotAssist` for `.tscn`/`.tres`; a C# file read before its project's evaluation
+  landed is pulled again once it does (`CSharpService.GodotProjectsChanged`). A server's own command (TypeScript's
+  refactorings, ESLint's fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one
+  command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
   runs one tsserver (`useSyntaxServer` never): a syntax server answers rename and usages from the open files alone.
