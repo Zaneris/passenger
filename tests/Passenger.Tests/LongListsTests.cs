@@ -51,7 +51,7 @@ public sealed class LongListsTests : IDisposable
                 Ui.WaitFor(() => searching.IsCompleted && popup.Searching.IsCompleted && popup.Status != "Searching…", $"the search for {word}");
                 Assert.Equal(matches, popup.Matches.Count);
                 Ui.Settle();
-                return (popup.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IEnumerable<SearchMatch>), () => { });
+                return (popup.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IEnumerable<SearchLine>), () => { });
             });
         }
         finally

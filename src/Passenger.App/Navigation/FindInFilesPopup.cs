@@ -23,8 +23,8 @@ public sealed record FindChoices(SearchScope Start, IReadOnlyList<ProjectModel> 
 
 /// <summary>Find in Files (and Replace in Files): the query with Match case, Words and Regex (Alt+C, Alt+O, Alt+X), the
 /// scope (Solution, Project, Directory with Recursively, or a named Scope: Alt+U, Alt+P, Alt+D, Alt+S, Alt+Y) and the
-/// file mask (Alt+K), the matches as they are found with each one's file and line, the chosen one's file previewed
-/// below; Enter or a double-click goes to it, Escape closes. In Replace mode a replacement and Replace All.</summary>
+/// file mask (Alt+K), the lines with matches as they are found, each once with its file and line and every match on it
+/// bold, the chosen one's file previewed below; Enter or a double-click goes to its first match, Escape closes. In Replace mode a replacement and Replace All.</summary>
 public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 {
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(250);
@@ -62,6 +62,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     private SearchScopeKind kind;
     private CancellationTokenSource? asking;
     private FilesFound found = FilesFound.None;
+    private IReadOnlyList<SearchLine> lines = [];
 
     /// <summary>The query and scope the matches shown were found for.</summary>
     private (SearchQuery Query, SearchScope Scope)? shownFor;
@@ -163,7 +164,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         ReusedRows.Use(results, () => Row(ligatures));
         results.SelectionChanged += (_, _) => ShowPreview();
         results.DoubleTapped += (_, _) => Choose();
-        ToolWindows.ListMenus.Attach(results, () => results.SelectedItem is not SearchMatch chosen ? [] :
+        ToolWindows.ListMenus.Attach(results, () => results.SelectedItem is not SearchLine chosen ? [] :
         [
             ToolWindows.ListMenus.Item("Go to", "Enter", Choose),
             ToolWindows.ListMenus.Item("Copy Path", null, () => IdeErrors.Observe(ToolWindows.ListMenus.CopyAsync(this, chosen.Path))),
@@ -216,6 +217,9 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     public event EventHandler<SearchScope>? ScopeChanged;
 
     public IReadOnlyList<SearchMatch> Matches => found.Matches;
+
+    /// <summary>The rows: the lines the matches are on, each once.</summary>
+    public IReadOnlyList<SearchLine> Lines => lines;
 
     public string Status => status.Text ?? string.Empty;
 
@@ -477,15 +481,16 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     {
         found = shown;
         shownFor = of;
-        results.ItemsSource = shown.Matches;
-        results.SelectedIndex = shown.Matches.Count > 0 ? 0 : -1;
+        lines = SearchLine.Of(shown.Matches);
+        results.ItemsSource = lines;
+        results.SelectedIndex = lines.Count > 0 ? 0 : -1;
         status.Text = said;
         ShowPreview();
     }
 
     private void ShowPreview()
     {
-        if (results.SelectedItem is not SearchMatch match || textOf(match.Path) is not { } text)
+        if (results.SelectedItem is not SearchLine line || textOf(line.Path) is not { } text)
         {
             preview.Show(new TextDocument(), SelectionSet.Single(0), default);
             return;
@@ -493,20 +498,20 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         TextDocument shown = new(text.ToString());
         preview.Show(shown, SelectionSet.Single(0), default);
         (preview.Highlighter as IDisposable)?.Dispose();
-        preview.Highlighter = Languages.Highlighters.For(Languages.Language.ForPath(match.Path), shown, parseOptions(match.Path));
-        if (match.Line < shown.Snapshot.LineCount)
+        preview.Highlighter = Languages.Highlighters.For(Languages.Language.ForPath(line.Path), shown, parseOptions(line.Path));
+        if (line.Line < shown.Snapshot.LineCount)
         {
-            int at = shown.Snapshot.GetLineStart(match.Line) + match.Column;
-            preview.SetHighlights([new TextRange(at, match.Length)], 0);
-            preview.GoTo(new TextPosition(match.Line, match.Column));
+            int start = shown.Snapshot.GetLineStart(line.Line);
+            preview.SetHighlights([.. line.Matches.Select(m => new TextRange(start + m.Column, m.Length))], 0);
+            preview.GoTo(new TextPosition(line.Line, line.First.Column));
         }
     }
 
     private void Choose()
     {
-        if (results.SelectedItem is SearchMatch match)
+        if (results.SelectedItem is SearchLine line)
         {
-            Done?.Invoke(this, match);
+            Done?.Invoke(this, line.First);
         }
     }
 
@@ -585,19 +590,18 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         return button;
     }
 
-    /// <summary>A match's row for whichever match the list hands its container: its line, the match in bold, and where it is.</summary>
+    /// <summary>A line's row for whichever line the list hands its container: its text, every match on it in bold, and
+    /// where it is. Its runs are its own, kept from one line to the next and added to for a line with more matches.</summary>
     private static Control Row(bool ligatures)
     {
-        Avalonia.Controls.Documents.Run before = new();
-        Avalonia.Controls.Documents.Run matched = new() { FontWeight = FontWeight.Bold };
-        Avalonia.Controls.Documents.Run after = new();
+        List<Avalonia.Controls.Documents.Run> runs = [];
         TextBlock text = new TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
             FontSize = 12,
             FontFeatures = CSharp.Fonts.Features(ligatures),
-            Inlines = [before, matched, after],
+            Inlines = [],
         }.InCodeFont();
         TextBlock where = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 4, 0), FontSize = 12 };
         where.Classes.Add(StyleClasses.Muted);
@@ -605,18 +609,52 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         DockPanel.SetDock(where, Dock.Right);
         row.Children.Add(where);
         row.Children.Add(text);
-        return row.Showing<SearchMatch>(match =>
+        return row.Showing<SearchLine>(line =>
         {
-            string line = match.LineText;
-            int indent = line.Length - line.TrimStart().Length;
-            int start = Math.Clamp(match.Column - indent, 0, Math.Max(0, line.Length - indent));
-            string trimmed = line[indent..];
-            int length = Math.Max(0, Math.Min(match.Length, trimmed.Length - start));
-            before.Text = trimmed[..start];
-            matched.Text = trimmed.Substring(start, length);
-            after.Text = trimmed[Math.Min(trimmed.Length, start + length)..];
-            where.Text = $"{match.Name} {match.Line + 1}";
-            ToolTip.SetTip(row, match.Path);
+            string whole = line.LineText;
+            int indent = whole.Length - whole.TrimStart().Length;
+            string trimmed = whole[indent..];
+            int used = 0;
+            int at = 0;
+            foreach (SearchMatch match in line.Matches)
+            {
+                int start = Math.Clamp(match.Column - indent, at, trimmed.Length);
+                int end = Math.Clamp(match.Column + match.Length - indent, start, trimmed.Length);
+                Piece(trimmed[at..start], bold: false);
+                Piece(trimmed[start..end], bold: true);
+                at = end;
+            }
+            Piece(trimmed[at..], bold: false);
+            // The text shows the first of the runs, as many as the line uses.
+            Avalonia.Controls.Documents.InlineCollection inlines = text.Inlines!;
+            while (inlines.Count > used)
+            {
+                inlines.RemoveAt(inlines.Count - 1);
+            }
+            while (inlines.Count < used)
+            {
+                inlines.Add(runs[inlines.Count]);
+            }
+            where.Text = $"{line.Name} {line.Line + 1}";
+            ToolTip.SetTip(row, line.Path);
+
+            void Piece(string said, bool bold)
+            {
+                if (used == runs.Count)
+                {
+                    runs.Add(new Avalonia.Controls.Documents.Run());
+                }
+                Avalonia.Controls.Documents.Run run = runs[used++];
+                run.Text = said;
+                if (bold)
+                {
+                    run.FontWeight = FontWeight.Bold;
+                }
+                else
+                {
+                    run.ClearValue(Avalonia.Controls.Documents.TextElement.FontWeightProperty);
+                }
+            }
         });
     }
 }

@@ -12,6 +12,38 @@ public sealed record SearchMatch(string Path, int Line, int Column, int Length, 
     public string Name => System.IO.Path.GetFileName(Path);
 }
 
+/// <summary>A line with matches, as Find in Files lists it: once, however many it holds, its matches in the line's
+/// order, each of its file and line.</summary>
+public sealed record SearchLine(IReadOnlyList<SearchMatch> Matches)
+{
+    public SearchMatch First => Matches[0];
+
+    public string Path => First.Path;
+
+    public int Line => First.Line;
+
+    public string LineText => First.LineText;
+
+    public string Name => First.Name;
+
+    /// <summary>Matches as a search gives them, file by file in each file's order, gathered into their lines.</summary>
+    public static IReadOnlyList<SearchLine> Of(IReadOnlyList<SearchMatch> matches)
+    {
+        List<SearchLine> lines = [];
+        List<SearchMatch>? on = null;
+        foreach (SearchMatch match in matches)
+        {
+            if (on is null || on[0].Line != match.Line || on[0].Path != match.Path)
+            {
+                on = [];
+                lines.Add(new SearchLine(on));
+            }
+            on.Add(match);
+        }
+        return lines;
+    }
+}
+
 /// <summary>What Find in Files found: the matches, and the files a regex ran too long in, whose search stopped there (the
 /// matches found before the stop listed).</summary>
 public sealed record FilesFound(IReadOnlyList<SearchMatch> Matches, IReadOnlyList<string> Stopped)

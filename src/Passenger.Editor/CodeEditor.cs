@@ -483,9 +483,15 @@ public sealed partial class CodeEditor : Control
     {
         int offset = document.Snapshot.GetOffset(position);
         SetSelections(SelectionSet.Single(offset), reveal: false);
+        ScrollToPlace(offset);
+    }
+
+    /// <summary>Scrolls an offset a third of the way down the view, as <see cref="GoTo"/> does; not laid out yet, the
+    /// first arrange does it, leaving the carets as they stand then (a selection made after the GoTo).</summary>
+    private void ScrollToPlace(int offset)
+    {
         if (Bounds.Height <= 0)
         {
-            // Not laid out yet, so there is no view to centre in; the first arrange does it.
             pendingGoTo = offset;
             return;
         }
@@ -628,7 +634,7 @@ public sealed partial class CodeEditor : Control
         if (pendingGoTo is { } offset)
         {
             pendingGoTo = null;
-            Dispatcher.UIThread.Post(() => GoTo(document.Snapshot.GetPosition(Math.Min(offset, document.Snapshot.Length))));
+            Dispatcher.UIThread.Post(() => ScrollToPlace(Math.Min(offset, document.Snapshot.Length)));
         }
         // The gutter's width, and with it the caret's x, follows the text's line count and the font.
         FollowInputMethod();
