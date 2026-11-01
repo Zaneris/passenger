@@ -204,6 +204,45 @@ public static class Indentation
         return Detect(lines, to.TabWidth, minimumLines: 1) ?? to with { UseTabs = false };
     }
 
+    /// <summary>Every line's leading spaces and tabs written again in <paramref name="to"/>'s characters, at the columns they
+    /// reach with tabs <paramref name="from"/>'s width; what follows on the line (alignment within it, a comment's) is left
+    /// as it is. One edit per line it changes, in order.</summary>
+    public static List<TextEdit> Convert(TextSnapshot text, IndentOptions from, IndentOptions to)
+    {
+        List<TextEdit> edits = [];
+        Span<char> start = stackalloc char[256];
+        for (int i = 0; i < text.LineCount; i++)
+        {
+            LineSpan line = text.GetLine(i);
+            int read = Math.Min(line.Length, start.Length);
+            text.CopyTo(line.Start, start[..read]);
+            // A line whose whitespace runs past what was read is read whole.
+            ReadOnlySpan<char> head = read == start.Length && Lead(start) == read ? text.GetText(line.Start, line.Length) : start[..read];
+            ReadOnlySpan<char> was = head[..Lead(head)];
+            if (was.Length == 0)
+            {
+                continue;
+            }
+            string now = to.Whitespace(from.Columns(was));
+            if (!was.SequenceEqual(now))
+            {
+                edits.Add(new TextEdit(line.Start, was.Length, now));
+            }
+        }
+        return edits;
+    }
+
+    /// <summary>How many spaces and tabs begin a run of text.</summary>
+    private static int Lead(ReadOnlySpan<char> text)
+    {
+        int lead = 0;
+        while (lead < text.Length && text[lead] is ' ' or '\t')
+        {
+            lead++;
+        }
+        return lead;
+    }
+
     /// <summary>A language server's edits (sorted, not overlapping, as <see cref="LineEndings.Fit"/> leaves them) with the
     /// indentation they write in the text's own characters: a server that writes spaces where the file has tabs, or the
     /// other way, writes the same columns. Only whitespace the server wrote or changed is touched, and an edit that then

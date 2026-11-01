@@ -34,8 +34,10 @@ public static class AppActions
     public const string LineSeparatorsLf = "app.lineSeparators.lf";
     public const string LineSeparatorsCr = "app.lineSeparators.cr";
 
-    // The indent widget's menu, which no keys open.
+    // The indent widget's menu, which no keys open, and its conversions of a file's lines.
     public const string FileIndentation = "app.fileIndentation";
+    public const string ConvertIndentationToTabs = "app.convertIndentation.tabs";
+    public const string ConvertIndentationToSpaces = "app.convertIndentation.spaces";
 
     // Rider's ChangeTargetFramework (Target Framework), the editor's context switcher, which its keymaps give no keys.
     public const string TargetFramework = "app.code.targetFramework";

@@ -718,6 +718,32 @@ public sealed class OpenDocument : Observable
 
     private IndentOptions? chosenIndent;
 
+    /// <summary>Every line's indentation written in tabs, or in spaces, at the file's indent size, alignment within a line
+    /// left as it is, as one undoable step that makes it the indentation chosen for the file, the choice before back on
+    /// Undo. How many lines changed; none changes nothing, and a read-only file is refused.</summary>
+    public int ConvertIndentation(bool toTabs)
+    {
+        if (IsReadOnly)
+        {
+            throw new IOException(Refusals.ReadOnly(Name));
+        }
+        IndentOptions from = Indentation.Options;
+        // Tabs as wide as a level, so the lines stand where they stood.
+        IndentOptions to = new(from.Size, toTabs, toTabs ? from.Size : from.TabWidth);
+        TextSnapshot before = Text.Snapshot;
+        List<TextEdit> edits = Passenger.Text.Indentation.Convert(before, from, to);
+        if (edits.Count == 0)
+        {
+            return 0;
+        }
+        IndentOptions? was = chosenIndent;
+        int length = before.Length + edits.Sum(e => e.Text.Length - e.Length);
+        SelectionSet carets = Selections;
+        Text.Perform(edits, carets, TextEditing.MapThrough(carets, edits).Clamp(length), () => ChosenIndent = was, () => ChosenIndent = to);
+        ChosenIndent = to;
+        return edits.Count;
+    }
+
     /// <summary>The indentation the file has with none chosen.</summary>
     public FileIndent Unchosen => FileIndent.Choose(Conventions, detected, Language.Indent);
 
