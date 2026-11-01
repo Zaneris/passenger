@@ -267,6 +267,21 @@ public partial class MainWindow
         BindMigrations(next);
         BindPackages(next);
         BindContainers(next);
+        // The Explorer's filter shows the files the index has, so it follows them as they are walked, come and go.
+        next.Index.Walked += (_, _) =>
+        {
+            if (session == next)
+            {
+                Explorer.Refilter();
+            }
+        };
+        next.Index.Changed += (_, _) =>
+        {
+            if (session == next)
+            {
+                Explorer.Refilter();
+            }
+        };
         // Files open as it binds (a file opened with no folder) are its too.
         foreach (Workspace.OpenDocument document in Editors.Documents)
         {

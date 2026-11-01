@@ -13,11 +13,15 @@
             </Button>
             <TextBlock Classes="paneTitle" Text="Explorer" VerticalAlignment="Center" />
         </DockPanel>
-        <Panel Name="Surface">
-            <TextBlock Name="Hint" Classes="muted" Text="Nothing open"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <ListBox Name="Rows" Classes="tree" IsVisible="False" SelectionMode="Multiple"
-                     DoubleTapped="OnRowDoubleTapped" />
-        </Panel>
+        <!-- The filter's bar goes in the first row, after the tree among the parts, so the Explorer's action gives the
+             tree's row the keys and only Find's keys give them to the filter. -->
+        <Grid Name="Body" RowDefinitions="Auto,*">
+            <Panel Name="Surface" Grid.Row="1">
+                <TextBlock Name="Hint" Classes="muted" Text="Nothing open"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <ListBox Name="Rows" Classes="tree" IsVisible="False" SelectionMode="Multiple"
+                         DoubleTapped="OnRowDoubleTapped" />
+            </Panel>
+        </Grid>
     </DockPanel>
 </UserControl>

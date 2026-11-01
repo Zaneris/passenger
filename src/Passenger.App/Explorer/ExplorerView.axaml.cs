@@ -25,9 +25,38 @@ public partial class ExplorerView : UserControl
     /// <summary>A plain left press on a file's row while one click opens files, which opens it once let go there.</summary>
     private (ExplorerNode Row, Point At)? clicked;
 
+    /// <summary>How long typing in the filter pauses before the rows follow it.</summary>
+    private static readonly TimeSpan FilterPause = TimeSpan.FromMilliseconds(150);
+
+    private readonly TextBox filter = ToolWindows.FilterBox.Of();
+    private readonly Border filterBar;
+    private readonly Debounce filtering;
+
     public ExplorerView()
     {
         InitializeComponent();
+        filter.Margin = new Thickness(6, 0, 4, 0);
+        filterBar = ToolWindows.ToolBars.Top(filter);
+        filterBar.IsVisible = false;
+        Body.Children.Add(filterBar);
+        filtering = new Debounce(FilterPause, () =>
+        {
+            ApplyFilter();
+            return Task.CompletedTask;
+        });
+        filter.TextChanged += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(filter.Text))
+            {
+                filtering.Stop();
+                ApplyFilter();
+            }
+            else
+            {
+                filtering.Restart();
+            }
+        };
+        filter.KeyDown += OnFilterKey;
         Rows.ItemsSource = Tree.Rows;
         ReusedRows.Use(Rows, Row);
         // Every key the keymap gives an action (Rename, Delete, the clipboard's) is the window's, run on the chosen row.
@@ -109,10 +138,13 @@ public partial class ExplorerView : UserControl
         }
     }
 
-    /// <summary>Reads the folder again, keeping the folders that were open open and the chosen row chosen.</summary>
+    /// <summary>Reads the folder again, keeping the folders that were open open and the chosen row chosen, and the filter
+    /// as it was.</summary>
     public void Refresh()
     {
         static string Key(ExplorerNode row) => (row.Kind == NodeKind.SolutionFolder ? row.SolutionPath : row.Path) ?? $"{row.Owner}/{row.Depth}/{row.Kind}/{row.Name}";
+        // The rows open are those open before the filter, which it opens again over them.
+        Tree.Unfilter();
         HashSet<string> open = new(Tree.Rows.Where(r => r.IsExpanded).Select(Key), StringComparer.Ordinal);
         string? chosen = Selected is { } selected ? Key(selected) : null;
         ExplorerNode? again = null;
@@ -135,6 +167,7 @@ public partial class ExplorerView : UserControl
         {
             Rows.SelectedItem = again;
         }
+        Refilter();
         if (revealing is { } waiting)
         {
             Reveal(waiting);
@@ -179,8 +212,10 @@ public partial class ExplorerView : UserControl
         folder = workspace.Folder;
         Take(workspace);
         Show(solutionView: ViewSwitch.IsVisible);
-        Hint.IsVisible = false;
         Rows.IsVisible = true;
+        filterBar.IsVisible = true;
+        ShowHint();
+        Refilter();
     }
 
     /// <summary>Shows nothing, its hint in its place, as it did before a folder opened: the solution was closed.</summary>
@@ -194,11 +229,16 @@ public partial class ExplorerView : UserControl
         ViewSwitch.IsVisible = false;
         Tree.Clear();
         Rows.IsVisible = false;
-        Hint.IsVisible = true;
+        filterBar.IsVisible = false;
+        ShowHint();
     }
 
     /// <summary>Reads again only the folders that changed on disk, the rows open and chosen kept.</summary>
-    public void RefreshFolders(IEnumerable<string> folders) => Tree.RefreshFolders(folders);
+    public void RefreshFolders(IEnumerable<string> folders)
+    {
+        Tree.RefreshFolders(folders);
+        Refilter();
+    }
 
     /// <summary>A project unloaded or loaded again: its row made anew, chosen again if it was, and every other row as it
     /// was.</summary>
@@ -210,6 +250,7 @@ public partial class ExplorerView : UserControl
             Refresh();
             return;
         }
+        Refilter();
         if (chosen && Tree.Rows.FirstOrDefault(r => r.Kind == NodeKind.Project && r.Path == project) is { } again)
         {
             Rows.SelectedItem = again;
@@ -231,6 +272,7 @@ public partial class ExplorerView : UserControl
         bool keys = Rows.IsKeyboardFocusWithin;
         Take(workspace);
         Tree.UpdateProjects(updated);
+        Refilter();
         if (revealing is { } waiting)
         {
             Reveal(waiting);
@@ -278,7 +320,11 @@ public partial class ExplorerView : UserControl
         return ViewSwitch;
     }
 
-    private void OnViewSwitchClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Show(!Tree.IsSolutionView);
+    private void OnViewSwitchClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        Show(!Tree.IsSolutionView);
+        Refilter();
+    }
 
     /// <summary>"Show files with the same names as nested": the Solution view nests by name as well as by
     /// DependentUpon; the rows are made again as it changes, those open kept open.</summary>
@@ -332,6 +378,97 @@ public partial class ExplorerView : UserControl
         Rows.ScrollIntoView(index);
         Rows.UpdateLayout();
         Rows.ContainerFromIndex(index)?.Focus();
+    }
+
+    /// <summary>The folder's files whose names hold a text, by full path, which the filter shows: the window's index of
+    /// them, which leaves out build output and what the walks pass over.</summary>
+    public Func<string, IEnumerable<string>>? FilesNamed { get; set; }
+
+    /// <summary>The filter's text: the rows narrowed to the files whose names hold it, with their folders.</summary>
+    public string FilterText
+    {
+        get => filter.Text ?? string.Empty;
+        set => filter.Text = value;
+    }
+
+    /// <summary>Gives the filter the keys, its text chosen: Find's keys while the Explorer has them.</summary>
+    public void FocusFilter()
+    {
+        filter.Focus();
+        filter.SelectAll();
+    }
+
+    /// <summary>The filter applied again to the rows as they now are (read again, or the folder's files changed), while it
+    /// has text.</summary>
+    public void Refilter()
+    {
+        if (!string.IsNullOrWhiteSpace(filter.Text))
+        {
+            ApplyFilter();
+        }
+    }
+
+    /// <summary>The rows narrowed to the files the filter's text names, or, its text gone, every row again as it was open
+    /// before, the row chosen meanwhile shown where it is.</summary>
+    private void ApplyFilter()
+    {
+        string text = FilterText.Trim();
+        if (text.Length > 0)
+        {
+            Tree.Filter(FilesNamed?.Invoke(text) ?? []);
+            ShowHint();
+            return;
+        }
+        if (Tree.IsFiltered)
+        {
+            string? chosen = Selected?.Path;
+            Tree.Unfilter();
+            if (chosen is not null && Selected is null)
+            {
+                Reveal(chosen);
+            }
+            else if (Selected is { } still)
+            {
+                Rows.ScrollIntoView(still);
+            }
+            ShowHint();
+        }
+    }
+
+    /// <summary>The hint over the rows: nothing open, or a filter that leaves no file.</summary>
+    private void ShowHint()
+    {
+        bool none = Rows.IsVisible && Tree.IsFiltered && !Tree.Rows.Any(r => r.IsFile);
+        Hint.Text = none ? "No file matches" : "Nothing open";
+        Hint.IsVisible = none || !Rows.IsVisible;
+    }
+
+    /// <summary>The filter's keys: Down or Enter takes the rows' keys, on the row chosen or the first file shown; Escape
+    /// empties it and gives the rows their keys back.</summary>
+    private void OnFilterKey(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyModifiers != KeyModifiers.None || e.Key is not (Key.Down or Key.Enter or Key.Escape))
+        {
+            return;
+        }
+        if (e.Key == Key.Escape)
+        {
+            filter.Text = string.Empty;
+        }
+        else
+        {
+            if (filtering.IsWaiting)
+            {
+                filtering.Stop();
+                ApplyFilter();
+            }
+            if (Selected is null && Tree.Rows.FirstOrDefault(r => r.IsFile) is { } first)
+            {
+                Rows.SelectedItem = first;
+            }
+        }
+        FocusRows();
+        e.Handled = true;
     }
 
     /// <summary>Opens the folders down to a file and selects its row. A file the Solution view does not show yet (one just

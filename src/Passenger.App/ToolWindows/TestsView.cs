@@ -119,18 +119,10 @@ public sealed class TestsView : DockPanel
         split.Children.Add(result);
 
         // Above the tree: what changes it, then a filter for each outcome; the search on the right.
-        PathIcon magnifier = new() { Width = 14, Height = 14, Margin = new Thickness(8, 0, 0, 0) };
-        magnifier.Bind(PathIcon.DataProperty, magnifier.GetResourceObservable(IconKeys.Search));
-        search = new TextBox
-        {
-            [DockProperty] = Dock.Right,
-            Classes = { StyleClasses.Search },
-            Width = 220,
-            Margin = new Thickness(6, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            PlaceholderText = $"{(OperatingSystem.IsMacOS() ? "⌘F" : "Ctrl+F")} to filter",
-            InnerLeftContent = magnifier,
-        };
+        search = FilterBox.Of();
+        search[DockProperty] = Dock.Right;
+        search.Width = 220;
+        search.Margin = new Thickness(6, 0);
         search.TextChanged += (_, _) => model.SearchFor(search.Text ?? string.Empty);
         search.KeyDown += OnSearchKey;
         groupBy = ToolButtons.Of(IconKeys.GroupBy, "Group By", ShowGroupBy);

@@ -132,12 +132,16 @@ public partial class MainWindow
         Add(A.Exit, "Exit", "IDE", _ => PassengerApp.Quit(), menu: OperatingSystem.IsMacOS() ? null : ("File", 4, 0));
         Add(A.FindAction, "Find Action…", "IDE", _ => ShowFindAction(), menu: ("Help", 0, 0));
 
-        // The Unit Tests window takes Find's keys for its search while it has them, a console's window for its text.
+        // The Unit Tests window and the Explorer take Find's keys for their filters, a console's window for its text.
         Add(A.Find, "Find", "IDE", c =>
         {
             if (c.ToolWindow?.Id == ToolWindowIds.Tests)
             {
                 Bottom.Tests.FocusSearch();
+            }
+            else if (c.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.Tree.Root is not null)
+            {
+                Explorer.FocusFilter();
             }
             else if (c.ToolWindow?.Id == ToolWindowIds.Aspire)
             {
@@ -151,7 +155,8 @@ public partial class MainWindow
             {
                 Editors.ShowFind(replace: false);
             }
-        }, c => c.ToolWindow?.Id == ToolWindowIds.Tests || ConsoleFind(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 0));
+        }, c => c.ToolWindow?.Id == ToolWindowIds.Tests || c.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.Tree.Root is not null || ConsoleFind(c) is not null
+            ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 0));
         Add(A.Replace, "Replace", "IDE", _ => Editors.ShowFind(replace: true), Refusals.NeedsFile, ("Edit/Find", 0, 1));
         Add(A.FindNext, "Find Next", "IDE", c => (ConsoleFind(c) ?? Editors.FindBar).Next(), c => ConsoleFind(c) is not null ? null : Refusals.NeedsFile(c), ("Edit/Find", 0, 2));
         Add(A.FindPrevious, "Find Previous", "IDE", c => (ConsoleFind(c) ?? Editors.FindBar).Previous(), c => ConsoleFind(c) is not null ? null : Refusals.NeedsFile(c),
