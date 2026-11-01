@@ -33,13 +33,14 @@ public static class Handlers
     public const string WrittenPlaces = "Passenger.Roslyn.Extension.WrittenPlaces";
     public const string ComponentClass = "Passenger.Roslyn.Extension.ComponentClass";
     public const string GeneratedTexts = "Passenger.Roslyn.Extension.GeneratedTexts";
+    public const string JsInteropCalls = "Passenger.Roslyn.Extension.JsInteropCalls";
 
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
-        ComponentClass, GeneratedTexts,
+        ComponentClass, GeneratedTexts, JsInteropCalls,
     ];
 }
 
@@ -280,6 +281,30 @@ public sealed record LocalizedKey(
 public sealed record LocalizedReadsFound(
     [property: JsonPropertyName("keys")] IReadOnlyList<LocalizedKey> Keys,
     [property: JsonPropertyName("resources")] IReadOnlyList<LocalizedResource> Resources);
+
+/// <summary>The identifier JS interop imports a module by, whose argument is the module's path.</summary>
+public static class JsInteropNames
+{
+    public const string Import = "import";
+}
+
+/// <summary>A C# or Razor file whose calls of JavaScript are asked for, by its path.</summary>
+public sealed record JsInteropRequest([property: JsonPropertyName("path")] string Path);
+
+/// <summary>A call of JavaScript a file makes through JS interop: the identifier it calls ("app.greet", or "import" for a
+/// module's import), where its string is written, and the module's path ("./Components/Pages/Map.razor.js") that an
+/// object reference it is called on was imported from, or that an import gives; null where none is known.</summary>
+public sealed record JsInteropCall(
+    [property: JsonPropertyName("identifier")] string Identifier,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("module")] string? Module);
+
+/// <summary>The calls of JavaScript a file makes, and the project files of its projects and those near them (referenced, or
+/// referencing them), its own first, whose scripts they may call.</summary>
+public sealed record JsInteropFound(
+    [property: JsonPropertyName("calls")] IReadOnlyList<JsInteropCall> Calls,
+    [property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);
 
 /// <summary>The projects whose web routes are asked for, by their project files' paths; none asks for every project's.</summary>
 public sealed record RoutesRequest([property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);

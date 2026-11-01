@@ -1634,6 +1634,24 @@ public sealed partial class CSharpService : IAsyncDisposable
         }, cancel);
     }
 
+    /// <summary>The calls of JavaScript a C# or Razor file makes through JS interop, asked of Passenger's extension for the code
+    /// as the server holds it; null without the server.</summary>
+    internal async Task<Roslyn.Extension.JsInteropFound?> JsInteropAsync(string path, CancellationToken cancel)
+    {
+        if (session is not { } roslyn)
+        {
+            return null;
+        }
+        try
+        {
+            return await roslyn.ExtensionAsync<Roslyn.Extension.JsInteropFound>(Roslyn.Extension.Handlers.JsInteropCalls, new Roslyn.Extension.JsInteropRequest(path), cancel);
+        }
+        catch (LanguageServerFailed)
+        {
+            return null;
+        }
+    }
+
     /// <summary>The connection strings the open compose files' .NET services read that their environments do not set (the
     /// session's <see cref="Containers.EngineChecks.Gaps"/>), whose reads in the code are marked too; none without a session.</summary>
     public Func<IReadOnlyList<Containers.ComposeGap>>? ComposeGaps { get; init; }

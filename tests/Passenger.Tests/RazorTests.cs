@@ -20,7 +20,8 @@ namespace Passenger.Tests;
 /// with its code in a code-behind, Tally.razor.cs, and no <c>@code</c>) and a Razor Page: a component's colours and its
 /// errors, completion of components, their parameters, HTML's elements and the C#, go to declaration from a tag, rename
 /// across markup and code, the code-behind's members completed, checked, found and renamed from the markup and back, a
-/// caller in a component's code block placed in its .razor by Call Hierarchy, and a Razor Page's errors and completion.
+/// caller in a component's code block placed in its .razor by Call Hierarchy, a JS interop call going to its JavaScript, and a
+/// Razor Page's errors and completion.
 /// Each test opens its own window, on the server the last one left running, warm, and on the app as written (<see
 /// cref="SharedProject"/>).</summary>
 public sealed class RazorTests : IClassFixture<BlazorShop>
@@ -271,6 +272,34 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
 
     /// <summary>Call Hierarchy of a method a component's code block calls lists the component's method as its caller, at
     /// the call in the .razor, and going to the caller opens the .razor at that line.</summary>
+    /// <summary>Go to Declaration from a JS interop call's identifier in a component lands on the JavaScript function: one
+    /// its collocated script declares there first, one only the app's scripts declare in them; from a call on a module
+    /// imported by its path, in that module; and from the import's path, on the module's file.</summary>
+    [AvaloniaFact]
+    public void Go_to_declaration_from_a_js_interop_call_goes_to_its_function_in_the_collocated_script_the_apps_scripts_or_its_module()
+    {
+        MainWindow window = app.Open("Components/Pages/Bell.razor");
+        string bell = app.Named("Components/Pages/Bell.razor");
+        string script = app.Named("Components/Pages/Bell.razor.js");
+        Goes(window, bell, "InvokeVoidAsync(\"ri", script, "export function ring(times) {", "the collocated script's ring");
+        Goes(window, bell, "InvokeVoidAsync(\"gr", app.Named("wwwroot/js/site.js"), "function greet(name) {", "site.js's greet, which no collocated script declares");
+        Goes(window, bell, "InvokeVoidAsync(\"hu", script, "export function hush() {", "the imported module's hush");
+        Goes(window, bell, "\"./Components/Pa", script, "// Rings the bell, and hushes it.", "the module the import's path names");
+        window.Close();
+
+        static void Goes(MainWindow window, string from, string after, string to, string line, string what)
+        {
+            window.OpenFile(from);
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.PlaceAfter(editor, after);
+            Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
+            Ui.WaitFor(() => window.EditorArea.Active?.Path == to, () => $"Go to Declaration to reach {what}; the window shows {window.EditorArea.Active?.Path} and the status bar said: {window.Status}");
+            editor = window.EditorArea.CodeEditor;
+            Assert.Equal(line, editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line));
+        }
+    }
+
     [AvaloniaFact]
     public void Call_hierarchy_of_a_method_a_components_code_block_calls_goes_to_the_call_in_its_razor_file()
     {
@@ -440,7 +469,8 @@ internal static class BlazorApp
 
 /// <summary>The Blazor app the Razor and web tests open, restored once a class and never built, its warm server shared
 /// (<see cref="SharedProject"/>): for Razor, a component that takes parameters and a page that sets them, a component whose
-/// code is all in its code-behind, and a Razor Page whose markup misnames a member of its model; for the web languages,
+/// code is all in its code-behind, a component calling JavaScript with its collocated script, and a Razor Page whose
+/// markup misnames a member of its model; for the web languages,
 /// the files a web project carries beside its C#: wwwroot/js/site.js, TypeScript under Scripts/ with its tsconfig.json,
 /// wwwroot/css/site.css and an SCSS and a Less stylesheet beside it, a package.json with a dependency installed in
 /// node_modules, a component with a &lt;style&gt; and a &lt;script&gt;, and VS Code's settings and a dev container, each
@@ -473,6 +503,17 @@ public sealed class BlazorShop : SharedProject
     public const string Component = "@page \"/styled\"\n\n<h1 class=\"title\">Styled</h1>\n\n<style>\n    .title {\n        color: #1b6ec2;\n    }\n</style>\n\n"
         + "<script>\n    function shout(text) {\n        return text.toUpperCase();\n    }\n    shout(\"hi\");\n</script>\n";
 
+    /// <summary>A component calling JavaScript through JS interop: a function of the app's scripts, one of its collocated script,
+    /// and one of that script imported as a module.</summary>
+    public const string Bell = "@page \"/bell\"\n@inject IJSRuntime JS\n\n<button @onclick=\"RingAsync\">Ring</button>\n\n@code {\n"
+        + "    private IJSObjectReference? module;\n\n    private async Task RingAsync()\n    {\n        await JS.InvokeVoidAsync(\"greet\", \"Ada\");\n"
+        + "        await JS.InvokeVoidAsync(\"ring\", 3);\n        module = await JS.InvokeAsync<IJSObjectReference>(\"import\", \"./Components/Pages/Bell.razor.js\");\n"
+        + "        await module.InvokeVoidAsync(\"hush\");\n    }\n}\n";
+
+    /// <summary>The component's collocated script.</summary>
+    public const string BellScript = "// Rings the bell, and hushes it.\nexport function ring(times) {\n    console.log(\"ring \".repeat(times));\n}\n\n"
+        + "export function hush() {\n    console.log(\"hush\");\n}\n";
+
     /// <summary>VS Code's settings, a comment in them as VS Code writes one, and a comma missing: the error a check finds.</summary>
     public const string VsCodeSettings = "{\n  // Laid out on save, as the team's editors do.\n  \"editor.formatOnSave\": true\n  \"files.trimTrailingWhitespace\": true\n}\n";
 
@@ -501,6 +542,8 @@ public sealed class BlazorShop : SharedProject
         ("node_modules/left-pad/package.json", "{\n  \"name\": \"left-pad\",\n  \"version\": \"1.3.0\",\n  \"main\": \"index.js\"\n}\n"),
         ("node_modules/left-pad/index.js", "module.exports = (text, length) => text.padStart(length);\n"),
         ("Components/Pages/Styled.razor", Component),
+        ("Components/Pages/Bell.razor", Bell),
+        ("Components/Pages/Bell.razor.js", BellScript),
         (".vscode/settings.json", VsCodeSettings),
         (".devcontainer/devcontainer.json", DevContainer),
     ];

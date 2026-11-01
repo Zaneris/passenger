@@ -89,7 +89,7 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         return true;
     }
 
-    /// <summary>Aspire's, a configuration read's and a localized key's places first; then the server's, where a Dockerfile's
+    /// <summary>Aspire's, a configuration read's, a localized key's and a JS interop call's places first; then the server's, where a Dockerfile's
     /// FROM that names no stage goes to its image's registry page, a XAML element's generated field to its name, and any other
     /// place in a source generator's code to its copy (<see cref="GeneratedCode"/>).</summary>
     public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
@@ -98,7 +98,8 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         {
             return null;
         }
-        if ((await AspireDeclaredAsync(lsp, document, offset) ?? await ConfigurationDeclaredAsync(lsp, document, offset) ?? await LocalizationDeclaredAsync(lsp, document, offset)) is { } own)
+        if ((await AspireDeclaredAsync(lsp, document, offset) ?? await ConfigurationDeclaredAsync(lsp, document, offset) ?? await LocalizationDeclaredAsync(lsp, document, offset)
+            ?? await JsInteropDeclaredAsync(lsp, document, offset)) is { } own)
         {
             return own;
         }
