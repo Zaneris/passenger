@@ -214,12 +214,16 @@ public static class CarriedProperties
     /// package management: the nearest above it, or the one the project names; none where the project turns it off.</summary>
     public const string DirectoryPackagesPropsPath = "DirectoryPackagesPropsPath";
 
+    /// <summary>The folder of the Godot project Godot.NET.Sdk builds the project for, which holds its project.godot (the
+    /// project's own folder unless it names another); set by no other SDK.</summary>
+    public const string GodotProjectDir = "GodotProjectDir";
+
     public static readonly IReadOnlyList<string> Names =
     [
         EnableSdkContainerSupport, ContainerRepository, ContainerImageName, ContainerBaseImage, DockerfileFile, DockerfileContext,
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
         NuGetPackageRoot, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
-        DirectoryPackagesPropsPath,
+        DirectoryPackagesPropsPath, GodotProjectDir,
     ];
 }
 

@@ -331,6 +331,16 @@ public sealed record ProjectModel(
     /// <summary>Whether Aspire's evaluated SDK identifies this project as an AppHost.</summary>
     public bool IsAspireHost => Evaluated?.IsAspireHost == true;
 
+    /// <summary>The folder of the Godot project Godot.NET.Sdk builds it for, where its project.godot is, as evaluated; null
+    /// for a project of any other SDK.</summary>
+    public string? GodotFolder => Property(CarriedProperties.GodotProjectDir) is { Length: > 0 } folder
+        ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(Folder, folder.Replace('\\', System.IO.Path.DirectorySeparatorChar))))
+        : null;
+
+    /// <summary>The Godot project whose game it builds: its Godot folder's project.godot, read from disk on each call; null
+    /// where it has none (<see cref="GodotFolder"/>).</summary>
+    public GodotProject? Godot() => GodotFolder is { } folder ? GodotProject.Read(folder) : null;
+
     /// <summary>Whether a web SDK builds it, as evaluated, serving the files of the wwwroot at its top.</summary>
     public bool IsWeb => Evaluated?.IsWeb == true;
 

@@ -695,7 +695,8 @@ public sealed partial class BuildRunController
     {
         try
         {
-            return (await LaunchPlan.ResolveAsync(arguments is null ? chosen : chosen with { Arguments = arguments }, session.Projects, session.Workspace, parts.StateFolder(), stop), null);
+            return (await LaunchPlan.ResolveAsync(arguments is null ? chosen : chosen with { Arguments = arguments }, session.Projects, session.Workspace, parts.StateFolder(), stop,
+                parts.Settings().GodotExecutable), null);
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
         {
@@ -907,7 +908,9 @@ public sealed partial class BuildRunController
             parts.Views.Run.Clear();
             UnfollowWatched();
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
-            bool watched = (hotReload ?? parts.Settings().HotReload) && chosen.Program.Length == 0;
+            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.Program.Length == 0;
+            bool godot = chosen.RunsGodot(session.Projects);
+            bool watched = wanted && !godot;
             watching = watched;
             (LaunchPlan? plan, string? problem, _) = await PrepareAsync(chosen, arguments, work, build: !watched);
             if (plan is null)
@@ -926,7 +929,9 @@ public sealed partial class BuildRunController
             ran = chosen.Name;
             RunProject = Path.GetDirectoryName(plan.Project);
             session.RunPlan = plan;
-            string running = watched ? $"Running {chosen.Name} with Hot Reload: a save applies its changes" : $"Running {chosen.Name}";
+            string running = watched ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
+                : wanted && godot ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.WithoutHotReload}"
+                : $"Running {chosen.Name}";
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
             LaunchPlan launched = session.InspectedRun(plan, watched);
             LiveApp? inspected = session.RunApp;

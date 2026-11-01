@@ -44,11 +44,15 @@ public partial class MainWindow
         }, _ => session.Debug.Running.Count > 0 ? null
             : session.Debug.HotReload is not null || session.Debug.IsDebugging ? session.Debug.WhyNotApply()
             : buildRun.WatchesHotReload ? null
+            : buildRun.IsRunning && session.RunPlan is { Godot: not null } game ? GodotRunsWithout(game.Name)
             : buildRun.IsRunning ? $"This program runs without Hot Reload: Run it with Hot Reload on ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)}), or Debug it"
             : $"Nothing runs: Debug the program, or Run it with Hot Reload on ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})", ("Run", 0, 9));
         // What dotnet watch says from now is of the save, not of the one followed.
         Editors.Opened += (_, document) => document.Saved += (_, _) => UnfollowWatch();
     }
+
+    /// <summary>Why a Godot game Run started takes no Hot Reload (<see cref="GodotLaunch.WithoutHotReload"/>).</summary>
+    public static string GodotRunsWithout(string name) => $"{name} runs without Hot Reload: {GodotLaunch.WithoutHotReload}";
 
     /// <summary>The words dotnet watch says an apply came to with, on a line of its own that begins "dotnet watch" (as Run
     /// starts it, its emojis suppressed), what each means, and what it came to.</summary>

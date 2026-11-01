@@ -18,7 +18,11 @@ public sealed record ProjectModelCache : IStateDocument<ProjectModelCache>
     public Dictionary<string, EvaluatedProject> Projects { get; init; } = [];
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeted, ForgetAll, ForgetUncarried, ForgetUnpublishable, ForgetAll,
-        ForgetUnrestored, ForgetUndefined, ForgetUnversioned, ForgetUnserved, ForgetUncentral];
+        ForgetUnrestored, ForgetUndefined, ForgetUnversioned, ForgetUnserved, ForgetUncentral, ForgetGodotless];
+
+    /// <summary>Every evaluation, kept before they carried the Godot project Godot.NET.Sdk builds a project for, by which
+    /// it has its game's and editor's run configurations.</summary>
+    private static void ForgetGodotless(JsonObject document) => document.Remove("projects");
 
     /// <summary>Every evaluation, kept before they carried the Directory.Packages.props a package change writes.</summary>
     private static void ForgetUncentral(JsonObject document) => document.Remove("projects");

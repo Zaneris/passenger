@@ -11,7 +11,7 @@ namespace Passenger.App.Run;
 public static class ConfigurationEdit
 {
     /// <summary>What makes a generated configuration the one it is, its link to its source: changed only by a copy.</summary>
-    private static readonly HashSet<string> Identity = new(StringComparer.Ordinal) { "name", "kind", "project", "launchProfile" };
+    private static readonly HashSet<string> Identity = new(StringComparer.Ordinal) { "name", "kind", "project", "launchProfile", "godotEditor" };
 
     /// <summary>The fields that hold a path or paths (a dictionary's values for <c>serviceProjects</c>), which the store
     /// keeps relative to the folder.</summary>

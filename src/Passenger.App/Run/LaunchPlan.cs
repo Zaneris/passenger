@@ -72,6 +72,10 @@ public sealed partial record LaunchPlan
             + (InBrowser[0] == System.IO.Path.GetFileNameWithoutExtension(Project) ? "only the development server that serves them runs under the debugger"
                 : $"{System.IO.Path.GetFileNameWithoutExtension(Project)}'s are");
 
+    /// <summary>The folder of the Godot project whose game or editor the plan runs on Godot (<see cref="GodotLaunch"/>);
+    /// null for any other plan.</summary>
+    public string? Godot { get; init; }
+
     /// <summary>The program as its messages name it: the project's assembly, else the executable, without its extension.</summary>
     public string ProgramName => System.IO.Path.GetFileNameWithoutExtension(Built ?? Program);
 
@@ -93,12 +97,12 @@ public sealed partial record LaunchPlan
     public bool WorksWhereBuilt => Built is { } file && System.IO.Path.GetDirectoryName(file) is { } output && PathNames.Same(output, WorkingDirectory);
 
     /// <summary>Works out what a configuration launches among the open folder's projects (of <paramref name="workspace"/>,
-    /// whose solution's properties MSBuild is given), asking MSBuild, with no build, where the project builds, where and with
-    /// what arguments dotnet run runs it, and any property its values name. A Passenger it launches keeps its state in the
-    /// launching one's sandbox/ (<see cref="SandboxedState"/>). Throws a <see cref="LaunchException"/> saying why it cannot:
-    /// a kind of profile Passenger does not run, a project gone or unloaded, MSBuild's refusal.</summary>
+    /// whose solution's properties MSBuild is given), asking MSBuild, with no build, where the project builds, where and how
+    /// dotnet run runs it, and any property its values name; a Passenger it launches keeps its state in its sandbox/, a
+    /// Godot project's game runs on the Godot <paramref name="godot"/> (Settings' line) names or found (<see cref="GodotLaunch"/>).
+    /// Throws a <see cref="LaunchException"/> saying why it cannot: a profile's kind, a project unloaded, MSBuild, no Godot.</summary>
     public static async Task<LaunchPlan> ResolveAsync(RunConfiguration configuration, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace, string stateFolder,
-        CancellationToken cancel = default)
+        CancellationToken cancel = default, string? godot = null)
     {
         if (configuration.Unsupported is { } why)
         {
@@ -128,10 +132,24 @@ public sealed partial record LaunchPlan
         IReadOnlyDictionary<string, string> properties = await EvaluateAsync(project, framework, names, workspace, cancel);
         string Expand(string text) => System.Environment.ExpandEnvironmentVariables(
             Macro().Replace(text, macro => properties.GetValueOrDefault(macro.Groups[1].Value, string.Empty)));
+        // The configuration's own, its launch profile named as dotnet run names it.
+        Dictionary<string, string> Variables()
+        {
+            Dictionary<string, string> set = configuration.Environment.ToDictionary(v => v.Key, v => Expand(v.Value));
+            if (configuration.LaunchProfile.Length > 0 && !set.Keys.Any(k => string.Equals(k, LaunchProfile.NameVariable, StringComparison.OrdinalIgnoreCase)))
+            {
+                set[LaunchProfile.NameVariable] = configuration.LaunchProfile;
+            }
+            return set;
+        }
 
         string target = PathNames.Canonical(properties.GetValueOrDefault(CarriedProperties.TargetPath) is { Length: > 0 } path
             ? path
             : throw new LaunchException($"MSBuild could not say what {project.Name} builds"));
+        if (configuration.Program.Length == 0 && project.GodotFolder is { } game)
+        {
+            return GodotLaunch.Plan(configuration, project, game, target, framework, Expand, Variables(), godot);
+        }
         List<string> arguments = [.. CommandLine.Split(Expand(configuration.Arguments))];
         IReadOnlyList<string> ofProject = [];
         string program;
@@ -168,14 +186,10 @@ public sealed partial record LaunchPlan
         string working = folder is not null
             ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(project.Folder, folder)))
             : System.IO.Path.GetDirectoryName(target)!;
-        Dictionary<string, string> environment = configuration.Environment.ToDictionary(v => v.Key, v => Expand(v.Value));
+        Dictionary<string, string> environment = Variables();
         if (SandboxedState(built ?? program, environment, stateFolder) is { } sandbox)
         {
             environment[StateStore.Variable] = sandbox;
-        }
-        if (configuration.LaunchProfile.Length > 0 && !environment.Keys.Any(k => string.Equals(k, LaunchProfile.NameVariable, StringComparison.OrdinalIgnoreCase)))
-        {
-            environment[LaunchProfile.NameVariable] = configuration.LaunchProfile;
         }
         return new LaunchPlan
         {

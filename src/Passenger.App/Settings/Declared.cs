@@ -239,6 +239,12 @@ public static class Declared
     public static readonly ProgramSetting TerminalShell = new(s => s.TerminalShell, (s, v) => s with { TerminalShell = v },
         () => Passenger.Terminal.TerminalSession.DefaultShell().App, new(D.TerminalPage, "Shell path", "shell zsh bash powershell program"));
 
+    public static readonly ProgramSetting GodotExecutable = new(s => s.GodotExecutable, (s, v) => s with { GodotExecutable = v },
+        () => Run.GodotLaunch.Found(null) is { Exists: true } found ? found.Executable : "Not found",
+        new(D.GodotPage, "Godot executable", "godot engine game editor executable path program dotnet mono csharp c# scene",
+            "The Godot a Godot project's game and its editor run on: its .NET build, which runs C#, with any arguments to give each "
+            + $"start after it. Empty, it is the one {Core.GodotExecutables.Variable} names, else the first on the PATH, else on macOS the newest in Applications."));
+
     public static readonly ToggleSetting TerminalCopyOnSelection = new(s => s.TerminalCopyOnSelection, (s, v) => s with { TerminalCopyOnSelection = v },
         new(D.TerminalPage, "Copy on selection", "copy selection clipboard mouse drag word"));
 

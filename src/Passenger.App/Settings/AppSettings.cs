@@ -214,6 +214,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// first on the PATH as the login shell finds it.</summary>
     public string? NodeInterpreter { get; init; }
 
+    /// <summary>The Godot a Godot project's game and editor run on, with arguments given every start of it, as one command
+    /// line; null for the one found (<see cref="Passenger.Core.GodotExecutables"/>).</summary>
+    public string? GodotExecutable { get; init; }
+
     /// <summary>ESLint's "Run for files" at first.</summary>
     public const string DefaultEslintFiles = "**/*.{js,ts,jsx,tsx,cjs,cts,mjs,mts,html,vue}";
 

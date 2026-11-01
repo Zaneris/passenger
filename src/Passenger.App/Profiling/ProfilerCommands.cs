@@ -300,7 +300,10 @@ public sealed class ProfilerCommands
         work.Say($"Starting {chosen.Name} under the profiler…");
         try
         {
-            ProfileTarget target = new(launched.Program, launched.Arguments, launched.WorkingDirectory, launched.Environment);
+            ProfileTarget target = new(launched.Program, launched.Arguments, launched.WorkingDirectory, launched.Environment)
+            {
+                Called = launched.Godot is not null ? launched.ProgramName : null,
+            };
             run.Clear();
             ConsoleSink console = run.Sink;
             ProfilingSession running;

@@ -9,8 +9,12 @@ namespace Passenger.Profiler;
 /// <summary>A program to profile: what to start, where, with what arguments and environment.</summary>
 public sealed record ProfileTarget(string Program, IReadOnlyList<string> Arguments, string WorkingDirectory, IReadOnlyDictionary<string, string> Environment)
 {
-    /// <summary>What the snapshot is named for: the program, or the assembly the dotnet host runs.</summary>
-    public string Name => Path.GetFileNameWithoutExtension(Program) is "dotnet" && Arguments.Count > 0 ? Path.GetFileNameWithoutExtension(Arguments[0]) : Path.GetFileNameWithoutExtension(Program);
+    /// <summary>What the snapshot is named for, where the program is another's host (Godot, running a game's assembly);
+    /// null for <see cref="Name"/>'s own.</summary>
+    public string? Called { get; init; }
+
+    /// <summary>What the snapshot is named for: <see cref="Called"/>, else the program, or the assembly the dotnet host runs.</summary>
+    public string Name => Called ?? (Path.GetFileNameWithoutExtension(Program) is "dotnet" && Arguments.Count > 0 ? Path.GetFileNameWithoutExtension(Arguments[0]) : Path.GetFileNameWithoutExtension(Program));
 }
 
 /// <summary>How a program's standard output, or its standard error (<paramref name="error"/>), is read into its caller's

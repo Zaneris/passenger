@@ -65,6 +65,11 @@ public sealed record RunConfiguration
     /// <summary>Additional AppHosts started and stopped with this Aspire configuration.</summary>
     public IReadOnlyList<string> LinkedAppHosts { get; init; } = [];
 
+    /// <summary>For a Godot project's (one Godot.NET.Sdk builds, with its project.godot), whether it starts Godot's editor
+    /// on the project rather than its game; either runs on the Godot found (<see cref="GodotLaunch"/>) unless it names a
+    /// program of its own.</summary>
+    public bool GodotEditor { get; init; }
+
     /// <summary>The target framework run, for a project with several; empty for the first.</summary>
     public string Framework { get; init; } = string.Empty;
 
@@ -172,6 +177,11 @@ public sealed record RunConfiguration
     [JsonIgnore]
     public string? Unsupported { get; init; }
 
+    /// <summary>Whether it runs a Godot project's game or editor on Godot among these projects (<see cref="GodotLaunch"/>):
+    /// one of a project Godot.NET.Sdk builds that names no program of its own.</summary>
+    public bool RunsGodot(IEnumerable<ProjectModel> projects) =>
+        !IsContainer && Program.Length == 0 && projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project))?.GodotFolder is not null;
+
     /// <summary>Why it cannot launch here among these projects: its launch profile's kind, or, when it runs its project's
     /// own program, a project that runs only on Windows (WPF, Windows Forms) elsewhere; null when it can.</summary>
     public string? WhyNotHere(IEnumerable<ProjectModel> projects) => Unsupported
@@ -180,7 +190,8 @@ public sealed record RunConfiguration
         ?? (!IsContainer && Program.Length == 0 && projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project)) is { } project ? project.RunsOnlyOnWindows(Framework) : null);
 
     /// <summary>The configurations the folder's executable projects make: one per launch profile, named "Project: profile",
-    /// and the project itself when none of its profiles runs it here; then single-file AppHosts and the container ones the
+    /// and the project itself when none of its profiles runs it here (a Godot project's game), with a Godot project's editor
+    /// beside it ("Project: Godot Editor"); then single-file AppHosts and the container ones the
     /// workspace's compose files, Dockerfiles, SDK container projects and Docker Compose projects (.dcproj) make
     /// (<see cref="Containers.ContainerConfigurations"/>).</summary>
     public static IReadOnlyList<RunConfiguration> Generate(IEnumerable<ProjectModel> projects, WorkspaceModel? workspace = null,
@@ -188,8 +199,13 @@ public sealed record RunConfiguration
     {
         List<RunConfiguration> generated = [];
         List<ProjectModel> all = [.. projects];
-        foreach (ProjectModel project in all.Where(p => p.Exists && p.IsRunnable))
+        foreach (ProjectModel project in all.Where(p => p.Exists))
         {
+            bool godot = project.Godot() is not null;
+            if (!project.IsRunnable && !godot)
+            {
+                continue;
+            }
             string name = NameOf(project);
             IReadOnlyList<LaunchProfile> profiles = Run.LaunchProfile.Read(project);
             if (!profiles.Any(p => p.Unsupported is null && !p.RunsInContainer))
@@ -205,6 +221,10 @@ public sealed record RunConfiguration
                 });
             }
             generated.AddRange(profiles.Select(p => From(project, p) with { Name = NameOf(project, p.Name), Generated = true }));
+            if (godot)
+            {
+                generated.Add(new RunConfiguration { Name = NameOf(project, GodotEditorName), Project = project.Path, GodotEditor = true, Generated = true });
+            }
         }
         foreach (string path in singleFileAppHosts ?? [])
         {
@@ -236,6 +256,9 @@ public sealed record RunConfiguration
         }
         return generated;
     }
+
+    /// <summary>What a Godot project's configuration that starts Godot's editor on it is called after the project's name.</summary>
+    public const string GodotEditorName = "Godot Editor";
 
     /// <summary>The name of the configuration generated for a project itself, which those of its launch profiles begin with
     /// ("Hello", "Aspire: Host").</summary>
