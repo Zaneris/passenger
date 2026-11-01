@@ -709,6 +709,32 @@ public sealed partial class BuildRunController
         }
     }
 
+    /// <summary>Why Run Current Scene cannot run now: the file open is in no Godot project of the folder's.</summary>
+    public string? WhyNotRunScene() => parts.Editors.Active?.Path is { } path && session.Projects.Any(p => p.GodotFolder is { } folder && PathNames.IsUnder(path, folder))
+        ? null : Refusals.NoGodotScene;
+
+    /// <summary>Run Current Scene: the Godot game of the project the open scene (or script) is in, run from that scene (or the
+    /// one the script is attached in, <see cref="Passenger.Workspace.GodotProject.SceneOf"/>), its configuration chosen (the
+    /// one chosen when it runs that game, else its generated one). Null once it runs, else why not.</summary>
+    public async Task<string?> RunCurrentSceneAsync()
+    {
+        UiThread.Check();
+        string? path = parts.Editors.Active?.Path;
+        ProjectModel? project = path is null ? null : session.Projects.FirstOrDefault(p => p.GodotFolder is { } folder && PathNames.IsUnder(path, folder));
+        if (project is null)
+        {
+            return Said(Refusals.NoGodotScene);
+        }
+        RunConfiguration? configuration = session.Configurations.Chosen is { GodotEditor: false, IsContainer: false } chosen && PathNames.Same(chosen.Project, project.Path)
+            && chosen.Program.Length == 0 ? chosen
+            : session.Configurations.All.FirstOrDefault(c => c.Generated && !c.GodotEditor && PathNames.Same(c.Project, project.Path));
+        if (configuration is null || !session.Configurations.Select(configuration.Name))
+        {
+            return Said($"{project.Name} has no configuration that runs its game");
+        }
+        return await RunAsync(scene: RunConfiguration.CurrentScene);
+    }
+
     /// <summary>What a start Stop ended says, every kind's: a program's, a container run's, an AppHost's.</summary>
     public static string StoppedStarting(string name) => $"{name} was stopped as it started";
 
@@ -861,11 +887,16 @@ public sealed partial class BuildRunController
     /// uses the terminal; under dotnet watch as Settings' Hot Reload says, or as <paramref name="hotReload"/> does (an agent's
     /// run, whose headless IDE keeps the default settings). Null once it runs (<see cref="RunEnd"/> is its end), else why it
     /// could not (a program Profile started has the Run console, say), which the status bar says too.</summary>
-    public async Task<string?> RunAsync(string? arguments = null, bool? hotReload = null, CancellationToken cancellation = default)
+    public async Task<string?> RunAsync(string? arguments = null, bool? hotReload = null, CancellationToken cancellation = default, string? scene = null)
     {
         if (session.Configurations.Chosen is not { } chosen)
         {
             return Said(session.NothingTo("run"));
+        }
+        // Run Current Scene's: this start of a Godot game begins in the scene open.
+        if (scene is not null)
+        {
+            chosen = chosen with { GodotScene = scene };
         }
         if (session.Aspire.IsAspire(chosen))
         {

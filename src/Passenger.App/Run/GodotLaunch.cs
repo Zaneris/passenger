@@ -85,7 +85,16 @@ public static class GodotLaunch
                 + $"says, but {project.Name} builds {Path.GetFileName(target)}: name the one assembly in both");
         }
         IReadOnlyList<string> own = CommandLine.Split(expand(configuration.Arguments));
-        if (!configuration.GodotEditor && string.IsNullOrEmpty(game.MainScene) && !own.Any(IsScene))
+        string? starts = configuration.GodotEditor ? null : configuration.GodotScene;
+        if (starts == RunConfiguration.CurrentScene)
+        {
+            // The scene at hand, or one its script is attached in, as the editor's configuration opens it.
+            starts = atHand is not null && await BackgroundWork.Run(() => GodotProject.SceneOf(folder, atHand, game.MainScene)) is { } open
+                ? GodotProject.ResourcePath(folder, open)
+                : throw new LaunchException($"{configuration.Name} cannot run: it starts in the scene open in the editor, and none of {game.Name ?? project.Name} is "
+                    + "(a .tscn, or a script a scene's node runs)");
+        }
+        if (!configuration.GodotEditor && starts is null && string.IsNullOrEmpty(game.MainScene) && !own.Any(IsScene))
         {
             throw new LaunchException($"{configuration.Name} cannot run: its {GodotProject.FileName} names no main scene for the game to start in: choose one in Godot's editor "
                 + "(Project Settings, Application, Run, Main Scene), or give one in the configuration's arguments (res://main.tscn)");
@@ -99,6 +108,10 @@ public static class GodotLaunch
             {
                 arguments.Add(GodotProject.ResourcePath(folder, scene));
             }
+        }
+        if (starts is not null)
+        {
+            arguments.Add(starts);
         }
         int leading = arguments.Count;
         arguments.AddRange(own);

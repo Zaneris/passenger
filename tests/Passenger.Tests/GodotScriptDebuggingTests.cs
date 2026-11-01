@@ -16,7 +16,8 @@ namespace Passenger.Tests;
 /// <summary>A Godot 4 game's GDScript as a person debugs it beside its C#, through the game's own debug connection: a
 /// breakpoint in a script's <c>_process</c> stops the game with its locals in Variables, a step goes to the next line, an
 /// evaluation answers in the frame, a script error stops it where it was raised; a saved script reaches the game Run runs
-/// with Hot Reload. Godot runs headless, its user folders the run's. Without a Godot 4 .NET build each test skips saying why. Debugged, so run alone.</summary>
+/// with Hot Reload; and Run Current Scene starts the game in the scene open. Godot runs headless, its user folders the
+/// run's. Without a Godot 4 .NET build each test skips saying why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggingTests.Game>
 {
@@ -63,6 +64,12 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
         script = ExtResource("2")
 
         """;
+
+    /// <summary>A second scene, which only Run Current Scene starts in.</summary>
+    private const string Other = "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://other.gd\" id=\"1\"]\n\n"
+        + "[node name=\"Other\" type=\"Node\"]\nscript = ExtResource(\"1\")\n";
+
+    private const string OtherScript = "extends Node\n\n\nfunc _ready() -> void:\n\tprint(\"other scene ready\")\n";
 
     private string TickerPath => Path.Combine(PathNames.Canonical(game.Folder), "ticker.gd");
 
@@ -188,6 +195,34 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
         }
     }
 
+    /// <summary>Run Current Scene with the second scene open starts the game in it, its res:// path on Godot's command line;
+    /// a configuration whose scene is the one open does the same from its script.</summary>
+    [AvaloniaFact]
+    public void Run_Current_Scene_starts_the_game_in_the_scene_open_and_a_configuration_can_start_in_the_scene_open()
+    {
+        MainWindow window = Open(Path.Combine(game.Folder, "other.tscn"));
+        try
+        {
+            Choose(window);
+            Assert.Null(window.Actions.WhyNot(AppActions.RunCurrentScene, window.Actions.Context()));
+            Assert.Null(window.Actions.Run(AppActions.RunCurrentScene));
+            Ui.WaitFor(() => Run(window).Contains("other scene ready", StringComparison.Ordinal), () => $"the game to start in other.tscn ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(3));
+            Assert.Contains(" res://other.tscn ", Run(window), StringComparison.Ordinal);
+            Assert.DoesNotContain("main ready", Run(window), StringComparison.Ordinal);
+            Stop(window);
+
+            Assert.Null(window.OpenFile(Path.Combine(game.Folder, "other.gd")));
+            window.SetConfigurations([Configured(window) with { GodotScene = RunConfiguration.CurrentScene }], "Spinner on Godot");
+            Ui.Launched(window, window.RunAsync(), "the game's start in the scene its open script runs in", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => Run(window).Contains("other scene ready", StringComparison.Ordinal), () => $"the game to start in other.tscn again ({Run(window)})", TimeSpan.FromMinutes(1));
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>The line (from zero) the editor shows the program stopped at, or -1.</summary>
     private static int Stopped(CodeEditor editor) => editor.LineMarks.FirstOrDefault(m => m.Kind == LineMarkKind.ExecutionPoint) is { } mark ? mark.Line : -1;
 
@@ -223,6 +258,12 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
         return window.BottomPanel.Run.Document.Snapshot.ToString();
     }
 
+    private static void Stop(MainWindow window)
+    {
+        Ui.Run(window, AppActions.Stop);
+        Ui.WaitFor(() => !window.IsRunning, "the game to end");
+    }
+
     private static void End(MainWindow window)
     {
         if (window.Debugger.IsDebugging || window.IsRunning)
@@ -233,8 +274,8 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
         window.Close();
     }
 
-    /// <summary>A Godot 4 C# project whose scene's root runs C# and its child GDScript, on the Godot found, restored from
-    /// its own packages.</summary>
+    /// <summary>A Godot 4 C# project whose scene's root runs C# and its child GDScript, beside a second scene, on the Godot
+    /// found, restored from its own packages.</summary>
     public sealed class Game : SharedProject
     {
         public Game()
@@ -248,6 +289,8 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
             }
             GodotTests.Game.Make(Folder, version, packages, Main, Scene);
             File.WriteAllText(PathOf("ticker.gd"), Ticker);
+            File.WriteAllText(PathOf("other.tscn"), Other);
+            File.WriteAllText(PathOf("other.gd"), OtherScript);
         }
 
         public GodotFound? Godot { get; }

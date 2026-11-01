@@ -12,6 +12,9 @@ public static class Refusals
     /// <summary>No file is shown in the editor.</summary>
     public const string NoFile = "No file is open";
 
+    /// <summary>The file shown is no Godot scene, nor a script a scene runs, of a Godot project the folder builds a game of.</summary>
+    public const string NoGodotScene = "No scene of a Godot game is open: open a .tscn, or a script one of its nodes runs";
+
     /// <summary>The window has no folder open (a solution, a project or a folder of files).</summary>
     public const string NoFolder = "No folder is open";
 

@@ -27,6 +27,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private readonly Control linkedRow;
     private readonly Control aspireRow;
     private readonly Control godotRow;
+    private readonly Control sceneRow;
     private readonly Control[] browserRows;
     private readonly CancellationTokenSource aspireLifetime = new();
     private int aspireReading;
@@ -100,6 +101,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             return name.Showing<object>(item => name.Text = item is ProjectModel p ? p.Name : item.ToString());
         });
         GodotBox = new ComboBox { Classes = { StyleClasses.Form }, ItemsSource = GodotStarts, Name = "GodotBox" };
+        SceneBox = new ComboBox { Classes = { StyleClasses.Form }, ItemsSource = SceneStarts, Name = "SceneBox" };
         ProgramBox = Field(OwnProgram);
         // Named, as the boxes a screenshot's --click-name reaches.
         ArgumentsBox = Field(OwnArguments);
@@ -126,7 +128,11 @@ public sealed class RunConfigurationsDialog : IdeWindow
         }, reshow: true);
         FrameworkBox.SelectionChanged += (_, _) => Edit(c => c with { Framework = FrameworkBox.SelectedIndex <= 0 ? string.Empty : FrameworkBox.SelectedItem as string ?? string.Empty });
         ProfileBox.SelectionChanged += (_, _) => Edit(FromProfile, reshow: true);
-        GodotBox.SelectionChanged += (_, _) => Edit(c => c with { GodotEditor = GodotBox.SelectedIndex == 1 });
+        GodotBox.SelectionChanged += (_, _) => Edit(c => c with { GodotEditor = GodotBox.SelectedIndex == 1 }, reshow: true);
+        SceneBox.SelectionChanged += (_, _) => Edit(c => c with
+        {
+            GodotScene = SceneBox.SelectedIndex == 1 ? RunConfiguration.CurrentScene : c.GodotScene == RunConfiguration.CurrentScene ? null : c.GodotScene,
+        });
         ProgramBox.TextChanged += (_, _) => Edit(c => c with { Program = ProgramBox.Text?.Trim() ?? string.Empty });
         ArgumentsBox.TextChanged += (_, _) => Edit(c => c with { Arguments = ArgumentsBox.Text ?? string.Empty });
         WorkingDirectoryBox.TextChanged += (_, _) => Edit(c => c with { WorkingDirectory = WorkingDirectoryBox.Text?.Trim() ?? string.Empty });
@@ -201,6 +207,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         });
         aspireRow = Row("Aspire resources", AspireTable, top: true, fields: ["serviceActions", "serviceProjects"]);
         godotRow = Row("Starts", GodotBox, fields: ["godotEditor"]);
+        sceneRow = Row("Scene", SceneBox, fields: ["godotScene"]);
         browserRows = [Row("Open browser", BrowserBox, fields: ["launchBrowser"]), Row("URL", BrowserUrlBox, fields: ["browserUrl"])];
         pages =
         [
@@ -208,6 +215,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (linkedRow, [RunKind.Project]),
             (aspireRow, [RunKind.Project]),
             (godotRow, [RunKind.Project]),
+            (sceneRow, [RunKind.Project]),
             (Row("Target framework", FrameworkBox, fields: ["framework"]), [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row("Launch profile", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { ProfileBox, SaveAsProfileButton } }), [RunKind.Project]),
             (Row("Exe path", ProgramBox, fields: ["program"]), [RunKind.Project]),
@@ -384,6 +392,12 @@ public sealed class RunConfigurationsDialog : IdeWindow
 
     /// <summary>The choices of <see cref="GodotBox"/>, the game's first.</summary>
     public static readonly string[] GodotStarts = ["The game", "Godot's editor on the project"];
+
+    /// <summary>The scene a Godot project's game starts in: its main scene, or the one open in the editor as it starts.</summary>
+    public ComboBox SceneBox { get; }
+
+    /// <summary>The choices of <see cref="SceneBox"/>, the main scene's first.</summary>
+    public static readonly string[] SceneStarts = ["Its main scene", "The scene open in the editor"];
 
     /// <summary>What the program, arguments and working folder boxes say left empty, for a project and for a Godot project's.</summary>
     private const string OwnProgram = "The project's own program";
@@ -958,6 +972,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             ProfileBox.SelectedIndex = Math.Max(0, profiles.ToList().FindIndex(p => p.Name == shown.LaunchProfile) + 1);
             bool godot = !shown.IsContainer && project?.GodotFolder is not null;
             GodotBox.SelectedIndex = shown.GodotEditor ? 1 : 0;
+            SceneBox.SelectedIndex = shown.GodotScene == RunConfiguration.CurrentScene ? 1 : 0;
             ProgramBox.PlaceholderText = godot ? GodotProgram() : OwnProgram;
             ArgumentsBox.PlaceholderText = godot ? GodotArguments : OwnArguments;
             WorkingDirectoryBox.PlaceholderText = godot ? GodotWorkingDirectory : OwnWorkingDirectory;
@@ -987,6 +1002,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             linkedRow.IsVisible = !shown.IsContainer && shown.Aspire;
             aspireRow.IsVisible = !shown.IsContainer && shown.Aspire;
             godotRow.IsVisible = godot;
+            sceneRow.IsVisible = godot && !shown.GodotEditor;
             foreach (Control browser in godot ? browserRows : [])
             {
                 browser.IsVisible = false;

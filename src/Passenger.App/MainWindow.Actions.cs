@@ -291,6 +291,7 @@ public partial class MainWindow
 
         Add(A.RunProgram, "Run", "Run", _ => RunSelected(), _ => Unconfigured("run"), ("Run", 0, 0));
         Add(A.Debug, "Debug", "Run", _ => DebugSelected(), _ => Unconfigured("debug"), ("Run", 0, 1));
+        Add(A.RunCurrentScene, "Run Current Scene", "Run", _ => IdeErrors.Observe(buildRun.RunCurrentSceneAsync()), _ => buildRun.WhyNotRunScene(), ("Run", 0, 2));
         // No key in Rider's Visual Studio keymaps.
         Add(A.EditConfigurations, "Edit Configurations…", "Run", _ => ShowRunConfigurations(), NeedsFolder, ("Run", 0, 5));
         // Edit Configurations' button, on the configuration chosen there; elsewhere, on the toolbar's.

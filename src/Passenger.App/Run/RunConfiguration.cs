@@ -70,6 +70,13 @@ public sealed record RunConfiguration
     /// program of its own.</summary>
     public bool GodotEditor { get; init; }
 
+    /// <summary>For a Godot project's game, the scene it starts in: its project.godot's main scene (null), the scene open in the
+    /// editor as it starts (<see cref="CurrentScene"/>: a scene, or one a script open runs in), or a scene's res:// path.</summary>
+    public string? GodotScene { get; init; }
+
+    /// <summary>What <see cref="GodotScene"/> is for the scene open in the editor.</summary>
+    public const string CurrentScene = "current";
+
     /// <summary>The target framework run, for a project with several; empty for the first.</summary>
     public string Framework { get; init; } = string.Empty;
 
