@@ -807,6 +807,7 @@ public sealed class DebugController : IDisposable
             {
                 starting = made;
                 tab.Session = made;
+                made.InBrowser = plan is { InBrowser.Count: > 0, Project: { } project } ? (plan.InBrowser, project) : null;
                 if (disposed || ending || tab.OpeningStopped || !view.Sessions.Contains(tab))
                 {
                     // Stopped as its adapter started, before there was a session to stop: its start fails as one stopped.

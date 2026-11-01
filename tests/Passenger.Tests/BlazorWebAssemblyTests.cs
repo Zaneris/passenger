@@ -11,9 +11,10 @@ namespace Passenger.Tests;
 
 /// <summary>Blazor's WebAssembly apps as the SDK's templates make them: a standalone app runs through the development server
 /// its project's RunCommand names, answering HTTP, and Debug runs it so too, saying its components in the browser are not
-/// debugged; a Blazor Web App's client is no configuration of its own, and Debug of the app says the client is not
-/// debugged; New Project offers the standalone app no container or Aspire set-up. Its packages come from the package cache
-/// tests/BlazorGraphs fills, never nuget.org. Debugged through the window, so run alone.</summary>
+/// debugged, a component's breakpoint saying it is never hit and Problems listing it; a Blazor Web App's client is no
+/// configuration of its own, and Debug of the app says the client is not debugged; New Project offers the standalone app no
+/// container or Aspire set-up. Its packages come from the package cache tests/BlazorGraphs fills, never nuget.org.
+/// Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class BlazorWebAssemblyTests : IDisposable
 {
@@ -53,6 +54,9 @@ public sealed class BlazorWebAssemblyTests : IDisposable
                 Ui.WaitFor(() => !window.Builds.IsRunning, "the run to end");
             }
 
+            string counter = Path.Combine(folder, "Pages", "Counter.razor");
+            int increment = File.ReadAllLines(counter).ToList().FindIndex(l => l.Contains("currentCount++;", StringComparison.Ordinal));
+            LineBreakpoint inBrowser = window.Debugger.Breakpoints.Set(counter, increment, null);
             Ui.Launched(window, window.DebugAsync(), "Wasm to start under the debugger", TimeSpan.FromMinutes(3));
             try
             {
@@ -63,6 +67,16 @@ public sealed class BlazorWebAssemblyTests : IDisposable
                 Assert.Contains(notDebugged, window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
                 Assert.True(window.Debugger.Summary?.EndsWith($"running; {notDebugged}", StringComparison.Ordinal) == true,
                     $"Debug's state did not say what it cannot debug: {window.Debugger.Summary}");
+
+                // The component's breakpoint says it is never hit, and Problems lists it at its line.
+                const string neverHit = "Wasm's components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet: only the development "
+                    + "server that serves them runs under the debugger, so this breakpoint is never hit";
+                Ui.WaitFor(() => inBrowser.Status == BreakpointStatus.Invalid, () => $"the component's breakpoint refused; it is {inBrowser.Status}: {inBrowser.Message}");
+                Assert.Equal(neverHit, inBrowser.Message);
+                Assert.Equal(["Breakpoint, not bound: it will not stop the program", neverHit],
+                    BreakpointStates.Words(inBrowser, window.Debugger.IsDebugging, window.Debugger.Breakpoints.Muted));
+                Ui.WaitFor(() => window.BottomPanel.Problems.BreakpointProblems.Any(p => p.Position.Line == increment), "Problems' Breakpoints listing the component's breakpoint");
+                Assert.Equal($"Breakpoint not bound: {neverHit}", window.BottomPanel.Problems.BreakpointProblems.Single().Message);
             }
             finally
             {

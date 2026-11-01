@@ -61,16 +61,29 @@ public sealed partial record LaunchPlan
     /// <summary>Where the browser opens once the program listens, or null when the configuration opens none.</summary>
     public string? BrowserUrl { get; init; }
 
-    /// <summary>The projects of what it launches whose code runs in the browser (<see cref="ProjectModel.RunsInBrowser"/>):
-    /// its own project first when it does, then those it references.</summary>
+    /// <summary>The projects of what it launches whose code runs in the browser (<see cref="ProjectModel.RunsInBrowser"/>), by
+    /// their project files: its own project first when it does, then those it references.</summary>
     public IReadOnlyList<string> InBrowser { get; init; } = [];
 
     /// <summary>What a debugger of this plan cannot debug, in words for the person: code that runs in the browser, which no
     /// breakpoint stops; null when it debugs all of it.</summary>
     public string? NotDebugged => InBrowser.Count == 0 || Project is null ? null
-        : $"{Plural.Listed(InBrowser)}'s components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet, so their breakpoints are not hit: "
-            + (InBrowser[0] == System.IO.Path.GetFileNameWithoutExtension(Project) ? "only the development server that serves them runs under the debugger"
-                : $"{System.IO.Path.GetFileNameWithoutExtension(Project)}'s are");
+        : $"{Plural.Listed([.. InBrowser.Select(NameOf)])}'s components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet, "
+            + "so their breakpoints are not hit: "
+            + (PathNames.Same(InBrowser[0], Project) ? "only the development server that serves them runs under the debugger" : $"{NameOf(Project)}'s are");
+
+    /// <summary>Why a breakpoint in a WebAssembly app's own code never stops it, its development server being what runs under
+    /// the debugger.</summary>
+    public static string NeverHitInBrowser(string project) =>
+        $"{NameOf(project)}'s components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet: only the development server that serves "
+        + "them runs under the debugger, so this breakpoint is never hit";
+
+    /// <summary>When a breakpoint in a Blazor Web App's client stops: only where its server runs the client's components itself.</summary>
+    public static string HitOnlyOnServer(string client, string server) =>
+        $"{NameOf(client)}'s components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet: this breakpoint stops only where "
+        + $"{NameOf(server)} runs them itself, prerendering them or rendering them on the server";
+
+    private static string NameOf(string project) => System.IO.Path.GetFileNameWithoutExtension(project);
 
     /// <summary>The folder of the Godot project whose game or editor the plan runs on Godot (<see cref="GodotLaunch"/>);
     /// null for any other plan.</summary>
@@ -212,7 +225,7 @@ public sealed partial record LaunchPlan
             WorkingDirectory = working,
             Environment = environment,
             Project = project.Path,
-            InBrowser = [.. project.WithReferenced(projects).Where(p => p.RunsInBrowser).Select(p => System.IO.Path.GetFileNameWithoutExtension(p.Path))],
+            InBrowser = [.. project.WithReferenced(projects).Where(p => p.RunsInBrowser).Select(p => p.Path)],
             Framework = framework,
             Build = configuration.BuildBeforeLaunch ? new BuildStep(project.Path, framework) : null,
             Built = built,

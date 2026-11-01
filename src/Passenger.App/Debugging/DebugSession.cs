@@ -27,6 +27,16 @@ public sealed class DebugSession
     /// <summary>Why a breakpoint on a line written since the build is not sent: the program has no code of it.</summary>
     private const string NotBuilt = "Its line was written after the program being debugged was built: restart debugging to build it";
 
+    /// <summary>The projects of the program debugged whose code runs in the browser on .NET's WebAssembly runtime (their project
+    /// files), and the program's own project, from its plan (<see cref="Run.LaunchPlan.InBrowser"/>): a breakpoint in their
+    /// files says it stops only where the program runs their code itself, or never where the program is their development
+    /// server.</summary>
+    public (IReadOnlyList<string> Projects, string Program)? InBrowser { get; set; }
+
+    /// <summary>The project of <see cref="InBrowser"/> whose own folders hold a file, if one does.</summary>
+    private string? BrowserProjectOf(string path) =>
+        InBrowser?.Projects.FirstOrDefault(p => ProjectFolders.Holds(System.IO.Path.GetDirectoryName(p)!, path));
+
     private readonly Process adapter;
     private readonly DapConnection connection;
 
@@ -864,8 +874,11 @@ public sealed class DebugSession
     {
         // Muted, none is sent and each is as no debugger has said, though Run to Cursor's place still is.
         IEnumerable<LineBreakpoint> sending = breakpoints.Muted ? [] : breakpoints.In(path).Where(b => b.Enabled);
-        List<LineBreakpoint> built = [.. sending.Where(b => lines.IsBuilt(path, b.Line))];
-        List<LineBreakpoint> unbuilt = [.. sending.Where(b => !lines.IsBuilt(path, b.Line))];
+        // A WebAssembly app's own code never runs where its development server is debugged: none of it is sent.
+        string? browser = BrowserProjectOf(path);
+        string? neverHit = browser is not null && InBrowser is { } inBrowser && PathNames.Same(browser, inBrowser.Program) ? Run.LaunchPlan.NeverHitInBrowser(browser) : null;
+        List<LineBreakpoint> built = [.. sending.Where(b => neverHit is null && lines.IsBuilt(path, b.Line))];
+        List<LineBreakpoint> unbuilt = [.. sending.Where(b => neverHit is not null || !lines.IsBuilt(path, b.Line))];
         List<DapSourceBreakpoint> requests = [.. built.Select(b => Request(path, b))];
         if (runToCursor is { } target && target.Path == path)
         {
@@ -905,7 +918,7 @@ public sealed class DebugSession
             return;
         }
         breakpoints.Report(this, path,
-            [.. response.Breakpoints.Take(built.Count).Select(b => Status(path, b)), .. unbuilt.Select(_ => (BreakpointStatus.Invalid, (string?)NotBuilt, (int?)null))],
+            [.. response.Breakpoints.Take(built.Count).Select(b => Status(path, b)), .. unbuilt.Select(_ => (BreakpointStatus.Invalid, (string?)(neverHit ?? NotBuilt), (int?)null))],
             [.. built.Take(response.Breakpoints.Count), .. unbuilt]);
     }
 
@@ -1293,6 +1306,11 @@ public sealed class DebugSession
     private (BreakpointStatus, string?, int?) Status(string path, DapBreakpoint breakpoint)
     {
         (BreakpointStatus status, string? message, int? line) = Status(breakpoint);
+        // A Blazor Web App's client code stops only where its server runs it, which the debugger cannot tell from the browser's.
+        if (status != BreakpointStatus.Invalid && BrowserProjectOf(path) is { } client && InBrowser is { } inBrowser)
+        {
+            message = Run.LaunchPlan.HitOnlyOnServer(client, inBrowser.Program);
+        }
         return (status, message, line is int bound and >= 0 ? lines.ToCurrent(path, bound) : null);
     }
 
