@@ -51,6 +51,9 @@ public sealed class EditorGroup : DockPanel
     private readonly Border tabBar;
     private readonly ItemsControl strip;
     private readonly ScrollViewer stripView;
+
+    /// <summary>At the strip's end, shown while tabs are out of its sight: the list of them.</summary>
+    private readonly Button hiddenTabs;
     private readonly Grid body;
     private HairlineDivider? divider;
     private Control? side;
@@ -90,6 +93,13 @@ public sealed class EditorGroup : DockPanel
         stripView = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = strip };
         // A narrower strip may leave the active tab out of sight.
         stripView.SizeChanged += (_, _) => RevealActive();
+        hiddenTabs = ToolButtons.Of(IconKeys.ChevronDown, "Hidden Tabs", () => area.HiddenTabsAsked(this));
+        hiddenTabs.Classes.Add(StyleClasses.TabStripTool);
+        hiddenTabs.Name = "HiddenTabs";
+        hiddenTabs.IsVisible = false;
+        hiddenTabs[DockProperty] = Dock.Right;
+        // Tabs come, go, widen or scroll: the list's button shows while some are out of sight.
+        stripView.ScrollChanged += (_, _) => hiddenTabs.IsVisible = HiddenTabs.Count > 0;
         tabBar = new Border
         {
             Classes = { StyleClasses.TabStrip },
@@ -98,6 +108,7 @@ public sealed class EditorGroup : DockPanel
             {
                 Children =
                 {
+                    hiddenTabs,
                     PreviewToggle,
                     stripView,
                 },
@@ -246,6 +257,30 @@ public sealed class EditorGroup : DockPanel
     public IReadOnlyList<EditorTab> Tabs => tabs;
     public OpenDocument? Active => active?.Document;
     public bool Has(OpenDocument document) => tabs.Any(t => t.Document == document);
+
+    /// <summary>The tabs out of the strip's sight, wholly or in part, in its order.</summary>
+    public IReadOnlyList<EditorTab> HiddenTabs
+    {
+        get
+        {
+            double from = stripView.Offset.X;
+            double to = from + stripView.Viewport.Width;
+            return [.. tabs.Where(tab => strip.ContainerFromItem(tab) is not Control shown || shown.Bounds.X < from - 0.5 || shown.Bounds.Right > to + 0.5)];
+        }
+    }
+
+    /// <summary>The button at the strip's end that lists the tabs out of its sight, shown while there are some.</summary>
+    public Button HiddenTabsButton => hiddenTabs;
+
+    /// <summary>A tab gone to from the list of those hidden, as a click on it goes: this group the one worked in, its file
+    /// shown and scrolled into the strip's sight, with the keys.</summary>
+    public void GoTo(OpenDocument document)
+    {
+        area.SetActiveGroup(this);
+        Show(document);
+        area.Activated(this);
+        FocusShown();
+    }
 
     /// <summary>The strip of tabs, where a dragged tab drops to go into this group at a place.</summary>
     public Control TabStrip => tabBar;

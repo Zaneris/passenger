@@ -14,6 +14,26 @@ namespace Passenger.App;
 /// windows, or brings them back.</summary>
 public partial class MainWindow
 {
+    /// <summary>The tabs a group's strip hides, listed under its button, the one chosen gone to.</summary>
+    private void ShowHiddenTabs(EditorGroup group)
+    {
+        List<OpenDocument> hidden = [.. group.HiddenTabs.Select(tab => tab.Document)];
+        if (hidden.Count == 0)
+        {
+            return;
+        }
+        Button button = group.HiddenTabsButton;
+        // Its right edge under the button's, at the strip's end.
+        Avalonia.Point? under = popups.PointIn(button, new Avalonia.Point(button.Bounds.Width - PopupFrame.Medium, button.Bounds.Height));
+        popups.Show(new HiddenTabsPopup(hidden, Folder), chosen =>
+        {
+            if (chosen is not null && hidden.FirstOrDefault(d => d.Path == chosen.FullPath) is { } document && group.Has(document))
+            {
+                group.GoTo(document);
+            }
+        }, under);
+    }
+
     private const string Tabs = "Editor Tabs";
     private const string TabsMenu = "Window/Editor Tabs";
 
@@ -35,6 +55,7 @@ public partial class MainWindow
     {
         Editors.TabMenuOpening += (_, opening) => FillTabMenu(opening);
         Editors.MaximizeRequested += (_, _) => Request(A.HideAllToolWindows);
+        Editors.HiddenTabsRequested += (_, group) => ShowHiddenTabs(group);
         Tab(A.NextTab, "Next Tab", _ => Editors.Cycle(1), Refusals.NeedsFile, (0, 0));
         Tab(A.PreviousTab, "Previous Tab", _ => Editors.Cycle(-1), Refusals.NeedsFile, (0, 1));
         actions!.Add(new IdeAction(A.PinTab, "Pin Tab", Tabs, c => TabOf(c)!.Value.Group.Pin(TabOf(c)!.Value.File, !Pinned(c)))
