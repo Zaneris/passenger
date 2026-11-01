@@ -184,10 +184,10 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
 - **Shortcuts follow Rider's**: its Visual Studio (Windows) or Visual Studio OSX (macOS) keymap, and its VS Code keymaps
   and IntelliJ's own (`$default`, `Mac OS X 10.5+`) for those presets, resolved as IntelliJ does (own list, then
   plugins' descriptors, then the parent); a keypad key Rider binds beside a main key is bound too, and a modifier tapped
-  twice is a shortcut (`shift , shift`, `Shortcut.IsDoubleTap`). A key IntelliJ gives two actions by place goes to one, said where it's bound;
-  the place takes it through `AppActions.KeysIn` (an IDE action's, `MainWindow.PlaceTakes`). Mouse gestures too: `Keymap.Bind` takes Rider's mouse notation (`meta
-  shift button1`), an editor asks its window's keymap (`CodeEditor.GesturesProperty`) and names no IDE action, and the
-  side buttons run window-wide (`IdeKeys`).
+  twice is a shortcut (`shift , shift`, `Shortcut.IsDoubleTap`). A key IntelliJ gives two actions by place goes to one,
+  said where it's bound; the place takes it through `AppActions.KeysIn` (an IDE action's, `MainWindow.PlaceTakes`).
+  Mouse gestures too: `Keymap.Bind` takes Rider's mouse notation (`meta shift button1`), an editor asks its window's
+  keymap (`CodeEditor.GesturesProperty`) and names no IDE action, and the side buttons run window-wide (`IdeKeys`).
 - **Workflows run only by hand** (the owner's choice): never `gh workflow run` unless the owner says. Commit messages go
   through a file (`git commit -F msg.txt`): backticks in a `-m` string are zsh command substitution.
 
@@ -638,10 +638,11 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
   `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`, lists `Plural.Listed`; rounded borders `Border.kindBadge`,
   `tag` or `box`, never a literal radius; lists of what runs `RunRows`, Details tabs `DetailsTables`, merged consoles
   `MergedLog` (a console's Find `OutputView.Find`); a tree window's Expand and Collapse All
-  `ToolWindow.ExpandAll`/`CollapseAll`, its filter `ToolWindows.FilterBox`; a toolbar down a side `ToolColumn`; scrollbars `ControlThemes.axaml`; the focus
-  ring `FocusRing`; a window's icon `AppIcon`; a list's rows `ReusedRows` (`Use`, `Showing`), their icons `RowIcon` (a
-  tree row's chevron and icon `RowGlyphs`), drawn as `PathIcon` draws for a fraction of its cost, never `PathIcon`
-  (UiRulesTests). A row hears its item only while shown (`Observable.FollowWhileShown`).
+  `ToolWindow.ExpandAll`/`CollapseAll`, its filter `ToolWindows.FilterBox`; a toolbar down a side `ToolColumn`;
+  scrollbars `ControlThemes.axaml`; the focus ring `FocusRing`; a window's icon `AppIcon`; a list's rows `ReusedRows`
+  (`Use`, `Showing`), their icons `RowIcon` (a tree row's chevron and icon `RowGlyphs`), drawn as `PathIcon` draws for a
+  fraction of its cost, never `PathIcon` (UiRulesTests). A row hears its item only while shown
+  (`Observable.FollowWhileShown`).
 - `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, and every window is an `IdeWindow`,
   which fits the working area of its owner's screen as it shows (`WindowFit`; one shown with no owner through
   `FitToScreen`).
