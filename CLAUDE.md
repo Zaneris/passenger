@@ -319,10 +319,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   (`XamlPreview.Output`), XAML's restore target and C#'s context (`CSharpService.ChosenContext`) follow: never a
   framework's output taken by its newest write. A Godot game's C# is read against its scenes by `GodotScenes`
   (Workspace: the reader, trees, paths, renames), followed through the watcher (`GodotSceneIndex`), the extension's
-  `GodotCode`, `GodotChecks`, and `GodotAssist` for `.tscn`/`.tres`; a C# file read before its project's evaluation
-  landed is pulled again once it does (`CSharpService.GodotProjectsChanged`). A server's own command (TypeScript's
-  refactorings, ESLint's fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one
-  command of Undo.
+  `GodotCode`, `GodotChecks`, and `GodotAssist` for `.tscn`/`.tres` (its marks `GodotSceneMarks`, uids `GodotUids`; the
+  extension's `GodotNames` for the generated names and the strings Godot's calls take, `GodotPaths` for `res://` in C#);
+  a C# file read before its project's evaluation landed is pulled again once it does
+  (`CSharpService.GodotProjectsChanged`). Edits added to a server's workspace edit for a file it already edits join that
+  file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command (TypeScript's refactorings,
+  ESLint's fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
   `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
@@ -484,11 +486,13 @@ site-shots` retakes its images.
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
   with unread input resets it, losing what was written (servers shut their side and drain first); the diagnostics library
   leaves a profiler pipe open after its listener goes (`ProfilingSession.CloseLeftListener` closes it, by reflection).
-- **macOS**: a variadic libc call through P/Invoke (`fcntl`, `ioctl` with an argument) loses its variadic arguments on
-  arm64 (`Descriptors.CloseOnExec`), and `poll` never says a named pipe's writer has gone (`select`); a Unix socket path
-  holds 104 bytes; `codesign` takes a dotted folder under `Contents/MacOS` for a bundle (so the web servers live in
-  Resources); TMPDIR is reached through the /var link, so a build or restore of a test's project goes by its real path,
-  and two spellings of one project restored at once collide.
+- **macOS**: a hardened-runtime program without `get-task-allow` (Godot's release build) can be dumped by no one, so a
+  heap snapshot of it is refused up front (`DotnetProcesses.WhyUnreadable`); a variadic libc call through P/Invoke
+  (`fcntl`, `ioctl` with an argument) loses its variadic arguments on arm64 (`Descriptors.CloseOnExec`), and `poll`
+  never says a named pipe's writer has gone (`select`); a Unix socket path holds 104 bytes; `codesign` takes a dotted
+  folder under `Contents/MacOS` for a bundle (so the web servers live in Resources); TMPDIR is reached through the /var
+  link, so a build or restore of a test's project goes by its real path, and two spellings of one project restored at
+  once collide.
 - **.NET's watcher on macOS passes over FSEvents' word that it dropped events** (`MustScanSubDirs|UserDropped` arrive on
   the watched folder itself, which it skips; dotnet/runtime#136577), so a folder is watched only through `WatchedTree`
   (the folder's watcher, each of `ServerWatches`' and Git's folders outside it, `GitWatcher`), never a bare
