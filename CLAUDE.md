@@ -309,7 +309,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   read-only copy under the state's cache (`GeneratedCode`; an agent's tools on one answer from its text,
   `PassengerTools.NotGenerated`), never opened in the server, which would freeze its text into the compilation. A C#
   symbol's uses in XAML come from one finder, `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to Declaration's
-  resolver) and `CodeSymbol`, a C# rename's edits there from it too (`XamlService.RenamesAsync`). A server's own command
+  resolver) and `CodeSymbol`, a C# rename's edits there from it too (`XamlService.RenamesAsync`). A JS interop call's
+  function comes from Roslyn's binding in the extension (`JsInteropCalls`) over `JsFunctions`. A server's own command
   (TypeScript's refactorings, ESLint's fixes) runs through `ServerCommands`, the edits it sends back
   (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind; every per-kind switch names each kind), `JsonSchemas`
@@ -643,11 +644,11 @@ size. Each checks a tool's answer, leaving the window's steps to the window's te
   editor `ToolBars.OverEditor`; words over what they speak of `Banner`; rows a person checks `CheckRows`; muted words
   `MutedText`; list keys `ListKeys.Move`; counts `Plural.Of`, lists `Plural.Listed`; rounded borders `Border.kindBadge`,
   `tag` or `box`, never a literal radius; lists of what runs `RunRows`, Details tabs `DetailsTables`, merged consoles
-  `MergedLog` (a console's Find `OutputView.Find`); a tree window's Expand and Collapse All
-  `ToolWindow.ExpandAll`/`CollapseAll`, its filter `ToolWindows.FilterBox`; a toolbar down a side `ToolColumn`;
-  scrollbars `ControlThemes.axaml`; the focus ring `FocusRing`; a window's icon `AppIcon`; a list's rows `ReusedRows`
-  (`Use`, `Showing`), their icons `RowIcon` (a tree row's chevron and icon `RowGlyphs`), drawn as `PathIcon` draws for a
-  fraction of its cost, never `PathIcon` (UiRulesTests). A row hears its item only while shown
+  `MergedLog` (a console's Find `OutputView.Find`); a picture's zoom `ZoomedPicture`; a tree window's Expand and
+  Collapse All `ToolWindow.ExpandAll`/`CollapseAll`, its filter `ToolWindows.FilterBox`; a toolbar down a side
+  `ToolColumn`; scrollbars `ControlThemes.axaml`; the focus ring `FocusRing`; a window's icon `AppIcon`; a list's rows
+  `ReusedRows` (`Use`, `Showing`), their icons `RowIcon` (a tree row's chevron and icon `RowGlyphs`), drawn as
+  `PathIcon` draws for a fraction of its cost, never `PathIcon` (UiRulesTests). A row hears its item only while shown
   (`Observable.FollowWhileShown`).
 - `MainWindow.SmallestWidth` is 640: the layout works at half a 1366-wide screen, and every window is an `IdeWindow`,
   which fits the working area of its owner's screen as it shows (`WindowFit`; one shown with no owner through
