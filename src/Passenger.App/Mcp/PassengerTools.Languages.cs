@@ -33,12 +33,18 @@ public sealed partial class PassengerTools
     /// <summary>A project, .props or .targets file, read through its project's evaluation.</summary>
     private sealed record MSBuildServed(OpenDocument Document, MSBuild.MSBuildDocument MSBuild) : Served(Document, "MSBuild");
 
+    /// <summary>A Godot project's text scene or resource, which Passenger reads itself.</summary>
+    private sealed record GodotServed(OpenDocument Document) : Served(Document, "Godot scene");
+
     /// <summary>What a tool says of a language that has no such command: plainly, naming the language and what it has instead.</summary>
     private static InvalidOperationException Lacks(Served served, string command, string instead) =>
         new($"{served.Language} files have no {command} in Passenger, so {Path.GetFileName(served.Document.Path)} has none: {instead}");
 
     private const string MSBuildHas = "definition goes to where a property, item, target, import or SDK is defined, symbol_info says a property's "
         + "value and where it was set, outline gives its elements, and diagnostics its evaluation's problems";
+
+    private const string GodotHas = "definition goes from a res:// path or ExtResource to its file and from a node path to its node; rename "
+        + "renames a node's name in its scenes and the code's GetNode paths";
 
     /// <summary>The file opened as the editor would, with the service that answers for it once that can: a XAML file's
     /// project read, the C# server's workspace loaded. A file no service reads is refused at once, saying which do.</summary>
@@ -71,6 +77,10 @@ public sealed partial class PassengerTools
             return web.Lsp is { } server
                 ? new ServerServed(document, LanguageOf(document), server, web)
                 : throw new InvalidOperationException(languages.Unready("Its code help", document));
+        }
+        if (Passenger.Workspace.GodotFile.IsText(document.Path) && Session.GodotOf(document.Path) is not null)
+        {
+            return new GodotServed(document);
         }
         if (document.Language.Service == Languages.LanguageService.CSharp)
         {

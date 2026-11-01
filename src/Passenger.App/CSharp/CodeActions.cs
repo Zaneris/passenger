@@ -470,6 +470,13 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return RefactorOutcome.Refused($"Rename was not applied: {unfollowed}");
         }
+        // Its uses in a Godot project's scenes: a connection's method or signal, an exported member's key.
+        (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> inScenes, string? unscened) = component is null && document.Language == Languages.Language.CSharp
+            ? await context.Languages.CSharp.GodotRenameAsync(await context.Now(document).SymbolAtAsync(at.Offset), name) : ([], null);
+        if (unscened is not null)
+        {
+            return RefactorOutcome.Refused($"Rename was not applied: {unscened}");
+        }
         if (await StaleAsync(document, edit, asked, patience) is { } stale)
         {
             return RefactorOutcome.Refused($"Rename was not applied: {stale}");
@@ -484,9 +491,21 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             edit = TypeRename.With(edit, inXaml);
         }
+        if (inScenes.Count > 0)
+        {
+            edit = TypeRename.With(edit, inScenes);
+        }
         IReadOnlyList<RefactoredFile> edited = await WorkspaceEdits.FilesAsync(context.Editors, edit, asked);
         List<(string From, string To)> moves = [.. (renameFiles ? type?.Files ?? [] : []).Select(f => (From: f, To: TypeRename.Renamed(f, name))).Concat(markup.Moves)
             .Where(m => m.From != m.To && File.Exists(m.From) && !edited.Any(f => f.Change == "moved" && PathNames.Same(f.Path, m.From))).Distinct()];
+        // A Godot script's file moved: the scenes that load it follow, and its .uid goes beside it.
+        (IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)> loading, IReadOnlyList<(string From, string To)> beside) = await context.Languages.CSharp.GodotMovedAsync(moves);
+        if (loading.Count > 0)
+        {
+            edit = TypeRename.With(edit, loading);
+            edited = [.. edited, .. loading.Where(l => !edited.Any(f => PathNames.Same(f.Path, l.Path))).Select(l => new RefactoredFile(l.Path, "changed", [.. l.Edits.Select(e => e.Range.Start.Line + 1)]))];
+        }
+        moves.AddRange(beside);
         List<string> dropped = [];
         string command = $"Rename {old} to {name}";
         using CommandHistory.Recording recording = context.Editors.Commands.Record(command);

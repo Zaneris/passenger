@@ -1,0 +1,361 @@
+using System.Text.RegularExpressions;
+using Passenger.App.Editors;
+using Passenger.App.Godot;
+using Passenger.App.Workspace;
+using Passenger.Core;
+using Passenger.Lsp;
+using Passenger.Roslyn.Extension;
+using Passenger.Text;
+using Passenger.Workspace;
+using Passenger.Xaml.Features;
+
+namespace Passenger.App.CSharp;
+
+/// <summary>A Godot project's C# read against its scenes (<see cref="GodotChecks"/>): in a string GetNode is given,
+/// completion offers the nodes of the scenes the script runs in (those of the type asked for), the hover card says the node
+/// it names in each, Go to Declaration goes to the node's section and Rename renames the node in every scene and every path
+/// of the code that names it (<see cref="RenameNodesAsync"/>); a res:// path completes from the project's files and goes
+/// to its file; an <c>[Export]</c> member's card says each value the scenes set it to.</summary>
+internal sealed partial class CSharpAssist
+{
+    /// <summary>A line up to the caret that ends inside the string a GetNode or GetNodeOrNull call is given.</summary>
+    private static readonly Regex NodeString = new(@"GetNode(OrNull)?\s*(<[^()]*>)?\s*\(\s*(new\s+NodePath\s*\(\s*)?""[^""]*$", RegexOptions.CultureInvariant);
+
+    /// <summary>A line up to the caret that ends inside a string of a res:// path.</summary>
+    private static readonly Regex ResString = new(@"""res://[^""]*$", RegexOptions.CultureInvariant);
+
+    /// <summary>The characters a node's path or a res:// path holds beyond a name's, which narrow its list rather than close it.</summary>
+    private const string PathCharacters = "/%.:-";
+
+    /// <summary>Whether the caret is where a Godot path is typed, so a '/' or a quote typed there opens its list.</summary>
+    private bool InGodotPath(int caret)
+    {
+        TextSnapshot text = context.Editor.Document.Snapshot;
+        int line = text.GetLineFromOffset(Math.Min(caret, text.Length));
+        string before = text.GetText(text.GetLineStart(line), Math.Min(caret, text.Length) - text.GetLineStart(line));
+        return NodeString.IsMatch(before) || ResString.IsMatch(before);
+    }
+
+    /// <summary>The string around an offset on its line: where its characters start (after its quote) and end (at its
+    /// closing quote, else the line's end).</summary>
+    private static (int Start, int End) StringAround(TextSnapshot text, int offset)
+    {
+        int line = text.GetLineFromOffset(Math.Min(offset, text.Length));
+        int lineStart = text.GetLineStart(line);
+        string row = text.GetLineText(line);
+        int column = Math.Min(offset - lineStart, row.Length);
+        int open = column > 0 ? row.LastIndexOf('"', column - 1) : -1;
+        int close = row.IndexOf('"', column);
+        return (lineStart + open + 1, lineStart + (close < 0 ? row.Length : close));
+    }
+
+    /// <summary>A place the server names in a file, as an offset of its text.</summary>
+    private static int OffsetOf(LspDocument lsp, Place at) => lsp.OffsetOf(new LspPosition(at.Line, at.Character));
+
+    /// <summary>The GetNode call whose string holds an offset, by the server's places; null for none.</summary>
+    private static GodotNodeCall? CallAt(LspDocument lsp, GodotRead read, int offset, int quoted) =>
+        read.Found.Calls.FirstOrDefault(c => OffsetOf(lsp, c.At) <= offset && offset <= OffsetOf(lsp, c.End)
+            || OffsetOf(lsp, c.At) == quoted - 1);
+
+    /// <summary>What completion offers in a Godot path's string: a GetNode call's nodes, from the node each scene runs its
+    /// script on, those of the type it asks for (all where none is); a res:// path's files of the project. With where the
+    /// string's characters start and the rest after the caret, which an item replaces; null anywhere else.</summary>
+    private async Task<CodeCompletion.OwnItems?> GodotCompletionAsync(LspDocument lsp, TextSnapshot asked, int caret, CancellationToken cancel)
+    {
+        if (!InGodotPath(caret) || context.Editors.Active is not { } document || context.CSharp is not { } csharp
+            || await csharp.GodotAsync(document.Path, cancel) is not { } read || lsp.Text.Snapshot != asked)
+        {
+            return null;
+        }
+        (int start, int end) = StringAround(asked, caret);
+        string tail = caret < end ? asked.GetText(caret, end - caret) : string.Empty;
+        string typed = asked.GetText(start, caret - start);
+        if (typed.StartsWith("res://", StringComparison.Ordinal) && csharp.GodotScenes is { } index)
+        {
+            IReadOnlyList<CompletionItem> files = [.. index.FilesUnder(read.Folder).Select(f => GodotScenes.ResPathOf(read.Folder, f)).OfType<string>()
+                .Select(res => new CompletionItem { Label = res, Kind = CompletionItemKind.File, Detail = Path.GetExtension(res), FilterText = res, SortText = " " + res })];
+            return files.Count == 0 ? null : new CodeCompletion.OwnItems(start, files, tail) { WordCharacters = PathCharacters };
+        }
+        if (CallAt(lsp, read, caret, start) is not { } call || call.Class >= read.Found.Classes.Count)
+        {
+            return null;
+        }
+        Dictionary<string, CompletionItem> items = new(StringComparer.Ordinal);
+        List<CompletionItem> unfit = [];
+        foreach ((string scene, GodotTreeNode node) in read.Found.Classes[call.Class].Scripts.SelectMany(read.Scenes.RunsOf))
+        {
+            foreach ((string path, GodotTreeNode target) in GodotScenes.PathsFrom(node))
+            {
+                CompletionItem item = new()
+                {
+                    Label = path,
+                    Kind = CompletionItemKind.Field,
+                    Detail = $"{GodotChecks.Shown(target)} · {Path.GetFileName(scene)}",
+                    FilterText = path,
+                    SortText = " " + path,
+                };
+                if (call.Type is { } wanted && GodotChecks.Fits(wanted, target, read.Found) == false)
+                {
+                    unfit.Add(item);
+                }
+                else
+                {
+                    items.TryAdd(path, item);
+                }
+            }
+        }
+        IReadOnlyList<CompletionItem> offered = items.Count > 0 ? [.. items.Values] : [.. unfit.DistinctBy(i => i.Label)];
+        return offered.Count == 0 ? null : new CodeCompletion.OwnItems(start, offered, tail) { WordCharacters = PathCharacters };
+    }
+
+    /// <summary>What the hover card says of a Godot project's C#: the node a GetNode path names in each scene its script runs
+    /// in, or that none answers; an <c>[Export]</c> member's value in each scene and resource that sets it.</summary>
+    private async Task<string?> GodotHoverAsync(OpenDocument document, int offset, CancellationToken cancel)
+    {
+        if (context.WebOf(document) is not null || context.CSharp is not { } csharp || csharp.For(document)?.Lsp is not { } lsp
+            || csharp.GodotOf?.Invoke(document.Path) is null || await csharp.GodotAsync(document.Path, cancel) is not { } read)
+        {
+            return null;
+        }
+        (int start, _) = StringAround(lsp.Text.Snapshot, offset);
+        if (CallAt(lsp, read, offset, start) is { } call && call.Class < read.Found.Classes.Count)
+        {
+            List<string> lines = [];
+            foreach ((string scene, GodotTreeNode node) in read.Found.Classes[call.Class].Scripts.SelectMany(read.Scenes.RunsOf))
+            {
+                GodotResolved resolved = GodotScenes.Resolve(node, call.Path);
+                lines.Add(resolved.Found is { } target ? $"{GodotChecks.Shown(target)} '{target.Path}' in {GodotChecks.Place(read.Scenes, target.Declared.Scene, target)}"
+                    : resolved.Unknown ? $"Not known from {Path.GetFileName(scene)}: the path leaves what it holds" : $"No node in {Path.GetFileName(scene)}");
+            }
+            return lines.Count == 0 ? null : string.Join('\n', [$"'{call.Path}' from {read.Found.Classes[call.Class].Name}:", .. lines.Distinct()]);
+        }
+        foreach (GodotClassFound type in read.Found.Classes)
+        {
+            if (type.Exports.FirstOrDefault(e => SameFile(e.Path, document.Path) && OffsetOf(lsp, e.At) <= offset && offset <= OffsetOf(lsp, e.End)) is { } export)
+            {
+                IReadOnlyList<string> set = ExportValues(read.Scenes, type.Scripts, export.Name);
+                return set.Count == 0 ? $"No scene or resource sets {export.Name}: each takes its default"
+                    : string.Join('\n', [$"{export.Name} is set in:", .. set]);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Each value scenes and resources set an exported member to, on the nodes and resources scripts run as: where
+    /// (the file and line), on which node, and the value as written.</summary>
+    internal static IReadOnlyList<string> ExportValues(GodotScenes scenes, IReadOnlyList<string> scripts, string name)
+    {
+        List<string> set = [];
+        HashSet<(string, int)> seen = [];
+        foreach ((string scene, GodotTreeNode node) in scripts.SelectMany(scenes.RunsOf))
+        {
+            foreach ((string written, Passenger.Workspace.GodotNode section) in node.Written)
+            {
+                if (section.Section.Property(name) is { } property && seen.Add((written, section.Section.Start)))
+                {
+                    GodotFile file = scenes.Files[written];
+                    set.Add($"{Path.GetFileName(written)}:{file.LineOf(property.KeyStart) + 1}, {node.Name}: {Shortened(file.Written(property.Value))}");
+                }
+            }
+        }
+        foreach ((string res, GodotFile file) in scenes.Files.OrderBy(f => f.Key, StringComparer.Ordinal))
+        {
+            if (file.Resource is { } resource && scripts.Contains(file.External(resource.Property("script")?.Value is { Call: "ExtResource", Text: { } id } ? id : null)?.Path)
+                && resource.Property(name) is { } property)
+            {
+                set.Add($"{Path.GetFileName(res)}:{file.LineOf(property.KeyStart) + 1}: {Shortened(file.Written(property.Value))}");
+            }
+        }
+        return set;
+    }
+
+    private static string Shortened(string value) => value.Length > 80 ? value[..77] + "…" : value.ReplaceLineEndings(" ");
+
+    private static bool SameFile(string left, string right) => PathNames.Same(left, right) || PathNames.Same(PathNames.Canonical(left), right);
+
+    /// <summary>Where Go to Declaration goes from a Godot path's string: a res:// path's file; a GetNode path's node, in each
+    /// scene its script runs in that has it. Null anywhere else.</summary>
+    private async Task<Declared?> GodotDeclaredAsync(LspDocument lsp, OpenDocument document, int offset)
+    {
+        TextSnapshot asked = lsp.Text.Snapshot;
+        if (!InString(asked, offset) || context.CSharp is not { } csharp || csharp.GodotOf?.Invoke(document.Path) is null
+            || await csharp.GodotAsync(document.Path, CancellationToken.None) is not { } read || lsp.Text.Snapshot != asked)
+        {
+            return null;
+        }
+        if (read.Found.Resources.FirstOrDefault(r => OffsetOf(lsp, r.At) <= offset && offset <= OffsetOf(lsp, r.End)) is { } resource)
+        {
+            string named = resource.Path.Split("::")[0];
+            string? file = read.Scenes.FileOf(named);
+            bool there = file is not null && await BackgroundWork.Run(() => File.Exists(file));
+            return new Declared(there ? [new LspLocation(DocumentUris.FromPath(file!), new LspRange(new LspPosition(0, 0), new LspPosition(0, 0)))] : [],
+                $"No file {named} is in the Godot project");
+        }
+        (int start, _) = StringAround(asked, offset);
+        if (CallAt(lsp, read, offset, start) is not { } call || call.Class >= read.Found.Classes.Count)
+        {
+            return null;
+        }
+        List<(string Path, TextPosition Position)> places = [];
+        List<string?> names = [];
+        foreach ((string scene, GodotTreeNode node) in read.Found.Classes[call.Class].Scripts.SelectMany(read.Scenes.RunsOf))
+        {
+            if (GodotScenes.Resolve(node, call.Path).Found is { } target && read.Scenes.FileOf(target.Declared.Scene) is { } file
+                && !places.Any(p => PathNames.Same(p.Path, file) && p.Position.Line == target.Declared.Node.Section.Line))
+            {
+                places.Add((file, new TextPosition(target.Declared.Node.Section.Line, 0)));
+                names.Add($"{GodotChecks.Shown(target)} {target.Name} in {GodotChecks.Place(read.Scenes, target.Declared.Scene, target)}");
+            }
+        }
+        return new Declared(Declared.Served(places, ServerPlaces.Texts(context.Editors)), $"No scene of {read.Found.Classes[call.Class].Name}'s has a node '{call.Path}'")
+        {
+            Names = names,
+            Title = "Nodes",
+        };
+    }
+
+    /// <summary>The nodes the name of a GetNode path at an offset names, each in the scene its script runs in, with the name
+    /// as the path writes it and the scenes read; null where the offset is on no such name.</summary>
+    internal async Task<(GodotRead Read, string Name, IReadOnlyList<GodotTreeNode> Nodes)?> GodotNodeAtAsync(OpenDocument document, int offset)
+    {
+        if (context.CSharp is not { } csharp || csharp.For(document)?.Lsp is not { } lsp || csharp.GodotOf?.Invoke(document.Path) is null
+            || await csharp.GodotAsync(document.Path, CancellationToken.None) is not { } read)
+        {
+            return null;
+        }
+        (int start, _) = StringAround(lsp.Text.Snapshot, offset);
+        if (CallAt(lsp, read, offset, start) is not { Exact: true } call || call.Class >= read.Found.Classes.Count)
+        {
+            return null;
+        }
+        int at = offset - OffsetOf(lsp, call.At);
+        List<GodotTreeNode> nodes = [];
+        string? name = null;
+        foreach ((string scene, GodotTreeNode node) in read.Found.Classes[call.Class].Scripts.SelectMany(read.Scenes.RunsOf))
+        {
+            foreach ((int from, int to, GodotTreeNode step) in GodotScenes.Resolve(node, call.Path).Steps)
+            {
+                string written = call.Path[from..to];
+                if (from <= at && at <= to && written != ".." && !nodes.Any(n => n.Same(step)))
+                {
+                    nodes.Add(step);
+                    name = step.Name;
+                }
+            }
+        }
+        return name is null ? null : (read, name, nodes);
+    }
+
+    /// <summary>Rename's box for a node a GetNode path names at the caret; once a name is typed, <see cref="RenameNodesAsync"/>.
+    /// False where the caret is on no node's name.</summary>
+    private async Task<bool> ShowNodeRename(OpenDocument document, int caret)
+    {
+        int version = document.Text.Version;
+        if (await GodotNodeAtAsync(document, caret) is not ({ } read, { } old, { Count: > 0 } nodes) || context.Editors.Active != document || document.Text.Version != version)
+        {
+            return false;
+        }
+        RenameBox box = new(old);
+        popups.ShowModal(box, caret, async name =>
+        {
+            if (name is null || name == old)
+            {
+                return;
+            }
+            RefactorOutcome made = await RenameNodesAsync(read, nodes, old, name);
+            context.Say(made.Problem ?? made.Said);
+        });
+        return true;
+    }
+
+    /// <summary>Nodes renamed, as one command of global undo: in each scene, where it is declared and every path through it
+    /// (<see cref="GodotScenes.Renames"/>), and in the code of every script of the scenes that hold it, each GetNode path whose
+    /// name leads to it; refused for a name Godot would not take or one beside it has, or a file changed since it was read.
+    /// The window's and an agent's alike.</summary>
+    internal async Task<RefactorOutcome> RenameNodesAsync(GodotRead read, IReadOnlyList<GodotTreeNode> nodes, string old, string name)
+    {
+        GodotScenes scenes = read.Scenes;
+        foreach (GodotTreeNode node in nodes)
+        {
+            if (scenes.RenameProblem(node, name) is { } problem)
+            {
+                return RefactorOutcome.Refused(problem);
+            }
+        }
+        Dictionary<string, List<TextEdit>> edits = new(PathNames.Comparer);
+        Dictionary<string, string> made = new(PathNames.Comparer);
+        foreach (GodotTreeNode node in nodes)
+        {
+            foreach ((string res, IReadOnlyList<TextEdit> sceneEdits) in await BackgroundWork.Run(() => scenes.Renames(node, name)))
+            {
+                if (scenes.FileOf(res) is { } file)
+                {
+                    made[file] = scenes.Files[res].Text;
+                    Add(file, sceneEdits);
+                }
+            }
+        }
+        List<(string Scene, GodotTreeNode Node)> copies = [.. nodes.SelectMany(n => scenes.CopiesOf(n))];
+        HashSet<string> scripts = [.. copies.SelectMany(c => c.Node.Root.Below()).Select(n => n.Script).Where(GodotChecks.IsCSharp).OfType<string>()];
+        foreach (string script in scripts.Order(StringComparer.Ordinal))
+        {
+            if (scenes.FileOf(script) is not { } code || context.CSharp is not { } csharp || await csharp.GodotAsync(code, CancellationToken.None) is not { } of
+                || context.Editors.TextOf(code) is not { } text)
+            {
+                continue;
+            }
+            ServerLines lines = ServerLines.Of(text);
+            List<TextEdit> paths = [];
+            foreach (GodotNodeCall call in of.Found.Calls.Where(c => c.Exact && c.Class < of.Found.Classes.Count))
+            {
+                int at = lines.OffsetOf(new LspPosition(call.At.Line, call.At.Character));
+                if (at + call.Path.Length > text.Length || text.GetText(at, call.Path.Length) != call.Path)
+                {
+                    return RefactorOutcome.Refused($"{old} was not renamed: {Path.GetFileName(code)} changed as it was read");
+                }
+                foreach ((string scene, GodotTreeNode runner) in of.Found.Classes[call.Class].Scripts.SelectMany(scenes.RunsOf))
+                {
+                    foreach ((int from, int to, GodotTreeNode step) in GodotScenes.Resolve(runner, call.Path).Steps)
+                    {
+                        string written = call.Path[from..to];
+                        if (nodes.Any(n => n.Same(step)) && written != "..")
+                        {
+                            int skip = written.StartsWith('%') ? 1 : 0;
+                            paths.Add(new TextEdit(at + from + skip, to - from - skip, name));
+                        }
+                    }
+                }
+            }
+            if (paths.Count > 0)
+            {
+                made[code] = text.ToString();
+                Add(code, paths);
+            }
+        }
+        List<XamlFileChange> changes = [.. edits.Select(e =>
+        {
+            string was = made[e.Key];
+            IReadOnlyList<TextEdit> these = [.. e.Value.Distinct().OrderBy(t => t.Start)];
+            return new XamlFileChange(e.Key, now => now == was ? these : []);
+        })];
+        if (changes.Count == 0)
+        {
+            return RefactorOutcome.Refused($"{old} was not renamed: no scene writes it");
+        }
+        if (await actions.ApplyFileChangesAsync($"Rename {old} to {name}", changes) is { } refused)
+        {
+            return RefactorOutcome.Refused(refused);
+        }
+        return new RefactorOutcome($"Renamed {old} to {name} in {Plural.Of(changes.Count, "file")}", null,
+            [.. edits.Select(e => new RefactoredFile(e.Key, "changed", [.. e.Value.Select(t => TextSnapshot.From(made[e.Key]).GetLineFromOffset(t.Start) + 1).Distinct()]))], []);
+
+        void Add(string file, IEnumerable<TextEdit> more)
+        {
+            if (!edits.TryGetValue(file, out List<TextEdit>? list))
+            {
+                edits[file] = list = [];
+            }
+            list.AddRange(more);
+        }
+    }
+}

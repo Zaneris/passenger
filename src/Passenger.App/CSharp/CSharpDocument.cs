@@ -286,11 +286,12 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         IReadOnlyList<Diagnostic> compose = await ComposeFindingsAsync(cancel);
         IReadOnlyList<Diagnostic> configuration = await ConfigurationFindingsAsync([.. aspire, .. compose], cancel);
         IReadOnlyList<Diagnostic> localization = await LocalizationFindingsAsync(cancel);
+        IReadOnlyList<Diagnostic> godot = await GodotFindingsAsync(cancel);
         if (cancel.IsCancellationRequested || version != document.Text.Version || Lsp != lsp)
         {
             return null;
         }
-        IReadOnlyList<Diagnostic> own = [.. found, .. aspire, .. compose, .. configuration, .. localization];
+        IReadOnlyList<Diagnostic> own = [.. found, .. aspire, .. compose, .. configuration, .. localization, .. godot];
         IReadOnlyList<Diagnostic> carried = lsp.PullsProjectWide ? diagnostics.Late : [];
         document.Markers = diagnostics.Take([.. own, .. carried], DiagnosticMarks.Marker, carried.Count);
         service.FileProblemsChanged(document);
@@ -321,12 +322,13 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     };
 
     /// <summary>Passenger's own diagnostics of the file for the text as it stands, as its pull marks them: Aspire's, its reads
-    /// of configuration keys nothing gives (<see cref="ConfigurationFindingsAsync"/>) and of localized strings a language lacks
-    /// (<see cref="LocalizationFindingsAsync"/>); an agent's <c>diagnostics</c> lists them.</summary>
+    /// of configuration keys nothing gives (<see cref="ConfigurationFindingsAsync"/>), of localized strings a language lacks
+    /// (<see cref="LocalizationFindingsAsync"/>) and what its Godot scenes say of it (<see cref="GodotFindingsAsync"/>); an
+    /// agent's <c>diagnostics</c> lists them.</summary>
     internal async Task<IReadOnlyList<Diagnostic>> PassengerFindingsAsync(LspDocument lsp, CancellationToken cancel)
     {
         IReadOnlyList<Diagnostic> aspire = await AspireFindingsAsync(lsp, cancel);
-        return [.. aspire, .. await ConfigurationFindingsAsync(aspire, cancel), .. await LocalizationFindingsAsync(cancel)];
+        return [.. aspire, .. await ConfigurationFindingsAsync(aspire, cancel), .. await LocalizationFindingsAsync(cancel), .. await GodotFindingsAsync(cancel)];
     }
 
     /// <summary>The file's diagnostics pulled and shown now, Aspire's with them, as a typing pause's pull shows them: for an

@@ -333,6 +333,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                     : throw new InvalidOperationException($"No name, resource key or C# symbol at {place}: {XamlAssist.XamlUsesWhat}"));
             case MSBuildServed:
                 throw Lacks(served, "Find Usages", MSBuildHas);
+            case GodotServed:
+                throw Lacks(served, "Find Usages", GodotHas);
             case ServerServed unfound when !unfound.Provides("referencesProvider"):
                 throw new InvalidOperationException($"{unfound.Language} has no usages: its language server finds none, so Find Usages finds nothing in {Path.GetFileName(unfound.Document.Path)}");
         }
@@ -354,7 +356,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         Roslyn.Extension.NamedSymbol? named = component?.Symbol
             ?? (served.Document.Language == Languages.Language.CSharp ? await server.Lsp.SymbolAtAsync(offset, cancel) : null);
         string? taken = named is null ? null : $"{named.Shown} ({named.Kind})";
-        found = [.. found, .. await window.Assist.Languages.Xaml.CodeUsesAsync(named)];
+        found = [.. found, .. await window.Assist.Languages.Xaml.CodeUsesAsync(named), .. CSharpAssist.GodotLocations(await window.Assist.Languages.CSharp.GodotNamedAsync(named))];
         // Answered now, saying which files that could use it the server has yet to take in.
         IReadOnlyList<(string Path, string Project)> untaken = server.Web is null && Session.CSharp is { } csharp ? await csharp.UntakenAsync(served.Document, offset, cancel) : [];
         return ByFile(taken, await Places(found, cancel)) with { Note = untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Relative(u.Path))]) : null };
@@ -364,6 +366,29 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private static UsagesFound ByFile(string? symbol, IReadOnlyList<Place> places) =>
         new(symbol, places.Count, [.. Sorted(places).GroupBy(p => p.Path, StringComparer.Ordinal)
             .Select(file => new FilePlaces(file.Key, [.. file.Select(p => p.Text.Length == 0 ? $"{p.Line}:{p.Column}" : $"{p.Line}:{p.Column} {p.Text}")]))]);
+
+    /// <summary>A Godot node renamed for an agent (<see cref="CSharpAssist.RenameNodesAsync"/>), its files saved; refused where no
+    /// node's name is at the place.</summary>
+    private async Task<string> GodotRename((Godot.GodotRead Read, Passenger.Workspace.GodotTreeNode Node)? at, string newName, string none, CancellationToken cancel,
+        IReadOnlyList<Passenger.Workspace.GodotTreeNode>? nodes = null, string? old = null)
+    {
+        if (at is not ({ } read, { } node))
+        {
+            throw new InvalidOperationException(none);
+        }
+        string name = old ?? node.Name;
+        if (name == newName)
+        {
+            return $"{newName} is its name already";
+        }
+        RefactorOutcome made = await window.Assist.Languages.CSharp.RenameNodesAsync(read, nodes ?? [node], name, newName);
+        if (made.Problem is { } refused)
+        {
+            throw new InvalidOperationException(refused);
+        }
+        await SaveLandedAsync(cancel);
+        return $"{made.Said}: {string.Join(", ", made.Files.Select(f => Relative(f.Path)))}";
+    }
 
     [McpServerTool(Name = McpTools.Hierarchy, Title = "Call or type hierarchy", ReadOnly = true), Description(
         "One level of the hierarchy of the symbol at a position, as the Hierarchy window: direction callers (each at its " +
@@ -403,7 +428,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "(bindings, x:DataType, x:Static, handlers, tags), a type's files named " +
         "after it (Foo.cs, Foo.Designer.cs, Foo.axaml) unless renameFiles is false, and always its XAML's x:Class and " +
         "Razor component (Foo.razor, Foo.razor.css); an Aspire resource's name where its AppHost " +
-        "declares it and its services read it; a XAML element's name with its code-behind's uses; a JSON property (in " +
+        "declares it and its services read it; a Godot node's name (in a scene, or a GetNode path) in its scenes and the code's paths; " +
+        "a XAML element's name with its code-behind's uses; a JSON property (in " +
         "package.json's scripts, every npm run of one); a compose file's names, its override's too. MSBuild files have none.")]
     public Task<string> Rename(string newName, string? path = null, int? line = null, int? column = null, string? symbol = null,
         bool renameFiles = true,
@@ -427,8 +453,16 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await SaveLandedAsync(cancel);
             return $"{compose.Said}: {string.Join(", ", compose.Files.Select(f => Relative(f.Path)))}";
         }
+        // A Godot node a GetNode path names is renamed in its scenes, as from its scene.
+        if (served is ServerServed { Web: null } code && code.Document.Language == Languages.Language.CSharp
+            && await window.Assist.Languages.CSharp.GodotNodeAtAsync(code.Document, offset) is ({ } read, { } name, { Count: > 0 } nodes))
+        {
+            return await GodotRename((read, nodes[0]), newName, string.Empty, cancel, nodes, name);
+        }
         switch (served)
         {
+            case GodotServed scene:
+                return await GodotRename(await window.Assist.Languages.Godot.NodeAtAsync(scene.Document, offset), newName, $"No node's name is at {Relative(scene.Document.Path)}:{at.Line}:{at.Column}", cancel);
             case XamlServed xaml:
                 return await XamlRename(xaml, offset, newName, cancel);
             case ServerServed json when !json.Provides("renameProvider"):
@@ -505,6 +539,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 break;
             case MSBuildServed:
                 throw Lacks(served, "fixes or refactorings", MSBuildHas);
+            case GodotServed:
+                throw Lacks(served, "fixes or refactorings", GodotHas);
             default:
                 int offset = Offset(served.Document, line, column);
                 await AspireMarked(served, cancel);
@@ -540,6 +576,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 return await ApplyOwnFix(served.Document, ownFix, patience, name);
             case MSBuildServed:
                 throw Lacks(served, "fixes or refactorings", MSBuildHas);
+            case GodotServed:
+                throw Lacks(served, "fixes or refactorings", GodotHas);
         }
         ServerServed server = (ServerServed)served;
         int offset = Offset(served.Document, line, column);
@@ -669,7 +707,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         else
         {
             Served file = await Serve(path, cancel);
-            ServerServed served = file as ServerServed ?? throw Lacks(file, "Reformat Code", MSBuildHas);
+            ServerServed served = file as ServerServed ?? throw Lacks(file, "Reformat Code", file is GodotServed ? GodotHas : MSBuildHas);
             (document, lsp) = (served.Document, served.Lsp);
         }
         CSharp.CodeActions.Reformatted done = await window.Assist.Actions.ReformatAsync(document, null, () => lsp)
@@ -975,6 +1013,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 return XamlOutline(xaml);
             case MSBuildServed msbuild:
                 return MSBuildOutline(msbuild);
+            case GodotServed:
+                throw Lacks(served, "outline", GodotHas);
         }
         LspDocument lsp = ((ServerServed)served).Lsp;
         System.Text.StringBuilder text = new();

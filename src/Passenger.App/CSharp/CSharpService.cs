@@ -1652,6 +1652,48 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
     }
 
+    /// <summary>The folder of the Godot project a C# file's project builds a game for (the session's project's
+    /// <see cref="Passenger.Workspace.ProjectModel.GodotFolder"/>); null for any other file, and without a session.</summary>
+    public Func<string, string?>? GodotOf { get; init; }
+
+    /// <summary>The folder's Godot scenes and resources, read once and followed; none without a session.</summary>
+    public Godot.GodotSceneIndex? GodotScenes { get; init; }
+
+    /// <summary>A Godot scene or resource came, went or was written: each open file of a Godot project pulls again.</summary>
+    internal void GodotScenesChanged() => Each(document => document.GodotChanged());
+
+    /// <summary>The projects were evaluated: each open file whose Godot project is not the one its last pull read pulls again.</summary>
+    internal void GodotProjectsChanged() => Each(document => document.GodotProjectChanged());
+
+    /// <summary>What a Godot project's C# file and its scenes say of each other (<see cref="Godot.GodotChecks"/>): the scenes as
+    /// they stand, and Passenger's extension asked of the code for the scenes its scripts run in, asked again where its code
+    /// runs as scripts of classes deriving from it; null for a file of no Godot project, and without the server.</summary>
+    internal async Task<Godot.GodotRead?> GodotAsync(string path, CancellationToken cancel)
+    {
+        if (session is not { } roslyn || GodotOf?.Invoke(path) is not { } folder || GodotScenes is not { } index)
+        {
+            return null;
+        }
+        Passenger.Workspace.GodotScenes scenes = await index.ScenesAsync(folder);
+        string[] own = scenes.ResPathOf(path) is { } res ? [res] : [];
+        try
+        {
+            Roslyn.Extension.GodotCodeRequest asked = await BackgroundWork.Run(() => Godot.GodotChecks.Asks(path, scenes, own), cancel);
+            Roslyn.Extension.GodotCodeFound found = await roslyn.ExtensionAsync<Roslyn.Extension.GodotCodeFound>(Roslyn.Extension.Handlers.GodotCode, asked, cancel);
+            string[] scripts = [.. found.Classes.SelectMany(c => c.Scripts).Distinct(StringComparer.Ordinal)];
+            if (scripts.Except(own, StringComparer.Ordinal).Any())
+            {
+                asked = await BackgroundWork.Run(() => Godot.GodotChecks.Asks(path, scenes, scripts), cancel);
+                found = await roslyn.ExtensionAsync<Roslyn.Extension.GodotCodeFound>(Roslyn.Extension.Handlers.GodotCode, asked, cancel);
+            }
+            return new Godot.GodotRead(folder, scenes, asked, found);
+        }
+        catch (LanguageServerFailed)
+        {
+            return null;
+        }
+    }
+
     /// <summary>The connection strings the open compose files' .NET services read that their environments do not set (the
     /// session's <see cref="Containers.EngineChecks.Gaps"/>), whose reads in the code are marked too; none without a session.</summary>
     public Func<IReadOnlyList<Containers.ComposeGap>>? ComposeGaps { get; init; }

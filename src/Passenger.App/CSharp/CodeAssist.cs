@@ -69,9 +69,10 @@ public sealed class CodeAssist
         navigation = new CodeNavigation(context, popups, quickInfo);
         actions = new CodeActions(context, popups, navigation);
         XamlAssist xaml = new(context, popups, completion);
+        CSharpAssist csharp = new(context, popups, completion, parameterInfo, navigation, actions, xaml);
         context.Languages = new LanguageAssists(new HttpAssist(context, navigation), new MSBuildAssist(context, popups, completion), xaml,
             new ComposeAssist(context, popups, completion, navigation, actions), new SettingsAssist(context, completion, navigation),
-            new WebAssist(context, popups, completion, parameterInfo, actions), new CSharpAssist(context, popups, completion, parameterInfo, navigation, actions, xaml));
+            new WebAssist(context, popups, completion, parameterInfo, actions), new GodotAssist(context, popups, navigation, csharp), csharp);
         // Every editor a split makes is wired the same; what it asks is answered for the active one, which it is.
         editors.ForEachEditor(editor =>
         {
@@ -399,7 +400,8 @@ public sealed class CodeAssist
             WhyNot = context => WhyNotXaml(context),
             Menus = [new("Refactor", 4, 1)],
         });
-        Code(AppActions.GoToDeclaration, "Go to Declaration", context => IdeErrors.Observe(navigation.GoToDefinition(Caret)), new("Navigate", 2, 0), xaml: true, msbuild: true, http: true);
+        Code(AppActions.GoToDeclaration, "Go to Declaration", context => IdeErrors.Observe(navigation.GoToDefinition(Caret)), new("Navigate", 2, 0), xaml: true, msbuild: true, http: true,
+            godot: true);
         Code(AppActions.DerivedSymbols, "Derived Symbols", context => IdeErrors.Observe(navigation.GoToDerivedSymbols(Caret)), new("Navigate", 2, 1));
         Code(AppActions.GoToImplementation, "Go to Implementation", context => IdeErrors.Observe(navigation.GoToImplementation(Caret)), new("Navigate", 2, 2));
         Code(AppActions.GoToTypeDeclaration, "Go to Type Declaration", context => IdeErrors.Observe(navigation.GoToTypeDeclaration(Caret)), new("Navigate", 2, 3));
@@ -411,11 +413,12 @@ public sealed class CodeAssist
         Code(AppActions.QuickDocumentation, "Quick Documentation", context => quickInfo.QuickDocumentation(), new("View", 1, 1), server: false);
 
         void Code(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false,
-            bool http = false) =>
+            bool http = false, bool godot = false) =>
             registry.Add(new IdeAction(id, title, "Code", run)
             {
-                // An .http file's requests go to their routes, with no language server of its own.
-                WhyNot = action => http && this.context.Languages.Http.IsHttpFile(action.File) ? null : WhyNot(action, server, syntax, xaml, markup, msbuild),
+                // An .http file's requests go to their routes, and a Godot scene's paths to their files and code, with no language server of their own.
+                WhyNot = action => http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File) ? null
+                    : WhyNot(action, server, syntax, xaml, markup, msbuild),
                 Menus = [menu],
             });
     }
@@ -426,7 +429,12 @@ public sealed class CodeAssist
     public void Rename() => actions.Rename();
 
     /// <summary>Why Rename cannot run at the editor's caret; null when it can.</summary>
-    public string? WhyNotRename(ActionContext context) => WhyNot(context, server: true, xaml: true);
+    public string? WhyNotRename(ActionContext context) =>
+        IsGodotScene(context.File) ? (context.Editor.IsReadOnly ? Refusals.ReadOnly(context.File!.Name) : null) : WhyNot(context, server: true, xaml: true);
+
+    /// <summary>Whether a file is a text scene or resource of a Godot project, which Passenger reads itself.</summary>
+    private bool IsGodotScene(OpenDocument? file) =>
+        file is not null && GodotFile.IsText(file.Path) && context.CSharp?.GodotOf?.Invoke(file.Path) is not null;
 
     /// <summary>Why an action of a XAML file's alone cannot run: no file, a file not XAML of a project Passenger reads, or
     /// one that cannot be edited.</summary>

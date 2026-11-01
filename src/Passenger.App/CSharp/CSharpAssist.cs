@@ -22,6 +22,10 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         {
             IdeErrors.Observe(completion.Start(last.ToString()));
         }
+        else if (last is '"' or '/' or '%' && !context.InRazor && InGodotPath(caret))
+        {
+            IdeErrors.Observe(completion.Start(null));
+        }
         else if (AssistContext.IsIdentifierChar(last) && !char.IsDigit(last) && context.WordStart(caret) == caret - 1)
         {
             IdeErrors.Observe(completion.Start(null));
@@ -34,8 +38,8 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         return true;
     }
 
-    /// <summary>An AppHost's or a service's resource names where one is typed, alone; else a localizer's keys ahead of the
-    /// server's items.</summary>
+    /// <summary>An AppHost's or a service's resource names where one is typed, alone; else a localizer's keys, or a Godot
+    /// path's nodes or files, ahead of the server's items.</summary>
     public override async Task<bool> CompleteAsync(string? trigger, bool incomplete)
     {
         if (context.Current?.Lsp is not { } lsp)
@@ -43,12 +47,14 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
             return true;
         }
         await completion.ServerListAsync(lsp, trigger, incomplete, null,
-            async (text, caret, cancel) => await LocalizedCompletionAsync(lsp, text, caret, cancel) is { } keys ? new CodeCompletion.OwnItems(keys.Start, keys.Items, keys.Tail) : null,
+            async (text, caret, cancel) => await LocalizedCompletionAsync(lsp, text, caret, cancel) is { } keys ? new CodeCompletion.OwnItems(keys.Start, keys.Items, keys.Tail)
+                : await GodotCompletionAsync(lsp, text, caret, cancel),
             cancel => StartAspireCompletion(lsp, cancel));
         return true;
     }
 
-    /// <summary>The server's description of the symbol, then a configuration key's values and a localized key's languages.</summary>
+    /// <summary>The server's description of the symbol, then a configuration key's values, a localized key's languages and
+    /// what a Godot project's scenes say of a node path or an exported member.</summary>
     public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
         if (context.ServerOf(document)?.Lsp is { } lsp)
@@ -64,6 +70,11 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         {
             cancel.ThrowIfCancellationRequested();
             card.AddText(localized);
+        }
+        if (await GodotHoverAsync(document, offset, cancel) is { } scenes)
+        {
+            cancel.ThrowIfCancellationRequested();
+            card.AddText(scenes);
         }
         return true;
     }
@@ -89,7 +100,7 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         return true;
     }
 
-    /// <summary>Aspire's, a configuration read's, a localized key's and a JS interop call's places first; then the server's, where a Dockerfile's
+    /// <summary>Aspire's, a configuration read's, a localized key's, a JS interop call's and a Godot path's places first; then the server's, where a Dockerfile's
     /// FROM that names no stage goes to its image's registry page, a XAML element's generated field to its name, and any other
     /// place in a source generator's code to its copy (<see cref="GeneratedCode"/>).</summary>
     public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
@@ -99,7 +110,7 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
             return null;
         }
         if ((await AspireDeclaredAsync(lsp, document, offset) ?? await ConfigurationDeclaredAsync(lsp, document, offset) ?? await LocalizationDeclaredAsync(lsp, document, offset)
-            ?? await JsInteropDeclaredAsync(lsp, document, offset)) is { } own)
+            ?? await JsInteropDeclaredAsync(lsp, document, offset) ?? await GodotDeclaredAsync(lsp, document, offset)) is { } own)
         {
             return own;
         }
@@ -121,9 +132,21 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         return true;
     }
 
-    /// <summary>An Aspire resource's name in a string: the AppHost's declaration and its services' reads, else the server's rename.</summary>
+    /// <summary>A Godot node a GetNode path names (<see cref="ShowNodeRename"/>), an Aspire resource's name in a string (the
+    /// AppHost's declaration and its services' reads), else the server's rename.</summary>
     public override bool Rename(int caret)
     {
+        if (context.Editors.Active is { } shown && context.CSharp?.GodotOf?.Invoke(shown.Path) is not null && InGodotPath(caret))
+        {
+            IdeErrors.Observe(popups.Carried("Rename", async () =>
+            {
+                if (!await ShowNodeRename(shown, caret) && context.Editors.Active == shown)
+                {
+                    actions.ShowServerRename();
+                }
+            }, closeModal: false));
+            return true;
+        }
         if (AspireRoleOfShown != Aspire.AspireRole.None && context.Editors.Active is { } aspire && MayNameResource(caret))
         {
             IdeErrors.Observe(popups.Carried("Rename", async () =>

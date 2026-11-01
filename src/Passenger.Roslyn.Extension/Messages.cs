@@ -34,13 +34,14 @@ public static class Handlers
     public const string ComponentClass = "Passenger.Roslyn.Extension.ComponentClass";
     public const string GeneratedTexts = "Passenger.Roslyn.Extension.GeneratedTexts";
     public const string JsInteropCalls = "Passenger.Roslyn.Extension.JsInteropCalls";
+    public const string GodotCode = "Passenger.Roslyn.Extension.GodotCode";
 
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
-        ComponentClass, GeneratedTexts, JsInteropCalls,
+        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode,
     ];
 }
 
@@ -305,6 +306,79 @@ public sealed record JsInteropCall(
 public sealed record JsInteropFound(
     [property: JsonPropertyName("calls")] IReadOnlyList<JsInteropCall> Calls,
     [property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);
+
+/// <summary>A C# file of a Godot project asked about, by its path, with what of the project's scenes its answer is read
+/// against: engine classes by Godot's names and scripts by res:// path.</summary>
+public sealed record GodotCodeRequest(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("engine")] IReadOnlyList<string> Engine,
+    [property: JsonPropertyName("scripts")] IReadOnlyList<string> Scripts);
+
+/// <summary>What a Godot project's C# file holds that its scenes speak of: its classes Godot can run, its calls of
+/// GetNode, its res:// paths; and what was asked of the project's types, each list in the order asked.</summary>
+public sealed record GodotCodeFound(
+    [property: JsonPropertyName("classes")] IReadOnlyList<GodotClassFound> Classes,
+    [property: JsonPropertyName("calls")] IReadOnlyList<GodotNodeCall> Calls,
+    [property: JsonPropertyName("resources")] IReadOnlyList<GodotPathRead> Resources,
+    [property: JsonPropertyName("engine")] IReadOnlyList<GodotChain> Engine,
+    [property: JsonPropertyName("scripts")] IReadOnlyList<GodotChain?> Scripts)
+{
+    public static readonly GodotCodeFound None = new([], [], [], [], []);
+}
+
+/// <summary>A class of the file that derives from GodotObject: its name, full name and where its name is written, its first
+/// engine class by Godot's name, the scripts its code runs as (res://: its own, and those of the classes deriving from it),
+/// and its <c>[Export]</c> members.</summary>
+public sealed record GodotClassFound(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("fullName")] string FullName,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("engine")] string? Engine,
+    [property: JsonPropertyName("scripts")] IReadOnlyList<string> Scripts,
+    [property: JsonPropertyName("exports")] IReadOnlyList<GodotMember> Exports);
+
+/// <summary>A member a class declares, by the name a scene writes it by: its type as shown, and where its name is written,
+/// in the file asked of or another.</summary>
+public sealed record GodotMember(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("shown")] string Shown,
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End);
+
+/// <summary>A call of GetNode or GetNodeOrNull on the node the code runs on: the path it is given and where its string is
+/// written (its characters, when <paramref name="Exact"/>: a string written as it says, no escape in it), the class it is
+/// called in (by its index in the answer's), and the type it asks for; none for the call that takes no type.</summary>
+public sealed record GodotNodeCall(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("exact")] bool Exact,
+    [property: JsonPropertyName("class")] int Class,
+    [property: JsonPropertyName("type")] GodotTypeRef? Type,
+    [property: JsonPropertyName("orNull")] bool OrNull);
+
+/// <summary>A type as a node's is matched against it: an engine class by Godot's name, else a class or interface of the
+/// code by its full name; with its name as shown.</summary>
+public sealed record GodotTypeRef(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("engine")] bool Engine,
+    [property: JsonPropertyName("shown")] string Shown);
+
+/// <summary>A res:// path a string of the file gives, and where its characters are written.</summary>
+public sealed record GodotPathRead(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End);
+
+/// <summary>An engine class or a script asked for: the types a node of it is, itself first (Godot's names for an engine
+/// class's; full names, its interfaces too, for a script's class), and a script's first engine class by Godot's name.</summary>
+public sealed record GodotChain(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("chain")] IReadOnlyList<string> Chain,
+    [property: JsonPropertyName("engine")] string? Engine,
+    [property: JsonPropertyName("shown")] string Shown);
 
 /// <summary>The projects whose web routes are asked for, by their project files' paths; none asks for every project's.</summary>
 public sealed record RoutesRequest([property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);

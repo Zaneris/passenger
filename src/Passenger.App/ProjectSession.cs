@@ -106,6 +106,8 @@ public sealed class ProjectSession : IAsyncDisposable
         Xaml.Snapshots = () => setup.Editors.Texts().Open;
         Xaml.Evaluations = path => evaluations.GetValueOrDefault(path);
         Frameworks.Changed += (_, project) => FollowFramework(project);
+        GodotScenes = new Godot.GodotSceneIndex { Texts = setup.Editors.Texts, Files = () => (Index.Root, Index.Files) };
+        GodotScenes.Changed += (_, _) => CSharp?.GodotScenesChanged();
         Debug = new DebugController(setup.Editors, setup.Views.Debug)
         {
             RunInTerminal = setup.RunForDebugger,
@@ -253,6 +255,8 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             Xaml.EvaluationsChanged(changed);
         }
+        // A Godot project's C# is read against its scenes once its evaluation says which folder they are in.
+        CSharp?.GodotProjectsChanged();
 
         static bool Same(ProjectEvaluation a, ProjectEvaluation b) =>
             a.AssetsFile == b.AssetsFile && a.PackageRoot == b.PackageRoot && a.TargetPath == b.TargetPath && ReferenceEquals(a.Parsing, b.Parsing)
@@ -703,6 +707,12 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The XAML of the folder's projects, read by Passenger's own XAML for each XAML file open.</summary>
     public Xaml.XamlService Xaml { get; } = new();
 
+    /// <summary>The scenes and resources of the folder's Godot projects, read once each is asked about and followed.</summary>
+    public Godot.GodotSceneIndex GodotScenes { get; }
+
+    /// <summary>The folder of the Godot project a file's project builds a game for; null for a file of none.</summary>
+    public string? GodotOf(string path) => ProjectOf(path)?.GodotFolder;
+
     /// <summary>The code help in the folder's project, .props and .targets files, from MSBuild's evaluation in the project host.</summary>
     public MSBuild.MSBuildService MSBuild { get; }
 
@@ -918,6 +928,7 @@ public sealed class ProjectSession : IAsyncDisposable
         CSharp?.Attach(document);
         Web?.Attach(document);
         Xaml.Attach(document);
+        GodotScenes.Attach(document);
         MSBuild.Attach(document);
         FileChecks.Attach(document);
         Debug.Attach(document);
@@ -932,6 +943,7 @@ public sealed class ProjectSession : IAsyncDisposable
         CSharp?.Detach(document);
         Web?.Detach(document);
         Xaml.Detach(document);
+        GodotScenes.Detach(document);
         MSBuild.Detach(document);
         FileChecks.Detach(document);
         Debug.Detach(document);
@@ -1125,6 +1137,8 @@ public sealed class ProjectSession : IAsyncDisposable
                 ComposeGaps = () => Web?.Checks.Gaps ?? [],
                 ConfigurationOf = ConfigurationOf,
                 Texts = setup.Editors.Texts,
+                GodotOf = GodotOf,
+                GodotScenes = GodotScenes,
             };
             CSharpChanged?.Invoke(this, EventArgs.Empty);
             CSharpService started = CSharp;
@@ -1259,6 +1273,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Task abandoned = ContainerRun?.Abandon() ?? Task.CompletedTask;
         parts.Add(("the folder's containers", Containers.EndAsync(Task.WhenAll(debuggers, abandoned))));
         Xaml.Dispose();
+        GodotScenes.Stop();
         MSBuild.Dispose();
         FileChecks.Dispose();
         return parts;

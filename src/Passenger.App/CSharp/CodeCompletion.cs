@@ -195,7 +195,11 @@ internal sealed partial class CodeCompletion
 
     /// <summary>What a language lists ahead of its server's items, merged by label: where the name they complete starts,
     /// the items, and the text after the caret they replace (null for the server's items' own).</summary>
-    public readonly record struct OwnItems(int Start, IReadOnlyList<CompletionItem> Items, string? Tail);
+    public readonly record struct OwnItems(int Start, IReadOnlyList<CompletionItem> Items, string? Tail)
+    {
+        /// <summary>The characters beyond a name's that narrow the list rather than close it (a path's '/').</summary>
+        public string? WordCharacters { get; init; }
+    }
 
     /// <summary>The language server's list at the caret: a language's own items first (<paramref name="own"/>), unless
     /// <paramref name="first"/> lists its own alone; then the server's, the live templates that may go here (not in a web
@@ -248,6 +252,7 @@ internal sealed partial class CodeCompletion
                 list?.ItemDefaults?.CommitCharacters ?? [], list?.IsIncomplete ?? false)
             {
                 Tail = named is { Tail: { } tail } ? tail : web is not null ? Tail(asked, served, caret) : string.Empty,
+                WordCharacters = named?.WordCharacters ?? string.Empty,
                 Lead = web is not null && start < caret && caret <= asked.Length ? asked.GetText(start, caret - start) : string.Empty,
             };
             Filter();

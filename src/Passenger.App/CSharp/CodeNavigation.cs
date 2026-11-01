@@ -199,7 +199,8 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
         }
         try
         {
-            IReadOnlyList<LspLocation> usages = [.. await lsp.ReferencesAsync(offset), .. await context.Languages.Xaml.CodeUsesAsync(shown, lsp, offset)];
+            IReadOnlyList<LspLocation> usages = [.. await lsp.ReferencesAsync(offset), .. await context.Languages.Xaml.CodeUsesAsync(shown, lsp, offset),
+                .. await context.Languages.CSharp.GodotUsesAsync(shown, lsp, offset)];
             if (usages.Count == 0)
             {
                 context.Say("No usages found");

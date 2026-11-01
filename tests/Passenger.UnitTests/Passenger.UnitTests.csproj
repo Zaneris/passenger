@@ -126,12 +126,14 @@
     <Compile Include="../../src/Passenger.App/Templates/ProjectNames.cs" Link="App/ProjectNames.cs" />
   </ItemGroup>
 
-  <!-- Godot's remote debug protocol, its Variant encoding and messages, from their bytes alone, and the names Passenger's
-       helper in a game is sent, compiled in since their project is the app's. -->
+  <!-- Godot's remote debug protocol, its Variant encoding and messages, from their bytes alone, the names Passenger's
+       helper in a game is sent, and what a game's C# and its scenes say of each other, compiled in since their project is
+       the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Godot/GodotVariant.cs" Link="App/GodotVariant.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotMessages.cs" Link="App/GodotMessages.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotAgent.cs" Link="App/GodotAgent.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotChecks.cs" Link="App/GodotChecks.cs" />
   </ItemGroup>
 
   <!-- What a program's output says of its serving, from its lines alone, compiled in since its project is the app's. -->
