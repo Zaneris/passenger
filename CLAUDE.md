@@ -221,8 +221,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   `AnchoredList`; moved before `Changed`, each handler isolated): hold a place in the text with one, never your own
   `TextEditing.Map*`.
 - `Passenger.Editor`: the `CodeEditor` control (partials), `Keymap` and `EditorActions` (presets; modifier words read by
-  `Keystroke.ModifierOf`, an agent's too); the code font is `CodeEditor.CodeFont`, never a `FontFamily` written
-  elsewhere; the terminal takes the editor's font and cell (`CodeEditor.FontFamilyProperty`, `MeasureFont`). The
+  `Keystroke.ModifierOf`, an agent's too); the code font in force is the resource `CodeFonts.Key` (Settings › Editor),
+  shown through `CodeFonts.InCodeFont` (`Follow` for a control's own property), `CodeEditor.CodeFont` the carried
+  fallback, never a `FontFamily` written elsewhere; the terminal takes the editor's font and cell
+  (`CodeEditor.FontFamilyProperty`, `MeasureFont`) unless given its own. The
   gutter's columns but numbers and folds are the App's (`IGutterColumn`), the editor naming no debugger, test or VCS
   concept (EditorRulesTests); what a file's editors draw is its one `DocumentDecorations`, never fed per split. With
   soft wrap, an offset becomes a place through `Rows`/`RowSpan` (a place on a line through `WrapOf`), the lines off
