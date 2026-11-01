@@ -769,6 +769,7 @@ public partial class MainWindow : IdeWindow
         EditorWindows = Editors.CaptureWindows(),
         RecentFiles = [.. session.RecentFiles],
         UnloadedProjects = [.. session.KeptUnloaded],
+        TargetFrameworks = session.Frameworks.Kept,
         Folds = session.Folds.Capture(Editors.Documents),
     });
 

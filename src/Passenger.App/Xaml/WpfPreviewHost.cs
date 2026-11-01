@@ -59,7 +59,7 @@ internal sealed class WpfPreviewHost : IPreviewHost
         ProjectInputs inputs = builder.Current.Inputs;
         if (XamlPreview.Output(inputs, configured: false) is not { } built)
         {
-            preview.Say($"Build {Path.GetFileNameWithoutExtension(inputs.ProjectPath)} to preview its XAML: the previewer draws its last build");
+            preview.Say(XamlPreview.Unbuilt(inputs));
             return null;
         }
         if (!File.Exists(Previewer))
@@ -105,8 +105,9 @@ internal sealed class WpfPreviewHost : IPreviewHost
     {
         string name = Path.GetFileNameWithoutExtension(assembly);
         string configuration = Path.Combine(shadow, name + ".runtimeconfig.json");
-        // A class library has no runtime configuration, and one older than .NET 8 runs no previewer built for 8.
-        bool own = !File.Exists(configuration) || XamlPreview.Framework(inputs.TargetFramework) is not { Major: >= 8 };
+        // A class library has no runtime configuration, and a build for one older than .NET 8 runs no previewer built for 8.
+        string? runs = await BackgroundWork.Run(() => XamlPreview.FrameworkOfBuild(assembly));
+        bool own = runs is null || XamlPreview.Framework(runs) is not { Major: >= 8 };
         if (own)
         {
             configuration = Path.ChangeExtension(Previewer, ".runtimeconfig.json");

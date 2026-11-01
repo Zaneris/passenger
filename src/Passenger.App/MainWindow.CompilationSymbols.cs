@@ -11,7 +11,7 @@ public partial class MainWindow
 {
     private void AddCompilationSymbols()
     {
-        Editors.ParseOptions = path => CompilationSymbols.Of(session.Workspace?.Projects ?? [], path);
+        Editors.ParseOptions = path => CompilationSymbols.Of(session.Workspace?.Projects ?? [], path, chosen: session.Frameworks.Of);
         Editors.Opened += (_, document) => document.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(OpenDocument.ProjectContext) or nameof(OpenDocument.Path))
@@ -35,7 +35,7 @@ public partial class MainWindow
         if (document.Syntax is { } syntax)
         {
             IReadOnlyList<ProjectModel> projects = session.Workspace?.Projects ?? [];
-            syntax.Options = CompilationSymbols.Of(projects, document.Path, document.ProjectContext);
+            syntax.Options = CompilationSymbols.Of(projects, document.Path, document.ProjectContext, session.Frameworks.Of);
         }
     }
 }

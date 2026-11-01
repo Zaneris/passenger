@@ -425,6 +425,7 @@ public partial class MainWindow
         agentSocket?.Describe(next.Folder);
         OnCSharpChanged(next.CSharp);
         BindPreviews(next);
+        BindTargetFrameworks(next);
     }
 
     /// <summary>A session's debugger in the window: what it asks to run, what it says, where it stops and the toolbar's

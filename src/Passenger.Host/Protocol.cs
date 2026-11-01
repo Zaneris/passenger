@@ -236,6 +236,9 @@ public sealed record FrameworkDependencies(string? Framework, IReadOnlyList<Pack
     /// <summary>Whether the host evaluated it with EnableWindowsTargeting, which a Windows-only framework needs off Windows,
     /// so a build of it needs it too.</summary>
     public bool WindowsTargeting { get; init; }
+
+    /// <summary>The assembly the framework's build makes, wherever its output folder was moved; null without one.</summary>
+    public string? TargetPath { get; init; }
 }
 
 /// <summary>What a target framework of a project compiles its C# with: its DefineConstants, with the symbols the .NET SDK

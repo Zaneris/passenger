@@ -213,6 +213,17 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>A project's framework chosen (null: every project's): its previews start again on that framework's build,
+    /// one resting doing so as it is shown.</summary>
+    private void RestartPreviews(string? project)
+    {
+        foreach (XamlPreview preview in previews.Values.Select(p => p.Preview)
+            .Where(p => project is null || Passenger.Core.PathNames.Same(p.Document.Loading.ProjectPath, project)))
+        {
+            IdeErrors.Observe(preview.RestartAsync());
+        }
+    }
+
     private void EndPreview(OpenDocument document)
     {
         if (!previews.Remove(document, out ShownPreview? shown))

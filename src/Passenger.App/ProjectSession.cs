@@ -105,6 +105,7 @@ public sealed class ProjectSession : IAsyncDisposable
         // A XAML file's localized strings read from the .resx and XLIFF files as the editor has them.
         Xaml.Snapshots = () => setup.Editors.Texts().Open;
         Xaml.Evaluations = path => evaluations.GetValueOrDefault(path);
+        Frameworks.Changed += (_, project) => FollowFramework(project);
         Debug = new DebugController(setup.Editors, setup.Views.Debug)
         {
             RunInTerminal = setup.RunForDebugger,
@@ -219,8 +220,9 @@ public sealed class ProjectSession : IAsyncDisposable
     private volatile IReadOnlyDictionary<string, ProjectEvaluation> evaluations =
         new Dictionary<string, ProjectEvaluation>(PathNames.Comparer);
 
-    /// <summary>The projects' evaluations taken anew, and the XAML of a project whose evaluation moved something, or changed
-    /// what its C# is parsed with, read again.</summary>
+    /// <summary>The projects' evaluations taken anew, and the XAML of a project whose evaluation moved something, changed
+    /// what its C# is parsed with, or whose framework chosen changed, read again. A multi-targeted project's is the
+    /// framework chosen's (<see cref="Frameworks"/>): its build's assembly and its C#'s symbols.</summary>
     private void FollowEvaluations()
     {
         Dictionary<string, ProjectEvaluation> now = new(PathNames.Comparer);
@@ -228,14 +230,19 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             if (project.Evaluated is { } evaluated)
             {
+                string? framework = Frameworks.Of(project);
+                string? built = framework is null
+                    ? evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.TargetPath)?.Value
+                    : evaluated.Dependencies.FirstOrDefault(d => string.Equals(d.Framework, framework, StringComparison.OrdinalIgnoreCase))?.TargetPath;
                 now[project.Path] = new ProjectEvaluation(
                     evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.ProjectAssetsFile)?.Value,
                     evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.NuGetPackageRoot)?.Value,
                     project.Packages.Where(p => p.Version is { Length: > 0 }).DistinctBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
                         .ToDictionary(p => p.Name, p => p.Version!, StringComparer.OrdinalIgnoreCase),
-                    evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.TargetPath)?.Value)
+                    built)
                 {
-                    Parsing = CompilationSymbols.Of(project),
+                    Parsing = CompilationSymbols.Of(project, framework),
+                    TargetFramework = framework,
                 };
             }
         }
@@ -249,7 +256,7 @@ public sealed class ProjectSession : IAsyncDisposable
 
         static bool Same(ProjectEvaluation a, ProjectEvaluation b) =>
             a.AssetsFile == b.AssetsFile && a.PackageRoot == b.PackageRoot && a.TargetPath == b.TargetPath && ReferenceEquals(a.Parsing, b.Parsing)
-            && a.Versions.Count == b.Versions.Count
+            && a.TargetFramework == b.TargetFramework && a.Versions.Count == b.Versions.Count
             && a.Versions.All(v => b.Versions.TryGetValue(v.Key, out string? version) && version == v.Value);
     }
 
@@ -379,6 +386,21 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>Which regions each file opens folded.</summary>
     public FoldMemory Folds { get; } = new();
+
+    /// <summary>The target framework chosen for each multi-targeted project, which its XAML, its preview and its C# follow.</summary>
+    public TargetFrameworkChoices Frameworks { get; } = new();
+
+    /// <summary>A project's framework was chosen (by its path; null for every project's, as the folder's kept choices are
+    /// taken), and its XAML and C# followed: what shows the choice, and the previews of its XAML, follow it.</summary>
+    public event EventHandler<string?>? FrameworkChosen;
+
+    /// <summary>The XAML read again against the framework chosen and the open C# files answered for in it, then the window told.</summary>
+    private void FollowFramework(string? project)
+    {
+        FollowEvaluations();
+        CSharp?.FrameworkChosen();
+        FrameworkChosen?.Invoke(this, project);
+    }
 
     /// <summary>Find in Files' scope as its popup left it last.</summary>
     public FindScopeState FindScope { get; set; } = new();
@@ -869,6 +891,7 @@ public sealed class ProjectSession : IAsyncDisposable
             Unloaded.Add(project);
         }
         State = kept;
+        Frameworks.Keep(kept.Workspace);
         Configurations.Keep(kept.RunConfigurations, Projects);
         Folds.Restore(workspace.Folds);
         foreach (string file in workspace.RecentFiles.Where(File.Exists).Reverse())
@@ -1091,6 +1114,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 Hints = (shown.ParameterHints, shown.TypeHints),
                 FirstProjects = ActiveProjectsAsync,
                 ProjectsNow = () => Projects,
+                Frameworks = Frameworks,
                 Feed = DesignTimeBuilds.Feed,
                 // Razor's HTML is the HTML server's to answer.
                 HtmlServer = Web is { } web ? web.HtmlAsync : null,
