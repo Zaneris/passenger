@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Passenger.Terminal;
 
-/// <summary>The cursor's shape, as a program sets it (DECSCUSR): a block, an underline or a bar.</summary>
+/// <summary>The cursor's shape, as the person chooses it or a program sets it (DECSCUSR): a block, an underline or a bar.</summary>
 public enum CursorShape
 {
     Block,
@@ -106,7 +106,6 @@ public sealed class TerminalScreen
     public int CursorColumn { get; private set; }
 
     public bool CursorVisible { get; private set; } = true;
-    public CursorShape CursorShape => RequestedCursorShape ?? CursorShape.Block;
 
     /// <summary>The program's cursor requests, or null to use the person's configured defaults.</summary>
     public CursorShape? RequestedCursorShape { get; private set; }
