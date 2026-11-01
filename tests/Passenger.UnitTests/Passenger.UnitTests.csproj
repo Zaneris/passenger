@@ -139,6 +139,7 @@
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Godot/GodotVariant.cs" Link="App/GodotVariant.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotMessages.cs" Link="App/GodotMessages.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotScriptStops.cs" Link="App/GodotScriptStops.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotAgent.cs" Link="App/GodotAgent.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotChecks.cs" Link="App/GodotChecks.cs" />
   </ItemGroup>

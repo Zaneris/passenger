@@ -12,9 +12,9 @@ namespace Passenger.App.Godot;
 /// connection the game makes back (<c>--remote-debug tcp://127.0.0.1:port</c>, which <see cref="Listen"/> adds to its plan),
 /// and speaks Godot's remote debug protocol over it as Godot's editor does. The game tells its errors and warnings
 /// (<see cref="Raised"/>, each with the stack it was raised on) and its performance monitors once a second; asked, its scene
-/// tree and a node's properties, and it takes a property's new value. So it is a source of the Live Visual Tree. Its
-/// script breakpoints are skipped and its errors never stop it, since Passenger's own debugger is C#'s. Events are raised
-/// on the UI thread; it ends with its connection, or once disposed.</summary>
+/// tree and a node's properties, and it takes a property's new value. So it is a source of the Live Visual Tree. Under Debug
+/// its GDScript stops go to its script debugger (<see cref="Scripts"/>); under Run and Profile its breakpoints are skipped and
+/// its errors never stop it. Events are raised on the UI thread; it ends with its connection, or once disposed.</summary>
 public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
 {
     /// <summary>The flag that gives a game its debugger.</summary>
@@ -46,18 +46,22 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     /// <summary>The id under which the game's live editing knows the path of Passenger's helper (<see cref="GodotAgent"/>).</summary>
     private const long AgentPath = 7046;
 
-    private GodotGame(string name, string folder, string? version, bool headless, TcpListener listener)
+    private GodotGame(string name, string folder, string? version, bool headless, TcpListener listener, GodotScriptStart? scripts)
     {
         Name = name;
         Folder = folder;
         Version = version;
         Headless = headless;
         this.listener = listener;
+        ScriptsDebugged = scripts is not null;
+        StartBreakpoints = scripts?.Breakpoints ?? [];
     }
 
     /// <summary>A plan as a launch starts it, with a game listened for when it runs a Godot game (<see cref="LaunchPlan.Godot"/>),
-    /// <c>--remote-debug</c> among the arguments that start it; the plan as it is, and no game, for any other.</summary>
-    public static (LaunchPlan Plan, GodotGame? Game) Listen(LaunchPlan plan)
+    /// <c>--remote-debug</c> among the arguments that start it; the plan as it is, and no game, for any other. With
+    /// <paramref name="scripts"/> (Debug's) its GDScript is debugged from its first line: its breakpoints given as it starts,
+    /// and its errors stopping it unless they are not to.</summary>
+    public static (LaunchPlan Plan, GodotGame? Game) Listen(LaunchPlan plan, GodotScriptStart? scripts = null)
     {
         if (plan.Godot is not { } folder || plan.GodotEditor)
         {
@@ -67,13 +71,60 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         listener.Start(1);
         bool headless = plan.Arguments.Contains("--headless")
             || plan.Arguments.Zip(plan.Arguments.Skip(1)).Any(p => p is ("--display-driver", "headless"));
-        GodotGame game = new(plan.Name, folder, plan.GodotVersion, headless, listener);
+        GodotGame game = new(plan.Name, folder, plan.GodotVersion, headless, listener, scripts);
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         List<string> arguments = [.. plan.Arguments];
-        arguments.InsertRange(plan.Leading, [RemoteDebug, $"tcp://127.0.0.1:{port}"]);
+        List<string> debugging = [RemoteDebug, $"tcp://127.0.0.1:{port}"];
+        if (scripts is not null && GodotScriptBreakpoints.Argument(scripts.Breakpoints) is { } breakpoints)
+        {
+            debugging.AddRange([GodotScriptBreakpoints.Flag, breakpoints]);
+        }
+        if (scripts is { StopAtErrors: false })
+        {
+            debugging.Add(GodotScriptBreakpoints.IgnoreErrors);
+        }
+        arguments.InsertRange(plan.Leading, debugging);
         // For the game's life, as its output is: no screenshot or test waits on a connection that lasts until the game ends.
         IdeErrors.Observe(BackgroundWork.Unheld(game.ServeAsync));
-        return (plan with { Arguments = arguments, Leading = plan.Leading + 2 }, game);
+        return (plan with { Arguments = arguments, Leading = plan.Leading + debugging.Count }, game);
+    }
+
+    /// <summary>Whether its GDScript is debugged (it was started for Debug): a stop waits for its script debugger.</summary>
+    public bool ScriptsDebugged { get; private set; }
+
+    /// <summary>The breakpoints it was given as it started, by file and line from one.</summary>
+    public IReadOnlyList<(string Resource, int Line)> StartBreakpoints { get; }
+
+    /// <summary>Its script debugger, once one has attached: its stops, and the answers to what it asks, go to it.</summary>
+    public GodotScriptAdapter? Scripts { get; set; }
+
+    /// <summary>A stop the game made before its script debugger attached, waiting for it.</summary>
+    private GodotBreak? held;
+
+    /// <summary>The stop that waits for the script debugger, which takes it; null for none.</summary>
+    public GodotBreak? TakeHeldBreak()
+    {
+        GodotBreak? taken = held;
+        held = null;
+        return taken;
+    }
+
+    /// <summary>No script debugger will come (its session could not start): the game goes on, as one not debugged does.</summary>
+    public void LetScriptsGo()
+    {
+        UiThread.Check();
+        if (!ScriptsDebugged || State != LiveAppState.Connected)
+        {
+            ScriptsDebugged = false;
+            return;
+        }
+        ScriptsDebugged = false;
+        Send(GodotWords.SkipBreakpoints, true);
+        Send(GodotWords.IgnoreErrorBreaks, true);
+        if (TakeHeldBreak() is { } stop)
+        {
+            IdeErrors.Observe(SendToAsync(GodotWords.Continue, stop.Thread));
+        }
     }
 
     public string Name { get; }
@@ -173,9 +224,12 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             return;
         }
         State = LiveAppState.Connected;
-        // A GDScript breakpoint or error would stop the game waiting for a debugger that shows no GDScript stop.
-        Send(GodotWords.SkipBreakpoints, true);
-        Send(GodotWords.IgnoreErrorBreaks, true);
+        if (!ScriptsDebugged)
+        {
+            // A GDScript breakpoint or error would stop the game waiting for a debugger that shows no GDScript stop.
+            Send(GodotWords.SkipBreakpoints, true);
+            Send(GodotWords.IgnoreErrorBreaks, true);
+        }
         if (recording is { IsStopped: false })
         {
             Profiling(true);
@@ -255,6 +309,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             return;
         }
         State = LiveAppState.Ended;
+        Scripts?.GameEnded();
         treeAsked?.TrySetException(new LiveAppException($"{Name} has ended"));
         foreach (TaskCompletionSource<GodotObjectState> asked in objectsAsked.Values)
         {
@@ -309,6 +364,8 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
                     asked.TrySetException(new LiveAppException($"Passenger's helper in {Name} failed: {error.Said}"));
                 }
                 break;
+            case GodotWords.Error when GodotError.Read(message.Data) is { } error && Scripts?.Claims(error) == true:
+                break;
             case GodotWords.Error when GodotError.Read(message.Data) is { } error:
                 Raised?.Invoke(this, error);
                 break;
@@ -327,22 +384,34 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
                     TreeChanged?.Invoke(this, EventArgs.Empty);
                 }
                 break;
+            case GodotWords.DebugEnter when Scripts is { } scripts:
+                scripts.Heard(message);
+                break;
+            case GodotWords.DebugEnter when ScriptsDebugged && GodotBreak.Read(message.Data) is { } stop:
+                held = stop;
+                break;
             case GodotWords.DebugEnter:
                 // A script's stop Passenger cannot show: the game goes on.
-                Send(GodotWords.Continue);
+                IdeErrors.Observe(SendToAsync(GodotWords.Continue, GodotBreak.Read(message.Data)?.Thread ?? GodotMessage.MainThread));
+                break;
+            case GodotWords.DebugExit or GodotWords.StackDump or GodotWords.StackFrameVars or GodotWords.StackFrameVar or GodotWords.EvaluationReturn:
+                Scripts?.Heard(message);
                 break;
         }
     }
 
     private void Send(string name, params object?[] data) => IdeErrors.Observe(SendAsync(name, data));
 
-    private async Task SendAsync(string name, params object?[] data)
+    private Task SendAsync(string name, params object?[] data) => SendToAsync(name, GodotMessage.MainThread, data);
+
+    /// <summary>Sends a message to one of the game's threads: a thread stopped in a script reads only its own.</summary>
+    public async Task SendToAsync(string name, long thread, params object?[] data)
     {
         if (stream is not { } open || disposed)
         {
             throw new LiveAppException($"{Name} is not connected");
         }
-        byte[] frame = GodotMessage.Frame(name, data);
+        byte[] frame = GodotMessage.Frame(name, thread, data);
         await writing.WaitAsync();
         try
         {

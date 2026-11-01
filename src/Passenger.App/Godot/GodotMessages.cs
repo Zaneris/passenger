@@ -19,9 +19,13 @@ public sealed record GodotMessage(string Name, long Thread, IReadOnlyList<object
         : throw new GodotVariantException("A message is no array of its name, thread and data");
 
     /// <summary>A message for the game's main thread as it goes over the connection, its length first.</summary>
-    public static byte[] Frame(string name, params object?[] data)
+    public static byte[] Frame(string name, params object?[] data) => Frame(name, MainThread, data);
+
+    /// <summary>A message for one of the game's threads (one stopped in a script reads only its own) as it goes over the
+    /// connection, its length first.</summary>
+    public static byte[] Frame(string name, long thread, IReadOnlyList<object?> data)
     {
-        byte[] body = GodotVariant.Write(new List<object?> { name, MainThread, data.ToList() });
+        byte[] body = GodotVariant.Write(new List<object?> { name, thread, data.ToList() });
         byte[] frame = new byte[body.Length + 4];
         BinaryPrimitives.WriteInt32LittleEndian(frame, body.Length);
         body.CopyTo(frame, 4);
@@ -43,7 +47,20 @@ public static class GodotWords
     public const string SkipBreakpoints = "set_skip_breakpoints";
     public const string IgnoreErrorBreaks = "set_ignore_error_breaks";
     public const string DebugEnter = "debug_enter";
+    public const string DebugExit = "debug_exit";
     public const string Continue = "continue";
+    public const string Step = "step";
+    public const string Next = "next";
+    public const string Out = "out";
+    public const string Break = "break";
+    public const string Breakpoint = "breakpoint";
+    public const string GetStackDump = "get_stack_dump";
+    public const string StackDump = "stack_dump";
+    public const string GetStackFrameVars = "get_stack_frame_vars";
+    public const string StackFrameVars = "stack_frame_vars";
+    public const string StackFrameVar = "stack_frame_var";
+    public const string Evaluate = "evaluate";
+    public const string EvaluationReturn = "evaluation_return";
     public const string Screenshot = "scene:rq_screenshot";
     public const string Screenshotted = "game_view:get_screenshot";
     public const string LiveSetRoot = "scene:live_set_root";

@@ -7,8 +7,9 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>The Godot game McpGodotTests' agents run and drive: a Godot 4 C# project of one scene (its Main node's script
-/// says its greeting every tenth frame and when its toggle button changes, beside a text box), on the Godot found, restored
-/// from that Godot's own packages, its launch profile running it headless with user folders of the run's.</summary>
+/// says its greeting every tenth frame and when its toggle button changes, beside a text box, and a GDScript node counts its
+/// frames), on the Godot found, restored from that Godot's own packages, its launch profile running it headless with user
+/// folders of the run's.</summary>
 public sealed class GodotGameFolder : IAsyncLifetime
 {
     public GodotGameFolder()
@@ -47,10 +48,14 @@ public sealed class GodotGameFolder : IAsyncLifetime
 
         """;
 
+    /// <summary>The GDScript node's script, which counts its frames.</summary>
+    public const string Ticker = "extends Node\n\nvar ticks := 0\n\n\nfunc _process(_delta: float) -> void:\n\tticks += 1\n";
+
     private const string Scene = """
-        [gd_scene load_steps=2 format=3]
+        [gd_scene load_steps=3 format=3]
 
         [ext_resource type="Script" path="res://Main.cs" id="1"]
+        [ext_resource type="Script" path="res://ticker.gd" id="2"]
 
         [node name="Main" type="Node"]
         script = ExtResource("1")
@@ -77,6 +82,9 @@ public sealed class GodotGameFolder : IAsyncLifetime
         offset_right = 210.0
         offset_bottom = 90.0
 
+        [node name="Ticker" type="Node" parent="."]
+        script = ExtResource("2")
+
         """;
 
     public string Folder { get; }
@@ -93,6 +101,7 @@ public sealed class GodotGameFolder : IAsyncLifetime
         : new(TestFolders.PrepareAsync(async () =>
         {
             GodotTests.Game.Make(Folder, version, packages, Script, Scene);
+            File.WriteAllText(Path.Combine(Folder, "ticker.gd"), Ticker);
             Dictionary<string, string> homes = GodotTests.Game.Home(Folder + "-home");
             Directory.CreateDirectory(Path.Combine(Folder, "Properties"));
             File.WriteAllText(Path.Combine(Folder, "Properties", "launchSettings.json"), JsonSerializer.Serialize(new
@@ -180,7 +189,7 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
     [Fact]
     public async Task An_agent_debugs_a_godot_game_to_a_breakpoint_in_its_scripts_process()
     {
-        await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false);
+        await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false, environment: Homes);
         int line = Array.FindIndex(GodotGameFolder.Script.Split('\n'), l => l.Contains("frames++;", StringComparison.Ordinal)) + 1;
         await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Main.cs", ["line"] = line });
         JsonElement stop = await Call(client, McpTools.DebugStart, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
@@ -190,4 +199,29 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
         Assert.True(paused.IsError == true && Text(paused).Contains("paused in the debugger", StringComparison.Ordinal), $"A paused game's tree was answered with: {Text(paused)}");
         await Call(client, McpTools.Stop);
     }
+
+    /// <summary>A breakpoint an agent sets in a GDScript file stops the game there, its GDScript debugged beside its C#: the
+    /// breakpoint bound, debug_state naming the script's line, its locals and self, and the game's two sessions.</summary>
+    [Fact]
+    public async Task An_agent_sets_a_breakpoint_in_a_gdscript_file_and_debug_state_says_where_the_game_stopped_with_its_locals()
+    {
+        await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false, environment: Homes);
+        int line = Array.FindIndex(GodotGameFolder.Ticker.Split('\n'), l => l.Contains("ticks += 1", StringComparison.Ordinal)) + 1;
+        JsonElement set = Assert.Single((await Call(client, McpTools.BreakpointSet, new() { ["path"] = "ticker.gd", ["line"] = line })).EnumerateArray());
+        Assert.Equal("set", set.GetProperty("status").GetString());
+        await Call(client, McpTools.DebugStart, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
+        JsonElement state = default;
+        await Until(async () => (state = await Call(client, McpTools.DebugState)).GetProperty("state").GetString() == "paused", "the game to stop at the breakpoint in ticker.gd");
+        Assert.StartsWith($"ticker.gd:{line}:", state.GetProperty("location").GetString(), StringComparison.Ordinal);
+        string[] locals = [.. state.GetProperty("locals").EnumerateArray().Select(l => l.GetProperty("name").GetString()!)];
+        Assert.True(locals.Contains("_delta") && locals.Contains("self"), $"The stop's locals are {string.Join(", ", locals)}");
+        Assert.Contains(state.GetProperty("sessions").EnumerateArray(), s => s.GetString() == "Spinner: Headless (GDScript): paused");
+        JsonElement[] listed = [.. (await Call(client, McpTools.DebugState, new() { ["of"] = "breakpoints" })).EnumerateArray()];
+        Assert.Contains(listed, b => b.TryGetProperty("path", out JsonElement at) && at.GetString() == "ticker.gd" && b.GetProperty("status").GetString() == "bound");
+        Assert.Contains(listed, b => b.TryGetProperty("scriptErrors", out JsonElement errors) && errors.GetBoolean() && b.GetProperty("enabled").GetBoolean());
+        await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>The user folders a Godot editor the agent's Passenger starts for GDScript keeps, the run's.</summary>
+    private Dictionary<string, string?> Homes => new() { [Passenger.App.Godot.GodotScripts.HomeVariable] = game.Folder + "-home" };
 }

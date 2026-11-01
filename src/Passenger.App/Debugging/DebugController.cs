@@ -273,7 +273,11 @@ public sealed class DebugController : IDisposable
     public Func<bool> HotReloadOn { get; init; } = () => false;
 
     /// <summary>The chosen session's Hot Reload, while it has one.</summary>
-    public HotReload? HotReload => chosen is { HotReload: { } reload, IsLive: true, Session: not null } ? reload : null;
+    public HotReload? HotReload => Reloaded is { HotReload: { } reload, IsLive: true, Session: not null } ? reload : null;
+
+    /// <summary>The tab Hot Reload's changes go to: the chosen one, or the one it is the companion of (a Godot game's C#, whose
+    /// GDScript tab is chosen).</summary>
+    private DebugTab? Reloaded => chosen is { Companion: { IsLive: true } of } ? of : chosen;
 
     /// <summary>The edits followed for programs built and not yet debugged (<see cref="Building"/>).</summary>
     private readonly List<BuiltEdits> building = [];
@@ -345,7 +349,7 @@ public sealed class DebugController : IDisposable
         return edits;
     }
 
-    private HotReload? hotReload => chosen?.HotReload;
+    private HotReload? hotReload => Reloaded?.HotReload;
 
     /// <summary>What the last Apply Changes came to, until the next.</summary>
     public HotReloadOutcome? LastApplied { get; private set; }
@@ -363,8 +367,8 @@ public sealed class DebugController : IDisposable
     /// <summary>Why Apply Changes cannot run: nothing debugged, a session without Hot Reload, or one that stopped taking
     /// changes.</summary>
     public string? WhyNotApply() => NotLive()
-        ?? (Session!.State == DebugState.Starting ? StillStarting
-        : hotReload is null ? (Session!.Attached
+        ?? (Reloaded!.Session!.State == DebugState.Starting ? StillStarting
+        : hotReload is null ? (Reloaded.Session.Attached
             ? "Hot Reload applies changes to a program the debugger launched, not to one it attached to"
             : $"This program was launched with Hot Reload when debugging off ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})")
         : hotReload.WhyNot);
@@ -378,7 +382,7 @@ public sealed class DebugController : IDisposable
 
     /// <summary>The chosen program debugged with Hot Reload, then the others of its group (a container run's services debugged
     /// together), which take its edits with it; none when Apply Changes cannot run on it.</summary>
-    private List<IHotReloadTarget> Debugged() => WhyNotApply() is null && chosen is { } applied
+    private List<IHotReloadTarget> Debugged() => WhyNotApply() is null && Reloaded is { } applied
         ? [applied, .. view.Sessions.Where(t => t != applied && applied.Group is { } group && t.Group == group
             && t is { IsLive: true, HotReload.WhyNot: null, Session: not null })]
         : [];
@@ -653,6 +657,32 @@ public sealed class DebugController : IDisposable
             launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits);
     }
 
+    /// <summary>What a Godot game Debug starts begins its GDScript with: the enabled breakpoints in the project's scripts at
+    /// their lines now, and whether its script errors stop it (GDScript Errors on); none of either while muted.</summary>
+    public Godot.GodotScriptStart ScriptStart(string folder) => new(
+        Breakpoints.Muted ? [] : [.. Breakpoints.All.Where(b => b.Enabled && Godot.GodotScriptAdapter.Takes(b.Path))
+            .Select(b => (Resource: Passenger.Workspace.GodotScenes.ResPathOf(folder, b.Path), Line: b.Line + 1))
+            .Where(b => b.Resource is not null).Select(b => (b.Resource!, b.Line))],
+        !Breakpoints.Muted && Breakpoints.ScriptErrors.Enabled);
+
+    /// <summary>What a Godot game's GDScript tab is called after the game's own.</summary>
+    public static string ScriptsTab(string name) => $"{name} (GDScript)";
+
+    /// <summary>Debugs a Godot game's GDScript beside its C#: a session of its own over the game's connection
+    /// (<see cref="Godot.GodotScriptAdapter"/>), in a tab beside the game's (<see cref="DebugTab.Companion"/>), which stays
+    /// chosen until a script stops; Stop there ends the game, as Stop of its C# does, and Detach lets its scripts run on
+    /// unstopped. Null once the session is open, else why not.</summary>
+    public Task<string?> DebugScriptsAsync(Godot.GodotGame game, string name)
+    {
+        UiThread.Check();
+        DebugTab? companion = view.Sessions.FirstOrDefault(t => t.Name == name && t.IsLive);
+        InProcessEnd end = new($"GDScript adapter of {name}");
+        Godot.GodotScriptAdapter adapter = new(game, end, () => StopAsync(name));
+        adapter.Start();
+        return OpenAsync((built, log, output, starting) => DebugSession.AttachInProcessAsync(end, DebugEngine.GDScript, name, Breakpoints, built, log, output, ColumnOf, starting),
+            ScriptsTab(name), launched: false, companion: companion, attachedWords: $"{name}'s GDScript is debugged here; what the game writes is in {name}'s tab");
+    }
+
     /// <summary>Launches another program in a native tab, with hooks installed before its adapter starts.</summary>
     public Task<DebugLaunch> StartAdditionalAsync(Run.LaunchPlan plan, CancellationToken cancellation = default, Action<DebugTab>? configure = null)
         => OpenAdditionalAsync(plan.Name, tab => StartInTabAsync(plan, tab: tab), null, cancellation, configure);
@@ -744,7 +774,7 @@ public sealed class DebugController : IDisposable
     /// Reload's changes together; its tab holds an inspected <paramref name="app"/> and given <paramref name="edits"/>.</summary>
     private async Task<string?> OpenAsync(Func<BuiltLines, Action<string>, Action<OutputEvent>, Action<DebugSession>, Task<DebugSession>> open, string name, bool launched,
         bool inTerminal = false, bool hotReloadOn = false, AdapterPlace? place = null, string? group = null, DebugTab? tab = null, LiveApp? app = null,
-        Run.LaunchPlan? plan = null, BuiltEdits? edits = null, UpdateHandlerHook? hook = null)
+        Run.LaunchPlan? plan = null, BuiltEdits? edits = null, UpdateHandlerHook? hook = null, DebugTab? companion = null, string? attachedWords = null)
     {
         UiThread.Check();
         // A start that opens no session lets go of its update handlers' hook with it.
@@ -781,6 +811,7 @@ public sealed class DebugController : IDisposable
             return Unopened("The workspace ended during launch");
         }
         tab ??= Place(name);
+        tab.Companion = companion;
         tab.Group = group ?? tab.Group;
         tab.App = app ?? tab.App;
         tab.Plan = plan;
@@ -803,7 +834,11 @@ public sealed class DebugController : IDisposable
         tab.Lines = built;
         tab.HotReload = reload;
         await FollowClosedLambdasAsync();
-        await ChooseAsync(tab);
+        // A companion's tab is chosen once its program stops there, its program's own staying in front until then.
+        if (companion is null)
+        {
+            await ChooseAsync(tab);
+        }
         if (disposed || ending || tab.OpeningStopped || !view.Sessions.Contains(tab))
         {
             reload?.End();
@@ -811,8 +846,11 @@ public sealed class DebugController : IDisposable
             tab.OnStateChanged();
             return $"Debugging {name} ended before launch completed";
         }
-        view.SetState(DebugState.Starting);
-        view.ShowDetachable(false);
+        if (tab == chosen)
+        {
+            view.SetState(DebugState.Starting);
+            view.ShowDetachable(false);
+        }
         OutputView shown = tab.Console;
         if (inTerminal)
         {
@@ -824,7 +862,7 @@ public sealed class DebugController : IDisposable
         }
         else if (!launched)
         {
-            shown.Append($"{AttachedConsole}\n");
+            shown.Append($"{attachedWords ?? AttachedConsole}\n");
         }
         if (plan?.NotDebugged is { } notDebugged)
         {
@@ -1433,10 +1471,10 @@ public sealed class DebugController : IDisposable
                 DebugState.Starting => StillStarting,
                 _ => null,
             }, new("Run", 1, 1));
-        Add(AppActions.StepOver, "Step Over", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOverAsync(), "step over")), (d, _) => d.NotPaused(), new("Run", 1, 2));
-        Add(AppActions.StepInto, "Step Into", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepIntoAsync(), "step into")), (d, _) => d.NotPaused(), new("Run", 1, 3));
-        Add(AppActions.SmartStepInto, "Smart Step Into", (d, c) => IdeErrors.Observe(d.SmartStepIntoAsync()), (d, _) => d.NotPaused(), new("Run", 1, 4));
-        Add(AppActions.StepOut, "Step Out", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOutAsync(), "step out")), (d, _) => d.NotPaused(), new("Run", 1, 5));
+        Add(AppActions.StepOver, "Step Over", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOverAsync(), "step over")), (d, _) => d.NotSteppable(), new("Run", 1, 2));
+        Add(AppActions.StepInto, "Step Into", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepIntoAsync(), "step into")), (d, _) => d.NotSteppable(), new("Run", 1, 3));
+        Add(AppActions.SmartStepInto, "Smart Step Into", (d, c) => IdeErrors.Observe(d.SmartStepIntoAsync()), (d, _) => d.NotSteppable(), new("Run", 1, 4));
+        Add(AppActions.StepOut, "Step Out", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOutAsync(), "step out")), (d, _) => d.NotSteppable(), new("Run", 1, 5));
         Add(AppActions.RunToCursor, "Run to Cursor", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.RunToCursorAsync(c.File!.Path, c.Caret.Line), "run to the cursor")),
             (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused(), new("Run", 1, 6));
         Add(AppActions.SetNextStatement, "Set Next Statement", (d, c) => IdeErrors.Observe(d.SetNextStatementAsync(d.Session!, c.File!.Path, c.Caret.Line)),
@@ -1514,6 +1552,10 @@ public sealed class DebugController : IDisposable
 
     /// <summary>Why a step cannot go now: nothing is being debugged, or the program runs.</summary>
     private string? NotPaused() => NotLive() ?? (Session!.State != DebugState.Paused ? "The program is not paused" : null);
+
+    /// <summary>Why no step goes on from the stop now: the program is not paused, or its debugger steps on from no stop of the
+    /// kind it is at (a Godot script error's).</summary>
+    private string? NotSteppable() => NotPaused() ?? Session!.NoSteps;
 
     /// <summary>Why the chosen session takes no action now: nothing is being debugged, or the tab chosen is one that ended.</summary>
     private string? NotLive() => !IsDebugging ? NothingDebugged
@@ -2048,12 +2090,14 @@ public sealed class DebugController : IDisposable
     {
         string said = Said(tab);
         List<DebugTab> live = [.. view.Sessions.Where(t => t.IsLive && t.Session is not null)];
-        if (live.Count == 0 || live is [var only] && only == tab)
+        // A Godot game's GDScript tab and its C# one are one program.
+        int programs = live.Count(t => t.Companion is not { IsLive: true });
+        if (live.Count == 0 || programs <= 1 && live.All(t => t == tab || t.Companion == tab || tab.Companion == t))
         {
             return said;
         }
         string[] paused = [.. live.Where(t => t.Session!.State == DebugState.Paused).Select(t => t.Name)];
-        return $"{said}; {Plural.Of(live.Count, "program")} debugged"
+        return $"{said}; {Plural.Of(programs, "program")} debugged"
             + (paused.Length > 0 ? $", {Plural.Listed(paused)} paused" : string.Empty);
     }
 

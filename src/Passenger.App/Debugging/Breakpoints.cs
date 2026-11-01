@@ -173,6 +173,18 @@ public sealed class BindingErrorBreakpoint : Breakpoint
     public override string Location => AnyBindingError;
 }
 
+/// <summary>The GDScript Errors breakpoint: on, a Godot game being debugged stops at a script error where the error was
+/// raised, its stack and values still there, as Godot's own editor stops it; off, the game goes on past each error, which
+/// Problems lists. Every folder has the one, on until it is turned off, and none removes it. Its condition and log message
+/// are GDScript, read in the frame that raised the error.</summary>
+public sealed class ScriptErrorBreakpoint : Breakpoint
+{
+    /// <summary>Its name in the Breakpoints window, under "GDScript Errors".</summary>
+    public const string AnyScriptError = "Any GDScript error";
+
+    public override string Location => AnyScriptError;
+}
+
 public enum BreakpointStatus
 {
     /// <summary>No debugger has said, or none is running.</summary>
@@ -195,6 +207,9 @@ public sealed record BreakpointsState : IStateDocument<BreakpointsState>
 
     /// <summary>The XAML Binding Errors breakpoint; none kept is off.</summary>
     public KeptBindingErrorBreakpoint? BindingErrors { get; init; }
+
+    /// <summary>The GDScript Errors breakpoint; none kept is on.</summary>
+    public KeptScriptErrorBreakpoint? ScriptErrors { get; init; }
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 
@@ -247,7 +262,17 @@ public sealed record KeptBindingErrorBreakpoint
     public string? LogMessage { get; init; }
 }
 
-/// <summary>Every breakpoint: the line breakpoints by file, the CLR exception breakpoints, XAML Binding Errors and the
+/// <summary>The GDScript Errors breakpoint as kept: whether it is on and what it does.</summary>
+public sealed record KeptScriptErrorBreakpoint
+{
+    public bool Enabled { get; init; } = true;
+    public bool Suspend { get; init; } = true;
+    public string? Condition { get; init; }
+    public string? HitCondition { get; init; }
+    public string? LogMessage { get; init; }
+}
+
+/// <summary>Every breakpoint: the line breakpoints by file, the CLR exception breakpoints, XAML Binding Errors, GDScript Errors and the
 /// session's data and property breakpoints. A breakpoint in an open file moves with the text around it by an anchor in it,
 /// so an edit above it leaves it on its line; one whose line is deleted lands where the deletion did, and two on one line
 /// become one.
@@ -283,6 +308,9 @@ public sealed class BreakpointStore
 
     /// <summary>XAML Binding Errors, the folder's one, off until it is turned on.</summary>
     public BindingErrorBreakpoint BindingErrors { get; } = new();
+
+    /// <summary>GDScript Errors, the folder's one, on until it is turned off; its changes raise <see cref="ExceptionsChanged"/>.</summary>
+    public ScriptErrorBreakpoint ScriptErrors { get; } = new();
 
     public IEnumerable<string> Files => byPath.Where(p => p.Value.Count > 0).Select(p => p.Key);
 
@@ -333,6 +361,14 @@ public sealed class BreakpointStore
             Condition = BindingErrors.Condition,
             HitCondition = BindingErrors.HitCondition,
             LogMessage = BindingErrors.LogMessage,
+        },
+        ScriptErrors = new KeptScriptErrorBreakpoint
+        {
+            Enabled = ScriptErrors.Enabled,
+            Suspend = ScriptErrors.Suspend,
+            Condition = ScriptErrors.Condition,
+            HitCondition = ScriptErrors.HitCondition,
+            LogMessage = ScriptErrors.LogMessage,
         },
     };
 
@@ -385,6 +421,21 @@ public sealed class BreakpointStore
         {
             SetBindingErrors(bindingErrors);
         }
+        if (kept.ScriptErrors is { } scriptErrors)
+        {
+            SetScriptErrors(scriptErrors);
+        }
+    }
+
+    /// <summary>GDScript Errors as kept, or as a folder's is at first (on).</summary>
+    private void SetScriptErrors(KeptScriptErrorBreakpoint kept)
+    {
+        ScriptErrors.Enabled = kept.Enabled;
+        ScriptErrors.Suspend = kept.Suspend;
+        ScriptErrors.Condition = kept.Condition;
+        ScriptErrors.HitCondition = kept.HitCondition;
+        ScriptErrors.LogMessage = kept.LogMessage;
+        ExceptionsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>XAML Binding Errors as kept, or as a folder's is at first (off).</summary>
@@ -413,6 +464,7 @@ public sealed class BreakpointStore
         exceptions.Add(new ExceptionBreakpoint(null));
         ExceptionsChanged?.Invoke(this, EventArgs.Empty);
         SetBindingErrors(new KeptBindingErrorBreakpoint());
+        SetScriptErrors(new KeptScriptErrorBreakpoint());
         ClearData();
     }
 
@@ -469,7 +521,7 @@ public sealed class BreakpointStore
                 Changed?.Invoke(this, path);
             }
         }
-        if (exceptions.Aggregate(false, (any, e) => e.Forget(session) | any))
+        if (exceptions.Aggregate(false, (any, e) => e.Forget(session) | any) | ScriptErrors.Forget(session))
         {
             ExceptionsChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -754,6 +806,13 @@ public sealed class BreakpointStore
         {
             BindingErrorsChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>Records what a session's debugger said of GDScript Errors (unknown when it was not sent).</summary>
+    public void ReportScriptErrors(object session, BreakpointStatus status, string? message)
+    {
+        ScriptErrors.Tell(session, status, message);
+        ExceptionsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Records what a session's debugger said of the exception breakpoints sent, in the order they were sent; those

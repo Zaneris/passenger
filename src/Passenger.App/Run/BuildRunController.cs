@@ -1698,8 +1698,9 @@ public sealed partial class BuildRunController
         // Before the session clears the Debug window's console, which forgets the links the last one's output had.
         DebugProject = Path.GetDirectoryName(plan.Project);
         DebugController debug = session.Debug;
+        // A Godot game's GDScript is debugged from its first line, beside its C#.
+        (LaunchPlan listened, Godot.GodotGame? game) = session.Listened(plan, plan.Godot is { } folder ? debug.ScriptStart(folder) : null);
         // An Avalonia or WPF app is launched with the Live Visual Tree's inspector, held by its tab, ending with this debugging.
-        (LaunchPlan listened, Godot.GodotGame? game) = session.Listened(plan);
         (LaunchPlan launched, LiveApp? inspected) = session.Inspected(listened);
         Task<string?> starting = debug.StartAsync(launched, app: inspected, edits: edits);
         // Its tab, chosen as the start began, has the console its failed bindings are written to.
@@ -1708,6 +1709,11 @@ public sealed partial class BuildRunController
         if (game is not null && refused is null)
         {
             game.Debugged = debug.SessionNamed(launched.Name);
+            IdeErrors.Observe(DebugScriptsAsync(game, launched.Name));
+        }
+        else
+        {
+            game?.LetScriptsGo();
         }
         Task ended = refused is null ? DebugEnded(debug.SessionNamed(launched.Name)) : Task.CompletedTask;
         EndWith(inspected, ended);
@@ -1717,6 +1723,16 @@ public sealed partial class BuildRunController
             parts.OpenBrowser(plan, ended);
         }
         return refused;
+    }
+
+    /// <summary>A Godot game's GDScript debugged beside its C#, in a tab of its own (<see cref="DebugController.DebugScriptsAsync"/>);
+    /// one whose debugger could not start lets the game go on past its script stops, as a game Run runs does.</summary>
+    private async Task DebugScriptsAsync(Godot.GodotGame game, string name)
+    {
+        if (await session.Debug.DebugScriptsAsync(game, name) is not null)
+        {
+            game.LetScriptsGo();
+        }
     }
 
     /// <summary>The errors and warnings the last Godot game launched raised, in Problems' Godot tab as they come, each at the

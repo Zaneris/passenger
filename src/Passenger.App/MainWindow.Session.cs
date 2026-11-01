@@ -51,7 +51,7 @@ public partial class MainWindow
     {
         ContainerTools = () => ContainerToolsFrom ?? Containers.ContainerToolsSource.Default(Releases),
         DockerHub = DockerHub,
-        GodotEnvironment = GodotEnvironment,
+        GodotEnvironment = GodotEnvironment ?? Godot.GodotScripts.UserFoldersOfVariable(),
         StartsLanguageServer = StartsLanguageServer,
         HeadStart = headStart,
     };

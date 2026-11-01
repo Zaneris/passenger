@@ -21,6 +21,31 @@ public static class GodotScripts
     /// <summary>What a headless editor writes into the project as it starts that is the person's editor's own.</summary>
     private static readonly string[] Kept = [Path.Combine(".godot", "editor", "editor_layout.cfg"), Path.Combine(".godot", "mono", "metadata", "ide_messaging_meta.txt")];
 
+    /// <summary>The variable naming a folder under which a Godot editor Passenger starts for GDScript keeps its user folders
+    /// (its settings, caches and logs) in place of the person's: a test's.</summary>
+    [IdentifierHome]
+    public const string HomeVariable = "PASSENGER_GODOT_HOME";
+
+    /// <summary>The variables that keep a Godot's user folders under <paramref name="home"/>: HOME (and XDG's) on macOS and
+    /// Linux, APPDATA and LOCALAPPDATA on Windows.</summary>
+    public static Dictionary<string, string> UserFolders(string home)
+    {
+        string full = Directory.CreateDirectory(Path.GetFullPath(home)).FullName;
+        return OperatingSystem.IsWindows()
+            ? new() { ["APPDATA"] = Path.Combine(full, "Roaming"), ["LOCALAPPDATA"] = Path.Combine(full, "Local") }
+            : new()
+            {
+                ["HOME"] = full,
+                ["XDG_CONFIG_HOME"] = Path.Combine(full, ".config"),
+                ["XDG_DATA_HOME"] = Path.Combine(full, ".local", "share"),
+                ["XDG_CACHE_HOME"] = Path.Combine(full, ".cache"),
+            };
+    }
+
+    /// <summary>The user folders <see cref="HomeVariable"/> names, or null where it names none.</summary>
+    public static IReadOnlyDictionary<string, string>? UserFoldersOfVariable() =>
+        Environment.GetEnvironmentVariable(HomeVariable) is { Length: > 0 } home ? UserFolders(home) : null;
+
     /// <summary>The Godot project a file is in: the nearest folder above it holding a project.godot; null for none.</summary>
     public static string? ProjectOf(string path)
     {

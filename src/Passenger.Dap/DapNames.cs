@@ -66,6 +66,7 @@ public static class DapEvents
     public const string Module = "module";
     public const string Process = "process";
     public const string Output = "output";
+    public const string Continued = "continued";
 }
 
 /// <summary>Why the program stopped, the stopped event's reason, by the protocol's names: what the engine reports, what the

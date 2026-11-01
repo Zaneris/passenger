@@ -68,6 +68,10 @@ public sealed class DebugTab(string name, OutputView console) : Observable, IHot
     /// changes go to each of them together.</summary>
     public string? Group { get; internal set; }
 
+    /// <summary>The tab of the program this tab's session debugs another part of (a Godot game's C#, whose GDScript this tab
+    /// debugs): what names no session takes that one while neither is paused, and the two count as one program.</summary>
+    public DebugTab? Companion { get; internal set; }
+
     /// <summary>What follows its program's output from outside into its console (a container's log), while it does.</summary>
     internal System.Diagnostics.Process? Following { get; set; }
 

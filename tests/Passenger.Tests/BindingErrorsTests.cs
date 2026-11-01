@@ -160,7 +160,7 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
         Assert.False(store.BindingErrors.Enabled, "XAML Binding Errors was on before anything turned it on");
         Ui.Run(window, AppActions.ViewBreakpoints);
         BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
-        Assert.Equal([ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError], breakpoints.Listed.Select(b => b.Location));
+        Assert.Equal([ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError, ScriptErrorBreakpoint.AnyScriptError], breakpoints.Listed.Select(b => b.Location));
         Assert.Contains(breakpoints.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "XAML Binding Errors");
         Ui.Click(Row(breakpoints, BindingErrorBreakpoint.AnyBindingError).GetVisualDescendants().OfType<CheckBox>().First());
         Ui.Click(Button(breakpoints, "Done"));

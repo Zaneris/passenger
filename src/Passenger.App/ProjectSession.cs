@@ -544,11 +544,11 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>A plan as a launch starts it, a Godot game's with Passenger listening for it as its remote debugger, the game
     /// chosen (<see cref="Game"/>) and among <see cref="Games"/> until the launch ends it with its program; any other plan as
-    /// it is, and no game.</summary>
-    public (LaunchPlan Plan, Godot.GodotGame? Game) Listened(LaunchPlan plan)
+    /// it is, and no game. With <paramref name="scripts"/> (Debug's) its GDScript is debugged from its first line.</summary>
+    public (LaunchPlan Plan, Godot.GodotGame? Game) Listened(LaunchPlan plan, Godot.GodotScriptStart? scripts = null)
     {
         UiThread.Check();
-        (LaunchPlan listened, Godot.GodotGame? game) = Godot.GodotGame.Listen(plan);
+        (LaunchPlan listened, Godot.GodotGame? game) = Godot.GodotGame.Listen(plan, scripts);
         if (game is not null)
         {
             if (Game is { State: LiveAppState.Ended } ended && !games.Contains(ended))

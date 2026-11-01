@@ -1356,8 +1356,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "column inside the lambda there, each time it runs); on an exception type (its full name, or \"Any " +
         "exception\", which remove only turns off), in its scenarios (all by default); XAML Binding Errors (bindingErrors: a " +
         "debugged app stops as a binding fails, $bindingError giving Control, Property, Path, FailedPart, DataContext, Message " +
-        "and Xaml); or Break When Value Changes on control's property (as app_details names it) in the app debugged, for the " +
-        "session, condition reading newValue, oldValue and control. condition is a C# bool; hitCondition \"==3\", \">=2\" or " +
+        "and Xaml); GDScript Errors (scriptErrors: a debugged Godot game stops at a script error, on by default); or Break When " +
+        "Value Changes on control's property (as app_details names it) in the app debugged, for the " +
+        "session, condition reading newValue, oldValue and control. condition is a C# bool (GDScript in .gd); hitCondition \"==3\", \">=2\" or " +
         "\"%2\"; logMessage (\"count is {count}\") is written each hit; suspend false makes a tracepoint. Bound at once while " +
         "debugging.")]
     public Task<IReadOnlyList<BreakpointInfo>> SetBreakpoint(
@@ -1367,6 +1368,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         int? column = null,
         string? exception = null,
         bool bindingErrors = false,
+        bool scriptErrors = false,
         string? control = null,
         string? property = null,
         string? condition = null,
@@ -1380,12 +1382,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         if (remove)
         {
-            return await RemoveBreakpoint(path, line, attribute, column, exception, bindingErrors, control, property, cancel);
+            return await RemoveBreakpoint(path, line, attribute, column, exception, bindingErrors, scriptErrors, control, property, cancel);
         }
         BreakpointStore store = Session.Debug.Breakpoints;
-        if (bindingErrors)
+        if (bindingErrors || scriptErrors)
         {
-            store.Update(store.BindingErrors, enabled: true, suspend, condition, hitCondition, logMessage);
+            store.Update(scriptErrors ? store.ScriptErrors : store.BindingErrors, enabled: true, suspend, condition, hitCondition, logMessage);
             await InTheProgram(cancel);
             return ExceptionBreakpoints();
         }
@@ -1421,7 +1423,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// <summary>breakpoint_set's remove: the breakpoint its other arguments name taken away, or for "Any exception" and
     /// XAML Binding Errors turned off.</summary>
     private async Task<IReadOnlyList<BreakpointInfo>> RemoveBreakpoint(string? path, int? line, string? attribute, int? column, string? exception, bool bindingErrors,
-        string? control, string? property, CancellationToken cancel)
+        bool scriptErrors, string? control, string? property, CancellationToken cancel)
     {
         BreakpointStore store = Session.Debug.Breakpoints;
         if (control is { Length: > 0 } || property is { Length: > 0 })
@@ -1445,9 +1447,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await InTheApp(cancel);
             return DataBreakpoints();
         }
-        if (bindingErrors)
+        if (bindingErrors || scriptErrors)
         {
-            BindingErrorBreakpoint failures = store.BindingErrors;
+            Breakpoint failures = scriptErrors ? store.ScriptErrors : store.BindingErrors;
             store.Update(failures, enabled: false, failures.Suspend, failures.Condition, failures.HitCondition, failures.LogMessage);
             await InTheProgram(cancel);
             return ExceptionBreakpoints();
@@ -2129,8 +2131,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         List<ToolWindows.DebugTab> live = [.. debugger.Tabs.Where(t => t.IsLive && t.Session is not null)];
         List<ToolWindows.DebugTab> paused = [.. live.Where(t => t.Session!.State == DebugState.Paused)];
+        // A Godot game's GDScript session, running, is its C#'s companion, which acts for both.
+        List<ToolWindows.DebugTab> programs = [.. live.Where(t => t.Companion is not { IsLive: true })];
         return paused is [var stopped] ? stopped
-            : live is [var only] ? only
+            : programs is [var only] ? only
             : live.Count == 0 ? debugger.Chosen
             : throw new InvalidOperationException($"{live.Count} programs are debugged ({Listed()}), {(paused.Count == 0 ? "none" : $"{paused.Count}")} paused: name the one meant with session");
     }
@@ -2388,10 +2392,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private IReadOnlyList<BreakpointInfo> ExceptionBreakpoints()
     {
         BindingErrorBreakpoint bindings = Session.Debug.Breakpoints.BindingErrors;
+        ScriptErrorBreakpoint scripts = Session.Debug.Breakpoints.ScriptErrors;
         return [.. Session.Debug.Breakpoints.Exceptions.Select(b => new BreakpointInfo(null, null, b.Enabled, b.Status.ToString().ToLowerInvariant(), b.Condition, b.HitCondition,
                 b.LogMessage, b.Suspend, b.Message, b.Location, ExceptionScenarioNames.Of(b.Scenarios))),
             new BreakpointInfo(null, null, bindings.Enabled, bindings.Status.ToString().ToLowerInvariant(), bindings.Condition, bindings.HitCondition, bindings.LogMessage,
-                bindings.Suspend, bindings.Message, BindingErrors: true)];
+                bindings.Suspend, bindings.Message, BindingErrors: true),
+            new BreakpointInfo(null, null, scripts.Enabled, scripts.Status.ToString().ToLowerInvariant(), scripts.Condition, scripts.HitCondition, scripts.LogMessage,
+                scripts.Suspend, scripts.Message, ScriptErrors: true)];
     }
 
     /// <summary>A line breakpoint's file and line from zero, as an agent names them.</summary>
@@ -2878,7 +2885,7 @@ public sealed record RunResult(bool StillRunning, int? ExitCode, string Status, 
 /// TextBlock#Counter", and the element's @id).</summary>
 public sealed record BreakpointInfo(string? Path, int? Line, bool Enabled, string Status, string? Condition, string? HitCondition, string? LogMessage, bool Suspend,
     string? Message, string? Exception = null, IReadOnlyList<string>? Scenarios = null, string? Data = null, string? Attribute = null, string? Property = null,
-    bool? BindingErrors = null, string? Control = null, int? Column = null);
+    bool? BindingErrors = null, string? Control = null, int? Column = null, bool? ScriptErrors = null);
 
 public sealed record VariableInfo(string Name, string Value, string? Type, int Reference)
 {

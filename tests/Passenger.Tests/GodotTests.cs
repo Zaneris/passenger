@@ -635,7 +635,8 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         if (window.Debugger.IsDebugging || window.IsRunning || window.Profiling is not null)
         {
             Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, "the game to end");
+            Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, () => $"the game to end ({string.Join(", ", window.Debugger.Tabs.Select(t =>
+                $"{t.Name}{(t.IsChosen ? " chosen" : string.Empty)}: {(t.IsLive ? t.Session?.State.ToString() ?? "opening" : "ended")}"))}; {window.Status})");
         }
         window.Close();
     }
@@ -709,18 +710,6 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         public override ValueTask InitializeAsync() => Godot is { WhyNot: null } ? base.InitializeAsync() : ValueTask.CompletedTask;
 
         /// <summary>The variables that keep a Godot's user folders under <paramref name="home"/>.</summary>
-        internal static Dictionary<string, string> Home(string home)
-        {
-            string full = Directory.CreateDirectory(Path.GetFullPath(home)).FullName;
-            return OperatingSystem.IsWindows()
-                ? new() { ["APPDATA"] = Path.Combine(full, "Roaming"), ["LOCALAPPDATA"] = Path.Combine(full, "Local") }
-                : new()
-                {
-                    ["HOME"] = full,
-                    ["XDG_CONFIG_HOME"] = Path.Combine(full, ".config"),
-                    ["XDG_DATA_HOME"] = Path.Combine(full, ".local", "share"),
-                    ["XDG_CACHE_HOME"] = Path.Combine(full, ".cache"),
-                };
-        }
+        internal static Dictionary<string, string> Home(string home) => Passenger.App.Godot.GodotScripts.UserFolders(home);
     }
 }

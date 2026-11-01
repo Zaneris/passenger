@@ -549,7 +549,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Ui.Choose(window.OpenContextMenu, "i => i > 1");
         Ui.Run(window, AppActions.ViewBreakpoints);
         BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
-        Assert.Equal([.. listed, ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError], breakpoints.Listed.Select(b => b.Location));
+        Assert.Equal([.. listed, ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError, ScriptErrorBreakpoint.AnyScriptError], breakpoints.Listed.Select(b => b.Location));
         Ui.Press(window, "Escape");
 
         StartDebugging(window);
@@ -613,7 +613,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.Contains(new LineMark(1, LineMarkKind.Breakpoint), editor.LineMarks);
         Ui.Run(window, AppActions.ViewBreakpoints);
         BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
-        Assert.Equal(["Program.cs:2", ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError], breakpoints.Listed.Select(b => b.Location));
+        Assert.Equal(["Program.cs:2", ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError, ScriptErrorBreakpoint.AnyScriptError], breakpoints.Listed.Select(b => b.Location));
         Ui.Press(window, "Escape");
 
         StartDebugging(window);
@@ -1027,7 +1027,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
         Ui.Run(window, AppActions.ViewBreakpoints);
         BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
-        Assert.Equal(["Program.cs:4", "Program.cs:6", ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError], breakpoints.Listed.Select(b => b.Location));
+        Assert.Equal(["Program.cs:4", "Program.cs:6", ExceptionBreakpoint.AnyException, BindingErrorBreakpoint.AnyBindingError, ScriptErrorBreakpoint.AnyScriptError], breakpoints.Listed.Select(b => b.Location));
         CheckBox first = breakpoints.GetVisualDescendants().OfType<CheckBox>().First(c => c.Content is null);
         first.IsChecked = false;
         Assert.False(window.Debugger.Breakpoints.In(Program)[0].Enabled);
@@ -1199,7 +1199,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             Ui.Click(Scenario(breakpoints, "Exception handler:", "User code"));
             AddException(first, breakpoints, "ArgumentNull", "System.ArgumentNullException");
             Ui.Click(Row(breakpoints, ExceptionBreakpoint.AnyException).GetVisualDescendants().OfType<CheckBox>().First());
-            Assert.Equal([ExceptionBreakpoint.AnyException, "System.InvalidOperationException", "System.ArgumentNullException", BindingErrorBreakpoint.AnyBindingError],
+            Assert.Equal([ExceptionBreakpoint.AnyException, "System.InvalidOperationException", "System.ArgumentNullException", BindingErrorBreakpoint.AnyBindingError, ScriptErrorBreakpoint.AnyScriptError],
                 breakpoints.Listed.Select(b => b.Location));
             Assert.False(first.Debugger.Breakpoints.BindingErrors.Enabled, "XAML Binding Errors was on in a folder that never turned it on");
             Assert.Contains(breakpoints.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "XAML Binding Errors");
@@ -1226,7 +1226,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             Ui.Press(second, "Delete");
             Ui.Click(Row(breakpoints, BindingErrorBreakpoint.AnyBindingError));
             Ui.Press(second, "Delete");
-            Assert.Equal([ExceptionBreakpoint.AnyException, "System.InvalidOperationException", BindingErrorBreakpoint.AnyBindingError], breakpoints.Listed.Select(b => b.Location));
+            Assert.Equal([ExceptionBreakpoint.AnyException, "System.InvalidOperationException", BindingErrorBreakpoint.AnyBindingError, ScriptErrorBreakpoint.AnyScriptError], breakpoints.Listed.Select(b => b.Location));
             Ui.Press(second, "Escape");
             second.Close();
 

@@ -152,7 +152,15 @@ public sealed record SetDataBreakpointsResponse(IReadOnlyList<DapBreakpoint> Bre
 public sealed record SetExceptionBreakpointsArguments(
     IReadOnlyList<string>? Filters, IReadOnlyList<DapExceptionFilterOptions>? FilterOptions = null, IReadOnlyList<DapExceptionOptions>? ExceptionOptions = null);
 
-public sealed record DapExceptionFilterOptions(string FilterId, string? Condition = null);
+public sealed record DapExceptionFilterOptions(string FilterId, string? Condition = null)
+{
+    /// <summary>Passenger's own: a hit count, a message logged at each hit, and whether a hit stops, as a line breakpoint has.</summary>
+    public string? HitCondition { get; init; }
+
+    public string? LogMessage { get; init; }
+
+    public bool? Suspend { get; init; }
+}
 
 /// <summary>Exceptions by their path ("CLR", then the types' full names; "CLR" alone is every exception) and when to
 /// stop (a <see cref="DapBreakModes"/>). The rest is Passenger's own: scenarios in place of the break mode,
@@ -430,6 +438,9 @@ public sealed record StoppedEvent
     /// <summary>This debugger's own: where it stopped, so the client need not ask before showing it.</summary>
     public DapSource? Source { get; init; }
 
+    /// <summary>This debugger's own: why no step goes on from this stop (a Godot script error, which only a continue leaves).</summary>
+    public string? NoSteps { get; init; }
+
     public int? Line { get; init; }
     public int? Column { get; init; }
 }
@@ -437,6 +448,9 @@ public sealed record StoppedEvent
 public sealed record ExitedEvent(int ExitCode);
 
 public sealed record TerminatedEvent(bool? Restart = null);
+
+/// <summary>The program went on from a stop that no continue or step of the client's left.</summary>
+public sealed record ContinuedEvent(int ThreadId, bool? AllThreadsContinued = null);
 
 /// <summary>A thread started or exited.</summary>
 public sealed record ThreadEvent(string Reason, int ThreadId);
