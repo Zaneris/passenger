@@ -465,9 +465,18 @@ public sealed class ProfilingSession : IAsyncDisposable
         return await BackgroundWork.Run(Read);
     }
 
-    /// <summary>The run's trace read, knowing where it ran.</summary>
+    /// <summary>A Godot game's own frame profile, recorded beside the samples for as long as the run lasts: ended as the run
+    /// is read, and kept beside its trace for the snapshot (<see cref="GameProfile"/>); null for any other program.</summary>
+    public GameRecording? Game { get; set; }
+
+    /// <summary>The run's trace read, knowing where it ran, with the game's frames recorded beside it.</summary>
     private Snapshot Read()
     {
+        if (Game is { } game)
+        {
+            game.Stop();
+            game.Write(TracePath);
+        }
         Snapshot snapshot = Snapshot.Read(TracePath);
         snapshot.Place = Place;
         return snapshot;

@@ -32,6 +32,13 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     private long asks;
     private bool disposed;
 
+    /// <summary>The profile Godot's own profilers are recording into, while the game is profiled; read off the UI thread as
+    /// its frames come.</summary>
+    private volatile Passenger.Profiler.GameRecording? recording;
+
+    /// <summary>The most script functions a frame names, the heaviest by their time in all: Godot leaves out the rest.</summary>
+    private const int FrameFunctions = 128;
+
     /// <summary>Passenger's helper sent for (<see cref="AskAsync"/>), done once the game is told to make it: another ask waits
     /// for it rather than making a second.</summary>
     private Task? bringing;
@@ -141,6 +148,11 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
                     IdeErrors.Write($"Godot: a message of {Name} could not be read: {unread.Message}");
                     continue;
                 }
+                // Many a second while profiled, each kept as it comes, when it came: the window's thread never hears them.
+                if (recording is { } profile && Recorded(profile, message, DateTime.UtcNow))
+                {
+                    continue;
+                }
                 UiThread.Post(() => Heard(message));
             }
         }
@@ -164,7 +176,76 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         // A GDScript breakpoint or error would stop the game waiting for a debugger that shows no GDScript stop.
         Send(GodotWords.SkipBreakpoints, true);
         Send(GodotWords.IgnoreErrorBreaks, true);
+        if (recording is { IsStopped: false })
+        {
+            Profiling(true);
+        }
         StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Records Godot's own frame profile into <paramref name="profile"/> beside the samples until it stops: its
+    /// servers' and script functions' times (calls into Godot's own API among them) and, where the game draws, its
+    /// renderer's stages. A game yet to connect begins as it does.</summary>
+    public void Profile(Passenger.Profiler.GameRecording profile)
+    {
+        UiThread.Check();
+        recording = profile;
+        profile.Stopped += (_, _) => UiThread.Post(() =>
+        {
+            if (recording == profile)
+            {
+                recording = null;
+                if (State == LiveAppState.Connected && !disposed)
+                {
+                    Profiling(false);
+                }
+            }
+        });
+        if (State == LiveAppState.Connected)
+        {
+            Profiling(true);
+        }
+    }
+
+    /// <summary>Turns Godot's own profilers on or off; its renderer's only where the game draws.</summary>
+    private void Profiling(bool on)
+    {
+        Send(GodotWords.ProfileServers, on ? [true, new List<object?> { (long)FrameFunctions, true }] : [false]);
+        if (!Headless)
+        {
+            Send(GodotWords.ProfileVisual, on);
+        }
+    }
+
+    /// <summary>Takes a message of Godot's profilers into the profile; false for any other message.</summary>
+    private static bool Recorded(Passenger.Profiler.GameRecording profile, GodotMessage message, DateTime came)
+    {
+        switch (message.Name)
+        {
+            case GodotWords.FunctionSignature:
+                if (GodotProfile.Signature(message.Data) is ({ } number, { } signature))
+                {
+                    profile.Signature(number, signature);
+                }
+                return true;
+            case GodotWords.ServersFrame:
+                if (GodotProfile.Frame(message.Data) is { } frame)
+                {
+                    profile.Took(frame, came);
+                }
+                return true;
+            case GodotWords.VisualFrame:
+                profile.Rendered(GodotProfile.Rendered(message.Data));
+                return true;
+            case GodotWords.Hardware:
+                profile.Hardware(GodotProfile.Gpu(message.Data));
+                return true;
+            case GodotWords.ServersTotal:
+                // The whole run's sums, which its frames hold already.
+                return true;
+            default:
+                return false;
+        }
     }
 
     private void Ended()

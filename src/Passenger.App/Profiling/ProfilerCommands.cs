@@ -124,6 +124,8 @@ public sealed class ProfilerCommands
         };
         made.OpenRequested += (_, method) => IdeErrors.Observe(OpenMethodAsync(method));
         made.FramesPage.ControlOpened += (_, control) => OpenControl(control);
+        made.GamePage.FunctionOpened += (_, opened) => OpenScript(opened.Function, opened.Folder);
+        made.GamePage.MethodOpened += (_, method) => IdeErrors.Observe(OpenMethodAsync(new ProfiledMethod(method.Name, method.Code)));
         made.OpenSnapshotRequested += (_, _) => IdeErrors.Observe(PickSnapshotAsync());
         made.OpenKeptRequested += (_, path) => IdeErrors.Observe(OpenSnapshotAsync(path));
         made.RevealSnapshotsRequested += (_, _) =>
@@ -319,6 +321,10 @@ public sealed class ProfilerCommands
                     (reader, error, lines) => console.PumpAsync(reader, error ? ConsoleStream.Error : ConsoleStream.Output, lines: lines), stop.Token);
             }
             starting = null;
+            if (game is not null)
+            {
+                Record(running, game);
+            }
             profiled.Profiling = running;
             TaskCompletionSource landed = new(TaskCreationOptions.RunContinuationsAsynchronously);
             ProfiledProgram program = new(running, chosen.Name, target.Name, landed.Task);
@@ -456,6 +462,14 @@ public sealed class ProfilerCommands
                 BackgroundWork.Track(running.DisposeAsync().AsTask());
             }
         }), TaskScheduler.Default));
+    }
+
+    /// <summary>A Godot game's own frame profile recorded beside the run's samples, ended as the run is read.</summary>
+    private static void Record(ProfilingSession running, Godot.GodotGame game)
+    {
+        Passenger.Profiler.GameRecording recording = new(game.Framework, game.Folder, !game.Headless);
+        running.Game = recording;
+        game.Profile(recording);
     }
 
     /// <summary>A program Profile started has ended (by itself, killed, or with its folder) and the Run console has the last
@@ -689,6 +703,10 @@ public sealed class ProfilerCommands
             {
                 await running.DisposeAsync();
                 return profiled.IsEnded || profiled != Session ? Refusals.SolutionClosed : "A run is already being profiled";
+            }
+            if (target.Elsewhere is null && profiled.Games.FirstOrDefault(g => g.ProcessId == target.ProcessId) is { } game)
+            {
+                Record(running, game);
             }
             // Profile's own program, profiled again, is still Kill's to end.
             Follow(profiled, running, target.Name, killable: target.Elsewhere is null && profiled.Profiled?.Run.ProcessId == target.ProcessId);
@@ -1119,6 +1137,20 @@ public sealed class ProfilerCommands
         {
             parts.Say(problem);
         }
+    }
+
+    /// <summary>A Godot script function opened at its line, its <c>res://</c> path under the game's folder.</summary>
+    private void OpenScript(ScriptFunction function, string folder)
+    {
+        string file = function.File.StartsWith("res://", StringComparison.Ordinal) && folder.Length > 0
+            ? Path.GetFullPath(Path.Combine(folder, function.File["res://".Length..]))
+            : function.File;
+        if (!File.Exists(file))
+        {
+            parts.Say($"{function.Name}'s script {function.File} is not among the game's files");
+            return;
+        }
+        parts.Navigate(PathNames.Canonical(file), new TextPosition(Math.Max(0, function.Line - 1), 0));
     }
 
     /// <summary>A method a row names opened at its source: by its module's PDB where it has one (read in its container for

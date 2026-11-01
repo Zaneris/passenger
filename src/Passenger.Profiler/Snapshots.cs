@@ -50,6 +50,8 @@ public static class Snapshots
             {
                 File.Delete(file.Path);
                 removed.Add(file);
+                // A game's frames, kept beside its trace, go with it.
+                File.Delete(GameProfile.PathOf(file.Path));
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {

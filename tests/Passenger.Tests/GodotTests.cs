@@ -238,6 +238,90 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         }
     }
 
+    /// <summary>The GDScript of <see cref="Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions"/>:
+    /// it makes a C# Ledger as it starts and keeps it, and each frame spins in a function of its own, then has the Ledger spin.</summary>
+    private const string Wanderer = "extends Node\n\nvar ledger\nvar total := 0\n\nfunc _ready():\n\tledger = load(\"res://Ledger.cs\").new()\n\n"
+        + "func _process(_delta):\n\twander()\n\ttotal += ledger.Tally(400000)\n\nfunc wander():\n\tvar sum := 0\n\tfor i in 60000:\n\t\tsum += i\n\ttotal = sum\n";
+
+    /// <summary>Profile of a game whose GDScript and C# each spin in a function of their own records Godot's frames beside the
+    /// samples: the Frames page names the GDScript function at its line with its calls
+    /// and time, the C# loop the engine called and the C# method GDScript called with their sampled time, says the headless
+    /// game drew nothing, and opens the script at the function's line.</summary>
+    [AvaloniaFact]
+    public void Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions()
+    {
+        string wanderer = Path.Combine(game.Folder, "wander.gd");
+        string ledger = Path.Combine(game.Folder, "Ledger.cs");
+        File.WriteAllText(wanderer, Wanderer);
+        File.WriteAllText(ledger, """
+            using Godot;
+
+            public partial class Ledger : RefCounted
+            {
+                public long Tally(int rounds)
+                {
+                    long sum = 0;
+                    for (int i = 0; i < rounds; i++)
+                    {
+                        sum += i ^ rounds;
+                    }
+                    return sum;
+                }
+            }
+
+            """);
+        File.WriteAllText(Path.Combine(game.Folder, "main.tscn"), """
+            [gd_scene load_steps=3 format=3]
+
+            [ext_resource type="Script" path="res://Main.cs" id="1"]
+            [ext_resource type="Script" path="res://wander.gd" id="2"]
+
+            [node name="Main" type="Node"]
+            script = ExtResource("1")
+
+            [node name="Wanderer" type="Node" parent="."]
+            script = ExtResource("2")
+
+            """);
+        MainWindow window = game.Open(null, languageServer: false);
+        try
+        {
+            Choose(window, Generated(window, "Spinner"));
+            Ui.Launched(window, window.ProfileAsync(), "the game's build and start under the profiler", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => Run(window).Contains("frame 300", StringComparison.Ordinal), () => $"the profiled game to run its scripts ({Run(window)})", TimeSpan.FromMinutes(1));
+
+            Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
+            Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the game's snapshot", TimeSpan.FromMinutes(2));
+            Assert.True(read.Snapshot is { Game: not null, GameFrames.Count: > 100 }, $"{read.Message}: {read.Snapshot?.GameFrames.Count} of Godot's frames, {read.Snapshot?.Game?.Why}");
+            view.ShowPage(Passenger.App.Profiling.ProfilerPage.Frames);
+            Passenger.App.Profiling.GameFramesView frames = view.GamePage;
+            Ui.WaitFor(() => frames.IsEffectivelyVisible && frames.Rows.Count > 0, "the Frames page to show Godot's frames");
+            string listed = string.Join("; ", frames.Rows.Select(r => $"{r.Name} {r.Place} {r.Own:0.0} {r.All:0.0} {r.Calls}"));
+            // Godot names a function by its body's first line.
+            int wander = LineOf(Wanderer, "func wander") + 1;
+            Passenger.App.Profiling.GameRow script = frames.Rows.FirstOrDefault(r => r.Function?.Name == "wander")
+                ?? throw new Xunit.Sdk.XunitException($"The Frames page names no GDScript wander: {listed}");
+            Assert.True(script is { Place: var place, Own: > 0, Calls: > 100 } && place == $"wander.gd:{wander}", $"GDScript's wander reads as {script.Place} {script.Own} ms, {script.Calls} calls: {listed}");
+            Assert.True(frames.Rows.Any(r => r.Method?.Name.Contains("Main.Spin", StringComparison.Ordinal) == true && r.Own > 0),
+                $"The Frames page names no time of the C# loop the engine called: {listed}");
+            Assert.True(frames.Rows.Any(r => r.Method?.Name.Contains("Ledger.Tally", StringComparison.Ordinal) == true && r.All > 0),
+                $"The Frames page names no time of the C# method GDScript called: {listed}");
+            Assert.Contains("ran headless", frames.Summary, StringComparison.Ordinal);
+
+            Ui.Click(Ui.Row(frames.Table, script));
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.EditorArea.Active?.Path is { } open && PathNames.Same(open, PathNames.Canonical(wanderer)),
+                () => $"Enter on wander's row to open wander.gd, where {window.EditorArea.Active?.Path} is open ({window.Status})");
+            Assert.Equal(wander - 1, window.EditorArea.CodeEditor.CaretPosition.Line);
+        }
+        finally
+        {
+            End(window);
+            File.Delete(wanderer);
+            File.Delete(ledger);
+        }
+    }
+
     /// <summary>Run makes Passenger the game's remote debugger: the Live Visual Tree shows its scene tree, the Main node's
     /// script property typed there is what the game then prints, the error the script raises is in Problems at its line and
     /// linked from Godot's words in the Run console, and the window's status line reads the game's monitors.</summary>

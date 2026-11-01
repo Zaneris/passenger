@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Passenger.Profiler;
 
 namespace Passenger.App.Godot;
 
@@ -50,6 +51,13 @@ public static class GodotWords
     public const string LiveCreateNode = "scene:live_create_node";
     public const string LiveNodePropertyResource = "scene:live_node_prop_res";
     public const string LiveNodeCall = "scene:live_node_call";
+    public const string ProfileServers = "profiler:servers";
+    public const string ProfileVisual = "profiler:visual";
+    public const string FunctionSignature = "servers:function_signature";
+    public const string ServersFrame = "servers:profile_frame";
+    public const string ServersTotal = "servers:profile_total";
+    public const string VisualFrame = "visual:profile_frame";
+    public const string Hardware = "visual:hardware_info";
 
     /// <summary>The function of Godot's that takes a picture of the game, whose errors say why it took none.</summary>
     public const string ScreenshotFunction = "_msg_rq_screenshot";
@@ -222,4 +230,90 @@ public sealed record GodotMonitors(double Fps, double Process, double Physics, d
     /// <summary>The monitors in a line of words: "60 FPS · 1.2 ms process · 41.7 MB · 1,500 objects · 2 nodes".</summary>
     public string Said => string.Create(System.Globalization.CultureInfo.InvariantCulture,
         $"{Fps:0} FPS · {Process * 1000:0.0} ms process · {Memory / (1024 * 1024):0.0} MB · {Objects:N0} objects · {Nodes:N0} nodes");
+}
+
+/// <summary>What Godot's own profilers send while turned on (<see cref="GodotWords.ProfileServers"/>, <see cref="GodotWords.ProfileVisual"/>):
+/// a script function's signature by the number its frames name it by, each frame's times (seconds, as Godot sends them, read
+/// as milliseconds), the renderer's stages, and the hardware it draws with.</summary>
+public static class GodotProfile
+{
+    /// <summary>The number and signature a <c>servers:function_signature</c> message holds ("res://wander.gd::10::wander", 2).</summary>
+    public static (int Number, string Signature)? Signature(IReadOnlyList<object?> data) =>
+        data is [var name, long number] && Text(name) is { } signature ? ((int)number, signature) : null;
+
+    /// <summary>The frame a <c>servers:profile_frame</c> message holds: its number, frame, process, physics, physics step and
+    /// script times, then each server's functions' times (the count of servers, each its name, the count of values after it,
+    /// and each function's name and time), then each script function's number, calls and own, whole and Godot-API times (the
+    /// count of values, five a function); placed nowhere yet. Null for data of another shape.</summary>
+    public static GameFrame? Frame(IReadOnlyList<object?> data)
+    {
+        if (data.Count < 8 || data[0] is not long number || data[6] is not long serverCount)
+        {
+            return null;
+        }
+        List<ServerWork> servers = [];
+        int at = 7;
+        for (long s = 0; s < serverCount; s++)
+        {
+            if (at + 1 >= data.Count || Text(data[at]) is not { } server || data[at + 1] is not long values || values < 0 || at + 2 + values > data.Count)
+            {
+                return null;
+            }
+            for (int v = at + 2; v + 1 < at + 2 + values; v += 2)
+            {
+                servers.Add(new ServerWork(server, Text(data[v]) ?? string.Empty, Ms(data[v + 1])));
+            }
+            at += 2 + (int)values;
+        }
+        if (at >= data.Count || data[at] is not long scriptValues || scriptValues < 0 || at + 1 + scriptValues > data.Count)
+        {
+            return null;
+        }
+        List<ScriptWork> scripts = [];
+        for (int v = at + 1; v + 4 < at + 1 + scriptValues; v += 5)
+        {
+            if (data[v] is long function && data[v + 1] is long calls)
+            {
+                scripts.Add(new ScriptWork((int)function, (int)calls, Ms(data[v + 2]), Ms(data[v + 3]), Ms(data[v + 4])));
+            }
+        }
+        return new GameFrame((int)number, 0, Ms(data[1]), Ms(data[2]), Ms(data[3]), Ms(data[4]), Ms(data[5]), servers, scripts);
+    }
+
+    /// <summary>The renderer's stages a <c>visual:profile_frame</c> message holds: its frame's number in the renderer's own count,
+    /// the count of values after, and each stage's name and CPU and GPU times (milliseconds, as Godot sends them).</summary>
+    public static IReadOnlyList<RenderArea> Rendered(IReadOnlyList<object?> data)
+    {
+        if (data is not [_, long values, ..] || values < 0 || 2 + values > data.Count)
+        {
+            return [];
+        }
+        List<RenderArea> areas = [];
+        for (int v = 2; v + 2 < 2 + values; v += 3)
+        {
+            areas.Add(new RenderArea(Text(data[v]) ?? string.Empty, Number(data[v + 1]), Number(data[v + 2])));
+        }
+        return areas;
+    }
+
+    /// <summary>The GPU a <c>visual:hardware_info</c> message names (after the CPU); empty for a game drawing with none.</summary>
+    public static string Gpu(IReadOnlyList<object?> data) => data is [_, var gpu, ..] && Text(gpu) is { } named ? named : string.Empty;
+
+    private static string? Text(object? value) => value switch
+    {
+        string text => text,
+        GodotName name => name.Name,
+        _ => null,
+    };
+
+    private static double Number(object? value) => value switch
+    {
+        double real => real,
+        float single => single,
+        long whole => whole,
+        _ => 0,
+    };
+
+    /// <summary>Seconds as Godot sends them, in milliseconds.</summary>
+    private static double Ms(object? value) => Number(value) * 1000;
 }
