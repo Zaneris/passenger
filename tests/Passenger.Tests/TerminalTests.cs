@@ -28,11 +28,7 @@ public sealed class TerminalTests
     [AvaloniaFact]
     public void A_program_receives_the_mouse_release_when_Shift_changes_after_the_press()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            // cat prints the mouse reports it reads from the terminal.
-            return;
-        }
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The program asking for mouse reports is sh's printf and cat -v, which cmd.exe has none of");
         string folder = TestFolders.Create("terminal-");
         try
         {
@@ -152,11 +148,7 @@ public sealed class TerminalTests
     [InlineData("\\033[0 q")]
     public void Programs_override_the_configured_cursor_and_reset_restores_it(string reset)
     {
-        if (OperatingSystem.IsWindows())
-        {
-            // sh's printf writes the bytes.
-            return;
-        }
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The program's cursor requests are written by sh's printf, which cmd.exe has none of");
         string folder = TestFolders.Create("terminal-");
         try
         {
@@ -225,11 +217,7 @@ public sealed class TerminalTests
     [AvaloniaFact]
     public void A_program_can_enable_blinking_then_disable_it_and_reset_to_the_persons_default()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            // sh's printf writes the bytes.
-            return;
-        }
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The program's cursor requests are written by sh's printf, which cmd.exe has none of");
         string folder = TestFolders.Create("terminal-");
         try
         {
