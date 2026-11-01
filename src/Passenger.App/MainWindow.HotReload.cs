@@ -49,6 +49,8 @@ public partial class MainWindow
             : $"Nothing runs: Debug the program, or Run it with Hot Reload on ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})", ("Run", 0, 9));
         // What dotnet watch says from now is of the save, not of the one followed.
         Editors.Opened += (_, document) => document.Saved += (_, _) => UnfollowWatch();
+        // A GDScript file saved reaches the Godot game that runs it with Hot Reload.
+        Editors.Opened += (_, document) => document.Saved += (_, _) => IdeErrors.Observe(buildRun.ReloadScriptAsync(document.Path));
     }
 
     /// <summary>Why Godot's editor Run started takes no Hot Reload (<see cref="GodotLaunch.EditorReloads"/>).</summary>

@@ -939,6 +939,7 @@ public sealed partial class BuildRunController
             RunProject = Path.GetDirectoryName(plan.Project);
             // A Godot game's, with Passenger as its remote debugger.
             (plan, Godot.GodotGame? game) = session.Listened(plan);
+            game?.ReloadsScripts = reloaded;
             session.RunPlan = plan;
             string running = watched || reloaded ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
                 : wanted && godot ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.EditorReloads}"
@@ -1709,6 +1710,7 @@ public sealed partial class BuildRunController
         if (game is not null && refused is null)
         {
             game.Debugged = debug.SessionNamed(launched.Name);
+            game.ReloadsScripts = debug.HotReloadOn();
             IdeErrors.Observe(DebugScriptsAsync(game, launched.Name));
         }
         else
@@ -1723,6 +1725,51 @@ public sealed partial class BuildRunController
             parts.OpenBrowser(plan, ended);
         }
         return refused;
+    }
+
+    /// <summary>What Godot's reload of a saved script keeps and what it does not, said once a game in its console.</summary>
+    public const string ScriptReloadKeeps = "Godot reloads a saved GDScript file in place: each node running it keeps its members' values and runs "
+        + "the new code from its next call; _init and _ready do not run again, and a member the edit adds starts as null, its initializer unrun";
+
+    /// <summary>Has each Godot game that runs with Hot Reload (Run's with it on, Debug's while Hot Reload while debugging is)
+    /// reload a GDScript file of its project just saved, through its debugger's <c>reload_scripts</c>: the GDScript sessions'
+    /// breakpoints follow the file's lines as saved. Said in the status bar, and once a game in its console what the reload keeps.</summary>
+    public async Task ReloadScriptAsync(string path)
+    {
+        UiThread.Check();
+        if (!Godot.GodotScriptAdapter.Takes(path))
+        {
+            return;
+        }
+        List<string> reloaded = [];
+        foreach (Godot.GodotGame game in session.Games.Where(g => g is { State: LiveAppState.Connected, ReloadsScripts: true }).ToList())
+        {
+            if (Passenger.Workspace.GodotScenes.ResPathOf(game.Folder, path) is not { } resource)
+            {
+                continue;
+            }
+            try
+            {
+                await game.SendToAsync(Godot.GodotWords.ReloadScripts, Godot.GodotMessage.MainThread, resource);
+            }
+            catch (LiveAppException lost)
+            {
+                parts.Say($"Hot Reload: {Path.GetFileName(path)} did not reach {game.Name}: {lost.Message}");
+                continue;
+            }
+            reloaded.Add(game.Name);
+            if (!game.ToldReload)
+            {
+                game.ToldReload = true;
+                OutputView console = game.Debugged is { } debugged && session.Debug.TabOf(debugged) is { } tab ? tab.Console : parts.Views.Run;
+                console.Append($"Hot Reload: {ScriptReloadKeeps}\n");
+            }
+        }
+        if (reloaded.Count > 0)
+        {
+            await session.Debug.ScriptReloadedAsync(path);
+            parts.Say($"Hot Reload: {Path.GetFileName(path)} reloaded in {Plural.Listed(reloaded)}");
+        }
     }
 
     /// <summary>A Godot game's GDScript debugged beside its C#, in a tab of its own (<see cref="DebugController.DebugScriptsAsync"/>);

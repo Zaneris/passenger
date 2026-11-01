@@ -35,6 +35,9 @@ public sealed class DebugSession
     /// <summary>Why a breakpoint on a line written since the build is not sent: the program has no code of it.</summary>
     private const string NotBuilt = "Its line was written after the program being debugged was built: restart debugging to build it";
 
+    /// <summary>Why a GDScript breakpoint on a line written since its game loaded the script is not sent.</summary>
+    private const string NotLoaded = "Its line was written after the game loaded its script: save it with Hot Reload on, and the game reloads it";
+
     /// <summary>The projects of the program debugged whose code runs in the browser on .NET's WebAssembly runtime (their project
     /// files), and the program's own project, from its plan (<see cref="Run.LaunchPlan.InBrowser"/>): a breakpoint in their
     /// files says it stops only where the program runs their code itself, or never where the program is their development
@@ -939,8 +942,9 @@ public sealed class DebugSession
             breakpoints.Report(this, path, [.. breakpoints.In(path).Select(_ => (BreakpointStatus.Unknown, (string?)null, (int?)null))], breakpoints.In(path));
             return;
         }
+        string unbuiltWhy = neverHit ?? (Engine == DebugEngine.GDScript ? NotLoaded : NotBuilt);
         breakpoints.Report(this, path,
-            [.. response.Breakpoints.Take(built.Count).Select(b => Status(path, b)), .. unbuilt.Select(_ => (BreakpointStatus.Invalid, (string?)(neverHit ?? NotBuilt), (int?)null))],
+            [.. response.Breakpoints.Take(built.Count).Select(b => Status(path, b)), .. unbuilt.Select(_ => (BreakpointStatus.Invalid, (string?)unbuiltWhy, (int?)null))],
             [.. built.Take(response.Breakpoints.Count), .. unbuilt]);
     }
 

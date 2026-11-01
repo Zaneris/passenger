@@ -89,6 +89,12 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         return (plan with { Arguments = arguments, Leading = plan.Leading + debugging.Count }, game);
     }
 
+    /// <summary>Whether a GDScript file of its project saved is reloaded in it (Hot Reload is on for its run).</summary>
+    public bool ReloadsScripts { get; set; }
+
+    /// <summary>Whether its console has said what Godot's reload of a script keeps.</summary>
+    public bool ToldReload { get; set; }
+
     /// <summary>Whether its GDScript is debugged (it was started for Debug): a stop waits for its script debugger.</summary>
     public bool ScriptsDebugged { get; private set; }
 

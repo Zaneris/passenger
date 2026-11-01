@@ -15,8 +15,8 @@ namespace Passenger.Tests;
 
 /// <summary>A Godot 4 game's GDScript as a person debugs it beside its C#, through the game's own debug connection: a
 /// breakpoint in a script's <c>_process</c> stops the game with its locals in Variables, a step goes to the next line, an
-/// evaluation answers in the frame, and a script error stops it where it was raised. Godot runs headless, its user folders
-/// the run's. Without a Godot 4 .NET build each test skips saying why. Debugged, so run alone.</summary>
+/// evaluation answers in the frame, a script error stops it where it was raised; a saved script reaches the game Run runs
+/// with Hot Reload. Godot runs headless, its user folders the run's. Without a Godot 4 .NET build each test skips saying why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggingTests.Game>
 {
@@ -164,6 +164,30 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
         }
     }
 
+    /// <summary>A GDScript file saved while Run runs the game with Hot Reload reaches the game: what the script prints after is
+    /// the edit's, its counter going on from where it was, and the Run console says what Godot's reload keeps.</summary>
+    [AvaloniaFact]
+    public void A_saved_script_reaches_the_game_Run_runs_with_Hot_Reload_its_members_kept()
+    {
+        MainWindow window = Open(TickerPath);
+        try
+        {
+            Choose(window);
+            Ui.Launched(window, window.Builds.RunAsync(hotReload: true), "the game's build and start with Hot Reload on", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => Run(window).Contains("ticker 40", StringComparison.Ordinal), () => $"the script to run ({Run(window)})", TimeSpan.FromMinutes(1));
+            Typing.Replace(window, "print(\"ticker \", doubled)", "print(\"tocker \", counter)");
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => Run(window).Contains("tocker ", StringComparison.Ordinal), () => $"the game to print what the saved script prints ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
+            string after = Run(window)[Run(window).IndexOf("tocker ", StringComparison.Ordinal)..].Split('\n')[0];
+            Assert.True(int.Parse(after["tocker ".Length..].Trim(), System.Globalization.CultureInfo.InvariantCulture) > 20, $"The counter started again after the reload: {after}");
+            Assert.Contains($"Hot Reload: {BuildRunController.ScriptReloadKeeps}", Run(window), StringComparison.Ordinal);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>The line (from zero) the editor shows the program stopped at, or -1.</summary>
     private static int Stopped(CodeEditor editor) => editor.LineMarks.FirstOrDefault(m => m.Kind == LineMarkKind.ExecutionPoint) is { } mark ? mark.Line : -1;
 
@@ -192,6 +216,12 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
 
     private static string Console(MainWindow window, string tab) =>
         window.Debugger.Tabs.FirstOrDefault(t => t.Name == tab)?.Session is { } session ? window.Debugger.Output(session).ToString() : string.Empty;
+
+    private static string Run(MainWindow window)
+    {
+        window.BottomPanel.Run.Flush();
+        return window.BottomPanel.Run.Document.Snapshot.ToString();
+    }
 
     private static void End(MainWindow window)
     {

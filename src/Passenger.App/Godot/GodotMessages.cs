@@ -61,6 +61,7 @@ public static class GodotWords
     public const string StackFrameVar = "stack_frame_var";
     public const string Evaluate = "evaluate";
     public const string EvaluationReturn = "evaluation_return";
+    public const string ReloadScripts = "reload_scripts";
     public const string Screenshot = "scene:rq_screenshot";
     public const string Screenshotted = "game_view:get_screenshot";
     public const string LiveSetRoot = "scene:live_set_root";

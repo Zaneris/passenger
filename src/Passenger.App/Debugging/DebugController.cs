@@ -665,6 +665,18 @@ public sealed class DebugController : IDisposable
             .Where(b => b.Resource is not null).Select(b => (b.Resource!, b.Line))],
         !Breakpoints.Muted && Breakpoints.ScriptErrors.Enabled);
 
+    /// <summary>A GDScript file a game has reloaded as saved: its GDScript sessions' lines of it are the file's now, and its
+    /// breakpoints go to them there.</summary>
+    public async Task ScriptReloadedAsync(string path)
+    {
+        UiThread.Check();
+        foreach (DebugTab tab in view.Sessions.Where(t => t.IsLive && t.Session is { Engine: DebugEngine.GDScript }).ToList())
+        {
+            tab.Lines?.Reset(path);
+            await tab.Session!.SendBreakpointsAgainAsync([path]);
+        }
+    }
+
     /// <summary>What a Godot game's GDScript tab is called after the game's own.</summary>
     public static string ScriptsTab(string name) => $"{name} (GDScript)";
 
