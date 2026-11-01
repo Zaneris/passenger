@@ -534,6 +534,7 @@ public sealed class DebugController : IDisposable
     /// <summary>The update handlers of a program run with Hot Reload told of an update it took (<see cref="ToldHandlers(DebugTab, DebugSession)"/>).</summary>
     private void ToldHandlers(RunningReload run)
     {
+        run.Browser?.Updated();
         if (run.Handlers is { } hook)
         {
             hook.Updated();
@@ -556,6 +557,16 @@ public sealed class DebugController : IDisposable
         {
             tab.ToldUnhandled = true;
             tab.Console.Append($"{HandlersUnreached}\n");
+        }
+    }
+
+    /// <summary>Files changed on disk: the pages of each web app debugged with Hot Reload kept up with its static files.</summary>
+    public void FilesChanged(IReadOnlyCollection<string> paths)
+    {
+        UiThread.Check();
+        foreach (BrowserRefresh browser in view.Sessions.Where(t => t.IsLive).Select(t => t.Browser).Concat(running.Select(r => r.Browser)).OfType<BrowserRefresh>())
+        {
+            browser.Changed(paths);
         }
     }
 
@@ -588,6 +599,7 @@ public sealed class DebugController : IDisposable
         if (its.Result == HotReloadResult.Applied)
         {
             ToldHandlers(tab, session);
+            tab.Browser?.Updated();
         }
         if (its.Result == HotReloadResult.Applied && session.State == DebugState.Paused && session.StoppedThread is int thread && tab == chosen && !disposed)
         {
@@ -611,7 +623,7 @@ public sealed class DebugController : IDisposable
     public Task<string?> StartAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, LiveApp? app = null, BuiltEdits? edits = null)
         => StartInTabAsync(plan, elsewhere, place, app: app, edits: edits);
 
-    private Task<string?> StartInTabAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, DebugTab? tab = null, LiveApp? app = null,
+    private async Task<string?> StartInTabAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, DebugTab? tab = null, LiveApp? app = null,
         BuiltEdits? edits = null)
     {
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? inTerminal = !elsewhere && place is null && plan.Console == Run.ConsoleKind.Terminal && RunInTerminal is { } run
@@ -624,8 +636,11 @@ public sealed class DebugController : IDisposable
         {
             (hook, plan) = (made, hooked);
         }
-        return OpenAsync((built, log, output, starting) => DebugSession.LaunchAsync(plan, Breakpoints, built, log, output, inTerminal, ColumnOf, hotReloadOn, starting, elsewhere, place),
-            plan.Name, launched: true, inTerminal: inTerminal is not null, hotReloadOn: hotReloadOn, tab: tab, app: app, plan: plan, edits: edits, hook: hook);
+        // A web app's pages kept up with its static files and its updates, through the SDK's own browser refresh.
+        (BrowserRefresh? browser, Run.LaunchPlan refreshed, string? unkept) = hotReloadOn && !elsewhere && place is null ? await BrowserRefresh.ForAsync(plan) : (null, plan, null);
+        return await OpenAsync((built, log, output, starting) => DebugSession.LaunchAsync(refreshed, Breakpoints, built, log, output, inTerminal, ColumnOf, hotReloadOn, starting, elsewhere, place),
+            plan.Name, launched: true, inTerminal: inTerminal is not null, hotReloadOn: hotReloadOn, tab: tab, app: app, plan: refreshed, edits: edits, hook: hook,
+            browser: browser, unkept: unkept);
     }
 
     /// <summary>The column (from one) a line (from zero) asks the debugger for, in the file's text (an open file's as it is
@@ -666,17 +681,18 @@ public sealed class DebugController : IDisposable
     /// name="elsewhere"/> runs it on another machine, <paramref name="place"/> the adapter where it is, and an inspected
     /// <paramref name="app"/> is held by its tab. Null once the session is open, else why it could not.</summary>
     public Task<string?> AttachAsync(int processId, string name, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null, string? group = null,
-        LiveApp? app = null, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null)
+        LiveApp? app = null, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null)
     {
         bool hotReloadOn = hotReload && HotReloadOn();
         return OpenAsync((built, log, output, starting) => DebugSession.AttachAsync(processId, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn, elsewhere, place), name,
-            launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits, hook: hotReloadOn ? handlers : Unheld(handlers));
+            launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits, hook: hotReloadOn ? handlers : Unheld(handlers),
+            browser: hotReloadOn ? browser : Unheld(browser));
     }
 
-    /// <summary>A hook no session will tell of an update, let go of: null.</summary>
-    private static UpdateHandlerHook? Unheld(UpdateHandlerHook? hook)
+    /// <summary>What no session will tell of an update (a hook, a browser refresh), let go of: null.</summary>
+    private static T? Unheld<T>(T? held) where T : class, IDisposable
     {
-        hook?.Dispose();
+        held?.Dispose();
         return null;
     }
 
@@ -809,13 +825,15 @@ public sealed class DebugController : IDisposable
     /// Reload's changes together; its tab holds an inspected <paramref name="app"/> and given <paramref name="edits"/>.</summary>
     private async Task<string?> OpenAsync(Func<BuiltLines, Action<string>, Action<OutputEvent>, Action<DebugSession>, Task<DebugSession>> open, string name, bool launched,
         bool inTerminal = false, bool hotReloadOn = false, AdapterPlace? place = null, string? group = null, DebugTab? tab = null, LiveApp? app = null,
-        Run.LaunchPlan? plan = null, BuiltEdits? edits = null, UpdateHandlerHook? hook = null, DebugTab? companion = null, string? attachedWords = null)
+        Run.LaunchPlan? plan = null, BuiltEdits? edits = null, UpdateHandlerHook? hook = null, DebugTab? companion = null, string? attachedWords = null,
+        BrowserRefresh? browser = null, string? unkept = null)
     {
         UiThread.Check();
-        // A start that opens no session lets go of its update handlers' hook with it.
+        // A start that opens no session lets go of its update handlers' hook and its pages' refresh with it.
         string Unopened(string why)
         {
             hook?.Dispose();
+            browser?.Dispose();
             return why;
         }
         // A start that comes after its folder was left would open in the next folder's Debug window, which is not its own.
@@ -852,10 +870,20 @@ public sealed class DebugController : IDisposable
         tab.Plan = plan;
         tab.Handlers?.Dispose();
         tab.Handlers = hook;
+        tab.Browser?.Dispose();
+        tab.Browser = browser;
+        DebugTab says = tab;
         if (hook is not null)
         {
-            DebugTab says = tab;
             hook.Says = (line, error) => says.Console.Append($"{line}\n", error);
+        }
+        if (browser is not null)
+        {
+            browser.Says = (line, error) => says.Console.Append($"{line}\n", error);
+        }
+        if (unkept is not null)
+        {
+            tab.Console.Append($"{unkept}\n");
         }
         // Followed since the build read the files where it began there, else from now: an edit made since is one Apply takes.
         BuiltEdits own = edits ?? Building(hotReloadOn);
@@ -1049,6 +1077,9 @@ public sealed class DebugController : IDisposable
         /// <summary>Passenger's hook in its program, which runs its update handlers after each update; null where it has none.</summary>
         internal UpdateHandlerHook? Handlers { get; init; }
 
+        /// <summary>The SDK's browser refresh of its pages, a web service's; null for any other.</summary>
+        internal BrowserRefresh? Browser { get; init; }
+
         HotReload? IHotReloadTarget.HotReload => Reload;
 
         bool IHotReloadTarget.Quiet => true;
@@ -1069,13 +1100,14 @@ public sealed class DebugController : IDisposable
     /// <paramref name="says"/>, where its output is, each told to <paramref name="handlers"/> it started with. Null once
     /// attached, else why not.</summary>
     public async Task<string?> AttachForHotReloadAsync(int processId, string name, Action<string, bool> says, AdapterPlace? place = null,
-        CancellationToken cancellation = default, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null)
+        CancellationToken cancellation = default, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null)
     {
         UiThread.Check();
         if (disposed)
         {
             edits?.Dispose();
             handlers?.Dispose();
+            browser?.Dispose();
             return $"Could not attach to {name} for Hot Reload: its folder was closed";
         }
         // Followed since the build read the files where it began there, else from now: an edit made meanwhile is one Apply takes.
@@ -1100,10 +1132,14 @@ public sealed class DebugController : IDisposable
             {
                 throw new OperationCanceledException("The workspace ended during Hot Reload attach");
             }
-            RunningReload reload = new(name, session, tracked, built, says) { Handlers = handlers };
+            RunningReload reload = new(name, session, tracked, built, says) { Handlers = handlers, Browser = browser };
             if (handlers is not null)
             {
                 handlers.Says = says;
+            }
+            if (browser is not null)
+            {
+                browser.Says = says;
             }
             tracked.Opened(session);
             own.Take();
@@ -1114,6 +1150,7 @@ public sealed class DebugController : IDisposable
                 {
                     reload.Reload.End();
                     reload.Handlers?.Dispose();
+                    reload.Browser?.Dispose();
                     StateChanged?.Invoke(this, EventArgs.Empty);
                 }
                 else if (session.State == DebugState.Paused && running.Contains(reload))
@@ -1128,6 +1165,7 @@ public sealed class DebugController : IDisposable
         catch (Exception error) when (error is DapException or IOException or InvalidOperationException or TimeoutException)
         {
             handlers?.Dispose();
+            browser?.Dispose();
             if (attaching is not null)
             {
                 await attaching.CloseAsync();
@@ -1137,6 +1175,7 @@ public sealed class DebugController : IDisposable
         catch
         {
             handlers?.Dispose();
+            browser?.Dispose();
             if (attaching is not null)
             {
                 await attaching.CloseAsync();
@@ -1168,9 +1207,14 @@ public sealed class DebugController : IDisposable
         tab.Lines = reload.Lines;
         tab.HotReload = reload.Reload;
         tab.Handlers = reload.Handlers;
+        tab.Browser = reload.Browser;
         if (reload.Handlers is { } hook)
         {
             hook.Says = (line, error) => tab.Console.Append($"{line}\n", error);
+        }
+        if (reload.Browser is { } browser)
+        {
+            browser.Says = (line, error) => tab.Console.Append($"{line}\n", error);
         }
         tab.Session = quiet;
         quiet.StateChanged += (_, _) => IdeErrors.Observe(OnStateChanged(tab));
@@ -2052,6 +2096,8 @@ public sealed class DebugController : IDisposable
             tab.HotReload?.End();
             tab.Handlers?.Dispose();
             tab.Handlers = null;
+            tab.Browser?.Dispose();
+            tab.Browser = null;
             tab.Lines = null;
         }
         tab.Console.Flush();

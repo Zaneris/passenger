@@ -100,6 +100,11 @@ public static class ChildProcesses
         start.Environment[MSBuildNames.NodeHandshakeSalt] = $"{salt}passenger-{Environment.ProcessId}";
         // Set by dotnet test for what it runs: each node would hold the command's output open as its own.
         start.Environment.Remove(MSBuildNames.EnsureStdOutForTaskProcesses);
+        // An SDK's own, from a Passenger started under one (dotnet run, dotnet test): the command finds the SDK its folder picks.
+        foreach (string variable in (string[])[MSBuildNames.ExePath, MSBuildNames.ExtensionsPath, MSBuildNames.SdksPath, MSBuildNames.LoadMicrosoftTargetsReadOnly])
+        {
+            start.Environment.Remove(variable);
+        }
         return start;
     }
 

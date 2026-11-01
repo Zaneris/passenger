@@ -9,8 +9,8 @@ namespace Passenger.Tests;
 /// <summary>Hot Reload of a Blazor component in a service of an Aspire AppHost's run, the stand-in AppHost's (<see
 /// cref="StandInAppHost"/>), the service a Blazor app (<see cref="BellApp"/>) the IDE starts as DCP asks and attaches to:
 /// the app's update handlers run after each update, through Passenger's hook the service started with, under Debug in the
-/// service's own tab and under Run with Hot Reload's quiet session, and its page shows the edit. Debugged through the
-/// window, so run alone.</summary>
+/// service's own tab and under Run with Hot Reload's quiet session, and its page shows the edit, and is kept up with its
+/// stylesheet through the SDK's browser refresh the service started with too. Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClassFixture<StandInAppHost>
 {
@@ -41,6 +41,7 @@ public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClass
                 () => $"the service's update handlers to run after the edit; its output has:\n{output()}\nits tab's console:\n{service.DebugTab?.Console.Document.Snapshot}",
                 TimeSpan.FromMinutes(1));
             Assert.Contains("<h1>Tally</h1>", BellApp.Page(window, port, output), StringComparison.Ordinal);
+            KeptUp(window, bell, port);
         }
         finally
         {
@@ -76,6 +77,7 @@ public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClass
             Ui.WaitFor(() => BellApp.Count(output(), BellApp.HandlersRan) == 1,
                 () => $"the service's update handlers to run after the saved edit applied ({window.Debugger.LastApplied?.Said}); its output has:\n{output()}", TimeSpan.FromMinutes(1));
             Assert.Contains("<h1>Tally</h1>", BellApp.Page(window, port, output), StringComparison.Ordinal);
+            KeptUp(window, bell, port);
         }
         finally
         {
@@ -123,6 +125,23 @@ public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClass
         window.OpenFile(Path.Combine(Path.GetDirectoryName(bell)!, "Components", "Pages", "Counter.razor"));
         Ui.Settle();
         BellApp.Edit(window, "<h1>Counter</h1>", "<h1>Tally</h1>");
+    }
+
+    /// <summary>The service's page kept up through the SDK's browser refresh it started with: its stylesheet written by
+    /// another program applied in the page, which a refresh client of the test's own hears (<see cref="RefreshClient"/>).</summary>
+    private static void KeptUp(MainWindow window, string bell, int port)
+    {
+        RefreshClient client = Ui.AwaitPumped(Waiting.Apart(() => RefreshClient.ConnectAsync(port)), "the page's refresh client to connect to Passenger through the service");
+        try
+        {
+            File.AppendAllText(Path.Combine(Path.GetDirectoryName(bell)!, "wwwroot", "app.css"), "\n.kept-up-in-place { color: rebeccapurple; }\n");
+            Ui.WaitFor(() => client.Heard("UpdateStaticFile", "app.css"), () => $"the service's page to be told app.css changed ({window.Status}); it heard:\n{client.Said}",
+                TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            Ui.AwaitPumped(Waiting.Apart(async () => { await client.DisposeAsync(); return true; }), "the page's refresh client to close");
+        }
     }
 
     private static async Task<bool> Complete(Task task)

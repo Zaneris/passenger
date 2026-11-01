@@ -64,6 +64,9 @@ public sealed class DebugTab(string name, OutputView console) : Observable, IHot
     /// <summary>Whether its console has said once that its program's update handlers are not called.</summary>
     internal bool ToldUnhandled { get; set; }
 
+    /// <summary>The SDK's browser refresh of its program's pages, a web app's debugged with Hot Reload; null for any other.</summary>
+    internal Debugging.BrowserRefresh? Browser { get; set; }
+
     /// <summary>The programs it is debugged with (a container run's services, by its configuration's name): Hot Reload's
     /// changes go to each of them together.</summary>
     public string? Group { get; internal set; }

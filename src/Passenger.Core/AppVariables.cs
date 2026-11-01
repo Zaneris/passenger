@@ -30,6 +30,18 @@ public static class AspNetCoreVariables
     /// <summary>The manifest a Development app finds its static web assets by.</summary>
     public const string StaticWebAssets = "ASPNETCORE_STATICWEBASSETS";
 
+    /// <summary>The assemblies, by name and separated by ';', whose hosting startups a web app runs as it starts.</summary>
+    public const string HostingStartupAssemblies = "ASPNETCORE_HOSTINGSTARTUPASSEMBLIES";
+
+    /// <summary>The WebSocket the SDK's browser refresh before .NET 11 has a page connect to, separated by ','.</summary>
+    public const string AutoReloadEndpoint = "ASPNETCORE_AUTO_RELOAD_WS_ENDPOINT";
+
+    /// <summary>The public key (base64 SubjectPublicKeyInfo) that browser refresh's page encrypts its secret with.</summary>
+    public const string AutoReloadKey = "ASPNETCORE_AUTO_RELOAD_WS_KEY";
+
+    /// <summary>The loopback address the SDK's browser refresh from .NET 11 forwards a page's requests to.</summary>
+    public const string AutoReloadProvider = "ASPNETCORE_AUTO_RELOAD_PROVIDER_ADDRESS";
+
     /// <summary>The environment an app runs in, as ASP.NET Core reads it: <see cref="AspNetCoreEnvironment"/>, else
     /// <see cref="DotnetEnvironment"/>, else <paramref name="otherwise"/>; a blank value names none.</summary>
     public static string EnvironmentOf(Func<string, string?> variable, string otherwise) =>

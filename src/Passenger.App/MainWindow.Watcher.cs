@@ -44,6 +44,7 @@ public partial class MainWindow
         session.LocalHistory?.Noticed(changes.Paths);
         session.DesignTimeBuilds.FolderChanged(changes);
         session.FilesChanged(changes);
+        session.Debug.FilesChanged(changes.Paths);
         (bool programsMade, bool programsWritten) = ProgramsChanged(changes.Paths);
         // Lost changes may have made or moved anything in the folder.
         IReadOnlyCollection<string> cameOrWent = changes.Lost ? [folder] : changes.ComeOrGone;

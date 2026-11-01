@@ -12,6 +12,10 @@ namespace Passenger.App.Run;
 /// would not do (a single-file AppHost's, kept in the state).</summary>
 public sealed record BuildStep(string Project, string? Framework, string? Output = null);
 
+/// <summary>A web app's build as its browser refresh needs it (<see cref="Debugging.BrowserRefresh"/>): the folder of the SDK
+/// it builds with, its intermediate output folder, and the global properties its build is given.</summary>
+public sealed record WebBuild(string Sdk, string Intermediate, IReadOnlyDictionary<string, string> Properties);
+
 /// <summary>Why a configuration cannot be launched, in words for the person.</summary>
 public class LaunchException(string message) : Exception(message);
 
@@ -63,6 +67,9 @@ public sealed partial record LaunchPlan
 
     /// <summary>Where the browser opens once the program listens, or null when the configuration opens none.</summary>
     public string? BrowserUrl { get; init; }
+
+    /// <summary>A web app's build, which its browser refresh needs; null for any other program.</summary>
+    public WebBuild? Web { get; init; }
 
     /// <summary>The projects of what it launches whose code runs in the browser (<see cref="ProjectModel.RunsInBrowser"/>), by
     /// their project files: its own project first when it does, then those it references.</summary>
@@ -147,6 +154,10 @@ public sealed partial record LaunchPlan
         if (project.GodotFolder is not null)
         {
             names.Add(MSBuildNames.GodotSdkVersion);
+        }
+        if (project.IsWeb)
+        {
+            names.UnionWith([MSBuildNames.ExtensionsPath, MSBuildNames.IntermediateOutputPath]);
         }
         foreach (string text in (string[])[configuration.Program, configuration.Arguments, configuration.WorkingDirectory, .. configuration.Environment.Values])
         {
@@ -235,7 +246,26 @@ public sealed partial record LaunchPlan
             Built = built,
             Console = configuration.Console,
             BrowserUrl = configuration.LaunchBrowser && configuration.BrowserUrl.Length > 0 ? Expand(configuration.BrowserUrl) : null,
+            Web = WebOf(project, framework, properties, workspace),
         };
+    }
+
+    /// <summary>A web project's build as its evaluation says it; null for another, or one whose evaluation says too little.</summary>
+    private static WebBuild? WebOf(ProjectModel project, string? framework, IReadOnlyDictionary<string, string> properties, WorkspaceModel? workspace)
+    {
+        if (!project.IsWeb || properties.GetValueOrDefault(MSBuildNames.ExtensionsPath) is not { Length: > 0 } sdk
+            || properties.GetValueOrDefault(MSBuildNames.IntermediateOutputPath) is not { Length: > 0 } intermediate)
+        {
+            return null;
+        }
+        Dictionary<string, string> globals = ProjectModels.Properties(workspace, project);
+        if (framework is not null)
+        {
+            globals[MSBuildNames.TargetFramework] = framework;
+        }
+        // MSBuild writes its default folders with backslashes, which only Windows takes for separators.
+        string folder = System.IO.Path.DirectorySeparatorChar == '\\' ? intermediate : intermediate.Replace('\\', System.IO.Path.DirectorySeparatorChar);
+        return new WebBuild(System.IO.Path.TrimEndingDirectorySeparator(sdk), PathNames.Canonical(System.IO.Path.Combine(project.Folder, folder)), globals);
     }
 
     /// <summary>Why a container configuration has no plan of this machine's: Run, Debug and Profile bring its containers up.</summary>

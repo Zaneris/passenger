@@ -47,6 +47,9 @@ public sealed record ServiceProgram(int Id, AdapterPlace? Place, Profiler.Profil
     /// <summary>Passenger's hook it started with, which runs its update handlers after each update Hot Reload applies, its
     /// session's from the attach; null where it has none.</summary>
     public Debugging.UpdateHandlerHook? Handlers { get; init; }
+
+    /// <summary>The SDK's browser refresh it started with, which keeps a web service's pages up, its session's from the attach.</summary>
+    public Debugging.BrowserRefresh? Browser { get; init; }
 }
 
 /// <summary>Why a service's program could not be reached where its run's kind runs it (its container, its tools, its
