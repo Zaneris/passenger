@@ -507,9 +507,9 @@ public sealed class DebugController : IDisposable
         foreach ((IHotReloadTarget target, HotReloadOutcome its) in quiet)
         {
             target.Say($"Hot Reload: {its.Said}", Unapplied(its));
-            if (its.Result == HotReloadResult.Applied && target is RunningReload run && toldUnhandled.Add(run))
+            if (its.Result == HotReloadResult.Applied && target is RunningReload run)
             {
-                target.Say(HandlersUnreached, false);
+                ToldHandlers(run);
             }
         }
         // The program applied to is its own tab's, whichever is chosen now; one ended or restarted meanwhile is told nothing.
@@ -529,6 +529,19 @@ public sealed class DebugController : IDisposable
         return new Applying(outcome, services, applied, program);
 
         static bool Unapplied(HotReloadOutcome its) => its.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply);
+    }
+
+    /// <summary>The update handlers of a program run with Hot Reload told of an update it took (<see cref="ToldHandlers(DebugTab, DebugSession)"/>).</summary>
+    private void ToldHandlers(RunningReload run)
+    {
+        if (run.Handlers is { } hook)
+        {
+            hook.Updated();
+        }
+        else if (run.Session.Elsewhere && toldUnhandled.Add(run))
+        {
+            run.Says(HandlersUnreached, false);
+        }
     }
 
     /// <summary>The program's update handlers told of an update it took, so a Blazor component renders it at once; a program
@@ -647,17 +660,24 @@ public sealed class DebugController : IDisposable
         return code < span.End ? code - span.Start + 1 : null;
     }
 
-    /// <summary>Attaches the debugger to a running .NET process beside any other program debugged, its output going
-    /// where it always went. With <paramref name="hotReload"/> the program was started held with
-    /// DOTNET_MODIFIABLE_ASSEMBLIES=debug, so Hot Reload is offered as for a launch while Settings has it on;
-    /// <paramref name="elsewhere"/> runs it on another machine, <paramref name="place"/> the adapter where it is, and an
-    /// inspected <paramref name="app"/> is held by its tab. Null once the session is open, else why it could not.</summary>
+    /// <summary>Attaches the debugger to a running .NET process beside any other program debugged, its output going where it
+    /// always went. With <paramref name="hotReload"/> it was started held with DOTNET_MODIFIABLE_ASSEMBLIES=debug, so Hot Reload
+    /// is offered as for a launch while Settings has it on, told to <paramref name="handlers"/> it started with; <paramref
+    /// name="elsewhere"/> runs it on another machine, <paramref name="place"/> the adapter where it is, and an inspected
+    /// <paramref name="app"/> is held by its tab. Null once the session is open, else why it could not.</summary>
     public Task<string?> AttachAsync(int processId, string name, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null, string? group = null,
-        LiveApp? app = null, BuiltEdits? edits = null)
+        LiveApp? app = null, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null)
     {
         bool hotReloadOn = hotReload && HotReloadOn();
         return OpenAsync((built, log, output, starting) => DebugSession.AttachAsync(processId, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn, elsewhere, place), name,
-            launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits);
+            launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits, hook: hotReloadOn ? handlers : Unheld(handlers));
+    }
+
+    /// <summary>A hook no session will tell of an update, let go of: null.</summary>
+    private static UpdateHandlerHook? Unheld(UpdateHandlerHook? hook)
+    {
+        hook?.Dispose();
+        return null;
     }
 
     /// <summary>What a Godot game Debug starts begins its GDScript with: the enabled breakpoints in the project's scripts at
@@ -1020,11 +1040,15 @@ public sealed class DebugController : IDisposable
         IdeErrors.Observe(Task.Delay(TimeSpan.FromSeconds(2)).ContinueWith(_ => ChildProcesses.Kill(process), TaskScheduler.Default));
     }
 
-    /// <summary>A program run with Hot Reload through the debugger rather than dotnet watch (a container run's service, whose
-    /// image has no SDK; a Godot game, which runs no startup hook): attached quietly, no breakpoint sent and no stop shown, so Apply Hot Reload Changes and a save
-    /// apply the edits to it; ended with its run. Its built lines follow the edits for a restart on its build.</summary>
+    /// <summary>A program run with Hot Reload through the debugger rather than dotnet watch (a run's service: a container's,
+    /// whose image has no SDK, or an Aspire AppHost's; a Godot game, which runs no startup hook): attached quietly, no breakpoint
+    /// sent and no stop shown, so Apply Hot Reload Changes and a save apply the edits to it; ended with its run. Its built lines
+    /// follow the edits for a restart on its build.</summary>
     public sealed record RunningReload(string Name, DebugSession Session, HotReload Reload, BuiltLines Lines, Action<string, bool> Says) : IHotReloadTarget
     {
+        /// <summary>Passenger's hook in its program, which runs its update handlers after each update; null where it has none.</summary>
+        internal UpdateHandlerHook? Handlers { get; init; }
+
         HotReload? IHotReloadTarget.HotReload => Reload;
 
         bool IHotReloadTarget.Quiet => true;
@@ -1040,16 +1064,18 @@ public sealed class DebugController : IDisposable
     /// <summary>The programs run with Hot Reload through the debugger, while they run.</summary>
     public IReadOnlyList<RunningReload> Running => running;
 
-    /// <summary>Attaches quietly for Hot Reload alone to a program run, which Run with Hot Reload (a container run's, a Godot
-    /// game's) held at its start with DOTNET_MODIFIABLE_ASSEMBLIES=debug: the attach lets it go. What its applies come to is said by
-    /// <paramref name="says"/>, where its output is. Null once attached, else why not.</summary>
+    /// <summary>Attaches quietly for Hot Reload alone to a program run, which Run with Hot Reload (a run's service, a Godot
+    /// game) held at its start with DOTNET_MODIFIABLE_ASSEMBLIES=debug: the attach lets it go. What its applies come to is said by
+    /// <paramref name="says"/>, where its output is, each told to <paramref name="handlers"/> it started with. Null once
+    /// attached, else why not.</summary>
     public async Task<string?> AttachForHotReloadAsync(int processId, string name, Action<string, bool> says, AdapterPlace? place = null,
-        CancellationToken cancellation = default, BuiltEdits? edits = null)
+        CancellationToken cancellation = default, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null)
     {
         UiThread.Check();
         if (disposed)
         {
             edits?.Dispose();
+            handlers?.Dispose();
             return $"Could not attach to {name} for Hot Reload: its folder was closed";
         }
         // Followed since the build read the files where it began there, else from now: an edit made meanwhile is one Apply takes.
@@ -1074,7 +1100,11 @@ public sealed class DebugController : IDisposable
             {
                 throw new OperationCanceledException("The workspace ended during Hot Reload attach");
             }
-            RunningReload reload = new(name, session, tracked, built, says);
+            RunningReload reload = new(name, session, tracked, built, says) { Handlers = handlers };
+            if (handlers is not null)
+            {
+                handlers.Says = says;
+            }
             tracked.Opened(session);
             own.Take();
             running.Add(reload);
@@ -1083,6 +1113,7 @@ public sealed class DebugController : IDisposable
                 if (session.State == DebugState.Ended && running.Remove(reload))
                 {
                     reload.Reload.End();
+                    reload.Handlers?.Dispose();
                     StateChanged?.Invoke(this, EventArgs.Empty);
                 }
                 else if (session.State == DebugState.Paused && running.Contains(reload))
@@ -1096,6 +1127,7 @@ public sealed class DebugController : IDisposable
         }
         catch (Exception error) when (error is DapException or IOException or InvalidOperationException or TimeoutException)
         {
+            handlers?.Dispose();
             if (attaching is not null)
             {
                 await attaching.CloseAsync();
@@ -1104,6 +1136,7 @@ public sealed class DebugController : IDisposable
         }
         catch
         {
+            handlers?.Dispose();
             if (attaching is not null)
             {
                 await attaching.CloseAsync();
@@ -1134,6 +1167,11 @@ public sealed class DebugController : IDisposable
         tab.App = app;
         tab.Lines = reload.Lines;
         tab.HotReload = reload.Reload;
+        tab.Handlers = reload.Handlers;
+        if (reload.Handlers is { } hook)
+        {
+            hook.Says = (line, error) => tab.Console.Append($"{line}\n", error);
+        }
         tab.Session = quiet;
         quiet.StateChanged += (_, _) => IdeErrors.Observe(OnStateChanged(tab));
         StateChanged?.Invoke(this, EventArgs.Empty);

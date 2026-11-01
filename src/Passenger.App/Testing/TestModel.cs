@@ -201,8 +201,10 @@ public sealed record TestAttachment(string Name, string Path)
     }
 }
 
-/// <summary>A test host a runner would start, to be started under the debugger instead.</summary>
-public sealed record TestHostStart(string FileName, IReadOnlyList<string> Arguments, string? WorkingDirectory, IReadOnlyDictionary<string, string> Environment);
+/// <summary>A test host a runner would start, to be started under the debugger instead, with the framework it runs on
+/// ("net10.0") where the runner knows it.</summary>
+public sealed record TestHostStart(string FileName, IReadOnlyList<string> Arguments, string? WorkingDirectory, IReadOnlyDictionary<string, string> Environment,
+    string? Framework = null);
 
 /// <summary>Debugging for a runner: it hands over the test host it would start, or names the one it started.</summary>
 public interface ITestDebugLauncher

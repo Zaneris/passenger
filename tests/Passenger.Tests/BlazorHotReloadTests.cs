@@ -1,9 +1,7 @@
-using System.Text.Json.Nodes;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.Core;
-using Passenger.Text;
 
 namespace Passenger.Tests;
 
@@ -19,11 +17,7 @@ public sealed class BlazorHotReloadTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
-    /// <summary>The longest dotnet new may take.</summary>
-    private static readonly TimeSpan Limit = TimeSpan.FromMinutes(3);
-
-    /// <summary>What the app's own update handler writes each time the handlers run.</summary>
-    private const string HandlersRan = "the update handlers ran";
+    private const string HandlersRan = BellApp.HandlersRan;
 
     [AvaloniaFact]
     public void Under_debug_a_components_markup_and_code_edits_reach_its_page_and_the_apps_update_handlers_run_after_each()
@@ -98,15 +92,6 @@ public sealed class BlazorHotReloadTests : IDisposable
         Ui.Settle();
     }
 
-    /// <summary>An edit to Counter.razor in the editor, as typed.</summary>
-    private static void Edit(MainWindow window, string was, string now)
-    {
-        TextSnapshot text = window.EditorArea.CodeEditor.Document.Snapshot;
-        int at = text.ToString().IndexOf(was, StringComparison.Ordinal);
-        Assert.True(at >= 0, $"Counter.razor has no '{was}'");
-        window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(at, was.Length, now)]);
-    }
-
     /// <summary>Apply Hot Reload Changes, until it says what it came to: applied.</summary>
     private static void Apply(MainWindow window)
     {
@@ -115,46 +100,12 @@ public sealed class BlazorHotReloadTests : IDisposable
             () => $"the edit applied; Hot Reload said: {window.Debugger.LastApplied?.Said} ({window.Status})", TimeSpan.FromMinutes(1));
     }
 
-    /// <summary>The counter's page from the app, once its output (<paramref name="output"/>) says it listens.</summary>
-    private static string Page(MainWindow window, int port, Func<string> output)
-    {
-        Ui.WaitFor(() => output().Contains("Now listening on", StringComparison.Ordinal), () => $"the app to listen ({window.Status}):\n{output()}", TimeSpan.FromMinutes(2));
-        using HttpClient http = new();
-        return Ui.Await(http.GetStringAsync(new Uri($"http://localhost:{port}/counter")), "the counter's page from the app", TimeSpan.FromMinutes(1));
-    }
+    /// <summary>The app, made and restored in the test's folder (<see cref="BellApp"/>): the port it listens on.</summary>
+    private int Make() => BellApp.Make(folder);
 
-    private static int Count(string text, string what)
-    {
-        int count = 0;
-        for (int at = text.IndexOf(what, StringComparison.Ordinal); at >= 0; at = text.IndexOf(what, at + what.Length, StringComparison.Ordinal))
-        {
-            count++;
-        }
-        return count;
-    }
+    private static string Page(MainWindow window, int port, Func<string> output) => BellApp.Page(window, port, output);
 
-    /// <summary>The app, made and restored in the test's folder, listening on a port of its own with no browser opened, with
-    /// an update handler of its own that writes <see cref="HandlersRan"/>: the port.</summary>
-    private int Make()
-    {
-        Ui.AwaitPumped(Waiting.Apart(async () =>
-        {
-            ChildResult made = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(
-                ["new", "blazor", "--output", folder, "--name", "Bell", "--framework", TestProjects.Framework, "--interactivity", "Server", "--no-https", "--no-restore"]), limit: Limit);
-            Assert.True(made.Succeeded, $"dotnet new blazor did not make the test's app (exit code {made.ExitCode}):\n{made.Output}{made.Error}");
-            return made;
-        }), "dotnet new blazor to make the test's app", Limit + TestFolders.Spare);
-        int port = AspireApp.FreePort();
-        string settings = Path.Combine(folder, "Properties", "launchSettings.json");
-        JsonNode launch = JsonNode.Parse(File.ReadAllText(settings))!;
-        launch["profiles"]!["http"]!["applicationUrl"] = $"http://localhost:{port}";
-        launch["profiles"]!["http"]!["launchBrowser"] = false;
-        File.WriteAllText(settings, launch.ToJsonString());
-        TestFolders.Write(folder, "UpdateProbe.cs", "[assembly: System.Reflection.Metadata.MetadataUpdateHandler(typeof(UpdateProbe))]\n\n"
-            + "internal static class UpdateProbe\n{\n    public static void UpdateApplication(Type[]? types) => Console.WriteLine(\"" + HandlersRan + "\");\n}\n");
-        TestFolders.Write(folder, "nuget.config", "<configuration>\n  <packageSources><clear /><add key=\"local\" value=\"feed\" /></packageSources>\n</configuration>\n");
-        Directory.CreateDirectory(Path.Combine(folder, "feed"));
-        Restore.Run(Path.Combine(folder, "Bell.csproj"));
-        return port;
-    }
+    private static void Edit(MainWindow window, string was, string now) => BellApp.Edit(window, was, now);
+
+    private static int Count(string text, string what) => BellApp.Count(text, what);
 }

@@ -282,7 +282,8 @@ public partial class MainWindow
     }
 
     /// <summary>A test host a runner would start, started under the debugger as a plan of its own (the runner built it, and
-    /// its environment has the test project's launch profile's); its process for the runner to talk to.</summary>
+    /// its environment has the test project's launch profile's), on the framework the runner names, which Hot Reload's update
+    /// handlers' hook asks; its process for the runner to talk to.</summary>
     private async Task<int> LaunchTestHost(ProjectSession running, Testing.TestHostStart start, HashSet<DebugTab> testHosts)
     {
         CheckTestSession(running);
@@ -294,6 +295,7 @@ public partial class MainWindow
             Arguments = start.Arguments,
             WorkingDirectory = start.WorkingDirectory ?? running.Folder ?? Environment.CurrentDirectory,
             Environment = new Dictionary<string, string>(start.Environment),
+            RunsOn = start.Framework,
         };
         ShowToolWindow(ToolWindowIds.Debug);
         Debugging.DebugLaunch launched = await running.Debug.StartAdditionalAsync(plan, cancel, tab => testHosts.Add(tab));
