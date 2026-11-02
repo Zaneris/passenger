@@ -354,11 +354,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   Debug and Profile see, `ProjectSession.RunProjects`, never in `Projects`), on the Godot `GodotExecutables` finds, a
   launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (its value editors `GodotValueCells`,
   an `ILiveValueCells`, from `GodotHints`; Keep `GodotKeep`; a run's errors pinned to lines `GodotErrorPins` through
-  `ErrorPinColumn`, its console folded `GodotConsoleFold`; `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol
-  `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's build skipped while what its last build read and wrote stands,
-  a build under way waited out first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia
-  previewers holding its output (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time
-  (`ConsoleWritten`).
+  `ErrorPinColumn`, its console folded `GodotConsoleFold`; a running game's member values at their lines' ends
+  `GodotLiveValues`, into `OpenDocument.LiveValues` through the helper's `values` call, members from `GodotMembers`;
+  `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's
+  build skipped while what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`;
+  on Windows a build's first step lets go of the Avalonia previewers holding its output
+  (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time (`ConsoleWritten`).
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach,
   Restart and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time
   (`TakeStartAsync`); Stop ends every session and recording before the programs go.
@@ -525,9 +526,11 @@ site-shots` retakes its images.
   has one reader (`GodotVariant.ReadAsync`). Godot's frame counter runs on while a game is paused, so the frame count is
   the helper's (`GodotGame.Frame`); in a headless game Next Frame never pauses again, so the helper's `step` ends it;
   node selection, once set up, starts picking and takes the game's clicks until turned off; a headless game picks no 3D
-  mesh without a collision shape. Its .NET host rolls forward only to released runtimes, so a new game's framework is
-  one it can run (`GodotGames.Runnable`). An agent's input and layout reach a game through Passenger's helper node
-  (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
+  mesh without a collision shape. Godot reads the debugger's messages between a script's lines, so a call to Passenger's
+  helper can run inside its own initialiser, whose defaults then overwrite what it set: the helper comes in only once
+  its live-edit path was sent (`GodotGame.AskAsync`). Its .NET host rolls forward only to released runtimes, so a new
+  game's framework is one it can run (`GodotGames.Runnable`). An agent's input and layout reach a game through
+  Passenger's helper node (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
