@@ -94,6 +94,11 @@ public static class AppActions
     // The Live Visual Tree of an app being debugged: no key of Rider's or Visual Studio's.
     public const string ShowLiveTree = "app.showLiveTree";
     public const string SelectElement = "app.liveTree.selectElement";
+    public const string SelectIn3D = "app.liveTree.selectIn3D";
+
+    // A Godot game's loop paused and stepped a frame from the Live Visual Tree, the debugger not breaking in: no key of Rider's.
+    public const string PauseGameLoop = "app.godot.pauseLoop";
+    public const string NextFrame = "app.godot.nextFrame";
 
     // Passenger made the script editor of the Godot found, in its editor settings: no key of Rider's.
     public const string GodotScriptEditor = "app.godot.scriptEditor";

@@ -175,6 +175,33 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
         await Call(client, McpTools.Stop);
     }
 
+    /// <summary>An agent pauses the game's loop and steps it a frame with ide_action, each answer saying the frame it is at,
+    /// lets it run on, and with Select Element on has app_click pick the button at a point, its answer naming what it picked
+    /// and the button taking no click of its own meanwhile.</summary>
+    [Fact]
+    public async Task An_agent_pauses_the_games_loop_steps_it_a_frame_and_picks_a_node_at_a_point_with_the_ide_and_app_tools()
+    {
+        await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false);
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
+        Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"The game ended as it started: {ran}");
+
+        string paused = await Game(client, McpTools.IdeAction, new() { ["action"] = Passenger.App.AppActions.PauseGameLoop });
+        System.Text.RegularExpressions.Match at = System.Text.RegularExpressions.Regex.Match(paused, "loop is paused at frame ([0-9,]+)");
+        Assert.True(at.Success, $"Pause Game Loop did not say the frame the game is held at: {paused}");
+        long frame = long.Parse(at.Groups[1].Value, System.Globalization.NumberStyles.AllowThousands, System.Globalization.CultureInfo.InvariantCulture);
+        string stepped = await Game(client, McpTools.IdeAction, new() { ["action"] = Passenger.App.AppActions.NextFrame });
+        Assert.Contains($"ran one frame, and is paused at frame {(frame + 1).ToString("N0", System.Globalization.CultureInfo.InvariantCulture)}", stepped, StringComparison.Ordinal);
+        string resumed = await Game(client, McpTools.IdeAction, new() { ["action"] = Passenger.App.AppActions.PauseGameLoop });
+        Assert.Contains("loop runs on", resumed, StringComparison.Ordinal);
+
+        string picking = await Game(client, McpTools.IdeAction, new() { ["action"] = Passenger.App.AppActions.SelectElement });
+        Assert.Contains(McpTools.AppClick, picking, StringComparison.Ordinal);
+        string picked = await Game(client, McpTools.AppClick, new() { ["x"] = 60, ["y"] = 25 });
+        Assert.Contains("Select Element picked Button#Toggle", picked, StringComparison.Ordinal);
+        Assert.DoesNotContain("toggled on", Text(await Call(client, McpTools.Output)), StringComparison.Ordinal);
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>An app_ tool's answer for the game; one refused fails with the game's last words, Godot's errors among them.</summary>
     private async Task<string> Game(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?> arguments)
     {

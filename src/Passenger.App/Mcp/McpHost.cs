@@ -78,7 +78,9 @@ public static partial class McpHost
         "debug_evaluate, debug_state and debug_continue, each waiting for the program to stop and saying where, with the locals " +
         "where it stopped. An Avalonia or WPF app that run or debug_start starts is looked at and used as a person tests it: app_windows, app_tree, " +
         "app_screenshot, app_click, app_type, app_key, app_scroll, app_binding_errors. A Godot game the same, Passenger its remote debugger: its " +
-        "nodes are the elements, input reaching it through a helper node Passenger adds under its root. Also version control (vcs_status, " +
+        "nodes are the elements, input reaching it through a helper node Passenger adds under its root; ide_action app.godot.pauseLoop " +
+        "and app.godot.nextFrame pause its loop and step it a frame, and with app.liveTree.selectElement on, app_click picks the node at " +
+        "a point. Also version control (vcs_status, " +
         "vcs_commit), NuGet (nuget_search, nuget_install), Problems and Local History (diagnostics with no path, local_history), the settings (settings, " +
         "settings_set), the container engine (containers, container_exec, container_action) and Passenger's own " +
         "window (the app_ tools with app ide, ide_action).\n\n" +

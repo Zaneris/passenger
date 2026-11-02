@@ -83,7 +83,7 @@ public sealed class GodotVariantException(string message) : Exception(message);
 /// byte, flags above: 64-bit numbers, an object sent as its id, a typed container's element type) and then the value, little
 /// endian, a string as its UTF-8 length and bytes padded to four. Read into plain values: null, bool, long, double, string,
 /// <see cref="GodotName"/>, <see cref="GodotNodePath"/>, <see cref="GodotMath"/>, lists for arrays, arrays for packed ones,
-/// and the records here for the rest. Written for what a debugger sends: those plain values, lists and numbers.</summary>
+/// and the records here for the rest. Written for what a debugger sends: those plain values, lists, dictionaries and numbers.</summary>
 public static class GodotVariant
 {
     private const int Type = 0xFF;
@@ -172,7 +172,7 @@ public static class GodotVariant
     }
 
     /// <summary>The bytes of a value: null, bool, a whole number, a real one, a string, a name, a node path, a math value,
-    /// an object's id, a list or a string array.</summary>
+    /// an object's id, a dictionary, a list or a string array.</summary>
     public static byte[] Write(object? value)
     {
         List<byte> bytes = [];
@@ -252,6 +252,15 @@ public static class GodotVariant
                 foreach (string text in strings)
                 {
                     PutText(bytes, text + "\0");
+                }
+                break;
+            case GodotDictionary dictionary:
+                Put(bytes, (uint)GodotType.Dictionary);
+                Put(bytes, (uint)dictionary.Entries.Count);
+                foreach ((object? key, object? entry) in dictionary.Entries)
+                {
+                    Write(bytes, key, depth + 1);
+                    Write(bytes, entry, depth + 1);
                 }
                 break;
             case IEnumerable<object?> items:

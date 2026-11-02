@@ -44,8 +44,9 @@ public enum LiveTreePage
 /// <summary>The Live Visual Tree window: Select Element and Refresh atop the app's windows and their visual trees (a
 /// control's type, #name and .classes; a template's parts dimmed; at first open down to the app's own XAML), and under
 /// them the chosen control: its XAML (a link to it, or why there is none), then its properties with each value's source,
-/// the styles that apply and those that do not with why, and its layout's boxes. The window only shows;
-/// <see cref="LiveTreeController"/> asks the app.</summary>
+/// the styles that apply and those that do not with why, and its layout's boxes; for a Godot game, what Select Element
+/// picks (2D or 3D) and Pause Game Loop and Next Frame beside them. The window only shows; <see cref="LiveTreeController"/>
+/// asks the app.</summary>
 public sealed class LiveTreeView : DockPanel
 {
     private readonly TreeRows<LiveTreeRow> rows = [];
@@ -75,7 +76,7 @@ public sealed class LiveTreeView : DockPanel
 
     public LiveTreeView()
     {
-        SelectElement = ToolButtons.Toggle(IconKeys.SelectElement, "Select Element: point at a control in the app and click it");
+        SelectElement = ToolButtons.Toggle(IconKeys.SelectElement, "Select Element: point at a control in the app, or a node in the game, and click it");
         SelectElement.Click += (_, _) => PickRequested?.Invoke(this, SelectElement.IsChecked == true);
         Button refresh = ToolButtons.Of(AppActions.LiveTreeRefresh, IconKeys.Rerun, "Refresh", _ => RefreshRequested?.Invoke(this, EventArgs.Empty));
         status = new TextBlock { Classes = { StyleClasses.Muted }, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0), TextTrimming = TextTrimming.CharacterEllipsis };
@@ -88,8 +89,29 @@ public sealed class LiveTreeView : DockPanel
                 SourceChosen?.Invoke(this, sources.SelectedIndex);
             }
         };
+        PickIn = new ComboBox { Classes = { StyleClasses.Compact }, ItemsSource = PickKinds, SelectedIndex = 0, VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
+        ToolTip.SetTip(PickIn, "What Select Element picks in the game: its 2D nodes and controls, or its 3D nodes");
+        PickIn.SelectionChanged += (_, _) =>
+        {
+            if (!showingPickIn && PickIn.SelectedIndex >= 0)
+            {
+                PickInChosen?.Invoke(this, PicksIn3D);
+            }
+        };
+        PauseLoop = ToolButtons.Toggle(IconKeys.Pause, PauseLoopTip);
+        ActionTips.Set(PauseLoop, AppActions.PauseGameLoop, PauseLoopTip);
+        PauseLoop.IsVisible = false;
+        PauseLoop.Click += (_, _) => LoopRequested?.Invoke(this, AppActions.PauseGameLoop);
+        NextFrame = ToolButtons.Of(AppActions.NextFrame, IconKeys.NextFrame, "Next Frame: run one frame of the game's loop paused", action => LoopRequested?.Invoke(this, action));
+        NextFrame.IsVisible = false;
         DockPanel top = new() { Margin = new Thickness(6, 0) };
-        StackPanel buttons = new() { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { SelectElement, refresh, sources } };
+        StackPanel buttons = new()
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 2,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = { SelectElement, PickIn, refresh, PauseLoop, NextFrame, sources },
+        };
         DockPanel.SetDock(buttons, Dock.Left);
         top.Children.Add(buttons);
         top.Children.Add(status);
@@ -309,6 +331,56 @@ public sealed class LiveTreeView : DockPanel
 
     /// <summary>Select Element, pressed while it is on.</summary>
     public ToggleButton SelectElement { get; }
+
+    /// <summary>What Select Element picks in a game, as <see cref="PickIn"/> offers it.</summary>
+    public static readonly IReadOnlyList<string> PickKinds = ["2D", "3D"];
+
+    /// <summary>What Select Element picks in a game, its 2D nodes or its 3D ones: shown while a game is followed.</summary>
+    public ComboBox PickIn { get; }
+
+    /// <summary>Whether Select Element picks a game's 3D nodes, as <see cref="PickIn"/> is chosen.</summary>
+    public bool PicksIn3D => PickIn.SelectedIndex == 1;
+
+    private bool showingPickIn;
+
+    /// <summary>What Select Element picks shown chosen, without raising the choice back.</summary>
+    public void ShowPickIn(bool in3D)
+    {
+        showingPickIn = true;
+        try
+        {
+            PickIn.SelectedIndex = in3D ? 1 : 0;
+        }
+        finally
+        {
+            showingPickIn = false;
+        }
+    }
+
+    /// <summary>What Select Element picks chosen in <see cref="PickIn"/>: true for a game's 3D nodes.</summary>
+    public event EventHandler<bool>? PickInChosen;
+
+    private const string PauseLoopTip = "Pause Game Loop: hold the game at its frame, the debugger not breaking in";
+
+    /// <summary>Pause Game Loop, pressed while the game's loop is held: shown while a game is followed.</summary>
+    public ToggleButton PauseLoop { get; }
+
+    /// <summary>Next Frame, enabled while the game's loop is held: shown while a game is followed.</summary>
+    public Button NextFrame { get; }
+
+    /// <summary>Pause Game Loop or Next Frame pressed: the action asked for.</summary>
+    public event EventHandler<string>? LoopRequested;
+
+    /// <summary>The game's tools shown while a game is followed (<paramref name="game"/>), Pause Game Loop pressed while its
+    /// loop is held and Next Frame enabled then; hidden for an app.</summary>
+    public void ShowGame(bool game, bool held)
+    {
+        PickIn.IsVisible = game;
+        PauseLoop.IsVisible = game;
+        PauseLoop.IsChecked = held;
+        NextFrame.IsVisible = game;
+        NextFrame.IsEnabled = held;
+    }
 
     /// <summary>The tree as shown, a row a visible element.</summary>
     public IReadOnlyList<LiveTreeRow> Rows => rows;

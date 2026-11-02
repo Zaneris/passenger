@@ -4,7 +4,8 @@ namespace Passenger.App.Godot;
 /// GDScript under the game's root, for what Godot's remote debug protocol does not carry, input and where nodes are
 /// drawn. <see cref="GodotGame.AskAsync"/> brings it in through Godot's own live editing messages when an agent first
 /// needs it (a node made under the root, its script set from the file <c>Written</c> writes); it says where each node is in the
-/// window and what it shows, and gives clicks, keys, typing and the wheel as a person does, through Godot's Input.</summary>
+/// window and what it shows, gives clicks, keys, typing and the wheel as a person does, through Godot's Input, and counts
+/// the frames the game runs, which Passenger's hold on its loop steps one at a time.</summary>
 public static partial class GodotAgent
 {
     /// <summary>Its node's name under the game's root.</summary>

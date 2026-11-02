@@ -116,6 +116,8 @@ ICONS = [
     ("ZoomFit", "Zoom Fit", "20_regular"),
     # The Run and Debug windows' Avalonia debug overlays: layers drawn over the app's window.
     ("Overlays", "Layer", "20_regular"),
+    # A Godot game's loop stepped one frame while it is held.
+    ("NextFrame", "Next", "20_regular"),
     # Apply Hot Reload Changes on the toolbar and the Run and Debug windows: a flame.
     ("HotReload", "Fire", "20_regular"),
     # The Hierarchy window's stripe button: a type over the types it derives from or that derive from it.

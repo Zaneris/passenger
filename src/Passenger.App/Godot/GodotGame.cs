@@ -12,7 +12,8 @@ namespace Passenger.App.Godot;
 /// connection the game makes back (<c>--remote-debug tcp://127.0.0.1:port</c>, which <see cref="Listen"/> adds to its plan),
 /// and speaks Godot's remote debug protocol over it as Godot's editor does. The game tells its errors and warnings
 /// (<see cref="Raised"/>, each with the stack it was raised on) and its performance monitors once a second; asked, its scene
-/// tree and a node's properties, and it takes a property's new value. So it is a source of the Live Visual Tree. Under Debug
+/// tree and a node's properties, and it takes a property's new value; its loop is held and stepped a frame at a time, and a
+/// click in its window picks a node, through Godot's own messages. So it is a source of the Live Visual Tree. Under Debug
 /// its GDScript stops go to its script debugger (<see cref="Scripts"/>); under Run and Profile its breakpoints are skipped and
 /// its errors never stop it. Events are raised on the UI thread; it ends with its connection, or once disposed.</summary>
 public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
@@ -329,6 +330,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             return;
         }
         State = LiveAppState.Ended;
+        Picking = GodotPicking.Off;
         Scripts?.GameEnded();
         treeAsked?.TrySetException(new LiveAppException($"{Name} has ended"));
         foreach (TaskCompletionSource<GodotObjectState> asked in objectsAsked.Values)
@@ -389,6 +391,26 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             case GodotWords.Error when GodotError.Read(message.Data) is { } error:
                 lastRaised = (System.Diagnostics.Stopwatch.GetTimestamp(), error.Said);
                 Raised?.Invoke(this, error);
+                break;
+            case GodotWords.ObjectsSelected when GodotPicks.Picked(message.Data) is { } picked:
+                inspected[picked.Id] = picked;
+                if (outlinesUnanswered > 0)
+                {
+                    outlinesUnanswered--;
+                }
+                else if (Picking != GodotPicking.Off)
+                {
+                    // One node a pick, as Select Element picks: the game takes its own input again.
+                    Picking = GodotPicking.Off;
+                    Send(GodotWords.SelectType, (long)GodotPicking.Off);
+                    Pick(picked);
+                }
+                break;
+            case GodotWords.NothingSelected when outlinesUnanswered > 0:
+                outlinesUnanswered--;
+                break;
+            case GodotWords.NothingSelected when Picking != GodotPicking.Off:
+                Pick(null);
                 break;
             case GodotWords.Screenshotted when message.Data is [long id, long width, long height, string path]:
                 picturesAsked.GetValueOrDefault(id)?.TrySetResult(((int)width, (int)height, path));
@@ -652,7 +674,11 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     /// once, where the game's tree lacks it: through the live editing of a scene open once under the root, a node made beside
     /// it and its script set from <see cref="GodotAgent.Written"/>. What it answered after its ask and done; a
     /// <see cref="LiveAppException"/> saying why it did not do it.</summary>
-    public async Task<List<object?>> AskAsync(string call, params object?[] arguments)
+    public Task<List<object?>> AskAsync(string call, params object?[] arguments) => AskAsync(call, arguments, null);
+
+    /// <summary>Asks the helper as <see cref="AskAsync(string, object?[])"/> does, sending <paramref name="then"/>'s message
+    /// once the call is sent, before its answer, which comes only once the game has taken that.</summary>
+    private async Task<List<object?>> AskAsync(string call, object?[] arguments, Func<Task>? then)
     {
         UiThread.Check();
         GodotNode tree = await SceneTreeAsync();
@@ -683,6 +709,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         try
         {
             await SendAsync(GodotWords.LiveNodeCall, [AgentPath, call, ask, .. arguments]);
+            if (then is not null)
+            {
+                await then();
+            }
             List<object?> said = await Answer(asked.Task, $"Passenger's helper's {call}");
             return said[1] is true ? said[2..]
                 : throw new LiveAppException(said is [_, _, string why, ..] ? why : $"Passenger's helper in {Name} did not say why it could not");
@@ -700,6 +730,145 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         await SendAsync(GodotWords.LiveCreateNode, GodotAgent.PathOf(".."), "Node", GodotAgent.NodeName);
         // Godot's own paths part their folders with '/' on every system.
         await SendAsync(GodotWords.LiveNodePropertyResource, AgentPath, "script", script.Replace('\\', '/'));
+    }
+
+    /// <summary>Whether Godot's runtime node selection is set up in the game, which takes its setup once.</summary>
+    private bool selectionSetUp;
+
+    /// <summary>The outlines asked for that the game has yet to answer, each answered as a pick would be.</summary>
+    private int outlinesUnanswered;
+
+    /// <summary>What a click in the game's window picks now, through Godot's runtime node selection: off while the game takes
+    /// its own input, as it does again once a node is picked.</summary>
+    public GodotPicking Picking { get; private set; }
+
+    /// <summary>The picks heard so far: an agent's click compares it before and after.</summary>
+    public int Picks { get; private set; }
+
+    /// <summary>The node the last pick found, as Godot sent it; null for none, or before a pick.</summary>
+    public GodotObjectState? LastPick { get; private set; }
+
+    /// <summary>A click in the game picked a node (as Godot sent it), or none Godot could pick there (null), while it picked.</summary>
+    public event EventHandler<GodotObjectState?>? Picked;
+
+    private void Pick(GodotObjectState? picked)
+    {
+        Picks++;
+        LastPick = picked;
+        Picked?.Invoke(this, picked);
+    }
+
+    /// <summary>Has a click in the game's window pick a node, among its 2D nodes and controls or its 3D nodes, or takes
+    /// picking off; Godot outlines the node picked in <paramref name="outline"/>'s colour (red, green, blue from 0 to 1). A
+    /// node locked in Godot's editor is passed over, and one inside a group made there picks the group.</summary>
+    public async Task PickAsync(GodotPicking picking, (double Red, double Green, double Blue) outline)
+    {
+        UiThread.Check();
+        await SetUpSelectionAsync(outline);
+        await SendAsync(GodotWords.SelectType, (long)picking);
+        Picking = picking;
+    }
+
+    /// <summary>Outlines a node in the game's window as Godot outlines one picked, or takes the outline away (null).</summary>
+    public async Task OutlineAsync(ulong? node, (double Red, double Green, double Blue) outline)
+    {
+        UiThread.Check();
+        await SetUpSelectionAsync(outline);
+        if (node is ulong id)
+        {
+            outlinesUnanswered++;
+            await SendAsync(GodotWords.InspectObjects, new List<object?> { (long)id }, true);
+        }
+        else
+        {
+            await SendAsync(GodotWords.ClearSelection);
+        }
+    }
+
+    private async Task SetUpSelectionAsync((double Red, double Green, double Blue) outline)
+    {
+        if (selectionSetUp)
+        {
+            return;
+        }
+        selectionSetUp = true;
+        await SendAsync(GodotWords.SelectSetup, GodotPicks.Settings(outline.Red, outline.Green, outline.Blue));
+        // Godot's selection begins picking in 2D, which would take the game's clicks before Select Element asked it to.
+        await SendAsync(GodotWords.SelectType, (long)GodotPicking.Off);
+        await SendAsync(GodotWords.SelectAvoidLocked, true);
+        await SendAsync(GodotWords.SelectPreferGroup, true);
+    }
+
+    /// <summary>Whether Passenger holds the game's loop (<see cref="HoldLoopAsync"/>): its nodes process nothing, its time
+    /// stands, and it takes no input, while it answers its debugger.</summary>
+    public bool LoopHeld { get; private set; }
+
+    /// <summary>The frames the game has run, as Passenger's helper last counted them: null until it counts, from the first
+    /// hold on the game's loop.</summary>
+    public long? Frame { get; private set; }
+
+    /// <summary>The game's loop was held or let go, or its frames counted.</summary>
+    public event EventHandler? LoopChanged;
+
+    /// <summary>Holds the game's loop at the frame it is at, or lets it go on, the debugger not breaking in, and says the
+    /// frames it has run then (null where Passenger's helper could not come into the game to count them, which a hold does
+    /// not wait on).</summary>
+    public async Task<long?> HoldLoopAsync(bool held)
+    {
+        UiThread.Check();
+        if (held && Frame is null)
+        {
+            // Counted from before the hold, so the count is of every frame the game has run.
+            await CountedAsync();
+        }
+        await SendAsync(GodotWords.SuspendChanged, held);
+        long? frame = await CountedAsync();
+        LoopHeld = held;
+        Frame = frame ?? Frame;
+        LoopChanged?.Invoke(this, EventArgs.Empty);
+        return frame;
+    }
+
+    /// <summary>The frames the game has run, counted again and shown; null where the helper could not count them.</summary>
+    public async Task<long?> TryCountAsync()
+    {
+        long? frame = await CountedAsync();
+        if (frame is not null)
+        {
+            Frame = frame;
+            LoopChanged?.Invoke(this, EventArgs.Empty);
+        }
+        return frame;
+    }
+
+    /// <summary>The frames the game has run, Passenger's helper brought in to count them from now where it is not there; null
+    /// where it could not come, or said no count.</summary>
+    private async Task<long?> CountedAsync()
+    {
+        try
+        {
+            return (await AskAsync("count")) is [long frame, ..] ? frame : null;
+        }
+        catch (LiveAppException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Runs one frame of the game's loop held, the loop held again after it, and says the frames run then; a game
+    /// that draws nothing (headless) has the helper end the frame, which Godot ends at its drawing.</summary>
+    public async Task<long> StepAsync()
+    {
+        UiThread.Check();
+        if (!LoopHeld)
+        {
+            throw new LiveAppException($"{Name}'s loop runs: hold it to step it a frame");
+        }
+        List<object?> said = await AskAsync("step", [Headless], () => SendAsync(GodotWords.NextFrame));
+        long stepped = said is [long frame, ..] ? frame : throw new LiveAppException($"Passenger's helper in {Name} said no frame count");
+        Frame = stepped;
+        LoopChanged?.Invoke(this, EventArgs.Empty);
+        return stepped;
     }
 
     public async Task<ElementDetails> DetailsAsync(long element)

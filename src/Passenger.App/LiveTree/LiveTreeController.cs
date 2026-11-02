@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using Avalonia.Controls;
+using Avalonia.Media;
 using Passenger.App.Debugging;
 using Passenger.App.Docking;
 using Passenger.App.Editors;
@@ -65,6 +67,23 @@ public sealed class LiveTreeController
         {
             WhyNot = _ => WhyNotAsk(),
         });
+        parts.Actions.Add(new IdeAction(AppActions.SelectIn3D, "Select Element Among 3D Nodes", "Debug", context => IdeErrors.Observe(PickInAsync(!pickIn3D)))
+        {
+            IsChecked = _ => pickIn3D,
+            WhyNot = _ => app is Godot.GodotGame ? null : "Select Element picks among 3D nodes in a Godot game: Run or Debug one",
+        });
+        parts.Actions.Add(new IdeAction(AppActions.PauseGameLoop, "Pause Game Loop", "Debug", context => IdeErrors.Observe(HoldLoopAsync()))
+        {
+            TitleIn = _ => app is Godot.GodotGame { LoopHeld: true } ? "Resume Game Loop" : "Pause Game Loop",
+            IsChecked = _ => app is Godot.GodotGame { LoopHeld: true },
+            WhyNot = _ => WhyNotLoop(),
+            Words = ["Suspend Game", "Resume Game"],
+        });
+        parts.Actions.Add(new IdeAction(AppActions.NextFrame, "Next Frame", "Debug", context => IdeErrors.Observe(StepAsync()))
+        {
+            WhyNot = _ => WhyNotLoop() ?? (app is Godot.GodotGame { LoopHeld: false } game ? $"{game.Name}'s loop runs: Pause Game Loop holds it first" : null),
+            Words = ["Step Frame"],
+        });
         ShowState();
     }
 
@@ -102,8 +121,17 @@ public sealed class LiveTreeController
         made.ShowStatus(status.Message, status.Line);
         made.ShowBanner(banner);
         made.ShowMonitors(monitorsShown);
-        made.SelectElement.IsVisible = app is not Godot.GodotGame;
         made.SelectElement.IsChecked = picking;
+        made.ShowGame(app is Godot.GodotGame, app is Godot.GodotGame { LoopHeld: true });
+        made.ShowPickIn(pickIn3D);
+        made.PickInChosen += (_, in3D) => IdeErrors.Observe(PickInAsync(in3D));
+        made.LoopRequested += (_, action) =>
+        {
+            if (parts.Actions.Run(action) is { } why)
+            {
+                parts.Say(why);
+            }
+        };
         made.SourceChosen += (_, at) =>
         {
             if (session is { LiveApp: null } current && at < current.Games.Count)
@@ -139,6 +167,10 @@ public sealed class LiveTreeController
     private void ShowTree(AppTree? shown)
     {
         tree = shown;
+        if (shown is not null && app is Godot.GodotGame && !pickChosen)
+        {
+            ShowPickIn(Has3D(shown));
+        }
         view?.ShowTree(shown);
     }
 
@@ -405,14 +437,17 @@ public sealed class LiveTreeController
         if (app is Godot.GodotGame was)
         {
             was.MonitorsChanged -= OnMonitors;
+            was.Picked -= OnGamePicked;
+            was.LoopChanged -= OnLoopChanged;
         }
         app = next;
+        pickChosen = false;
         if (view is not null)
         {
             view.PropertiesAlone = next is Godot.GodotGame;
-            view.SelectElement.IsVisible = next is not Godot.GodotGame;
+            view.ShowGame(next is Godot.GodotGame, next is Godot.GodotGame { LoopHeld: true });
         }
-        ShowMonitors((next as Godot.GodotGame)?.Monitors?.Said);
+        ShowMonitors(MonitorsOf(next as Godot.GodotGame));
         Choose(null);
         treeAsks++;
         detailAsks++;
@@ -432,6 +467,8 @@ public sealed class LiveTreeController
         if (next is Godot.GodotGame game)
         {
             game.MonitorsChanged += OnMonitors;
+            game.Picked += OnGamePicked;
+            game.LoopChanged += OnLoopChanged;
         }
         ShowState();
         if (next is { State: LiveAppState.Connected })
@@ -483,12 +520,120 @@ public sealed class LiveTreeController
     {
         if (sender == app && app is Godot.GodotGame { State: LiveAppState.Connected } game)
         {
-            ShowMonitors(game.Monitors?.Said);
+            ShowMonitors(MonitorsOf(game));
             ShowSources();
             if (window.IsShown && !Paused && !following)
             {
                 IdeErrors.Observe(FollowAsync(game));
             }
+            if (window.IsShown && !Paused && !counting && game is { Frame: not null, LoopHeld: false })
+            {
+                IdeErrors.Observe(CountAsync(game));
+            }
+        }
+    }
+
+    /// <summary>A count of the game's frames asked for by its period is under way.</summary>
+    private bool counting;
+
+    /// <summary>The game's frames counted again by its period, once Passenger's helper counts them: the line under the buttons
+    /// follows the loop as it runs.</summary>
+    private async Task CountAsync(Godot.GodotGame game)
+    {
+        counting = true;
+        try
+        {
+            await game.TryCountAsync();
+        }
+        finally
+        {
+            counting = false;
+        }
+    }
+
+    /// <summary>A game's line under the buttons: its frames run once counted (held at one while its loop is paused), then its
+    /// monitors; null for none.</summary>
+    private static string? MonitorsOf(Godot.GodotGame? game)
+    {
+        if (game is null || (game.Monitors is null && game.Frame is null))
+        {
+            return null;
+        }
+        string? frame = game.Frame is long count ? $"{(game.LoopHeld ? "Paused at frame" : "Frame")} {Counted(count)}" : game.LoopHeld ? "Paused" : null;
+        return string.Join(" · ", new[] { frame, game.Monitors?.Said }.OfType<string>());
+    }
+
+    /// <summary>A count of frames as the window writes one: 1,234.</summary>
+    private static string Counted(long frames) => frames.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>The game's loop was held or let go, or its frames counted: its tools and line show it.</summary>
+    private void OnLoopChanged(object? sender, EventArgs e)
+    {
+        if (sender == app && app is Godot.GodotGame game)
+        {
+            view?.ShowGame(true, game.LoopHeld);
+            ShowMonitors(MonitorsOf(game));
+        }
+    }
+
+    /// <summary>Why the game's loop cannot be paused or stepped now: no game followed, not up, gone, or paused in the debugger.</summary>
+    private string? WhyNotLoop() => app switch
+    {
+        Godot.GodotGame { State: LiveAppState.Waiting } game => $"{game.Name} has not connected to Passenger yet",
+        Godot.GodotGame { State: LiveAppState.Ended } game => $"{game.Name} has ended",
+        Godot.GodotGame game when Paused => $"{game.Name} is paused in the debugger, which holds its loop already",
+        Godot.GodotGame => null,
+        _ => "No Godot game is running: Run or Debug one to pause its loop",
+    };
+
+    /// <summary>Pause Game Loop: the game's loop held at its frame, or let go on where it is held; the status bar (and an agent's
+    /// ide_action) says the frame it is at.</summary>
+    private async Task HoldLoopAsync()
+    {
+        if (app is not Godot.GodotGame game || WhyNotLoop() is not null)
+        {
+            return;
+        }
+        bool hold = !game.LoopHeld;
+        using Working? work = parts.Actions.Work.Begin(AppActions.PauseGameLoop, hold ? $"Pausing {game.Name}'s loop…" : $"Resuming {game.Name}'s loop…", stoppable: false);
+        long? frame;
+        try
+        {
+            frame = await game.HoldLoopAsync(hold);
+        }
+        catch (LiveAppException failed)
+        {
+            work?.Tell(false, $"Pause Game Loop: {failed.Message}");
+            parts.Say($"Pause Game Loop: {failed.Message}");
+            return;
+        }
+        string at = frame is long count ? $" at frame {Counted(count)}" : string.Empty;
+        string said = hold ? $"{game.Name}'s loop is paused{at}: Next Frame runs one frame, and Resume Game Loop lets it go on"
+            : $"{game.Name}'s loop runs on{(frame is long from ? $" from frame {Counted(from)}" : string.Empty)}";
+        work?.Tell(true, said);
+        parts.Say(said);
+    }
+
+    /// <summary>Next Frame: one frame of the game's loop run, the loop held again after it; the status bar (and an agent's
+    /// ide_action) says the frame it is at then.</summary>
+    private async Task StepAsync()
+    {
+        if (app is not Godot.GodotGame { LoopHeld: true } game || WhyNotLoop() is not null)
+        {
+            return;
+        }
+        using Working? work = parts.Actions.Work.Begin(AppActions.NextFrame, $"Running one frame of {game.Name}…", stoppable: false);
+        try
+        {
+            long frame = await game.StepAsync();
+            string said = $"{game.Name} ran one frame, and is paused at frame {Counted(frame)}";
+            work?.Tell(true, said);
+            parts.Say(said);
+        }
+        catch (LiveAppException failed)
+        {
+            work?.Tell(false, $"Next Frame: {failed.Message}");
+            parts.Say($"Next Frame: {failed.Message}");
         }
     }
 
@@ -606,7 +751,33 @@ public sealed class LiveTreeController
             // Nothing outlined in the app while the window that chose it is away.
             IdeErrors.Observe(Unoutline(live));
         }
+        else if (!window.IsShown && WhyNotAsk() is null && app is Godot.GodotGame game && outlined)
+        {
+            outlined = false;
+            IdeErrors.Observe(UnoutlineAsync(game));
+        }
     }
+
+    /// <summary>Whether a node of the game followed is outlined in its window, Godot drawing the outline.</summary>
+    private bool outlined;
+
+    private async Task UnoutlineAsync(Godot.GodotGame game)
+    {
+        try
+        {
+            await game.OutlineAsync(null, Outline());
+        }
+        catch (LiveAppException)
+        {
+            // A game that cannot be told has no outline to take away that matters.
+        }
+    }
+
+    /// <summary>The colour a game draws its outline of the node chosen in: the window's accent, red, green and blue from 0 to 1.</summary>
+    private (double Red, double Green, double Blue) Outline() =>
+        parts.Dock.TryFindResource(TokenKeys.Accent, parts.Dock.ActualThemeVariant, out object? found) && found is ISolidColorBrush { Color: var accent }
+            ? (accent.R / 255.0, accent.G / 255.0, accent.B / 255.0)
+            : throw new InvalidOperationException("The theme gives no accent");
 
     private static async Task Unoutline(LiveApp live)
     {
@@ -638,7 +809,7 @@ public sealed class LiveTreeController
     /// <summary>Why the window cannot ask the app now: nothing inspected, not up yet, refused, gone, or paused.</summary>
     private string? WhyNotAsk() => app switch
     {
-        null => "No Avalonia or WPF app is being debugged",
+        null => "No Avalonia or WPF app is being debugged, nor a Godot game running",
         { State: LiveAppState.Waiting } => $"{app.Name} has not shown its windows yet",
         { State: LiveAppState.Refused } => app.Problem,
         { State: LiveAppState.Ended } => $"{app.Name} has ended",
@@ -715,6 +886,18 @@ public sealed class LiveTreeController
                 // The outline is a courtesy: the details say what went wrong, if anything did.
             }
         }
+        else if (app is Godot.GodotGame { State: LiveAppState.Connected, Headless: false } game && !Paused && window.IsShown)
+        {
+            try
+            {
+                outlined = true;
+                await game.OutlineAsync((ulong)id, Outline());
+            }
+            catch (LiveAppException)
+            {
+                // The outline is a courtesy: the details say what went wrong, if anything did.
+            }
+        }
     }
 
     private async Task ShowDetailsAsync(long id)
@@ -762,10 +945,14 @@ public sealed class LiveTreeController
             parts.Say($"Select Element: {why}");
             return;
         }
+        if (app is Godot.GodotGame game)
+        {
+            await PickInGameAsync(game, on);
+            return;
+        }
         if (app is not LiveApp live)
         {
             Picking(false);
-            parts.Say($"Select Element: {app!.Name} is a Godot game, whose nodes are chosen in the tree");
             return;
         }
         try
@@ -782,6 +969,78 @@ public sealed class LiveTreeController
         {
             parts.Say($"Select Element: point at a control in {live.Name} and click it, or press Escape there");
         }
+    }
+
+    /// <summary>Whether Select Element picks the game's 3D nodes: as chosen, else as the game's tree has them.</summary>
+    private bool pickIn3D;
+
+    /// <summary>Whether <see cref="pickIn3D"/> was chosen for the game followed, which its tree then no longer chooses.</summary>
+    private bool pickChosen;
+
+    /// <summary>Whether a game's tree holds a node of Godot's 3D kinds (a Node3D, a Camera3D), which Select Element then picks
+    /// among at first.</summary>
+    private static bool Has3D(AppTree shown) => AppQuery.Flatten(shown.Roots).Any(n => n.Element.Type.EndsWith("3D", StringComparison.Ordinal));
+
+    private void ShowPickIn(bool in3D)
+    {
+        pickIn3D = in3D;
+        view?.ShowPickIn(in3D);
+    }
+
+    /// <summary>Select Element made to pick among the game's 3D nodes, or its 2D ones; told to the game at once where it picks.</summary>
+    private async Task PickInAsync(bool in3D)
+    {
+        pickChosen = true;
+        ShowPickIn(in3D);
+        if (picking && app is Godot.GodotGame { State: LiveAppState.Connected } game)
+        {
+            await PickInGameAsync(game, on: true);
+        }
+    }
+
+    /// <summary>Select Element on or off in a game: a click in its window picks a node among its 2D or 3D ones, as the
+    /// window's chooser says, which the tree then chooses; the status bar (and an agent's ide_action) says what to do.</summary>
+    private async Task PickInGameAsync(Godot.GodotGame game, bool on)
+    {
+        Godot.GodotPicking kind = !on ? Godot.GodotPicking.Off : pickIn3D ? Godot.GodotPicking.In3D : Godot.GodotPicking.In2D;
+        using Working? work = parts.Actions.Work.Begin(AppActions.SelectElement, on ? $"Telling {game.Name} to pick a node…" : $"Telling {game.Name} to take its input again…", stoppable: false);
+        try
+        {
+            await game.PickAsync(kind, Outline());
+        }
+        catch (LiveAppException error)
+        {
+            Picking(false);
+            work?.Tell(false, $"Select Element: {error.Message}");
+            parts.Say($"Select Element: {error.Message}");
+            return;
+        }
+        string among = kind == Godot.GodotPicking.In3D ? "3D nodes (in a game drawing nothing, those with a collision shape alone)" : "2D nodes and controls";
+        string said = !on ? $"Select Element is off: {game.Name} takes its own input again"
+            : game.Headless ? $"Select Element: {game.Name} runs headless, with no window to click in: a click an agent gives at a point (app_click) picks among its {among} there"
+            : $"Select Element: click a node in {game.Name}'s window, which picks among its {among}";
+        work?.Tell(true, said);
+        parts.Say(said);
+    }
+
+    /// <summary>A click in the game picked a node, or found none: the tree, asked again, chooses the node, its details and
+    /// script's link shown; Select Element is off once one is picked.</summary>
+    private void OnGamePicked(object? sender, Godot.GodotObjectState? picked)
+    {
+        if (sender != app || app is not Godot.GodotGame game)
+        {
+            return;
+        }
+        if (picked is null)
+        {
+            parts.Say($"Select Element: {game.Name} has no node there that Godot picks");
+            return;
+        }
+        Picking(false);
+        outlined = true;
+        Choose((long)picked.Id);
+        parts.Dock.Show(window.Id);
+        IdeErrors.Observe(RefreshAsync());
     }
 
     /// <summary>Chooses a control by the inspector's id for it, when the app the window follows is that process: the tree,

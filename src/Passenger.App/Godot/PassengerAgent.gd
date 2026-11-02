@@ -1,12 +1,20 @@
 extends Node
-## Passenger's helper in a game it debugs: where the nodes are, and input given as a person gives it. Each call's first
-## argument is its ask, answered by a passenger:said message of the ask, whether it was done, and what it came to.
+## Passenger's helper in a game it debugs: where the nodes are, input given as a person gives it, and the frames the game
+## has run. Each call's first argument is its ask, answered by a passenger:said message of the ask, whether it was done,
+## and what it came to.
 
 const SAID := "passenger:said"
 const SHIFT := 1
 const CTRL := 2
 const ALT := 4
 const META := 8
+
+## The frames the game has run, once counted (-1 before): every frame its tree processes, the game's own pause among them.
+var _frame := -1
+## The ask a frame stepped answers, or 0.
+var _stepping := 0
+## Whether the frame stepped ends the step itself, where no frame is drawn for Godot to end it at.
+var _ends_step := false
 
 
 func _say(ask: int, done: bool, data: Array) -> void:
@@ -190,6 +198,8 @@ func click(ask: int, id: int, has_point: bool, x: float, y: float, button: int, 
         _modifiers(down, modifiers)
         _send(down)
         await _frames(1)
+        # A pick under Godot's node selection is made at a physics frame between the press and the release.
+        await get_tree().physics_frame
         var up := down.duplicate() as InputEventMouseButton
         up.pressed = false
         up.button_mask = 0
@@ -282,3 +292,37 @@ func type(ask: int, id: int, text: String, replace: bool) -> void:
         _send(release)
     await _frames(2)
     _say(ask, true, _after(Vector2.ZERO, null, null, false))
+
+
+func _process(_delta: float) -> void:
+    if _frame < 0:
+        return
+    _frame += 1
+    if _stepping != 0:
+        var ask := _stepping
+        _stepping = 0
+        if _ends_step:
+            RenderingServer.frame_post_draw.emit.call_deferred()
+        _say(ask, true, [_frame])
+
+
+## The frames the game has run, counted from now on where they were not: those its engine ran until now, since only
+## Passenger holds a game's loop. Called between frames, as every call is.
+func _counting() -> void:
+    if _frame < 0:
+        _frame = Engine.get_process_frames() + 1
+        process_mode = Node.PROCESS_MODE_ALWAYS
+        set_process(true)
+
+
+func count(ask: int) -> void:
+    _counting()
+    _say(ask, true, [_frame])
+
+
+## Answers once the next frame the game runs has run, with the count; where the game draws nothing (headless), that frame
+## holds the loop again itself, as Godot does at a drawn frame's end.
+func step(ask: int, ends_step: bool) -> void:
+    _counting()
+    _stepping = ask
+    _ends_step = ends_step

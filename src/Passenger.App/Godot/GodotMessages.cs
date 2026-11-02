@@ -76,9 +76,55 @@ public static class GodotWords
     public const string ServersTotal = "servers:profile_total";
     public const string VisualFrame = "visual:profile_frame";
     public const string Hardware = "visual:hardware_info";
+    public const string SuspendChanged = "scene:suspend_changed";
+    public const string NextFrame = "scene:next_frame";
+    public const string SelectSetup = "scene:runtime_node_select_setup";
+    public const string SelectType = "scene:runtime_node_select_set_type";
+    public const string SelectVisible = "scene:runtime_node_select_set_visible";
+    public const string SelectAvoidLocked = "scene:runtime_node_select_set_avoid_locked";
+    public const string SelectPreferGroup = "scene:runtime_node_select_set_prefer_group";
+    public const string ClearSelection = "scene:clear_selection";
+    public const string ObjectsSelected = "remote_objects_selected";
+    public const string NothingSelected = "remote_nothing_selected";
 
     /// <summary>The function of Godot's that takes a picture of the game, whose errors say why it took none.</summary>
     public const string ScreenshotFunction = "_msg_rq_screenshot";
+}
+
+/// <summary>What a click in a game picks under Godot's runtime node selection, as its <c>set_type</c> numbers it: nothing
+/// (the game takes its own input), its 2D nodes and controls, or its 3D nodes.</summary>
+public enum GodotPicking
+{
+    Off = 0,
+    In2D = 1,
+    In3D = 2,
+}
+
+/// <summary>Godot's runtime node selection as Passenger sets it up in a game: one node a click, picked where a point is within
+/// eight pixels of a 2D node without a rectangle, its outline drawn in the colour given.</summary>
+public static class GodotPicks
+{
+    /// <summary>The most pixels from a 2D node's origin a click picks it at, where it has no rectangle of its own.</summary>
+    public const long GrabRadius = 8;
+
+    /// <summary>The settings <c>runtime_node_select_setup</c> takes: one node a pick, the grab radius, and the outline's
+    /// colour (red, green, blue from 0 to 1) for a 2D node's rectangle, a 3D node's box and a dragged area.</summary>
+    public static GodotDictionary Settings(double red, double green, double blue)
+    {
+        GodotMath Colour(double alpha) => new(GodotType.Color, [red, green, blue, alpha]);
+        return new GodotDictionary(
+        [
+            new("debugger/max_node_selection", 1L),
+            new("editors/polygon_editor/point_grab_radius", GrabRadius),
+            new("editors/2d/selection_rectangle_color", Colour(1)),
+            new("editors/3d/selection_box_color", Colour(1)),
+            new("box_selection_fill_color", Colour(0.25)),
+            new("box_selection_stroke_color", Colour(0.75)),
+        ]);
+    }
+
+    /// <summary>The node a <c>remote_objects_selected</c> message names first, or null for data of another shape.</summary>
+    public static GodotObjectState? Picked(IReadOnlyList<object?> data) => GodotObjectState.Read(data) is [var first, ..] ? first : null;
 }
 
 /// <summary>A node of a running game's scene tree: its object's id, name, type (a script's class or path where it has one),
