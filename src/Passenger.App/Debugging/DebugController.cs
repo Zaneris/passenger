@@ -253,6 +253,9 @@ public sealed class DebugController : IDisposable
     /// <summary>An EF Core query's SQL read in Variables or the hover card, to open whole in a read-only editor tab.</summary>
     public event EventHandler<string>? TextOpened;
 
+    /// <summary>Quick Evaluate Expression's value, read for the editor's card at an offset of the file shown.</summary>
+    public event EventHandler<(int Offset, CSharp.DebuggerHover Value)>? QuickValueRead;
+
     /// <summary>The session started, stopped, ran on or ended.</summary>
     public event EventHandler? StateChanged;
 
@@ -1667,7 +1670,9 @@ public sealed class DebugController : IDisposable
         }, (d, _) => d.NotPaused() ?? (d.executionPoint is null ? "Where the program is paused has no source" : null), new("Run", 1, 8));
         Add(AppActions.Evaluate, "Evaluate Expression…", (d, c) => d.view.FocusEvaluate(c.Symbol ?? string.Empty), (d, _) => d.NotPaused(), new("Run", 1, 9));
         Add(AppActions.AddToWatches, "Add to Watches", (d, c) => IdeErrors.Observe(d.Evaluate(c.Symbol!, watch: true)),
-            (d, c) => d.NotPaused() ?? (c.Symbol is { Length: > 0 } ? null : "No expression is at the caret"), null);
+            (d, c) => d.NotPaused() ?? (c.Symbol is { Length: > 0 } ? null : Refusals.NoExpression), null);
+        Add(AppActions.QuickEvaluate, "Quick Evaluate Expression", (d, c) => IdeErrors.Observe(d.QuickEvaluateAsync(c)),
+            (d, c) => d.NotPaused() ?? (c.File is null ? Refusals.NoFile : c.Symbol is { Length: > 0 } ? null : Refusals.NoExpression), new("Run", 1, 10));
         Add(AppActions.Detach, "Detach", (d, c) => IdeErrors.Observe(d.DetachAsync()), (d, _) => d.WhyNotDetach(), new("Run", 0, 8));
         // Every breakpoint stays as it is, and none stops the program until it is chosen again.
         actions.Add(new IdeAction(AppActions.MuteBreakpoints, "Mute Breakpoints", "Debug", _ => current().Breakpoints.SetMuted(!current().Breakpoints.Muted))
@@ -2068,10 +2073,66 @@ public sealed class DebugController : IDisposable
         }
     }
 
+    /// <summary>Quick Evaluate Expression: the selection, else the expression the hover reads at the caret, evaluated in the
+    /// chosen frame of the stop shown as the Evaluate box runs one, its value the card's row at the expression's start,
+    /// which opens into its members as a hovered value's does; one that does not evaluate is a row of what went wrong. The
+    /// card goes with the stop, and nothing shows once the text changed meanwhile.</summary>
+    private async Task QuickEvaluateAsync(ActionContext context)
+    {
+        UiThread.Check();
+        if (Session is not { State: DebugState.Paused } session || frame is not { } at || context.Symbol is not { Length: > 0 } expression)
+        {
+            return;
+        }
+        using IDisposable held = BackgroundWork.Scope();
+        CodeEditor editor = context.Editor;
+        TextSnapshot text = editor.Document.Snapshot;
+        Selection primary = editor.Selections.Primary;
+        int start = primary.IsEmpty ? Math.Max(0, ExpressionStart(text, primary.Caret)) : primary.Start;
+        int stop = shown;
+        CancellationToken gone = stopShown.Token;
+        EvaluateResponse? value = null;
+        string? error = null;
+        try
+        {
+            value = await session.EvaluateAsync(expression, at.Id, QuickContext);
+        }
+        catch (DapException failed)
+        {
+            error = failed.Reason;
+        }
+        if (stop != shown || editor.Document.Snapshot != text)
+        {
+            return;
+        }
+        VariablesList rows = HoverValues(session, at, stop, expression, value, QuickContext, error);
+        QuickValueRead?.Invoke(this, (start, new CSharp.DebuggerHover(expression) { Values = rows, Gone = gone }));
+    }
+
+    /// <summary>How Quick Evaluate Expression asks for its value: as the Evaluate box does, a call run as it is written.</summary>
+    private const string QuickContext = "repl";
+
+    /// <summary>Where the expression the hover reads at an offset begins (<see cref="ExpressionAt"/>), or -1 with none.</summary>
+    private static int ExpressionStart(TextSnapshot text, int offset)
+    {
+        if (ExpressionAt(text, offset) is not { } expression)
+        {
+            return -1;
+        }
+        int end = Math.Min(offset, text.Length);
+        while (end < text.Length && IsWordChar(text[end]))
+        {
+            end++;
+        }
+        return Math.Max(0, end - expression.Length);
+    }
+
     /// <summary>A hovered value's rows: its own, opening into its members as the Variables view's rows do, each asked of the
     /// stop it was read at and of no other; its rows' actions are the Variables view's own (Add to Watches, Inspect, Set
-    /// Value, a data breakpoint), and a value set there shows the hovered value read again with what was open still open.</summary>
-    private VariablesList HoverValues(DebugSession session, DapStackFrame at, int stop, string expression, EvaluateResponse value)
+    /// Value, a data breakpoint), and a value set there shows the value read again, as <paramref name="context"/> reads it,
+    /// with what was open still open. One that did not evaluate is its <paramref name="error"/>'s row.</summary>
+    private VariablesList HoverValues(DebugSession session, DapStackFrame at, int stop, string expression, EvaluateResponse? value, string context = "hover",
+        string? error = null)
     {
         VariablesTree tree = new()
         {
@@ -2079,7 +2140,7 @@ public sealed class DebugController : IDisposable
                 ? await session.VariablesAsync(reference)
                 : throw new DapException(DapCommands.Variables, "The program has gone on from the stop this value was read at"),
         };
-        tree.Show([Hovered(value)]);
+        tree.Show([value is not null ? Hovered(value) : new VariableNode(expression, error ?? string.Empty, null, 0, 0, VariableRole.Error)]);
         VariablesList list = new(tree) { DataWatch = DataWatchAsync };
         list.EvaluateRequested += (_, request) => IdeErrors.Observe(Evaluate(request.Expression, request.Watch));
         list.DataBreakpointRequested += (_, node) => IdeErrors.Observe(ToggleDataBreakpointAsync(node));
@@ -2102,7 +2163,7 @@ public sealed class DebugController : IDisposable
             }
             try
             {
-                EvaluateResponse again = await session.EvaluateAsync(expression, at.Id, "hover");
+                EvaluateResponse again = await session.EvaluateAsync(expression, at.Id, context);
                 if (stop == shown)
                 {
                     await list.ShowAgain([Hovered(again)]);

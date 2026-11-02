@@ -135,6 +135,9 @@ public static class Refusals
         $"The folder changed while the person was asked: the Passenger window left {left ?? "the folder it had open"} before they answered, so nothing "
         + "was done. A later call is asked about the folder open now";
 
+    /// <summary>Neither a selection nor a name is at the caret for the debugger to evaluate.</summary>
+    public const string NoExpression = "No expression is at the caret";
+
     /// <summary>Go to Declaration found nothing to go to where it was asked.</summary>
     public const string NoDeclaration = "Cannot find a declaration to go to";
 

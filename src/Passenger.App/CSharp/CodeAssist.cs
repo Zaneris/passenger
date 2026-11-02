@@ -248,6 +248,9 @@ public sealed class CodeAssist
         set => quickInfo.DebuggerValue = value;
     }
 
+    /// <summary>A value read for the card at an offset of the file shown, its row taking the keys (Quick Evaluate Expression).</summary>
+    public void ShowValue(int offset, DebuggerHover value) => quickInfo.ShowValue(offset, value);
+
     /// <summary>What the hover card says of a line-end annotation of the file shown (<see cref="QuickInfo.AnnotationCard"/>).</summary>
     internal Func<LineAnnotation, IHoverCard, bool>? AnnotationCard
     {

@@ -510,6 +510,13 @@ public partial class MainWindow
                 OpenQuerySql(sql);
             }
         };
+        debugger.QuickValueRead += (_, read) =>
+        {
+            if (session == next && next.Debug == debugger)
+            {
+                assist.ShowValue(read.Offset, read.Value);
+            }
+        };
         debugger.StateChanged += (_, _) =>
         {
             if (session == next)

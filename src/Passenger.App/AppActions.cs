@@ -382,6 +382,10 @@ public static class AppActions
     public const string ApplyHotReloadChanges = "app.debug.applyHotReloadChanges";
     public const string Evaluate = "app.debug.evaluate";
     public const string AddToWatches = "app.debug.addToWatches";
+
+    // Rider's QuickEvaluateExpression: $default's Ctrl+Alt+F8 (Cmd+Alt+F8 on the Mac) and Alt-click, which its Visual Studio
+    // keymaps take from it; VS Code's give the keys alone, their Alt-click adding a caret.
+    public const string QuickEvaluate = "app.debug.quickEvaluate";
     public const string ShowContextMenu = "app.contextMenu";
 
     // Unit tests, run where the caret or the Unit Tests window's selection is.
@@ -666,6 +670,7 @@ public static class AppActions
                 .Bind(AttachToProcess, "meta alt P")
                 .Bind(ReattachToProcess, "alt shift P")
                 .Bind(Evaluate, "shift F9")
+                .Bind(QuickEvaluate, "meta alt F8", "alt button1")
                 .Bind(ShowContextMenu, "shift F10")
                 .Bind(EditBreakpoint, "alt F9")
                 .Bind(ViewBreakpoints, "meta alt B")
@@ -796,6 +801,7 @@ public static class AppActions
             .Bind(AttachToProcess, "control alt P")
             .Bind(ReattachToProcess, "alt shift P")
             .Bind(Evaluate, "shift F9")
+            .Bind(QuickEvaluate, "control alt F8", "alt button1")
             .Bind(ShowContextMenu, "shift F10", "CONTEXT_MENU")
             .Bind(EditBreakpoint, "alt F9")
             .Bind(ViewBreakpoints, "control alt B")
@@ -920,6 +926,7 @@ public static class AppActions
                 .Bind(DerivedSymbols, "meta F12")
                 .Bind(FindUsages, "alt shift F12")
                 .Bind(ShowUsages, "shift F12")
+                .Bind(QuickEvaluate, "meta alt F8")
                 .Bind(HighlightUsages, "meta shift F7")
                 .Bind(Reformat, "alt shift F")
                 .Bind(ReformatWithPrettier, "meta alt shift P")
@@ -1033,6 +1040,7 @@ public static class AppActions
             .Bind(DerivedSymbols, "control F12")
             .Bind(FindUsages, "alt shift F12")
             .Bind(ShowUsages, "shift F12")
+            .Bind(QuickEvaluate, "control alt F8")
             .Bind(HighlightUsages, "control shift F7")
             .Bind(Reformat, "alt shift F")
             .Bind(ReformatWithPrettier, "control alt shift P")
@@ -1205,6 +1213,7 @@ public static class AppActions
                 .Bind(AttachToProcess, "alt shift F5")
                 .Bind(ReattachToProcess, "meta alt shift F5")
                 .Bind(Evaluate, "alt F8")
+                .Bind(QuickEvaluate, "meta alt F8", "alt button1")
                 .Bind(ViewBreakpoints, "meta shift F8")
                 .Bind(RunTests, "meta SEMICOLON , R", "meta SEMICOLON , meta R", "control shift R")
                 .Bind(DebugTests, "meta SEMICOLON , D", "meta SEMICOLON , meta D", "control shift D")
@@ -1323,6 +1332,7 @@ public static class AppActions
             .Bind(AttachToProcess, "control alt F5")
             .Bind(ReattachToProcess, "control alt shift F5")
             .Bind(Evaluate, "alt F8")
+            .Bind(QuickEvaluate, "control alt F8", "alt button1")
             .Bind(ShowContextMenu, "CONTEXT_MENU")
             .Bind(ViewBreakpoints, "control shift F8")
             .Bind(RunTests, "control SEMICOLON , R", "control SEMICOLON , control R", "control shift F10")
