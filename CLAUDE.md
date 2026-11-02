@@ -360,18 +360,20 @@ Projects in `src/`; `find_symbol` finds the rest:
   GDScript over its debug connection; `DebugSession.Engine` sends each file's breakpoints to the adapter that runs it; a
   game's GDScript tab is its C# tab's `Companion`), `BreakpointStore`; Variables and the hover card are one list; a
   row's expression is the debugger's `evaluateName` (`RowExpressions`), never built in the window, a member row's cast
-  from the declared type read from metadata (`DeclaredType`). A debugged web app's pages are kept up through the SDK's
-  own browser refresh (`BrowserRefresh`, its protocol chosen by the variable the SDK's middleware reads,
-  `LaunchPlan.Web`). A session's built lines and Hot Reload begin at its build's save (`DebugController.Building`,
-  `BuiltEdits`). The debugger's own rows are named in `DapRows`, break modes in `DapBreakModes`; an engine row is built
-  by `ValueRow` (`FailedRow`, `GroupRow`), CoreLib found by `ManagedDebugger.CoreLib`. A breakpoint's words, in the
-  gutter's hover, Problems and MCP alike, come from `BreakpointStates`. Every kind of breakpoint is refused, matched and
-  hit through one pipeline (`IHitBreakpoint`: `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a
-  lambda on its statement's line keeps the lambda's column (`LambdaBreakpoints`).
-- **Tests window.** `TestFinder` (tests from code before any build), `TestRunners`; `VsTestRunner` is the only file that
-  knows VSTest's object model. A run from the editor, a filter or the Explorer chooses its tests once its build has
-  ended (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and line
-  (`DeclaredPlace`).
+  from the declared type read from metadata (`DeclaredType`). An exception's description reads its fields first, type
+  and stored messages (`StoredChain`), its getters only adding, never a `ToString`. A debugged web app's pages are kept
+  up through the SDK's own browser refresh (`BrowserRefresh`, its protocol chosen by the variable the SDK's middleware
+  reads, `LaunchPlan.Web`). A session's built lines and Hot Reload begin at its build's save
+  (`DebugController.Building`, `BuiltEdits`). The debugger's own rows are named in `DapRows`, break modes in
+  `DapBreakModes`; an engine row is built by `ValueRow` (`FailedRow`, `GroupRow`), CoreLib found by
+  `ManagedDebugger.CoreLib`. A breakpoint's words, in the gutter's hover, Problems and MCP alike, come from
+  `BreakpointStates`. Every kind of breakpoint is refused, matched and hit through one pipeline (`IHitBreakpoint`:
+  `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a lambda on its statement's line keeps the
+  lambda's column (`LambdaBreakpoints`).
+- **Tests window.** `TestFinder` (tests from code before any build), kept results across restarts `TestResultsState` (a
+  method's code stamp `DeclaredTest.Code`), `TestRunners`; `VsTestRunner` is the only file that knows VSTest's object
+  model. A run from the editor, a filter or the Explorer chooses its tests once its build has ended
+  (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and line (`DeclaredPlace`).
 - **The rest.** `Packages` (every package change's one path, its files the project, its lock file and
   Directory.Packages.props, one command of Undo, put back when it fails; credentials only to their feed's host),
   `Workspace` (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`; a version
