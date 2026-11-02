@@ -375,6 +375,20 @@ public sealed class DebugSession
         StartAsync(() => Task.FromResult<AdapterEnd>(adapter), program, DapCommands.Attach, new AttachArguments(), breakpoints, lines, log, output, null, columns, starting,
             elsewhere: false, place: null, engine: engine);
 
+    /// <summary>Has an adapter inside the IDE launch a plan's program itself (a Godot game of GDScript alone, its output told as
+    /// the adapter reads it), <paramref name="engine"/> saying which files' breakpoints it takes, with the store's breakpoints;
+    /// <paramref name="starting"/> is handed the session as it begins.</summary>
+    public static Task<DebugSession> LaunchInProcessAsync(InProcessEnd adapter, DebugEngine engine, Run.LaunchPlan plan, BreakpointStore breakpoints, BuiltLines lines,
+        Action<string> log, Action<OutputEvent> output, Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null) =>
+        StartAsync(() => Task.FromResult<AdapterEnd>(adapter), plan.Program, DapCommands.Launch, new LaunchArguments
+        {
+            Program = plan.Program,
+            Args = plan.Arguments,
+            Cwd = plan.WorkingDirectory,
+            Env = plan.Environment,
+            Console = "internalConsole",
+        }, breakpoints, lines, log, output, null, columns, starting, elsewhere: false, place: null, engine: engine);
+
     /// <summary>Passenger's own adapter, started beside the app or where the program is (<see cref="AdapterStart"/>), forked
     /// off the window's thread.</summary>
     private static Func<Task<AdapterEnd>> OwnAdapter(AdapterPlace? place, bool elsewhere) =>

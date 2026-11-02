@@ -153,9 +153,9 @@ public sealed class GameProfile
     public string? Why { get; private init; }
 
     /// <summary>The frames kept beside a trace (<see cref="GameRecording.Write"/>) read back, each placed on the trace's clock
-    /// (<paramref name="traceMs"/> turning a time into milliseconds from its start); null where none were kept, and none, saying
-    /// why, where they cannot be read.</summary>
-    internal static GameProfile? ReadBeside(string trace, Func<DateTime, double> traceMs)
+    /// (<paramref name="traceMs"/> turning a time into milliseconds from its start; null for a run of frames alone, timed from
+    /// the start of the first frame to arrive); null where none were kept, and none, saying why, where they cannot be read.</summary>
+    internal static GameProfile? ReadBeside(string trace, Func<DateTime, double>? traceMs)
     {
         string path = PathOf(trace);
         if (!File.Exists(path))
@@ -172,7 +172,7 @@ public sealed class GameProfile
         }
     }
 
-    private static GameProfile Read(string path, Func<DateTime, double> traceMs)
+    private static GameProfile Read(string path, Func<DateTime, double>? traceMs)
     {
         using BinaryReader reader = new(File.OpenRead(path));
         if (reader.ReadString() != Magic || reader.ReadInt32() != Version)
@@ -216,7 +216,10 @@ public sealed class GameProfile
             }
             frames.Add((new GameFrame(number, 0, frameMs, processMs, physicsMs, stepMs, scriptMs, servers, scripts) { Rendered = rendered }, received));
         }
-        return new GameProfile(engine, folder, draws, gpu, functions, Placed(frames, traceMs));
+        // A run of frames alone begins as its first frame to arrive did.
+        (GameFrame Frame, DateTime Received)? earliest = frames.Count > 0 ? frames.MinBy(f => f.Received) : null;
+        DateTime first = earliest is { } came ? came.Received.AddMilliseconds(-came.Frame.FrameMs) : default;
+        return new GameProfile(engine, folder, draws, gpu, functions, Placed(frames, traceMs ?? (at => (at - first).TotalMilliseconds)));
     }
 
     /// <summary>Frames in order, each ended where its arrival allows: no later than it came, nor than the next frame began. A

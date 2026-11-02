@@ -761,6 +761,11 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The folder of the Godot project a file's project builds a game for; null for a file of none.</summary>
     public string? GodotOf(string path) => ProjectOf(path)?.GodotFolder;
 
+    /// <summary>What Run, Debug and Profile run among: the folder's projects, then what stands for each Godot project of
+    /// GDScript alone it holds (<see cref="ProjectModel.OfScriptGame"/>), which no other part of the IDE takes for a project.</summary>
+    public IReadOnlyList<ProjectModel> RunProjects => Workspace?.ScriptGames(Projects).ToList() is { Count: > 0 } games
+        ? [.. Projects, .. games.Select(ProjectModel.OfScriptGame)] : Projects;
+
     /// <summary>The code help in the folder's project, .props and .targets files, from MSBuild's evaluation in the project host.</summary>
     public MSBuild.MSBuildService MSBuild { get; }
 
@@ -1104,7 +1109,8 @@ public sealed class ProjectSession : IAsyncDisposable
             {
                 try
                 {
-                    if (walk == reads && !IsEnded && walked.GetAwaiter().GetResult() is { } found && !Workspace!.LoadsAs(found))
+                    if (walk == reads && !IsEnded && walked.GetAwaiter().GetResult() is { } found
+                        && (!Workspace!.LoadsAs(found) || !Workspace.GodotGames.SequenceEqual(found.GodotGames, PathNames.Comparer)))
                     {
                         Reload(found);
                     }

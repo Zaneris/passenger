@@ -29,6 +29,10 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private readonly Control godotRow;
     private readonly Control sceneRow;
     private readonly Control[] browserRows;
+
+    /// <summary>The rows of what a build makes (its framework, launch profile and build before launch), which a Godot project
+    /// of GDScript alone has none of.</summary>
+    private readonly Control[] builtRows = new Control[3];
     private readonly CancellationTokenSource aspireLifetime = new();
     private int aspireReading;
     private bool aspireClosed;
@@ -216,8 +220,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (aspireRow, [RunKind.Project]),
             (godotRow, [RunKind.Project]),
             (sceneRow, [RunKind.Project]),
-            (Row("Target framework", FrameworkBox, fields: ["framework"]), [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
-            (Row("Launch profile", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { ProfileBox, SaveAsProfileButton } }), [RunKind.Project]),
+            (builtRows[0] = Row("Target framework", FrameworkBox, fields: ["framework"]), [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer]),
+            (builtRows[1] = Row("Launch profile", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { ProfileBox, SaveAsProfileButton } }), [RunKind.Project]),
             (Row("Exe path", ProgramBox, fields: ["program"]), [RunKind.Project]),
             (Row("Program arguments", ArgumentsBox, fields: ["arguments"]), [RunKind.Project]),
             (Row("Working directory", WorkingDirectoryBox, fields: ["workingDirectory"]), [RunKind.Project]),
@@ -238,7 +242,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (browserRows[0], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (browserRows[1], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row("Launched service", LaunchServiceBox, fields: ["launchService"]), [RunKind.Compose]),
-            (Row("Before launch", BuildBox, fields: ["buildBeforeLaunch"]), [RunKind.Project]),
+            (builtRows[2] = Row("Before launch", BuildBox, fields: ["buildBeforeLaunch"]), [RunKind.Project]),
         ];
 
         WriteButton = new Button { Content = "Write to Launch Profile", Name = "WriteButton" };
@@ -973,7 +977,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             bool godot = !shown.IsContainer && project?.GodotFolder is not null;
             GodotBox.SelectedIndex = shown.GodotEditor ? 1 : 0;
             SceneBox.SelectedIndex = shown.GodotScene == RunConfiguration.CurrentScene ? 1 : 0;
-            ProgramBox.PlaceholderText = godot ? GodotProgram() : OwnProgram;
+            ProgramBox.PlaceholderText = godot ? GodotProgram(project?.IsScriptGame == true) : OwnProgram;
             ArgumentsBox.PlaceholderText = godot ? GodotArguments : OwnArguments;
             WorkingDirectoryBox.PlaceholderText = godot ? GodotWorkingDirectory : OwnWorkingDirectory;
             ProgramBox.Text = shown.Program;
@@ -983,7 +987,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             ConsoleBox.IsChecked = shown.Console == ConsoleKind.Terminal;
             BrowserBox.IsChecked = shown.LaunchBrowser;
             BrowserUrlBox.Text = shown.BrowserUrl;
-            KindText.Text = godot ? "Godot Project" : KindName(shown.Kind);
+            KindText.Text = project?.IsScriptGame == true ? "Godot Project (GDScript)" : godot ? "Godot Project" : KindName(shown.Kind);
             ComposeFilesBox.Text = string.Join("; ", shown.ComposeFiles.Select(Shown));
             EnvFilesBox.Text = string.Join("; ", shown.EnvFiles.Select(Shown));
             ProfilesBox.Text = string.Join(", ", shown.Profiles);
@@ -1006,6 +1010,10 @@ public sealed class RunConfigurationsDialog : IdeWindow
             foreach (Control browser in godot ? browserRows : [])
             {
                 browser.IsVisible = false;
+            }
+            foreach (Control built in project?.IsScriptGame == true ? builtRows : [])
+            {
+                built.IsVisible = false;
             }
             variables.Children.Clear();
             foreach ((string name, string value) in shown.Environment)
@@ -1039,6 +1047,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             : shown.Origin is { } container ? container
             : shown.LaunchProfile.Length > 0 ? $"Generated from the launch profile {shown.LaunchProfile} in {name}'s {LaunchProfile.SettingsShown(shown.Project)}"
             : project?.GodotFolder is not null ? (shown.GodotEditor ? $"Generated for Godot's editor on the Godot project {name}" : $"Generated for the Godot project {name}'s game")
+                + (project.IsScriptGame ? ", of GDScript alone, which Godot runs as it is, nothing built first" : string.Empty)
             : $"Generated for the executable project {name}";
         if (shown.Generated)
         {
@@ -1223,12 +1232,13 @@ public sealed class RunConfigurationsDialog : IdeWindow
         return row;
     }
 
-    /// <summary>What the program box says left empty for a Godot project's: the Godot it runs on, or why there is none.</summary>
-    private string GodotProgram() => GodotLaunch.Found(GodotSetting) switch
+    /// <summary>What the program box says left empty for a Godot project's: the Godot it runs on, or why there is none; for one
+    /// of GDScript alone (<paramref name="scripts"/>) any Godot 4 will do.</summary>
+    private string GodotProgram(bool scripts) => GodotLaunch.Found(GodotSetting) switch
     {
         null => $"Godot, which is not found: {GodotLaunch.NotFound}",
-        { WhyNot: { } why } found => $"{found.Executable}, which cannot run it: {why}",
-        { } found => $"Godot{(found.Version is { } version ? $" {version}" : string.Empty)}, a .NET build: {found.Executable}",
+        { } found when (scripts ? found.WhyNotScripts : found.WhyNot) is { } why => $"{found.Executable}, which cannot run it: {why}",
+        { } found => $"Godot{(found.Version is { } version ? $" {version}" : string.Empty)}{(found.Sharp is null ? string.Empty : ", a .NET build")}: {found.Executable}",
     };
 
     private static TextBox Field(string? placeholder = null) => new() { Classes = { StyleClasses.Search }, PlaceholderText = placeholder };

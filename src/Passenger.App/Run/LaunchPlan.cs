@@ -102,11 +102,19 @@ public sealed partial record LaunchPlan
     /// <summary>The version of the Godot a Godot game's plan runs on, where known.</summary>
     public string? GodotVersion { get; init; }
 
+    /// <summary>Whether it runs a Godot game of GDScript alone (<see cref="Passenger.Workspace.ProjectModel.IsScriptGame"/>): no
+    /// C# of its own to build, debug or sample, its GDScript debugged by its GDScript session alone.</summary>
+    public bool ScriptsAlone { get; init; }
+
+    /// <summary>The game's name where the plan runs a Godot game of GDScript alone, which names it as an assembly would.</summary>
+    public string? GameName { get; init; }
+
     /// <summary>Whether the plan runs Godot's editor on its project (<c>--editor</c> among the arguments that start it).</summary>
     public bool GodotEditor => Godot is not null && Arguments.Take(Leading).Contains("--editor");
 
-    /// <summary>The program as its messages name it: the project's assembly, else the executable, without its extension.</summary>
-    public string ProgramName => System.IO.Path.GetFileNameWithoutExtension(Built ?? Program);
+    /// <summary>The program as its messages name it: a game of GDScript alone by its name, else the project's assembly, else the
+    /// executable, without its extension.</summary>
+    public string ProgramName => GameName ?? System.IO.Path.GetFileNameWithoutExtension(Built ?? Program);
 
     /// <summary>Null when the plan can launch now, its build done: else that the build made no program (unless what starts
     /// it builds it), or that the working folder is gone ("Could not run Hello: its working folder ... does not exist"),
@@ -141,6 +149,28 @@ public sealed partial record LaunchPlan
         {
             // Run, Debug and Profile bring containers up themselves (BuildRunController.Containers.cs): no plan of this machine's runs them.
             throw new LaunchException(InContainers(configuration.Name));
+        }
+        if (configuration.RunsScriptGame)
+        {
+            // Godot runs a game of GDScript alone as it is: no MSBuild to ask, nothing to build.
+            ProjectModel scripts = ProjectModel.OfScriptGame(System.IO.Path.GetDirectoryName(configuration.Project)!);
+            Dictionary<string, string> variables = configuration.Environment.ToDictionary(v => v.Key, v => System.Environment.ExpandEnvironmentVariables(v.Value));
+            if (configuration.Program.Length == 0)
+            {
+                return await GodotLaunch.PlanAsync(configuration, scripts, scripts.Folder, null, null, System.Environment.ExpandEnvironmentVariables, variables, godot, null, cancel, atHand);
+            }
+            return new LaunchPlan
+            {
+                Name = configuration.Name,
+                Program = Executable(System.Environment.ExpandEnvironmentVariables(configuration.Program), scripts.Folder),
+                Arguments = CommandLine.Split(System.Environment.ExpandEnvironmentVariables(configuration.Arguments)),
+                WorkingDirectory = configuration.WorkingDirectory is { Length: > 0 } given
+                    ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(scripts.Folder, System.Environment.ExpandEnvironmentVariables(given))))
+                    : scripts.Folder,
+                Environment = variables,
+                Project = scripts.Path,
+                Console = configuration.Console,
+            };
         }
         ProjectModel project = projects.FirstOrDefault(p => PathNames.Same(p.Path, configuration.Project))
             ?? throw new LaunchException($"{configuration.Name} cannot run: its project {System.IO.Path.GetFileName(configuration.Project)} is not loaded in the open folder");

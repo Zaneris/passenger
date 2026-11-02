@@ -348,7 +348,8 @@ public partial class MainWindow
         }, Refusals.NeedsFile, ("Run", 2, 2));
         Add(A.ViewBreakpoints, "View Breakpoints and Exceptions…", "Debug", _ => ShowBreakpoints(null), menu: ("Run", 2, 3));
 
-        string? Unbuildable(ActionContext _) => Folder is null ? Refusals.NoFolderTo("build") : IsBuilding ? Refusals.Building : null;
+        string? Unbuildable(ActionContext _) => Folder is null ? Refusals.NoFolderTo("build") : IsBuilding ? Refusals.Building
+            : session.Workspace is { Solution: null, Projects.Count: 0, GodotGames.Count: > 0 } ? Refusals.NothingToBuildOfScripts : null;
 
         string? NoneSelected(ActionContext context) => Unbuildable(context)
             ?? (SelectedProjects().Count == 0 ? "No project is chosen in the Explorer or open in the editor" : null);

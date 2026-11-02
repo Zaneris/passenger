@@ -734,6 +734,19 @@ public sealed class DebugController : IDisposable
             ScriptsTab(name), launched: false, companion: companion, attachedWords: $"{name}'s GDScript is debugged here; what the game writes is in {name}'s tab");
     }
 
+    /// <summary>Debugs a Godot game of GDScript alone (<see cref="Run.LaunchPlan.ScriptsAlone"/>): its GDScript session, in a tab
+    /// of the plan's name, launches the game itself (<see cref="Godot.GodotScriptAdapter"/>), its console the game's output, and
+    /// Stop there ends it. Null once the session is open, else why not.</summary>
+    public Task<string?> LaunchScriptsAsync(Run.LaunchPlan plan, Godot.GodotGame game)
+    {
+        UiThread.Check();
+        InProcessEnd end = new($"GDScript adapter of {plan.Name}");
+        Godot.GodotScriptAdapter adapter = new(game, end, null);
+        adapter.Start();
+        return OpenAsync((built, log, output, starting) => DebugSession.LaunchInProcessAsync(end, DebugEngine.GDScript, plan, Breakpoints, built, log, output, ColumnOf, starting),
+            plan.Name, launched: true, plan: plan);
+    }
+
     /// <summary>Launches another program in a native tab, with hooks installed before its adapter starts.</summary>
     public Task<DebugLaunch> StartAdditionalAsync(Run.LaunchPlan plan, CancellationToken cancellation = default, Action<DebugTab>? configure = null)
         => OpenAdditionalAsync(plan.Name, tab => StartInTabAsync(plan, tab: tab), null, cancellation, configure);

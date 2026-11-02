@@ -42,7 +42,9 @@ public partial class MainWindow
             string executable = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
             IReadOnlyList<KeyValuePair<string, object>> values = GodotEditorSettings.ForPassenger(executable);
             string? setting = settings.GodotExecutable;
-            GodotSetUp found = await BackgroundWork.Run(() => GodotSetUp.Of(GodotLaunch.Found(setting)));
+            // A Godot project of GDScript alone takes any Godot 4, .NET or not.
+            bool scripts = !Projects.Any(p => p.GodotFolder is not null);
+            GodotSetUp found = await BackgroundWork.Run(() => GodotSetUp.Of(GodotLaunch.Found(setting), scripts));
             if (found.Problem is { } problem)
             {
                 Told(work, false, $"Passenger cannot be Godot's script editor: {problem}");
@@ -120,13 +122,13 @@ public partial class MainWindow
     /// writes, the script editors' values the file read gives; or why there is none to write.</summary>
     private sealed record GodotSetUp(string? Version, string? Read, string? Written, IReadOnlyDictionary<string, object>? Values, string? Unreadable, string? Problem)
     {
-        public static GodotSetUp Of(GodotFound? found)
+        public static GodotSetUp Of(GodotFound? found, bool scripts)
         {
             if (found is null)
             {
                 return new(null, null, null, null, null, GodotLaunch.NotFound);
             }
-            if (found.WhyNot is { } why)
+            if ((scripts ? found.WhyNotScripts : found.WhyNot) is { } why)
             {
                 return new(null, null, null, null, null, why);
             }

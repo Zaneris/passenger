@@ -9,7 +9,9 @@ namespace Passenger.App.Godot;
 /// (<see cref="GodotGame"/>), so the Debug window, Variables, the gutter and agents' debug tools show a GDScript stop as they
 /// show any. Godot sets breakpoints by file and line and stops at script errors; their conditions, hit counts and messages
 /// are read here at each hit, the game let go on where they say. An evaluation runs where Godot's own does, in a frame of a
-/// script's instance. Requests run on the UI thread, where the game's messages are heard.</summary>
+/// script's instance, and Set Value sets a member or property of an object the game has. Beside a game's C# it attaches to
+/// the game Debug started; for a game of GDScript alone it launches the game itself, its output the session's. Requests run
+/// on the UI thread, where the game's messages are heard.</summary>
 public sealed class GodotScriptAdapter
 {
     /// <summary>The exception filter GDScript Errors is sent as.</summary>
@@ -21,10 +23,25 @@ public sealed class GodotScriptAdapter
     /// <summary>Why steps are refused at a script error.</summary>
     public const string NoStepFromError = "Godot steps on from no script error: Continue goes on past it";
 
+    /// <summary>Why a frame's local cannot be set.</summary>
+    public const string NoLocalSet = "Godot's debugger sets no local of a frame, only a member or property of an object: set self's members instead";
+
+    /// <summary>Why a value inside another (an element, a component) cannot be set alone.</summary>
+    public const string NoPartSet = "Godot sets an object's property whole: set the member or property that holds this value";
+
     private readonly GodotGame game;
     private readonly InProcessEnd end;
     private readonly DapConnection connection;
-    private readonly Func<Task> terminate;
+
+    /// <summary>What ends the game a Stop of this session ends: the session's beside it, or, for a game this adapter launched,
+    /// null, the game's process ended here.</summary>
+    private readonly Func<Task>? terminate;
+
+    /// <summary>The game's process, where this adapter launched it.</summary>
+    private System.Diagnostics.Process? launched;
+
+    /// <summary>What each row a person may set names, by its expression: the object it is of and the property, for this stop.</summary>
+    private readonly Dictionary<string, (ulong Owner, string Property)> settable = new(StringComparer.Ordinal);
 
     /// <summary>One question of the game's at a time: its answers come by name, in the order asked.</summary>
     private readonly SemaphoreSlim asking = new(1, 1);
@@ -70,8 +87,8 @@ public sealed class GodotScriptAdapter
     }
 
     /// <summary>The adapter of a game over <paramref name="end"/>; <paramref name="terminate"/> ends the game, as a Stop of
-    /// this session asks.</summary>
-    public GodotScriptAdapter(GodotGame game, InProcessEnd end, Func<Task> terminate)
+    /// this session asks; null where the session launches the game itself, which this adapter then ends.</summary>
+    public GodotScriptAdapter(GodotGame game, InProcessEnd end, Func<Task>? terminate)
     {
         this.game = game;
         this.end = end;
@@ -100,11 +117,15 @@ public sealed class GodotScriptAdapter
             SupportsEvaluateForHovers = true,
             SupportsExceptionInfoRequest = true,
             SupportsExceptionFilterOptions = true,
+            SupportsSetExpression = true,
             SupportsDataBreakpoints = false,
             DataBreakpointsUnavailable = "Godot's debugger watches no data",
             ExceptionBreakpointFilters = [new DapExceptionFilter(ErrorsFilter, "GDScript errors", Default: true, SupportsCondition: true)],
-        }), then: () => connection.SendEvent(DapEvents.Initialized));
+        }), then: () => Tell(DapEvents.Initialized, null));
         connection.Handle<AttachArguments>(DapCommands.Attach, _ => OnUi(AttachAsync));
+        connection.Handle<LaunchArguments>(DapCommands.Launch, arguments => OnUi(() => LaunchAsync(arguments)));
+        connection.Handle<InputArguments>(DapCommands.Input, arguments => OnUi(() => InputAsync(arguments)));
+        connection.Handle<SetExpressionArguments, SetExpressionResponse>(DapCommands.SetExpression, arguments => OnUi(() => SetAsync(arguments)));
         connection.Handle<DapEmpty>(DapCommands.ConfigurationDone, _ => OnUi(ConfiguredAsync));
         connection.Handle<SetBreakpointsArguments, SetBreakpointsResponse>(DapCommands.SetBreakpoints, arguments => OnUi(() => SetBreakpointsAsync(arguments)));
         connection.Handle<SetExceptionBreakpointsArguments, SetExceptionBreakpointsResponse>(DapCommands.SetExceptionBreakpoints,
@@ -155,7 +176,123 @@ public sealed class GodotScriptAdapter
         game.Scripts = this;
         if (game.ProcessId is int id)
         {
-            connection.SendEvent(DapEvents.Process, new ProcessEvent(game.Name, id, IsLocalProcess: true, StartMethod: DapCommands.Attach));
+            Tell(DapEvents.Process, new ProcessEvent(game.Name, id, IsLocalProcess: true, StartMethod: DapCommands.Attach));
+        }
+        return true;
+    }
+
+    /// <summary>Launches a game of GDScript alone, as the plan its session was given says: its output and errors told to the
+    /// session as they come, its end once both are read, and the game ended with the session however that ends. Answered
+    /// once the game has connected, from which its stops come here.</summary>
+    private async Task<bool> LaunchAsync(LaunchArguments arguments)
+    {
+        System.Diagnostics.ProcessStartInfo start = ChildProcesses.Command(arguments.Program ?? throw new DapException(DapCommands.Launch, "No program to launch"),
+            arguments.Args ?? [], arguments.Cwd);
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        start.RedirectStandardInput = true;
+        foreach ((string name, string value) in arguments.Env ?? new Dictionary<string, string>())
+        {
+            start.Environment[name] = value;
+        }
+        Tell(DapEvents.Output, new OutputEvent($"{ChildProcesses.Shown(start)}\n", DapOutputCategories.Console));
+        System.Diagnostics.Process process;
+        try
+        {
+            process = await ChildProcesses.StartAsync(start);
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            throw new DapException(DapCommands.Launch, $"Could not start {Path.GetFileName(start.FileName)}: {error.Message}");
+        }
+        launched = process;
+        // For the game's life: no wait for the IDE to be quiet waits out a game that runs until it is stopped.
+        Task told = Task.WhenAll(BackgroundWork.Unheld(() => TellAsync(ChildProcesses.Output(process), DapOutputCategories.Stdout)),
+            BackgroundWork.Unheld(() => TellAsync(ChildProcesses.Errors(process), DapOutputCategories.Stderr)));
+        IdeErrors.Observe(BackgroundWork.Unheld(() => EndedAsync(process, told)));
+        IdeErrors.Observe(BackgroundWork.Unheld(async () =>
+        {
+            await end.Exited;
+            ChildProcesses.Kill(process);
+        }));
+        return await AttachAsync();
+    }
+
+    /// <summary>What the game writes on one stream, told to the session as it comes, to the stream's end.</summary>
+    private async Task TellAsync(TextReader stream, string category)
+    {
+        using (stream)
+        {
+            char[] buffer = new char[4096];
+            while (true)
+            {
+                int read;
+                try
+                {
+                    read = await stream.ReadAsync(buffer.AsMemory(), CancellationToken.None);
+                }
+                catch (IOException)
+                {
+                    // A pipe broken as the game was killed: the stream has ended all the same.
+                    read = 0;
+                }
+                if (read == 0)
+                {
+                    return;
+                }
+                Tell(DapEvents.Output, new OutputEvent(new string(buffer, 0, read), category));
+            }
+        }
+    }
+
+    /// <summary>The game launched has ended, what it wrote told: its exit code, then the session's end.</summary>
+    private async Task EndedAsync(System.Diagnostics.Process process, Task told)
+    {
+        await process.WaitForExitAsync();
+        await Task.WhenAny(told, Task.Delay(TimeSpan.FromSeconds(2)));
+        Tell(DapEvents.Exited, new ExitedEvent(process.ExitCode));
+        Tell(DapEvents.Terminated, new TerminatedEvent());
+    }
+
+    /// <summary>An event for the session, unless it has gone: the game's last output, or its end, may come as the adapter ends.</summary>
+    private void Tell(string name, object? body)
+    {
+        if (end.HasEnded)
+        {
+            return;
+        }
+        try
+        {
+            connection.SendEvent(name, body);
+        }
+        catch (InvalidOperationException) when (end.HasEnded)
+        {
+            // The session went as this was told.
+        }
+    }
+
+    /// <summary>Text typed into the console of a game launched, for its standard input; its end closes that input.</summary>
+    private async Task<bool> InputAsync(InputArguments arguments)
+    {
+        if (launched is not { } process)
+        {
+            throw new DapException(DapCommands.Input, $"{game.Name} reads its input from the program that started it");
+        }
+        try
+        {
+            if (arguments.Close == true)
+            {
+                process.StandardInput.Close();
+            }
+            else
+            {
+                await process.StandardInput.WriteAsync(arguments.Text);
+                await process.StandardInput.FlushAsync();
+            }
+        }
+        catch (Exception gone) when (gone is IOException or InvalidOperationException or ObjectDisposedException)
+        {
+            throw new DapException(DapCommands.Input, $"{game.Name} takes no more input: {gone.Message}");
         }
         return true;
     }
@@ -280,7 +417,7 @@ public sealed class GodotScriptAdapter
     {
         int level = Level(frameId, DapCommands.Scopes);
         IReadOnlyList<GodotScriptVariable> all = await VariablesOfAsync(level);
-        List<DapVariable> rows = [.. all.Where(v => v.Scope == GodotScope.Local).Select(v => Row(v.Name, v.Name, v.Value, v.Type, v.Hint))];
+        List<DapVariable> rows = [.. all.Where(v => v.Scope == GodotScope.Local).Select(v => Row(v.Name, v.Name, v.Value, v.Type, v.Hint) with { Unsettable = NoLocalSet })];
         if (all.FirstOrDefault(v => v.Scope == GodotScope.Member && v.Name == "self") is { } self)
         {
             List<GodotScriptVariable> members = [.. all.Where(v => v.Scope == GodotScope.Member && v.Name != "self")];
@@ -291,6 +428,7 @@ public sealed class GodotScriptAdapter
                 Type = self.TypeName,
                 EvaluateName = "self",
                 VariablesReference = Reference(() => SelfAsync(members, self)),
+                Unsettable = "self is the object the frame runs in: set its members and properties",
             });
         }
         List<GodotScriptVariable> globals = [.. all.Where(v => v.Scope == GodotScope.Global)];
@@ -300,7 +438,8 @@ public sealed class GodotScriptAdapter
             {
                 Name = "Globals",
                 Value = Plural.Of(globals.Count, "autoload"),
-                VariablesReference = Reference(() => Task.FromResult<IReadOnlyList<DapVariable>>([.. globals.Select(v => Row(v.Name, v.Name, v.Value, v.Type, v.Hint))])),
+                VariablesReference = Reference(() => Task.FromResult<IReadOnlyList<DapVariable>>([.. globals.Select(v => Row(v.Name, v.Name, v.Value, v.Type, v.Hint)
+                    with { Unsettable = "An autoload is the project's own: set its members and properties" })])),
                 PresentationHint = new DapPresentationHint(Kind: "virtual"),
             });
         }
@@ -311,12 +450,25 @@ public sealed class GodotScriptAdapter
     /// has them, by the class each comes from.</summary>
     private async Task<IReadOnlyList<DapVariable>> SelfAsync(IReadOnlyList<GodotScriptVariable> members, GodotScriptVariable self)
     {
-        List<DapVariable> rows = [.. members.Select(m => Row(m.Name, m.Name, m.Value, m.Type, m.Hint))];
-        if (self.Value is GodotObjectId id)
+        ulong? owner = (self.Value as GodotObjectId)?.Id;
+        List<DapVariable> rows = [.. members.Select(m => Settable(Row(m.Name, $"self.{m.Name}", m.Value, m.Type, m.Hint), owner, m.Name, null))];
+        if (owner is { } id)
         {
-            rows.AddRange(await PropertiesAsync(id.Id, "self", script: false));
+            rows.AddRange(await PropertiesAsync(id, "self", script: false));
         }
         return rows;
+    }
+
+    /// <summary>A row Set Value sets as a property of an object (<paramref name="owner"/>, null where it is unknown), unless
+    /// <paramref name="why"/> says why not.</summary>
+    private DapVariable Settable(DapVariable row, ulong? owner, string property, string? why)
+    {
+        if (why is null && owner is { } id && row.EvaluateName is { } expression)
+        {
+            settable[expression] = (id, property);
+            return row;
+        }
+        return row with { Unsettable = why ?? "Godot names no object this value is a property of" };
     }
 
     /// <summary>An object's properties, each class's under its name; with <paramref name="script"/>, its script's members among
@@ -342,7 +494,8 @@ public sealed class GodotScriptAdapter
                 Value = Plural.Of(properties.Count, "property", "properties"),
                 PresentationHint = new DapPresentationHint(Kind: "virtual"),
                 VariablesReference = Reference(() => Task.FromResult<IReadOnlyList<DapVariable>>(
-                    [.. properties.Select(p => Row(p.Name, expression is null ? null : $"{expression}.{p.Name}", p.Value, p.Type, p.Value is GodotObjectId ? p.HintString : string.Empty))])),
+                    [.. properties.Select(p => Settable(Row(p.Name, $"{expression ?? $"instance_from_id({id})"}.{p.Name}", p.Value, p.Type, p.Value is GodotObjectId ? p.HintString : string.Empty),
+                        id, p.Name, p.Settable ? null : $"{p.Name} is a {p.Type}{((p.Usage & ReadOnlyUsage) != 0 ? ", read-only" : string.Empty)}, which Godot's debugger does not set"))])),
             });
         }
         return rows;
@@ -351,6 +504,9 @@ public sealed class GodotScriptAdapter
     /// <summary>The usage flag of a property a script declares.</summary>
     private const long ScriptVariable = 1 << 12;
 
+    /// <summary>The usage flag of a property Godot's inspector shows read-only.</summary>
+    private const long ReadOnlyUsage = 1 << 28;
+
     /// <summary>A variable's row: its value shown, its type, and what it holds behind a reference.</summary>
     private DapVariable Row(string name, string? expression, object? value, GodotType type, string hint)
     {
@@ -358,7 +514,7 @@ public sealed class GodotScriptAdapter
         {
             GodotObjectId id => Reference(() => PropertiesAsync(id.Id, expression)),
             _ when GodotScriptValues.Inside(value, expression) is { Count: > 0 } held => Reference(() => Task.FromResult<IReadOnlyList<DapVariable>>(
-                [.. held.Select(h => Row(h.Name, h.Expression, h.Value, GodotScriptValues.TypeOf(h.Value), string.Empty))])),
+                [.. held.Select(h => Row(h.Name, h.Expression, h.Value, GodotScriptValues.TypeOf(h.Value), string.Empty) with { Unsettable = NoPartSet })])),
             _ => 0,
         };
         return new DapVariable { Name = name, Value = GodotScriptValues.Shown(value, hint), Type = GodotScriptValues.TypeName(type, hint), EvaluateName = expression, VariablesReference = reference };
@@ -375,6 +531,77 @@ public sealed class GodotScriptAdapter
     private async Task<VariablesResponse> VariablesAsync(int reference) => inside.TryGetValue(reference, out Func<Task<IReadOnlyList<DapVariable>>>? read)
         ? new VariablesResponse(await read())
         : throw new DapException(DapCommands.Variables, "Those values are of a stop the game has gone on from");
+
+    /// <summary>Set Value: the member or property a row names takes the value typed, read as GDScript in the frame (or, where
+    /// that reads nothing, as the row shows a value of its type, "(1, 2)"), set in the game through
+    /// <c>scene:set_object_property</c>, then read back; a value Godot would not take for it is said, the old one kept.</summary>
+    private async Task<SetExpressionResponse> SetAsync(SetExpressionArguments arguments)
+    {
+        if (stop is null)
+        {
+            throw new DapException(DapCommands.SetExpression, "The game is running: a value is set only while it is paused");
+        }
+        if (!settable.TryGetValue(arguments.Expression, out (ulong Owner, string Property) target))
+        {
+            throw new DapException(DapCommands.SetExpression, $"{arguments.Expression} is no member or property of an object the game has shown here");
+        }
+        int level = arguments.FrameId is int frameId ? Level(frameId, DapCommands.SetExpression) : 0;
+        (object? before, GodotType type) = await ReadBackAsync(target, level);
+        object? value;
+        try
+        {
+            value = (await ReadAsync(arguments.Value, level)).Value;
+        }
+        catch (DapException unread)
+        {
+            // What a row shows of a vector or a colour is no GDScript, yet reads as its type does.
+            (object? parsed, string? wanted) = type is GodotType.String or GodotType.StringName or GodotType.NodePath ? (null, "a GDScript value") : GodotVariant.Parse(type, arguments.Value);
+            value = wanted is null ? parsed : throw new DapException(DapCommands.SetExpression, $"{arguments.Value} reads as no value here: {unread.Reason}");
+        }
+        if (value is GodotObjectId or GodotObject)
+        {
+            throw new DapException(DapCommands.SetExpression, "Godot's debugger sets no object as a value: set it to null here, or in the script");
+        }
+        try
+        {
+            await game.SetPropertyAsync(target.Owner, target.Property, value);
+        }
+        catch (LiveTree.LiveAppException lost)
+        {
+            throw new DapException(DapCommands.SetExpression, lost.Message);
+        }
+        variables.Clear();
+        (object? after, GodotType now) = await ReadBackAsync(target, level);
+        string shown = GodotScriptValues.Shown(after);
+        if (shown == GodotScriptValues.Shown(before) && GodotScriptValues.Shown(value) != shown)
+        {
+            throw new DapException(DapCommands.SetExpression, $"Godot kept {target.Property} as it was, {shown}: it takes no {GodotScriptValues.TypeName(GodotScriptValues.TypeOf(value))} "
+                + $"{GodotScriptValues.Shown(value)} there");
+        }
+        return new SetExpressionResponse { Value = shown, Type = GodotScriptValues.TypeName(now) };
+    }
+
+    /// <summary>A target's value as the game has it now, and its type: a member of the frame's object from the frame's values,
+    /// any other property from its object's.</summary>
+    private async Task<(object? Value, GodotType Type)> ReadBackAsync((ulong Owner, string Property) target, int level)
+    {
+        IReadOnlyList<GodotScriptVariable> all = await VariablesOfAsync(level);
+        if (all.FirstOrDefault(v => v.Scope == GodotScope.Member && v.Name == "self")?.Value is GodotObjectId self && self.Id == target.Owner
+            && all.FirstOrDefault(v => v.Scope == GodotScope.Member && v.Name == target.Property) is { } member)
+        {
+            return (member.Value, member.Type);
+        }
+        try
+        {
+            GodotObjectState state = await game.InspectAsync(target.Owner);
+            return state.Properties.FirstOrDefault(p => p.Name == target.Property) is { } property ? (property.Value, property.Type)
+                : throw new DapException(DapCommands.SetExpression, $"{target.Property} is no longer a property of the object");
+        }
+        catch (LiveTree.LiveAppException unread)
+        {
+            throw new DapException(DapCommands.SetExpression, unread.Message);
+        }
+    }
 
     private async Task<EvaluateResponse> EvaluateAsync(EvaluateArguments arguments)
     {
@@ -472,7 +699,13 @@ public sealed class GodotScriptAdapter
 
     private async Task<bool> DisconnectAsync(DisconnectArguments arguments)
     {
-        if (arguments.TerminateDebuggee == true && game.State == LiveTree.LiveAppState.Connected)
+        if (launched is { } process)
+        {
+            // A game this adapter launched is the session's to its end, Detach or not.
+            ChildProcesses.Kill(process);
+            return true;
+        }
+        if (arguments.TerminateDebuggee == true && game.State == LiveTree.LiveAppState.Connected && terminate is not null)
         {
             await terminate();
             return true;
@@ -532,7 +765,7 @@ public sealed class GodotScriptAdapter
         variablesAsked?.TrySetException(new LiveTree.LiveAppException($"{game.Name} has ended"));
         evaluationAsked?.TrySetException(new LiveTree.LiveAppException($"{game.Name} has ended"));
         stop = null;
-        connection.SendEvent(DapEvents.Terminated, new TerminatedEvent());
+        Tell(DapEvents.Terminated, new TerminatedEvent());
     }
 
     /// <summary>Whether an error the game raised is this debugger's own doing, kept out of Problems: one an evaluation raised,
@@ -561,7 +794,7 @@ public sealed class GodotScriptAdapter
             case GodotWords.DebugExit when stop is { } gone && gone.Thread == message.Thread:
                 // Gone on with no continue or step of the session's.
                 Left();
-                connection.SendEvent(DapEvents.Continued, new ContinuedEvent((int)gone.Thread));
+                Tell(DapEvents.Continued, new ContinuedEvent((int)gone.Thread));
                 break;
             case GodotWords.StackDump:
                 stackAsked?.TrySetResult(GodotScriptFrame.Stack(message.Data) ?? []);
@@ -604,6 +837,7 @@ public sealed class GodotScriptAdapter
         frames = null;
         variables.Clear();
         inside.Clear();
+        settable.Clear();
         Going was = going;
         going = Going.None;
         if (!stopped.HasStack)
@@ -716,9 +950,9 @@ public sealed class GodotScriptAdapter
         _ => true,
     };
 
-    private void Say(string line) => connection.SendEvent(DapEvents.Output, new OutputEvent(line, DapOutputCategories.Console));
+    private void Say(string line) => Tell(DapEvents.Output, new OutputEvent(line, DapOutputCategories.Console));
 
-    private void Stopped(string reason, string? text, IReadOnlyList<int>? hit) => connection.SendEvent(DapEvents.Stopped, new StoppedEvent
+    private void Stopped(string reason, string? text, IReadOnlyList<int>? hit) => Tell(DapEvents.Stopped, new StoppedEvent
     {
         Reason = reason,
         Text = text,
@@ -736,6 +970,7 @@ public sealed class GodotScriptAdapter
         frames = null;
         variables.Clear();
         inside.Clear();
+        settable.Clear();
     }
 
     private async Task<IReadOnlyList<GodotScriptFrame>> FramesAsync()

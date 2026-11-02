@@ -465,7 +465,9 @@ public sealed class ProfilerView : DockPanel
         ProfilerPage current = (ProfilerPage)Math.Max(0, Array.FindIndex(pages, p => p.IsChecked == true));
         Snapshot = snapshot;
         Snapshot whole = snapshot.Whole;
-        status.Text = ReferenceEquals(whole, snapshot)
+        status.Text = snapshot.FramesAlone
+            ? $"{snapshotName}: {snapshot.Duration.TotalSeconds:0.0} s, {Plural.Of(snapshot.GameFrames.Count, "frame")} as Godot's profiler measured them; no samples, as a game of GDScript alone runs no .NET code"
+            : ReferenceEquals(whole, snapshot)
             ? $"{snapshotName}: {snapshot.Duration.TotalSeconds:0.0} s, {Plural.Of(snapshot.Threads.Count, "thread")}, {snapshot.Samples:N0} samples"
             : $"{snapshotName}: {snapshot.StartMs - whole.StartMs:N0} to {snapshot.EndMs - whole.StartMs:N0} ms of {whole.Duration.TotalMilliseconds:N0}, {snapshot.Samples:N0} samples";
         foreach (ToggleButton page in pages)
@@ -503,7 +505,8 @@ public sealed class ProfilerView : DockPanel
         {
             game.Show(played, snapshot.GameFrames, snapshot.Joined, whole.StartMs);
         }
-        ShowPageLater(current);
+        // A run of a game's frames alone has no samples for the pages of calls to show.
+        ShowPageLater(snapshot.FramesAlone && current is ProfilerPage.CallTree or ProfilerPage.HotSpots or ProfilerPage.FlameGraph ? ProfilerPage.Frames : current);
         types.ItemsSource = snapshot.Allocations;
         types.SelectedIndex = snapshot.Allocations.Count > 0 ? 0 : -1;
         ShowBackTraces();

@@ -710,7 +710,7 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>Why Run Current Scene cannot run now: the file open is in no Godot project of the folder's.</summary>
-    public string? WhyNotRunScene() => parts.Editors.Active?.Path is { } path && session.Projects.Any(p => p.GodotFolder is { } folder && PathNames.IsUnder(path, folder))
+    public string? WhyNotRunScene() => parts.Editors.Active?.Path is { } path && session.RunProjects.Any(p => p.GodotFolder is { } folder && PathNames.IsUnder(path, folder))
         ? null : Refusals.NoGodotScene;
 
     /// <summary>Run Current Scene: the Godot game of the project the open scene (or script) is in, run from that scene (or the
@@ -720,7 +720,7 @@ public sealed partial class BuildRunController
     {
         UiThread.Check();
         string? path = parts.Editors.Active?.Path;
-        ProjectModel? project = path is null ? null : session.Projects.FirstOrDefault(p => p.GodotFolder is { } folder && PathNames.IsUnder(path, folder));
+        ProjectModel? project = path is null ? null : session.RunProjects.FirstOrDefault(p => p.GodotFolder is { } folder && PathNames.IsUnder(path, folder));
         if (project is null)
         {
             return Said(Refusals.NoGodotScene);
@@ -965,6 +965,8 @@ public sealed partial class BuildRunController
             {
                 return Said(unmade);
             }
+            // A game of GDScript alone takes its saved scripts over its own connection: no debugger holds its start for C#'s edits.
+            bool heldStart = reloaded && !plan.ScriptsAlone;
             work.Say($"Starting {chosen.Name}…");
             ran = chosen.Name;
             RunProject = Path.GetDirectoryName(plan.Project);
@@ -973,7 +975,7 @@ public sealed partial class BuildRunController
             game?.ReloadsScripts = reloaded;
             session.RunPlan = plan;
             string running = watched || reloaded ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
-                : wanted && godot ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.EditorReloads}"
+                : wanted && godot && !plan.ScriptsAlone ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.EditorReloads}"
                 : $"Running {chosen.Name}";
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
             LaunchPlan launched = session.InspectedRun(plan, watched);
@@ -986,7 +988,7 @@ public sealed partial class BuildRunController
                     ["DOTNET_WATCH_SUPPRESS_EMOJIS"] = "1", ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "true", ["DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER"] = "1",
                 }
                 : new Dictionary<string, string>(launched.Environment);
-            if (reloaded)
+            if (heldStart)
             {
                 // Held at its runtime's start until the debugger attaches, so each of its modules takes Edit and Continue as it loads.
                 foreach ((string name, string value) in HeldStart.Variables(changeable: true))
@@ -1002,7 +1004,7 @@ public sealed partial class BuildRunController
                 if (refused is null && session.InTerminal is { } inTerminal)
                 {
                     parts.OpenBrowser(plan, inTerminal.Ended);
-                    if (reloaded)
+                    if (heldStart)
                     {
                         await AttachForHotReloadAsync(chosen.Name, inTerminal.ProcessId, null, work, Take(ref edits), running);
                     }
@@ -1030,7 +1032,7 @@ public sealed partial class BuildRunController
             }
             EndWith(inspected, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
             EndWith(game, notStarted is null ? session.Runner.Ended : Task.CompletedTask);
-            if (notStarted is null && reloaded && session.Runner.ProcessId is int id)
+            if (notStarted is null && heldStart && session.Runner.ProcessId is int id)
             {
                 await AttachForHotReloadAsync(chosen.Name, id, parts.Views.Run.Sink, work, Take(ref edits), running);
             }
@@ -1736,6 +1738,10 @@ public sealed partial class BuildRunController
         DebugController debug = session.Debug;
         // A Godot game's GDScript is debugged from its first line, beside its C#.
         (LaunchPlan listened, Godot.GodotGame? game) = session.Listened(plan, plan.Godot is { } folder ? debug.ScriptStart(folder) : null);
+        if (plan.ScriptsAlone && game is not null)
+        {
+            return await LaunchScriptsAsync(listened, game);
+        }
         // An Avalonia or WPF app is launched with the Live Visual Tree's inspector, held by its tab, ending with this debugging.
         (LaunchPlan launched, LiveApp? inspected) = session.Inspected(listened);
         Task<string?> starting = debug.StartAsync(launched, app: inspected, edits: edits);
@@ -1759,6 +1765,21 @@ public sealed partial class BuildRunController
         {
             parts.OpenBrowser(plan, ended);
         }
+        return refused;
+    }
+
+    /// <summary>Debug of a Godot game of GDScript alone: its GDScript session launches it, no C# engine beside it, Hot Reload
+    /// of its saved scripts as Settings' Hot Reload while debugging says. Null once its session is open, else why not.</summary>
+    private async Task<string?> LaunchScriptsAsync(LaunchPlan plan, Godot.GodotGame game)
+    {
+        DebugController debug = session.Debug;
+        string? refused = await debug.LaunchScriptsAsync(plan, game);
+        if (refused is null)
+        {
+            game.Debugged = debug.SessionNamed(plan.Name);
+            game.ReloadsScripts = debug.HotReloadOn();
+        }
+        EndWith(game, refused is null ? DebugEnded(debug.SessionNamed(plan.Name)) : Task.CompletedTask);
         return refused;
     }
 

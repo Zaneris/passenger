@@ -59,17 +59,17 @@ public static class GodotLaunch
     }
 
     /// <summary>The plan of a Godot project's configuration that names no program of its own: its game, or its editor on the
-    /// scene of the file at hand (<see cref="GodotProject.SceneOf"/>), on the Godot found, the configuration's arguments after
-    /// those that start it, in its working folder or else the Godot project's. Throws a <see cref="LaunchException"/> saying
-    /// why not: no project.godot, no Godot that runs C#, a Godot.NET.Sdk (<paramref name="sdk"/>) newer than the Godot, no
-    /// scene for the game to start in, or a project.godot that loads another assembly than the project builds.</summary>
-    internal static async Task<LaunchPlan> PlanAsync(RunConfiguration configuration, ProjectModel project, string folder, string target, string? framework,
+    /// scene of the file at hand (<see cref="GodotProject.SceneOf"/>), on the Godot found, its arguments after those that start
+    /// it, in its working folder or the Godot project's; one of GDScript alone (no <paramref name="target"/>) on any Godot 4,
+    /// nothing built. Throws a <see cref="LaunchException"/> saying why not: no project.godot, no Godot to run it, a
+    /// Godot.NET.Sdk (<paramref name="sdk"/>) newer than the Godot, no scene to start in, or another assembly than it builds.</summary>
+    internal static async Task<LaunchPlan> PlanAsync(RunConfiguration configuration, ProjectModel project, string folder, string? target, string? framework,
         Func<string, string> expand, IReadOnlyDictionary<string, string> environment, string? setting, string? sdk, CancellationToken cancel, string? atHand = null)
     {
         GodotProject game = GodotProject.Read(folder)
             ?? throw new LaunchException($"{configuration.Name} cannot run: {folder} holds no {GodotProject.FileName}, which makes it the Godot project Godot runs");
         GodotFound found = Found(setting) ?? throw new LaunchException($"{configuration.Name} cannot run: {NotFound}");
-        if (found.WhyNot is { } why)
+        if ((project.IsScriptGame ? found.WhyNotScripts : found.WhyNot) is { } why)
         {
             throw new LaunchException($"{configuration.Name} cannot run: {why}");
         }
@@ -78,8 +78,7 @@ public static class GodotLaunch
         {
             throw new LaunchException($"{configuration.Name} cannot run: {mismatch}");
         }
-        string built = Path.GetFileNameWithoutExtension(target);
-        if (game.AssemblyName is { Length: > 0 } loaded && !string.Equals(loaded, built, StringComparison.OrdinalIgnoreCase))
+        if (target is not null && game.AssemblyName is { Length: > 0 } loaded && !string.Equals(loaded, Path.GetFileNameWithoutExtension(target), StringComparison.OrdinalIgnoreCase))
         {
             throw new LaunchException($"{configuration.Name} cannot run: Godot loads the game's C# from {loaded}.dll, as its {GodotProject.FileName}'s dotnet/project/assembly_name "
                 + $"says, but {project.Name} builds {Path.GetFileName(target)}: name the one assembly in both");
@@ -128,11 +127,13 @@ public static class GodotLaunch
             Environment = environment,
             Project = project.Path,
             Framework = framework,
-            Build = configuration.BuildBeforeLaunch ? new BuildStep(project.Path, framework) : null,
+            Build = configuration.BuildBeforeLaunch && target is not null ? new BuildStep(project.Path, framework) : null,
             Built = target,
             Console = configuration.Console,
             Godot = folder,
             GodotVersion = version,
+            ScriptsAlone = project.IsScriptGame,
+            GameName = project.IsScriptGame ? project.Name : null,
         };
     }
 

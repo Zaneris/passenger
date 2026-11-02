@@ -64,4 +64,32 @@ public sealed class GameFramesTests
         Assert.Equal(spin, joined.CSharp[0].Code);
         Assert.Equal([3.0], snapshot.Joined([frames[1]]).FrameMs);
     }
+    /// <summary>A run of a game's frames alone, written beside an empty trace as a game of GDScript alone's is, reads back as a
+    /// snapshot of those frames timed from the first one's arrival, with no samples and its script functions named.</summary>
+    [Fact]
+    public void A_run_of_frames_alone_beside_an_empty_trace_reads_as_those_frames_with_no_samples()
+    {
+        string folder = Directory.CreateTempSubdirectory("passenger-unit-").FullName;
+        try
+        {
+            string trace = Path.Combine(folder, "Ticker-20261101-120000.nettrace");
+            new FileStream(trace, FileMode.CreateNew, FileAccess.Write).Dispose();
+            GameRecording recording = new("Godot 4.7.2", "/games/ticker", draws: false);
+            recording.Signature(0, "res://ticker.gd::7::_process");
+            recording.Took(Frame(1, 5, new ScriptWork(0, 1, 0.2, 0.2, 0)), Began.AddMilliseconds(5));
+            recording.Took(Frame(2, 5, new ScriptWork(0, 1, 0.3, 0.3, 0)), Began.AddMilliseconds(10));
+            recording.Stop();
+            recording.Write(trace);
+
+            Snapshot snapshot = Snapshot.Read(trace);
+
+            Assert.True(snapshot is { FramesAlone: true, Samples: 0, Threads.Count: 0, GameFrames.Count: 2 }, $"The run read as {snapshot.GameFrames.Count} frames and {snapshot.Samples} samples");
+            Assert.Equal([(0.0, 5.0), (5.0, 10.0)], snapshot.GameFrames.Select(f => (f.StartMs, f.EndMs)));
+            Assert.Equal(["_process"], snapshot.Game!.Spots(snapshot.GameFrames).Select(s => s.Function.Name));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
 }

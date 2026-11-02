@@ -187,7 +187,12 @@ public sealed record RunConfiguration
     /// <summary>Whether it runs a Godot project's game or editor on Godot among these projects (<see cref="GodotLaunch"/>):
     /// one of a project Godot.NET.Sdk builds that names no program of its own.</summary>
     public bool RunsGodot(IEnumerable<ProjectModel> projects) =>
-        !IsContainer && Program.Length == 0 && projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project))?.GodotFolder is not null;
+        !IsContainer && Program.Length == 0 && (RunsScriptGame || projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project))?.GodotFolder is not null);
+
+    /// <summary>Whether it runs a Godot project of GDScript alone, its project.godot its project (<see cref="ProjectModel.IsScriptGame"/>):
+    /// no C# project is built or debugged for it.</summary>
+    [JsonIgnore]
+    public bool RunsScriptGame => !IsContainer && Path.GetFileName(Project) == GodotProject.FileName;
 
     /// <summary>Why it cannot launch here among these projects: its launch profile's kind, or, when it runs its project's
     /// own program, a project that runs only on Windows (WPF, Windows Forms) elsewhere; null when it can.</summary>
@@ -198,15 +203,15 @@ public sealed record RunConfiguration
 
     /// <summary>The configurations the folder's executable projects make: one per launch profile, named "Project: profile",
     /// and the project itself when none of its profiles runs it here (a Godot project's game), with a Godot project's editor
-    /// beside it ("Project: Godot Editor"); then single-file AppHosts and the container ones the
-    /// workspace's compose files, Dockerfiles, SDK container projects and Docker Compose projects (.dcproj) make
-    /// (<see cref="Containers.ContainerConfigurations"/>).</summary>
+    /// beside it ("Project: Godot Editor"), the workspace's Godot projects of GDScript alone among them (<see cref="WorkspaceModel.ScriptGames"/>);
+    /// then single-file AppHosts and the container ones the workspace's compose files, Dockerfiles, SDK container projects
+    /// and Docker Compose projects (.dcproj) make (<see cref="Containers.ContainerConfigurations"/>).</summary>
     public static IReadOnlyList<RunConfiguration> Generate(IEnumerable<ProjectModel> projects, WorkspaceModel? workspace = null,
         IEnumerable<string>? singleFileAppHosts = null)
     {
         List<RunConfiguration> generated = [];
         List<ProjectModel> all = [.. projects];
-        foreach (ProjectModel project in all.Where(p => p.Exists))
+        foreach (ProjectModel project in all.Where(p => p.Exists).Concat(workspace?.ScriptGames(all).Select(ProjectModel.OfScriptGame) ?? []))
         {
             bool godot = project.Godot() is not null;
             if (!project.IsRunnable && !godot)
@@ -214,7 +219,7 @@ public sealed record RunConfiguration
                 continue;
             }
             string name = NameOf(project);
-            IReadOnlyList<LaunchProfile> profiles = Run.LaunchProfile.Read(project);
+            IReadOnlyList<LaunchProfile> profiles = project.IsScriptGame ? [] : Run.LaunchProfile.Read(project);
             if (!profiles.Any(p => p.Unsupported is null && !p.RunsInContainer))
             {
                 generated.Add(new RunConfiguration

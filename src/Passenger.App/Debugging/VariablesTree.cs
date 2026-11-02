@@ -81,7 +81,10 @@ public sealed class VariableNode(string name, string value, string? type, int re
 
     /// <summary>Why this row's value cannot be set; null where it can.</summary>
     public string? NoSetting =>
-        NoExpression ?? (IsCopy ? "The debugger shows this value from a copy it made, so a value set here would leave the program's own unchanged" : null);
+        NoExpression ?? Unsettable ?? (IsCopy ? "The debugger shows this value from a copy it made, so a value set here would leave the program's own unchanged" : null);
+
+    /// <summary>The debugger's word that it cannot set this value, and why, though an expression reaches it.</summary>
+    public string? Unsettable { get; init; }
 
     /// <summary>Its value is being typed over, in its row (Set Value, F2).</summary>
     public bool IsEditing
@@ -135,6 +138,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
             IsCopy = variable.PresentationHint?.Attributes?.Contains("readOnly") == true,
             IsLazy = variable.PresentationHint?.Lazy == true && variable.VariablesReference > 0,
             NeedsThreads = SaysNeedsThreads(variable.PresentationHint),
+            Unsettable = variable.Unsettable,
         };
 
     /// <summary>A lazy row as what it read: the debugger's one variable in its place, by its name, or why it read none.</summary>

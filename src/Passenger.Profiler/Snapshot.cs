@@ -222,6 +222,12 @@ public sealed class Snapshot
     /// null for any other program.</summary>
     public GameProfile? Game => game;
 
+    /// <summary>Whether the run is a Godot game's frames alone, no samples taken: a game of GDScript alone, which runs no .NET
+    /// code to sample (its trace kept empty, its name the run's).</summary>
+    public bool FramesAlone => Whole.framesAlone;
+
+    private bool framesAlone;
+
     /// <summary>A Godot game's frames in the stretch, in order, as Godot's own profiler measured them; none for any other program.</summary>
     public IReadOnlyList<GameFrame> GameFrames { get; }
 
@@ -559,6 +565,10 @@ public sealed class Snapshot
     /// one run.</summary>
     public static Snapshot Read(string nettrace)
     {
+        if (new FileInfo(nettrace).Length == 0)
+        {
+            return OfFrames(nettrace);
+        }
         string etlx = TraceLog.CreateFromEventPipeDataFile(nettrace, null, new TraceLogOptions { ContinueOnError = true });
         try
         {
@@ -677,6 +687,17 @@ public sealed class Snapshot
             {
             }
         }
+    }
+
+    /// <summary>A run of a Godot game's frames alone (<see cref="FramesAlone"/>): its trace empty, its frames beside it, timed
+    /// from the first one's arrival.</summary>
+    private static Snapshot OfFrames(string nettrace)
+    {
+        GameProfile? game = GameProfile.ReadBeside(nettrace, null);
+        IReadOnlyList<GameFrame> played = game?.Frames ?? [];
+        double first = played.Select(f => f.StartMs).DefaultIfEmpty(0).Min();
+        double end = played.Select(f => f.EndMs).DefaultIfEmpty(0).Max();
+        return new Snapshot([], [], [], [], new Dictionary<int, string>(), [], [], [], game, first, end, nettrace, null) { framesAlone = true };
     }
 
     /// <summary>Stacks compared by their frames, so one caught again is the one kept, and looked up by a walk's frames

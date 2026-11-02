@@ -54,8 +54,9 @@ public sealed class ProfilingSession : IAsyncDisposable
     private ContainerHeap? containerHeap;
 
     private ProfilingSession(Process process, DiagnosticsClientConnector? connector, EventPipeSession? session, Task copying, Task reading, string trace, string? port,
-        int? processId = null, ProfilePlace? place = null)
+        int? processId = null, ProfilePlace? place = null, bool samples = true)
     {
+        Samples = samples;
         this.process = process;
         this.connector = connector;
         this.session = session;
@@ -79,7 +80,14 @@ public sealed class ProfilingSession : IAsyncDisposable
     public bool HasExited => Volatile.Read(ref disposed) != 0 || process.HasExited;
 
     /// <summary>Whether the program was running before the profiler came, and is not the profiler's to end or to type to.</summary>
-    public bool Attached => connector is null;
+    public bool Attached => connector is null && Samples;
+
+    /// <summary>Whether the run samples the program's .NET code; false for a Godot game of GDScript alone, whose run is its
+    /// frames as Godot's own profiler measures them (<see cref="Game"/>), its trace kept empty.</summary>
+    public bool Samples { get; }
+
+    /// <summary>Why a run of a game's frames alone has no heap.</summary>
+    public const string NoHeapOfScripts = "A Godot game of GDScript alone runs no .NET code, so it has no .NET heap to snapshot";
 
     /// <summary>How long it has run.</summary>
     public TimeSpan Elapsed => clock.Elapsed;
@@ -239,6 +247,47 @@ public sealed class ProfilingSession : IAsyncDisposable
             await StopListeningAsync(connecting, limit, port);
             process.Dispose();
         }
+    }
+
+    /// <summary>Starts a Godot game of GDScript alone under Godot's own profiler alone (<see cref="Samples"/> false): no .NET code
+    /// runs in it to sample, so no diagnostic port holds it; the run is the frames <see cref="Game"/> records, kept beside an
+    /// empty trace in <paramref name="folder"/> that names the run. Its output and errors are read by <paramref name="pump"/>; a
+    /// start that fails is a <see cref="ProfilingException"/> saying why.</summary>
+    public static async Task<ProfilingSession> StartFramesAsync(ProfileTarget target, string folder, ProgramPump pump)
+    {
+        if (!Directory.Exists(target.WorkingDirectory))
+        {
+            throw new ProfilingException($"Could not profile {target.Name}: its working folder {target.WorkingDirectory} does not exist");
+        }
+        string trace;
+        try
+        {
+            trace = NewTrace(folder, target.Name);
+            new FileStream(trace, FileMode.CreateNew, FileAccess.Write).Dispose();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            throw new ProfilingException($"Could not profile {target.Name}: no snapshot can be written in {folder}: {error.Message}", error);
+        }
+        ProcessStartInfo start = ChildProcesses.Command(target.Program, target.Arguments, target.WorkingDirectory);
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+        start.RedirectStandardInput = true;
+        foreach ((string key, string value) in target.Environment)
+        {
+            start.Environment[key] = value;
+        }
+        Process process;
+        try
+        {
+            process = await ChildProcesses.StartAsync(start);
+        }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException)
+        {
+            throw new ProfilingException($"Could not start {Path.GetFileName(target.Program)} to profile {target.Name}: {error.Message}", error);
+        }
+        Task reading = Task.WhenAll(pump(ChildProcesses.Output(process), false, null), pump(ChildProcesses.Errors(process), true, null));
+        return new ProfilingSession(process, null, null, Task.CompletedTask, reading, trace, null, samples: false);
     }
 
     /// <summary>Profiles a .NET program already running, from now until <see cref="StopAsync"/> or its end, at the
@@ -442,7 +491,7 @@ public sealed class ProfilingSession : IAsyncDisposable
     /// nothing of the profiler's left listening for it.</summary>
     public async Task<Snapshot> StopAsync()
     {
-        if (Interlocked.Exchange(ref stopped, 1) == 0 && !process.HasExited)
+        if (Interlocked.Exchange(ref stopped, 1) == 0 && !process.HasExited && Samples)
         {
             if (session is null)
             {
@@ -506,7 +555,7 @@ public sealed class ProfilingSession : IAsyncDisposable
 
     /// <summary>Why no memory snapshot of the program can be taken whatever is tried (<see cref="DotnetProcesses.WhyUnreadable"/>),
     /// asked of the program once; null where one may be, or for a program elsewhere, whose snapshots its container's tools take.</summary>
-    public string? WhyNoHeap => Place is not null ? null : (whyNoHeap ??= [DotnetProcesses.WhyUnreadable(ProcessId)])[0];
+    public string? WhyNoHeap => !Samples ? NoHeapOfScripts : Place is not null ? null : (whyNoHeap ??= [DotnetProcesses.WhyUnreadable(ProcessId)])[0];
 
     private string?[]? whyNoHeap;
 
@@ -518,6 +567,10 @@ public sealed class ProfilingSession : IAsyncDisposable
         if (process.HasExited)
         {
             throw new InvalidOperationException("The program has ended; a memory snapshot needs it running");
+        }
+        if (!Samples)
+        {
+            throw new InvalidOperationException(NoHeapOfScripts);
         }
         if (Place is { } place)
         {
@@ -563,7 +616,7 @@ public sealed class ProfilingSession : IAsyncDisposable
             await containerHeap.DisposeAsync();
         }
         session?.Dispose();
-        if (session is null && !process.HasExited)
+        if (session is null && Samples && !process.HasExited)
         {
             // The tools elsewhere stop as their input ends; a CLI that does not go is ended, which closes it there too.
             CloseToolsInput();

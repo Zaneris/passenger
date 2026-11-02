@@ -333,9 +333,23 @@ public sealed record ProjectModel(
 
     /// <summary>The folder of the Godot project Godot.NET.Sdk builds it for, where its project.godot is, as evaluated; null
     /// for a project of any other SDK.</summary>
-    public string? GodotFolder => Property(CarriedProperties.GodotProjectDir) is { Length: > 0 } folder
-        ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(Folder, folder.Replace('\\', System.IO.Path.DirectorySeparatorChar))))
-        : null;
+    public string? GodotFolder => IsScriptGame ? Folder
+        : Property(CarriedProperties.GodotProjectDir) is { Length: > 0 } folder
+            ? System.IO.Path.TrimEndingDirectorySeparator(PathNames.Canonical(System.IO.Path.Combine(Folder, folder.Replace('\\', System.IO.Path.DirectorySeparatorChar))))
+            : null;
+
+    /// <summary>Whether it stands for a Godot project of GDScript alone, by its project.godot (<see cref="OfScriptGame"/>):
+    /// Godot runs its game as it is, with no C# project to evaluate or build. Run, Debug and Profile alone are given one.</summary>
+    public bool IsScriptGame => System.IO.Path.GetFileName(Path) == GodotProject.FileName;
+
+    /// <summary>What stands for a Godot project of GDScript alone among the projects Run, Debug and Profile run (a folder of
+    /// <see cref="WorkspaceModel.ScriptGames"/>): its project.godot, named as the project names its game, else by its folder.</summary>
+    public static ProjectModel OfScriptGame(string folder)
+    {
+        string file = System.IO.Path.Combine(folder, GodotProject.FileName);
+        string name = GodotProject.Read(folder)?.Name is { Length: > 0 } named ? named : System.IO.Path.GetFileName(folder);
+        return new ProjectModel(file, name, null, [], [], [], File.Exists(file));
+    }
 
     /// <summary>The Godot project whose game it builds: its Godot folder's project.godot, read from disk on each call; null
     /// where it has none (<see cref="GodotFolder"/>).</summary>

@@ -317,8 +317,10 @@ public sealed class ProfilerCommands
             // Held until the program has reached the profiler (or never will), not while it runs: that is the person's.
             using (BackgroundWork.Scope())
             {
-                running = await ProfilingSession.StartAsync(target, SnapshotFolder, SocketFolders.Own(State.StateStore.DefaultRoot),
-                    (reader, error, lines) => console.PumpAsync(reader, error ? ConsoleStream.Error : ConsoleStream.Output, lines: lines), stop.Token);
+                ProgramPump pump = (reader, error, lines) => console.PumpAsync(reader, error ? ConsoleStream.Error : ConsoleStream.Output, lines: lines);
+                // A game of GDScript alone runs no .NET code to sample: Godot's own profiler's frames are the whole run.
+                running = launched.ScriptsAlone ? await ProfilingSession.StartFramesAsync(target, SnapshotFolder, pump)
+                    : await ProfilingSession.StartAsync(target, SnapshotFolder, SocketFolders.Own(State.StateStore.DefaultRoot), pump, stop.Token);
             }
             starting = null;
             if (game is not null)
@@ -345,7 +347,7 @@ public sealed class ProfilerCommands
             profilingName = chosen.Name;
             run.Input = input;
             View.Running(chosen.Name, () => running.Elapsed);
-            parts.Say($"Profiling {chosen.Name}");
+            parts.Say(running.Samples ? $"Profiling {chosen.Name}" : FramesAloneSaid(chosen.Name));
             return null;
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
@@ -463,6 +465,10 @@ public sealed class ProfilerCommands
             }
         }), TaskScheduler.Default));
     }
+
+    /// <summary>What Profile says of a Godot game of GDScript alone it runs, whose run is Godot's own frames.</summary>
+    public static string FramesAloneSaid(string name) =>
+        $"Profiling {name} with Godot's own profiler: a game of GDScript alone runs no .NET code, so its run is its frames and scripts as Godot measures them, with no samples";
 
     /// <summary>A Godot game's own frame profile recorded beside the run's samples, ended as the run is read.</summary>
     private static void Record(ProfilingSession running, Godot.GodotGame game)
@@ -929,7 +935,9 @@ public sealed class ProfilerCommands
         {
             // Held by the scope, and back on no thread of the window's, which may be gone by then.
             Snapshot snapshot = await BackgroundWork.Unheld(() => run.StopAsync()).ConfigureAwait(false);
-            string read = $"Snapshot of {name}: {snapshot.Samples:N0} samples, kept in {Path.GetDirectoryName(snapshot.TracePath)}";
+            string read = snapshot.FramesAlone
+                ? $"Snapshot of {name}: {Plural.Of(snapshot.GameFrames.Count, "frame")} as Godot's profiler measured them, no samples (GDScript alone), kept in {Path.GetDirectoryName(snapshot.TracePath)}"
+                : $"Snapshot of {name}: {snapshot.Samples:N0} samples, kept in {Path.GetDirectoryName(snapshot.TracePath)}";
             if (closing.IsCancellationRequested)
             {
                 // Its folder was left as it was read: it is that folder's to list when it opens again.

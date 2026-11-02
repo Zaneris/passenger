@@ -116,9 +116,15 @@ public sealed class InProcessEnd : AdapterEnd
         return exited.Task.IsCompleted;
     }
 
+    /// <summary>Whether the adapter has ended (<see cref="End"/>), from before its output closes: nothing more is to be written.</summary>
+    public bool HasEnded => ended;
+
+    private volatile bool ended;
+
     /// <summary>The adapter has ended: its output closes, and the session hears it gone.</summary>
     public void End(int code = 0)
     {
+        ended = true;
         fromAdapter.Writer.Complete();
         toAdapter.Reader.Complete();
         exited.TrySetResult(code);

@@ -301,6 +301,10 @@ public sealed record DapVariable
     public string? EvaluateName { get; init; }
     public int VariablesReference { get; init; }
     public DapPresentationHint? PresentationHint { get; init; }
+
+    /// <summary>Passenger's own: why the debugger cannot set this value (a frame's local Godot's debugger sets none of), where
+    /// it cannot though an expression reaches it.</summary>
+    public string? Unsettable { get; init; }
 }
 
 /// <summary>How a variable shows: its kind ("virtual" for a row the adapter adds), its attributes, and whether it is lazy, its
