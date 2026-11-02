@@ -45,7 +45,7 @@ public sealed record SessionSetup(
     /// <summary>Where the Dockerfile server asks for image tags in Docker Hub's place: the window's.</summary>
     public Uri? DockerHub { get; init; }
 
-    /// <summary>The variables a Godot editor started for GDScript runs with beyond the IDE's own: the window's.</summary>
+    /// <summary>The user folders every Godot the session starts keeps in place of the person's: the window's.</summary>
     public IReadOnlyDictionary<string, string>? GodotEnvironment { get; init; }
 
     /// <summary>Whether the session starts the C# language server: the window's <see cref="MainWindow.StartsLanguageServer"/>.</summary>
@@ -427,6 +427,10 @@ public sealed class ProjectSession : IAsyncDisposable
     public (string Name, IReadOnlyList<string> Files, IReadOnlyList<string> Folders)? ChosenScope { get; set; }
 
     public RunConfigurations Configurations { get; }
+
+    /// <summary>The user folders every Godot the session starts keeps in place of the person's: the window's
+    /// (<see cref="Godot.GodotUserFolders"/>); none for a person's.</summary>
+    public IReadOnlyDictionary<string, string>? GodotEnvironment => setup.GodotEnvironment;
 
     public AspireController Aspire { get; }
 

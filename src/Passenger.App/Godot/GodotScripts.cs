@@ -21,31 +21,6 @@ public static class GodotScripts
     /// <summary>What a headless editor writes into the project as it starts that is the person's editor's own.</summary>
     private static readonly string[] Kept = [Path.Combine(".godot", "editor", "editor_layout.cfg"), Path.Combine(".godot", "mono", "metadata", "ide_messaging_meta.txt")];
 
-    /// <summary>The variable naming a folder under which a Godot editor Passenger starts for GDScript keeps its user folders
-    /// (its settings, caches and logs) in place of the person's: a test's.</summary>
-    [IdentifierHome]
-    public const string HomeVariable = "PASSENGER_GODOT_HOME";
-
-    /// <summary>The variables that keep a Godot's user folders under <paramref name="home"/>: HOME (and XDG's) on macOS and
-    /// Linux, APPDATA and LOCALAPPDATA on Windows.</summary>
-    public static Dictionary<string, string> UserFolders(string home)
-    {
-        string full = Directory.CreateDirectory(Path.GetFullPath(home)).FullName;
-        return OperatingSystem.IsWindows()
-            ? new() { ["APPDATA"] = Path.Combine(full, "Roaming"), ["LOCALAPPDATA"] = Path.Combine(full, "Local") }
-            : new()
-            {
-                ["HOME"] = full,
-                ["XDG_CONFIG_HOME"] = Path.Combine(full, ".config"),
-                ["XDG_DATA_HOME"] = Path.Combine(full, ".local", "share"),
-                ["XDG_CACHE_HOME"] = Path.Combine(full, ".cache"),
-            };
-    }
-
-    /// <summary>The user folders <see cref="HomeVariable"/> names, or null where it names none.</summary>
-    public static IReadOnlyDictionary<string, string>? UserFoldersOfVariable() =>
-        Environment.GetEnvironmentVariable(HomeVariable) is { Length: > 0 } home ? UserFolders(home) : null;
-
     /// <summary>The Godot project a file is in: the nearest folder above it holding a project.godot; null for none.</summary>
     public static string? ProjectOf(string path)
     {
@@ -66,8 +41,8 @@ public static class GodotScripts
     }
 
     /// <summary>The project's GDScript server, connected and initialized: the person's editor open on it where one is, else
-    /// a headless one started on the Godot Settings names (<paramref name="setting"/>), with the variables
-    /// <paramref name="environment"/> gives (a test's user folders) and its log under <paramref name="logFolder"/>.</summary>
+    /// a headless one started on the Godot Settings names (<paramref name="setting"/>), in the window's user folders for Godot
+    /// (<paramref name="environment"/>, <see cref="GodotUserFolders"/>) and its log under <paramref name="logFolder"/>.</summary>
     public static async Task<LanguageSession> StartAsync(string? project, string? setting, IReadOnlyDictionary<string, string> environment, string logFolder,
         CancellationToken cancel)
     {
@@ -163,7 +138,7 @@ public static class GodotScripts
     /// Application Support's on macOS, XDG's config (or ~/.config) godot on Linux, the variables given first.</summary>
     private static string SettingsFolder(IReadOnlyDictionary<string, string> environment)
     {
-        string Variable(string name) => environment.TryGetValue(name, out string? given) ? given : Environment.GetEnvironmentVariable(name) ?? string.Empty;
+        string Variable(string name) => GodotUserFolders.Variable(environment, name) ?? string.Empty;
         string home = Variable("HOME") is { Length: > 0 } set ? set : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return OperatingSystem.IsWindows() ? Path.Combine(Variable("APPDATA"), "Godot")
             : OperatingSystem.IsMacOS() ? Path.Combine(home, "Library", "Application Support", "Godot")

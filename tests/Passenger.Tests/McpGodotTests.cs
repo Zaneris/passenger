@@ -262,5 +262,5 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
     }
 
     /// <summary>The user folders a Godot editor the agent's Passenger starts for GDScript keeps, the run's.</summary>
-    private Dictionary<string, string?> Homes => new() { [Passenger.App.Godot.GodotScripts.HomeVariable] = game.Folder + "-home" };
+    private Dictionary<string, string?> Homes => new() { [Passenger.App.Godot.GodotUserFolders.HomeVariable] = game.Folder + "-home" };
 }

@@ -33,11 +33,11 @@ public static class TestApp
 
 /// <summary>What the whole run shares, set before anything reads it and never changed: a folder of the run's own in the
 /// system's temporary folder, holding the IDE's state (<c>PASSENGER_SETTINGS</c>: its log, the language servers' logs,
-/// the profiler's snapshots; the agents' sockets go in a folder named for it), every test's folders and the shells' history, and an empty Git
-/// configuration in place of the person's and the system's, which every git the tests and the IDE run inherits. So a run
-/// never writes to the person's own state, log or history, an agent of theirs never attaches to a test's window, and a
-/// person's commit signing or hooks never reach a test's commit. The folder goes when the run ends; one a run that was
-/// killed left goes when the next begins.</summary>
+/// the profiler's snapshots; the agents' sockets go in a folder named for it), every test's folders, the shells' history and
+/// Godot's user folders, and an empty Git configuration in place of the person's and the system's, which every git the tests
+/// and the IDE run inherits. So a run never writes to the person's own state, log, history or Godot (<see cref="PersonsGodot"/>),
+/// an agent of theirs never attaches to a test's window, and a person's commit signing or hooks never reach a test's commit.
+/// The folder goes when the run ends; one a run that was killed left goes when the next begins.</summary>
 public sealed class TestRun : IAsyncDisposable
 {
     internal const string Prefix = "passenger-run-";
@@ -111,6 +111,9 @@ public sealed class TestRun : IAsyncDisposable
             }
         }
         Directory.CreateDirectory(Settings);
+        // Nor the person's Godot user folders: every Godot a window starts keeps its settings, logs and user:// in the run's.
+        PersonsGodot.Begin();
+        Environment.SetEnvironmentVariable(Passenger.App.Godot.GodotUserFolders.HomeVariable, Path.Combine(Root, "godot"));
         string gitConfig = Path.Combine(Root, "gitconfig");
         File.WriteAllText(gitConfig, string.Empty);
         Environment.SetEnvironmentVariable(StateStore.Variable, Settings);
@@ -270,7 +273,8 @@ public sealed class TestRun : IAsyncDisposable
         }
     }
 
-    /// <summary>The run's end, once every test is done (xunit disposes the assembly's fixture then).</summary>
+    /// <summary>The run's end, once every test is done (xunit disposes the assembly's fixture then): it fails where the
+    /// person's Godot user folders were written after the last test's end.</summary>
     public async ValueTask DisposeAsync()
     {
         // No child holds a container: what the run's tests made, and what they had the IDE make, goes by its labels.
@@ -278,6 +282,10 @@ public sealed class TestRun : IAsyncDisposable
         End(waiting: true);
         // Once more after the log's own last flush, which it hooked after the run began, and so runs before this.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => End(waiting: false);
+        if (PersonsGodot.Written("after the run's last test") is { } written)
+        {
+            throw new InvalidOperationException(written);
+        }
     }
 
     /// <summary>The run's folders removed, a held one waited for only as the assembly's fixture ends: xunit fails a process
@@ -366,7 +374,7 @@ public static partial class Nice
 /// after it on <see cref="Ui.Settle"/>'s limit. And after a window test, every window it left open is closed (one that
 /// failed before its own close) and what its windows started (a language server, a build, a debugger, a program) is waited
 /// out, those it closed itself too, then the folders the test made as it ran are removed, the windows that used them gone
-/// first.</summary>
+/// first. Any test fails where the person's Godot user folders were written as it ran (<see cref="PersonsGodot"/>).</summary>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
 {
@@ -393,6 +401,10 @@ public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
         finally
         {
             TestFolders.End(test.UniqueID);
+        }
+        if (PersonsGodot.Written($"as {test.TestDisplayName} ran") is { } written)
+        {
+            throw new InvalidOperationException(written);
         }
     }
 

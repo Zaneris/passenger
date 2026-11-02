@@ -104,6 +104,10 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             Assert.True(editor is not null, $"Godot's editor has no plan: {problem}");
             Assert.Equal(game.Godot!.Executable, editor.Program);
             Assert.Equal(["--path", folder, "--editor"], editor.Arguments);
+            // A window given no user folders for Godot keeps its Godots in the run's, never the person's.
+            IReadOnlyDictionary<string, string> run = Passenger.App.Godot.GodotUserFolders.OfVariable()!;
+            Assert.True(run.All(v => editor.Environment.GetValueOrDefault(v.Key) == v.Value),
+                $"The generated configuration's Godot editor would keep its settings in the person's user folders: its environment is {string.Join(", ", editor.Environment)}");
 
             Choose(window, played);
             Ui.Launched(window, window.RunAsync(), "the game's build and start", TimeSpan.FromMinutes(3));
@@ -762,6 +766,6 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         public override ValueTask InitializeAsync() => Godot is { WhyNot: null } ? base.InitializeAsync() : ValueTask.CompletedTask;
 
         /// <summary>The variables that keep a Godot's user folders under <paramref name="home"/>.</summary>
-        internal static Dictionary<string, string> Home(string home) => Passenger.App.Godot.GodotScripts.UserFolders(home);
+        internal static Dictionary<string, string> Home(string home) => Passenger.App.Godot.GodotUserFolders.Under(home);
     }
 }

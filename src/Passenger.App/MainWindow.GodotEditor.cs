@@ -44,7 +44,8 @@ public partial class MainWindow
             string? setting = settings.GodotExecutable;
             // A Godot project of GDScript alone takes any Godot 4, .NET or not.
             bool scripts = !Projects.Any(p => p.GodotFolder is not null);
-            GodotSetUp found = await BackgroundWork.Run(() => GodotSetUp.Of(GodotLaunch.Found(setting), scripts));
+            IReadOnlyDictionary<string, string>? folders = GodotFolders;
+            GodotSetUp found = await BackgroundWork.Run(() => GodotSetUp.Of(GodotLaunch.Found(setting), scripts, folders));
             if (found.Problem is { } problem)
             {
                 Told(work, false, $"Passenger cannot be Godot's script editor: {problem}");
@@ -118,11 +119,12 @@ public partial class MainWindow
         MaxHeight = 220,
     };
 
-    /// <summary>A Godot's editor settings as found off the window's thread: its version, the file it reads and the one it
-    /// writes, the script editors' values the file read gives; or why there is none to write.</summary>
+    /// <summary>A Godot's editor settings as found off the window's thread, in the user folders the window's Godots keep:
+    /// its version, the file it reads and the one it writes, the script editors' values the file read gives; or why there
+    /// is none to write.</summary>
     private sealed record GodotSetUp(string? Version, string? Read, string? Written, IReadOnlyDictionary<string, object>? Values, string? Unreadable, string? Problem)
     {
-        public static GodotSetUp Of(GodotFound? found, bool scripts)
+        public static GodotSetUp Of(GodotFound? found, bool scripts, IReadOnlyDictionary<string, string>? folders)
         {
             if (found is null)
             {
@@ -138,7 +140,8 @@ public partial class MainWindow
             {
                 return new(null, null, null, null, null, $"the version of the Godot at {found.Executable} is unknown, which names its editor settings file");
             }
-            if (GodotEditorSettings.Folder(found.Executable, OperatingSystem.IsWindows(), OperatingSystem.IsMacOS(), Environment.GetEnvironmentVariable, File.Exists) is not { } folder)
+            if (GodotEditorSettings.Folder(found.Executable, OperatingSystem.IsWindows(), OperatingSystem.IsMacOS(), name => Godot.GodotUserFolders.Variable(folders, name),
+                File.Exists) is not { } folder)
             {
                 return new(found.Version, null, null, null, null, "no folder for Godot's editor settings is known: HOME (APPDATA on Windows) is not set");
             }

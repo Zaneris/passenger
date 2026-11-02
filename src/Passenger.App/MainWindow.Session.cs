@@ -51,7 +51,7 @@ public partial class MainWindow
     {
         ContainerTools = () => ContainerToolsFrom ?? Containers.ContainerToolsSource.Default(Releases),
         DockerHub = DockerHub,
-        GodotEnvironment = GodotEnvironment ?? Godot.GodotScripts.UserFoldersOfVariable(),
+        GodotEnvironment = GodotFolders,
         StartsLanguageServer = StartsLanguageServer,
         HeadStart = headStart,
     };
@@ -72,9 +72,13 @@ public partial class MainWindow
     /// the place <c>PASSENGER_DOCKER_HUB</c> names, else Docker Hub's own.</summary>
     public Uri? DockerHub { get; init; }
 
-    /// <summary>The variables a Godot editor this window starts for GDScript's language server runs with beyond the IDE's
-    /// own: a test's user folders for Godot, so it keeps its settings and caches there.</summary>
+    /// <summary>The user folders every Godot this window starts keeps its settings, caches and logs in, in place of the
+    /// person's: a test's (<see cref="Godot.GodotUserFolders"/>).</summary>
     public IReadOnlyDictionary<string, string>? GodotEnvironment { get; init; }
+
+    /// <summary>The user folders the window's Godots keep: those it was given, else those
+    /// <see cref="Godot.GodotUserFolders.HomeVariable"/> names; none for a person's window, whose Godots keep the person's.</summary>
+    private IReadOnlyDictionary<string, string>? GodotFolders => GodotEnvironment ?? Godot.GodotUserFolders.OfVariable();
 
     /// <summary>What the builds and runs of this window's sessions show themselves in and start with.</summary>
     private BuildRunParts BuildRunParts() => new(Bottom, Editors, Dock, () => settings, Say, ShowInTerminal,
