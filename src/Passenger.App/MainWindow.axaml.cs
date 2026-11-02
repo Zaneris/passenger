@@ -91,6 +91,7 @@ public partial class MainWindow : IdeWindow
         AddBookmarks();
         AddEndpoints();
         AddGodotEditor();
+        AddGodotProject();
         AddDotnet();
         AddRoutes();
         AddRequestMarks();
@@ -421,9 +422,10 @@ public partial class MainWindow : IdeWindow
             }
             return;
         }
-        if (focused is Tables.CellGrid && !shifted && action is EditorActions.Undo or EditorActions.Redo)
+        if (!shifted && action is EditorActions.Undo or EditorActions.Redo && (focused is Tables.CellGrid
+            || Editors.ActiveGroup.GodotPage is { } page && focused is Visual inPage && (inPage == page.Body || page.Body.IsVisualAncestorOf(inPage))))
         {
-            // A table over a file's text takes back that text's edits, its cells written among them, as the Edit menu does.
+            // A table or a Godot project's page over a file's text takes back that text's edits, its own among them, as the Edit menu does.
             Request(action);
             e.Handled = true;
             return;

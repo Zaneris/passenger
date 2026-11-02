@@ -64,6 +64,9 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The table over the editor for a CSV or workbook, made as the group first shows one.</summary>
     private TableViewer? tables;
 
+    /// <summary>The Godot project page over a project.godot's editor, made as the group first shows one.</summary>
+    private Godot.GodotPageViewer? godotPage;
+
     /// <summary>This group's view of the active asset (its bitmap or face belongs to the document, not this control) or of
     /// release notes the app carries, rendered, in the editor's place.</summary>
     private Control? preview;
@@ -132,8 +135,16 @@ public sealed class EditorGroup : DockPanel
             {
                 tables.View.Focus();
             }
+            else if (godotPage is { ShowsPage: true })
+            {
+                godotPage.Body.Focus();
+            }
         };
-        Editor.WentTo += (_, offset) => tables?.Reveal(offset);
+        Editor.WentTo += (_, offset) =>
+        {
+            tables?.Reveal(offset);
+            godotPage?.Reveal();
+        };
         Editor.SelectionChanged += (_, _) =>
         {
             if (active is not null && Editor.Document == active.Document.Text)
@@ -439,6 +450,7 @@ public sealed class EditorGroup : DockPanel
             Editor.IsVisible = false;
             Side = null;
             tables?.Hide();
+            godotPage?.Hide();
             preview = PreviewOf(document);
             body.Children.Add(preview);
             ShowBanner(document);
@@ -463,6 +475,7 @@ public sealed class EditorGroup : DockPanel
         Editor.IsVisible = true;
         tabBar.IsVisible = true;
         ShowTable(document);
+        ShowGodotPage(document);
         AttachFind();
         FollowSidePreview();
     }
@@ -506,6 +519,38 @@ public sealed class EditorGroup : DockPanel
         }
         tables.Show(file);
     }
+
+    /// <summary>The page of a Godot project over its project.godot's editor (its bar whichever shows), or none for any other file.</summary>
+    private void ShowGodotPage(OpenDocument document)
+    {
+        if (area.GodotPages?.For(document) is not { } file)
+        {
+            godotPage?.Hide();
+            return;
+        }
+        if (godotPage is null)
+        {
+            godotPage = new Godot.GodotPageViewer();
+            Children.Insert(Children.IndexOf(body), godotPage.Bar);
+            body.Children.Add(godotPage.Body);
+            godotPage.Switched += (_, _) =>
+            {
+                if (godotPage.ShowsPage)
+                {
+                    godotPage.Body.Focus();
+                }
+                else
+                {
+                    Editor.Focus();
+                }
+            };
+            godotPage.Body.GotFocus += (_, _) => area.SetActiveGroup(this);
+        }
+        godotPage.Show(file);
+    }
+
+    /// <summary>The Godot project page this group shows, null while it shows a project.godot's text or another file.</summary>
+    public Godot.GodotPageViewer? GodotPage => godotPage is { ShowsPage: true } ? godotPage : null;
 
     /// <summary>The banner over the file: where a read-only file comes from, what its notice says, and what its next save
     /// does to how it is stored.</summary>
@@ -561,6 +606,7 @@ public sealed class EditorGroup : DockPanel
                 tabBar.IsVisible = false;
                 banner.IsVisible = false;
                 tables?.Hide();
+                godotPage?.Hide();
                 Side = null;
                 FollowSidePreview();
             }

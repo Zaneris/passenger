@@ -296,21 +296,26 @@ public static partial class GodotExecutables
     private static Version Comparable(string? version) =>
         System.Version.TryParse(version?.Split('-')[0], out Version? parsed) ? parsed : new Version(0, 0);
 
-    /// <summary>The versions each Godot answered, by its executable and when it was last written.</summary>
+    /// <summary>The answers each Godot gave to <c>--version</c>, by its executable and when it was last written.</summary>
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string, DateTime), Lazy<Task<string?>>> Answered = new();
 
     /// <summary>The version a Godot's executable answers <c>--version</c> with, asked headless once per executable as it
     /// is written, else the one its files gave (<see cref="GodotFound.Version"/>).</summary>
-    public static async Task<string?> VersionAsync(GodotFound found, CancellationToken cancel = default)
+    public static async Task<string?> VersionAsync(GodotFound found, CancellationToken cancel = default) =>
+        (await AnswerAsync(found, cancel).ConfigureAwait(false) is { } line ? ReadVersion(line)?.Version : null) ?? found.Version;
+
+    /// <summary>A Godot's whole answer to <c>--version</c> ("4.7.2.stable.mono.official.ed1daf0bf"), asked as
+    /// <see cref="VersionAsync"/> asks it; null where it is not there or gave none.</summary>
+    public static async Task<string?> AnswerAsync(GodotFound found, CancellationToken cancel = default)
     {
         if (!found.Exists)
         {
-            return found.Version;
+            return null;
         }
         (string, DateTime) key = (found.Executable, File.GetLastWriteTimeUtc(found.Executable));
         // Not held, every asker's: on the first one's thread, a thread that never runs again would hold the rest.
         Lazy<Task<string?>> once = Answered.GetOrAdd(key, _ => new Lazy<Task<string?>>(() => BackgroundWork.Unheld(() => AskVersionAsync(found.Executable))));
-        return await once.Value.WaitAsync(cancel).ConfigureAwait(false) ?? found.Version;
+        return await once.Value.WaitAsync(cancel).ConfigureAwait(false);
     }
 
     private static async Task<string?> AskVersionAsync(string executable)
@@ -319,7 +324,7 @@ public static partial class GodotExecutables
         {
             ChildAnswer answer = await ChildProcesses.AnswerAsync(ChildProcesses.Command(executable, [Headless, "--version"]),
                 line => ReadVersion(line) is not null, limit: TimeSpan.FromSeconds(20)).ConfigureAwait(false);
-            return answer.Answer is { } line ? ReadVersion(line)?.Version : null;
+            return answer.Answer?.Trim();
         }
         catch (Exception unasked) when (unasked is System.ComponentModel.Win32Exception or IOException or TimeoutException or OperationCanceledException)
         {

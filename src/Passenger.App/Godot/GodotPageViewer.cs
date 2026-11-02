@@ -1,0 +1,267 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Passenger.Core;
+using Passenger.Workspace;
+
+namespace Passenger.App.Godot;
+
+/// <summary>An editor group's Godot project page: a bar over the editor of a project.godot (its Project and Text) and the
+/// page laid over the editor while it shows: the Godot found, the main scene, the autoloads, the input map, the export
+/// presets and their templates, the plugins, Godot's script editor and the layers, each row leading to its line or its file
+/// and a plugin enabled or disabled from its box.</summary>
+public sealed class GodotPageViewer
+{
+    /// <summary>The words of the segment that shows the page.</summary>
+    public const string PageChoice = "Project";
+
+    /// <summary>The words of the segment that shows the text.</summary>
+    public const string TextChoice = "Text";
+
+    private readonly ToggleButton page = new() { Classes = { StyleClasses.Segment }, Content = PageChoice, FontSize = 12, Name = "ShowGodotPage" };
+    private readonly ToggleButton text = new() { Classes = { StyleClasses.Segment }, Content = TextChoice, FontSize = 12, Name = "ShowGodotText" };
+    private readonly TextBlock said = new() { Classes = { StyleClasses.Muted }, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly StackPanel content = new() { Classes = { StyleClasses.NotesPage } };
+    private GodotPageFile? file;
+    private GodotPageFacts? painted;
+
+    public GodotPageViewer()
+    {
+        Bar = ToolWindows.ToolBars.OverEditor(new DockPanel
+        {
+            Margin = new Thickness(8, 0),
+            Children =
+            {
+                new Border { [DockPanel.DockProperty] = Dock.Right, Child = said, Margin = new Thickness(12, 0, 0, 0) },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Children = { page, text } },
+            },
+        });
+        Bar.IsVisible = false;
+        page.Click += (_, _) => Choose(true);
+        text.Click += (_, _) => Choose(false);
+        Body = new ScrollViewer
+        {
+            Classes = { StyleClasses.Notes },
+            Focusable = true,
+            IsVisible = false,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = content,
+        };
+    }
+
+    /// <summary>The bar over the editor, shown for a project.godot whether its page or its text shows.</summary>
+    public Border Bar { get; }
+
+    /// <summary>The page, laid over the editor while it shows.</summary>
+    public ScrollViewer Body { get; }
+
+    /// <summary>The file shown, null while the group shows no project.godot.</summary>
+    public GodotPageFile? File => file;
+
+    /// <summary>Whether the page, not the editor under it, is what the group shows.</summary>
+    public bool ShowsPage => file is { ShowsPage: true };
+
+    /// <summary>Raised as the page or the text is chosen from the bar, for the group to move the focus.</summary>
+    public event EventHandler? Switched;
+
+    public void Show(GodotPageFile shown)
+    {
+        if (shown != file)
+        {
+            Hide();
+            file = shown;
+            file.Changed += OnChanged;
+        }
+        Paint();
+        file.Follow();
+    }
+
+    /// <summary>Shows no page: the bar and the page hidden.</summary>
+    public void Hide()
+    {
+        if (file is null)
+        {
+            return;
+        }
+        file.Changed -= OnChanged;
+        file = null;
+        Bar.IsVisible = false;
+        Body.IsVisible = false;
+    }
+
+    /// <summary>The text's caret taken to a place in it: the text shows, as the place asked for is a line of it.</summary>
+    public void Reveal()
+    {
+        if (file is { ShowsPage: true } shown)
+        {
+            shown.Show(false);
+            Switched?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void OnChanged(object? sender, EventArgs e) => Paint();
+
+    private void Choose(bool showPage)
+    {
+        file?.Show(showPage);
+        Paint();
+        Switched?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void Paint()
+    {
+        if (file is null)
+        {
+            return;
+        }
+        Bar.IsVisible = true;
+        Body.IsVisible = file.ShowsPage;
+        page.IsChecked = file.ShowsPage;
+        text.IsChecked = !file.ShowsPage;
+        said.Text = file.IsReading ? "Reading…" : string.Empty;
+        if (file.Facts is { } facts && !ReferenceEquals(facts, painted))
+        {
+            painted = facts;
+            Render(facts);
+        }
+        else if (file.Facts is null && painted is not null)
+        {
+            painted = null;
+            content.Children.Clear();
+        }
+    }
+
+    private void Render(GodotPageFacts facts)
+    {
+        GodotProjectPages pages = file!.Pages;
+        string project = Path.Combine(facts.Folder, GodotProject.FileName);
+        string presets = Path.Combine(facts.Folder, GodotExports.FileName);
+        Vector scrolled = Body.Offset;
+        // A row's box or link taken away with the rows leaves the keys on the page, not on nothing.
+        bool keys = Body.IsKeyboardFocusWithin;
+        content.Children.Clear();
+        content.Children.Add(new StackPanel
+        {
+            Children =
+            {
+                new TextBlock { Classes = { StyleClasses.NotesTitle }, Text = facts.Name ?? Path.GetFileName(facts.Folder), TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Classes = { StyleClasses.NotesSubtitle }, Text = $"Godot project in {PathNames.Shown(facts.Folder, null)}", TextWrapping = TextWrapping.Wrap },
+            },
+        });
+
+        Section("Godot", [Row(Words(facts.Godot), null, null)]);
+
+        Section("Main Scene", facts.MainScene is ({ } res, int line, { } scene)
+            ? [Row(Link(res, () => pages.Open(scene)), Muted($"{GodotProject.FileName}:{line + 1}"), Link("Setting", () => pages.GoTo(project, line)))]
+            : facts.MainScene is ({ } missing, int at, null)
+                ? [Row(Words(missing), Muted($"not there · {GodotProject.FileName}:{at + 1}"), Link("Setting", () => pages.GoTo(project, at)))]
+                : [Empty($"{GodotProject.FileName} names no main scene")]);
+
+        Section("Autoloads", facts.Autoloads.Count == 0 ? [Empty("No autoloads")]
+            : [.. facts.Autoloads.Select(a => Row(Link(a.Name, () => pages.GoTo(project, a.Line)), Muted(a.Global ? "global" : "node"),
+                a.File is { } loaded ? Link(a.Res!, () => pages.Open(loaded)) : Muted(a.Res ?? string.Empty)))]);
+
+        Section("Input Map", facts.Actions.Count == 0 ? [Empty("No input actions of the project's own")]
+            : [.. facts.Actions.Select(a => Row(Link(a.Name, () => pages.GoTo(project, a.Line)), Muted(a.Events.Count == 0 ? "no events" : string.Join(", ", a.Events)), null))]);
+
+        Section("Export Presets", facts.Presets.Count == 0 ? [Empty($"No {GodotExports.FileName}: Godot's editor makes it (Project, Export)")]
+            : [.. facts.Presets.Select(p => Row(Link(p.Preset.Name, () => pages.GoTo(presets, p.Preset.Line)),
+                Muted($"{p.Preset.Platform}{(p.Preset.ExportPath is { } path ? $" · {path}" : string.Empty)} · {Templates(p)}"), null))]);
+
+        Section("Plugins", facts.Plugins.Count == 0 ? [Empty("No plugins under addons/")]
+            : [.. facts.Plugins.Select(p => Row(Plugin(facts.Folder, p), Muted(string.Join(" · ", new[] { p.Version, p.Author }.OfType<string>())),
+                Link("plugin.cfg", () => pages.Open(p.File))))]);
+
+        Section("Script Editor", [Row(Words(facts.HandOff), null, facts.HandedOff ? null : Link(pages.TitleOf(AppActions.GodotScriptEditor), () => pages.Run(AppActions.GodotScriptEditor)))]);
+
+        Section("Layers", facts.Layers.Count == 0 ? [Empty($"{GodotProject.FileName} names no layers")]
+            : [.. facts.Layers.Select(l => Row(Link(l.Name, () => pages.GoTo(project, l.Line)), Muted($"{l.Kind} layer {l.Number}"), null))]);
+        Body.Offset = scrolled;
+        if (keys)
+        {
+            Body.Focus();
+        }
+    }
+
+    /// <summary>Whether a preset's templates are there, in words: those of each kind it lacks named.</summary>
+    private static string Templates(GodotPagePreset preset) => !preset.Checked ? "templates not looked for: no Godot found runs the project" : (preset.MissingRelease, preset.MissingDebug) switch
+    {
+        ([], []) => "templates installed",
+        ([], var debug) => $"debug templates missing ({Plural.Listed(debug)})",
+        (var release, []) => $"release templates missing ({Plural.Listed(release)})",
+        (var release, var debug) => $"templates missing ({Plural.Listed([.. release.Union(debug)])})",
+    };
+
+    private void Section(string title, IReadOnlyList<Control> rows)
+    {
+        StackPanel list = new();
+        list.Children.AddRange(rows);
+        content.Children.Add(new StackPanel
+        {
+            Spacing = 6,
+            Margin = new Thickness(0, 8, 0, 0),
+            Children = { new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = title }, new Border { Classes = { StyleClasses.Framed }, Child = list } },
+        });
+    }
+
+    /// <summary>A row: what it is (a link to its line or file, or words), what it says beside, and a link at its end.</summary>
+    private static Control Row(Control name, Control? detail, Control? end)
+    {
+        Grid row = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), MinHeight = ListRow.Height, Margin = new Thickness(8, 0) };
+        name.MinWidth = 180;
+        name.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(name);
+        if (detail is not null)
+        {
+            detail[Grid.ColumnProperty] = 1;
+            detail.Margin = new Thickness(12, 0, 0, 0);
+            detail.VerticalAlignment = VerticalAlignment.Center;
+            row.Children.Add(detail);
+        }
+        if (end is not null)
+        {
+            end[Grid.ColumnProperty] = 2;
+            end.Margin = new Thickness(12, 0, 0, 0);
+            end.VerticalAlignment = VerticalAlignment.Center;
+            row.Children.Add(end);
+        }
+        return row;
+    }
+
+    private static Button Link(string words, Action follow)
+    {
+        Button link = new() { Classes = { StyleClasses.Link }, Content = words };
+        link.Click += (_, _) => follow();
+        return link;
+    }
+
+    private static TextBlock Words(string words) => new() { Text = words, TextWrapping = TextWrapping.Wrap };
+
+    private static TextBlock Muted(string words)
+    {
+        TextBlock muted = new() { Classes = { StyleClasses.Muted }, Text = words, TextTrimming = TextTrimming.CharacterEllipsis };
+        // Words cut short at the row's end are read whole over it.
+        ToolTip.SetTip(muted, words);
+        return muted;
+    }
+
+    private static Control Empty(string words) => new TextBlock { Classes = { StyleClasses.EmptyText }, Text = words, Margin = new Thickness(8, 4), HorizontalAlignment = HorizontalAlignment.Left };
+
+    /// <summary>A plugin's box, checked while the project enables it; a click asks to enable or disable it, the box left as
+    /// the file says until it is written.</summary>
+    private Control Plugin(string folder, GodotPlugin plugin)
+    {
+        CheckBox box = new() { Content = plugin.Name, IsChecked = plugin.Enabled };
+        box.Click += (_, _) =>
+        {
+            box.IsChecked = plugin.Enabled;
+            if (file is { } shown)
+            {
+                IdeErrors.Observe(shown.Pages.SetPlugin(folder, plugin, !plugin.Enabled));
+            }
+        };
+        return box;
+    }
+}

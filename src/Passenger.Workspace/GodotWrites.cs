@@ -41,6 +41,19 @@ public static class GodotWrites
         return body + newline + newline + made;
     }
 
+    /// <summary>project.godot's text with the editor plugins enabled exactly those given, by their res:// paths, in the order
+    /// given: its <c>[editor_plugins]</c>' <c>enabled</c> written over, else made where Godot puts it.</summary>
+    public static string WithPlugins(string text, IReadOnlyList<string> enabled)
+    {
+        string value = $"PackedStringArray({string.Join(", ", enabled.Select(Quoted))})";
+        GodotFile file = GodotFile.Parse(text);
+        if (file.Sections.FirstOrDefault(s => s.Tag == GodotPlugins.Section)?.Property(GodotPlugins.Key) is { } property)
+        {
+            return text[..property.Value.Start] + value + text[property.Value.End..];
+        }
+        return WithSetting(text, GodotPlugins.Section, GodotPlugins.Key, value) ?? text;
+    }
+
     /// <summary>A group given to the node a scene's section declares, after those its header gives (a header with none takes a
     /// <c>groups=[…]</c> before the scene it instances, as Godot writes it); null where it has the group already, or the
     /// section is no node's.</summary>

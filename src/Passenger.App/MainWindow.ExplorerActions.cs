@@ -263,6 +263,11 @@ public partial class MainWindow
             }
             entries.Add(separator);
         }
+        // A Godot project's page, from its project's row, its project.godot's or its folder's.
+        if (GodotProjectOfRow(node) is not null)
+        {
+            entries.AddRange([Item(A.GodotProject), separator]);
+        }
         if (node is { Kind: NodeKind.Project, Path: { } runs } && ProgramConfiguration(runs) is not null)
         {
             entries.AddRange([Item(A.RunHere), Item(A.DebugHere), separator]);

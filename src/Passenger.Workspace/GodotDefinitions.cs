@@ -133,11 +133,75 @@ public sealed class GodotDefinitions
     public string? AutoloadFile(string name) =>
         project.Value?.Sections.FirstOrDefault(s => s.Tag == "autoload")?.Property(name)?.Value.Text is { } value ? value.TrimStart('*') : null;
 
+    /// <summary>The events an input action of project.godot takes (its value's <c>events</c>), each said as a person names it
+    /// (<see cref="GodotInputEvents"/>); none for an action of none or none of the name.</summary>
+    public IReadOnlyList<string> EventsOf(string action)
+    {
+        if (project.Value is not { } file || file.Sections.FirstOrDefault(s => s.Tag == "input")?.Property(action) is not { } property
+            || DictionaryOf(file.Text, property.Value).FirstOrDefault(e => e.Key == "events") is not { } events)
+        {
+            return [];
+        }
+        return [.. ObjectsIn(file.Text, events.Value.Start, events.Value.End).Select(o => GodotInputEvents.Shown(o.Type, o.Fields))];
+    }
+
+    /// <summary>Where project.godot sets a key of a section (<c>application</c>, <c>run/main_scene</c>): its key's place and
+    /// the string it gives (null for another value); null where it sets none.</summary>
+    public (GodotPlace Place, string? Text)? SettingOf(string section, string key)
+    {
+        if (project.Value is not { } file || file.Sections.FirstOrDefault(s => s.Tag == section)?.Property(key) is not { } property)
+        {
+            return null;
+        }
+        return (new GodotPlace(ProjectRes, property.KeyStart, property.KeyStart + property.Key.Length, true, $"{GodotProject.FileName}:{file.LineOf(property.KeyStart) + 1}"),
+            property.Value.Text);
+    }
+
+    /// <summary>The strings a setting of project.godot holds (<c>editor_plugins</c>' <c>enabled</c>); none where it sets none.</summary>
+    public IReadOnlyList<string> StringsOf(string section, string key) =>
+        project.Value is { } file && file.Sections.FirstOrDefault(s => s.Tag == section)?.Property(key) is { } property
+            ? [.. StringsIn(file.Text, property.Value).Select(s => s.Text)] : [];
+
+    /// <summary>The objects an array's text holds at its top (<c>Object(InputEventKey,"keycode":0,…)</c>), each its class and
+    /// its fields' values as written.</summary>
+    internal static IEnumerable<(string Type, IReadOnlyDictionary<string, string> Fields)> ObjectsIn(string text, int start, int end)
+    {
+        const string Call = "Object(";
+        for (int at = text.IndexOf(Call, start, end - start, StringComparison.Ordinal); at >= 0 && at < end;
+            at = at + Call.Length < end ? text.IndexOf(Call, at + Call.Length, end - at - Call.Length, StringComparison.Ordinal) : -1)
+        {
+            int open = at + Call.Length;
+            int close = ItemEnd(text, open, end);
+            while (close < end && text[close] == ',')
+            {
+                close = ItemEnd(text, close + 1, end);
+            }
+            int comma = text.IndexOf(',', open);
+            string type = (comma >= 0 && comma < close ? text[open..comma] : text[open..close]).Trim();
+            Dictionary<string, string> fields = new(StringComparer.Ordinal);
+            int item = comma >= 0 && comma < close ? comma + 1 : close;
+            while (item < close)
+            {
+                int next = ItemEnd(text, item, close);
+                string pair = text[item..next].Trim();
+                if (pair.StartsWith('"') && GodotFile.Quoted(pair, 0) is (string key, int keyEnd, _) && pair.IndexOf(':', keyEnd) is var colon and > 0)
+                {
+                    fields[key] = pair[(colon + 1)..].Trim();
+                }
+                item = next + 1;
+            }
+            yield return (type, fields);
+        }
+    }
+
     /// <summary>The groups the project's scenes give nodes, each with every node's place.</summary>
     public IReadOnlyList<GodotDefined> Groups => groups.Value;
 
     /// <summary>project.godot's global shader uniforms, each by its key, with each shader's <c>global uniform</c> of it and its uses.</summary>
     public IReadOnlyList<GodotDefined> ShaderGlobals => globals.Value;
+
+    /// <summary>The kinds of layers project.godot's [layer_names] names, in the order Godot's Project Settings lists them.</summary>
+    public static readonly IReadOnlyList<string> LayerKinds = ["2d_render", "2d_physics", "2d_navigation", "3d_render", "3d_physics", "3d_navigation", "avoidance"];
 
     /// <summary>How many layers of a kind of project.godot's [layer_names] Godot numbers (<c>2d_physics</c>'s 32, a render's 20).</summary>
     public static int LayerCount(string layers) => layers.EndsWith("_render", StringComparison.Ordinal) ? 20 : 32;

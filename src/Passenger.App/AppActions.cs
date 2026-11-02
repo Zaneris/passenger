@@ -106,6 +106,9 @@ public static class AppActions
     // Passenger made the script editor of the Godot found, in its editor settings: no key of Rider's.
     public const string GodotScriptEditor = "app.godot.scriptEditor";
 
+    // A Godot project's page over its project.godot: no key of Rider's.
+    public const string GodotProject = "app.godot.project";
+
     // The .NET SDK installed into the person's own folder, and put on their shell's PATH: no key of Rider's.
     public const string InstallDotnetSdk = "app.dotnet.install";
     public const string AddDotnetToPath = "app.dotnet.addToPath";

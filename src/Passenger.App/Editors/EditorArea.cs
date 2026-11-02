@@ -91,6 +91,9 @@ public sealed partial class EditorArea : UserControl
 
     internal void Browse(Uri address) => BrowseRequested?.Invoke(this, address);
 
+    /// <summary>The window's Godot project pages, each over its project.godot's editor; null in a window with none.</summary>
+    public Godot.GodotProjectPages? GodotPages { get; set; }
+
     /// <summary>A link to a file clicked in a Markdown file's preview, for the window to open it in the editor.</summary>
     public event EventHandler<string>? FileLinkClicked;
 

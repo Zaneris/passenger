@@ -46,15 +46,9 @@ public static class GodotEditorSettings
     /// null where the variables that place it are unset.</summary>
     public static string? Folder(string executable, bool windows, bool macOS, Func<string, string?> variable, Func<string, bool> exists)
     {
-        string beside = Path.GetDirectoryName(executable) ?? string.Empty;
-        if (SelfContained(beside, exists))
+        if (SelfContainedFolder(executable, macOS, exists) is { } own)
         {
-            return Path.Combine(beside, "editor_data");
-        }
-        if (macOS && Path.GetFileName(beside) == "MacOS" && Path.GetFileName(Path.GetDirectoryName(beside)) == "Contents"
-            && Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(beside))) is { } bundleFolder && SelfContained(bundleFolder, exists))
-        {
-            return Path.Combine(bundleFolder, "editor_data");
+            return own;
         }
         if (windows)
         {
@@ -69,6 +63,39 @@ public static class GodotEditorSettings
             return Path.Combine(config, "godot");
         }
         return variable("HOME") is { Length: > 0 } user ? Path.Combine(user, ".config", "godot") : null;
+    }
+
+    /// <summary>The folder a Godot keeps its data in (its export templates among them): its settings' folder on Windows,
+    /// macOS and beside a self-contained one, else XDG_DATA_HOME's (else ~/.local/share's) godot; null where the variables
+    /// that place it are unset.</summary>
+    public static string? DataFolder(string executable, bool windows, bool macOS, Func<string, string?> variable, Func<string, bool> exists)
+    {
+        if (windows || macOS || SelfContainedFolder(executable, macOS, exists) is not null)
+        {
+            return Folder(executable, windows, macOS, variable, exists);
+        }
+        if (variable("XDG_DATA_HOME") is { Length: > 0 } data && Path.IsPathRooted(data))
+        {
+            return Path.Combine(data, "godot");
+        }
+        return variable("HOME") is { Length: > 0 } user ? Path.Combine(user, ".local", "share", "godot") : null;
+    }
+
+    /// <summary>The <c>editor_data</c> folder of a self-contained Godot (a <c>._sc_</c> or <c>_sc_</c> file beside its
+    /// executable, or on macOS beside its app bundle), else null.</summary>
+    private static string? SelfContainedFolder(string executable, bool macOS, Func<string, bool> exists)
+    {
+        string beside = Path.GetDirectoryName(executable) ?? string.Empty;
+        if (SelfContained(beside, exists))
+        {
+            return Path.Combine(beside, "editor_data");
+        }
+        if (macOS && Path.GetFileName(beside) == "MacOS" && Path.GetFileName(Path.GetDirectoryName(beside)) == "Contents"
+            && Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(beside))) is { } bundleFolder && SelfContained(bundleFolder, exists))
+        {
+            return Path.Combine(bundleFolder, "editor_data");
+        }
+        return null;
 
         static bool SelfContained(string folder, Func<string, bool> exists) =>
             exists(Path.Combine(folder, "._sc_")) || exists(Path.Combine(folder, "_sc_"));
