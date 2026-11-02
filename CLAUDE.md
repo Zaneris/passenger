@@ -348,11 +348,13 @@ Projects in `src/`; `find_symbol` finds the rest:
   `ProjectModel.IsBrowserClient`; a Passenger it launches keeps its state in the launcher's `sandbox/`; a Godot
   project's game and editor through `GodotLaunch` (one of GDScript alone a `ProjectModel.OfScriptGame` that only Run,
   Debug and Profile see, `ProjectSession.RunProjects`, never in `Projects`), on the Godot `GodotExecutables` finds, a
-  launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (`ILiveTreeSource`,
-  `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's build skipped while
-  what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`; on Windows a build's
-  first step lets go of the Avalonia previewers holding its output (`BuildRunController.LettingGo`); a console's lines
-  are heard one stream at a time (`ConsoleWritten`).
+  launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (its value editors `GodotValueCells`,
+  an `ILiveValueCells`, from `GodotHints`; Keep `GodotKeep`; a run's errors pinned to lines `GodotErrorPins` through
+  `ErrorPinColumn`, its console folded `GodotConsoleFold`; `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol
+  `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's build skipped while what its last build read and wrote stands,
+  a build under way waited out first), `TogetherBuild`; on Windows a build's first step lets go of the Avalonia
+  previewers holding its output (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time
+  (`ConsoleWritten`).
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach,
   Restart and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time
   (`TakeStartAsync`); Stop ends every session and recording before the programs go.
