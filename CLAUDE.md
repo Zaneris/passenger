@@ -310,8 +310,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   or `ToolbarEnd`, or Windows takes a press on it for the caption's. Logs are `logs/` under the state root (`IdeLog`;
   Settings › Diagnostics turns on protocol traces).
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; wire every editor through `ForEachEditor`;
-  `CloseTab` is the one close); a preview holds no text (`HoldsText` false). The Markdown preview draws only the blocks
-  near its sight (`MarkdownBlocks`), a page kept per tab, a scroll it sets going through `Jump`.
+  `CloseTab` is the one close); a file's outline is `ProjectSession.OutlineOf` (a `FileOutline`: a server's symbols, or
+  a Godot scene's tree, `GodotSceneOutline`), which Structure, File Structure and MCP's `outline` read, a row going on
+  through Go to Declaration a `SymbolRow.Leads`; a preview holds no text (`HoldsText` false). The Markdown preview draws
+  only the blocks near its sight (`MarkdownBlocks`), a page kept per tab, a scroll it sets going through `Jump`.
 - **Docking.** A kept layout records windows by `ToolWindowIds`, so a value never changes; add a window with one
   `Dock.Add`; its floats close with their window (`DockHost.CloseFloats`); its action gives it the keys
   (`DockHost.Activate`, `ToolWindow.TakeKeys`), and Escape in it unhandled is Focus Editor (`ToolPane`). A view is built
@@ -336,15 +338,17 @@ Projects in `src/`; `find_symbol` finds the rest:
   read against its scenes by `GodotScenes` (Workspace: the reader, trees, paths, renames), followed through the watcher
   (`GodotSceneIndex`), the extension's `GodotCode`, `GodotChecks`, and `GodotAssist` for `.tscn`/`.tres` (its marks
   `GodotSceneMarks`, uids `GodotUids`; the extension's `GodotNames` for the generated names and the strings Godot's
-  calls take, `GodotPaths` for `res://` in C#; a string naming what the project's files define, an input action, group,
-  animation, autoload, shader parameter or translation, through the extension's `GodotKinds` and Workspace's
-  `GodotDefinitions`, `GodotChecks.Named` the one answer; their fixes `GodotOffer` over the extension's `GodotFix`
-  (members made by Roslyn so the code builds) and Workspace's pure `GodotWrites`, a fix that asks first through
-  `EditorFix.Confirms`; Godot's generator assigns every field in generated code, so a field's values are read from the
-  code's own documents); a C# file read before its project's evaluation landed is pulled again once it does
-  (`CSharpService.GodotProjectsChanged`). Edits added to a server's workspace edit for a file it already edits join that
-  file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command (TypeScript's refactorings,
-  ESLint's fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
+  calls take, `GodotPaths` for `res://` in C#; an engine member's Godot name GodotSharp's own, read from the IL of its
+  `PropertyName`/`MethodName`/`SignalName` static constructors (`GodotSharpNames`), its class reference's address
+  `GodotDocs`; a string naming what the project's files define, an input action, group, animation, autoload, shader
+  parameter or translation, through the extension's `GodotKinds` and Workspace's `GodotDefinitions`, `GodotChecks.Named`
+  the one answer; their fixes `GodotOffer` over the extension's `GodotFix` (members made by Roslyn so the code builds)
+  and Workspace's pure `GodotWrites`, a fix that asks first through `EditorFix.Confirms`; Godot's generator assigns
+  every field in generated code, so a field's values are read from the code's own documents); a C# file read before its
+  project's evaluation landed is pulled again once it does (`CSharpService.GodotProjectsChanged`). Edits added to a
+  server's workspace edit for a file it already edits join that file's entry (`TypeRename.With`): `documentChanges`
+  apply in order. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through `ServerCommands`, the
+  edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
   `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
