@@ -77,17 +77,18 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   `tools/Passenger.Notices/Licenses`, a package inside Roslyn's server in its table. The owner's exceptions: Visual Studio
   Telemetry and Utilities.Internal inside Roslyn's server (its Razor support needs them), and the TextMate bundle
   licence. MIT first.
-- **Every program Passenger starts goes through `ChildProcesses`** (`Command`/`DotnetCommand`, which strips a parent
-  CLI's MSBuild SDK variables, then `Start`, `StartAsync`, `RunAsync`, or `AnswerAsync` for a question one line answers,
-  a question of the .NET CLI answered before it ends made by `DotnetQuestion`, which sends no telemetry and so lets go
-  of its folder at once; `Kill` ends it with all it started), so none outlives the IDE (`Lifeline`), each given its
-  folder as the disk names it, PWD too; on Windows every child shares the IDE's UTF-8 console, made windowless where it
-  has none (`SharedConsole`); a console reads a child through `ChildProcesses.Output`/`Errors` (on macOS and Linux its
-  pipe through a socket, a waiting read allocating nothing), a child's lines are heard through `ChildProcesses.Hear`,
-  never Process's `Begin*ReadLine` (banned: its disposal faults a read under it). Started elsewhere: the terminal's
-  shell (Porta.Pty), vstest.console, Velopack's Update.exe and an agent's `--mcp-attach` Passenger (`StartApart`); a
-  program run in the terminal is `Adopt`ed. Passenger's own standard input is taken at its start (`StandardInput`, fd 0
-  then the null device), so nothing it starts reads it.
+- **Every program Passenger starts goes through `ChildProcesses`** (`Command`/`DotnetCommand`, Passenger's own helpers
+  through `HelperCommand` on the runtime Passenger runs on, never the machine's; `DotnetCommand` strips a parent CLI's
+  MSBuild SDK variables, then `Start`, `StartAsync`, `RunAsync`, or `AnswerAsync` for a question one line answers, a
+  question of the .NET CLI answered before it ends made by `DotnetQuestion`, which sends no telemetry and so lets go of
+  its folder at once; `Kill` ends it with all it started), so none outlives the IDE (`Lifeline`), each given its folder
+  as the disk names it, PWD too; on Windows every child shares the IDE's UTF-8 console, made windowless where it has
+  none (`SharedConsole`); a console reads a child through `ChildProcesses.Output`/`Errors` (on macOS and Linux its pipe
+  through a socket, a waiting read allocating nothing), a child's lines are heard through `ChildProcesses.Hear`, never
+  Process's `Begin*ReadLine` (banned: its disposal faults a read under it). Started elsewhere: the terminal's shell
+  (Porta.Pty), vstest.console, Velopack's Update.exe and an agent's `--mcp-attach` Passenger (`StartApart`); a program
+  run in the terminal is `Adopt`ed. Passenger's own standard input is taken at its start (`StandardInput`, fd 0 then the
+  null device), so nothing it starts reads it.
 - **No secret on a command line** (any process can read it): give it through the environment, or don't make it. Secrets
   everywhere (Details, logs, consoles, hints, agents' answers, `ChildProcesses.Shown`'s echoes) are masked by one rule,
   `ContainerSecrets`.
@@ -320,8 +321,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   framework's output taken by its newest write. A Godot game's C# is read against its scenes by `GodotScenes`
   (Workspace: the reader, trees, paths, renames), followed through the watcher (`GodotSceneIndex`), the extension's
   `GodotCode`, `GodotChecks`, and `GodotAssist` for `.tscn`/`.tres` (its marks `GodotSceneMarks`, uids `GodotUids`; the
-  extension's `GodotNames` for the generated names and the strings Godot's calls take, `GodotPaths` for `res://` in C#);
-  a C# file read before its project's evaluation landed is pulled again once it does
+  extension's `GodotNames` for the generated names and the strings Godot's calls take, `GodotPaths` for `res://` in C#;
+  a string naming what the project's files define, an input action, group, animation, autoload, shader parameter or
+  translation, through the extension's `GodotKinds` and Workspace's `GodotDefinitions`, `GodotChecks.Named` the one
+  answer; Godot's generator assigns every field in generated code, so a field's values are read from the code's own
+  documents); a C# file read before its project's evaluation landed is pulled again once it does
   (`CSharpService.GodotProjectsChanged`). Edits added to a server's workspace edit for a file it already edits join that
   file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command (TypeScript's refactorings,
   ESLint's fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
