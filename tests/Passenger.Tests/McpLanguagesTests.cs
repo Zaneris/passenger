@@ -498,6 +498,18 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         }
     }
 
+    /// <summary>An agent's outline of a Markdown file: its headings, nested by level, each with its line, read by Passenger
+    /// with no server; a heading inside a fenced block is none.</summary>
+    [Fact]
+    public async Task An_agents_outline_of_a_markdown_file_is_its_headings_nested_by_level()
+    {
+        string notes = Made("mcpmarkdown-", made => File.WriteAllText(Path.Combine(made, "NOTES.md"),
+            "# Notes\n\nWhat they are.\n\n## Building\n\n```sh\n# not a heading\n```\n\n### On **macOS**\n\n## Running\n"));
+        await using McpClient client = await Start(["--mcp", notes], languageServer: false);
+        string outline = (await Call(client, McpTools.Outline, new() { ["path"] = "NOTES.md" })).GetString()!;
+        Assert.Equal("Notes (heading, line 1)\n  Building (heading, line 5)\n    On macOS (heading, line 11)\n  Running (heading, line 13)", outline);
+    }
+
     /// <summary>A file's errors and warnings as diagnostics lists them, each as "line: message".</summary>
     private static string[] Problems(JsonElement found) =>
         [.. found.EnumerateArray().Select(d => $"{d.GetProperty("line").GetInt32()}: {d.GetProperty("message").GetString()}")];

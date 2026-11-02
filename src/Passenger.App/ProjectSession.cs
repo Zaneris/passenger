@@ -801,10 +801,11 @@ public sealed class ProjectSession : IAsyncDisposable
     public Web.WebLanguages? Web { get; private set; }
 
     /// <summary>Where an open file's outline comes from, which File Structure, the Structure window and an agent's outline
-    /// read: the C# server's document, else its web language's, else a Godot project's scene as Passenger reads it; null
-    /// while none has it.</summary>
+    /// read: a Markdown file's headings as Passenger reads them, else the C# server's document, else its web language's,
+    /// else a Godot project's scene as Passenger reads it; null while none has it.</summary>
     public Passenger.App.Navigation.FileOutline? OutlineOf(OpenDocument document) =>
-        (CSharp?.For(document)?.Lsp ?? Web?.For(document)?.Lsp) is { } lsp ? Passenger.App.Navigation.FileOutline.Served(lsp)
+        document.Language == Languages.Language.Markdown ? new Editors.MarkdownOutline(document.Text)
+        : (CSharp?.For(document)?.Lsp ?? Web?.For(document)?.Lsp) is { } lsp ? Passenger.App.Navigation.FileOutline.Served(lsp)
         : Passenger.Workspace.GodotFile.IsText(document.Path) && GodotOf(document.Path) is { } folder ? new Godot.GodotSceneOutline.Source(GodotScenes, folder)
         : null;
 

@@ -1021,9 +1021,17 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.Outline, Title = "A file's structure", ReadOnly = true), Description(
         "A file's structure, indented, each part with its line: C#'s types and members, a web language's symbols, XAML's " +
         "elements with what names them (x:Class, x:Name, x:Key, a style's selector), an MSBuild file's properties with their " +
-        "values, items, targets and imports, a Godot scene's nodes with their scripts, instances and signals' connections.")]
+        "values, items, targets and imports, a Godot scene's nodes with their scripts, instances and signals' connections, a " +
+        "Markdown file's headings.")]
     public Task<string> Outline(string path, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
+        if (Languages.Language.ForPath(Resolve(path)) == Languages.Language.Markdown)
+        {
+            OpenDocument markdown = await DocumentAsync(path, cancel);
+            Outline<Navigation.SymbolRow> headings = await new Editors.MarkdownOutline(markdown.Text).ReadAsync(markdown.Path, null, cancel);
+            return headings.Rows.Count == 0 ? "No heading is in this file"
+                : string.Join('\n', headings.Rows.Select(row => $"{new string(' ', row.Depth * 2)}{row.Name} (heading, line {row.Position.Line + 1})"));
+        }
         // A generator's code copied has no server document: its own syntax says what it declares.
         if (GeneratedCode.IsCopy(Resolve(path)) && (await DocumentAsync(path, cancel)).Syntax?.Current is { } parsed)
         {

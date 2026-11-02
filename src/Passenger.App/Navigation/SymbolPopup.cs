@@ -31,6 +31,9 @@ public sealed record SymbolRow(string Name, string? Detail, string? Where, Symbo
 
     /// <summary>A node of a Godot scene.</summary>
     public const SymbolKind NodeKind = SymbolKind.Object;
+
+    /// <summary>A heading of a Markdown file.</summary>
+    public const SymbolKind HeadingKind = SymbolKind.String;
 }
 
 /// <summary>A query over symbols, answered as it is typed (a moment after the last key, the previous answer given
@@ -207,6 +210,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
         SymbolKind.Operator => ("o", TokenKeys.TextMuted),
         SymbolKind.TypeParameter => ("T", TokenKeys.Syntax_TypeParameter),
         SymbolRow.NodeKind => ("n", TokenKeys.Syntax_Class),
+        SymbolRow.HeadingKind => ("H", TokenKeys.Syntax_Heading),
         _ => ("·", TokenKeys.TextMuted),
     };
 }
