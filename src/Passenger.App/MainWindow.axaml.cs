@@ -65,7 +65,10 @@ public partial class MainWindow : IdeWindow
         status = new StatusBar(StatusMessage, StatusText, StatusIcon, StatusWorking, CaretButton, CaretText, IndentButton, IndentText, LanguageText, LineSeparatorButton, LineEndingText,
             EncodingButton, EncodingText);
         popups = new PopupHost(Overlay, OverlayHost, Editors, () => session.Debug.Breakpoints);
-        navigator = new Navigation.Navigator(new Navigation.NavigatorParts(Editors, () => session, popups, status, path => OpenFile(path), Editors.TextOf));
+        navigator = new Navigation.Navigator(new Navigation.NavigatorParts(Editors, () => session, popups, status, path => OpenFile(path), Editors.TextOf)
+        {
+            Declare = () => Request(AppActions.GoToDeclaration),
+        });
         // One keymap for the whole window, seen before any control: editor actions go to the editor with the focus.
         windowKeys = new IdeKeys(this, keys, popups, OnEscape, OnKey, OnSideButton, OnActivity, OnLeft);
         windowKeys.Attach(this);
@@ -836,10 +839,9 @@ public partial class MainWindow : IdeWindow
     private ToolWindows.StructureView MakeStructure()
     {
         structure = new ToolWindows.StructureView();
-        structure.Follow(() => Editors.Active is { } shown
-            ? (shown.Path, shown.Name, session.OutlineOf(shown), Editors.CodeEditor.CaretPosition.Line)
-            : null);
-        structure.GoToRequested += (_, row) => NavigateTo(row.Path, row.Position);
+        structure.Follow(() => Editors.Active is { } shown ? (shown.Path, shown.Name, Editors.CodeEditor.CaretPosition.Line) : null,
+            () => Editors.Active is { } shown ? session.OutlineOf(shown) : null);
+        structure.GoToRequested += (_, row) => navigator.GoTo(row);
         structure.UsagesRequested += (_, row) =>
         {
             NavigateTo(row.Path, row.Position);

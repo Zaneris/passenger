@@ -9,15 +9,19 @@ using Passenger.Text;
 namespace Passenger.App.Navigation;
 
 /// <summary>What a window lends its navigation: its editors, its session (whose <see cref="NavigationHistory"/>,
-/// index, recent files and language server it goes by), its popups and status bar, opening a file in it, and a file's
-/// text as the editor or the disk has it.</summary>
+/// index, recent files and language server it goes by), its popups and status bar, opening a file in it, a file's text as
+/// the editor or the disk has it, and its Go to Declaration.</summary>
 public sealed record NavigatorParts(
     EditorArea Editors,
     Func<ProjectSession> Session,
     PopupHost Popups,
     StatusBar Status,
     Func<string, string?> OpenFile,
-    Func<string, TextSnapshot?> TextOf);
+    Func<string, TextSnapshot?> TextOf)
+{
+    /// <summary>Go to Declaration from the active editor's caret.</summary>
+    public Action? Declare { get; init; }
+}
 
 /// <summary>Getting about the code: going to a file and position remembered for Back and Forward, Last and Next Edit
 /// Location, Recent Locations with their lines of code, and the Go to popups (File, Symbol, Everything, Line:Column,
@@ -411,14 +415,9 @@ public sealed class Navigator
         int caretLine = Editors.CodeEditor.CaretPosition.Line;
         SymbolPopup popup = new($"File Structure: {active.Name}", "Filter by name, CamelHumps too", async (query, cancel) =>
         {
-            // The server's document now: one started again while the popup is open has a new one.
-            Lsp.LspDocument lsp = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed(Refusals.NoOutline(active.Name));
-            if (outline is null)
-            {
-                IReadOnlyList<Lsp.DocumentSymbol> symbols = await lsp.OutlineAsync(cancel);
-                Lsp.ServerLines lines = Lsp.ServerLines.Of(lsp.Text.Snapshot);
-                outline ??= await BackgroundWork.Run(() => ToolWindows.StructureView.OutlineOf(symbols, active.Path, lines, cancel: cancel), cancel);
-            }
+            // Where the outline comes from now: a server started again while the popup is open has a new document.
+            FileOutline source = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed(Refusals.NoOutline(active.Name));
+            outline ??= await source.ReadAsync(active.Path, null, cancel);
             IReadOnlyList<SymbolRow> rows = outline.Rows;
             string filter = query.Trim();
             return filter.Length == 0 ? rows : await BackgroundWork.Run(() => FilterOutline(rows, filter), cancel);
@@ -431,9 +430,20 @@ public sealed class Navigator
         {
             if (row is not null)
             {
-                NavigateTo(row.Path, row.Position);
+                GoTo(row);
             }
         });
+    }
+
+    /// <summary>Goes to an outline's row: to its place, and on from there to what the code there names where it leads on (a
+    /// scene's connection to its handler).</summary>
+    public void GoTo(SymbolRow row)
+    {
+        NavigateTo(row.Path, row.Position);
+        if (row.Leads)
+        {
+            parts.Declare?.Invoke();
+        }
     }
 
     private static IReadOnlyList<SymbolRow> FilterOutline(IReadOnlyList<SymbolRow> outline, string query)

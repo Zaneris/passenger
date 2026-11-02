@@ -795,9 +795,13 @@ public sealed class ProjectSession : IAsyncDisposable
     /// its first file opens; null with no folder.</summary>
     public Web.WebLanguages? Web { get; private set; }
 
-    /// <summary>The language server's document of an open file, which File Structure and the Structure window outline: the
-    /// C# server's, else its web language's; null while no server has it.</summary>
-    public Lsp.LspDocument? OutlineOf(OpenDocument document) => CSharp?.For(document)?.Lsp ?? Web?.For(document)?.Lsp;
+    /// <summary>Where an open file's outline comes from, which File Structure, the Structure window and an agent's outline
+    /// read: the C# server's document, else its web language's, else a Godot project's scene as Passenger reads it; null
+    /// while none has it.</summary>
+    public Passenger.App.Navigation.FileOutline? OutlineOf(OpenDocument document) =>
+        (CSharp?.For(document)?.Lsp ?? Web?.For(document)?.Lsp) is { } lsp ? Passenger.App.Navigation.FileOutline.Served(lsp)
+        : Passenger.Workspace.GodotFile.IsText(document.Path) && GodotOf(document.Path) is { } folder ? new Godot.GodotSceneOutline.Source(GodotScenes, folder)
+        : null;
 
     /// <summary>A language server started (or none, after one ended) in place of the one before.</summary>
     public event EventHandler? CSharpChanged;

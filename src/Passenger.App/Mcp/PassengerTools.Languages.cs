@@ -44,7 +44,7 @@ public sealed partial class PassengerTools
         + "value and where it was set, outline gives its elements, and diagnostics its evaluation's problems";
 
     private const string GodotHas = "definition goes from a res:// path or ExtResource to its file, from a node path to its node, and from a "
-        + "connection's method or signal to its C#; rename renames a node's name in its scenes and the code's GetNode paths";
+        + "connection's method or signal to its code; rename renames a node's name in its scenes and the code's GetNode paths; outline gives its nodes";
 
     /// <summary>The file opened as the editor would, with the service that answers for it once that can: a XAML file's
     /// project read, the C# server's workspace loaded. A file no service reads is refused at once, saying which do.</summary>

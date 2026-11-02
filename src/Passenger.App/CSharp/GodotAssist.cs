@@ -1,3 +1,4 @@
+using Passenger.App.Editors;
 using Passenger.App.Godot;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -11,8 +12,8 @@ namespace Passenger.App.CSharp;
 
 /// <summary>A Godot project's text scenes and resources, as their own (<see cref="GodotFile"/>): Go to Declaration from a
 /// res:// path, a uid:// name or an <c>ExtResource</c> goes to its file, from a node path (a node's parent, a connection's ends, a NodePath)
-/// to the node's section, from a connection's method to the C# method its receiving node's script declares and from its
-/// signal to the <c>[Signal]</c> delegate its sending node's script declares; Rename on a node's name renames it in every
+/// to the node's section, from a connection's method to the method its receiving node's script declares (C# or GDScript)
+/// and from its signal to the signal its sending node's script declares; Rename on a node's name renames it in every
 /// scene and every GetNode path of the code that names it (<see cref="CSharpAssist.RenameNodesAsync"/>); and a res:// string
 /// completes from the project's files.</summary>
 internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, CodeCompletion completion, CodeNavigation navigation, CSharpAssist csharp) : LanguageAssist
@@ -200,16 +201,25 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
             : new Declared([], Refusals.NoDeclaration);
     }
 
-    /// <summary>A connection's method in the code of its receiving node's script, or its signal's <c>[Signal]</c> delegate in
-    /// its sending node's: asked of the extension for that script's file as its scenes are read.</summary>
+    /// <summary>A connection's method in the code of its receiving node's script, or its signal's in its sending node's: a
+    /// C# script's asked of the extension for that script's file as its scenes are read (a signal's <c>[Signal]</c>
+    /// delegate), a GDScript's read from its file (its <c>func</c>, its <c>signal</c>).</summary>
     private async Task<Declared?> ConnectionDeclaredAsync(GodotScenes scenes, string res, GodotConnection connection, bool method)
     {
         GodotChecks.Connected connected = GodotChecks.Connections(scenes, res).First(c => c.Connection.Section == connection.Section);
         GodotTreeNode? node = method ? connected.To : connected.From;
         string what = method ? $"No method {connection.Method}" : $"No signal {connection.Signal}";
+        if (node?.Script is { } written && written.EndsWith(".gd", StringComparison.OrdinalIgnoreCase) && scenes.FileOf(written) is { } gd)
+        {
+            string name = method ? connection.Method : connection.Signal;
+            TextSnapshot? text = context.Editors.TextOf(gd) ?? (await BackgroundWork.Run(() => EditorArea.ReadText(gd)) is { } disk ? TextSnapshot.From(disk) : null);
+            return text is not null && await BackgroundWork.Run(() => GodotMembers.DeclaredIn(text, name, signal: !method)) is { } declared
+                ? new Declared(Declared.Served([(gd, declared)], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
+                : new Declared([], $"{what} is declared in {Path.GetFileName(gd)}");
+        }
         if (node?.Script is not { } script || !GodotChecks.IsCSharp(script) || scenes.FileOf(script) is not { } code || context.CSharp is not { } service)
         {
-            return new Declared([], $"{what} is declared in C#: {(node is null ? "the scene has no node there" : $"{node.Name} has no C# script")}");
+            return new Declared([], $"{what} is declared in code: {(node is null ? "the scene has no node there" : $"{node.Name} has no script")}");
         }
         if (await service.GodotAsync(code, CancellationToken.None) is not { } read)
         {

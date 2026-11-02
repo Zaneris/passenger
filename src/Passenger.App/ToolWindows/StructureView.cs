@@ -10,10 +10,12 @@ using Passenger.Text;
 
 namespace Passenger.App.ToolWindows;
 
-/// <summary>The Structure window: the active file's outline (a C# file's types and members, a JSON file's keys),
-/// indented, from its language server, asked as it is shown and, while it is, following the editor (a moment after
-/// typing stops) and choosing the member the caret is in. A click or Enter goes to a member. The rows are made off the
-/// window's thread, the list kept as it is where the outline did not change; a file with none says why.</summary>
+/// <summary>The Structure window: the active file's outline (a C# file's types and members, a JSON file's keys, a Godot
+/// scene's nodes), indented, from where the file's outline comes (<see cref="FileOutline"/>), asked as it is shown and,
+/// while it is, following the editor (a moment after typing stops) and choosing the member the caret is in. A click or
+/// Enter goes to a member, and moving onto one with the keys goes there too unless it leads out of the file (a scene's
+/// script, its connection's handler). The rows are made off the window's thread, the list kept as it is where the outline
+/// did not change; a file with none says why.</summary>
 public sealed class StructureView : DockPanel
 {
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(600);
@@ -22,7 +24,8 @@ public sealed class StructureView : DockPanel
     private readonly TextBlock placeholder;
     private readonly TextBlock unoutlined;
     private readonly Debounce settle;
-    private Func<(string Path, string Name, LspDocument? Lsp, int CaretLine)?>? source;
+    private Func<(string Path, string Name, int CaretLine)?>? source;
+    private Func<FileOutline?>? outlineOf;
     private CancellationTokenSource? asking;
     private bool choosing;
 
@@ -43,7 +46,7 @@ public sealed class StructureView : DockPanel
         ReusedRows.Use(list, SymbolPopup.ReusedRow);
         list.SelectionChanged += (_, _) =>
         {
-            if (!choosing && list.SelectedItem is SymbolRow row && list.IsKeyboardFocusWithin)
+            if (!choosing && list.SelectedItem is SymbolRow row && list.IsKeyboardFocusWithin && row.Path == outlined && !row.Leads)
             {
                 GoToRequested?.Invoke(this, row);
             }
@@ -55,14 +58,14 @@ public sealed class StructureView : DockPanel
                 GoToRequested?.Invoke(this, row);
             }
         };
-        list.KeyDown += (_, e) =>
+        list.AddHandler(KeyDownEvent, (_, e) =>
         {
             if (e.Key == Key.Enter && list.SelectedItem is SymbolRow row)
             {
                 GoToRequested?.Invoke(this, row);
                 e.Handled = true;
             }
-        };
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         placeholder = new TextBlock { Classes = { StyleClasses.EmptyText } };
         ActionTips.SetWords(placeholder, AppActions.GoToFile, keys => $"The open file's outline shows here: open one with {ActionTips.Named("Go to File", keys)}");
         unoutlined = new TextBlock { Classes = { StyleClasses.EmptyText }, IsVisible = false };
@@ -91,8 +94,13 @@ public sealed class StructureView : DockPanel
     /// outline.</summary>
     public string? Said => unoutlined.IsVisible ? unoutlined.Text : placeholder.IsVisible ? placeholder.Text : null;
 
-    /// <summary>What the window shows: the active file, its name as shown, its language server document, the caret's line.</summary>
-    public void Follow(Func<(string Path, string Name, LspDocument? Lsp, int CaretLine)?> active) => source = active;
+    /// <summary>What the window shows: the active file, its name as shown and the caret's line; and where the active file's
+    /// outline comes from, null for a file that has none.</summary>
+    public void Follow(Func<(string Path, string Name, int CaretLine)?> active, Func<FileOutline?> outline)
+    {
+        source = active;
+        outlineOf = outline;
+    }
 
     /// <summary>The file changed, or a C# file is shown: while the window is shown the outline is asked again once typing
     /// pauses; a hidden one asks as it is shown.</summary>
@@ -104,15 +112,15 @@ public sealed class StructureView : DockPanel
         }
     }
 
-    /// <summary>Another file is active: a shown window asks for its outline at once once its server has the file, the pause
-    /// being for typing's keys; a file its server has yet to connect is asked for once things settle.</summary>
+    /// <summary>Another file is active: a shown window asks for its outline at once once it has one (its server has the
+    /// file), the pause being for typing's keys; a file its server has yet to connect is asked for once things settle.</summary>
     public void FollowActive()
     {
         if (!shown)
         {
             return;
         }
-        if (source?.Invoke() is { Lsp: not null })
+        if (outlineOf?.Invoke() is not null)
         {
             settle.Stop();
             IdeErrors.Observe(Refresh());
@@ -127,7 +135,7 @@ public sealed class StructureView : DockPanel
     /// the shown file's outline asks for it, since what it asked before the server had the file found nothing.</summary>
     public void FollowServer()
     {
-        if (shown && asking is null && source?.Invoke() is { Lsp: not null } now && outlined != now.Path)
+        if (shown && asking is null && source?.Invoke() is { } now && outlined != now.Path && outlineOf?.Invoke() is not null)
         {
             IdeErrors.Observe(Refresh());
         }
@@ -164,10 +172,10 @@ public sealed class StructureView : DockPanel
     {
         asking?.Cancel();
         asking = null;
-        (string Path, string Name, LspDocument? Lsp, int CaretLine)? active = source?.Invoke();
-        if (active is not { Lsp: { } lsp } now)
+        (string Path, string Name, int CaretLine)? active = source?.Invoke();
+        if (active is not { } now || outlineOf?.Invoke() is not { } file)
         {
-            Show(Outline<SymbolRow>.Empty, null, active is { } file ? Refusals.NoOutline(file.Name) : null);
+            Show(Outline<SymbolRow>.Empty, null, active is { } shownFile ? Refusals.NoOutline(shownFile.Name) : null);
             return;
         }
         CancellationTokenSource mine = asking = new CancellationTokenSource();
@@ -175,14 +183,8 @@ public sealed class StructureView : DockPanel
         using IDisposable held = BackgroundWork.Scope();
         try
         {
-            IReadOnlyList<DocumentSymbol> symbols = await lsp.OutlineAsync(mine.Token);
-            if (mine.IsCancellationRequested)
-            {
-                return;
-            }
-            ServerLines lines = ServerLines.Of(lsp.Text.Snapshot);
             Outline<SymbolRow>? before = outlined == now.Path ? outline : null;
-            Outline<SymbolRow> made = await BackgroundWork.Run(() => OutlineOf(symbols, now.Path, lines, before, mine.Token), mine.Token);
+            Outline<SymbolRow> made = await file.ReadAsync(now.Path, before, mine.Token);
             if (mine.IsCancellationRequested)
             {
                 return;

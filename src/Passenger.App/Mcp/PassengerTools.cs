@@ -1021,7 +1021,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     [McpServerTool(Name = McpTools.Outline, Title = "A file's structure", ReadOnly = true), Description(
         "A file's structure, indented, each part with its line: C#'s types and members, a web language's symbols, XAML's " +
         "elements with what names them (x:Class, x:Name, x:Key, a style's selector), an MSBuild file's properties with their " +
-        "values, items, targets and imports.")]
+        "values, items, targets and imports, a Godot scene's nodes with their scripts, instances and signals' connections.")]
     public Task<string> Outline(string path, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         // A generator's code copied has no server document: its own syntax says what it declares.
@@ -1037,8 +1037,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 return XamlOutline(xaml);
             case MSBuildServed msbuild:
                 return MSBuildOutline(msbuild);
-            case GodotServed:
-                throw Lacks(served, "outline", GodotHas);
+            case GodotServed scene:
+                return await SceneOutline(scene, cancel);
         }
         LspDocument lsp = ((ServerServed)served).Lsp;
         System.Text.StringBuilder text = new();
@@ -1061,6 +1061,31 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
         }
     });
+
+    /// <summary>A scene's outline as Structure shows it: each node by its name and class at its line, its script's and
+    /// instance's files, and its signals' connections with the method each calls.</summary>
+    private async Task<string> SceneOutline(GodotServed scene, CancellationToken cancel)
+    {
+        Navigation.FileOutline source = Session.OutlineOf(scene.Document) ?? throw Lacks(scene, "outline", GodotHas);
+        Outline<Navigation.SymbolRow> outline = await source.ReadAsync(scene.Document.Path, null, cancel);
+        System.Text.StringBuilder text = new();
+        foreach (Navigation.SymbolRow row in outline.Rows)
+        {
+            text.Append(' ', row.Depth * 2).Append(row.Name);
+            if (row.Detail is { } detail)
+            {
+                text.Append(' ').Append(detail);
+            }
+            bool here = PathNames.Same(row.Path, scene.Document.Path);
+            text.Append(row.Kind switch
+            {
+                Navigation.SymbolRow.FileKind => here ? $" (no such file, named at line {row.Position.Line + 1})" : string.Empty,
+                Navigation.SymbolRow.NodeKind => $" (node{(row.Where is { } unique ? $" {unique}" : string.Empty)}, line {row.Position.Line + 1}{(here ? string.Empty : $" of {Relative(row.Path)}")})",
+                _ => $" (connection, line {row.Position.Line + 1})",
+            }).Append('\n');
+        }
+        return text.Length == 0 ? "Nothing is declared in this file" : text.ToString().TrimEnd();
+    }
 
     // Build and run
 

@@ -4,8 +4,9 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>An agent fixing a Godot game's checks through code_actions and apply_code_action as a person does through Show
-/// Context Actions: the open scene's connection to a method its script lacks lists the method's making, which makes it in the
-/// script, saved, so the scene's mark goes. Without a Godot 4 .NET build, it skips saying why.</summary>
+/// Context Actions: outline gives the scene's nodes, script and connections, and the open scene's connection to a method its
+/// script lacks lists the method's making, which makes it in the script, saved, so the scene's mark goes. Without a Godot 4
+/// .NET build, it skips saying why.</summary>
 public sealed class McpGodotFixTests : McpRig
 {
     [Fact]
@@ -23,6 +24,18 @@ public sealed class McpGodotFixTests : McpRig
             await using ModelContextProtocol.Client.McpClient client = await Start(["--mcp", folder]);
             await Until(async () => Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "Main.cs" })).Contains("which Main has no method of", StringComparison.Ordinal),
                 "Main.cs to be read against its scene");
+            string outline = Text(await Call(client, McpTools.Outline, new() { ["path"] = "main.tscn" }));
+            Assert.Equal($"""
+                Main : Node2D (node, line {GodotSceneTests.LineOf(GodotFixesTests.Scene, "[node name=\"Main\"")})
+                  Main.cs script
+                  Hud : CanvasLayer (node, line {GodotSceneTests.LineOf(GodotFixesTests.Scene, "[node name=\"Hud\"")})
+                    Score : Label (node, line {GodotSceneTests.LineOf(GodotFixesTests.Scene, "[node name=\"Score\"")})
+                    Start : Button (node, line {GodotSceneTests.LineOf(GodotFixesTests.Scene, "[node name=\"Start\"")})
+                      pressed → Main.OnStartPressed (connection, line {GodotSceneTests.LineOf(GodotFixesTests.Scene, "method=\"OnStartPressed\"")})
+                      pressed → Main.OnQuitPressed (connection, line {GodotSceneTests.LineOf(GodotFixesTests.Scene, "method=\"OnQuitPressed\"")})
+                    Sound : CheckButton (node, line {GodotSceneTests.LineOf(GodotFixesTests.Scene, "[node name=\"Sound\"")})
+                      toggled → Main.OnSoundToggled (connection, line {GodotSceneTests.LineOf(GodotFixesTests.Scene, "method=\"OnSoundToggled\"")})
+                """, outline.ReplaceLineEndings("\n"));
             int line = GodotSceneTests.LineOf(GodotFixesTests.Scene, "method=\"OnQuitPressed\"");
             int column = GodotFixesTests.Scene.Split('\n')[line - 1].IndexOf("OnQuitPressed", StringComparison.Ordinal) + 2;
             Dictionary<string, object?> at = new() { ["path"] = "main.tscn", ["line"] = line, ["column"] = column };

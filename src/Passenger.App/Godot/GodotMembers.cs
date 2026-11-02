@@ -95,6 +95,32 @@ public static partial class GodotMembers
         return new GodotScriptMembers(path, named ?? Path.GetFileNameWithoutExtension(file), Math.Max(0, classLine), members);
     }
 
+    /// <summary>Where a GDScript file declares a function or a signal (<paramref name="signal"/>) of a name outside its inner
+    /// classes: the place of its name on a line that starts with <c>func</c> (or <c>static func</c>) or <c>signal</c>, an
+    /// annotation before it or not; null for none.</summary>
+    public static TextPosition? DeclaredIn(TextSnapshot text, string name, bool signal)
+    {
+        for (int line = 0; line < text.LineCount; line++)
+        {
+            LineSpan span = text.GetLine(line);
+            if (span.Length <= name.Length || text[span.Start] is not ('f' or 's' or '@'))
+            {
+                continue;
+            }
+            if ((signal ? Signal() : Function()).Match(text.GetText(span.Start, span.Length)) is { Success: true } found && found.Groups[1].Value == name)
+            {
+                return new TextPosition(line, found.Groups[1].Index);
+            }
+        }
+        return null;
+    }
+
+    [GeneratedRegex(@"^(?:@[A-Za-z_]\w*(?:\([^)]*\))?\s+)*(?:static\s+)?func\s+([A-Za-z_]\w*)")]
+    private static partial Regex Function();
+
+    [GeneratedRegex(@"^(?:@[A-Za-z_]\w*(?:\([^)]*\))?\s+)*signal\s+([A-Za-z_]\w*)")]
+    private static partial Regex Signal();
+
     [GeneratedRegex(@"^(?:@[A-Za-z_]\w*(?:\([^)]*\))?\s+)*var\s+([A-Za-z_]\w*)")]
     private static partial Regex Var();
 

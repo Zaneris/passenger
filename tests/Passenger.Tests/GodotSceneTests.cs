@@ -1,7 +1,9 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
@@ -597,6 +599,62 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         {
             window.Close();
         }
+    }
+
+    /// <summary>Structure over the open scene lists its nodes nested as Godot builds its tree, each with its class, under each
+    /// its script and the scene it instances and its signals' connections: choosing a node goes to its line in the scene,
+    /// the keys moving onto its script stay in the scene, and choosing the script, the instanced scene or a connection goes
+    /// to the script, to that scene and to the handler the connection calls.</summary>
+    [AvaloniaFact]
+    public void Structure_lists_a_scenes_nodes_scripts_instances_and_connections_and_goes_to_each()
+    {
+        MainWindow window = game.Open(ScenePath);
+        try
+        {
+            Ui.Run(window, AppActions.ShowStructure);
+            StructureView structure = window.StructureView;
+            Ui.WaitFor(() => structure.Rows.Any(r => r.Name == "player.tscn"), () => $"the scene's tree in Structure: {Listed(structure)} ({structure.Said})");
+            Assert.Equal([("Main", ": Node2D", 0), ("Main.cs", "script", 1), ("Scored", "→ Hud.OnScored", 1), ("Hud", ": CanvasLayer", 1), ("Hud.cs", "script", 2),
+                ("Score", ": Label", 2), ("Start", ": Button", 2), ("pressed", "→ Main.OnStartPressed", 3), ("pressed", "→ Main.OnQuitPressed", 3),
+                ("toggled", "→ Main.OnStartPressed", 3), ("Player", ": CharacterBody2D", 1), ("player.tscn", "instance", 2)],
+                structure.Rows.Select(r => (r.Name, r.Detail ?? string.Empty, r.Depth)));
+            Assert.Equal("%Score", structure.Rows.Single(r => r.Name == "Score").Where);
+            ListBox list = structure.GetVisualDescendants().OfType<ListBox>().First();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+
+            Ui.Click(Ui.Row(list, structure.Rows.Single(r => r.Name == "Start")));
+            Ui.WaitFor(() => editor.CaretPosition.Line == LineOf(Scene, "[node name=\"Start\"") - 1, () => $"the caret on Start's line, where it is on {editor.CaretPosition.Line + 1}");
+            Ui.Click(Ui.Row(list, structure.Rows.Single(r => r.Name == "Main")));
+            TextPosition onMain = editor.CaretPosition;
+            Assert.Equal(LineOf(Scene, "[node name=\"Main\"") - 1, onMain.Line);
+            Assert.Equal("Main", structure.Selected?.Name);
+            Ui.Row(list, structure.Selected!).Focus();
+            Assert.True(list.IsKeyboardFocusWithin, "Structure's chosen row took no keys");
+            Ui.Press(window, "DOWN");
+            Assert.Equal("Main.cs", structure.Selected?.Name);
+            Assert.True(window.EditorArea.Active?.Name == "main.tscn" && editor.CaretPosition == onMain,
+                $"The keys moving onto the script's row went to {window.EditorArea.Active?.Name}:{editor.CaretPosition.Line + 1}, where they were to stay on Main");
+
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.EditorArea.Active?.Name == "Main.cs", () => $"the script to open ({window.EditorArea.Active?.Name})");
+            window.OpenFile(ScenePath);
+            Ui.WaitFor(() => structure.Rows.Any(r => r.Name == "player.tscn"), () => $"the scene's tree in Structure again: {Listed(structure)}");
+            Ui.Click(Ui.Row(list, structure.Rows.Single(r => r.Name == "player.tscn")));
+            Ui.WaitFor(() => window.EditorArea.Active?.Name == "player.tscn", () => $"the instanced scene to open ({window.EditorArea.Active?.Name})");
+
+            window.OpenFile(ScenePath);
+            Ui.WaitFor(() => structure.Rows.Any(r => r.Detail == "→ Main.OnStartPressed"), () => $"the scene's tree in Structure again: {Listed(structure)}");
+            Ui.Click(Ui.Row(list, structure.Rows.First(r => r.Detail == "→ Main.OnStartPressed")));
+            Ui.WaitFor(() => window.EditorArea.Active?.Name == "Main.cs" && window.EditorArea.CodeEditor.Document.Snapshot.GetLineText(window.EditorArea.CodeEditor.CaretPosition.Line)
+                .Contains("private void OnStartPressed()", StringComparison.Ordinal),
+                () => $"the connection to go to its handler ({window.EditorArea.Active?.Name}: {window.EditorArea.CodeEditor.Document.Snapshot.GetLineText(window.EditorArea.CodeEditor.CaretPosition.Line)}; {window.Status})");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string Listed(StructureView structure) => string.Join(", ", structure.Rows.Select(r => $"{new string(' ', r.Depth)}{r.Name} {r.Detail}"));
     }
 
     /// <summary>The game built through the window, failing with the build's errors where it does not build.</summary>
