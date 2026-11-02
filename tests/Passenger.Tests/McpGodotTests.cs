@@ -178,7 +178,7 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
     /// <summary>An app_ tool's answer for the game; one refused fails with the game's last words, Godot's errors among them.</summary>
     private async Task<string> Game(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?> arguments)
     {
-        CallToolResult result = await Result(client, tool, arguments);
+        CallToolResult result = await Result(client, tool, arguments, heard: new Heard());
         if (result.IsError == true)
         {
             Assert.Fail($"{tool} was refused: {Text(result)}\nThe game's last words:\n{Text(await Call(client, McpTools.Output, new() { ["lines"] = 40 }))}");

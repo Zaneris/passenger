@@ -13,6 +13,10 @@ namespace Passenger.App.Mcp;
 /// (<see cref="GodotAgent"/>). Places are the viewport's units, which a node's box and a click share.</summary>
 public sealed partial class PassengerTools
 {
+    /// <summary>How long an app_ tool's call may wait on a game in all, once it has the game: each of its questions has a
+    /// limit of its own, and the call's sum of them, its messages' turns and writes among them, is held to this too.</summary>
+    private static TimeSpan GameLimit => Waits.Of(TimeSpan.FromSeconds(40));
+
     /// <summary>The Godot game an app_ tool's app means, once it has connected: with none named, the game Passenger debugs
     /// when no Avalonia or WPF app runs; run, debug or profile as it was started; or its configuration's name. Null where the
     /// app meant is another; a game paused in the debugger, not yet connected or ended is refused saying what to do.</summary>
@@ -54,6 +58,7 @@ public sealed partial class PassengerTools
     /// <paramref name="properties"/>, the values of those of each node's properties it has.</summary>
     private static async Task<(AppTree Tree, string? Unplaced)> GameTreeAsync(GodotGame game, IReadOnlyList<string> properties)
     {
+        using IDisposable asking = GodotGame.Within(GameLimit);
         GodotNode root = await game.SceneTreeAsync();
         Dictionary<long, List<object?>> drawn = [];
         string? unplaced = null;
@@ -119,6 +124,7 @@ public sealed partial class PassengerTools
 
     private async Task<AppWindows> GameWindowsAsync(GodotGame game)
     {
+        using IDisposable asking = GodotGame.Within(GameLimit);
         List<object?> said = await game.AskAsync("windows");
         IEnumerable<List<object?>> found = said is [List<object?> windows] ? windows.OfType<List<object?>>().Where(w => w.Count >= 10) : [];
         return new AppWindows(game.Name, game.Framework, null, game.ProcessId, [.. found.Select(w => new AppWindowInfo(Id(Whole(w[0])), w[1] as string ?? "Window",
@@ -128,6 +134,7 @@ public sealed partial class PassengerTools
 
     private async Task<CallToolResult> GamePictureAsync(GodotGame game, string? control, bool area)
     {
+        using IDisposable asking = GodotGame.Within(GameLimit);
         if (control is { Length: > 0 } || area)
         {
             throw new ArgumentException($"{game.Name} is a Godot game, whose picture Godot takes of its whole window: name no control or area");
@@ -141,6 +148,7 @@ public sealed partial class PassengerTools
 
     private async Task<AppElementDetails> GameDetailsAsync(GodotGame game, string control, string? window, string? properties)
     {
+        using IDisposable asking = GodotGame.Within(GameLimit);
         (List<AppNode> nodes, AppNode chosen) = await GameTreeOf(game, window);
         AppNode element = AppQuery.One(Within(nodes, window is null ? null : chosen), control);
         ElementDetails details = await game.DetailsAsync(element.Element.Id);
@@ -155,6 +163,7 @@ public sealed partial class PassengerTools
     /// holds once it has taken it.</summary>
     private async Task<string> GameSetAsync(GodotGame game, string? control, string? window, string property, string text)
     {
+        using IDisposable asking = GodotGame.Within(GameLimit);
         if (control is not { Length: > 0 })
         {
             throw new ArgumentException("Name the node (control) whose property to set");
@@ -212,6 +221,7 @@ public sealed partial class PassengerTools
 
     private async Task<string> GameClickAsync(GodotGame game, string? control, double? x, double? y, string? window, string button, int count, IReadOnlyList<string>? modifiers)
     {
+        using IDisposable asking = GodotGame.Within(GameLimit);
         long pressed = button switch
         {
             "left" => 1,
@@ -234,6 +244,7 @@ public sealed partial class PassengerTools
 
     private async Task<string> GameTypeAsync(GodotGame game, string text, string? control, bool replace, string? window)
     {
+        using IDisposable asking = GodotGame.Within(GameLimit);
         (List<AppNode> nodes, AppNode? element, AppNode target) = await GameTarget(game, control, window, needsPoint: false, null, null);
         InputDone done = GameDone(nodes, target, await game.AskAsync("type", element?.Element.Id ?? 0L, text, replace));
         return $"Typed {Plural.Of(text.Length, "character")} into {done.Focused ?? "the window, nothing having the focus"}{Said(done)}";
@@ -241,6 +252,7 @@ public sealed partial class PassengerTools
 
     private async Task<string> GameKeyAsync(GodotGame game, string keys, string? control, string? window)
     {
+        using IDisposable asking = GodotGame.Within(GameLimit);
         IReadOnlyList<Chord> chords = Chords(keys);
         (List<AppNode> nodes, AppNode? element, AppNode target) = await GameTarget(game, control, window, needsPoint: false, null, null);
         List<object?> pressed = [.. chords.Select(c => (object?)new List<object?> { GodotAgent.KeyName(c.Key), GameModifiers(c.Modifiers) })];
@@ -250,6 +262,7 @@ public sealed partial class PassengerTools
 
     private async Task<string> GameScrollAsync(GodotGame game, string? control, double down, double across, double? x, double? y, string? window, IReadOnlyList<string>? modifiers)
     {
+        using IDisposable asking = GodotGame.Within(GameLimit);
         (List<AppNode> nodes, AppNode? element, AppNode target) = await GameTarget(game, control, window, needsPoint: true, x, y);
         InputDone done = GameDone(nodes, target, await game.AskAsync("scroll", element?.Element.Id ?? 0L, x is not null && y is not null, x ?? 0, y ?? 0, across, down,
             GameModifiers(modifiers)));

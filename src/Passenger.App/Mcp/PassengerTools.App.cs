@@ -21,6 +21,10 @@ public sealed partial class PassengerTools
 {
     // app_windows' description says once what every app_ tool's app and window take; app_tree's, the query's syntax.
 
+    /// <summary>An app_ tool's work, on the UI thread as every tool's is, with no wait for the folder's projects: looking at
+    /// an app that runs, or using it, asks nothing of them.</summary>
+    private Task<T> OnApp<T>(CancellationToken cancel, Func<Task<T>> work) => OnUi(cancel, work, projects: false);
+
     /// <summary>How long a tool waits for an app launched a moment ago to show its UI.</summary>
     private static readonly TimeSpan AppUiLimit = TimeSpan.FromSeconds(60);
 
@@ -29,7 +33,7 @@ public sealed partial class PassengerTools
         "each one's @N, type, title, size in units, pixels a unit, whether active and shown, and a popup's owner. Every app_ " +
         "tool's app is run, debug, profile, a debugged program's or an AppHost service's name, or ide for Passenger's own windows, by default the one running; " +
         "its window @N, type or \"title\", by default the first.")]
-    public Task<AppWindows> AppWindowsList(string? app = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
+    public Task<AppWindows> AppWindowsList(string? app = null, CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
         if (await GameAsync(app, cancel) is { } game)
         {
@@ -52,7 +56,7 @@ public sealed partial class PassengerTools
         string? control = null,
         double? scale = null,
         int? x = null, int? y = null, int? width = null, int? height = null,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
         if (await GameAsync(app, cancel) is { } game)
         {
@@ -93,7 +97,7 @@ public sealed partial class PassengerTools
         IReadOnlyList<string>? properties = null,
         bool templates = false,
         bool hidden = false,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
         GodotGame? game = await GameAsync(app, cancel);
         LiveApp? live = game is null ? await InspectedAsync(app, cancel) : null;
@@ -134,7 +138,7 @@ public sealed partial class PassengerTools
         string? window = null,
         string? properties = null,
         bool defaults = false,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
         if (await GameAsync(app, cancel) is { } game)
         {
@@ -196,7 +200,7 @@ public sealed partial class PassengerTools
         string button = "left",
         int count = 1,
         IReadOnlyList<string>? modifiers = null,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
         if (await GameAsync(app, cancel) is { } game)
         {
@@ -238,7 +242,7 @@ public sealed partial class PassengerTools
         bool replace = false,
         string? window = null,
         string? property = null,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
         GodotGame? game = await GameAsync(app, cancel);
         if (property is { Length: > 0 } named)
@@ -275,7 +279,7 @@ public sealed partial class PassengerTools
         string? app = null,
         string? control = null,
         string? window = null,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
         if (await GameAsync(app, cancel) is { } game)
         {
@@ -309,7 +313,7 @@ public sealed partial class PassengerTools
         double? y = null,
         string? window = null,
         IReadOnlyList<string>? modifiers = null,
-        CancellationToken cancel = default) => OnUi(cancel, async () =>
+        CancellationToken cancel = default) => OnApp(cancel, async () =>
     {
         double down = dy ?? (dx is null ? 3 : 0);
         double across = dx ?? 0;
@@ -346,7 +350,7 @@ public sealed partial class PassengerTools
         "The failed bindings of the apps Run and Debug started last and an AppHost's services (or app's), each once: control, property, path, the " +
         "framework's message (with the nearest members when the source lacks the one named), XAML place and count. An ended " +
         "app's stay until the next of its kind starts; past an app's first 1000, a last entry of level Untold counts the rest.")]
-    public Task<IReadOnlyList<AppBindingError>> AppBindingErrors(string? app = null, CancellationToken cancel = default) => OnUi(cancel, () =>
+    public Task<IReadOnlyList<AppBindingError>> AppBindingErrors(string? app = null, CancellationToken cancel = default) => OnApp(cancel, () =>
     {
         IEnumerable<LiveApp> apps = app switch
         {

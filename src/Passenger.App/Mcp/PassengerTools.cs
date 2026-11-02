@@ -2056,9 +2056,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>A tool's work on the UI thread, its waits ended by <paramref name="cancel"/> (the agent gave up on the
     /// call, or went), once the folder's projects are read and evaluated, which is what every tool that runs, builds or
-    /// tests a project asks about. What it refuses (nothing to debug, no such file) reaches the agent in its own words: the
-    /// SDK passes only an McpException's message on, and hides every other's.</summary>
-    private async Task<T> OnUi<T>(CancellationToken cancel, Func<Task<T>> work)
+    /// tests a project asks about (unless <paramref name="projects"/> is false, for one that asks nothing of them). What it
+    /// refuses (nothing to debug, no such file) reaches the agent in its own words: the SDK passes only an McpException's
+    /// message on, and hides every other's.</summary>
+    private async Task<T> OnUi<T>(CancellationToken cancel, Func<Task<T>> work, bool projects = true)
     {
         cancel.ThrowIfCancellationRequested();
         try
@@ -2079,7 +2080,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 }
                 try
                 {
-                    if (!Session.WorkspaceRead.IsCompleted || !Session.Models.Idle.IsCompleted)
+                    if (projects && (!Session.WorkspaceRead.IsCompleted || !Session.Models.Idle.IsCompleted))
                     {
                         AgentCall.Say($"Waiting for {Session.Folder ?? "the folder"}'s projects to be read");
                         await Session.WorkspaceRead.WaitAsync(cancel);

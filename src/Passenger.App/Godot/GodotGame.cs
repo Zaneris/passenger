@@ -421,7 +421,57 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
 
     private Task SendAsync(string name, params object?[] data) => SendToAsync(name, GodotMessage.MainThread, data);
 
-    /// <summary>Sends a message to one of the game's threads: a thread stopped in a script reads only its own.</summary>
+    /// <summary>The agent's call this flow serves, while one asks the game (<see cref="Within"/>): its every message and
+    /// question given up at the call's limit, saying what it waited on.</summary>
+    private static readonly AsyncLocal<AgentAsking?> Asking = new();
+
+    /// <summary>An agent's call asking a game, given up whole at <see cref="Limit"/>: however the game, its connection or
+    /// Passenger's own writing to it stall, the call fails within it saying what it waited on.</summary>
+    private sealed class AgentAsking(TimeSpan limit) : IDisposable
+    {
+        private readonly CancellationTokenSource giveUp = new(limit);
+
+        public TimeSpan Limit { get; } = limit;
+
+        public CancellationToken GiveUp => giveUp.Token;
+
+        public void Dispose()
+        {
+            Asking.Value = null;
+            giveUp.Dispose();
+        }
+    }
+
+    /// <summary>A scope inside an agent's call that asks the game already, which keeps the call's own limit.</summary>
+    private sealed class Inside : IDisposable
+    {
+        public static readonly Inside Scope = new();
+
+        public void Dispose()
+        {
+        }
+    }
+
+    /// <summary>Gives every message and question this flow sends a game from here a limit in all (an agent's call's), unless
+    /// the flow is inside one already; ended as the scope is disposed.</summary>
+    public static IDisposable Within(TimeSpan limit)
+    {
+        if (Asking.Value is not null)
+        {
+            return Inside.Scope;
+        }
+        AgentAsking asking = new(limit);
+        Asking.Value = asking;
+        return asking;
+    }
+
+    /// <summary>What a message or question of an agent's call says once the call's limit is up, waiting on
+    /// <paramref name="what"/>.</summary>
+    private string GivenUp(AgentAsking asking, string what) => $"{Name} did not answer within the {asking.Limit.TotalSeconds:0} s an agent's call on it has, waiting {what}";
+
+    /// <summary>Sends a message to one of the game's threads: a thread stopped in a script reads only its own. Inside an
+    /// agent's call (<see cref="Within"/>) it waits for its turn and its write no longer than the call may; a write given up
+    /// part sent ends the connection, which no later message could be read on.</summary>
     public async Task SendToAsync(string name, long thread, params object?[] data)
     {
         if (stream is not { } open || disposed)
@@ -429,10 +479,34 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             throw new LiveAppException($"{Name} is not connected");
         }
         byte[] frame = GodotMessage.Frame(name, thread, data);
-        await writing.WaitAsync();
+        AgentAsking? asking = Asking.Value;
+        CancellationToken giveUp = asking?.GiveUp ?? CancellationToken.None;
+        if (!writing.Wait(0))
+        {
+            Mcp.AgentCall.Say($"Waiting to tell {Name} {name}, as Passenger tells it something else");
+            try
+            {
+                await writing.WaitAsync(giveUp);
+            }
+            catch (OperationCanceledException) when (giveUp.IsCancellationRequested)
+            {
+                throw new LiveAppException(GivenUp(asking!, $"to tell it {name} behind another message that its connection had not taken"));
+            }
+        }
+        using CancellationTokenSource writes = CancellationTokenSource.CreateLinkedTokenSource(ending.Token, giveUp);
         try
         {
-            await open.WriteAsync(frame, ending.Token);
+            ValueTask written = open.WriteAsync(frame, writes.Token);
+            if (!written.IsCompleted)
+            {
+                Mcp.AgentCall.Say($"Telling {Name} {name}, which its connection has not yet taken");
+            }
+            await written;
+        }
+        catch (OperationCanceledException) when (giveUp.IsCancellationRequested)
+        {
+            open.Dispose();
+            throw new LiveAppException(GivenUp(asking!, $"for its connection to take {name}, which it would not: Passenger let go of the connection"));
         }
         catch (Exception lost) when (lost is IOException or SocketException or ObjectDisposedException or OperationCanceledException)
         {
@@ -479,12 +553,21 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     {
         long since = System.Diagnostics.Stopwatch.GetTimestamp();
         TimeSpan limit = Waits.Of(AnswerLimit);
+        AgentAsking? asking = Asking.Value;
+        Mcp.AgentCall.Say($"Waiting for {Name} to answer{(what is null ? string.Empty : $" {what}")}");
         try
         {
-            return await asked.WaitAsync(limit);
+            return await asked.WaitAsync(limit, asking?.GiveUp ?? CancellationToken.None);
+        }
+        catch (OperationCanceledException) when (asking is { GiveUp.IsCancellationRequested: true })
+        {
+            // Given up on, the question fails later only as the game ends, which no one is to hear.
+            UnawaitedWork.Dismiss(asked);
+            throw new LiveAppException(GivenUp(asking, $"for it to answer{(what is null ? string.Empty : $" {what}")}"));
         }
         catch (TimeoutException)
         {
+            UnawaitedWork.Dismiss(asked);
             if (Debugged is { State: Debugging.DebugState.Paused })
             {
                 throw new LiveAppException($"{Name} is paused, and answers once it runs");
