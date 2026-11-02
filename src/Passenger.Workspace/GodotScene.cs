@@ -132,6 +132,47 @@ public sealed class GodotFile
     /// <summary>The external resource of an id; null for none.</summary>
     public GodotExternal? External(string? id) => id is null ? null : Externals.FirstOrDefault(e => e.Id == id);
 
+    /// <summary>Every call of a name a value holds, at its top or inside its arrays, dictionaries and other calls but never
+    /// inside its strings (<c>SubResource("Box_x")</c> in <c>[SubResource("Box_x")]</c>), each with what its one argument
+    /// says (a string's characters, or an old file's number) and where that lies.</summary>
+    public IEnumerable<(string Argument, int Start, int End)> CallsIn(GodotValue value, string call)
+    {
+        int at = value.Start;
+        while (at < value.End)
+        {
+            if (Text[at] == '"')
+            {
+                at = Quoted(Text, at).Next;
+                continue;
+            }
+            bool named = string.CompareOrdinal(Text, at, call, 0, call.Length) == 0 && (at == 0 || !(char.IsLetterOrDigit(Text[at - 1]) || Text[at - 1] == '_'));
+            int open = SkipSpaces(Text, at + call.Length);
+            if (!named || open >= value.End || Text[open] != '(')
+            {
+                at++;
+                continue;
+            }
+            int argument = SkipSpaces(Text, open + 1);
+            if (argument < value.End && Text[argument] == '"')
+            {
+                (string said, int close, int next) = Quoted(Text, argument);
+                yield return (said, argument + 1, close);
+                at = next;
+                continue;
+            }
+            int digits = argument;
+            while (digits < value.End && char.IsDigit(Text[digits]))
+            {
+                digits++;
+            }
+            if (digits > argument)
+            {
+                yield return (Text[argument..digits], argument, digits);
+            }
+            at = Math.Max(digits, open + 1);
+        }
+    }
+
     /// <summary>The line (from zero) an offset is on.</summary>
     public int LineOf(int offset) => Math.Max(0, Sorted.FirstAfter<int>(lineStarts, offset) - 1);
 

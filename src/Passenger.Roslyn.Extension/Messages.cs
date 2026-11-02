@@ -515,6 +515,11 @@ public sealed record GodotSignature(
     /// <summary>The parameters' names, as C# writes them.</summary>
     [JsonPropertyName("names")]
     public IReadOnlyList<string> Names { get; init; } = [];
+
+    /// <summary>For a script's property a scene sets to a node by its path, the type that node must be (as
+    /// <see cref="GodotMember.Node"/> says); null for any other.</summary>
+    [JsonPropertyName("node")]
+    public GodotTypeRef? Node { get; init; }
 }
 
 /// <summary>What a fix of a Godot check makes in a script's class (the class whose <c>[ScriptPath]</c> is

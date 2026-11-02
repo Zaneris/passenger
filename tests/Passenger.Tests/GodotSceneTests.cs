@@ -110,6 +110,8 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         [ext_resource type="PackedScene" path="res://player.tscn" id="2_player"]
         [ext_resource type="Script" path="res://Hud.cs" id="3_hud"]
 
+        [sub_resource type="Theme" id="Theme_1"]
+
         [node name="Main" type="Node2D"]
         script = ExtResource("1_main")
         Speed = 2.5
@@ -123,6 +125,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         unique_name_in_owner = true
 
         [node name="Start" type="Button" parent="Hud"]
+        theme = SubResource("Theme_1")
 
         [node name="Player" parent="." instance=ExtResource("2_player")]
 
@@ -385,6 +388,101 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             TextSnapshot text = window.EditorArea.Active!.Text.Snapshot;
             Marker marker = window.EditorArea.Active.Markers.First(m => m.Message == typed);
             Assert.Equal("Display", text.GetText(marker.Range.Start, marker.Range.Length));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>An open scene marks where it sets an exported node to a node of another type than the script's member, or a
+    /// NodePath to no node, at the path, as the script's file marks it at the member; and a SubResource no sub_resource of the
+    /// file has, once typed so, where the one it has is not marked.</summary>
+    [AvaloniaFact]
+    public void An_open_scene_marks_a_node_path_set_to_a_node_of_another_type_or_to_none_and_an_unknown_sub_resource()
+    {
+        MainWindow window = game.Open(ScenePath);
+        try
+        {
+            string typed = "Main's Display takes a Label: 'Player' is a CharacterBody2D";
+            string missing = "Main's Target names no node: Hud has no child Gone";
+            Ui.WaitFor(() => Marked(window).Contains(typed) && Marked(window).Contains(missing),
+                () => $"the exported node of another type and the NodePath of no node to be marked in the scene: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
+            TextSnapshot text = window.EditorArea.Active!.Text.Snapshot;
+            Marker onType = window.EditorArea.Active.Markers.First(m => m.Message == typed);
+            Marker onPath = window.EditorArea.Active.Markers.First(m => m.Message == missing);
+            Assert.Equal(("Player", "Hud/Gone"), (text.GetText(onType.Range.Start, onType.Range.Length), text.GetText(onPath.Range.Start, onPath.Range.Length)));
+            Assert.DoesNotContain(Marked(window), m => m.Contains("sub_resource", StringComparison.Ordinal));
+
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            int at = text.ToString().IndexOf("Theme_1\")", StringComparison.Ordinal) + "Theme_".Length;
+            editor.Focus();
+            editor.Select(new TextRange(at, 1));
+            window.KeyTextInput("2");
+            string unknown = "No sub_resource of this file has the id \"Theme_2\"";
+            Ui.WaitFor(() => Marked(window).Contains(unknown), () => $"the SubResource of no sub_resource to be marked: {string.Join("; ", Marked(window))}");
+            text = window.EditorArea.Active.Text.Snapshot;
+            Marker onId = window.EditorArea.Active.Markers.First(m => m.Message == unknown);
+            Assert.Equal("Theme_2", text.GetText(onId.Range.Start, onId.Range.Length));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A handler taken out of its script on disk while the script is closed, by another program, marks the open scene's
+    /// connections to it, once the language server has read the script so.</summary>
+    [AvaloniaFact]
+    public void An_open_scene_marks_a_handler_taken_out_of_its_closed_script_on_disk()
+    {
+        MainWindow window = game.Open(ScenePath);
+        try
+        {
+            string wrong = "toggled gives 1 (bool), but OnStartPressed takes none";
+            Ui.WaitFor(() => Marked(window).Contains(wrong), () => $"the scene's connection of other arguments to be marked: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
+            string handled = "    private void OnStartPressed()\n    {\n    }\n\n";
+            Assert.Contains(handled, Script, StringComparison.Ordinal);
+            File.WriteAllText(ScriptPath, Script.Replace(handled, string.Empty, StringComparison.Ordinal));
+            string gone = "Main, a Node2D (Main.cs), has no method OnStartPressed";
+            Ui.WaitFor(() => Marked(window).Contains(gone) && !Marked(window).Contains(wrong),
+                () => $"the scene's connections to the handler taken out of Main.cs to be marked: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
+            Assert.Equal(2, window.EditorArea.Active!.Markers.Count(m => m.Message == gone));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A script moved in the Explorer takes the .uid beside it along, and the open scene its path; the scene is
+    /// checked against the script where it went (a connection of other arguments than its handler takes marked, no handler
+    /// said missing), and the script, opened there, against the scene (a GetNode path no node answers).</summary>
+    [AvaloniaFact]
+    public void A_script_moved_with_its_uid_in_the_explorer_is_followed_by_its_scene_and_checked_where_it_went()
+    {
+        MainWindow window = game.Open(ScenePath);
+        try
+        {
+            string wrong = "toggled gives 1 (bool), but OnStartPressed takes none";
+            Ui.WaitFor(() => Marked(window).Contains(wrong), () => $"the scene's connection of other arguments to be marked: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Choose(window, ScriptPath);
+            Ui.Run(window, EditorActions.Cut);
+            Choose(window, game.PathOf("actors"));
+            Ui.Run(window, EditorActions.Paste);
+            string moved = game.PathOf(Path.Combine("actors", "Main.cs"));
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.WaitFor(() => File.Exists(moved) && editor.Document.Snapshot.ToString().Contains("path=\"res://actors/Main.cs\"", StringComparison.Ordinal),
+                () => $"the scene to follow its script's move ({window.Status}): {editor.Document.Snapshot}");
+            Assert.True(File.Exists(moved + ".uid") && !File.Exists(ScriptPath + ".uid"), "The script's .uid did not go with it to actors");
+            Assert.Equal("uid://cmain1", File.ReadAllText(moved + ".uid").Trim());
+            Ui.WaitFor(() => Marked(window).Contains(wrong) && !Marked(window).Any(m => m.Contains("has no method OnStartPressed", StringComparison.Ordinal)),
+                () => $"the scene to be checked against the script where it went: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
+
+            window.OpenFile(moved);
+            string lost = $"main.tscn:{LineOf(Scene, "[node name=\"Main\"")} has no node 'Hud/Scor' under Main: Hud has no child Scor";
+            Ui.WaitFor(() => Marked(window).Contains(lost), () => $"the moved script to be checked against its scene: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
         }
         finally
         {

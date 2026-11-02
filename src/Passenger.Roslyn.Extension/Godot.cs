@@ -141,11 +141,7 @@ internal static partial class GodotSource
             if (Declared(member) is { } at)
             {
                 ITypeSymbol of = (member as IPropertySymbol)?.Type ?? ((IFieldSymbol)member).Type;
-                // A NodePath names any node; a node's type, a node of it.
-                GodotTypeRef? node = of is INamedTypeSymbol { Name: "NodePath", ContainingNamespace.Name: Namespace } && engine.Type("Node") is { } any ? engine.Ref(any)
-                    : of is INamedTypeSymbol given && engine.Type("Node") is { } nodes && (SymbolEqualityComparer.Default.Equals(given, nodes) || Derives(given, nodes)) ? engine.Ref(given)
-                    : null;
-                exports.Add(new GodotMember(member.Name, of.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), at.Path, at.At, at.End) { Node = node });
+                exports.Add(new GodotMember(member.Name, of.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), at.Path, at.At, at.End) { Node = NodeOf(engine, of) });
             }
         }
         List<GodotMember> signals = [];
@@ -253,15 +249,18 @@ internal static partial class GodotSource
     }
 
     /// <summary>A property on a node Godot's Get and Set name: its script's property or field of the name (in its class or a
-    /// base of the code's), else its engine class's by the snake_case name; its type as its one parameter.</summary>
+    /// base of the code's), else its engine class's by the snake_case name; its type as its one parameter, and for a script's
+    /// own the node it names by its path where it is one (<see cref="NodeOf"/>).</summary>
     private static GodotSignature? Property(Engine engine, INamedTypeSymbol? script, string? engineClass, string name)
     {
         for (INamedTypeSymbol? type = script; type is not null && !engine.Owns(type); type = type.BaseType)
         {
             if (type.GetMembers(name).FirstOrDefault(m => m is IPropertySymbol or IFieldSymbol && !m.IsImplicitlyDeclared) is { } own)
             {
-                string shown = ((own as IPropertySymbol)?.Type ?? ((IFieldSymbol)own).Type).ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
-                return Declared(own) is { } at ? new GodotSignature(name, [shown], 0, at.Path, at.At, at.End) : new GodotSignature(name, [shown], 0, null, null, null);
+                ITypeSymbol of = (own as IPropertySymbol)?.Type ?? ((IFieldSymbol)own).Type;
+                string shown = of.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+                return (Declared(own) is { } at ? new GodotSignature(name, [shown], 0, at.Path, at.At, at.End) : new GodotSignature(name, [shown], 0, null, null, null))
+                    with { Node = NodeOf(engine, of) };
             }
         }
         string wanted = Plain(name);
@@ -274,6 +273,13 @@ internal static partial class GodotSource
         }
         return null;
     }
+
+    /// <summary>The node a member of a type names by its path where a scene sets it: a NodePath's any node, a node type's a
+    /// node of that type; null for any other type.</summary>
+    private static GodotTypeRef? NodeOf(Engine engine, ITypeSymbol of) =>
+        of is INamedTypeSymbol { Name: "NodePath", ContainingNamespace.Name: Namespace } && engine.Type("Node") is { } any ? engine.Ref(any)
+        : of is INamedTypeSymbol given && engine.Type("Node") is { } nodes && (SymbolEqualityComparer.Default.Equals(given, nodes) || Derives(given, nodes)) ? engine.Ref(given)
+        : null;
 
     /// <summary>A signal's or method's parameters, and how many a call must give: every one of a script's method (Godot calls
     /// it with exactly as many), those without a default of an engine's; with where it is declared in the code.</summary>

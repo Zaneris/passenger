@@ -130,6 +130,45 @@ public class GodotChecksTests
         Assert.Equal("Main, a Node2D (Main.cs), has no property Lives, so Godot drops its value", scene.Message);
     }
 
+    /// <summary>A node path a scene sets on a script's property that names a node of another type than the property's, or
+    /// no node, is an error at the path; one the property takes is not.</summary>
+    [Fact]
+    public void A_scene_marks_a_node_path_it_sets_that_names_no_node_or_one_of_another_type()
+    {
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Scene.Replace("script = ExtResource(\"1\")\n",
+            "script = ExtResource(\"1\")\nDisplay = NodePath(\"Hud\")\nScore = NodePath(\"Hud/Score\")\nTarget = NodePath(\"Hud/Gone\")\n", StringComparison.Ordinal)) });
+        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/Main.cs", scenes, "res://main.tscn");
+        Assert.Equal(["Display", "Score", "Target"], asked.Properties.Select(p => p.Name));
+        GodotTypeRef label = new("Label", true, "Label");
+        GodotCodeFound found = Found(asked, [], methods: [new GodotSignature("OnPressed", [], 0, null, null, null), new GodotSignature("OnToggled", ["bool", "string"], 2, null, null, null)])
+            with { Properties = [.. new[] { label, label, new GodotTypeRef("Node", true, "Node") }.Select(n => new GodotSignature("x", ["Node"], 0, null, null, null) { Node = n })] };
+        string text = scenes.Files["res://main.tscn"].Text;
+        Assert.Equal([("Hud", "Main's Display takes a Label: 'Hud' is a CanvasLayer (Hud.cs)"), ("Hud/Gone", "Main's Target names no node: Hud has no child Gone")],
+            GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, found, _ => true).Select(f => (text[f.Start..f.End], f.Message)));
+    }
+
+    /// <summary>A SubResource no sub_resource of the file has is an error at its id, inside an array too; one the file has, and
+    /// the words of one inside a string, are not.</summary>
+    [Fact]
+    public void A_scene_marks_a_sub_resource_id_it_has_no_sub_resource_of()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [sub_resource type="RectangleShape2D" id="Box_a"]
+
+            [node name="Main" type="Area2D"]
+            shape = SubResource("Box_a")
+            shapes = [SubResource("Box_b"), "SubResource(\"Box_c\")"]
+            old = SubResource( 3 )
+
+            """;
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) });
+        Assert.Equal([("Box_b", "No sub_resource of this file has the id \"Box_b\""), ("3", "No sub_resource of this file has the id \"3\"")],
+            GodotChecks.SceneFindings(scenes, "res://main.tscn", GodotChecks.SceneAsks("/game/Main.cs", scenes, "res://main.tscn"), GodotCodeFound.None, _ => true)
+                .Select(f => (scene[f.Start..f.End], f.Message)));
+    }
+
     [Theory]
     [InlineData("true", "bool")]
     [InlineData("-3", "int")]

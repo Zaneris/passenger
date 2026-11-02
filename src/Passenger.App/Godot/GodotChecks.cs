@@ -131,10 +131,10 @@ internal static class GodotChecks
     }
 
     /// <summary>What is wrong in a scene or resource as Godot would load it, by what the extension answered of its connections
-    /// (<see cref="SceneAsks"/>): an external resource whose file is not there, an ExtResource no external resource of the
-    /// file has, a node whose parent is not in the scene (which Godot drops), a connection's end no node answers, and a
-    /// connection to a method its receiving node lacks, from a signal its sending node lacks, or of other arguments than the
-    /// method takes; a node whose script is not C# is never said to lack a member, which its script may give it.</summary>
+    /// and properties (<see cref="SceneAsks"/>): an external resource whose file is not there, an ExtResource or SubResource no
+    /// resource of the file has, a node whose parent is not in it, a connection's end no node answers, or whose method or signal
+    /// its node lacks, or of other arguments, a property a node's C# script lacks, or a node path it sets naming no node or one
+    /// of another type; a node whose script is not C# is never said to lack a member, which its script may give it.</summary>
     public static IReadOnlyList<SceneFinding> SceneFindings(GodotScenes scenes, string scene, GodotCodeRequest asked, GodotCodeFound found, Func<string, bool> exists)
     {
         List<SceneFinding> findings = [];
@@ -156,6 +156,7 @@ internal static class GodotChecks
                 findings.Add(new SceneFinding(uidValue.TextStart, uidValue.TextEnd, false, $"{external.Uid} is {byUid}, which Godot loads in place of {written}"));
             }
         }
+        HashSet<string> subResources = [.. file.Sections.Where(s => s.Tag == "sub_resource").Select(s => s.Text("id")).OfType<string>()];
         foreach (GodotSection section in file.Sections)
         {
             foreach (GodotEntry entry in section.Attributes.Concat(section.Properties))
@@ -163,6 +164,10 @@ internal static class GodotChecks
                 if (entry.Value is { Call: "ExtResource", Text: { } id } value && file.External(id) is null && section.Tag != "ext_resource")
                 {
                     findings.Add(new SceneFinding(value.TextStart, value.TextEnd, true, $"No ext_resource of this file has the id \"{id}\""));
+                }
+                foreach ((string sub, int start, int end) in file.CallsIn(entry.Value, "SubResource").Where(c => !subResources.Contains(c.Argument)))
+                {
+                    findings.Add(new SceneFinding(start, end, true, $"No sub_resource of this file has the id \"{sub}\""));
                 }
             }
         }
@@ -224,12 +229,38 @@ internal static class GodotChecks
                         Offer = ExportOffer(scenes, node, file, property),
                     });
                 }
+                else if (at >= 0 && at < found.Properties.Count && found.Properties[at] is { Node: { } wanted } && NodeSet(node, property, wanted, found) is { } finding)
+                {
+                    findings.Add(finding);
+                }
             }
         }
         return findings;
 
         // A node whose members the code says: one with no script, of a known engine class, or one with a C# script.
         static bool Known(GodotTreeNode? node) => node is not null && (node.Script is null ? node.Type is not null : IsCSharp(node.Script));
+    }
+
+    /// <summary>A scene's value of a script's property that names a node by its path (an exported NodePath, a node's type)
+    /// that no node answers from the node it is set on, or that names a node not of the property's type: at the path, as
+    /// the script's file says it at the member; null where it holds, or the scene does not say.</summary>
+    private static SceneFinding? NodeSet(GodotTreeNode node, GodotEntry property, GodotTypeRef wanted, GodotCodeFound found)
+    {
+        if (property.Value is not { Call: "NodePath", Text: { Length: > 0 } path } value || GodotScenes.Resolve(node, path) is not { Unknown: false } resolved)
+        {
+            return null;
+        }
+        if (resolved.Found is not { } target)
+        {
+            (int start, int end) = resolved.Missing!.Value;
+            string name = path[start..end];
+            string under = resolved.Reached?.Name ?? node.Name;
+            return new SceneFinding(value.TextStart, value.TextEnd, true,
+                $"{node.Name}'s {property.Key} names no node: {under} has no {(name.StartsWith('%') ? $"unique node {name[1..]}" : $"child {name}")}");
+        }
+        return Fits(wanted, target, found) == false
+            ? new SceneFinding(value.TextStart, value.TextEnd, true, $"{node.Name}'s {property.Key} takes {Article(wanted.Shown)}: '{path}' is {Article(Shown(target))}")
+            : null;
     }
 
     public static GodotMemberAsked SignalAsked(Connected connected) =>
