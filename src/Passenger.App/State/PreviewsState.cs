@@ -3,12 +3,15 @@ using System.Text.Json.Nodes;
 namespace Passenger.App.State;
 
 /// <summary>Which kinds of file show their preview beside their editor, in the store's previews.json, as the person left
-/// them, every folder alike: a Markdown file's and an SVG's on until turned off, a XAML file's off until turned on.</summary>
+/// them, every folder alike: a Markdown file's and an SVG's on until turned off, a XAML file's and an HTML file's (whose
+/// page runs its scripts) off until turned on.</summary>
 public sealed record PreviewsState : IStateDocument<PreviewsState>
 {
     public bool Markdown { get; init; } = true;
 
     public bool Svg { get; init; } = true;
+
+    public bool Html { get; init; }
 
     public bool Xaml { get; init; }
 

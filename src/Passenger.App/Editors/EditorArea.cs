@@ -135,6 +135,22 @@ public sealed partial class EditorArea : UserControl
         }
     }
 
+    private bool showsHtmlPreview;
+
+    /// <summary>Whether an HTML file shows its page beside its editor, in every group showing one.</summary>
+    public bool ShowsHtmlPreview
+    {
+        get => showsHtmlPreview;
+        set
+        {
+            showsHtmlPreview = value;
+            foreach (EditorGroup group in AllGroups)
+            {
+                group.FollowSidePreview();
+            }
+        }
+    }
+
     /// <summary>Whether a file is an SVG, which shows its picture beside its text.</summary>
     public static bool IsSvg(OpenDocument document) => document.Path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
 

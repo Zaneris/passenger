@@ -34,6 +34,8 @@
     <PackageVersion Include="Avalonia" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.4" />
+    <!-- An HTML file's preview beside its text, the system's own web view (MIT since it left Accelerate, at 11.4.0). -->
+    <PackageVersion Include="Avalonia.Controls.WebView" Version="12.1.1" />
     <PackageVersion Include="Avalonia.HarfBuzz" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Headless" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Skia" Version="12.1.4" />

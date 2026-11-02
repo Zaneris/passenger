@@ -52,6 +52,8 @@
     <PackageReference Include="NuGet.Configuration" />
     <!-- JoinableTaskFactory, which runs async work to its end where a caller must stay synchronous (Synchronously.cs). -->
     <PackageReference Include="Microsoft.VisualStudio.Threading.Only" />
+    <!-- An HTML file's preview beside its text, in the system's own web view (Editors/HtmlPreview.cs). -->
+    <PackageReference Include="Avalonia.Controls.WebView" />
     <!-- An SVG file's picture beside its text (Editors/SvgPreview.cs). -->
     <PackageReference Include="Svg.Skia" />
     <!-- The Windows install's hooks: what its installer and uninstaller ask of Passenger.exe (Installation.cs). -->

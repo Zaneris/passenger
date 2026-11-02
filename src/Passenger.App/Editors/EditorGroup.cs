@@ -213,13 +213,19 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The group's own picture of its SVG file, made as it first shows one.</summary>
     private SvgPreview? svg;
 
+    /// <summary>The group's own page of its HTML file, made as it first shows one.</summary>
+    private HtmlPreview? html;
+
+    /// <summary>The page beside the editor while it shows one of an HTML file, else null.</summary>
+    public HtmlPreview? Html => Side as HtmlPreview;
+
     /// <summary>The preview beside the editor while it shows one of a Markdown file, else null.</summary>
     public MarkdownPreview? Markdown => Side as MarkdownPreview;
 
     /// <summary>The picture beside the editor while it shows one of an SVG file, else null.</summary>
     public SvgPreview? Svg => Side as SvgPreview;
 
-    /// <summary>A Markdown or SVG file shown in the editor has its preview beside it while the area shows that kind's
+    /// <summary>A Markdown, SVG or HTML file shown in the editor has its preview beside it while the area shows that kind's
     /// previews, and its toggle on the strip either way; any other file neither.</summary>
     internal void FollowSidePreview()
     {
@@ -257,19 +263,34 @@ public sealed class EditorGroup : DockPanel
             }
             svg?.Show(null);
         }
+        if (document?.Language == Languages.Language.Html && area.ShowsHtmlPreview)
+        {
+            html ??= new HtmlPreview(area);
+            Side = html;
+            html.Show(document);
+        }
+        else
+        {
+            if (Side is HtmlPreview)
+            {
+                Side = null;
+            }
+            html?.Show(null);
+        }
     }
 
     /// <summary>The action the strip's preview toggle runs for the file shown, null while it shows none.</summary>
     public string? PreviewAction { get; private set; }
 
-    /// <summary>The strip's preview toggle shows for a Markdown file, an SVG or a XAML file the previewer draws, pressed
-    /// while that kind's preview is on, its tip naming the action it runs.</summary>
+    /// <summary>The strip's preview toggle shows for a Markdown file, an SVG, an HTML file or a XAML file the previewer
+    /// draws, pressed while that kind's preview is on, its tip naming the action it runs.</summary>
     internal void FollowPreviewToggle()
     {
         OpenDocument? document = active is { } shown && InEditor(shown.Document) ? shown.Document : null;
         (string Action, string Title, bool On)? toggle = document is null ? null
             : document.Language == Languages.Language.Markdown ? (AppActions.MarkdownPreview, "Markdown Preview", area.ShowsMarkdownPreview)
             : EditorArea.IsSvg(document) ? (AppActions.SvgPreview, "SVG Preview", area.ShowsSvgPreview)
+            : document.Language == Languages.Language.Html ? (AppActions.HtmlPreview, "HTML Preview", area.ShowsHtmlPreview)
             : area.HasXamlPreview(document) ? (AppActions.XamlPreview, "XAML Preview", area.ShowsXamlPreview)
             : null;
         PreviewAction = toggle?.Action;

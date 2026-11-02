@@ -26,6 +26,7 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 | `Microsoft.Extensions.Logging.Abstractions` | gRPC client's logging contracts | MIT | © Microsoft Corporation. All rights reserved. |
 | The .NET runtime (`Microsoft.NETCore.App`) | the app and the debugger are self-contained; Roslyn's server runs on the installed .NET | MIT | © Microsoft Corporation. All rights reserved. |
 | `Avalonia`, `Avalonia.Desktop`, `Avalonia.Native`, `Avalonia.Win32`, `Avalonia.X11`, `Avalonia.FreeDesktop`, `Avalonia.FreeDesktop.AtSpi`, `Avalonia.Remote.Protocol`, `Avalonia.Themes.Fluent`, `Avalonia.Skia`, `Avalonia.HarfBuzz`, `Avalonia.Headless` | the UI, and the headless platform the screenshots draw on | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
+| `Avalonia.Controls.WebView` | an HTML file's preview beside its text, in the system's own web view (WebView2, WKWebView, WebKitGTK) | MIT | Copyright 2019-2026 © AvaloniaUI OÜ |
 | `Avalonia.Fonts.Inter` | the Inter typeface, itself under the SIL Open Font License 1.1, Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter) | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
 | `Avalonia.Angle.Windows.Natives` | ANGLE's OpenGL ES (`av_libglesv2.dll`), Windows only | BSD-3-Clause (the package's LICENSE) | Copyright 2018 The ANGLE Project Authors |
 | `MicroCom.Runtime` | Avalonia's COM interop | MIT | Copyright 2021 © Nikita Tsukanov |

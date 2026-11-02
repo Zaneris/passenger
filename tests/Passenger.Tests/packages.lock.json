@@ -539,6 +539,7 @@
         "type": "Project",
         "dependencies": {
           "Avalonia": "[12.1.4, )",
+          "Avalonia.Controls.WebView": "[12.1.1, )",
           "Avalonia.Desktop": "[12.1.4, )",
           "Avalonia.Fonts.Inter": "[12.1.4, )",
           "Avalonia.HarfBuzz": "[12.1.4, )",
@@ -669,6 +670,15 @@
           "Avalonia.BuildServices": "11.3.2",
           "Avalonia.Remote.Protocol": "12.1.4",
           "MicroCom.Runtime": "0.11.6"
+        }
+      },
+      "Avalonia.Controls.WebView": {
+        "type": "CentralTransitive",
+        "requested": "[12.1.1, )",
+        "resolved": "12.1.1",
+        "contentHash": "QrzIoII70cs+dudUWCstZSYuY2Y6y5fh9aI943bEfre28TTJxPSypunlsekr/0xa5YHm9SDaywmn+Mj0lPOspg==",
+        "dependencies": {
+          "Avalonia": "12.0.0"
         }
       },
       "Avalonia.Desktop": {
