@@ -371,10 +371,15 @@ public sealed class DebugController : IDisposable
     /// changes.</summary>
     public string? WhyNotApply() => NotLive()
         ?? (Reloaded!.Session!.State == DebugState.Starting ? StillStarting
+        : Reloaded.Session.Engine == DebugEngine.WebAssembly ? BrowserReload
         : hotReload is null ? (Reloaded.Session.Attached
             ? "Hot Reload applies changes to a program the debugger launched, not to one it attached to"
             : $"This program was launched with Hot Reload when debugging off ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})")
         : hotReload.WhyNot);
+
+    /// <summary>Why the debugger in the browser applies no Hot Reload changes.</summary>
+    public const string BrowserReload = "Hot Reload of a Blazor app's WebAssembly half comes through dotnet watch's browser refresh, not the debugger in the browser: "
+        + "Run the app with Hot Reload to have its page take changes";
 
     /// <summary>Apply Hot Reload Changes to the chosen program debugged with Hot Reload and its group, restarting none.</summary>
     public async Task<HotReloadOutcome> ApplyChangesAsync() => (await ApplyAsync(Debugged(), null)).Outcome;
@@ -751,6 +756,43 @@ public sealed class DebugController : IDisposable
             ColumnOf, starting), plan.Name, launched: true, inTerminal: inTerminal is not null, plan: plan);
     }
 
+    /// <summary>What a Blazor app's WebAssembly tab is called after the app's own.</summary>
+    public static string BrowserTab(string name) => $"{name} (WebAssembly)";
+
+    /// <summary>Where each folder's browser profile for debugging is kept: its own place in the state.</summary>
+    private string BrowserProfiles => Folder is { } open ? Passenger.App.State.ProjectState.FolderOf(Passenger.App.State.StateStore.DefaultRoot, open)
+        : Path.Combine(Passenger.App.State.StateStore.DefaultRoot, "cache");
+
+    /// <summary>Debugs a Blazor Web App's WebAssembly half beside its server: a session of its own in a Chromium browser
+    /// (<see cref="WebAssemblyAdapter"/>), in a tab beside the server's (<see cref="DebugTab.Companion"/>), which stays
+    /// chosen until the page stops; Stop there stops the app, as Stop of the server does. Null once the session is open,
+    /// else why not.</summary>
+    public Task<string?> DebugBrowserAsync(Run.LaunchPlan plan, BrowserDebugging browser)
+    {
+        UiThread.Check();
+        string name = plan.Name;
+        DebugTab? companion = view.Sessions.FirstOrDefault(t => t.Name == name && t.IsLive);
+        InProcessEnd end = new($"WebAssembly adapter of {name}");
+        WebAssemblyAdapter adapter = new(browser, BrowserProfiles, name, end, () => StopAsync(name));
+        adapter.Start();
+        return OpenAsync((built, log, output, starting) => DebugSession.AttachInProcessAsync(end, DebugEngine.WebAssembly, BrowserTab(name), Breakpoints, built, log, output,
+            ColumnOf, starting), BrowserTab(name), launched: false, companion: companion, inBrowser: (browser.Projects, plan.Project!),
+            attachedWords: $"{name}'s components in the browser are debugged here, in {browser.Browser.Name}; what the server writes is in {name}'s tab");
+    }
+
+    /// <summary>Debugs a standalone Blazor WebAssembly app in a Chromium browser: its WebAssembly session, in a tab of the
+    /// plan's name, launches the development server itself (<see cref="WebAssemblyAdapter"/>), its console the server's
+    /// output and the page's, and Stop there ends both. Null once the session is open, else why not.</summary>
+    public Task<string?> LaunchBrowserAsync(Run.LaunchPlan plan, BrowserDebugging browser)
+    {
+        UiThread.Check();
+        InProcessEnd end = new($"WebAssembly adapter of {plan.Name}");
+        WebAssemblyAdapter adapter = new(browser, BrowserProfiles, plan.Name, end, null);
+        adapter.Start();
+        return OpenAsync((built, log, output, starting) => DebugSession.LaunchInProcessAsync(end, DebugEngine.WebAssembly, plan, Breakpoints, built, log, output, null,
+            ColumnOf, starting), plan.Name, launched: true, plan: plan, inBrowser: (browser.Projects, plan.Project!));
+    }
+
     /// <summary>Launches another program in a native tab, with hooks installed before its adapter starts.</summary>
     public Task<DebugLaunch> StartAdditionalAsync(Run.LaunchPlan plan, CancellationToken cancellation = default, Action<DebugTab>? configure = null)
         => OpenAdditionalAsync(plan.Name, tab => StartInTabAsync(plan, tab: tab), null, cancellation, configure);
@@ -843,7 +885,7 @@ public sealed class DebugController : IDisposable
     private async Task<string?> OpenAsync(Func<BuiltLines, Action<string>, Action<OutputEvent>, Action<DebugSession>, Task<DebugSession>> open, string name, bool launched,
         bool inTerminal = false, bool hotReloadOn = false, AdapterPlace? place = null, string? group = null, DebugTab? tab = null, LiveApp? app = null,
         Run.LaunchPlan? plan = null, BuiltEdits? edits = null, UpdateHandlerHook? hook = null, DebugTab? companion = null, string? attachedWords = null,
-        BrowserRefresh? browser = null, string? unkept = null)
+        BrowserRefresh? browser = null, string? unkept = null, (IReadOnlyList<string> Projects, string Program)? inBrowser = null)
     {
         UiThread.Check();
         // A start that opens no session lets go of its update handlers' hook and its pages' refresh with it.
@@ -971,7 +1013,7 @@ public sealed class DebugController : IDisposable
             {
                 starting = made;
                 tab.Session = made;
-                made.InBrowser = plan is { InBrowser.Count: > 0, Project: { } project } ? (plan.InBrowser, project) : null;
+                made.InBrowser = inBrowser ?? (plan is { InBrowser.Count: > 0, Project: { } project, Browser: null } ? (plan.InBrowser, project) : null);
                 if (disposed || ending || tab.OpeningStopped || !view.Sessions.Contains(tab))
                 {
                     // Stopped as its adapter started, before there was a session to stop: its start fails as one stopped.

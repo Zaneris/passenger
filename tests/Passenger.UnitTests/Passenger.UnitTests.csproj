@@ -43,6 +43,12 @@
     <Compile Include="../../src/Passenger.App/HandedLaunch.cs" Link="App/HandedLaunch.cs" />
   </ItemGroup>
 
+  <!-- What .NET's browser debug proxy says of a stop and its values, read as JSON alone, compiled in since its project is
+       the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Debugging/WebAssemblyValues.cs" Link="App/WebAssemblyValues.cs" />
+  </ItemGroup>
+
   <!-- Where an AppHost's dashboard is called from where it listens, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Aspire/DashboardAddress.cs" Link="App/DashboardAddress.cs" />

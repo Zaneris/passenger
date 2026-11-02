@@ -218,6 +218,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// first on the PATH as the login shell finds it.</summary>
     public string? NodeInterpreter { get; init; }
 
+    /// <summary>The Chromium browser a Blazor app's WebAssembly half is debugged in, with arguments given every start of it,
+    /// as one command line; null for the one found (<see cref="Passenger.Core.ChromiumBrowsers"/>).</summary>
+    public string? DebugBrowser { get; init; }
+
     /// <summary>The Godot a Godot project's game and editor run on, with arguments given every start of it, as one command
     /// line; null for the one found (<see cref="Passenger.Core.GodotExecutables"/>).</summary>
     public string? GodotExecutable { get; init; }

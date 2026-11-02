@@ -15,12 +15,14 @@ public enum DebugState
     Ended,
 }
 
-/// <summary>The debugger a session's adapter is: Passenger's own engine, for .NET's code, or a Godot game's GDScript, over
-/// the game's own connection (<see cref="Godot.GodotScriptAdapter"/>).</summary>
+/// <summary>The debugger a session's adapter is: Passenger's own engine, for .NET's code, a Godot game's GDScript, over
+/// the game's own connection (<see cref="Godot.GodotScriptAdapter"/>), or a Blazor app's WebAssembly half, in a Chromium
+/// browser through .NET's browser debug proxy (<see cref="WebAssemblyAdapter"/>).</summary>
 public enum DebugEngine
 {
     Managed,
     GDScript,
+    WebAssembly,
 }
 
 /// <summary>One program under the debugger: the adapter's process (debugger/ beside the app), the
@@ -39,9 +41,9 @@ public sealed class DebugSession
     private const string NotLoaded = "Its line was written after the game loaded its script: save it with Hot Reload on, and the game reloads it";
 
     /// <summary>The projects of the program debugged whose code runs in the browser on .NET's WebAssembly runtime (their project
-    /// files), and the program's own project, from its plan (<see cref="Run.LaunchPlan.InBrowser"/>): a breakpoint in their
-    /// files says it stops only where the program runs their code itself, or never where the program is their development
-    /// server.</summary>
+    /// files), and the program's own project, from its plan (<see cref="Run.LaunchPlan.InBrowser"/>): a WebAssembly session
+    /// takes their files' breakpoints; where no browser debugs them, a breakpoint in their files says it stops only where the
+    /// program runs their code itself, or never where the program is their development server.</summary>
     public (IReadOnlyList<string> Projects, string Program)? InBrowser { get; set; }
 
     /// <summary>The project of <see cref="InBrowser"/> whose own folders hold a file, if one does.</summary>
@@ -251,9 +253,15 @@ public sealed class DebugSession
     /// <summary>Which debugger its adapter is, and so which files' breakpoints it is sent (<see cref="Takes"/>).</summary>
     public DebugEngine Engine { get; }
 
-    /// <summary>Whether a file's breakpoints go to this session's adapter: a GDScript file's to a GDScript session, every other
-    /// file's to Passenger's engine.</summary>
-    public bool Takes(string path) => (Engine == DebugEngine.GDScript) == Godot.GodotScriptAdapter.Takes(path);
+    /// <summary>Whether a file's breakpoints go to this session's adapter: a GDScript file's to a GDScript session, a file of
+    /// the projects a WebAssembly session's browser runs to it, every other file's (and a Blazor Web App's client's, whose
+    /// components its server prerenders) to Passenger's engine.</summary>
+    public bool Takes(string path) => Engine switch
+    {
+        DebugEngine.GDScript => Godot.GodotScriptAdapter.Takes(path),
+        DebugEngine.WebAssembly => InBrowser is { } inBrowser && WebAssemblyAdapter.Takes(inBrowser.Projects, path),
+        _ => !Godot.GodotScriptAdapter.Takes(path),
+    };
 
     public DebugState State { get; private set; } = DebugState.Starting;
 
@@ -432,7 +440,7 @@ public sealed class DebugSession
             {
                 ClientId = "passenger",
                 ClientName = "Passenger",
-                AdapterId = engine == DebugEngine.GDScript ? "gdscript" : "coreclr",
+                AdapterId = engine switch { DebugEngine.GDScript => "gdscript", DebugEngine.WebAssembly => "webassembly", _ => "coreclr" },
                 LinesStartAt1 = true,
                 ColumnsStartAt1 = true,
                 PathFormat = "path",
@@ -942,7 +950,7 @@ public sealed class DebugSession
         // Muted, none is sent and each is as no debugger has said, though Run to Cursor's place still is.
         IEnumerable<LineBreakpoint> sending = breakpoints.Muted ? [] : breakpoints.In(path).Where(b => b.Enabled);
         // A WebAssembly app's own code never runs where its development server is debugged: none of it is sent.
-        string? browser = BrowserProjectOf(path);
+        string? browser = Engine == DebugEngine.Managed ? BrowserProjectOf(path) : null;
         string? neverHit = browser is not null && InBrowser is { } inBrowser && PathNames.Same(browser, inBrowser.Program) ? Run.LaunchPlan.NeverHitInBrowser(browser) : null;
         List<LineBreakpoint> built = [.. sending.Where(b => neverHit is null && lines.IsBuilt(path, b.Line))];
         List<LineBreakpoint> unbuilt = [.. sending.Where(b => neverHit is not null || !lines.IsBuilt(path, b.Line))];
@@ -1404,7 +1412,7 @@ public sealed class DebugSession
     {
         (BreakpointStatus status, string? message, int? line) = Status(breakpoint);
         // A Blazor Web App's client code stops only where its server runs it, which the debugger cannot tell from the browser's.
-        if (status != BreakpointStatus.Invalid && BrowserProjectOf(path) is { } client && InBrowser is { } inBrowser)
+        if (status != BreakpointStatus.Invalid && Engine == DebugEngine.Managed && BrowserProjectOf(path) is { } client && InBrowser is { } inBrowser)
         {
             message = Run.LaunchPlan.HitOnlyOnServer(client, inBrowser.Program);
         }

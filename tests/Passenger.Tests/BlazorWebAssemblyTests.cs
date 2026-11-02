@@ -10,11 +10,11 @@ using Passenger.Workspace;
 namespace Passenger.Tests;
 
 /// <summary>Blazor's WebAssembly apps as the SDK's templates make them: a standalone app runs through the development server
-/// its project's RunCommand names, answering HTTP, and Debug runs it so too, saying its components in the browser are not
-/// debugged, a component's breakpoint saying it is never hit and Problems listing it; a Blazor Web App's client is no
-/// configuration of its own, and Debug of the app says the client is not debugged; New Project offers the standalone app no
-/// container or Aspire set-up. Its packages come from the package cache tests/BlazorGraphs fills, never nuget.org.
-/// Debugged through the window, so run alone.</summary>
+/// its project's RunCommand names, answering HTTP, and with no browser to debug it in Debug runs it so too, saying its
+/// components in the browser are not debugged, a component's breakpoint saying it is never hit and Problems listing it; a
+/// Blazor Web App's client is no configuration of its own, and a plan of the app no Debug started says the client is not
+/// debugged; New Project offers the standalone app no container or Aspire set-up. Its packages come from the package cache
+/// tests/BlazorGraphs fills, never nuget.org. Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class BlazorWebAssemblyTests : IDisposable
 {
@@ -26,7 +26,7 @@ public sealed class BlazorWebAssemblyTests : IDisposable
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(3);
 
     [AvaloniaFact]
-    public void A_standalone_app_runs_and_debugs_through_its_development_server_saying_its_components_in_the_browser_are_not_debugged()
+    public void A_standalone_app_runs_and_with_no_browser_debugs_through_its_development_server_saying_its_components_in_the_browser_are_not_debugged()
     {
         Make("blazorwasm", "Wasm");
         int port = AspireApp.FreePort();
@@ -40,6 +40,8 @@ public sealed class BlazorWebAssemblyTests : IDisposable
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
+            string nowhere = Path.Combine(folder, "no-browser", "chrome");
+            window.ApplySettings(window.Settings with { DebugBrowser = nowhere });
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Wasm: http"), () => $"Wasm's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
                 TimeSpan.FromMinutes(2));
             Assert.True(window.SelectConfiguration("Wasm: http"));
@@ -61,15 +63,16 @@ public sealed class BlazorWebAssemblyTests : IDisposable
             try
             {
                 Ui.WaitFor(() => window.Debugger.Session?.State is DebugState.Running or DebugState.Ended, "the development server to run under the debugger", TimeSpan.FromMinutes(1));
-                const string notDebugged = "Wasm's components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet, so their breakpoints are not hit: "
-                    + "only the development server that serves them runs under the debugger";
+                string notDebugged = "Wasm's components run in the browser on .NET's WebAssembly runtime, and their breakpoints are not hit: "
+                    + $"only the development server that serves them runs under the debugger. Settings | Run › Browser for WebAssembly names {nowhere} as the browser to debug "
+                    + "them in, and there is no program there: name a Chromium browser that is, or install Google Chrome (google.com/chrome) or Microsoft Edge (microsoft.com/edge)";
                 Answers(window, port, () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString());
                 Assert.Contains(notDebugged, window.BottomPanel.Debug.Console.Document.Snapshot.ToString(), StringComparison.Ordinal);
                 Assert.True(window.Debugger.Summary?.EndsWith($"running; {notDebugged}", StringComparison.Ordinal) == true,
                     $"Debug's state did not say what it cannot debug: {window.Debugger.Summary}");
 
                 // The component's breakpoint says it is never hit, and Problems lists it at its line.
-                const string neverHit = "Wasm's components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet: only the development "
+                const string neverHit = "Wasm's components run in the browser on .NET's WebAssembly runtime, and no browser debugs them this time: only the development "
                     + "server that serves them runs under the debugger, so this breakpoint is never hit";
                 Ui.WaitFor(() => inBrowser.Status == BreakpointStatus.Invalid, () => $"the component's breakpoint refused; it is {inBrowser.Status}: {inBrowser.Message}");
                 Assert.Equal(neverHit, inBrowser.Message);
@@ -91,7 +94,7 @@ public sealed class BlazorWebAssemblyTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void A_Blazor_Web_Apps_client_is_no_configuration_and_Debug_of_the_app_says_the_client_is_not_debugged()
+    public void A_Blazor_Web_Apps_client_is_no_configuration_and_a_plan_Debug_did_not_start_says_the_client_is_not_debugged()
     {
         Make("blazor", "Bwa", "--interactivity", "WebAssembly", "--no-https");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -108,8 +111,8 @@ public sealed class BlazorWebAssemblyTests : IDisposable
             (LaunchPlan? plan, string? problem) = Ui.Await(window.Builds.ResolvePlanAsync(window.Configurations.Single(c => c.Name == "Bwa: http"), null),
                 "Bwa's plan", TimeSpan.FromMinutes(1));
             Assert.True(plan is not null, $"Bwa's http configuration has no plan: {problem}");
-            Assert.Equal("Bwa.Client's components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet, so their breakpoints are not hit: Bwa's are",
-                plan.NotDebugged);
+            Assert.Equal("Bwa.Client's components run in the browser on .NET's WebAssembly runtime, and their breakpoints are not hit: Bwa's are. "
+                + "Passenger debugs them in a Chromium browser when Debug starts the app itself", plan.NotDebugged);
 
             Ui.Run(window, AppActions.NewProject);
             NewProjectDialog dialog = NewServiceSetupTests.Opened(window);

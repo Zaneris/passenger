@@ -75,23 +75,35 @@ public sealed partial record LaunchPlan
     /// their project files: its own project first when it does, then those it references.</summary>
     public IReadOnlyList<string> InBrowser { get; init; } = [];
 
-    /// <summary>What a debugger of this plan cannot debug, in words for the person: code that runs in the browser, which no
-    /// breakpoint stops; null when it debugs all of it.</summary>
-    public string? NotDebugged => InBrowser.Count == 0 || Project is null ? null
-        : $"{Plural.Listed([.. InBrowser.Select(NameOf)])}'s components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet, "
-            + "so their breakpoints are not hit: "
-            + (PathNames.Same(InBrowser[0], Project) ? "only the development server that serves them runs under the debugger" : $"{NameOf(Project)}'s are");
+    /// <summary>Where the app's page is, whether or not the browser opens there after launch: what a debugging of its
+    /// WebAssembly half opens.</summary>
+    public Uri? Page { get; init; }
 
-    /// <summary>Why a breakpoint in a WebAssembly app's own code never stops it, its development server being what runs under
-    /// the debugger.</summary>
+    /// <summary>What debugging its code in the browser takes on this machine, once Debug has found it
+    /// (<see cref="Debugging.BrowserDebugging"/>); null where none debugs it.</summary>
+    public Debugging.BrowserDebugging? Browser { get; init; }
+
+    /// <summary>Why no browser debugs its code there, where Debug looked and found none (no Chromium, no proxy restored).</summary>
+    public string? BrowserWhyNot { get; init; }
+
+    /// <summary>What a debugger of this plan cannot debug, in words for the person: code that runs in the browser where no
+    /// browser debugs it, which no breakpoint stops, and why; null when it debugs all of it.</summary>
+    public string? NotDebugged => InBrowser.Count == 0 || Project is null || Browser is not null ? null
+        : $"{Plural.Listed([.. InBrowser.Select(NameOf)])}'s components run in the browser on .NET's WebAssembly runtime, and their breakpoints are not hit: "
+            + (PathNames.Same(InBrowser[0], Project) ? "only the development server that serves them runs under the debugger" : $"{NameOf(Project)}'s are")
+            + $". {BrowserWhyNot ?? "Passenger debugs them in a Chromium browser when Debug starts the app itself"}";
+
+    /// <summary>Why a breakpoint in a WebAssembly app's own code never stops it where no browser debugs it, its development
+    /// server being what runs under the debugger.</summary>
     public static string NeverHitInBrowser(string project) =>
-        $"{NameOf(project)}'s components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet: only the development server that serves "
-        + "them runs under the debugger, so this breakpoint is never hit";
+        $"{NameOf(project)}'s components run in the browser on .NET's WebAssembly runtime, and no browser debugs them this time: only the development server "
+        + "that serves them runs under the debugger, so this breakpoint is never hit";
 
-    /// <summary>When a breakpoint in a Blazor Web App's client stops: only where its server runs the client's components itself.</summary>
+    /// <summary>When a breakpoint in a Blazor Web App's client stops where no browser debugs it: only where its server runs
+    /// the client's components itself.</summary>
     public static string HitOnlyOnServer(string client, string server) =>
-        $"{NameOf(client)}'s components run in the browser on .NET's WebAssembly runtime, which Passenger cannot debug yet: this breakpoint stops only where "
-        + $"{NameOf(server)} runs them itself, prerendering them or rendering them on the server";
+        $"{NameOf(client)}'s components run in the browser on .NET's WebAssembly runtime, and no browser debugs them this time: this breakpoint stops only "
+        + $"where {NameOf(server)} runs them itself, prerendering them or rendering them on the server";
 
     private static string NameOf(string project) => System.IO.Path.GetFileNameWithoutExtension(project);
 
@@ -276,6 +288,7 @@ public sealed partial record LaunchPlan
             Built = built,
             Console = configuration.Console,
             BrowserUrl = configuration.LaunchBrowser && configuration.BrowserUrl.Length > 0 ? Expand(configuration.BrowserUrl) : null,
+            Page = configuration.BrowserUrl.Length > 0 ? BrowserLaunch.Address(Expand(configuration.BrowserUrl)) is { } page ? BrowserLaunch.Shown(page) : null : null,
             Web = WebOf(project, framework, properties, workspace),
         };
     }

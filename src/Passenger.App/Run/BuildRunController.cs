@@ -1744,6 +1744,16 @@ public sealed partial class BuildRunController
         {
             return await LaunchScriptsAsync(listened, game);
         }
+        // A Blazor app's code in the browser is debugged in a Chromium browser, where one is found.
+        IReadOnlyList<ProjectModel> projects = session.Projects;
+        string? browserSetting = parts.Settings().DebugBrowser;
+        (Debugging.BrowserDebugging? inBrowser, string? notInBrowser) = await BackgroundWork.Run(() => Debugging.BrowserDebugging.For(listened, projects, browserSetting));
+        listened = listened with { Browser = inBrowser, BrowserWhyNot = notInBrowser };
+        if (inBrowser is not null && PathNames.Same(listened.InBrowser[0], listened.Project!))
+        {
+            // A standalone app's browser session runs its development server itself, no engine beside it.
+            return await debug.LaunchBrowserAsync(listened, inBrowser);
+        }
         // An Avalonia or WPF app is launched with the Live Visual Tree's inspector, held by its tab, ending with this debugging.
         (LaunchPlan launched, LiveApp? inspected) = session.Inspected(listened);
         Task<string?> starting = debug.StartAsync(launched, app: inspected, edits: edits);
@@ -1768,11 +1778,33 @@ public sealed partial class BuildRunController
         Task ended = refused is null ? DebugEnded(debug.SessionNamed(launched.Name)) : Task.CompletedTask;
         EndWith(inspected, ended);
         EndWith(game, ended);
-        if (refused is null)
+        if (refused is null && inBrowser is not null)
+        {
+            IdeErrors.Observe(DebugBrowserAsync(launched, inBrowser, ended));
+        }
+        else if (refused is null)
         {
             parts.OpenBrowser(plan, ended);
         }
         return refused;
+    }
+
+    /// <summary>A Blazor Web App's WebAssembly half debugged beside its server, in a tab of its own
+    /// (<see cref="DebugController.DebugBrowserAsync"/>), ended as the server's session ends; one whose browser could not
+    /// start says why, the server debugged on.</summary>
+    private async Task DebugBrowserAsync(LaunchPlan plan, Debugging.BrowserDebugging browser, Task serverEnded)
+    {
+        DebugController debug = session.Debug;
+        if (await debug.DebugBrowserAsync(plan, browser) is { } refused)
+        {
+            parts.Say($"{plan.Name}'s components in the browser are not debugged: {refused}");
+            return;
+        }
+        await serverEnded;
+        if (debug.SessionNamed(DebugController.BrowserTab(plan.Name)) is { State: not DebugState.Ended })
+        {
+            await debug.StopAsync(DebugController.BrowserTab(plan.Name));
+        }
     }
 
     /// <summary>Debug of a Godot game of GDScript alone: its GDScript session launches it, no C# engine beside it, Hot Reload

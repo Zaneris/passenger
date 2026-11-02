@@ -1,0 +1,11 @@
+<Project>
+  <!-- The SDK's Blazor Web App template's server references (dotnet new blazor with WebAssembly interactivity), whose
+       Blazor server package hosts the browser debug proxy and serves the client; restored alone, its Build doing nothing:
+       its client's packages are BlazorGraphs.Wasm's. -->
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk.Web" />
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk.Web" />
+  <Target Name="Build" />
+</Project>
