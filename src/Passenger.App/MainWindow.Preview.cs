@@ -45,7 +45,7 @@ public partial class MainWindow
             Menus = [new MenuPlace("View", 4, 0)],
         });
         Editors.HasXamlPreview = document => session.Xaml.For(document) is not null;
-        Editors.PreviewToggleClicked += (_, group) => Request(group.Active?.Language == Languages.Language.Markdown ? A.MarkdownPreview : A.XamlPreview);
+        Editors.PreviewToggleClicked += (_, group) => Request(group.PreviewAction ?? A.XamlPreview);
         Editors.ActiveChanged += (_, _) => FollowPreviews();
         Editors.Closed += (_, document) => EndPreview(document);
         Editors.ForEachEditor(editor => editor.SelectionChanged += (_, _) => OutlineAtCaret(editor));

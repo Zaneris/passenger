@@ -10,11 +10,12 @@ using Passenger.Editor;
 
 namespace Passenger.App;
 
-/// <summary>A picture at a zoom, one piece for every view of one (an image's preview, a test's frame): one picture pixel a
-/// unit at 100%, framed, scrolled when larger than its room. Zoom In and Zoom Out go by steps, Actual Size to 100% and Fit
+/// <summary>A picture at a zoom, one piece for every view of one (an image's preview, an SVG's, a test's frame): one picture
+/// pixel a unit at 100%, framed, scrolled when larger than its room. Zoom In and Zoom Out go by steps, Actual Size to 100% and Fit
 /// Zoom to Window to its room, from <see cref="Tools"/> (with the zoom shown), the keys its owner hands it
-/// (<see cref="CommandFor"/>: ⌘= ⌘- ⌘/, Ctrl elsewhere) or the wheel with that modifier. Enlarged, each pixel is a square
-/// of its own colour; reduced, smoothed. Fitted, it follows its room as that changes, until it is zoomed.</summary>
+/// (<see cref="CommandFor"/>: ⌘= ⌘- ⌘/, Ctrl elsewhere) or the wheel with that modifier. Enlarged, each pixel of a bitmap is
+/// a square of its own colour, and a drawing (an SVG's) is drawn again at the zoom; reduced, smoothed. Fitted, it follows
+/// its room as that changes, until it is zoomed.</summary>
 public sealed class ZoomedPicture : ScrollViewer
 {
     /// <summary>The zooms Zoom In and Zoom Out step through.</summary>
@@ -78,9 +79,9 @@ public sealed class ZoomedPicture : ScrollViewer
     public StackPanel Tools { get; }
 
     /// <summary>The picture shown, at the zoom the one before had, or fitted again while it is fitted.</summary>
-    public Bitmap? Picture
+    public IImage? Picture
     {
-        get => image.Source as Bitmap;
+        get => image.Source;
         set
         {
             image.Source = value;

@@ -437,6 +437,9 @@ public static class AppActions
     // VSCode keymaps give it Ctrl+K, V (Cmd+K, V on macOS).
     public const string MarkdownPreview = "app.editor.markdownPreview";
 
+    // An SVG file's picture beside its editor, under View and on the editor's tab strip: no keymap gives it keys.
+    public const string SvgPreview = "app.editor.svgPreview";
+
     // Rider's Close Solution (CloseProject) and Restore Default Layout (RiderRestoreDefaultLayout, in Window > Layout
     // Settings): no keys there either; both Visual Studio keymaps take IntelliJ's Shift+F12 off its layout action.
     public const string CloseSolution = "app.closeSolution";

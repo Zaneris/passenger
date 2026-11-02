@@ -210,17 +210,22 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The group's own preview of its Markdown file, made as it first shows one.</summary>
     private MarkdownPreview? markdown;
 
+    /// <summary>The group's own picture of its SVG file, made as it first shows one.</summary>
+    private SvgPreview? svg;
+
     /// <summary>The preview beside the editor while it shows one of a Markdown file, else null.</summary>
     public MarkdownPreview? Markdown => Side as MarkdownPreview;
 
-    /// <summary>A Markdown file shown in the editor has its preview beside it while the area shows previews, and its toggle
-    /// on the strip either way; any other file neither.</summary>
-    internal void FollowMarkdown()
+    /// <summary>The picture beside the editor while it shows one of an SVG file, else null.</summary>
+    public SvgPreview? Svg => Side as SvgPreview;
+
+    /// <summary>A Markdown or SVG file shown in the editor has its preview beside it while the area shows that kind's
+    /// previews, and its toggle on the strip either way; any other file neither.</summary>
+    internal void FollowSidePreview()
     {
-        OpenDocument? document = active?.Document;
-        bool shows = document is not null && InEditor(document) && document.Language == Languages.Language.Markdown;
+        OpenDocument? document = active?.Document is { } shown && InEditor(shown) ? shown : null;
         FollowPreviewToggle();
-        if (shows && area.ShowsMarkdownPreview)
+        if (document?.Language == Languages.Language.Markdown && area.ShowsMarkdownPreview)
         {
             markdown ??= new MarkdownPreview(Editor, area);
             Side = markdown;
@@ -238,20 +243,41 @@ public sealed class EditorGroup : DockPanel
                 markdown?.Forget();
             }
         }
+        if (document is not null && EditorArea.IsSvg(document) && area.ShowsSvgPreview)
+        {
+            svg ??= new SvgPreview();
+            Side = svg;
+            svg.Show(document);
+        }
+        else
+        {
+            if (Side is SvgPreview)
+            {
+                Side = null;
+            }
+            svg?.Show(null);
+        }
     }
 
-    /// <summary>The strip's preview toggle shows for a Markdown file or a XAML file the previewer draws, pressed while
-    /// that kind's preview is on, its tip naming the action it runs.</summary>
+    /// <summary>The action the strip's preview toggle runs for the file shown, null while it shows none.</summary>
+    public string? PreviewAction { get; private set; }
+
+    /// <summary>The strip's preview toggle shows for a Markdown file, an SVG or a XAML file the previewer draws, pressed
+    /// while that kind's preview is on, its tip naming the action it runs.</summary>
     internal void FollowPreviewToggle()
     {
         OpenDocument? document = active is { } shown && InEditor(shown.Document) ? shown.Document : null;
-        bool markdown = document?.Language == Languages.Language.Markdown;
-        bool xaml = !markdown && document is not null && area.HasXamlPreview(document);
-        PreviewToggle.IsVisible = markdown || xaml;
-        PreviewToggle.IsChecked = markdown ? area.ShowsMarkdownPreview : xaml && area.ShowsXamlPreview;
-        if (markdown || xaml)
+        (string Action, string Title, bool On)? toggle = document is null ? null
+            : document.Language == Languages.Language.Markdown ? (AppActions.MarkdownPreview, "Markdown Preview", area.ShowsMarkdownPreview)
+            : EditorArea.IsSvg(document) ? (AppActions.SvgPreview, "SVG Preview", area.ShowsSvgPreview)
+            : area.HasXamlPreview(document) ? (AppActions.XamlPreview, "XAML Preview", area.ShowsXamlPreview)
+            : null;
+        PreviewAction = toggle?.Action;
+        PreviewToggle.IsVisible = toggle is not null;
+        PreviewToggle.IsChecked = toggle?.On == true;
+        if (toggle is { } shownToggle)
         {
-            ActionTips.Set(PreviewToggle, markdown ? AppActions.MarkdownPreview : AppActions.XamlPreview, markdown ? "Markdown Preview" : "XAML Preview");
+            ActionTips.Set(PreviewToggle, shownToggle.Action, shownToggle.Title);
         }
     }
 
@@ -396,7 +422,7 @@ public sealed class EditorGroup : DockPanel
             body.Children.Add(preview);
             ShowBanner(document);
             tabBar.IsVisible = true;
-            FollowMarkdown();
+            FollowSidePreview();
             return;
         }
         (SelectionSet selections, Vector scroll) = views.TryGetValue(document, out (SelectionSet Selections, Vector Scroll) view) ? view : (document.Selections, document.Scroll);
@@ -417,7 +443,7 @@ public sealed class EditorGroup : DockPanel
         tabBar.IsVisible = true;
         ShowTable(document);
         AttachFind();
-        FollowMarkdown();
+        FollowSidePreview();
     }
 
     /// <summary>The find bar on the file shown: its text, or its table while one lies over it; a read-only file's replace row
@@ -515,7 +541,7 @@ public sealed class EditorGroup : DockPanel
                 banner.IsVisible = false;
                 tables?.Hide();
                 Side = null;
-                FollowMarkdown();
+                FollowSidePreview();
             }
         }
     }
@@ -619,7 +645,7 @@ public sealed class EditorGroup : DockPanel
                 Editor.BlockComment = document.Language.BlockComment;
                 Editor.Markup = document.Language.Markup;
                 Editor.ReindentsPaste = document.Language.ReindentsPaste;
-                FollowMarkdown();
+                FollowSidePreview();
                 break;
             case nameof(OpenDocument.Indentation):
                 Editor.Indent = document.Indentation.Options;

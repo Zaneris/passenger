@@ -50,6 +50,8 @@
     <!-- The app's JoinableTaskFactory (Synchronously.cs), at the version StreamJsonRpc takes. -->
     <PackageVersion Include="Microsoft.VisualStudio.Threading.Only" Version="18.7.23" />
     <PackageVersion Include="Porta.Pty" Version="2.2.3" />
+    <!-- An SVG file's picture: 5.1, the last line on the SkiaSharp 3 Avalonia's Skia carries (5.2 takes SkiaSharp 4). -->
+    <PackageVersion Include="Svg.Skia" Version="5.1.1" />
     <!-- TextMate grammars' tokenizer, with GregsEx's managed regular expressions: colour for every
          language but C#. -->
     <PackageVersion Include="Tint" Version="0.2.2" />

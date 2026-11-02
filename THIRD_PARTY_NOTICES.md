@@ -32,6 +32,9 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 | `Tmds.DBus.Protocol` | Avalonia's D-Bus client, for Linux desktops | MIT | Tom Deseyn |
 | `SkiaSharp`, `SkiaSharp.NativeAssets.macOS`, `SkiaSharp.NativeAssets.Win32`, `SkiaSharp.NativeAssets.Linux` | drawing, with Skia (BSD-3-Clause) | MIT | © Microsoft Corporation. All rights reserved. |
 | `HarfBuzzSharp`, `HarfBuzzSharp.NativeAssets.macOS`, `HarfBuzzSharp.NativeAssets.Win32`, `HarfBuzzSharp.NativeAssets.Linux` | text shaping, with HarfBuzz (Old MIT) | MIT | © Microsoft Corporation. All rights reserved. |
+| `Svg.Skia`, `Svg.Model`, `Svg.Animation`, `Svg.SceneGraph`, `ShimSkiaSharp` | an SVG file's picture beside its text, drawn with Skia | MIT | Copyright © Wiesław Šoltés 2026 |
+| `Svg.Custom` | Svg.Skia's model of an SVG document, a build of SVG.NET's (https://github.com/svg-net/SVG) | MS-PL | Copyright © Wiesław Šoltés 2026 |
+| `ExCSS` | Svg.Custom's reading of an SVG's CSS | MIT | no copyright line; its author: Tyler Brinks |
 | `Microsoft.CodeAnalysis.CSharp`, `Microsoft.CodeAnalysis.Common` | Roslyn: colour before the server answers, and the debugger's expressions | MIT | © Microsoft Corporation. All rights reserved. |
 | `Tint` | TextMate grammar tokenization and colour mapping | MIT | Copyright (c) 2026 Sébastien Ros |
 | `GregsEx` | Tint's managed Oniguruma-compatible regular expressions | MIT | Copyright (c) 2026 Sébastien Ros |
@@ -294,7 +297,7 @@ licence its package.json states and the copyright line its licence file (else it
 ## Licence texts
 
 `tools/Passenger.Notices/Licenses/` holds the texts of the licences packages name by SPDX identifier (`MIT.txt`,
-`Apache-2.0.txt`, `ISC.txt`), from the SPDX License List 3.29.0 (https://github.com/spdx/license-list-data), unchanged; its README
+`Apache-2.0.txt`, `ISC.txt`, `BSD-3-Clause.txt`, `MS-PL.txt`), from the SPDX License List 3.29.0 (https://github.com/spdx/license-list-data), unchanged; its README
 says where each came from. The app's notices, `THIRD-PARTY-NOTICES.txt` beside it, are written from them, from the
 packages themselves and from this file: Roslyn's server's table above, and everything below; the container tools' carry
 the debugger's two sections below.

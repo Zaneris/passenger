@@ -681,6 +681,7 @@ public partial class MainWindow : IdeWindow
         Dock.LayoutChanged += (_, _) => KeepDock();
         findSettings = store.Find.Value;
         Editors.ShowsMarkdownPreview = store.Previews.Value.Markdown;
+        Editors.ShowsSvgPreview = store.Previews.Value.Svg;
         ShowPreviews(store.Previews.Value.Xaml);
         liveTree!.KeepSplits(store.LiveTree.Value, kept => state?.LiveTree.Set(kept));
         assist.RenameSettings = store.Refactorings.Value;

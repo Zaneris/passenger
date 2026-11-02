@@ -138,6 +138,50 @@ public sealed class AssetPreviewTests : IDisposable
         window.Close();
     }
 
+    /// <summary>An SVG opens as its text with its picture beside it, drawn as a drawing, so zoomed in its circle's edge is as
+    /// sharp as at its size (a point half a unit outside it the ground's own colour, where an enlarged bitmap would blend
+    /// them); its text edited, the picture follows; and the toggle hides and shows it.</summary>
+    [AvaloniaFact]
+    public void An_SVG_is_drawn_beside_its_text_sharp_at_every_zoom_and_its_picture_follows_its_text_edited()
+    {
+        File.WriteAllText(Path.Combine(folder, "badge.svg"),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"40\">\n  <rect width=\"40\" height=\"40\" fill=\"#0000ff\"/>\n"
+            + "  <circle cx=\"20\" cy=\"20\" r=\"20\" fill=\"#ff0000\"/>\n</svg>\n");
+        MainWindow window = Open();
+        Assert.Null(window.OpenFile("badge.svg"));
+        Ui.Settle();
+        EditorGroup group = window.EditorArea.ActiveGroup;
+        SvgPreview preview = group.Svg ?? throw new Xunit.Sdk.XunitException("The SVG shows no picture beside its text");
+        Assert.True(group.Editor.IsEffectivelyVisible && window.EditorArea.Active!.HoldsText, "The SVG's text should stay in the editor beside its picture");
+        ZoomedPicture picture = preview.Picture;
+        Ui.WaitFor(() => picture.Picture is SvgPicture, () => $"the SVG drawn ({preview.Problem})");
+        Image image = Assert.Single(preview.GetVisualDescendants().OfType<Image>());
+        Color At(double x, double y) => Ui.Pixel(window, image.TranslatePoint(new Point(x * picture.Zoom, y * picture.Zoom), window)!.Value);
+        Assert.Equal(new Size(40, 40), picture.DrawnSize);
+        Assert.True(At(20, 20) == Colors.Red && At(1, 1) == Colors.Blue, $"The picture draws {At(20, 20)} in its circle and {At(1, 1)} in its corner");
+
+        Assert.True(preview.Focus());
+        string command = OperatingSystem.IsMacOS() ? "meta" : "control";
+        for (int i = 0; i < 5; i++)
+        {
+            Ui.Press(window, $"{command} EQUALS");
+        }
+        Assert.Equal(new Size(160, 160), picture.DrawnSize);
+        Assert.True(At(5.5, 5.5) == Colors.Blue && At(6.1, 6.1) == Colors.Red,
+            $"Zoomed to {picture.Zoom:P0}, the circle's edge blends: {At(5.5, 5.5)} half a unit outside it, {At(6.1, 6.1)} inside it");
+
+        Typing.Replace(window, "#ff0000", "#00ff00");
+        Ui.WaitFor(() => At(20, 20) == Colors.Lime, () => $"the picture to follow the circle's colour typed, not {At(20, 20)}");
+        Assert.Equal(new Size(160, 160), picture.DrawnSize);
+
+        Assert.True(group.PreviewToggle.IsVisible && group.PreviewToggle.IsChecked == true, "The tab strip's preview toggle should show the picture is on");
+        Ui.Click(group.PreviewToggle);
+        Assert.True(group.Svg is null && group.PreviewToggle.IsChecked == false, "The toggle left the SVG's picture beside it");
+        Ui.Click(group.PreviewToggle);
+        Assert.NotNull(group.Svg);
+        window.Close();
+    }
+
     [AvaloniaTheory]
     [InlineData(".ttf", "JetBrainsMono-Regular.ttf", FontStyle.Normal)]
     [InlineData(".otf", "JetBrainsMono-Italic.ttf", FontStyle.Italic)]

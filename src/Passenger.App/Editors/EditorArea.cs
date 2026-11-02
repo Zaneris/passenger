@@ -114,10 +114,29 @@ public sealed partial class EditorArea : UserControl
             showsMarkdownPreview = value;
             foreach (EditorGroup group in AllGroups)
             {
-                group.FollowMarkdown();
+                group.FollowSidePreview();
             }
         }
     }
+
+    private bool showsSvgPreview = true;
+
+    /// <summary>Whether an SVG file shows its picture beside its editor, in every group showing one.</summary>
+    public bool ShowsSvgPreview
+    {
+        get => showsSvgPreview;
+        set
+        {
+            showsSvgPreview = value;
+            foreach (EditorGroup group in AllGroups)
+            {
+                group.FollowSidePreview();
+            }
+        }
+    }
+
+    /// <summary>Whether a file is an SVG, which shows its picture beside its text.</summary>
+    public static bool IsSvg(OpenDocument document) => document.Path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A group's preview toggle pressed, for the window to run the preview's action: nothing outside the group
     /// holds the toggle, so a closed split goes with it.</summary>
