@@ -392,8 +392,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   lambda's column (`LambdaBreakpoints`).
 - **Tests window.** `TestFinder` (tests from code before any build), kept results across restarts `TestResultsState` (a
   method's code stamp `DeclaredTest.Code`), `TestRunners`; `VsTestRunner` is the only file that knows VSTest's object
-  model. A run from the editor, a filter or the Explorer chooses its tests once its build has ended
-  (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and line (`DeclaredPlace`).
+  model; a Godot game's GdUnit4 tests go through it with `GODOT_BIN` from `GodotTestRuns` (the person's own wins), its
+  GUT tests read from GDScript (`GutScripts`) and run by GUT's command line (`GutRunner`, `GutRuns`), a project not yet
+  imported imported headless first, as GUT needs Godot's class cache. A run from the editor, a filter or the Explorer
+  chooses its tests once its build has ended (`TestController.RunMatchingAsync`); the gutter marks by name or by the
+  runner's file and line (`DeclaredPlace`).
 - **The rest.** `Packages` (every package change's one path, its files the project, its lock file and
   Directory.Packages.props, one command of Undo, put back when it fails; credentials only to their feed's host),
   `Workspace` (`SolutionEdits`/`ProjectEdits` change files as text, never `dotnet sln`/`add reference`; a version
