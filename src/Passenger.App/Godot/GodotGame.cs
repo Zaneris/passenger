@@ -578,8 +578,23 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         UiThread.Check();
         TaskCompletionSource<GodotNode?> asked = treeAsked is { Task.IsCompleted: false } pending ? pending
             : treeAsked = new TaskCompletionSource<GodotNode?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await SendAsync(GodotWords.RequestSceneTree);
+        await AskingAsync(asked.Task, GodotWords.RequestSceneTree);
         return await Answer(asked.Task, "with its scene tree") ?? throw new LiveAppException($"{Name} sent a scene tree Passenger could not read");
+    }
+
+    /// <summary>Sends a question whose answer is waited for after: where it cannot be sent, no one waits for that answer, and
+    /// the game's end that fails it is heard by no one.</summary>
+    private async Task AskingAsync(Task answer, string name, params object?[] data)
+    {
+        try
+        {
+            await SendAsync(name, data);
+        }
+        catch (LiveAppException)
+        {
+            UnawaitedWork.Dismiss(answer);
+            throw;
+        }
     }
 
     /// <summary>A node's (or any object's) properties now.</summary>
@@ -590,7 +605,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         {
             asked = objectsAsked[id] = new TaskCompletionSource<GodotObjectState>(TaskCreationOptions.RunContinuationsAsynchronously);
         }
-        await SendAsync(GodotWords.InspectObjects, new List<object?> { (long)id }, false);
+        await AskingAsync(asked.Task, GodotWords.InspectObjects, new List<object?> { (long)id }, false);
         return await Answer(asked.Task, "with the node's properties");
     }
 

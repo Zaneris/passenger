@@ -72,18 +72,23 @@ public abstract class SharedProject : IAsyncLifetime
         }, Folder);
 
     /// <summary>A window on the project, which never saves what its test typed, with a file open (when one is named) once C#
-    /// is ready: on the server the class's last window left, or one of its own when there is none to take up; keeping its
-    /// settings in a state folder of the test's own when one is given. A test that asks nothing of C# (a web language's
-    /// server, the brackets' pairs, which are the file's own parse) opens it with no C# language server
+    /// is ready: on the server the class's last window left, or one of its own; its settings (and layout, with
+    /// <paramref name="keepsLayout"/>) in a state folder of the test's own when one is given, any Godot it starts in
+    /// <paramref name="godot"/>'s user folders. A test that asks nothing of C# opens it with no C# language server
     /// (<paramref name="languageServer"/>), once the folder's opening work has landed, the warm server left for the next.</summary>
-    public MainWindow Open(string? file, Action<MainWindow>? before = null, string? state = null, bool languageServer = true)
+    public MainWindow Open(string? file, Action<MainWindow>? before = null, string? state = null, bool languageServer = true, bool keepsLayout = false,
+        IReadOnlyDictionary<string, string>? godot = null)
     {
         MainWindow window = state is null
-            ? new() { Width = 1200, Height = 800, Autosaves = false, WarmServer = Server, StartsLanguageServer = languageServer }
-            : new() { Width = 1200, Height = 800, Autosaves = false, WarmServer = Server, StateFolder = state, StartsLanguageServer = languageServer };
+            ? new() { Width = 1200, Height = 800, Autosaves = false, WarmServer = Server, StartsLanguageServer = languageServer, GodotEnvironment = godot }
+            : new() { Width = 1200, Height = 800, Autosaves = false, WarmServer = Server, StateFolder = state, StartsLanguageServer = languageServer, GodotEnvironment = godot };
         window.Show();
         if (state is not null)
         {
+            if (keepsLayout)
+            {
+                window.KeepLayout();
+            }
             window.KeepSettings();
         }
         window.OpenFolder(Folder);

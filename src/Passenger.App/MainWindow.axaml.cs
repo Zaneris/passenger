@@ -662,6 +662,7 @@ public partial class MainWindow : IdeWindow
         findSettings = store.Find.Value;
         Editors.ShowsMarkdownPreview = store.Previews.Value.Markdown;
         ShowPreviews(store.Previews.Value.Xaml);
+        liveTree!.KeepSplits(store.LiveTree.Value, kept => state?.LiveTree.Set(kept));
         assist.RenameSettings = store.Refactorings.Value;
         assist.RenameSettingsChanged += (_, _) => state?.Refactorings.Set(assist.RenameSettings);
         keepsWorkspace = true;

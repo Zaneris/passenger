@@ -43,6 +43,7 @@ public sealed class StateStore
         Find = new(Path.Combine(root, "find.json"));
         Refactorings = new(Path.Combine(root, "refactorings.json"));
         Previews = new(Path.Combine(root, "previews.json"));
+        LiveTree = new(Path.Combine(root, "liveTree.json"));
         // Before this process writes any: a change is written a moment after it is made, and only through this store.
         UsedBefore = new[] { Path.Combine(root, SettingsFile), Layout.Path, Recent.Path, Updates.Path }.Any(File.Exists)
             || Directory.Exists(Path.Combine(root, "workspaces"));
@@ -116,6 +117,9 @@ public sealed class StateStore
     /// <summary>Which kinds of file show their preview beside their editor, as the person left them.</summary>
     public StateDocument<PreviewsState> Previews { get; }
 
+    /// <summary>The Live Visual Tree's split for each kind of source, as the person dragged it.</summary>
+    public StateDocument<Passenger.App.LiveTree.LiveTreeState> LiveTree { get; }
+
     /// <summary>A folder's own documents, held for a window that has the folder open or is opening it until it lets them go
     /// (<see cref="LetGo"/>); every window holding the folder shares them.</summary>
     public ProjectState Hold(string folder)
@@ -157,6 +161,7 @@ public sealed class StateStore
         Find.Flush();
         Refactorings.Flush();
         Previews.Flush();
+        LiveTree.Flush();
         foreach ((ProjectState documents, _) in projects.Values)
         {
             documents.Flush();

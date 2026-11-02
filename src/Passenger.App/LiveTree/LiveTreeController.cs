@@ -56,6 +56,11 @@ public sealed partial class LiveTreeController
     private (ElementDetails? Details, string? Problem) details;
     private bool picking;
 
+    /// <summary>The splits the person dragged, for each kind of source, and where a drag is kept once the window keeps its
+    /// state (<see cref="KeepSplits"/>).</summary>
+    private LiveTreeState splits = new();
+    private Action<LiveTreeState>? keepSplits;
+
     public LiveTreeController(LiveTreeParts parts)
     {
         this.parts = parts;
@@ -90,6 +95,30 @@ public sealed partial class LiveTreeController
         ShowState();
     }
 
+    /// <summary>The splits kept for each kind of source (the window's state), a drag of the person's kept from now on by
+    /// <paramref name="keep"/>.</summary>
+    public void KeepSplits(LiveTreeState kept, Action<LiveTreeState> keep)
+    {
+        UiThread.Check();
+        splits = kept;
+        keepSplits = keep;
+        if (view is not null)
+        {
+            view.DraggedSplit = splits.SplitOf(app);
+        }
+    }
+
+    /// <summary>A split the person dragged, kept for the kind of source shown; for none, it stands only until one is.</summary>
+    private void KeepSplit(double share)
+    {
+        if (app is null)
+        {
+            return;
+        }
+        splits = splits.WithSplit(app, share);
+        keepSplits?.Invoke(splits);
+    }
+
     /// <summary>The Live Visual Tree's view, built as it is asked for.</summary>
     public LiveTreeView View => view ?? (LiveTreeView)window.Content;
 
@@ -116,6 +145,8 @@ public sealed partial class LiveTreeController
         made.NotEdited += (_, why) => parts.Say(why);
         made.PropertiesAlone = app is Godot.GodotGame;
         made.Cells = app is Godot.GodotGame tuned ? new Godot.GodotValueCells(tuned, this) : null;
+        made.DraggedSplit = splits.SplitOf(app);
+        made.SplitDragged += (_, share) => KeepSplit(share);
         made.ShowAside(unkept);
         made.ShowTree(tree);
         made.ShowDetails(details.Details, details.Problem);
@@ -454,6 +485,7 @@ public sealed partial class LiveTreeController
             view.PropertiesAlone = next is Godot.GodotGame;
             view.ShowGame(next is Godot.GodotGame, next is Godot.GodotGame { LoopHeld: true });
             view.Cells = next is Godot.GodotGame tuned ? new Godot.GodotValueCells(tuned, this) : null;
+            view.DraggedSplit = splits.SplitOf(next);
         }
         ShowMonitors(MonitorsOf(next as Godot.GodotGame));
         Choose(null);

@@ -45,7 +45,8 @@ public enum LiveTreePage
 /// control's type, #name and .classes; a template's parts dimmed; at first open down to the app's own XAML), and under
 /// them the chosen control: its XAML (a link to it, or why there is none), then its properties with each value's source,
 /// the styles that apply and those that do not with why, and its layout's boxes; for a Godot game, what Select Element
-/// picks (2D or 3D) and Pause Game Loop and Next Frame beside them. The window only shows; <see cref="LiveTreeController"/>
+/// picks (2D or 3D) and Pause Game Loop and Next Frame beside them. Between the tree and the details, a split that gives a
+/// short tree its rows' height, or stands where the person dragged it. The window only shows; <see cref="LiveTreeController"/>
 /// asks the app.</summary>
 public sealed class LiveTreeView : DockPanel
 {
@@ -213,10 +214,14 @@ public sealed class LiveTreeView : DockPanel
         treePane = new Panel { Children = { tree, placeholder } };
         Grid.SetRow(treePane, 0);
         HairlineDivider divider = new(GridResizeDirection.Rows) { [Grid.RowProperty] = 1 };
+        divider.Splitter.DragStarted += (_, _) => dragged = treePane.Bounds.Height;
+        divider.Splitter.DragCompleted += (_, _) => Dragged(details);
         Grid.SetRow(details, 2);
         split.Children.Add(treePane);
         split.Children.Add(divider);
         split.Children.Add(details);
+        split.SizeChanged += (_, _) => FitSplit();
+        rows.CollectionChanged += (_, _) => FitSplit();
         Children.Add(split);
         ShowPage(LiveTreePage.Properties);
         ShowDetails(null, null);
@@ -225,6 +230,73 @@ public sealed class LiveTreeView : DockPanel
 
     /// <summary>The property whose value is being typed, by its name, or null.</summary>
     private string? editing;
+
+    /// <summary>The room under a short tree's last row, for the list's edges and a sideways scrollbar.</summary>
+    private const double TreeSlack = 10;
+
+    /// <summary>The tree's share of the split as the person dragged it for the kind of source shown; null where the split
+    /// follows what is shown: a short tree as tall as its rows, the details taking the rest, and a tree of half the room or
+    /// more, or none, half.</summary>
+    public double? DraggedSplit
+    {
+        get;
+        set
+        {
+            field = value;
+            FitSplit();
+        }
+    }
+
+    /// <summary>The person dragged the split: the tree's share of it.</summary>
+    public event EventHandler<double>? SplitDragged;
+
+    /// <summary>The tree's half of the split, and what shows over it.</summary>
+    public Control TreeHalf => treePane;
+
+    /// <summary>The details' half: the chosen element's heading, tabs and properties.</summary>
+    public Control DetailsHalf => split.Children[2];
+
+    /// <summary>The splitter between the tree and the details.</summary>
+    public GridSplitter Splitter => ((HairlineDivider)split.Children[1]).Splitter;
+
+    /// <summary>The tree's height as the person began to drag the splitter, which the split then follows alone; null
+    /// while it is not dragged.</summary>
+    private double? dragged;
+
+    private void FitSplit()
+    {
+        if (dragged is not null)
+        {
+            return;
+        }
+        double room = split.Bounds.Height - split.RowDefinitions[1].Height.Value;
+        double rowsHeight = (rows.Count * ListRow.Height) + tree.Padding.Top + tree.Padding.Bottom + tree.BorderThickness.Top + tree.BorderThickness.Bottom + TreeSlack;
+        (GridLength top, GridLength bottom) = DraggedSplit is double share ? (new GridLength(share, GridUnitType.Star), new GridLength(1 - share, GridUnitType.Star))
+            : room > 0 && rows.Count > 0 && aside is null && rowsHeight < room / 2 ? (new GridLength(rowsHeight), GridLength.Star)
+            : (GridLength.Star, GridLength.Star);
+        if (split.RowDefinitions[0].Height != top || split.RowDefinitions[2].Height != bottom)
+        {
+            split.RowDefinitions[0].Height = top;
+            split.RowDefinitions[2].Height = bottom;
+        }
+    }
+
+    /// <summary>The split as the person left it, kept as the tree's share for the kind of source shown; a press on the
+    /// splitter that moved nothing keeps nothing.</summary>
+    private void Dragged(Control details)
+    {
+        double began = dragged ?? treePane.Bounds.Height;
+        dragged = null;
+        double whole = treePane.Bounds.Height + details.Bounds.Height;
+        if (whole <= 0 || Math.Abs(treePane.Bounds.Height - began) < 1)
+        {
+            FitSplit();
+            return;
+        }
+        double share = treePane.Bounds.Height / whole;
+        DraggedSplit = share;
+        SplitDragged?.Invoke(this, share);
+    }
 
     /// <summary>The editors the source followed gives its values (a Godot game's), each row's made once from it; null for
     /// none, every value then shown as its text.</summary>
@@ -290,6 +362,7 @@ public sealed class LiveTreeView : DockPanel
         }
         tree.IsVisible = shown is null;
         placeholder.IsVisible = shown is null && rows.Count == 0 && placeholder.Text is { Length: > 0 };
+        FitSplit();
     }
 
     /// <summary>What shows over the tree, while something does.</summary>
