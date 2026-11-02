@@ -308,27 +308,29 @@ Projects in `src/`; `find_symbol` finds the rest:
   over its parts; each language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a
   server's edit to a file not open written in the 2 s before it was asked waits for the server to read it (`Patience`,
   the window's and an agent's alike, said as the action's work), and any other file of the solution written or deleted a
-  moment before (`DocumentsWritten`); one written as the server worked is refused. `ServerWatches` watches for the
-  server what it registers (`WatchedFiles`), beside the folder's watcher. A place the server names in a source
-  generator's document reaches the file it was written in through `RoslynSession.WrittenAsync` (Razor's), else a
-  read-only copy under the state's cache (`GeneratedCode`; an agent's tools on one answer from its text,
-  `PassengerTools.NotGenerated`), never opened in the server, which would freeze its text into the compilation. A C#
-  symbol's uses in XAML come from one finder, `XamlService.UsesAsync` over `XamlNavigation.Uses` (Go to Declaration's
-  resolver) and `CodeSymbol`, a C# rename's edits there from it too (`XamlService.RenamesAsync`). A JS interop call's
-  function comes from Roslyn's binding in the extension (`JsInteropCalls`) over `JsFunctions`. A multi-targeted
-  project's framework is one choice (`TargetFrameworkChoices`, kept in `WorkspaceState`) that the XAML preview's build
-  (`XamlPreview.Output`), XAML's restore target and C#'s context (`CSharpService.ChosenContext`) follow: never a
-  framework's output taken by its newest write. A Godot game's C# is read against its scenes by `GodotScenes`
-  (Workspace: the reader, trees, paths, renames), followed through the watcher (`GodotSceneIndex`), the extension's
-  `GodotCode`, `GodotChecks`, and `GodotAssist` for `.tscn`/`.tres` (its marks `GodotSceneMarks`, uids `GodotUids`; the
-  extension's `GodotNames` for the generated names and the strings Godot's calls take, `GodotPaths` for `res://` in C#;
-  a string naming what the project's files define, an input action, group, animation, autoload, shader parameter or
-  translation, through the extension's `GodotKinds` and Workspace's `GodotDefinitions`, `GodotChecks.Named` the one
-  answer; Godot's generator assigns every field in generated code, so a field's values are read from the code's own
-  documents); a C# file read before its project's evaluation landed is pulled again once it does
-  (`CSharpService.GodotProjectsChanged`). Edits added to a server's workspace edit for a file it already edits join that
-  file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command (TypeScript's refactorings,
-  ESLint's fixes) runs through `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
+  moment before (`DocumentsWritten`), or heard changed that no command has seen the server read, however long ago
+  (`WatchedFiles.Changing`, settled before each attempt by `WorkspaceEdits.SettleAsync`); one written as the server
+  worked is refused. `ServerWatches` watches for the server what it registers (`WatchedFiles`), beside the folder's
+  watcher. A place the server names in a source generator's document reaches the file it was written in through
+  `RoslynSession.WrittenAsync` (Razor's), else a read-only copy under the state's cache (`GeneratedCode`; an agent's
+  tools on one answer from its text, `PassengerTools.NotGenerated`), never opened in the server, which would freeze its
+  text into the compilation. A C# symbol's uses in XAML come from one finder, `XamlService.UsesAsync` over
+  `XamlNavigation.Uses` (Go to Declaration's resolver) and `CodeSymbol`, a C# rename's edits there from it too
+  (`XamlService.RenamesAsync`). A JS interop call's function comes from Roslyn's binding in the extension
+  (`JsInteropCalls`) over `JsFunctions`. A multi-targeted project's framework is one choice (`TargetFrameworkChoices`,
+  kept in `WorkspaceState`) that the XAML preview's build (`XamlPreview.Output`), XAML's restore target and C#'s context
+  (`CSharpService.ChosenContext`) follow: never a framework's output taken by its newest write. A Godot game's C# is
+  read against its scenes by `GodotScenes` (Workspace: the reader, trees, paths, renames), followed through the watcher
+  (`GodotSceneIndex`), the extension's `GodotCode`, `GodotChecks`, and `GodotAssist` for `.tscn`/`.tres` (its marks
+  `GodotSceneMarks`, uids `GodotUids`; the extension's `GodotNames` for the generated names and the strings Godot's
+  calls take, `GodotPaths` for `res://` in C#; a string naming what the project's files define, an input action, group,
+  animation, autoload, shader parameter or translation, through the extension's `GodotKinds` and Workspace's
+  `GodotDefinitions`, `GodotChecks.Named` the one answer; Godot's generator assigns every field in generated code, so a
+  field's values are read from the code's own documents); a C# file read before its project's evaluation landed is
+  pulled again once it does (`CSharpService.GodotProjectsChanged`). Edits added to a server's workspace edit for a file
+  it already edits join that file's entry (`TypeRename.With`): `documentChanges` apply in order. A server's own command
+  (TypeScript's refactorings, ESLint's fixes) runs through `ServerCommands`, the edits it sends back
+  (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
   `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
@@ -368,12 +370,13 @@ Projects in `src/`; `find_symbol` finds the rest:
   GDScript over its debug connection; `DebugSession.Engine` sends each file's breakpoints to the adapter that runs it; a
   game's GDScript tab is its C# tab's `Companion`), `BreakpointStore`; Variables and the hover card are one list; a
   row's expression is the debugger's `evaluateName` (`RowExpressions`), never built in the window, a member row's cast
-  from the declared type read from metadata (`DeclaredType`). An exception's description reads its fields first, type
-  and stored messages (`StoredChain`), its getters only adding, never a `ToString`. A debugged web app's pages are kept
-  up through the SDK's own browser refresh (`BrowserRefresh`, its protocol chosen by the variable the SDK's middleware
-  reads, `LaunchPlan.Web`). A session's built lines and Hot Reload begin at its build's save
-  (`DebugController.Building`, `BuiltEdits`). The debugger's own rows are named in `DapRows`, break modes in
-  `DapBreakModes`; an engine row is built by `ValueRow` (`FailedRow`, `GroupRow`), CoreLib found by
+  from the declared type read from metadata (`DeclaredType`). A library's types are shown as the App tells the debugger
+  at launch (`DapTypePresentation`; Godot's in `GodotValues`), never by engine code naming a library. An exception's
+  description reads its fields first, type and stored messages (`StoredChain`), its getters only adding, never a
+  `ToString`. A debugged web app's pages are kept up through the SDK's own browser refresh (`BrowserRefresh`, its
+  protocol chosen by the variable the SDK's middleware reads, `LaunchPlan.Web`). A session's built lines and Hot Reload
+  begin at its build's save (`DebugController.Building`, `BuiltEdits`). The debugger's own rows are named in `DapRows`,
+  break modes in `DapBreakModes`; an engine row is built by `ValueRow` (`FailedRow`, `GroupRow`), CoreLib found by
   `ManagedDebugger.CoreLib`. A breakpoint's words, in the gutter's hover, Problems and MCP alike, come from
   `BreakpointStates`. Every kind of breakpoint is refused, matched and hit through one pipeline (`IHitBreakpoint`:
   `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a lambda on its statement's line keeps the
