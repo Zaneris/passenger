@@ -342,13 +342,17 @@ Projects in `src/`; `find_symbol` finds the rest:
   `PropertyName`/`MethodName`/`SignalName` static constructors (`GodotSharpNames`), its class reference's address
   `GodotDocs`; a string naming what the project's files define, an input action, group, animation, autoload, shader
   parameter or translation, through the extension's `GodotKinds` and Workspace's `GodotDefinitions`, `GodotChecks.Named`
-  the one answer; their fixes `GodotOffer` over the extension's `GodotFix` (members made by Roslyn so the code builds)
-  and Workspace's pure `GodotWrites`, a fix that asks first through `EditorFix.Confirms`; Godot's generator assigns
-  every field in generated code, so a field's values are read from the code's own documents); a C# file read before its
-  project's evaluation landed is pulled again once it does (`CSharpService.GodotProjectsChanged`). Edits added to a
-  server's workspace edit for a file it already edits join that file's entry (`TypeRename.With`): `documentChanges`
-  apply in order. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through `ServerCommands`, the
-  edits it sends back (`workspace/applyEdit`) one command of Undo.
+  the one answer, a C# string naming a member of the node it is on `GodotChecks.Members` (both over `Told`), a GDScript
+  member's C# uses the extension's `GodotNameStrings`; a project.godot of GDScript alone is a scene's project too
+  (`ProjectSession.GodotOf`; the C# service's `BuiltGodotOf` a C# project's only), so scene code reaches the scenes
+  through `AssistContext.GodotOf` (`GodotSceneIndex.GameOf`), and a GDScript's class is `GodotScenes.ChainOf` over
+  `GodotScriptDeclarations`; their fixes `GodotOffer` over the extension's `GodotFix` (members made by Roslyn so the
+  code builds) and Workspace's pure `GodotWrites`, a fix that asks first through `EditorFix.Confirms`; Godot's generator
+  assigns every field in generated code, so a field's values are read from the code's own documents); a C# file read
+  before its project's evaluation landed is pulled again once it does (`CSharpService.GodotProjectsChanged`). Edits
+  added to a server's workspace edit for a file it already edits join that file's entry (`TypeRename.With`):
+  `documentChanges` apply in order. A server's own command (TypeScript's refactorings, ESLint's fixes) runs through
+  `ServerCommands`, the edits it sends back (`workspace/applyEdit`) one command of Undo.
 - **Web languages.** `WebLanguages` (one Node.js server per kind, but GDScript's, Godot's editor over TCP:
   `GodotScripts`, `ServerStart.Port`, `NodeServer.Elsewhere`; every per-kind switch names each kind), `JsonSchemas`
   (downloads only while Settings allows); in a macOS bundle the servers live under `Contents/Resources/web`. TypeScript
