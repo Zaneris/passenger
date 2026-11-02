@@ -110,32 +110,45 @@ public readonly record struct Keystroke(Key Key, KeyModifiers Modifiers)
             >= Key.D0 and <= Key.D9 => ((char)('0' + (Key - Key.D0))).ToString(),
             _ => Key.ToString(),
         };
-        if (mac)
+        return Shown(Modifiers, key);
+    }
+
+    /// <summary>Modifiers before what they are held with, as menus show them: ⌃⌥⇧⌘ on macOS, "Ctrl+Alt+Shift+Win+"
+    /// elsewhere (no + after them when nothing follows).</summary>
+    internal static string Shown(KeyModifiers modifiers, string with)
+    {
+        if (OperatingSystem.IsMacOS())
         {
-            string mods = (Modifiers.HasFlag(KeyModifiers.Control) ? "⌃" : "") + (Modifiers.HasFlag(KeyModifiers.Alt) ? "⌥" : "")
-                + (Modifiers.HasFlag(KeyModifiers.Shift) ? "⇧" : "") + (Modifiers.HasFlag(KeyModifiers.Meta) ? "⌘" : "");
-            return mods + key;
+            return (modifiers.HasFlag(KeyModifiers.Control) ? "⌃" : "") + (modifiers.HasFlag(KeyModifiers.Alt) ? "⌥" : "")
+                + (modifiers.HasFlag(KeyModifiers.Shift) ? "⇧" : "") + (modifiers.HasFlag(KeyModifiers.Meta) ? "⌘" : "") + with;
         }
         List<string> parts = [];
-        if (Modifiers.HasFlag(KeyModifiers.Control)) { parts.Add("Ctrl"); }
-        if (Modifiers.HasFlag(KeyModifiers.Alt)) { parts.Add("Alt"); }
-        if (Modifiers.HasFlag(KeyModifiers.Shift)) { parts.Add("Shift"); }
-        if (Modifiers.HasFlag(KeyModifiers.Meta)) { parts.Add("Win"); }
-        if (key.Length > 0)
+        if (modifiers.HasFlag(KeyModifiers.Control)) { parts.Add("Ctrl"); }
+        if (modifiers.HasFlag(KeyModifiers.Alt)) { parts.Add("Alt"); }
+        if (modifiers.HasFlag(KeyModifiers.Shift)) { parts.Add("Shift"); }
+        if (modifiers.HasFlag(KeyModifiers.Meta)) { parts.Add("Win"); }
+        if (with.Length > 0)
         {
-            parts.Add(key);
+            parts.Add(with);
         }
         return string.Join('+', parts);
+    }
+
+    /// <summary>Modifiers as the notation writes them, in its order ("meta control alt shift").</summary>
+    internal static List<string> Notation(KeyModifiers modifiers)
+    {
+        List<string> parts = [];
+        if (modifiers.HasFlag(KeyModifiers.Meta)) { parts.Add("meta"); }
+        if (modifiers.HasFlag(KeyModifiers.Control)) { parts.Add("control"); }
+        if (modifiers.HasFlag(KeyModifiers.Alt)) { parts.Add("alt"); }
+        if (modifiers.HasFlag(KeyModifiers.Shift)) { parts.Add("shift"); }
+        return parts;
     }
 
     /// <summary>The keymap notation <see cref="Parse"/> reads ("meta shift K"), as a user's keymap is kept.</summary>
     public string Notation()
     {
-        List<string> parts = [];
-        if (Modifiers.HasFlag(KeyModifiers.Meta)) { parts.Add("meta"); }
-        if (Modifiers.HasFlag(KeyModifiers.Control)) { parts.Add("control"); }
-        if (Modifiers.HasFlag(KeyModifiers.Alt)) { parts.Add("alt"); }
-        if (Modifiers.HasFlag(KeyModifiers.Shift)) { parts.Add("shift"); }
+        List<string> parts = Notation(Modifiers);
         if (IsModifierAlone)
         {
             return string.Join(' ', parts);
@@ -292,6 +305,42 @@ public readonly record struct MouseShortcut(MouseButton Button, KeyModifiers Mod
         _ => MouseButton.None,
     }, e.KeyModifiers, e.ClickCount);
 
+    /// <summary>For menus, tips and Settings: ⌥Click, ⇧⌘Click, Middle Click, ⌥Double-Click, Back Button on macOS; Alt+Click,
+    /// Ctrl+Shift+Click elsewhere.</summary>
+    public string Display()
+    {
+        string click = Clicks > 1 ? "Double-Click" : "Click";
+        string press = Button switch
+        {
+            MouseButton.Middle => $"Middle {click}",
+            MouseButton.Right => $"Right {click}",
+            MouseButton.XButton1 => Clicks > 1 ? $"Back Button {click}" : "Back Button",
+            MouseButton.XButton2 => Clicks > 1 ? $"Forward Button {click}" : "Forward Button",
+            _ => click,
+        };
+        return Keystroke.Shown(Modifiers, press);
+    }
+
+    /// <summary>The notation <see cref="Parse"/> reads ("alt button1", "meta button1 doubleClick"), as a person's keymap
+    /// keeps it.</summary>
+    public string Notation()
+    {
+        List<string> parts = Keystroke.Notation(Modifiers);
+        parts.Add(Button switch
+        {
+            MouseButton.Middle => "button2",
+            MouseButton.Right => "button3",
+            MouseButton.XButton1 => "button4",
+            MouseButton.XButton2 => "button5",
+            _ => "button1",
+        });
+        if (Clicks > 1)
+        {
+            parts.Add("doubleClick");
+        }
+        return string.Join(' ', parts);
+    }
+
     private static MouseButton? ButtonOf(string part) => part.ToLowerInvariant() switch
     {
         "button1" => MouseButton.Left,
@@ -304,12 +353,16 @@ public readonly record struct MouseShortcut(MouseButton Button, KeyModifiers Mod
 }
 
 /// <summary>Which shortcuts run which action. An action is a name from <see cref="EditorActions"/>
-/// or the IDE's own list; a shortcut, a key's or the mouse's, may run only one action.</summary>
+/// or the IDE's own list; a shortcut, a key's or the mouse's, may run only one action, but a gesture may start one drag
+/// (<see cref="EditorActions.IsDrag"/>) beside the click it runs, as Alt-drag's column beside Alt-click's Quick
+/// Evaluate.</summary>
 public sealed class Keymap
 {
     private readonly Dictionary<string, List<Shortcut>> byAction = [];
     private readonly Dictionary<Shortcut, string> byShortcut = [];
     private readonly Dictionary<MouseShortcut, string> byMouse = [];
+    private readonly Dictionary<MouseShortcut, string> byDrag = [];
+    private readonly Dictionary<string, List<MouseShortcut>> mouseByAction = [];
 
     public Keymap(string name) => Name = name;
 
@@ -324,11 +377,17 @@ public sealed class Keymap
             if (MouseShortcut.IsMouse(text))
             {
                 MouseShortcut gesture = MouseShortcut.Parse(text);
-                if (byMouse.TryGetValue(gesture, out string? had) && had != action)
+                Dictionary<MouseShortcut, string> presses = PressesOf(action);
+                if (presses.TryGetValue(gesture, out string? had) && had != action)
                 {
                     throw new InvalidOperationException($"{Name}: {text} is bound to both {had} and {action}");
                 }
-                byMouse[gesture] = action;
+                presses[gesture] = action;
+                List<MouseShortcut> own = MouseListOf(action);
+                if (!own.Contains(gesture))
+                {
+                    own.Add(gesture);
+                }
                 continue;
             }
             Shortcut shortcut = Shortcut.Parse(text);
@@ -346,9 +405,9 @@ public sealed class Keymap
         return this;
     }
 
-    /// <summary>Gives an action exactly these shortcuts, as a person's keymap does: its own keys go, and a shortcut another
-    /// action had is taken from it. Its mouse shortcuts stay.</summary>
-    public Keymap Set(string action, IEnumerable<Shortcut> shortcuts)
+    /// <summary>Gives an action exactly these shortcuts and mouse shortcuts, as a person's keymap does: its own go, and one
+    /// another action had is taken from it (a gesture only from another click, or another drag, as the action is).</summary>
+    public Keymap Set(string action, IEnumerable<Shortcut> shortcuts, IEnumerable<MouseShortcut> gestures)
     {
         if (byAction.TryGetValue(action, out List<Shortcut>? own))
         {
@@ -371,7 +430,35 @@ public sealed class Keymap
             byShortcut[shortcut] = action;
             own.Add(shortcut);
         }
+        Dictionary<MouseShortcut, string> presses = PressesOf(action);
+        List<MouseShortcut> mine = MouseListOf(action);
+        foreach (MouseShortcut gesture in mine)
+        {
+            presses.Remove(gesture);
+        }
+        mine.Clear();
+        foreach (MouseShortcut gesture in gestures.Distinct())
+        {
+            if (presses.TryGetValue(gesture, out string? taken) && taken != action && mouseByAction.TryGetValue(taken, out List<MouseShortcut>? theirs))
+            {
+                theirs.Remove(gesture);
+            }
+            presses[gesture] = action;
+            mine.Add(gesture);
+        }
         return this;
+    }
+
+    /// <summary>The clicks an action runs from, or the drags, as it is one or the other.</summary>
+    private Dictionary<MouseShortcut, string> PressesOf(string action) => EditorActions.IsDrag(action) ? byDrag : byMouse;
+
+    private List<MouseShortcut> MouseListOf(string action)
+    {
+        if (!mouseByAction.TryGetValue(action, out List<MouseShortcut>? list))
+        {
+            mouseByAction[action] = list = [];
+        }
+        return list;
     }
 
     /// <summary>Every action something is bound to.</summary>
@@ -382,8 +469,15 @@ public sealed class Keymap
 
     public string? ActionFor(Shortcut shortcut) => byShortcut.GetValueOrDefault(shortcut);
 
-    /// <summary>The action a press of the mouse runs, or null.</summary>
+    /// <summary>An action's mouse shortcuts, in the order they were bound.</summary>
+    public IReadOnlyList<MouseShortcut> MouseShortcutsFor(string action) =>
+        mouseByAction.TryGetValue(action, out List<MouseShortcut>? list) ? list : [];
+
+    /// <summary>The action a click of the mouse runs, or null.</summary>
     public string? ActionFor(MouseShortcut gesture) => byMouse.GetValueOrDefault(gesture);
+
+    /// <summary>The drag a press of the mouse starts (<see cref="EditorActions.IsDrag"/>), or null.</summary>
+    public string? DragFor(MouseShortcut gesture) => byDrag.GetValueOrDefault(gesture);
 
     /// <summary>The action a press of the mouse runs whichever click of a run it is: its own click's, else, when the keymap
     /// gives its button and modifiers no double-click, their one click's. The platform counts a run of presses whatever
@@ -392,7 +486,12 @@ public sealed class Keymap
         ActionFor(gesture) ?? (gesture.Clicks > 1 && !byMouse.ContainsKey(gesture with { Clicks = 2 }) ? ActionFor(gesture with { Clicks = 1 }) : null);
 
     /// <summary>Every action a mouse shortcut is bound to.</summary>
-    public IEnumerable<string> MouseActions => byMouse.Values.Distinct();
+    public IEnumerable<string> MouseActions => byMouse.Values.Concat(byDrag.Values).Distinct();
+
+    /// <summary>The other action a mouse shortcut runs that one given to this action would take it from: another click's,
+    /// or another drag's for a drag, a click and a drag sharing a gesture.</summary>
+    public string? Conflict(string action, MouseShortcut gesture) =>
+        PressesOf(action).TryGetValue(gesture, out string? other) && other != action ? other : null;
 
     /// <summary>The other actions' shortcuts that clash with one: the same first keystroke and, unless either is one
     /// keystroke alone, the same second. So a chord clashes with the key that begins it, which would run before the

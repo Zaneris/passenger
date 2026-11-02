@@ -46,6 +46,12 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
     /// <summary>An action's first shortcut as menus and tips show it ("⌘K, W"), or null with none.</summary>
     public string? Shortcut(string id) => Keymap.ShortcutsFor(KeysOf(id)) is { Count: > 0 } keys ? keys[0].Display() : null;
 
+    /// <summary>An action's first shortcut and its first mouse shortcut beside it, as Find Action and the menus show them
+    /// ("F12, ⌘Click"), or null with neither.</summary>
+    public string? ShortcutsShown(string id) => Joined(Shortcut(id), Keymap.MouseShortcutsFor(KeysOf(id)) is { Count: > 0 } mouse ? mouse[0].Display() : null);
+
+    private static string? Joined(string? keys, string? mouse) => keys is null ? mouse : mouse is null ? keys : $"{keys}, {mouse}";
+
     /// <summary>An action's one-keystroke shortcut as a menu shows it; none for a chord, which a menu cannot show.</summary>
     public KeyGesture? Gesture(string id) =>
         Keymap.ShortcutsFor(KeysOf(id)).FirstOrDefault(s => s.Second is null) is { } shortcut ? new KeyGesture(shortcut.First.Key, shortcut.First.Modifiers) : null;
@@ -61,23 +67,27 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
     public void ShowKeys(MenuItem item, string id)
     {
         item.InputGesture = Gesture(id);
-        if (item.InputGesture is null && Keymap.ShortcutsFor(KeysOf(id)).FirstOrDefault() is { Second: not null } chord)
+        string? keys = item.InputGesture is { } gesture ? new Keystroke(gesture.Key, gesture.KeyModifiers).Display()
+            : Keymap.ShortcutsFor(KeysOf(id)).FirstOrDefault() is { Second: not null } chord ? chord.Display() : null;
+        string? mouse = Keymap.MouseShortcutsFor(KeysOf(id)) is { Count: > 0 } gestures ? gestures[0].Display() : null;
+        if ((item.InputGesture is null && keys is not null) || mouse is not null)
         {
-            ShowChord(item, chord);
+            ShowText(item, Joined(keys, mouse)!);
         }
     }
 
     /// <summary>The action whose keys run this one: another's where it shares them (<see cref="IdeAction.KeysOf"/>), else its own.</summary>
     private string KeysOf(string id) => byId.GetValueOrDefault(id)?.KeysOf?.Invoke() ?? id;
 
-    /// <summary>A chord in an item's shortcut column ("⌘E, C"): a KeyGesture holds one keystroke, so the text Fluent's
-    /// item draws its gesture with is given the chord. macOS's menu bar gets none, since a key equivalent there would
-    /// take the chord's first key before the window could wait for its second.</summary>
-    private static void ShowChord(MenuItem item, Shortcut chord) => item.TemplateApplied += (_, e) =>
+    /// <summary>A chord or a mouse shortcut in an item's shortcut column ("⌘E, C", "F12, ⌘Click"): a KeyGesture holds one
+    /// keystroke, so the text Fluent's item draws its gesture with is given them. macOS's menu bar gets neither, since a
+    /// key equivalent there would take the chord's first key before the window could wait for its second, and holds no
+    /// gesture of the mouse.</summary>
+    private static void ShowText(MenuItem item, string shown) => item.TemplateApplied += (_, e) =>
     {
         if (e.NameScope.Find<TextBlock>("PART_InputGestureText") is { } keys)
         {
-            keys.Text = chord.Display();
+            keys.Text = shown;
         }
     };
 

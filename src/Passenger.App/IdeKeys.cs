@@ -51,7 +51,7 @@ public sealed class IdeKeys(Window main, KeymapDispatcher keys, PopupHost popups
             activity();
         }, RoutingStrategies.Tunnel, handledEventsToo: true);
         window.AddHandler(InputElement.PointerPressedEvent, (_, e) => OnSideButton(window, e), RoutingStrategies.Tunnel);
-        CodeEditor.SetGestures(window, gesture => keys.Keymap.ActionFor(gesture));
+        CodeEditor.SetGestures(window, () => keys.Keymap);
         window.AddHandler(InputElement.GotFocusEvent, (_, _) => keys.Reset(), RoutingStrategies.Bubble, handledEventsToo: true);
         if (window is WindowBase shown)
         {

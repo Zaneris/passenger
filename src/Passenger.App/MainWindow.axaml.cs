@@ -175,6 +175,12 @@ public partial class MainWindow : IdeWindow
                 Request(action);
             }
         });
+        // A click its gesture's drag shares (Alt-click beside Alt-drag's column) runs only where it can, a column's start saying nothing.
+        Editors.ForEachEditor(editor => editor.ClickRuns = action =>
+        {
+            ActionContext context = actions!.Context();
+            return editor == Editors.CodeEditor && actions.WhyNot(action, context) is null && Request(action, context);
+        });
         Editors.ForEachEditor(editor => editor.CaretLimitReached += (_, _) =>
             status.Text = string.Create(CultureInfo.InvariantCulture, $"Cannot create more than {SelectionSet.MaxCount:N0} carets"));
         Editors.ForEachGutter(gutter =>

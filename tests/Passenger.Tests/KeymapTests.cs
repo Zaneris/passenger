@@ -369,7 +369,8 @@ public sealed class KeymapTests : IDisposable
             Ui.Settle();
             string[] comment = mac ? ["⌘/", "⌘⌨/", "⌥⌘/", "⌥⌘⌨/", "⌘K, ⌘/"] : ["Ctrl+/", "Ctrl+NumPad /", "Ctrl+Alt+/", "Ctrl+Alt+NumPad /", "Ctrl+K, Ctrl+/"];
             Assert.Equal(comment, dialog.ShortcutsShown(EditorActions.ToggleLineComment));
-            string[] back = mac ? ["⌘-", "⌘⌨-"] : ["Ctrl+-", "Ctrl+NumPad -"];
+            // The side button's gesture after the keys, as the page shows an action's mouse shortcuts.
+            string[] back = mac ? ["⌘-", "⌘⌨-", "Back Button"] : ["Ctrl+-", "Ctrl+NumPad -", "Back Button"];
             Assert.Equal(back, dialog.ShortcutsShown(AppActions.Back));
             dialog.Close();
 

@@ -339,7 +339,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// which Reformat Code lays out Avalonia's and WPF's XAML by, a file's .editorconfig over it.</summary>
     public Passenger.Xaml.Features.XamlFormatSettings XamlFormat { get; init; } = new();
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DiscordKeptAsItWas];
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DiscordKeptAsItWas, MouseShortcutsKept];
 
     /// <summary><see cref="AgentFolders"/> is a set: a folder let in always from one window while another's Settings takes
     /// back a different one stays let in.</summary>
@@ -378,6 +378,35 @@ public sealed record AppSettings : IStateDocument<AppSettings>
         }
         settings["showInDiscord"] = false;
         settings["discordShows"] = nameof(DiscordShown.PassengerOnly);
+    }
+
+    /// <summary>Version 2 to 3: an action's own shortcuts, which now give it its mouse shortcuts too, keep those its keymap
+    /// gives it, as version 2 kept them beside the person's keys.</summary>
+    private static void MouseShortcutsKept(JsonObject settings)
+    {
+        foreach ((string property, Passenger.Editor.KeymapPreset preset) in new[]
+        {
+            (nameof(Shortcuts), Passenger.Editor.KeymapPreset.VisualStudio),
+            (nameof(VSCodeShortcuts), Passenger.Editor.KeymapPreset.VSCode),
+            (nameof(IntelliJShortcuts), Passenger.Editor.KeymapPreset.IntelliJ),
+        })
+        {
+            if (settings[StateFile.Options.PropertyNamingPolicy!.ConvertName(property)] is not JsonObject shortcuts)
+            {
+                continue;
+            }
+            Passenger.Editor.Keymap keymap = AppActions.Keymap(preset, new Dictionary<string, string[]>());
+            foreach ((string action, JsonNode? keys) in shortcuts)
+            {
+                if (keys is JsonArray list)
+                {
+                    foreach (Passenger.Editor.MouseShortcut gesture in keymap.MouseShortcutsFor(AppActions.Now(action)))
+                    {
+                        list.Add(gesture.Notation());
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>A hand-edited or later build's value this build cannot use is brought into range, or back to its default

@@ -90,10 +90,22 @@ public static class EditorActions
         (MatchBrace, "Move Caret to Matching Brace"),
     ];
 
+    /// <summary>The mouse's own actions and their names for people, which no list of actions holds but a gesture's
+    /// conflict names.</summary>
+    public static IReadOnlyList<(string Id, string Title)> Gestures { get; } =
+    [
+        (AddOrRemoveCaret, "Add or Remove Caret"), (ColumnSelectionFromCaret, "Column Selection from Caret"),
+        (ColumnSelectionDrag, "Column Selection"), (AddColumnSelectionDrag, "Add Column Selection"),
+    ];
+
     private static readonly HashSet<string> Movements =
         [Left, Right, Up, Down, WordLeft, WordRight, LineStart, LineEnd, TextStart, TextEnd, PageUp, PageDown];
 
     public static bool IsMovement(string action) => Movements.Contains(action);
+
+    /// <summary>Whether an action is one the mouse drags, its gesture's press starting it: a click may share that gesture,
+    /// run as the press is let go where it was made.</summary>
+    public static bool IsDrag(string action) => action is ColumnSelectionDrag or AddColumnSelectionDrag;
 }
 
 /// <summary>The keymaps a person chooses between in Settings, Keymap, each the platform's own (macOS's or the others'),
@@ -117,7 +129,8 @@ public enum KeymapPreset
 /// apart by where it is pressed is given to one (the editor's own). The keypad's keys (DIVIDE, SUBTRACT) are bound where
 /// Rider binds them, beside the main keys'. The mouse's gestures are theirs too, the Mac's from $default with its Ctrl as
 /// Cmd; Shift+Alt-click, which they give a column from the caret and a column drag both, is the first, a drag going on with
-/// it, and Alt-click's Quick Evaluate Expression (the debugger's) and Linux's middle-click paste are left out.</summary>
+/// it, and Linux's middle-click paste is left out. A click a drag shares (Alt-click's Quick Evaluate Expression beside
+/// Alt-drag's column) is the IDE's.</summary>
 public static class DefaultKeymaps
 {
     public static Keymap ForPlatform() => OperatingSystem.IsMacOS() ? VisualStudioMac() : VisualStudio();

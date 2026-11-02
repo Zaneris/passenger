@@ -131,7 +131,10 @@ public sealed partial class CodeEditor
             return;
         }
         MouseShortcut gesture = MouseShortcut.Of(e);
-        string? action = point.Position.X >= GutterWidth ? ActionOf(gesture) : null;
+        Keymap? gestures = point.Position.X >= GutterWidth ? GesturesKeymap : null;
+        string? clicked = gestures?.ActionFor(gesture);
+        string? dragged = gestures?.DragFor(gesture);
+        string? action = clicked ?? dragged;
         bool left = gesture.Button == MouseButton.Left;
         // The middle button does only what the keymap gives its gesture, and on the text alone.
         if (!left && (gesture.Button != MouseButton.Middle || action is null))
@@ -172,10 +175,9 @@ public sealed partial class CodeEditor
         }
         if (point.Position.X < GutterWidth && GutterClicked is not null && ShowLineNumbers)
         {
-            int clicked = pressed;
-            if (clicked < text.LineCount)
+            if (pressed < text.LineCount)
             {
-                GutterClicked(this, new GutterClick(clicked, mods, point.Position, Context: false));
+                GutterClicked(this, new GutterClick(pressed, mods, point.Position, Context: false));
             }
             drag = default;
             e.Handled = true;
@@ -187,7 +189,7 @@ public sealed partial class CodeEditor
             drag = new Drag(DragMode.Lines, text.GetLineStart(line), point.Position);
             ExtendLines(text, offset, mods.HasFlag(KeyModifiers.Shift));
         }
-        else if (action == EditorActions.AddOrRemoveCaret)
+        else if (clicked == EditorActions.AddOrRemoveCaret)
         {
             SelectionSet without = selections.RemoveAt(offset);
             if (without == selections && selections.Count >= SelectionSet.MaxCount)
@@ -202,27 +204,27 @@ public sealed partial class CodeEditor
             e.Handled = true;
             return;
         }
-        else if (action == EditorActions.ColumnSelectionDrag)
-        {
-            drag = new Drag(DragMode.Column, offset, point.Position);
-            SetSelections(SelectionSet.Single(offset), reveal: false);
-        }
-        else if (action == EditorActions.ColumnSelectionFromCaret)
+        else if (clicked == EditorActions.ColumnSelectionFromCaret)
         {
             // From the middle of the caret's row, so the row is the caret's wherever the press is.
             Point from = PointOf(selections.Primary.Caret) + new Vector(0, metrics.LineHeight / 2);
             drag = new Drag(DragMode.Column, offset, from);
             SetSelections(ColumnSelection(text, from, point.Position), reveal: false);
         }
-        else if (action == EditorActions.AddColumnSelectionDrag)
+        else if (dragged == EditorActions.ColumnSelectionDrag)
         {
-            drag = new Drag(DragMode.Column, offset, point.Position, Kept: selections);
+            drag = new Drag(DragMode.Column, offset, point.Position, Clicked: clicked, Before: selections);
+            SetSelections(SelectionSet.Single(offset), reveal: false);
+        }
+        else if (dragged == EditorActions.AddColumnSelectionDrag)
+        {
+            drag = new Drag(DragMode.Column, offset, point.Position, Kept: selections, Clicked: clicked, Before: selections);
             SetSelections(WithColumn(selections, text, point.Position, point.Position), reveal: false);
         }
-        else if (action is not null)
+        else if (clicked is not null)
         {
             SetSelections(SelectionSet.Single(offset), reveal: false);
-            ActionRequested?.Invoke(this, action);
+            ActionRequested?.Invoke(this, clicked);
             drag = default;
             e.Handled = true;
             return;
@@ -311,8 +313,29 @@ public sealed partial class CodeEditor
             DropColumn(column, e.KeyModifiers, e.GetPosition(this));
         }
         ReleaseLink(e.GetPosition(this));
+        Drag released = drag;
         drag = default;
         e.Pointer.Capture(null);
+        if (released.Clicked is { } clicked && Stayed(released.Start, e.GetPosition(this)))
+        {
+            Click(released, clicked);
+        }
+    }
+
+    /// <summary>Whether a press was let go where it was made, so it was a click, not the drag its gesture also starts.</summary>
+    private static bool Stayed(Point pressed, Point released) => Math.Abs(released.X - pressed.X) < 4 && Math.Abs(released.Y - pressed.Y) < 4;
+
+    /// <summary>A click its gesture's drag shares: on the selection the press fell inside, else at the press; where the
+    /// host does not run it, the press stays a column's start.</summary>
+    private void Click(Drag released, string action)
+    {
+        SelectionSet before = released.Before ?? selections;
+        bool inside = before.Items.Any(s => !s.IsEmpty && s.Start <= released.Anchor && released.Anchor <= s.End);
+        SetSelections(inside ? before : SelectionSet.Single(released.Anchor), reveal: false);
+        if (ClickRuns?.Invoke(action) != true)
+        {
+            SetSelections(SelectionSet.Single(released.Anchor), reveal: false);
+        }
     }
 
     protected override void OnPointerExited(PointerEventArgs e)
@@ -508,8 +531,8 @@ public sealed partial class CodeEditor
         return SelectionSet.Create([.. kept.Items, .. column.Items], kept.Count + column.PrimaryIndex);
     }
 
-    /// <summary>What the keymap gives a press's gesture: the editor's own keymap, else its window's.</summary>
-    private string? ActionOf(MouseShortcut gesture) => ownKeys is { } own ? own.Keymap.ActionFor(gesture) : GetValue(GesturesProperty)?.Invoke(gesture);
+    /// <summary>The keymap a press's gesture runs by: the editor's own keymap, else its window's.</summary>
+    private Keymap? GesturesKeymap => ownKeys?.Keymap ?? GetValue(GesturesProperty)?.Invoke();
 
     /// <summary>Drops a composition under way, the platform's input method's too, so it is never finished into a
     /// document it was not begun in.</summary>
@@ -561,8 +584,10 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>A press being dragged: how it selects, where it began (as an offset, and as a point
-    /// for column selection), for words the end of the first word, and the carets a column is added beside.</summary>
-    private readonly record struct Drag(DragMode Mode, int Anchor, Point Start, int AnchorEnd = 0, SelectionSet? Kept = null);
+    /// for column selection), for words the end of the first word, the carets a column is added beside, and the click
+    /// its gesture runs if let go where it began, with the carets before the press.</summary>
+    private readonly record struct Drag(DragMode Mode, int Anchor, Point Start, int AnchorEnd = 0, SelectionSet? Kept = null, string? Clicked = null,
+        SelectionSet? Before = null);
 
     /// <summary>What the platform's input method (accents, CJK composition) reads and writes: the
     /// caret's line as the surrounding text, the selection in it, which it may set to type over (press and hold's accents

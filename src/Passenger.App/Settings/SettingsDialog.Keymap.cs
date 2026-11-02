@@ -11,9 +11,9 @@ namespace Passenger.App.Settings;
 
 /// <summary>Settings' Keymap page: the keymap chosen at its top (Visual Studio's, VS Code's or IntelliJ IDEA's), every
 /// action with its shortcuts in it, each in a box of its own (a chord as "⌘K, ⌘C"), an action the person changed in the
-/// modified colour. An action's Edit Shortcuts menu (a double-click, a right-click or its button) has Add Keyboard
-/// Shortcut, a Remove for each shortcut and Reset Shortcuts; Find Actions by Shortcut keeps only the actions a keystroke
-/// or chord pressed into it starts.</summary>
+/// modified colour, its mouse shortcuts after its keys ("⌥Click"). An action's Edit Shortcuts menu (a double-click, a
+/// right-click or its button) has Add Keyboard Shortcut, Add Mouse Shortcut, a Remove for each shortcut and Reset
+/// Shortcuts; Find Actions by Shortcut keeps only the actions a keystroke or chord pressed into it starts.</summary>
 public sealed partial class SettingsDialog
 {
     private const string ConflictWarning = "This shortcut is already assigned to other actions. Do you want to remove the other assignments?";
@@ -67,12 +67,13 @@ public sealed partial class SettingsDialog
     /// <summary>Whether an action's row shows it in the colour of one whose shortcuts the person changed.</summary>
     public bool ShowsChanged(string action) => keymapRows[action].Title.Classes.Contains(StyleClasses.Changed);
 
-    /// <summary>Gives an action exactly these shortcuts (keymap notation, "meta shift K"); none unbinds it. Each other
-    /// action's shortcut one clashes with (<see cref="Keymap.Conflicts"/>) is taken from it, and the page says
-    /// so.</summary>
+    /// <summary>Gives an action exactly these shortcuts and mouse shortcuts (keymap notation, "meta shift K", "alt button1");
+    /// none unbinds it. Each other action's shortcut one clashes with (<see cref="Keymap.Conflicts"/>,
+    /// <see cref="Keymap.Conflict"/>) is taken from it, and the page says so.</summary>
     public void Rebind(string action, params string[] shortcuts)
     {
-        Dictionary<string, string[]> next = Taken(Current, action, shortcuts.Select(Shortcut.Parse), keepDefaults: false, out List<string> taken);
+        Dictionary<string, string[]> next = Taken(Current, action, [.. shortcuts.Where(s => !MouseShortcut.IsMouse(s)).Select(Shortcut.Parse)],
+            [.. shortcuts.Where(MouseShortcut.IsMouse).Select(MouseShortcut.Parse)], keepDefaults: false, out List<string> taken);
         next[action] = shortcuts;
         Working = Working.WithOwnShortcuts(next);
         ShowShortcuts();
@@ -83,7 +84,7 @@ public sealed partial class SettingsDialog
     /// person gave it to.</summary>
     public void ResetShortcuts(string action)
     {
-        Dictionary<string, string[]> next = Taken(Current, action, Defaults.ShortcutsFor(action), keepDefaults: true, out List<string> taken);
+        Dictionary<string, string[]> next = Taken(Current, action, Defaults.ShortcutsFor(action), Defaults.MouseShortcutsFor(action), keepDefaults: true, out List<string> taken);
         next.Remove(action);
         Working = Working.WithOwnShortcuts(next);
         ShowShortcuts();
@@ -97,14 +98,13 @@ public sealed partial class SettingsDialog
     public async Task AddKeyboardShortcut(string action)
     {
         Keymap current = Current;
-        KeyboardShortcutDialog dialog = new(actions[action]?.Title ?? action, Where(actions[action]), shortcut =>
-            [.. current.Conflicts(action, shortcut).Select(c => c.Action).Distinct().Select(id => (actions[id]?.Title ?? id, Where(actions[id])))]);
+        KeyboardShortcutDialog dialog = new(TitleOf(action), Where(action), shortcut =>
+            [.. current.Conflicts(action, shortcut).Select(c => c.Action).Distinct().Select(id => (TitleOf(id), Where(id)))]);
         if (await dialog.ShowDialog<Shortcut?>(this) is not { } chosen)
         {
             return;
         }
-        IReadOnlyList<Shortcut> own = current.ShortcutsFor(action);
-        if (own.Contains(chosen))
+        if (current.ShortcutsFor(action).Contains(chosen))
         {
             return;
         }
@@ -112,8 +112,41 @@ public sealed partial class SettingsDialog
         {
             return;
         }
-        Rebind(action, [.. own.Select(s => s.Notation()), chosen.Notation()]);
+        Rebind(action, [.. Own(current, action), chosen.Notation()]);
     }
+
+    /// <summary>Add Mouse Shortcut: the Mouse Shortcut dialog, then, when the gesture runs another action, the warning
+    /// a key's conflict has, whose Remove takes it from that action and whose Cancel keeps the keymap as it was.</summary>
+    public async Task AddMouseShortcut(string action)
+    {
+        Keymap current = Current;
+        MouseShortcutDialog dialog = new(TitleOf(action), Where(action), gesture =>
+            current.Conflict(action, gesture) is { } other ? [(TitleOf(other), Where(other))] : []);
+        if (await dialog.ShowDialog<MouseShortcut?>(this) is not { } chosen)
+        {
+            return;
+        }
+        if (current.MouseShortcutsFor(action).Contains(chosen))
+        {
+            return;
+        }
+        if (current.Conflict(action, chosen) is not null && !await new ConfirmDialog("Warning", ConflictWarning, "Remove").ShowDialog<bool>(this))
+        {
+            return;
+        }
+        Rebind(action, [.. Own(current, action), chosen.Notation()]);
+    }
+
+    /// <summary>An action's shortcuts and mouse shortcuts in a keymap, as the person's keymap keeps them.</summary>
+    private static IEnumerable<string> Own(Keymap keymap, string action) =>
+        [.. keymap.ShortcutsFor(action).Select(s => s.Notation()), .. keymap.MouseShortcutsFor(action).Select(g => g.Notation())];
+
+    /// <summary>What an action's row shows of it: its shortcuts, then its mouse shortcuts.</summary>
+    private static string[] ShownOf(Keymap keymap, string action) =>
+        [.. keymap.ShortcutsFor(action).Select(s => s.Display()), .. keymap.MouseShortcutsFor(action).Select(g => g.Display())];
+
+    /// <summary>An action's name as the page and its dialogs say it: the IDE's, else the editor's for its mouse's own.</summary>
+    private string TitleOf(string id) => actions[id]?.Title ?? EditorActions.Gestures.FirstOrDefault(g => g.Id == id).Title ?? id;
 
     /// <summary>The Keymap page: its header (the keymap, Find Actions by Shortcut) and a row for every action.</summary>
     private void AddKeymap()
@@ -125,7 +158,7 @@ public sealed partial class SettingsDialog
             WrapPanel keys = new() { Width = 300, VerticalAlignment = VerticalAlignment.Center };
             Button edit = ToolButtons.Of(IconKeys.More, "Edit Shortcuts");
             StackPanel editor = new() { Orientation = Orientation.Horizontal, Spacing = 6, Children = { keys, edit } };
-            Panel row = (Panel)Add(KeymapPage, action.Title, editor, RowWords(action, current.ShortcutsFor(action.Id).Select(s => s.Display())), action: action.Id);
+            Panel row = (Panel)Add(KeymapPage, action.Title, editor, RowWords(action, ShownOf(current, action.Id)), action: action.Id);
             // Transparent so a click anywhere along the row is the row's.
             row.Background = Brushes.Transparent;
             ContextMenu menu = new();
@@ -229,20 +262,25 @@ public sealed partial class SettingsDialog
         keymapHeader.Children.Add(named);
     }
 
-    /// <summary>Edit Shortcuts: Add Keyboard Shortcut, a Remove for each shortcut (and Remove All Shortcuts past two),
-    /// and Reset Shortcuts once they differ from the keymap's. The keymap binds keys alone, so it offers no mouse
-    /// shortcut or abbreviation.</summary>
+    /// <summary>Edit Shortcuts: Add Keyboard Shortcut and Add Mouse Shortcut, a Remove for each shortcut and mouse shortcut
+    /// (and Remove All Shortcuts past two), and Reset Shortcuts once they differ from the keymap's. The keymap binds keys
+    /// and gestures alone, so it offers no abbreviation.</summary>
     private void FillEditShortcuts(string action, ContextMenu menu)
     {
         Keymap current = Current;
-        IReadOnlyList<Shortcut> keys = current.ShortcutsFor(action);
-        List<Control> items = [Item("Add Keyboard Shortcut", () => IdeErrors.Observe(AddKeyboardShortcut(action)))];
-        if (keys.Count > 0)
+        List<(string Shown, string Notation)> own = [.. current.ShortcutsFor(action).Select(s => (s.Display(), s.Notation())),
+            .. current.MouseShortcutsFor(action).Select(g => (g.Display(), g.Notation()))];
+        List<Control> items =
+        [
+            Item("Add Keyboard Shortcut", () => IdeErrors.Observe(AddKeyboardShortcut(action))),
+            Item("Add Mouse Shortcut", () => IdeErrors.Observe(AddMouseShortcut(action))),
+        ];
+        if (own.Count > 0)
         {
             items.Add(new Separator());
-            items.AddRange(keys.Select(key => Item($"Remove {key.Display()}", () => Rebind(action, [.. keys.Where(k => k != key).Select(k => k.Notation())]))));
+            items.AddRange(own.Select(shortcut => Item($"Remove {shortcut.Shown}", () => Rebind(action, [.. own.Where(o => o != shortcut).Select(o => o.Notation)]))));
         }
-        if (keys.Count > 2)
+        if (own.Count > 2)
         {
             items.Add(new Separator());
             items.Add(Item("Remove All Shortcuts", () => Rebind(action)));
@@ -280,36 +318,47 @@ public sealed partial class SettingsDialog
         }
     }
 
-    /// <summary>The shortcuts a change gives the other actions: each one's list without the shortcuts that clash with
-    /// these, or, keeping defaults, without only those the person gave it. What was taken is said in words.</summary>
-    private Dictionary<string, string[]> Taken(Keymap from, string action, IEnumerable<Shortcut> shortcuts, bool keepDefaults, out List<string> taken)
+    /// <summary>The shortcuts a change gives the other actions: each one's list without the shortcuts and mouse
+    /// shortcuts that clash with these, or, keeping defaults, without only those the person gave it. What was taken is
+    /// said in words.</summary>
+    private Dictionary<string, string[]> Taken(Keymap from, string action, IEnumerable<Shortcut> shortcuts, IEnumerable<MouseShortcut> gestures, bool keepDefaults,
+        out List<string> taken)
     {
-        Dictionary<string, List<Shortcut>> left = [];
-        taken = [];
+        Dictionary<string, (List<Shortcut> Keys, List<MouseShortcut> Gestures)> left = [];
+        List<string> said = [];
         foreach (Shortcut shortcut in shortcuts)
         {
             foreach ((string other, Shortcut theirs) in from.Conflicts(action, shortcut))
             {
-                if (keepDefaults && Defaults.ShortcutsFor(other).Contains(theirs))
+                if ((!keepDefaults || !Defaults.ShortcutsFor(other).Contains(theirs)) && Left(other).Keys.Remove(theirs))
                 {
-                    continue;
-                }
-                if (!left.TryGetValue(other, out List<Shortcut>? keep))
-                {
-                    left[other] = keep = [.. from.ShortcutsFor(other)];
-                }
-                if (keep.Remove(theirs))
-                {
-                    taken.Add($"{theirs.Display()} was {actions[other]?.Title ?? other}'s");
+                    said.Add($"{theirs.Display()} was {TitleOf(other)}'s");
                 }
             }
         }
-        Dictionary<string, string[]> next = new(Working.OwnShortcuts());
-        foreach ((string other, List<Shortcut> keep) in left)
+        foreach (MouseShortcut gesture in gestures)
         {
-            next[other] = [.. keep.Select(s => s.Notation())];
+            if (from.Conflict(action, gesture) is { } other && (!keepDefaults || !Defaults.MouseShortcutsFor(other).Contains(gesture)) && Left(other).Gestures.Remove(gesture))
+            {
+                said.Add($"{gesture.Display()} was {TitleOf(other)}'s");
+            }
+        }
+        taken = said;
+        Dictionary<string, string[]> next = new(Working.OwnShortcuts());
+        foreach ((string other, (List<Shortcut> keys, List<MouseShortcut> kept)) in left)
+        {
+            next[other] = [.. keys.Select(s => s.Notation()), .. kept.Select(g => g.Notation())];
         }
         return next;
+
+        (List<Shortcut> Keys, List<MouseShortcut> Gestures) Left(string other)
+        {
+            if (!left.TryGetValue(other, out (List<Shortcut> Keys, List<MouseShortcut> Gestures) keep))
+            {
+                left[other] = keep = ([.. from.ShortcutsFor(other)], [.. from.MouseShortcutsFor(other)]);
+            }
+            return keep;
+        }
     }
 
     private void Say(List<string> taken)
@@ -318,7 +367,8 @@ public sealed partial class SettingsDialog
         keymapNote.IsVisible = taken.Count > 0;
     }
 
-    private bool IsChanged(string action, Keymap current) => !current.ShortcutsFor(action).ToHashSet().SetEquals(Defaults.ShortcutsFor(action));
+    private bool IsChanged(string action, Keymap current) => !current.ShortcutsFor(action).ToHashSet().SetEquals(Defaults.ShortcutsFor(action))
+        || !current.MouseShortcutsFor(action).ToHashSet().SetEquals(Defaults.MouseShortcutsFor(action));
 
     /// <summary>Each row's shortcuts as the chosen keymap and the person's own over it have them, which a search then
     /// finds the row by.</summary>
@@ -328,7 +378,7 @@ public sealed partial class SettingsDialog
         foreach (ActionRow row in keymapRows.Values)
         {
             string id = row.Action.Id;
-            string[] shown = [.. current.ShortcutsFor(id).Select(s => s.Display())];
+            string[] shown = ShownOf(current, id);
             if (!shown.SequenceEqual(ShortcutsShown(id)))
             {
                 row.Keys.Children.Clear();
@@ -383,12 +433,13 @@ public sealed partial class SettingsDialog
         return option => option.Action is null || current.ShortcutsFor(option.Action).Any(s => s.StartsWith(filter));
     }
 
-    /// <summary>Where an action is listed: its main menu's path, Editor Actions for the editor's own, else
-    /// Other.</summary>
-    private static string Where(IdeAction? action) => action switch
+    /// <summary>Where an action is listed: its main menu's path, Editor Actions for the editor's own (its mouse's too),
+    /// else Other.</summary>
+    private string Where(string id) => actions[id] switch
     {
         { Menus.Count: > 0 } placed => "Main Menu | " + placed.Menus[0].Path.Replace("/", " | ", StringComparison.Ordinal),
         { InEditor: true } => "Editor Actions",
+        null when EditorActions.Gestures.Any(g => g.Id == id) => "Editor Actions",
         _ => "Other",
     };
 

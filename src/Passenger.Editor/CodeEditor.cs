@@ -127,6 +127,11 @@ public sealed partial class CodeEditor : Control
     /// is put at the press first, for the host to run the action there.</summary>
     public event EventHandler<string>? ActionRequested;
 
+    /// <summary>What runs a click whose gesture also starts a drag, let go where it was pressed (Alt-click beside Alt-drag's
+    /// column), given the selection the press fell inside, else the caret at the press: true where the host ran the action,
+    /// false where it cannot run there, the press then the start of a column, as its drag leaves it.</summary>
+    public Func<string, bool>? ClickRuns { get; set; }
+
     /// <summary>The pointer has rested on the text: the offset under it and where it is, for a hover
     /// card. Raised once per rest; moving off clears it (<see cref="HoverEnded"/>).</summary>
     public event EventHandler<HoverEventArgs>? Hovered;
@@ -386,14 +391,14 @@ public sealed partial class CodeEditor : Control
         ScrollTo(new Vector(0, bottom));
     }
 
-    /// <summary>What a gesture of the mouse pressed on an editor's text runs, by the keymap of the window it is in: set on a
+    /// <summary>The keymap whose gestures of the mouse pressed on an editor's text run, the window's in force: set on a
     /// window, every editor there follows it, unless it has a <see cref="Keymap"/> of its own.</summary>
-    public static readonly AttachedProperty<Func<MouseShortcut, string?>?> GesturesProperty =
-        AvaloniaProperty.RegisterAttached<CodeEditor, AvaloniaObject, Func<MouseShortcut, string?>?>("Gestures", inherits: true);
+    public static readonly AttachedProperty<Func<Keymap>?> GesturesProperty =
+        AvaloniaProperty.RegisterAttached<CodeEditor, AvaloniaObject, Func<Keymap>?>("Gestures", inherits: true);
 
-    public static Func<MouseShortcut, string?>? GetGestures(AvaloniaObject host) => host.GetValue(GesturesProperty);
+    public static Func<Keymap>? GetGestures(AvaloniaObject host) => host.GetValue(GesturesProperty);
 
-    public static void SetGestures(AvaloniaObject host, Func<MouseShortcut, string?>? gestures) => host.SetValue(GesturesProperty, gestures);
+    public static void SetGestures(AvaloniaObject host, Func<Keymap>? gestures) => host.SetValue(GesturesProperty, gestures);
 
     /// <summary>When set, the editor resolves its own key presses and gestures; an IDE leaves it null and sends actions in
     /// through <see cref="TryExecute"/> from one window-wide keymap, whose gestures it gives (<see cref="GesturesProperty"/>).</summary>

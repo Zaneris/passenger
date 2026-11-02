@@ -553,24 +553,33 @@ public static class AppActions
     /// <summary>The keymap settings choose, with their shortcuts for it over it.</summary>
     public static Keymap Keymap(Settings.AppSettings settings) => Keymap(settings.Keymap, settings.OwnShortcuts());
 
-    /// <summary>A keymap with these shortcuts over the platform's; one that does not read is passed over.</summary>
+    /// <summary>A keymap with these shortcuts over the platform's, each action's keys and mouse shortcuts exactly those its
+    /// list names; one that does not read is passed over.</summary>
     public static Keymap Keymap(KeymapPreset preset, IReadOnlyDictionary<string, string[]> overrides)
     {
         Keymap keymap = Base(preset);
         foreach ((string action, string[] shortcuts) in overrides)
         {
-            List<Shortcut> parsed = [];
+            List<Shortcut> keys = [];
+            List<MouseShortcut> gestures = [];
             foreach (string text in shortcuts)
             {
                 try
                 {
-                    parsed.Add(Shortcut.Parse(text));
+                    if (MouseShortcut.IsMouse(text))
+                    {
+                        gestures.Add(MouseShortcut.Parse(text));
+                    }
+                    else
+                    {
+                        keys.Add(Shortcut.Parse(text));
+                    }
                 }
                 catch (FormatException)
                 {
                 }
             }
-            keymap.Set(Now(action), parsed);
+            keymap.Set(Now(action), keys, gestures);
         }
         return keymap;
     }
