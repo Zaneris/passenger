@@ -91,6 +91,29 @@ public sealed class CommitSigningTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void A_cherry_pick_is_signed_with_the_keys_passphrase_asked_in_passengers_dialog()
+    {
+        Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
+        const string Passphrase = "spindle-cove-2";
+        (string root, _) = Repository(Passphrase);
+        TestGit.Run(root, "switch", "-q", "-c", "side");
+        File.WriteAllText(Path.Combine(root, "Side.md"), "side\n");
+        TestGit.Run(root, "add", "-A");
+        TestGit.Run(root, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "Side");
+        string picked = TestGit.Run(root, "rev-parse", "HEAD").Trim();
+        TestGit.Run(root, "switch", "-q", "main");
+        MainWindow window = Open(root);
+
+        Task<VcsOutcome> picking = window.Vcs.CherryPickAsync(picked);
+        GitQuestionDialog asked = Asked(window);
+        asked.KeyTextInput(Passphrase);
+        Ui.Press(asked, "ENTER");
+        Ui.Landed(() => picking.IsCompleted, "the cherry-pick given the key's passphrase");
+        Assert.True(Show(root, "%s %G?") == "Side G", $"The cherry-pick given its key's passphrase made \"{Show(root, "%s %G?")}\", where the status bar says \"{window.Status}\"");
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void A_gpg_keys_passphrase_is_asked_in_passengers_dialog_through_its_own_gpg_and_signs_the_commit()
     {
         Assert.SkipWhen(TestGpgKeys.WhyNot is not null, TestGpgKeys.WhyNot ?? string.Empty);

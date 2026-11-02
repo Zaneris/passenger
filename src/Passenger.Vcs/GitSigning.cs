@@ -102,6 +102,10 @@ public sealed record CommitSigning(bool? Sign = null, bool SignOff = false, IRea
     ];
 }
 
+/// <summary>How the commits a git makes beyond the Commit window's own (a merge's, a cherry-pick's, a rebase's) are signed:
+/// through Passenger's own gpg where it gives one, a key's passphrase asked of <see cref="Asker"/>.</summary>
+public sealed record Signer(CommitSigning Signing, GitAsker? Asker);
+
 /// <summary>An allowed signers file's lines (ssh-keygen's ALLOWED SIGNERS: principals, options, the key), as Commit
 /// Signing… adds the person's own key to it.</summary>
 public static class AllowedSigners

@@ -796,15 +796,9 @@ public sealed class VcsController : IDisposable
             }
             string[] paths = [.. Paths(chosen)];
             string[] excluded = merging ? [.. Paths(Changes.Where(c => c.Kind is not ChangeKind.Unversioned && !chosen.Contains(c)))] : [];
-            SigningSetup setup = await repository.SigningAsync();
-            CommitSigning given = signing ?? CommitSigning.AsConfigured;
-            GitAsker? asker = Asker();
-            if (asker is not null && (given.Sign ?? setup.Signs) && setup.Format is SigningFormat.OpenPgp && GpgOf(setup) is { } gpg)
-            {
-                // Signed through Passenger's own gpg, which asks the window for the key's passphrase.
-                given = given with { Config = [$"gpg.program={asker.Helper}"], Environment = new Dictionary<string, string> { [GpgLoopback.Variable] = gpg } };
-            }
-            GitResult commit = await repository.CommitAsync(paths, message, amend, merging, excluded, given, asker);
+            (Signer signer, SigningSetup setup) = await SignerAsync(repository, signing ?? CommitSigning.AsConfigured);
+            CommitSigning given = signer.Signing;
+            GitResult commit = await repository.CommitAsync(paths, message, amend, merging, excluded, given, signer.Asker);
             commit = commit with { Output = ContainerSecrets.InSaid(commit.Output), Error = ContainerSecrets.InSaid(commit.Error) };
             if (!commit.Succeeded)
             {
@@ -941,7 +935,8 @@ public sealed class VcsController : IDisposable
             work?.Say(plan.Rebase && ahead > 0 ? $"Rebasing {branch} onto {upstream}…" : $"Merging {upstream} into {branch}…");
             // Named until Git is read again, so the folder watcher has heard of what it changed.
             using IDisposable? named = Activity?.Invoke("Update from VCS");
-            GitResult integrated = await repository.IntegrateAsync(plan);
+            (Signer signer, SigningSetup setup) = await SignerAsync(repository, CommitSigning.AsConfigured);
+            GitResult integrated = Unsigned(await repository.IntegrateAsync(plan, signer), setup);
             ReloadOpenFiles();
             await RefreshAsync();
             if (Conflicted(Merge.Operation is MergeOperation.Rebase ? "Rebase stopped due to conflicts" : "Merged with conflicts") is { } stopped)
@@ -1048,6 +1043,43 @@ public sealed class VcsController : IDisposable
     /// <summary>The hold of the change to the tree under way (<see cref="OneAtATimeAsync"/>), let go while git asks the
     /// person something for it.</summary>
     private volatile GitHold? changing;
+
+    /// <summary>How a change to the tree's commits are signed (the Commit window's as <paramref name="signing"/> says, any
+    /// other's as git's config does): a key's passphrase asked in the window, a GPG key's through Passenger's own gpg; with
+    /// the config read for what a failure says. Taken in the change's own flow, whose hold it lets go while it asks.</summary>
+    private async Task<(Signer Signer, SigningSetup Setup)> SignerAsync(Git repository, CommitSigning signing)
+    {
+        SigningSetup setup = await repository.SigningAsync();
+        GitAsker? asker = Asker();
+        if (asker is not null && (signing.Sign ?? setup.Signs) && setup.Format is SigningFormat.OpenPgp && GpgOf(setup) is { } gpg)
+        {
+            signing = signing with { Config = [$"gpg.program={asker.Helper}"], Environment = new Dictionary<string, string> { [GpgLoopback.Variable] = gpg } };
+        }
+        return (new Signer(signing, asker), setup);
+    }
+
+    /// <summary>A change to the tree that may make commits (a merge, a cherry-pick, a revert, a rebase), run as
+    /// <see cref="SwitchAsync"/> runs one, each commit signed as git's config has it, a key's passphrase asked in the window,
+    /// and one not signed saying why and how to mend it.</summary>
+    private Task<VcsOutcome> SignedSwitchAsync(Func<Git, Signer, Task<GitResult>> change, string done, string activity, string? conflicted = null) =>
+        SwitchAsync(async repository =>
+        {
+            (Signer signer, SigningSetup setup) = await SignerAsync(repository, CommitSigning.AsConfigured);
+            return Unsigned(await change(repository, signer), setup);
+        }, done, activity, conflicted);
+
+    /// <summary>A git that was to sign, its words masked as every secret is, and where it failed for its signing, what the
+    /// person is told in place of git's words.</summary>
+    private static GitResult Unsigned(GitResult said, SigningSetup setup)
+    {
+        said = said with { Output = ContainerSecrets.InSaid(said.Output), Error = ContainerSecrets.InSaid(said.Error) };
+        if (said.Succeeded || !setup.Signs)
+        {
+            return said;
+        }
+        string? why = said.Unanswered is { } unanswered ? SigningFailure.Unsigned + unanswered : SigningFailure.Of(said.Error, setup);
+        return why is null ? said : said with { Error = why, Unanswered = null };
+    }
 
     /// <summary>The gpg the person signs OpenPGP with, as a path: the one git's config names, else the one on the PATH;
     /// null where none is there, when git is left to find its own.</summary>
@@ -1188,10 +1220,10 @@ public sealed class VcsController : IDisposable
         SwitchAsync(repository => repository.NewBranchAtAsync(name, hash), $"Created and checked out {name} at {Short(hash)}", "Git checkout");
 
     public Task<VcsOutcome> CherryPickAsync(string hash) =>
-        SwitchAsync(repository => repository.CherryPickAsync(hash), $"Cherry-picked {Short(hash)}", "Git cherry-pick", "Cherry-pick was performed with conflicts");
+        SignedSwitchAsync((repository, signer) => repository.CherryPickAsync(hash, signer), $"Cherry-picked {Short(hash)}", "Git cherry-pick", "Cherry-pick was performed with conflicts");
 
     public Task<VcsOutcome> RevertAsync(string hash) =>
-        SwitchAsync(repository => repository.RevertAsync(hash), $"Reverted {Short(hash)}", "Git revert", "Revert was performed with conflicts");
+        SignedSwitchAsync((repository, signer) => repository.RevertAsync(hash, signer), $"Reverted {Short(hash)}", "Git revert", "Revert was performed with conflicts");
 
     public Task<VcsOutcome> ResetAsync(string hash, ResetMode mode) =>
         SwitchAsync(repository => repository.ResetAsync(hash, mode), $"Reset {Branch ?? "HEAD"} to {Short(hash)} ({mode.ToString().ToLowerInvariant()})", "Git reset");
@@ -1233,7 +1265,7 @@ public sealed class VcsController : IDisposable
     public Task<VcsOutcome> MergeAsync(BranchInfo branch)
     {
         string into = Branch ?? "HEAD";
-        return SwitchAsync(repository => repository.MergeAsync(branch.Ref.GitName ?? branch.Ref.FullName), $"Merged {branch.Name} to {into}", "Git merge", $"{branch.Name} Merged with Conflicts");
+        return SignedSwitchAsync((repository, signer) => repository.MergeAsync(branch.Ref.GitName ?? branch.Ref.FullName, signer), $"Merged {branch.Name} to {into}", "Git merge", $"{branch.Name} Merged with Conflicts");
     }
 
     /// <summary>Rebase Current onto Selected; one that stops for conflicts opens the Conflicts dialog.</summary>
@@ -1243,7 +1275,7 @@ public sealed class VcsController : IDisposable
         {
             return Task.FromResult(Report(false, "Rebase is not possible in the detached HEAD state"));
         }
-        return SwitchAsync(repository => repository.RebaseAsync(onto.Ref.FullName), $"Rebased {current} on {onto.Name}", "Git rebase", "Rebase stopped due to conflicts");
+        return SignedSwitchAsync((repository, signer) => repository.RebaseAsync(onto.Ref.FullName, signer: signer), $"Rebased {current} on {onto.Name}", "Git rebase", "Rebase stopped due to conflicts");
     }
 
     /// <summary>Checkout and Rebase onto Current: a local branch checked out and rebased onto the branch that was.</summary>
@@ -1253,7 +1285,7 @@ public sealed class VcsController : IDisposable
         {
             return Task.FromResult(Report(false, "Rebase is not possible in the detached HEAD state"));
         }
-        return SwitchAsync(repository => repository.RebaseAsync(current, branch.Name), $"Checked out {branch.Name} and rebased it on {current}", "Git rebase", "Rebase stopped due to conflicts");
+        return SignedSwitchAsync((repository, signer) => repository.RebaseAsync(current, branch.Name, signer), $"Checked out {branch.Name} and rebased it on {current}", "Git rebase", "Rebase stopped due to conflicts");
     }
 
     /// <summary>Rename of a local branch.</summary>
@@ -1638,7 +1670,7 @@ public sealed class VcsController : IDisposable
             return Report(false, UnderWay(AppActions.ContinueRebase));
         }
         using Working? held = work;
-        return await SwitchAsync(repository => repository.ContinueRebaseAsync(), "Rebase successful", "Git rebase", "Rebase stopped due to conflicts");
+        return await SignedSwitchAsync((repository, signer) => repository.ContinueRebaseAsync(signer), "Rebase successful", "Git rebase", "Rebase stopped due to conflicts");
     }
 
     /// <summary>Why Continue Rebase cannot go on while a conflict is left.</summary>

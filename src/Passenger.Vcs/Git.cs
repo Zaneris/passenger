@@ -579,8 +579,20 @@ public sealed partial class Git
     }, "--abort"]);
 
     /// <summary>Continue Rebase: the resolved commit made with the message it had, and the rest replayed.</summary>
-    public Task<GitResult> ContinueRebaseAsync() =>
-        RunAsync(Root, ["rebase", "--continue"], environment: new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
+    public Task<GitResult> ContinueRebaseAsync(Signer? signer = null) =>
+        RunSignedAsync(["rebase", "--continue"], signer, new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
+
+    /// <summary>A git that may make commits, each signed as the person's config has it through <paramref name="signer"/>'s
+    /// own gpg, a key's passphrase asked of its asker.</summary>
+    private Task<GitResult> RunSignedAsync(IReadOnlyList<string> arguments, Signer? signer, IReadOnlyDictionary<string, string>? environment = null)
+    {
+        Dictionary<string, string> given = new(environment ?? new Dictionary<string, string>());
+        foreach ((string name, string value) in signer?.Signing.Environment ?? new Dictionary<string, string>())
+        {
+            given[name] = value;
+        }
+        return RunAsync(Root, [.. signer?.Signing.Before ?? [], .. arguments], environment: given, asker: signer?.Asker);
+    }
 
     /// <summary>The branches, remotes and tags the log shows and the commit each names, as a hash of git's bytes for them
     /// read off the caller's thread: with HEAD's commit, what changes when the history does (a commit, a checkout, a
@@ -1318,10 +1330,10 @@ public sealed partial class Git
     /// <summary>Update Project's second half, once the upstream is fetched: the branch merged with it or rebased onto it as
     /// <paramref name="plan"/> says, its uncommitted changes to tracked files set aside first and put back after
     /// (--autostash); a merge or rebase stopped for conflicts puts them back once it is finished or aborted.</summary>
-    public Task<GitResult> IntegrateAsync(UpdatePlan plan) => plan.Rebase
-        ? RunAsync(Root, ["rebase", "--autostash", .. plan.RebaseMerges ? new[] { "--rebase-merges" } : []],
-            environment: new Dictionary<string, string> { ["GIT_EDITOR"] = "true" })
-        : RunAsync(Root, ["merge", "--no-edit", "--autostash", .. plan.FastForward is { } fastForward ? new[] { fastForward } : [], "@{upstream}"]);
+    public Task<GitResult> IntegrateAsync(UpdatePlan plan, Signer? signer = null) => plan.Rebase
+        ? RunSignedAsync(["rebase", "--autostash", .. plan.RebaseMerges ? new[] { "--rebase-merges" } : []], signer,
+            new Dictionary<string, string> { ["GIT_EDITOR"] = "true" })
+        : RunSignedAsync(["merge", "--no-edit", "--autostash", .. plan.FastForward is { } fastForward ? new[] { fastForward } : [], "@{upstream}"], signer);
 
     /// <summary>How many commits the branch has that its upstream lacks, and the upstream has that it lacks; null where it
     /// tracks none.</summary>
@@ -1432,13 +1444,13 @@ public sealed partial class Git
     public Task<GitResult> CheckoutTrackingAsync(string remoteBranch) => RunAsync(Root, ["switch", "--track", "--end-of-options", remoteBranch]);
 
     /// <summary>Another branch merged into the current one, git's own message for the merge commit.</summary>
-    public Task<GitResult> MergeAsync(string branch) => RunAsync(Root, ["merge", "--no-edit", "--end-of-options", branch]);
+    public Task<GitResult> MergeAsync(string branch, Signer? signer = null) => RunSignedAsync(["merge", "--no-edit", "--end-of-options", branch], signer);
 
     /// <summary>The current branch rebased onto another; or, given <paramref name="branch"/>, that branch checked out and
     /// rebased onto <paramref name="onto"/> (Checkout and Rebase onto Current, "git rebase HEAD branch").</summary>
-    public Task<GitResult> RebaseAsync(string onto, string? branch = null) =>
-        RunAsync(Root, ["rebase", "--end-of-options", onto, .. branch is null ? Array.Empty<string>() : [branch]],
-            environment: new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
+    public Task<GitResult> RebaseAsync(string onto, string? branch = null, Signer? signer = null) =>
+        RunSignedAsync(["rebase", "--end-of-options", onto, .. branch is null ? Array.Empty<string>() : [branch]], signer,
+            new Dictionary<string, string> { ["GIT_EDITOR"] = "true" });
 
     public Task<GitResult> RenameBranchAsync(string from, string to) => RunAsync(Root, ["branch", "-m", "--end-of-options", from, to]);
 
@@ -1547,10 +1559,10 @@ public sealed partial class Git
     /// <summary>A commit checked out on its own, with no branch (a detached head).</summary>
     public Task<GitResult> CheckoutRevisionAsync(string hash) => RunAsync(Root, ["switch", "--detach", "--end-of-options", hash]);
 
-    public Task<GitResult> CherryPickAsync(string hash) => RunAsync(Root, ["cherry-pick", "--end-of-options", hash]);
+    public Task<GitResult> CherryPickAsync(string hash, Signer? signer = null) => RunSignedAsync(["cherry-pick", "--end-of-options", hash], signer);
 
     /// <summary>A commit undone by a new one, with git's own message.</summary>
-    public Task<GitResult> RevertAsync(string hash) => RunAsync(Root, ["revert", "--no-edit", "--end-of-options", hash]);
+    public Task<GitResult> RevertAsync(string hash, Signer? signer = null) => RunSignedAsync(["revert", "--no-edit", "--end-of-options", hash], signer);
 
     /// <summary>The branch moved to a commit: soft keeps the changes staged, mixed keeps them in the files, hard drops them.</summary>
     public Task<GitResult> ResetAsync(string hash, ResetMode mode) => RunAsync(Root, ["reset", $"--{mode.ToString().ToLowerInvariant()}", "--end-of-options", hash]);
