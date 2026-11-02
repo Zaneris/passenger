@@ -508,7 +508,8 @@ site-shots` retakes its images.
   has one reader (`GodotVariant.ReadAsync`). Godot's frame counter runs on while a game is paused, so the frame count is
   the helper's (`GodotGame.Frame`); in a headless game Next Frame never pauses again, so the helper's `step` ends it;
   node selection, once set up, starts picking and takes the game's clicks until turned off; a headless game picks no 3D
-  mesh without a collision shape. An agent's input and layout reach a game through Passenger's helper node
+  mesh without a collision shape. Its .NET host rolls forward only to released runtimes, so a new game's framework is
+  one it can run (`GodotGames.Runnable`). An agent's input and layout reach a game through Passenger's helper node
   (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
