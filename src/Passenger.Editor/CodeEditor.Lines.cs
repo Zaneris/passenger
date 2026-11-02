@@ -306,14 +306,46 @@ public sealed partial class CodeEditor
         public override int GetHashCode() => hash;
     }
 
-    /// <summary>A formatted line, and the last frame that drew or measured with it.</summary>
+    /// <summary>A formatted line, the last frame that drew or measured with it, and the x of the last few columns asked of it
+    /// (where squiggles, selections and hints stand), which the line's layout allocates to read again in every frame.</summary>
     private sealed class Formatted(TextLine line)
     {
+        private const int KeptDistances = 8;
+
+        private (int Column, double X)[]? distances;
+        private int kept;
+        private int replaced;
+
         public TextLine Line { get; } = line;
         public long Frame { get; private set; }
         public bool Disposed { get; private set; }
 
         public void Touch(long frame) => Frame = frame;
+
+        /// <summary>A column's x on the line, read from its layout the first time it is asked for.</summary>
+        public double DistanceOf(int column)
+        {
+            (int Column, double X)[]? known = distances;
+            for (int i = 0; i < kept; i++)
+            {
+                if (known![i].Column == column)
+                {
+                    return known[i].X;
+                }
+            }
+            double x = Line.GetDistanceFromCharacterHit(new CharacterHit(column));
+            known ??= distances = new (int, double)[KeptDistances];
+            if (kept < KeptDistances)
+            {
+                known[kept++] = (column, x);
+            }
+            else
+            {
+                known[replaced] = (column, x);
+                replaced = (replaced + 1) % KeptDistances;
+            }
+            return x;
+        }
 
         public void Dispose()
         {
@@ -369,10 +401,10 @@ public sealed partial class CodeEditor
         {
             if (Long is null)
             {
-                return Text!.Line.GetDistanceFromCharacterHit(new CharacterHit(column));
+                return Text!.DistanceOf(column);
             }
             return Text is not null && column >= From && column <= To
-                ? X + Text.Line.GetDistanceFromCharacterHit(new CharacterHit(column - From))
+                ? X + Text.DistanceOf(column - From)
                 : Long.XOf(column);
         }
 
