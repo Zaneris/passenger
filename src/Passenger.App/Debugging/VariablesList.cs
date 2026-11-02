@@ -251,6 +251,8 @@ public sealed class VariablesList : ListBox
         RowIcon chevron = RowIcon.Chevron();
         Border toggle = new() { Width = 18, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
         RowIcon icon = new() { Margin = new Thickness(0, 0, 6, 0) };
+        // In the icon's place, a colour's own.
+        Border swatch = new() { Classes = { StyleClasses.Swatch }, Width = 12, Height = 12, Margin = new Thickness(2, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
         TextBlock type = new() { VerticalAlignment = VerticalAlignment.Center };
         type.Classes.Add(StyleClasses.Muted);
@@ -263,7 +265,7 @@ public sealed class VariablesList : ListBox
         ShrinkingRow row = new()
         {
             Height = ListRow.Height,
-            Children = { toggle, icon, name, new TextBlock { Text = " = ", VerticalAlignment = VerticalAlignment.Center }, type, again, value, editor },
+            Children = { toggle, icon, swatch, name, new TextBlock { Text = " = ", VerticalAlignment = VerticalAlignment.Center }, type, again, value, editor },
         };
         again.Click += (_, e) =>
         {
@@ -352,6 +354,10 @@ public sealed class VariablesList : ListBox
                 { IsQuerySql: true } => IconKeys.Database,
                 _ => IconKeys.Variable,
             };
+            Color? colour = node.Swatch;
+            swatch.IsVisible = colour is not null;
+            icon.IsVisible = colour is null;
+            swatch.Background = colour is { } shown ? new SolidColorBrush(shown) : null;
             name.Text = node.Name;
             type.Text = node.TypeLabel;
             value.Text = node.Shown;

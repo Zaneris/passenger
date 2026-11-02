@@ -116,6 +116,9 @@ public sealed class VariableNode(string name, string value, string? type, int re
 
     bool ITreeRow.Expands => HasChildren;
 
+    /// <summary>The colour a value of a colour type shows beside it (<see cref="Godot.GodotValues.Swatch"/>), null for any other.</summary>
+    public Avalonia.Media.Color? Swatch => Godot.GodotValues.Swatch(Type, Value);
+
     /// <summary>The type in braces before the value, unless the value already says it.</summary>
     public string TypeLabel => Type is { Length: > 0 } t && Value != t && !Value.StartsWith(t, StringComparison.Ordinal) ? $"{{{t}}} " : string.Empty;
 

@@ -272,7 +272,7 @@ public sealed class DebugSession : IAsyncDisposable
     }
 
     public async Task<DebugSession> LaunchAsync(string program, bool stopAtEntry, bool justMyCode, IReadOnlyList<string>? arguments = null, string console = "internalConsole",
-        IReadOnlyDictionary<string, string>? environment = null)
+        IReadOnlyDictionary<string, string>? environment = null, IReadOnlyList<DapTypePresentation>? presentations = null)
     {
         await RequestAsync(DapCommands.Launch, new LaunchArguments
         {
@@ -283,6 +283,7 @@ public sealed class DebugSession : IAsyncDisposable
             Console = console,
             JustMyCode = justMyCode,
             StopAtEntry = stopAtEntry,
+            Presentations = presentations,
         });
         return this;
     }
@@ -715,8 +716,9 @@ public static class DebugSessionChain
         await (await chain).AttachAsync(processId, justMyCode);
 
     public static async Task<DebugSession> LaunchAsync(this Task<DebugSession> chain, string program, bool stopAtEntry, bool justMyCode,
-        IReadOnlyList<string>? arguments = null, string console = "internalConsole", IReadOnlyDictionary<string, string>? environment = null) =>
-        await (await chain).LaunchAsync(program, stopAtEntry, justMyCode, arguments, console, environment);
+        IReadOnlyList<string>? arguments = null, string console = "internalConsole", IReadOnlyDictionary<string, string>? environment = null,
+        IReadOnlyList<DapTypePresentation>? presentations = null) =>
+        await (await chain).LaunchAsync(program, stopAtEntry, justMyCode, arguments, console, environment, presentations);
 
     public static async Task<DebugSession> BreakpointsAsync(this Task<DebugSession> chain) => await (await chain).BreakpointsAsync();
 

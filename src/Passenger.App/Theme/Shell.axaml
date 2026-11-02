@@ -173,6 +173,12 @@
     <Style Selector="Border.box">
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
     </Style>
+    <!-- A value's colour beside its row, framed so a colour like the row's background still shows. -->
+    <Style Selector="Border.swatch">
+        <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
     <!-- The project widget's initials on a badge: the icon's amber dot in Passenger's theme. -->
     <Style Selector="Border.projectBadge">
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />

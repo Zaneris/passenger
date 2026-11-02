@@ -264,7 +264,7 @@ public partial class ManagedDebugger
     }
 
     /// <summary>A member's value as Variables shows it, without running the program's code to show it.</summary>
-    private static string Shown(ICorDebugValue value)
+    private string Shown(ICorDebugValue value)
     {
         ResolvedCorDebugValue resolved = ResolveCorDebugValue(value);
         return resolved.Value is { } present ? GetValueForCorDebugValue(present, true).Value : "null";

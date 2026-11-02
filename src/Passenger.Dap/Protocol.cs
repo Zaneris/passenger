@@ -66,6 +66,9 @@ public sealed record LaunchArguments
     /// <summary>Passenger's own: the program's code may be changed as it runs (Hot Reload, applyChanges). The runtime is
     /// told DOTNET_MODIFIABLE_ASSEMBLIES=debug and each of the user's modules gets Edit and Continue as it loads.</summary>
     public bool? HotReload { get; init; }
+
+    /// <summary>Passenger's own: how the values of types that carry no debugger attributes of their own are shown.</summary>
+    public IReadOnlyList<DapTypePresentation>? Presentations { get; init; }
 }
 
 public sealed record AttachArguments
@@ -76,7 +79,35 @@ public sealed record AttachArguments
     /// <summary>Passenger's own: the program was started held with DOTNET_MODIFIABLE_ASSEMBLIES=debug, so each of the
     /// user's modules, loading after the attach, gets Edit and Continue (Hot Reload, applyChanges).</summary>
     public bool? HotReload { get; init; }
+
+    /// <summary>Passenger's own: how the values of types that carry no debugger attributes of their own are shown.</summary>
+    public IReadOnlyList<DapTypePresentation>? Presentations { get; init; }
 }
+
+/// <summary>Passenger's own: how the debugger shows the values of a type (<see cref="Type"/>, its full name, declared in
+/// <see cref="Assembly"/>) and of the types deriving from it that carry no [DebuggerDisplay] of their own, as a client
+/// that knows a library tells it. Its value is <see cref="Value"/>, a [DebuggerDisplay] format on it. A value with
+/// <see cref="Rows"/> opens to the members the types deriving from it declare, those carrying the attribute
+/// <see cref="First"/> names first, then its rows, its type's own members and its bases' under Raw View; one without
+/// opens to its members.</summary>
+public sealed record DapTypePresentation
+{
+    public required string Type { get; init; }
+
+    /// <summary>The name of the assembly that declares the type.</summary>
+    public required string Assembly { get; init; }
+
+    public string? Value { get; init; }
+
+    /// <summary>The rows it opens to after its deriving types' members, each a name and an expression on the value.</summary>
+    public IReadOnlyList<DapPresentedRow>? Rows { get; init; }
+
+    /// <summary>The full name of an attribute whose members are listed first.</summary>
+    public string? First { get; init; }
+}
+
+/// <summary>A row a <see cref="DapTypePresentation"/> opens its value to: its name and the C# on the value it shows.</summary>
+public sealed record DapPresentedRow(string Name, string Expression);
 
 public sealed record DapSource
 {

@@ -357,17 +357,17 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>A type's members and then its base types', each reached from <paramref name="owner"/> (the value's
-    /// expression; none where null), a list's view's elements by index from <paramref name="listed"/>; true where a Static
-    /// members row is needed. A member the value's variable (declared as <paramref name="declared"/>, else as the value's own
-    /// type) reaches only through a cast says the type declaring it: one of a type below the declared one but a property an
-    /// interface declared reaches by its name, or one that a type between the declared one and its own hides by its name.</summary>
+    /// <summary>A type's members and its base types', <paramref name="levels"/> of them at most, each reached from
+    /// <paramref name="owner"/> (the value's expression; none where null), a list's view's elements by index from
+    /// <paramref name="listed"/>; true where a Static members row is needed. A member the value's variable (declared as
+    /// <paramref name="declared"/>, else as its own type) reaches only through a cast says its declaring type: one of a type
+    /// below the declared one but a property a declared interface reaches by name, or one a type between them hides.</summary>
     private Task<bool> AddMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, bool includeNonPublicMembers = true,
-        DeclaredType? declared = null, string? owner = null, string? listed = null)
+        DeclaredType? declared = null, string? owner = null, string? listed = null, int levels = int.MaxValue)
     {
         int below = Below(corDebugType, declared);
         return AddMembers(corDebugValue, corDebugType, threadId, stackDepth, result, includeNonPublicMembers, below, new HashSet<string>(StringComparer.Ordinal),
-            below > 0 ? ThroughInterface(corDebugType, declared) : null, owner, listed);
+            below > 0 ? ThroughInterface(corDebugType, declared) : null, owner, listed, levels);
     }
 
     /// <summary>A type's members and then its base types', each saying its type where it lies <paramref name="below"/> the
@@ -375,7 +375,7 @@ public partial class ManagedDebugger
     /// but for the first property, at or above the type implementing it, of each name a declared interface reaches
     /// (<paramref name="reach"/>).</summary>
     private async Task<bool> AddMembers(ICorDebugValue corDebugValue, ICorDebugType corDebugType, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, bool includeNonPublicMembers,
-        int below, HashSet<string> hidden, InterfaceReach? reach, string? owner, string? listed)
+        int below, HashSet<string> hidden, InterfaceReach? reach, string? owner, string? listed, int levels)
     {
         int first = result.Count;
         bool hasStaticMembers = false;
@@ -412,7 +412,7 @@ public partial class ManagedDebugger
         Express(result, first, row => RowExpressions.Member(owner, row.Member!, row.Interface ?? row.DeclaringType));
 
         ICorDebugType? baseType = corDebugType.Base;
-        if (baseType is null)
+        if (baseType is null || levels <= 1)
         {
             return hasStaticMembers;
         }
@@ -429,7 +429,8 @@ public partial class ManagedDebugger
         {
             taken.UnionWith(result.Skip(first).Select(member => member.Name));
         }
-        return hasStaticMembers | await AddMembers(corDebugValue, baseType, threadId, stackDepth, result, true, below - 1, taken, reach is null ? null : reach with { Below = reach.Below - 1 }, owner, listed);
+        return hasStaticMembers | await AddMembers(corDebugValue, baseType, threadId, stackDepth, result, true, below - 1, taken, reach is null ? null : reach with { Below = reach.Below - 1 }, owner, listed,
+            levels - 1);
     }
 
     /// <summary>Gives each member row from <paramref name="from"/> on the expression <paramref name="of"/> makes for it, which

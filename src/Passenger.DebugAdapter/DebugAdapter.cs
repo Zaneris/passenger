@@ -380,6 +380,7 @@ public sealed class DebugAdapter
                 LaunchRequestConsoleType = console,
                 HotReload = hotReload,
             };
+            debugger.Present(arguments.Presentations ?? []);
             await Locked(() => debugger.Launch(launch, arguments.JustMyCode ?? true));
         }
         catch (Exception error)
@@ -394,6 +395,7 @@ public sealed class DebugAdapter
         {
             int processId = arguments.ProcessId ?? throw new InvalidOperationException("Missing process ID");
             bool justMyCode = arguments.JustMyCode ?? true;
+            debugger.Present(arguments.Presentations ?? []);
             await Locked(() => debugger.Attach(processId, justMyCode, arguments.HotReload ?? false));
         }
         catch (Exception error)

@@ -357,6 +357,7 @@ public sealed class DebugSession
             JustMyCode = true,
             StopAtEntry = false,
             HotReload = hotReload,
+            Presentations = Godot.GodotValues.Presentations,
         }, breakpoints, lines, log, output, runInTerminal, columns, starting, elsewhere, place);
     }
 
@@ -369,7 +370,7 @@ public sealed class DebugSession
         Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null,
         bool quiet = false) =>
         StartAsync(OwnAdapter(place, elsewhere), place is null ? $"process {processId}" : $"process {processId} in {place.Where}", DapCommands.Attach,
-            new AttachArguments { ProcessId = processId, JustMyCode = true, HotReload = hotReload ? true : null },
+            new AttachArguments { ProcessId = processId, JustMyCode = true, HotReload = hotReload ? true : null, Presentations = Godot.GodotValues.Presentations },
             breakpoints, lines, log, output, null, columns, starting, elsewhere, place, quiet);
 
     /// <summary>Attaches an adapter inside the IDE to a program another session runs (a Godot game's GDScript, over the game's

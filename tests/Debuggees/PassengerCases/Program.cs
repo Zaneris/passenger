@@ -95,6 +95,11 @@ if (args is ["rows"])
 	Rows.Run();
 	return;
 }
+if (args is ["presented"])
+{
+	Library.Presented.Run();
+	return;
+}
 if (args is ["linked"])
 {
 	Linking.Run();

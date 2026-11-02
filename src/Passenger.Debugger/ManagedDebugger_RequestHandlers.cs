@@ -912,7 +912,11 @@ public partial class ManagedDebugger
                 }
                 else if (unwrappedDebugValue is ICorDebugObjectValue objectValue)
                 {
-                    if (IsEnumerable(objectValue.ExactType))
+                    if (OpenedBy(objectValue.ExactType) is ({ } presentation, int own))
+                    {
+                        await AddPresentedRows(variablesReference, objectValue, presentation, own, result);
+                    }
+                    else if (IsEnumerable(objectValue.ExactType))
                     {
                         if (EfQueryModule(objectValue.ExactType) is not null)
                         {
