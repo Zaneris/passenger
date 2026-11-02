@@ -2020,12 +2020,16 @@ public static class Restore
 
     /// <summary>The restore, which fails the test at once naming what it means and quoting what dotnet said: a project
     /// not restored (offline, nuget.org down) would show up later as C# unavailable, far from the cause.</summary>
-    public static async Task<Passenger.Core.ChildResult> RunAsync(string target)
+    public static Task<Passenger.Core.ChildResult> RunAsync(string target) => RunAsync(target, null);
+
+    /// <summary>The restore (<see cref="RunAsync(string)"/>) run from <paramref name="from"/> where given, so that
+    /// folder's global.json chooses the SDK rather than the test run's.</summary>
+    public static async Task<Passenger.Core.ChildResult> RunAsync(string target, string? from)
     {
         Passenger.Core.ChildResult restored;
         try
         {
-            restored = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.DotnetCommand(["restore", target]), limit: Limit.Scaled());
+            restored = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.DotnetCommand(["restore", target], from), limit: Limit.Scaled());
         }
         catch (TimeoutException hung)
         {
@@ -2039,8 +2043,8 @@ public static class Restore
     /// <summary>The restore from the UI thread (a window test's constructor or body), run on the thread pool and waited
     /// for with the window's loop running (<see cref="Ui.AwaitPumped{T}"/>), never for its work to land; elsewhere a
     /// test awaits <see cref="RunAsync"/>.</summary>
-    public static Passenger.Core.ChildResult Run(string target) =>
-        Ui.AwaitPumped(Waiting.Apart(() => RunAsync(target)), $"dotnet restore {target}", Limit + TestFolders.Spare);
+    public static Passenger.Core.ChildResult Run(string target, string? from = null) =>
+        Ui.AwaitPumped(Waiting.Apart(() => RunAsync(target, from)), $"dotnet restore {target}", Limit + TestFolders.Spare);
 }
 
 /// <summary>A test class's folders, each made as its constructor would make it and restored at its own path, a few at a

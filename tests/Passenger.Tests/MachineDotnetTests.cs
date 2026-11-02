@@ -65,7 +65,8 @@ public sealed class MachineDotnetTests : IDisposable
         TestFolders.Write(folder, "Eight.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n"
             + "    <TargetFramework>net8.0</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n</Project>\n");
         TestFolders.Write(folder, "Program.cs", "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += i;\n}\nConsole.WriteLine($\"total {total}\");\n\n");
-        Restore.Run(folder);
+        // From its own folder: the repository's global.json asks for an SDK the .NET 8 one alone can't be.
+        Restore.Run(folder, from: folder);
         MainWindow window = Ui.OpenFolder(folder);
         try
         {
