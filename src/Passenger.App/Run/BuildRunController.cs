@@ -1006,13 +1006,22 @@ public sealed partial class BuildRunController
             {
                 // The terminal's text is the program's own: its failed bindings are in Problems alone.
                 WatchBindings(inspected, null);
-                string? refused = await RunInTerminalAsync(chosen.Name, watched ? DotnetStart(Watch(plan), plan.WorkingDirectory) : ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory), variables, running);
+                string program = GodotConsole.Program(plan, plan.Program);
+                string? refused = await RunInTerminalAsync(chosen.Name, watched ? DotnetStart(Watch(plan), plan.WorkingDirectory) : ChildProcesses.Command(program, plan.Arguments, plan.WorkingDirectory), variables, running);
                 if (refused is null && session.InTerminal is { } inTerminal)
                 {
                     parts.OpenBrowser(plan, inTerminal.Ended);
                     if (heldStart)
                     {
-                        await AttachForHotReloadAsync(chosen.Name, inTerminal.ProcessId, null, work, Take(ref edits), running);
+                        try
+                        {
+                            await GodotConsole.FollowAsync(inTerminal, plan.Program, program);
+                        }
+                        catch (LaunchException unfollowed)
+                        {
+                            return Said(unfollowed.Message);
+                        }
+                        await AttachForHotReloadAsync(chosen.Name, inTerminal.Debuggee, null, work, Take(ref edits), running);
                     }
                 }
                 EndWith(inspected, refused is null && session.InTerminal is { } run ? run.Ended : Task.CompletedTask);

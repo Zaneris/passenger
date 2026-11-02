@@ -89,7 +89,7 @@ public sealed class InProcessEnd : AdapterEnd
         ToAdapter = toAdapter.Writer.AsStream();
         FromAdapter = fromAdapter.Reader.AsStream();
         AdapterInput = toAdapter.Reader.AsStream();
-        AdapterOutput = fromAdapter.Writer.AsStream();
+        AdapterOutput = new Written(fromAdapter.Writer.AsStream(), () => ended);
     }
 
     public override int Id => 0;
@@ -131,4 +131,65 @@ public sealed class InProcessEnd : AdapterEnd
     }
 
     public override void Kill() => End(-1);
+
+    /// <summary>What the adapter writes to its session: once the adapter has ended (an answer it finishes after its session's
+    /// disconnect), a write fails as one to a process's closed pipe does, with an <see cref="IOException"/>, never the
+    /// pipe's own error.</summary>
+    private sealed class Written(Stream pipe, Func<bool> ended) : Stream
+    {
+        public override bool CanRead => false;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => true;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            try
+            {
+                pipe.Write(buffer);
+            }
+            catch (InvalidOperationException completed) when (ended())
+            {
+                throw new IOException("The debug adapter has ended", completed);
+            }
+        }
+
+        public override void Flush()
+        {
+            try
+            {
+                pipe.Flush();
+            }
+            catch (InvalidOperationException completed) when (ended())
+            {
+                throw new IOException("The debug adapter has ended", completed);
+            }
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                pipe.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+    }
 }

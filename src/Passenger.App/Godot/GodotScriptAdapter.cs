@@ -233,14 +233,14 @@ public sealed class GodotScriptAdapter
     }
 
     /// <summary>Has the session start the game in a tab of the Terminal window, which reads its keys and shows what it writes
-    /// (<see cref="GodotExecutables.InTerminal"/>), and ends it there with a Stop; its end is its connection's. Answered once
-    /// the game has connected.</summary>
+    /// (<see cref="Run.GodotConsole"/>), and ends it there with a Stop; its end is its connection's. Answered once the game
+    /// has connected.</summary>
     private async Task<bool> LaunchInTerminalAsync(string program, LaunchArguments arguments)
     {
         try
         {
             await connection.RequestAsync<RunInTerminalResponse>(DapCommands.RunInTerminal,
-                new RunInTerminalArguments("integrated", game.Name, arguments.Cwd, [GodotExecutables.InTerminal(program), .. arguments.Args ?? []], arguments.Env));
+                new RunInTerminalArguments("integrated", game.Name, arguments.Cwd, [program, .. arguments.Args ?? []], arguments.Env));
         }
         catch (DapException refused)
         {
@@ -675,8 +675,8 @@ public sealed class GodotScriptAdapter
         List<GodotError> raised = [];
         try
         {
-            evaluationAsked = new TaskCompletionSource<GodotScriptVariable>(TaskCreationOptions.RunContinuationsAsynchronously);
-            stackAsked = new TaskCompletionSource<IReadOnlyList<GodotScriptFrame>>(TaskCreationOptions.RunContinuationsAsynchronously);
+            evaluationAsked = Question<GodotScriptVariable>();
+            stackAsked = Question<IReadOnlyList<GodotScriptFrame>>();
             evaluationErrors = raised;
             Task<GodotScriptVariable> answered = evaluationAsked.Task;
             Task<IReadOnlyList<GodotScriptFrame>> fenced = stackAsked.Task;
@@ -863,7 +863,8 @@ public sealed class GodotScriptAdapter
     }
 
     /// <summary>A stop of the game's: told to the session as a step's end, a pause, an error or a breakpoint, where the
-    /// breakpoint's hit count and condition hold (a tracepoint logs and goes on); else the game goes on unseen.</summary>
+    /// breakpoint's hit count and condition hold (a tracepoint logs and goes on); else the game goes on unseen. One whose
+    /// stack the game does not say is told as a pause, saying so, the game held there until the session lets it go.</summary>
     private async Task OnBreakAsync(GodotBreak stopped)
     {
         if (letGo)
@@ -891,6 +892,15 @@ public sealed class GodotScriptAdapter
         }
         catch (LiveTree.LiveAppException)
         {
+            return;
+        }
+        catch (DapException unanswered)
+        {
+            if (stop == stopped && game.State == LiveTree.LiveAppState.Connected)
+            {
+                Say($"{unanswered.Reason}\n");
+                Stopped(StopReasons.Pause, null, null);
+            }
             return;
         }
         if (stopped.IsError)
@@ -1023,7 +1033,7 @@ public sealed class GodotScriptAdapter
         await asking.WaitAsync();
         try
         {
-            stackAsked = new TaskCompletionSource<IReadOnlyList<GodotScriptFrame>>(TaskCreationOptions.RunContinuationsAsynchronously);
+            stackAsked = Question<IReadOnlyList<GodotScriptFrame>>();
             Task<IReadOnlyList<GodotScriptFrame>> answered = stackAsked.Task;
             await game.SendToAsync(GodotWords.GetStackDump, stopped.Thread);
             IReadOnlyList<GodotScriptFrame> stack = await Answer(answered, "with its stack");
@@ -1051,7 +1061,7 @@ public sealed class GodotScriptAdapter
         await asking.WaitAsync();
         try
         {
-            variablesAsked = new TaskCompletionSource<IReadOnlyList<GodotScriptVariable>>(TaskCreationOptions.RunContinuationsAsynchronously);
+            variablesAsked = Question<IReadOnlyList<GodotScriptVariable>>();
             variablesHeard = null;
             Task<IReadOnlyList<GodotScriptVariable>> answered = variablesAsked.Task;
             await game.SendToAsync(GodotWords.GetStackFrameVars, stopped.Thread, (long)level);
@@ -1068,6 +1078,15 @@ public sealed class GodotScriptAdapter
             variablesHeard = null;
             asking.Release();
         }
+    }
+
+    /// <summary>A question for the game, its answer to come by name. Its fault as the game ends is heard only by what awaits
+    /// it: one given up on (past its limit, or asked behind another that failed) is no one's to hear.</summary>
+    private static TaskCompletionSource<T> Question<T>()
+    {
+        TaskCompletionSource<T> asked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        UnawaitedWork.Dismiss(asked.Task);
+        return asked;
     }
 
     /// <summary>A question's answer, or a refusal saying the game gave none.</summary>

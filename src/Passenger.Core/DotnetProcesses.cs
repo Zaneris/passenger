@@ -314,6 +314,24 @@ public static partial class DotnetProcesses
         return [.. found.DistinctBy(f => f.Process.Id).OrderBy(f => f.Depth).Select(f => f.Process)];
     }
 
+    /// <summary>The processes a process started that still run, any program's, by id (a console wrapper's program). Read off
+    /// the UI thread: each process's parent is a call into the system.</summary>
+    public static IReadOnlyList<int> StartedBy(int parent)
+    {
+        List<int> started = [];
+        foreach (System.Diagnostics.Process process in System.Diagnostics.Process.GetProcesses())
+        {
+            using (process)
+            {
+                if (process.Id != parent && ParentOf(process.Id) == parent)
+                {
+                    started.Add(process.Id);
+                }
+            }
+        }
+        return started;
+    }
+
     /// <summary>How many parents up from a process its ancestor is, or null when it is none of its nearest few.</summary>
     private static int? Depth(int id, int ancestor)
     {

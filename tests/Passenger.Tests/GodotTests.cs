@@ -14,8 +14,9 @@ namespace Passenger.Tests;
 /// <summary>A Godot 4 game in C# as a person works on it: its project (Godot.NET.Sdk, restored from the packages the Godot
 /// found carries, never nuget.org) has run configurations for its game and for Godot's editor; Run starts the game on
 /// that Godot, Debug stops at a breakpoint in a script's <c>_Process</c>, a Hot Reload edit reaches the game as it runs,
-/// and Profile records it, its script's own time among the samples. Godot runs headless, its user folders the run's.
-/// Without a Godot 4 .NET build (GODOT, the PATH, Applications) each test skips saying why. Debugged, so run alone.</summary>
+/// and Profile records it, its script's own time among the samples; Run and Debug take the external console. Godot runs
+/// headless, its user folders the run's. Without a Godot 4 .NET build (GODOT, the PATH, Applications) each test skips
+/// saying why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotTests : IClassFixture<GodotTests.Game>
 {
@@ -253,6 +254,56 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             Assert.False(window.Debugger.IsDebugging, $"Something was still shown debugged once the game had ended: {Debugged(window)}");
             Ui.WaitFor(() => session.AdapterEnded.IsCompleted, "the game's debugger to go after", TimeSpan.FromMinutes(1));
             Assert.True(Processes.Gone(adapter), $"The game's debugger did not go once its session ended: {Processes.Describe(adapter)}");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Run and Debug with the configuration's external console run the game in a tab of the Terminal window, which
+    /// shows what its script prints rather than the Run and Debug windows' consoles (on Windows, where Godot's own .exe writes
+    /// to no console, through Godot's console wrapper); under Debug a breakpoint in _Process still stops the game, the
+    /// debugger holding Godot's own process; and Stop ends each there, the game with it.</summary>
+    [AvaloniaFact]
+    public void Run_and_Debug_in_the_external_console_show_what_the_game_prints_in_the_terminal_and_a_breakpoint_still_stops_it()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Choose(window, Generated(window, "Spinner"), ConsoleKind.Terminal);
+            Ui.Launched(window, window.RunAsync(), "the game's build and start in the terminal", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => window.RunInTerminal is { } run && Terminal(run).Contains("frame 10", StringComparison.Ordinal),
+                () => $"Run's game to print in the terminal ({Ui.Said(window)}; {(window.RunInTerminal is { } run ? Terminal(run) : "no terminal")})", TimeSpan.FromMinutes(1));
+            TerminalRun ran = window.RunInTerminal!;
+            Assert.DoesNotContain("frame 10", Run(window), StringComparison.Ordinal);
+            int? played = window.Session.Games is [{ ProcessId: int id }] ? id : null;
+            Stop(window);
+            Ui.WaitFor(() => ran.Ended.IsCompleted && window.Session.Games.Count == 0, () => $"Run's game to end in the terminal ({window.Status}; {Running([("Run's", played)])})",
+                TimeSpan.FromMinutes(1));
+            Assert.True(Processes.Gone(ran.ProcessId) && (played is not int game || Processes.Gone(game)),
+                $"Stop left Run's game running in the terminal: {Running([("the terminal's program", ran.ProcessId), ("the game", played)])}");
+
+            Ui.Launched(window, window.DebugAsync(), "the game's build and start in the terminal under the debugger", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.Managed, Terminal: { } shown } && Terminal(shown).Contains("frame 10", StringComparison.Ordinal),
+                () => $"the debugged game to print in the terminal ({Debugged(window)}; {Ui.Said(window)}; {(window.Debugger.Session?.Terminal is { } run ? Terminal(run) : "no terminal")})",
+                TimeSpan.FromMinutes(1));
+            TerminalRun debugged = window.Debugger.Session!.Terminal!;
+            Assert.DoesNotContain("frame 10", window.Debugger.Output().ToString(), StringComparison.Ordinal);
+            // The terminal took the keys as it showed the game.
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            int line = LineOf(editor, "frames++;");
+            editor.GoTo(new TextPosition(line, 9));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && editor.LineMarks.Any(m => m.Kind == LineMarkKind.ExecutionPoint && m.Line == line),
+                () => $"the game in the terminal to stop at the breakpoint in _Process ({Debugged(window)}, {Ui.Said(window)}; {window.Debugger.Output()})", TimeSpan.FromMinutes(1));
+            int? held = window.Session.Games is [{ ProcessId: int heldId }] ? heldId : null;
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging && debugged.Ended.IsCompleted && window.Session.Games.Count == 0,
+                () => $"the debugged game to end in the terminal with its session ({Debugged(window)}; {window.Status})", TimeSpan.FromMinutes(1));
+            Assert.True(Processes.Gone(debugged.ProcessId) && (held is not int stopped || Processes.Gone(stopped)),
+                $"Stop left the debugged game running in the terminal: {Running([("the terminal's program", debugged.ProcessId), ("the game", held)])}");
         }
         finally
         {
@@ -651,10 +702,14 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     }
 
     /// <summary>A copy of a generated configuration chosen, Godot run headless and its user folders the run's, never the
-    /// person's.</summary>
-    private void Choose(MainWindow window, RunConfiguration generated) =>
-        window.SetConfigurations([generated with { Name = $"{generated.Name} on Godot", Generated = false, Arguments = "--headless", Environment = new(game.Homes) }],
+    /// person's, in the console given.</summary>
+    private void Choose(MainWindow window, RunConfiguration generated, ConsoleKind console = ConsoleKind.Internal) =>
+        window.SetConfigurations([generated with { Name = $"{generated.Name} on Godot", Generated = false, Arguments = "--headless", Environment = new(game.Homes), Console = console }],
             $"{generated.Name} on Godot");
+
+    /// <summary>What a program run in a tab of the Terminal window has written there, its scrollback and its screen.</summary>
+    private static string Terminal(TerminalRun run) =>
+        string.Join('\n', run.Session.Screen.Scrollback.Select(l => l.Text()).Concat(run.Session.Screen.Lines.Select(l => l.Text())));
 
     private static int LineOf(string text, string code) => Array.FindIndex(text.Split('\n'), l => l.Contains(code, StringComparison.Ordinal)) + 1;
 

@@ -632,7 +632,7 @@ public sealed class DebugController : IDisposable
         BuiltEdits? edits = null)
     {
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? inTerminal = !elsewhere && place is null && plan.Console == Run.ConsoleKind.Terminal && RunInTerminal is { } run
-            ? arguments => run(plan.Name, arguments)
+            ? arguments => Run.GodotConsole.RunAsync(plan, arguments, asked => run(plan.Name, asked))
             : null;
         bool hotReloadOn = HotReloadOn();
         // A program on this machine debugged with Hot Reload runs its update handlers as each update lands, through Passenger's hook.
@@ -747,7 +747,7 @@ public sealed class DebugController : IDisposable
     {
         UiThread.Check();
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? inTerminal = plan.Console == Run.ConsoleKind.Terminal && RunInTerminal is { } run
-            ? arguments => run(plan.Name, arguments)
+            ? arguments => Run.GodotConsole.RunAsync(plan, arguments, asked => run(plan.Name, asked))
             : null;
         InProcessEnd end = new($"GDScript adapter of {plan.Name}");
         Godot.GodotScriptAdapter adapter = new(game, end, null);

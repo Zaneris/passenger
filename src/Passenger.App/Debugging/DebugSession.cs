@@ -429,7 +429,7 @@ public sealed class DebugSession
             {
                 Run.TerminalRun run = await runInTerminal(asked);
                 session.Terminal = run;
-                return new RunInTerminalResponse(run.ProcessId);
+                return new RunInTerminalResponse(run.Debuggee);
             }));
         }
         session.connection.Start();
