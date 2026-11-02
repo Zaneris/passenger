@@ -264,7 +264,7 @@ public sealed record ProjectModel(
     /// TUnit's, and the platform's own build package.</summary>
     private static readonly HashSet<string> TestPackages = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Microsoft.NET.Test.Sdk", "xunit.runner.visualstudio", "NUnit3TestAdapter", "MSTest.TestAdapter", "MSTest",
+        "Microsoft.NET.Test.Sdk", "xunit.runner.visualstudio", "NUnit3TestAdapter", "MSTest.TestAdapter", "MSTest", "gdUnit4.test.adapter",
         "xunit.v3", "xunit.v3.mtp-v1", "xunit.v3.mtp-v2", "xunit.v3.mtp-off", "xunit.v3.core", "xunit.v3.core.mtp-v1", "xunit.v3.core.mtp-v2",
         "xunit.v3.core.mtp-off", "TUnit", "TUnit.Engine", "Microsoft.Testing.Platform.MSBuild",
     };

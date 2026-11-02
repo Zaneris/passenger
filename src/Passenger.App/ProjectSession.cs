@@ -101,7 +101,13 @@ public sealed class ProjectSession : IAsyncDisposable
         AspireFiles = new AspireFiles(this);
         Builder = new ProcessRunner(setup.Views.Build);
         Runner = new ProcessRunner(setup.Views.Run, takesInput: true);
-        Tests = new TestController(setup.Views.TestTree, setup.BuildForTests, () => Projects, () => Workspace, line => setup.Views.Build.Append($"{line}\n")) { Work = setup.Work };
+        Tests = new TestController(setup.Views.TestTree, setup.BuildForTests, () => Projects, () => Workspace, line => setup.Views.Build.Append($"{line}\n"))
+        {
+            Work = setup.Work,
+            // The Godot Run starts the game on, found off the window's thread, with the window's user folders for Godot.
+            GodotVariables = cancel => BackgroundWork.Run(() => GodotTestRuns.Variables(setup.Settings().GodotExecutable,
+                setup.GodotEnvironment ?? new Dictionary<string, string>()), cancel),
+        };
         Containers = new Containers.FolderContainers(folder, setup.Engine());
         Vcs.Work = setup.Work;
         Vcs.Watching = setup.Watching;

@@ -135,6 +135,10 @@ public sealed class TestController : IAsyncDisposable
     /// (not running, no CLI), or the <see cref="EngineVariables.DockerHost"/> of its current context, for a test host that has none set.</summary>
     public Func<CancellationToken, Task<(string? Problem, string? DockerHost)>>? ContainerEngine { get; set; }
 
+    /// <summary>Asks before a run of a Godot project's tests what its test hosts are given (<see cref="GodotTestRuns.Variables"/>),
+    /// on a worker.</summary>
+    public Func<CancellationToken, Task<(IReadOnlyDictionary<string, string> Variables, string? Missing)>>? GodotVariables { get; set; }
+
     /// <summary>A test to debug: the debugger launches the test host the runner gives and says what process it is.</summary>
     public Func<TestHostStart, Task<int>>? LaunchUnderDebugger { get; set; }
 
@@ -311,6 +315,16 @@ public sealed class TestController : IAsyncDisposable
                     return said;
                 }
             }
+            HashSet<string> games = [.. projects().Where(p => p.GodotFolder is not null && !p.IsScriptGame).Select(p => p.Path).Where(p => tests.Any(t => t.Project == p))];
+            IReadOnlyDictionary<string, string> godot = new Dictionary<string, string>();
+            if (games.Count > 0 && GodotVariables is { } godotOf)
+            {
+                (godot, string? missing) = await godotOf(stop.Token);
+                if (missing is not null)
+                {
+                    log(missing);
+                }
+            }
             lastRun = chosen ?? [];
             RunMethods = methods;
             RunOutcomes = [];
@@ -328,6 +342,10 @@ public sealed class TestController : IAsyncDisposable
                 // Each test project's tests run with its launch profile's environment, so projects whose differ run apart.
                 Dictionary<string, IReadOnlyDictionary<string, string>> environments = tests.Select(t => t.Project).Distinct(StringComparer.Ordinal)
                     .ToDictionary(p => p, p => containerized.Contains(p) ? WithDockerHost(EnvironmentOf(p), dockerHost) : EnvironmentOf(p), StringComparer.Ordinal);
+                foreach (string game in games)
+                {
+                    environments[game] = GodotTestRuns.With(environments[game], godot);
+                }
                 if (BeginAspireTest is { } beginAspire)
                 {
                     foreach (string path in environments.Keys.ToArray())

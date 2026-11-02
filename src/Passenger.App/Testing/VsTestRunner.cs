@@ -319,6 +319,11 @@ public sealed class VsTestRunner : ITestRunner
             XElement variables = Child(configuration, "EnvironmentVariables");
             foreach ((string name, string value) in environment)
             {
+                // The run settings' own Godot stands for GdUnit4's adapter: the IDE's fills in where they name none.
+                if (name == GodotTestRuns.BinaryVariable && variables.Element(name) is not null)
+                {
+                    continue;
+                }
                 try
                 {
                     variables.SetElementValue(XmlConvert.VerifyName(name), value);

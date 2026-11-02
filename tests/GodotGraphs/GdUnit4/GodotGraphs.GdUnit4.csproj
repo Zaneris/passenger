@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The adapter needs VSTest's SDK beside it, which the tests' own reference puts in the package cache at the repo's
+       version: left out here, so this project is none the IDE or dotnet test takes for a test project. -->
+  <ItemGroup>
+    <PackageReference Include="gdUnit4.api" />
+    <PackageReference Include="gdUnit4.test.adapter" />
+  </ItemGroup>
+</Project>
