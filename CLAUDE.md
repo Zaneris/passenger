@@ -336,12 +336,13 @@ Projects in `src/`; `find_symbol` finds the rest:
   edited in place as `ConfigurationEdit`s), `LaunchPlan` (one resolution for Run, Debug, Profile, Hot Reload and a
   debugged test host; a RunCommand naming another program run as `dotnet run` runs it, `OtherProgram`; a Blazor Web
   App's client no program of its own, `ProjectModel.IsBrowserClient`; a Passenger it launches keeps its state in the
-  launcher's `sandbox/`; a Godot project's game and editor through `GodotLaunch`, on the Godot `GodotExecutables` finds,
-  a launched game's remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (`ILiveTreeSource`,
-  `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's build skipped while
-  what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`; on Windows a build's
-  first step lets go of the Avalonia previewers holding its output (`BuildRunController.LettingGo`); a console's lines
-  are heard one stream at a time (`ConsoleWritten`).
+  launcher's `sandbox/`; a Godot project's game and editor through `GodotLaunch` (one of GDScript alone a
+  `ProjectModel.OfScriptGame` that only Run, Debug and Profile see, `ProjectSession.RunProjects`, never in `Projects`),
+  on the Godot `GodotExecutables` finds, a launched game's remote debugger `GodotGame`, a Live Tree source beside
+  `LiveApp` (`ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate`
+  (a launch's build skipped while what its last build read and wrote stands, a build under way waited out first),
+  `TogetherBuild`; on Windows a build's first step lets go of the Avalonia previewers holding its output
+  (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time (`ConsoleWritten`).
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach,
   Restart and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time
   (`TakeStartAsync`); Stop ends every session and recording before the programs go.
@@ -488,8 +489,9 @@ site-shots` retakes its images.
   back (`PASSENGER_GODOT_HOME` gives that editor the run's user folders). Its script debugger: a message to a stopped
   thread carries the thread's id; an `evaluate` in a frame with no instance, or a `break` sent while stopped, leaves the
   debug loop and lets the game go on; an evaluation's errors come after its answer, so each is followed by a
-  `get_stack_dump`; `reload_scripts` keeps members by name, an added one null. An agent's input and layout reach a game
-  through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
+  `get_stack_dump`; `reload_scripts` keeps members by name, an added one null. Stop ends a game a moment before its
+  debug session ends: a test waits for the session too. An agent's input and layout reach a game through Passenger's
+  helper node (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
   reader that shares no writes for up to 2 s, off the window's thread (`FileText.WhileHeldAsync`); closing a socket
