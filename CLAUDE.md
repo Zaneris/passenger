@@ -71,7 +71,8 @@ App and the tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collecti
 - **Never Microsoft's debugger (vsdbg) or anything of C# Dev Kit**, including its pieces inside VS Code's C# extension
   (`.debugger`, `.roslynDevKit`, `.testDiscovery`), nor `VSCodeDebugProtocol`; nothing is copied out of an installed
   extension. Roslyn's server comes from NuGet; `Passenger.Dap` is the protocol.
-- **No Avalonia Accelerate** (TreeDataGrid, DevTools: `DeveloperTools.TakeOut` removes what `dotnet new avalonia.app` adds).
+- **No Avalonia Accelerate** (its commercial tooling: TreeDataGrid, DevTools: `DeveloperTools.TakeOut` removes what
+  `dotnet new avalonia.app` adds); Avalonia.Controls.WebView, MIT since it left Accelerate, is allowed (the owner, #1078).
 - **Every dependency, icon or asset has an open-source licence and an entry in `THIRD_PARTY_NOTICES.md`** in the same
   change (`just notices` and CI fail on a package missed): a package by NuGet id with its licence and copyright as
   stated, copied source by file and origin, assets after the marker line, a new SPDX text in
@@ -310,10 +311,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   or `ToolbarEnd`, or Windows takes a press on it for the caption's. Logs are `logs/` under the state root (`IdeLog`;
   Settings › Diagnostics turns on protocol traces).
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; wire every editor through `ForEachEditor`;
-  `CloseTab` is the one close); a file's outline is `ProjectSession.OutlineOf` (a `FileOutline`: a server's symbols, or
-  a Godot scene's tree, `GodotSceneOutline`), which Structure, File Structure and MCP's `outline` read, a row going on
-  through Go to Declaration a `SymbolRow.Leads`; a preview holds no text (`HoldsText` false). The Markdown preview draws
-  only the blocks near its sight (`MarkdownBlocks`), a page kept per tab, a scroll it sets going through `Jump`.
+  `CloseTab` is the one close); a file's outline is `ProjectSession.OutlineOf` (a `FileOutline`: a server's symbols, a
+  Godot scene's tree, `GodotSceneOutline`, or a Markdown file's headings as Passenger reads them, `MarkdownOutline`),
+  which Structure, File Structure and MCP's `outline` read, a row going on through Go to Declaration a
+  `SymbolRow.Leads`; a view laid over the text follows a place gone to through `CodeEditor.WentTo`; a preview holds no
+  text (`HoldsText` false). The Markdown preview draws only the blocks near its sight (`MarkdownBlocks`), a page kept
+  per tab, a scroll it sets going through `Jump`.
 - **Docking.** A kept layout records windows by `ToolWindowIds`, so a value never changes; add a window with one
   `Dock.Add`; its floats close with their window (`DockHost.CloseFloats`); its action gives it the keys
   (`DockHost.Activate`, `ToolWindow.TakeKeys`), and Escape in it unhandled is Focus Editor (`ToolPane`). A view is built
@@ -391,7 +394,8 @@ Projects in `src/`; `find_symbol` finds the rest:
   `AspireInteractions` (gRPC, its C# checked in), `AspireClient` (the CLI, for an AppHost Passenger didn't start).
 - **Web apps' data.** The Requests window reads only while someone looks; Migrations takes connection strings by
   environment only; Endpoints sends nothing but on Test or Send, and a send taking the person's environment asks first.
-  `ResourceFiles` is the one reader of `.resx` and `xlf/*.xlf`.
+  `ResourceFiles` is the one reader and writer of `.resx` and `xlf/*.xlf`, a table's change one edit of the open text
+  (`WithValue`, `Renamed`, `Without`, `WithTarget`).
 - **Debugging.** `DebugController` (a `DebugTab` per session, several at once), `DebugSession` (its adapter an
   `AdapterEnd`: `ProcessEnd` the engine's, `InProcessEnd` one inside the IDE such as `GodotScriptAdapter`, a game's
   GDScript over its debug connection; `DebugSession.Engine` sends each file's breakpoints to the adapter that runs it; a
