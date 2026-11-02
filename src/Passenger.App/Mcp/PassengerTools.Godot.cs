@@ -55,8 +55,8 @@ public sealed partial class PassengerTools
     /// <summary>The game's scene tree as the app_ tools read one: each node's id, type (a script's by its file's name), name
     /// and whether it shows, with where the helper says it is drawn, the text it shows and whether it is disabled, focused or
     /// out of view (none of those where the helper could not say, <c>Unplaced</c> saying why); with
-    /// <paramref name="properties"/>, the values of those of each node's properties it has.</summary>
-    private static async Task<(AppTree Tree, string? Unplaced)> GameTreeAsync(GodotGame game, IReadOnlyList<string> properties)
+    /// <paramref name="properties"/>, the values of those of each node's properties it has; and the tree as Godot sent it.</summary>
+    private static async Task<(AppTree Tree, string? Unplaced, GodotNode Root)> GameTreeAsync(GodotGame game, IReadOnlyList<string> properties)
     {
         using IDisposable asking = GodotGame.Within(GameLimit);
         GodotNode root = await game.SceneTreeAsync();
@@ -76,7 +76,7 @@ public sealed partial class PassengerTools
         {
             unplaced = failed.Message;
         }
-        return (new AppTree([Of(root)]), unplaced);
+        return (new AppTree([Of(root)]), unplaced, root);
 
         Element Of(GodotNode node)
         {
@@ -145,6 +145,76 @@ public sealed partial class PassengerTools
             Content = [ImageContentBlock.FromBytes(png, "image/png"), new TextContentBlock { Text = $"{game.Name}'s window as Godot draws it: {width}x{height} pixels" }],
         };
     }
+
+    /// <summary>The members the code of the script each node <paramref name="control"/> finds runs declares, each with its
+    /// value in that node as the code's hints say it, read for every node in one message through Passenger's helper.</summary>
+    private async Task<AppScriptMembers> GameMembersAsync(GodotGame game, string control, string? window)
+    {
+        using IDisposable asking = GodotGame.Within(GameLimit);
+        (AppTree tree, _, GodotNode root) = await GameTreeAsync(game, []);
+        List<AppNode> nodes = AppQuery.Flatten(tree.Roots);
+        AppNode chosen = Window(nodes, window, game.Name, own: false);
+        List<AppNode> found = AppQuery.Find(Within(nodes, window is null ? null : chosen), control);
+        if (found.Count == 0)
+        {
+            throw new ArgumentException($"Nothing in {game.Name} matches {control}; app_tree shows what there is");
+        }
+        Dictionary<long, string> scripts = root.All().Where(n => n.Type.StartsWith("res://", StringComparison.Ordinal)).ToDictionary(n => (long)n.Id, n => n.Type);
+        List<(AppNode Node, string Script, GodotScriptMembers Members)> read = [];
+        Dictionary<string, GodotScriptMembers?> declared = new(StringComparer.Ordinal);
+        foreach (AppNode node in found)
+        {
+            if (scripts.TryGetValue(node.Element.Id, out string? script)
+                && (declared.TryGetValue(script, out GodotScriptMembers? known) ? known : declared[script] = await ScriptMembersAsync(game, script)) is { Members.Count: > 0 } members)
+            {
+                read.Add((node, script, members));
+            }
+        }
+        if (read.Count == 0)
+        {
+            throw new ArgumentException(found.Count == 1
+                ? $"{AppQuery.Short(found[0].Element)} runs no script of {game.Name}'s whose code declares a member"
+                : $"None of the {found.Count} nodes {control} finds runs a script of {game.Name}'s whose code declares a member");
+        }
+        IReadOnlyList<GodotScriptRead> answers = await game.ScriptValuesAsync(
+            [.. read.Select(r => new GodotScriptAsk(r.Script, (ulong)r.Node.Element.Id, [.. r.Members.Members.Select(m => m.Name)]))]);
+        return new AppScriptMembers(game.Name, [.. read.Select((r, i) => new AppNodeMembers(AppQuery.Short(r.Node.Element), Relative(ScriptFile(game, r.Script)), r.Members.Class,
+            [.. r.Members.Members.Where(m => answers[i].Values.ContainsKey(m.Name)).Select(m => new AppMemberValue(m.Name, m.Line + 1, GodotLiveWords.Of(answers[i].Values[m.Name])))]))]);
+    }
+
+    /// <summary>The members a script's code declares, from its file as the editor has it (open, its parse; else as on disk,
+    /// read and parsed off the window's thread); null for a file not there or of no script's class.</summary>
+    private async Task<GodotScriptMembers?> ScriptMembersAsync(GodotGame game, string script)
+    {
+        string file = ScriptFile(game, script);
+        bool csharp = file.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
+        if (Editors.Find(file) is { HoldsText: true } open)
+        {
+            return csharp
+                ? open.Syntax?.Current is { } parsed ? GodotMembers.OfCSharp(parsed.Root, parsed.Text, script) : null
+                : GodotMembers.OfGdScript(open.Text.Snapshot, script);
+        }
+        Microsoft.CodeAnalysis.CSharp.CSharpParseOptions options = Editors.ParseOptions(file);
+        return await BackgroundWork.Run(() =>
+        {
+            string source;
+            try
+            {
+                source = File.ReadAllText(file);
+            }
+            catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+            Text.TextSnapshot text = Text.TextSnapshot.From(source);
+            return csharp
+                ? GodotMembers.OfCSharp(Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(source, options).GetRoot(), text, script)
+                : GodotMembers.OfGdScript(text, script);
+        });
+    }
+
+    /// <summary>The file of a game's script by its <c>res://</c> path.</summary>
+    private static string ScriptFile(GodotGame game, string script) => PathNames.Canonical(Path.Combine(game.Folder, script["res://".Length..]));
 
     private async Task<AppElementDetails> GameDetailsAsync(GodotGame game, string control, string? window, string? properties)
     {

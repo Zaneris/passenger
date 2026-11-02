@@ -123,9 +123,10 @@ public sealed class GodotGameFolder : IAsyncLifetime
 }
 
 /// <summary>Agents running a Godot game in C# as they run an Avalonia app: run starts it, Passenger its remote debugger;
-/// the app_ tools read its scene tree and a node's values, set one (which the game then prints), click its button and type
-/// into its text box through Passenger's helper in the game, and say plainly that a headless game has no picture; and
-/// debug_start stops it at a breakpoint in its script's _Process. Without a Godot 4 .NET build, each skips saying why.</summary>
+/// the app_ tools read its scene tree and a node's values and its scripts' members, set one (which the game then prints),
+/// click its button and type into its text box through Passenger's helper in the game, and say plainly that a headless game
+/// has no picture; and debug_start stops it at a breakpoint in its script's _Process. Without a Godot 4 .NET build, each
+/// skips saying why.</summary>
 [Collection(Alone.Name)]
 public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
 {
@@ -213,6 +214,55 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
         Assert.Contains("audio plays", unmuted, StringComparison.Ordinal);
         await Call(client, McpTools.Stop);
     }
+
+    /// <summary>An agent reads the members a running game's scripts declare with app_details' members: Main's private frame
+    /// counter, read twice, climbs, the answer naming the node and its script, and its auto-property and other field beside it
+    /// at their lines; the class of a GDScript (ticker) finds the node running it, whose count of its frames climbs too.</summary>
+    [Fact]
+    public async Task An_agent_reads_a_running_games_script_members_and_sees_its_frame_counter_climb()
+    {
+        await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false, environment: Homes);
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
+        Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"The game ended as it started: {ran}");
+
+        JsonElement main = await Members(client, "#Main");
+        Assert.True(main.GetProperty("node").GetString()!.StartsWith("Main#Main @", StringComparison.Ordinal) && main.GetProperty("script").GetString() == "Main.cs",
+            $"The members read do not name the node and the script they are of: {main}");
+        string[] lines = GodotGameFolder.Script.Split('\n');
+        foreach (string member in (string[])["frames", "toggled", "Greeting"])
+        {
+            int line = Array.FindIndex(lines, l => l.Contains($" {member};", StringComparison.Ordinal) || l.Contains($" {member} {{", StringComparison.Ordinal)) + 1;
+            Assert.True(Member(main, member) is { } read && read.GetProperty("line").GetInt32() == line,
+                $"Main's {member} is not read at line {line}, where Main.cs declares it: {main}");
+        }
+        Assert.Equal("\"frame\"", Member(main, "Greeting")!.Value.GetProperty("value").GetString());
+        long first = Counted(main, "frames");
+        long later = first;
+        await Until(async () => (later = Counted(await Members(client, "#Main"), "frames")) > first, $"Main's frames to climb past {first}");
+
+        JsonElement ticker = await Members(client, "ticker");
+        Assert.True(ticker.GetProperty("node").GetString()!.StartsWith("ticker#Ticker @", StringComparison.Ordinal) && ticker.GetProperty("script").GetString() == "ticker.gd",
+            $"The script's class did not find the node running ticker.gd: {ticker}");
+        long ticks = Counted(ticker, "ticks");
+        await Until(async () => Counted(await Members(client, "ticker"), "ticks") > ticks, $"the ticker's ticks to climb past {ticks}");
+        await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>The one node's members app_details' members reads for a control.</summary>
+    private async Task<JsonElement> Members(McpClient client, string control)
+    {
+        JsonElement read = await Call(client, McpTools.AppDetails, new() { ["control"] = control, ["members"] = true });
+        return Assert.Single(read.GetProperty("nodes").EnumerateArray());
+    }
+
+    private static JsonElement? Member(JsonElement node, string name) =>
+        node.GetProperty("members").EnumerateArray().Where(m => m.GetProperty("name").GetString() == name).Cast<JsonElement?>().FirstOrDefault();
+
+    /// <summary>A whole number a member holds, as its hint says it.</summary>
+    private static long Counted(JsonElement node, string name) =>
+        Member(node, name) is { } read && long.TryParse(read.GetProperty("value").GetString(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long count)
+            ? count
+            : throw new Xunit.Sdk.XunitException($"{node.GetProperty("node").GetString()} holds no whole number in {name}: {node}");
 
     /// <summary>An app_ tool's answer for the game; one refused fails with the game's last words, Godot's errors among them.</summary>
     private async Task<string> Game(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?> arguments)

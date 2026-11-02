@@ -101,7 +101,16 @@ public sealed partial class PassengerTools
     {
         GodotGame? game = await GameAsync(app, cancel);
         LiveApp? live = game is null ? await InspectedAsync(app, cancel) : null;
-        (AppTree tree, string? unplaced) = game is not null ? await GameTreeAsync(game, properties ?? []) : (await live!.AgentTreeAsync(properties ?? []), null);
+        AppTree tree;
+        string? unplaced = null;
+        if (game is not null)
+        {
+            (tree, unplaced, _) = await GameTreeAsync(game, properties ?? []);
+        }
+        else
+        {
+            tree = await live!.AgentTreeAsync(properties ?? []);
+        }
         string name = game?.Name ?? live!.Name;
         List<AppNode> nodes = AppQuery.Flatten(tree.Roots);
         if (nodes.Count == 0)
@@ -131,18 +140,24 @@ public sealed partial class PassengerTools
         "alignment); each property not at its default (every one with defaults) whose name contains properties, with its " +
         "value, type, source (Local, Style, Theme, Template, Inherited...) and what that is with its place; and every style that " +
         "could apply, whether it does and why not, and whether each setter wins, is overridden (by what) or is inactive. " +
-        "breakpoint_set with control and property breaks when one changes.")]
-    public Task<AppElementDetails> AppDetails(
+        "breakpoint_set with control and property breaks when one changes. In a Godot game, members instead reads the members its " +
+        "scripts' code declares (private fields too) as the code's hints show them, in each node control finds (Enemy finds every node running Enemy's script).")]
+    public Task<object> AppDetails(
         string control,
         string? app = null,
         string? window = null,
         string? properties = null,
         bool defaults = false,
-        CancellationToken cancel = default) => OnApp(cancel, async () =>
+        bool members = false,
+        CancellationToken cancel = default) => OnApp<object>(cancel, async () =>
     {
         if (await GameAsync(app, cancel) is { } game)
         {
-            return await GameDetailsAsync(game, control, window, properties);
+            return members ? await GameMembersAsync(game, control, window) : await GameDetailsAsync(game, control, window, properties);
+        }
+        if (members)
+        {
+            throw new ArgumentException("members reads a Godot game's script members: in an Avalonia or WPF app, debug_evaluate reads an object's fields where it stops");
         }
         LiveApp live = await InspectedAsync(app, cancel);
         (List<AppNode> nodes, AppNode chosenWindow) = await TreeOf(live, window, cancel);
@@ -679,6 +694,17 @@ public sealed record AppBindingError(string App, string Level, string Control, s
 /// sources (a Godot node's, their categories) and its styles with why each applies or not.</summary>
 public sealed record AppElementDetails(string Element, string Type, string FullType, string? Name, IReadOnlyList<string> Classes, IReadOnlyList<string> PseudoClasses,
     string? Xaml, string? NoXaml, string? TemplatedParent, AppLayout? Layout, IReadOnlyList<AppProperty> Properties, IReadOnlyList<AppStyle> Styles);
+
+/// <summary>A Godot game's script members as app_details' members reads them: for each node read, the node, its script
+/// (its file and class) and each member its code declares that the node holds, by its line, with its value as the code's
+/// hints say it.</summary>
+public sealed record AppScriptMembers(string App, IReadOnlyList<AppNodeMembers> Nodes);
+
+/// <summary>A node's script members (<see cref="AppScriptMembers"/>).</summary>
+public sealed record AppNodeMembers(string Node, string Script, string Class, IReadOnlyList<AppMemberValue> Members);
+
+/// <summary>A script member's value in a node, as the code's hint says it, and the line it is declared on.</summary>
+public sealed record AppMemberValue(string Name, int Line, string Value);
 
 /// <summary>Where an element is laid out: its bounds in its parent and in its window (x,y wxh), its desired size, its margin, border and
 /// padding (left,top,right,bottom; none when it has no such property) and its alignment.</summary>
