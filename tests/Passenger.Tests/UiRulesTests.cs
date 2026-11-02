@@ -2060,6 +2060,122 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + $"make each with ColumnTitles.Of:\n{string.Join("\n", found)}");
     }
 
+    /// <summary>Words are shown as written, a name's underscores too, since Passenger gives no access keys: every kind of
+    /// control that holds words (a button's, a check box's, a menu item's, a tab's, a label's, a group's header), made with
+    /// a file's names under the window's theme, draws them whole, and no code makes access-key text of its own; a kind that
+    /// takes an underscore for an access key's mark fails here, naming what it drew.</summary>
+    [AvaloniaFact]
+    public void Every_control_draws_a_names_underscores_never_taking_one_for_an_access_keys_mark()
+    {
+        const string name = "test_spinner.gd __init__.py";
+        StackPanel panel = new();
+        Window window = new() { Width = 900, Height = 900, Content = new ScrollViewer { Content = panel } };
+        List<(string Kind, Control Made)> made = [];
+        foreach (Type kind in typeof(Control).Assembly.GetExportedTypes().Where(Holds).OrderBy(t => t.Name, StringComparer.Ordinal))
+        {
+            Control control = (Control)Activator.CreateInstance(kind)!;
+            switch (control)
+            {
+                case HeaderedContentControl headed:
+                    (headed.Header, headed.Content) = (name, name);
+                    break;
+                case ContentControl content:
+                    content.Content = name;
+                    break;
+                case HeaderedItemsControl headed:
+                    headed.Header = name;
+                    break;
+                case HeaderedSelectingItemsControl headed:
+                    headed.Header = name;
+                    break;
+            }
+            panel.Children.Add(control switch
+            {
+                MenuItem item => new Menu { Items = { item } },
+                TabItem tab => new TabControl { Items = { tab } },
+                _ => control,
+            });
+            made.Add((kind.Name, control));
+        }
+        window.Show();
+        try
+        {
+            Ui.Settle();
+            List<string> taken = [];
+            List<string> shown = [];
+            foreach ((string kind, Control control) in made)
+            {
+                TextBlock[] words = [.. control.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Text == name)];
+                if (words.Length > 0)
+                {
+                    shown.Add(kind);
+                }
+                taken.AddRange(words.Where(t => t is AccessText || Ui.Drawn(t) != name).Select(t => $"{kind} draws '{Ui.Drawn(t)}'"));
+            }
+            Assert.True(taken.Count == 0, $"{taken.Count} kinds of control take a name's underscore for an access key's mark, so the name loses it: "
+                + $"Shell.axaml's ContentPresenter style shows words as written:\n{string.Join("\n", taken)}");
+            string[] unseen = [.. ((string[])["Button", "CheckBox", "Label", "MenuItem", "RadioButton", "SplitButton", "TabItem", "ToggleButton"]).Except(shown)];
+            Assert.True(unseen.Length == 0, $"{string.Join(", ", unseen)} showed none of the words given them: the rule no longer reads them");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        Regex own = new(@"\bnew\s+AccessText\b|<AccessText\b|\bRecognizesAccessKey\b");
+        string[] found = [.. UiFiles(theme: true).SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => own.IsMatch(l.Text) && !(l.Path.EndsWith("Theme/Shell.axaml", StringComparison.Ordinal) && l.Text.Contains("Property=\"RecognizesAccessKey\" Value=\"False\"", StringComparison.Ordinal)))
+            .Select(l => $"{l.Path}:{l.Line}")];
+        Assert.True(found.Length == 0, $"{found.Length} places make access-key text, which takes a name's underscore for an access key's mark: show words in a TextBlock:\n{string.Join("\n", found)}");
+
+        // A public kind of control that holds words of its own, made alone (a window and a list's rows aside).
+        static bool Holds(Type kind) => !kind.IsAbstract && kind.GetConstructor(Type.EmptyTypes) is not null
+            && (typeof(ContentControl).IsAssignableFrom(kind) || typeof(HeaderedItemsControl).IsAssignableFrom(kind) || typeof(HeaderedSelectingItemsControl).IsAssignableFrom(kind))
+            && !typeof(TopLevel).IsAssignableFrom(kind) && !typeof(ListBoxItem).IsAssignableFrom(kind) && !typeof(TreeViewItem).IsAssignableFrom(kind);
+    }
+
+    /// <summary>A native menu's item takes its words through MainWindow.NativeWords, which doubles their underscores, since
+    /// the platform's menu (macOS's bar, a Linux desktop's global menu) takes a lone one for an access key's mark: a
+    /// NativeMenuItem made or given words otherwise (a literal with no underscore aside) fails here, naming its line.</summary>
+    [Fact]
+    public void Every_native_menu_items_words_come_through_NativeWords()
+    {
+        Regex made = new(@"\bnew\s+NativeMenuItem\s*\(|\bNativeMenuItem\s+\w+\s*=\s*new\s*\(|\bNativeMenuItem\s+\w+\(.*\)\s*=>\s*new\s*\(");
+        Regex given = new(@"\b(\w+)\.Header\s*=\s*");
+        List<string> found = [];
+        int items = 0;
+        foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal) && f.Text.Contains("NativeMenuItem", StringComparison.Ordinal)))
+        {
+            foreach (Match match in made.Matches(text))
+            {
+                items++;
+                if (!Words(text, match.Index + match.Length))
+                {
+                    found.Add($"{path}:{LineOf(text, match.Index)}");
+                }
+            }
+            foreach (Match match in given.Matches(text).Where(m => Native(text, m.Groups[1].Value, m.Index)))
+            {
+                items++;
+                if (!Words(text, match.Index + match.Length))
+                {
+                    found.Add($"{path}:{LineOf(text, match.Index)}");
+                }
+            }
+        }
+        Assert.True(items > 8, $"Only {items} native menu items were found: the search no longer reads them");
+        Assert.True(found.Count == 0, $"{found.Count} native menu items are given words a name's underscore could lose itself in, the platform's menu taking it "
+            + $"for an access key's mark: give each through MainWindow.NativeWords:\n{string.Join("\n", found)}");
+
+        // Whether a variable is a NativeMenuItem where its words are given: its nearest declaration before says so.
+        static bool Native(string text, string variable, int at) =>
+            Regex.Matches(text[..at], $@"\b([\w.]+)\s+{Regex.Escape(variable)}\s*(?:=|\bin\b)").LastOrDefault() is { } declared && declared.Groups[1].Value == "NativeMenuItem";
+
+        // Words given through NativeWords, or a literal with no underscore.
+        static bool Words(string text, int at) => text.AsSpan(at).StartsWith("NativeWords(", StringComparison.Ordinal)
+            || Regex.Match(text[at..], @"^""([^""\\]*)""") is { Success: true } literal && !literal.Groups[1].Value.Contains('_', StringComparison.Ordinal);
+    }
+
     /// <summary>An object initializer's own settings, from after its brace to its end, less the initializers inside it.</summary>
     private static string Initializer(string text, int from)
     {

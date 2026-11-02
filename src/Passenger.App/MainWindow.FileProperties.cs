@@ -143,8 +143,7 @@ public partial class MainWindow
             return;
         }
         string current = document.EncodingName;
-        // Doubled, Shift_JIS's underscore is shown rather than taken for an access key.
-        MenuItem Item(FileEncoding encoding) => MenuChoice.Of(encoding.Name.Replace("_", "__", StringComparison.Ordinal), encoding.Name == current,
+        MenuItem Item(FileEncoding encoding) => MenuChoice.Of(encoding.Name, encoding.Name == current,
             () => IdeErrors.Observe(ChooseEncodingAsync(document, encoding)));
         MenuItem more = new() { Header = "More" };
         foreach (FileEncoding encoding in FileEncoding.More)

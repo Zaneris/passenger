@@ -948,7 +948,7 @@ public partial class MainWindow : IdeWindow
         }
         foreach ((string name, Debugging.LineBreakpoint breakpoint) in set)
         {
-            MenuItem edit = new() { Header = (set.Count == 1 ? "Edit Breakpoint…" : $"Edit {name}…").Replace("_", "__", StringComparison.Ordinal) };
+            MenuItem edit = new() { Header = set.Count == 1 ? "Edit Breakpoint…" : $"Edit {name}…" };
             edit.Click += (_, _) => ShowBreakpointPopup(breakpoint);
             items.Add(edit);
         }
@@ -956,7 +956,7 @@ public partial class MainWindow : IdeWindow
 
         static MenuItem Choice(string name, bool on, Action toggle)
         {
-            MenuItem item = new() { Header = name.Replace("_", "__", StringComparison.Ordinal), ToggleType = MenuItemToggleType.CheckBox, IsChecked = on };
+            MenuItem item = new() { Header = name, ToggleType = MenuItemToggleType.CheckBox, IsChecked = on };
             item.Click += (_, _) => toggle();
             return item;
         }

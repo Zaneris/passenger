@@ -1633,10 +1633,41 @@ public static class Ui
         }
     }
 
-    /// <summary>A submenu of the menu bar as the platform opens it: asked to bring its items up to date first.</summary>
-    public static NativeMenu Submenu(NativeMenu parent, string title)
+    /// <summary>The words a text block draws, as it laid them out (an access key's mark taken out, where it took one).</summary>
+    public static string Drawn(TextBlock block) =>
+        string.Concat(block.TextLayout.TextLines.SelectMany(l => l.TextRuns).Select(r => r.Text.ToString()));
+
+    /// <summary>A native menu item's words as the platform's menu shows them, which takes a lone underscore for an access
+    /// key's mark and draws a doubled one as one.</summary>
+    public static string ShownByPlatform(string header)
     {
-        NativeMenu menu = parent.Items.OfType<NativeMenuItem>().First(i => i.Header == title).Menu!;
+        System.Text.StringBuilder shown = new();
+        bool marked = false;
+        for (int i = 0; i < header.Length; i++)
+        {
+            if (header[i] == '_' && i + 1 < header.Length && header[i + 1] == '_')
+            {
+                shown.Append('_');
+                i++;
+            }
+            else if (header[i] != '_' || marked)
+            {
+                shown.Append(header[i]);
+            }
+            else
+            {
+                marked = true;
+            }
+        }
+        return shown.ToString();
+    }
+
+    /// <summary>A submenu of the menu bar as the platform opens it: asked to bring its items up to date first.</summary>
+    public static NativeMenu Submenu(NativeMenu parent, string title) => Opened(parent.Items.OfType<NativeMenuItem>().First(i => i.Header == title).Menu!);
+
+    /// <summary>A native menu as the platform opens it: asked to bring its items up to date first.</summary>
+    public static NativeMenu Opened(NativeMenu menu)
+    {
         Type bridge = menu.GetType().GetInterfaces().First(i => i.GetMethod("RaiseNeedsUpdate") is not null);
         bridge.GetMethod("RaiseNeedsUpdate")!.Invoke(menu, null);
         return menu;

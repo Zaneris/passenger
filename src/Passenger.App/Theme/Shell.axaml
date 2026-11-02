@@ -21,6 +21,11 @@
         <x:Double x:Key="MenuFlyoutSubItemPopupHorizontalOffset">-16</x:Double>
     </Styles.Resources>
 
+    <!-- Words are shown as written, a name's underscores too: Passenger gives no access keys, so no control takes an
+         underscore for one's mark (Fluent's buttons, check boxes, menus' items and tabs would). -->
+    <Style Selector="ContentPresenter">
+        <Setter Property="RecognizesAccessKey" Value="False" />
+    </Style>
     <!-- A button: its content centred (Fluent leaves it at the left of a button wider than it), the shared height, side
          padding and radius, and a plain button's ground and edge (white with a field's edge in light). One that reads as
          text (crumb, link, statusItem) says otherwise in its own style, as the small square ones (tool, tabClose) say their
@@ -67,7 +72,7 @@
         <Setter Property="Padding" Value="10,3,10,4" />
     </Style>
     <!-- A long name ends in an ellipsis rather than cut at the menu's edge (a branch's). -->
-    <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter AccessText">
+    <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter TextBlock">
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
     <!-- The value in force (MenuChoice) is checked with a tick, a radio item's too, in place of Fluent's dot. -->
