@@ -55,6 +55,9 @@ public sealed record ProjectTemplate(string Name, IReadOnlyList<string> ShortNam
     /// <summary>Passenger's own item template it is, which the IDE makes itself; null for dotnet new's.</summary>
     public OwnTemplate? Own { get; init; }
 
+    /// <summary>Whether it is Passenger's own Godot 4 game, whose files the IDE writes itself (<see cref="OwnTemplates.GodotGame"/>).</summary>
+    public bool GodotGame { get; init; }
+
     /// <summary>Whether it makes what it makes by the name given: false for one whose name has no default (.gitignore).</summary>
     public bool TakesName { get; init; } = true;
 
