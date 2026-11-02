@@ -77,17 +77,17 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   `tools/Passenger.Notices/Licenses`, a package inside Roslyn's server in its table. The owner's exceptions: Visual Studio
   Telemetry and Utilities.Internal inside Roslyn's server (its Razor support needs them), and the TextMate bundle
   licence. MIT first.
-- **Every program Passenger starts goes through `ChildProcesses`** (`Command`/`DotnetCommand`, then `Start`,
-  `StartAsync`, `RunAsync`, or `AnswerAsync` for a question one line answers, a question of the .NET CLI answered before
-  it ends made by `DotnetQuestion`, which sends no telemetry and so lets go of its folder at once; `Kill` ends it with
-  all it started), so none outlives the IDE (`Lifeline`), each given its folder as the disk names it, PWD too; on
-  Windows every child shares the IDE's UTF-8 console, made windowless where it has none (`SharedConsole`); a console
-  reads a child through `ChildProcesses.Output`/`Errors` (on macOS and Linux its pipe through a socket, a waiting read
-  allocating nothing), a child's lines are heard through `ChildProcesses.Hear`, never Process's `Begin*ReadLine`
-  (banned: its disposal faults a read under it). Started elsewhere: the terminal's shell (Porta.Pty), vstest.console,
-  Velopack's Update.exe and an agent's `--mcp-attach` Passenger (`StartApart`); a program run in the terminal is
-  `Adopt`ed. Passenger's own standard input is taken at its start (`StandardInput`, fd 0 then the null device), so
-  nothing it starts reads it.
+- **Every program Passenger starts goes through `ChildProcesses`** (`Command`/`DotnetCommand`, which strips a parent
+  CLI's MSBuild SDK variables, then `Start`, `StartAsync`, `RunAsync`, or `AnswerAsync` for a question one line answers,
+  a question of the .NET CLI answered before it ends made by `DotnetQuestion`, which sends no telemetry and so lets go
+  of its folder at once; `Kill` ends it with all it started), so none outlives the IDE (`Lifeline`), each given its
+  folder as the disk names it, PWD too; on Windows every child shares the IDE's UTF-8 console, made windowless where it
+  has none (`SharedConsole`); a console reads a child through `ChildProcesses.Output`/`Errors` (on macOS and Linux its
+  pipe through a socket, a waiting read allocating nothing), a child's lines are heard through `ChildProcesses.Hear`,
+  never Process's `Begin*ReadLine` (banned: its disposal faults a read under it). Started elsewhere: the terminal's
+  shell (Porta.Pty), vstest.console, Velopack's Update.exe and an agent's `--mcp-attach` Passenger (`StartApart`); a
+  program run in the terminal is `Adopt`ed. Passenger's own standard input is taken at its start (`StandardInput`, fd 0
+  then the null device), so nothing it starts reads it.
 - **No secret on a command line** (any process can read it): give it through the environment, or don't make it. Secrets
   everywhere (Details, logs, consoles, hints, agents' answers, `ChildProcesses.Shown`'s echoes) are masked by one rule,
   `ContainerSecrets`.
@@ -360,13 +360,14 @@ Projects in `src/`; `find_symbol` finds the rest:
   GDScript over its debug connection; `DebugSession.Engine` sends each file's breakpoints to the adapter that runs it; a
   game's GDScript tab is its C# tab's `Companion`), `BreakpointStore`; Variables and the hover card are one list; a
   row's expression is the debugger's `evaluateName` (`RowExpressions`), never built in the window, a member row's cast
-  from the declared type read from metadata (`DeclaredType`). A session's built lines and Hot Reload begin at its
-  build's save (`DebugController.Building`, `BuiltEdits`). The debugger's own rows are named in `DapRows`, break modes
-  in `DapBreakModes`; an engine row is built by `ValueRow` (`FailedRow`, `GroupRow`), CoreLib found by
-  `ManagedDebugger.CoreLib`. A breakpoint's words, in the gutter's hover, Problems and MCP alike, come from
-  `BreakpointStates`. Every kind of breakpoint is refused, matched and hit through one pipeline (`IHitBreakpoint`:
-  `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a lambda on its statement's line keeps the
-  lambda's column (`LambdaBreakpoints`).
+  from the declared type read from metadata (`DeclaredType`). A debugged web app's pages are kept up through the SDK's
+  own browser refresh (`BrowserRefresh`, its protocol chosen by the variable the SDK's middleware reads,
+  `LaunchPlan.Web`). A session's built lines and Hot Reload begin at its build's save (`DebugController.Building`,
+  `BuiltEdits`). The debugger's own rows are named in `DapRows`, break modes in `DapBreakModes`; an engine row is built
+  by `ValueRow` (`FailedRow`, `GroupRow`), CoreLib found by `ManagedDebugger.CoreLib`. A breakpoint's words, in the
+  gutter's hover, Problems and MCP alike, come from `BreakpointStates`. Every kind of breakpoint is refused, matched and
+  hit through one pipeline (`IHitBreakpoint`: `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a
+  lambda on its statement's line keeps the lambda's column (`LambdaBreakpoints`).
 - **Tests window.** `TestFinder` (tests from code before any build), `TestRunners`; `VsTestRunner` is the only file that
   knows VSTest's object model. A run from the editor, a filter or the Explorer chooses its tests once its build has
   ended (`TestController.RunMatchingAsync`); the gutter marks by name or by the runner's file and line
