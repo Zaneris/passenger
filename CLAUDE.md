@@ -505,7 +505,10 @@ site-shots` retakes its images.
   ended (`DebugSession.Ended`, `ProgramGone`). Windows' Godot .exe writes to no console, so a terminal run goes through
   its console wrapper (`GodotExecutables.InTerminal`). An agent's call on a game is held to one limit
   (`GodotGame.Within`, `GameLimit`), app_ tools wait for no evaluation (`PassengerTools.OnApp`), and a typed Godot value
-  has one reader (`GodotVariant.ReadAsync`). An agent's input and layout reach a game through Passenger's helper node
+  has one reader (`GodotVariant.ReadAsync`). Godot's frame counter runs on while a game is paused, so the frame count is
+  the helper's (`GodotGame.Frame`); in a headless game Next Frame never pauses again, so the helper's `step` ends it;
+  node selection, once set up, starts picking and takes the game's clicks until turned off; a headless game picks no 3D
+  mesh without a collision shape. An agent's input and layout reach a game through Passenger's helper node
   (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
