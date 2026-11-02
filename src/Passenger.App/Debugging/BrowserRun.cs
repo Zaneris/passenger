@@ -39,10 +39,6 @@ public sealed partial class BrowserRun : IAsyncDisposable
     /// <summary>Done once the browser has gone (the person closed it) or the page's conversation has ended.</summary>
     public Task Ended { get; }
 
-    /// <summary>Whether the browser runs headless: in a headless IDE (a test's, a screenshot's or an agent's own), which shows
-    /// no window to anyone.</summary>
-    public static bool Headless => Mcp.McpHost.IsHeadless || Mcp.McpProxy.StartsHeadless;
-
     /// <summary>Starts the browser on a blank page, then the proxy, and opens the page's conversation through it; what each
     /// writes goes to the IDE's log. Throws <see cref="InvalidOperationException"/> saying which would not start.</summary>
     public static async Task<BrowserRun> StartAsync(BrowserDebugging debugging, string profiles, Action<string> say, CancellationToken cancel)
@@ -61,7 +57,7 @@ public sealed partial class BrowserRun : IAsyncDisposable
         Process? proxy = null;
         try
         {
-            say($"{debugging.Browser.Name} started{(Headless ? " headless" : string.Empty)} for debugging, on a profile of Passenger's own");
+            say($"{debugging.Browser.Name} started{(PassengerApp.ShowsNoWindow ? " headless" : string.Empty)} for debugging, on a profile of Passenger's own");
             (proxy, int proxyPort) = await StartProxyAsync(debugging.Proxy, port, cancel);
             string target = await PageTargetAsync(port, cancel);
             CdpConnection page = await CdpConnection.ConnectAsync(new Uri($"ws://127.0.0.1:{proxyPort}/devtools/page/{target}"),
@@ -89,7 +85,7 @@ public sealed partial class BrowserRun : IAsyncDisposable
         File.Delete(written);
         List<string> arguments = ["--remote-debugging-port=0", $"--user-data-dir={profile}", "--no-first-run", "--no-default-browser-check",
             "--disable-search-engine-choice-screen", "--disable-background-timer-throttling", "--disable-renderer-backgrounding"];
-        if (Headless)
+        if (PassengerApp.ShowsNoWindow)
         {
             arguments.Add("--headless=new");
         }

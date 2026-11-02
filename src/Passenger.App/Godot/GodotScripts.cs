@@ -62,7 +62,7 @@ public static class GodotScripts
         Dictionary<string, byte[]?> before = Read(project);
         int lsp = FreePort();
         ProcessStartInfo editor = ChildProcesses.Command(found.Executable,
-            [.. GodotLaunch.Chosen(setting)?.Arguments ?? [], "--headless", "--editor", "--path", project, "--lsp-port", lsp.ToString(System.Globalization.CultureInfo.InvariantCulture)],
+            [.. GodotLaunch.Chosen(setting)?.Arguments ?? [], GodotExecutables.Headless, "--editor", "--path", project, "--lsp-port", lsp.ToString(System.Globalization.CultureInfo.InvariantCulture)],
             project);
         foreach ((string name, string value) in environment)
         {

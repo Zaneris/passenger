@@ -131,6 +131,7 @@
     <Compile Include="../../src/Passenger.App/Web/NpmRange.cs" Link="App/NpmRange.cs" />
     <Compile Include="../../src/Passenger.App/Godot/GodotServerWords.cs" Link="App/GodotServerWords.cs" />
     <Compile Include="../../src/Passenger.App/Testing/GutRuns.cs" Link="App/GutRuns.cs" />
+    <Compile Include="../../src/Passenger.App/Testing/GdUnit4Settings.cs" Link="App/GdUnit4Settings.cs" />
     <Compile Include="../../src/Passenger.App/Run/BuiltInputs.cs" Link="App/BuiltInputs.cs" />
   </ItemGroup>
 

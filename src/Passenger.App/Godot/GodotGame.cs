@@ -59,13 +59,14 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     /// <summary>The id under which the game's live editing knows the path of Passenger's helper (<see cref="GodotAgent"/>).</summary>
     private const long AgentPath = 7046;
 
-    private GodotGame(string name, string folder, string? version, bool headless, bool scriptsAlone, TcpListener listener, GodotScriptStart? scripts)
+    private GodotGame(string name, string folder, string? version, bool headless, bool unseen, bool scriptsAlone, TcpListener listener, GodotScriptStart? scripts)
     {
         Name = name;
         ScriptsAlone = scriptsAlone;
         Folder = folder;
         Version = version;
         Headless = headless;
+        Unseen = unseen;
         Tuning = new GodotTuning(folder);
         this.listener = listener;
         ScriptsDebugged = scripts is not null;
@@ -84,9 +85,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         }
         TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start(1);
-        bool headless = plan.Arguments.Contains("--headless")
-            || plan.Arguments.Zip(plan.Arguments.Skip(1)).Any(p => p is ("--display-driver", "headless"));
-        GodotGame game = new(plan.Name, folder, plan.GodotVersion, headless, plan.ScriptsAlone, listener, scripts);
+        GodotGame game = new(plan.Name, folder, plan.GodotVersion, GodotExecutables.RunsHeadless(plan.Arguments), plan.GodotUnseen, plan.ScriptsAlone, listener, scripts);
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         List<string> arguments = [.. plan.Arguments];
         List<string> debugging = [RemoteDebug, $"tcp://127.0.0.1:{port}"];
@@ -158,6 +157,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
 
     /// <summary>Whether Godot runs it headless (<c>--headless</c>), drawing nothing.</summary>
     public bool Headless { get; }
+
+    /// <summary>Whether nobody sees the Passenger that started it, which runs every game headless (<see cref="LaunchPlan.GodotUnseen"/>).</summary>
+    public bool Unseen { get; }
 
     /// <summary>Whether it is a game of GDScript alone (<see cref="LaunchPlan.ScriptsAlone"/>), which runs no .NET code.</summary>
     public bool ScriptsAlone { get; }
@@ -661,8 +663,11 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             node.SceneFile.Length > 0, node.Visible, [.. node.Children.Where(c => !GodotAgent.Is(c)).Select(ElementOf)]);
 
     /// <summary>Why a game Godot runs headless has no picture.</summary>
-    public string HeadlessPicture => $"{Name} runs headless (--headless among its arguments), and Godot draws nothing for a headless game, "
-        + "so there is no picture of it: run it without --headless to take one";
+    public string HeadlessPicture => Unseen
+        ? $"{Name} runs headless, as every Godot game a Passenger nobody sees starts does (an agent's own, a test's, a screenshot's), and Godot draws "
+            + "nothing for a headless game, so there is no picture of it: a person's Passenger runs it with a window"
+        : $"{Name} runs headless (--headless among its arguments), and Godot draws nothing for a headless game, "
+            + "so there is no picture of it: run it without --headless to take one";
 
     /// <summary>A PNG of the game's window as Godot draws it (its root viewport), and its size in pixels, the file Godot
     /// wrote it to deleted once read; refused for a headless game, which draws nothing.</summary>

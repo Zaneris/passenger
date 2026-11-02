@@ -119,6 +119,10 @@ public sealed partial record LaunchPlan
     /// <summary>The version of the Godot a Godot game's plan runs on, where known.</summary>
     public string? GodotVersion { get; init; }
 
+    /// <summary>Whether nobody sees the window that starts the plan's Godot (<see cref="MainWindow.Unseen"/>), which then runs
+    /// it headless whatever its arguments say.</summary>
+    public bool GodotUnseen { get; init; }
+
     /// <summary>Whether it runs a Godot game of GDScript alone (<see cref="Passenger.Workspace.ProjectModel.IsScriptGame"/>): no
     /// C# of its own to build, debug or sample, its GDScript debugged by its GDScript session alone.</summary>
     public bool ScriptsAlone { get; init; }
@@ -153,11 +157,12 @@ public sealed partial record LaunchPlan
     /// <summary>Works out what a configuration launches among the open folder's projects (of <paramref name="workspace"/>,
     /// whose solution's properties MSBuild is given), asking MSBuild, with no build, where the project builds, where and how
     /// dotnet run runs it, and any property its values name; a Passenger it launches keeps its state in its sandbox/, a Godot
-    /// project runs on the Godot <paramref name="godot"/> names or found, its editor on the file at hand's scene, in the user
-    /// folders <paramref name="godotFolders"/> gives where it sets none (<see cref="GodotLaunch"/>). Throws a <see cref="LaunchException"/> saying why not.</summary>
+    /// project runs on the Godot <paramref name="godot"/> names or found, its editor on the scene at hand, in the user folders
+    /// <paramref name="godotFolders"/> gives, headless where <paramref name="unseen"/> (the process's by default). Throws a <see cref="LaunchException"/> saying why not.</summary>
     public static async Task<LaunchPlan> ResolveAsync(RunConfiguration configuration, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace, string stateFolder,
-        CancellationToken cancel = default, string? godot = null, string? atHand = null, IReadOnlyDictionary<string, string>? godotFolders = null)
+        CancellationToken cancel = default, string? godot = null, string? atHand = null, IReadOnlyDictionary<string, string>? godotFolders = null, bool? unseen = null)
     {
+        bool headless = unseen ?? PassengerApp.ShowsNoWindow;
         if (configuration.Unsupported is { } why)
         {
             throw new LaunchException($"{configuration.Name} cannot run here: {why}");
@@ -175,7 +180,7 @@ public sealed partial record LaunchPlan
             if (configuration.Program.Length == 0)
             {
                 return await GodotLaunch.PlanAsync(configuration, scripts, scripts.Folder, null, null, System.Environment.ExpandEnvironmentVariables,
-                    Passenger.App.Godot.GodotUserFolders.Into(variables, godotFolders), godot, null, cancel, atHand);
+                    Passenger.App.Godot.GodotUserFolders.Into(variables, godotFolders), godot, null, headless, cancel, atHand);
             }
             return new LaunchPlan
             {
@@ -234,7 +239,7 @@ public sealed partial record LaunchPlan
         if (configuration.Program.Length == 0 && project.GodotFolder is { } game)
         {
             return await GodotLaunch.PlanAsync(configuration, project, game, target, framework, Expand, Passenger.App.Godot.GodotUserFolders.Into(Variables(), godotFolders), godot,
-                properties.GetValueOrDefault(MSBuildNames.GodotSdkVersion), cancel, atHand);
+                properties.GetValueOrDefault(MSBuildNames.GodotSdkVersion), headless, cancel, atHand);
         }
         List<string> arguments = [.. CommandLine.Split(Expand(configuration.Arguments))];
         IReadOnlyList<string> ofProject = [];

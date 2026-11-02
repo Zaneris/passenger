@@ -55,6 +55,9 @@ public sealed class VsTestRunner : ITestRunner
     /// <summary>The run settings file each assembly looked at runs with, by its path; null for none.</summary>
     private readonly Dictionary<string, string?> settingsOf = new(StringComparer.Ordinal);
 
+    /// <summary>The assemblies looked at that are a Godot game's, whose GdUnit4 tests run on Godot, by their paths.</summary>
+    private readonly HashSet<string> games = new(StringComparer.Ordinal);
+
     private VsTestRunner(string consolePath, string host, VsTestConsoleWrapper console)
     {
         this.consolePath = consolePath;
@@ -125,8 +128,16 @@ public sealed class VsTestRunner : ITestRunner
             foreach (TestAssembly assembly in group)
             {
                 settingsOf[assembly.Path] = group.Key;
+                if (assembly.Project.GodotFolder is not null)
+                {
+                    games.Add(assembly.Path);
+                }
+                else
+                {
+                    games.Remove(assembly.Path);
+                }
             }
-            string settings = await BackgroundWork.Run(() => Settings(null, log, group.Key), cancel);
+            string settings = await BackgroundWork.Run(() => Settings(null, log, group.Key, false), cancel);
             found.AddRange(await DiscoverWith([.. group.Select(a => a.Path)], settings, log, cancel));
         }
         return await BackgroundWork.Run(() => Tell(assemblies, found));
@@ -184,9 +195,11 @@ public sealed class VsTestRunner : ITestRunner
             }
         }
         RunSummary? summary = null;
-        foreach (IGrouping<string?, TestCase> group in chosen.GroupBy(c => settingsOf.GetValueOrDefault(cases.Canonical(c.Source)), StringComparer.Ordinal))
+        // A Godot game's tests run apart from the rest, its GdUnit4 told to run Godot headless where nobody sees Passenger.
+        foreach (IGrouping<(string? File, bool Game), TestCase> group in chosen.GroupBy(c => (settingsOf.GetValueOrDefault(cases.Canonical(c.Source)), games.Contains(cases.Canonical(c.Source)))))
         {
-            string settings = await BackgroundWork.Run(() => Settings(environment, log, group.Key), cancel);
+            bool headless = group.Key.Game && PassengerApp.ShowsNoWindow;
+            string settings = await BackgroundWork.Run(() => Settings(environment, log, group.Key.File, headless), cancel);
             RunSummary part = await RunWith([.. group], settings, running, outcomes, log, debugger, environment, cancel);
             summary = summary is null ? part : summary.And(part);
             if (part.Canceled)
@@ -293,10 +306,11 @@ public sealed class VsTestRunner : ITestRunner
 
     /// <summary>A run's settings: the project's run settings file's, if it names one, with VSTest's design mode, as an IDE
     /// runs it, and the environment, each variable an element as VSTest reads them, over the file's of the same name; a name
-    /// XML cannot hold is left out and said, as is a file that cannot be read. A worker's: it reads the file.</summary>
-    private static string Settings(IReadOnlyDictionary<string, string>? environment, Action<string>? log, string? file)
+    /// XML cannot hold is left out and said, as is a file that cannot be read; GdUnit4's Godot run headless where
+    /// <paramref name="headless"/> says. A worker's: it reads the file.</summary>
+    private static string Settings(IReadOnlyDictionary<string, string>? environment, Action<string>? log, string? file, bool headless)
     {
-        if (environment is not { Count: > 0 } && file is null)
+        if (environment is not { Count: > 0 } && file is null && !headless)
         {
             return RunSettings;
         }
@@ -333,6 +347,10 @@ public sealed class VsTestRunner : ITestRunner
                     log?.Invoke($"The environment variable {name} cannot be given to the tests: VSTest names each in XML, which cannot hold that name");
                 }
             }
+        }
+        if (headless)
+        {
+            GdUnit4Settings.Headless(root);
         }
         return root.ToString(SaveOptions.DisableFormatting);
 

@@ -49,6 +49,13 @@ public static partial class GodotExecutables
     /// <summary>What the PATH is called where it holds Godot.</summary>
     public const string PathWords = "the PATH";
 
+    /// <summary>The flag that has Godot run with its dummy display and audio drivers: no window, nothing drawn or heard.</summary>
+    public const string Headless = "--headless";
+
+    /// <summary>Whether Godot given these arguments runs headless: <see cref="Headless"/>, or the headless display driver.</summary>
+    public static bool RunsHeadless(IReadOnlyList<string> arguments) =>
+        arguments.Contains(Headless) || arguments.Zip(arguments.Skip(1)).Any(pair => pair is ("--display-driver", "headless"));
+
     /// <summary>What the Applications folders are called where they hold Godot.</summary>
     public const string ApplicationsWords = "Applications";
 
@@ -310,7 +317,7 @@ public static partial class GodotExecutables
     {
         try
         {
-            ChildAnswer answer = await ChildProcesses.AnswerAsync(ChildProcesses.Command(executable, ["--headless", "--version"]),
+            ChildAnswer answer = await ChildProcesses.AnswerAsync(ChildProcesses.Command(executable, [Headless, "--version"]),
                 line => ReadVersion(line) is not null, limit: TimeSpan.FromSeconds(20)).ConfigureAwait(false);
             return answer.Answer is { } line ? ReadVersion(line)?.Version : null;
         }

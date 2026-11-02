@@ -93,6 +93,7 @@ public partial class MainWindow
         AskCertificate = AskCertificateAsync,
         AskReplace = AskReplaceAsync,
         AsksNoOne = AgentsOwn,
+        Unseen = Unseen,
         ProfileService = RecordRunServiceAsync,
         ShowFolder = ShowInFileManager,
     };

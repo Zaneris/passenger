@@ -60,6 +60,17 @@ public static class PassengerApp
     /// system's shutdown), so each keeps its solution to reopen, rather than one window closing alone.</summary>
     public static bool Quitting { get; private set; }
 
+    /// <summary>Whether nobody sees this Passenger's windows: an agent's own (<c>--mcp</c>), a test run's (<c>--headless</c>,
+    /// <see cref="Mcp.McpProxy.StartsHeadless"/>) or a screenshot's, all on the headless platform. What it starts that would
+    /// show a window or make a sound of its own (a Godot game, its editor and its tests, a browser) runs headless or not at all.</summary>
+    public static bool ShowsNoWindow => headless || Mcp.McpProxy.StartsHeadless;
+
+    private static bool headless;
+
+    /// <summary>The process runs on the headless platform, as <c>--mcp</c>, <c>--headless</c> and a screenshot choose it
+    /// before their window is made.</summary>
+    internal static void RunsHeadless() => headless = true;
+
     /// <summary>A window came in front, or one closed: Discord follows the front one.</summary>
     public static event EventHandler? FrontChanged;
 
@@ -107,7 +118,8 @@ public static class PassengerApp
     }
 
     /// <summary>A window made as another is: its state folder, its layout and settings kept or not, its agents, its
-    /// Discord, its updates' feed and release notes and whether it starts the language server, beside it at its size;
+    /// Discord, its updates' feed and release notes, whether it starts the language server and whether anyone sees it,
+    /// beside it at its size;
     /// shown with nothing open.</summary>
     public static MainWindow NewWindow(MainWindow like)
     {
@@ -120,6 +132,7 @@ public static class PassengerApp
             AgentAnswerLimit = like.AgentAnswerLimit,
             Autosaves = like.Autosaves,
             StartsLanguageServer = like.StartsLanguageServer,
+            Unseen = like.Unseen,
             Releases = like.Releases,
             Notes = like.Notes,
             DiscordIpc = like.DiscordIpc,

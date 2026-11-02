@@ -22,10 +22,6 @@ namespace Passenger.App.Mcp;
 /// connection is a server of its own over the same tools.</summary>
 public static partial class McpHost
 {
-    /// <summary>The IDE has no window, only the headless platform's (whose frames a screenshot takes). The process's, as
-    /// the platform is: <c>--mcp</c> runs on the headless one alone.</summary>
-    public static bool IsHeadless { get; private set; }
-
     /// <summary>The variable that, set to <c>off</c>, has an <c>--mcp</c> Passenger start no C# language server
     /// (<see cref="MainWindow.StartsLanguageServer"/>), for an agent that asks nothing of C#.</summary>
     [IdentifierHome]
@@ -232,7 +228,7 @@ public static partial class McpHost
     /// it), so an agent asking as it connects finds the tools at once; each call waits for the IDE.</summary>
     public static int RunStdio(LaunchOptions launch, Stream input)
     {
-        IsHeadless = true;
+        PassengerApp.RunsHeadless();
         Stream output = Console.OpenStandardOutput();
         // Standard output is the protocol's alone, and standard error the agent may never read: the console goes to the log.
         IdeLog.TakeConsole();
@@ -290,7 +286,7 @@ public static partial class McpHost
     /// the input given ends (<see cref="StandardInput.Take"/>).</summary>
     public static int RunHeadless(LaunchOptions launch, Stream input)
     {
-        IsHeadless = true;
+        PassengerApp.RunsHeadless();
         // Its starter reads nothing of its output or error: the console goes to the log.
         IdeLog.TakeConsole();
         AppBuilder.Configure<App>()

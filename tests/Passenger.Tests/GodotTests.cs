@@ -87,7 +87,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     private string ScriptPath => Path.Combine(PathNames.Canonical(game.Folder), "Main.cs");
 
     /// <summary>The project's generated configurations are its game and Godot's editor on it, each on the Godot found with
-    /// --path naming the project; Run of the game builds it and starts it there, its words in the Run console, Apply Hot
+    /// --path naming the project, headless as the window nobody sees runs every Godot; Run of the game builds it and starts it there, its words in the Run console, Apply Hot
     /// Reload Changes saying it runs without Hot Reload; the editor's configuration says what Hot Reload is to Godot's editor.</summary>
     [AvaloniaFact]
     public void Run_starts_the_game_on_Godot_from_its_configuration_beside_one_for_Godots_editor()
@@ -103,7 +103,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             (LaunchPlan? editor, string? problem) = Ui.Await(window.Builds.ResolvePlanAsync(edited, null), "the editor's plan", TimeSpan.FromMinutes(1));
             Assert.True(editor is not null, $"Godot's editor has no plan: {problem}");
             Assert.Equal(game.Godot!.Executable, editor.Program);
-            Assert.Equal(["--path", folder, "--editor"], editor.Arguments);
+            Assert.Equal([GodotExecutables.Headless, "--path", folder, "--editor"], editor.Arguments);
             // A window given no user folders for Godot keeps its Godots in the run's, never the person's.
             IReadOnlyDictionary<string, string> run = Passenger.App.Godot.GodotUserFolders.OfVariable()!;
             Assert.True(run.All(v => editor.Environment.GetValueOrDefault(v.Key) == v.Value),
@@ -146,7 +146,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
                 Assert.Null(window.OpenFile(Path.Combine(folder, atHand)));
                 Ui.Settle();
                 (LaunchPlan? editor, string? problem) = Ui.Await(window.Builds.ResolvePlanAsync(edited, null), "the editor's plan", TimeSpan.FromMinutes(1));
-                Assert.True(editor?.Arguments.SequenceEqual(["--path", folder, "--editor", "res://main.tscn"]) == true,
+                Assert.True(editor?.Arguments.SequenceEqual([GodotExecutables.Headless, "--path", folder, "--editor", "res://main.tscn"]) == true,
                     $"With {atHand} at hand, Godot's editor was to open res://main.tscn; {(editor is null ? $"it has no plan: {problem}" : $"it starts with {string.Join(' ', editor.Arguments)}")}");
             }
         }

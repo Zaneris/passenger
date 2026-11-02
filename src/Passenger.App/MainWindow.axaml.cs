@@ -685,6 +685,10 @@ public partial class MainWindow : IdeWindow
     /// <see cref="Mcp.McpHost.LanguageServerVariable"/>.</summary>
     public bool StartsLanguageServer { get; init; } = true;
 
+    /// <summary>Whether nobody sees the window, as nobody sees any of this process's (<see cref="PassengerApp.ShowsNoWindow"/>):
+    /// every Godot game and editor it starts then runs headless, and it plays no sound.</summary>
+    public bool Unseen { get; init; } = PassengerApp.ShowsNoWindow;
+
     /// <summary>The store of the window a person uses, the process's for its state folder, taken the first time it keeps
     /// something; null in a headless one.</summary>
     private State.StateStore? state;

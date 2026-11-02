@@ -50,7 +50,7 @@ public sealed class GutRunner : ITestRunner
             return new RunSummary(Stopwatch.GetElapsedTime(began), false, true, unimported);
         }
         string results = Path.Combine(Path.GetTempPath(), $"passenger-gut-{Guid.NewGuid():N}.xml");
-        List<string> arguments = ["--headless", "--path", folder, .. Arguments(folder, tests, results)];
+        List<string> arguments = [GodotExecutables.Headless, "--path", folder, .. Arguments(folder, tests, results)];
         string output = string.Empty;
         try
         {
@@ -169,7 +169,7 @@ public sealed class GutRunner : ITestRunner
     /// done, else why it failed.</summary>
     private static async Task<string?> ImportAsync(string godot, string folder, IReadOnlyDictionary<string, string> environment, Action<string>? log, CancellationToken cancel)
     {
-        ProcessStartInfo start = ChildProcesses.Command(godot, ["--headless", "--path", folder, "--import"], folder);
+        ProcessStartInfo start = ChildProcesses.Command(godot, [GodotExecutables.Headless, "--path", folder, "--import"], folder);
         foreach ((string name, string value) in environment)
         {
             start.Environment[name] = value;

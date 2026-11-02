@@ -133,12 +133,12 @@ public partial class MainWindow
     public IReadOnlyList<string> Played => played;
 
     /// <summary>Plays a sound file through the system's player (<see cref="Sounds"/>), saying why where it cannot; a window
-    /// shown nowhere (an agent's, a test's) plays nothing.</summary>
+    /// nobody sees (<see cref="Unseen"/>) plays nothing.</summary>
     public async Task PlaySoundAsync(string file)
     {
         UiThread.Check();
         played.Add(file);
-        if (Debugging.BrowserRun.Headless)
+        if (Unseen)
         {
             return;
         }

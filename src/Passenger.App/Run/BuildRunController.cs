@@ -58,6 +58,10 @@ public sealed record BuildRunParts(
     /// way that asks nothing, saying so.</summary>
     public bool AsksNoOne { get; init; }
 
+    /// <summary>Whether nobody sees the window (<see cref="MainWindow.Unseen"/>): every Godot game and editor it runs runs
+    /// headless.</summary>
+    public bool Unseen { get; init; }
+
     /// <summary>Has the window's profiler record a service's program of a run of services where its kind runs it (in its
     /// container, or on this machine), held at its start (a run's Profile, which the recording lets go) or as it runs (its
     /// last argument): null once it records, the run's Stop then reading its snapshot first, else why not.</summary>
@@ -697,7 +701,7 @@ public sealed partial class BuildRunController
         try
         {
             return (await LaunchPlan.ResolveAsync(arguments is null ? chosen : chosen with { Arguments = arguments }, session.Projects, session.Workspace, parts.StateFolder(), stop,
-                parts.Settings().GodotExecutable, parts.Editors.Active?.Path, session.GodotEnvironment), null);
+                parts.Settings().GodotExecutable, parts.Editors.Active?.Path, session.GodotEnvironment, parts.Unseen), null);
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
         {

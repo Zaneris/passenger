@@ -60,11 +60,11 @@ public static class GodotLaunch
 
     /// <summary>The plan of a Godot project's configuration that names no program of its own: its game, or its editor on the
     /// scene of the file at hand (<see cref="GodotProject.SceneOf"/>), on the Godot found, its arguments after those that start
-    /// it, in its working folder or the Godot project's; one of GDScript alone (no <paramref name="target"/>) on any Godot 4,
-    /// nothing built. Throws a <see cref="LaunchException"/> saying why not: no project.godot, no Godot to run it, a
-    /// Godot.NET.Sdk (<paramref name="sdk"/>) newer than the Godot, no scene to start in, or another assembly than it builds.</summary>
+    /// it, in its working folder or the Godot project's, headless where nobody sees it (<paramref name="unseen"/>); of GDScript
+    /// alone (no <paramref name="target"/>) on any Godot 4, nothing built. A <see cref="LaunchException"/> says why not: no
+    /// project.godot or Godot, a Godot.NET.Sdk (<paramref name="sdk"/>) newer than it, no scene, another assembly than it builds.</summary>
     internal static async Task<LaunchPlan> PlanAsync(RunConfiguration configuration, ProjectModel project, string folder, string? target, string? framework,
-        Func<string, string> expand, IReadOnlyDictionary<string, string> environment, string? setting, string? sdk, CancellationToken cancel, string? atHand = null)
+        Func<string, string> expand, IReadOnlyDictionary<string, string> environment, string? setting, string? sdk, bool unseen, CancellationToken cancel, string? atHand = null)
     {
         GodotProject game = GodotProject.Read(folder)
             ?? throw new LaunchException($"{configuration.Name} cannot run: {folder} holds no {GodotProject.FileName}, which makes it the Godot project Godot runs");
@@ -98,7 +98,13 @@ public static class GodotLaunch
             throw new LaunchException($"{configuration.Name} cannot run: its {GodotProject.FileName} names no main scene for the game to start in: choose one in Godot's editor "
                 + "(Project Settings, Application, Run, Main Scene), or give one in the configuration's arguments (res://main.tscn)");
         }
-        List<string> arguments = [.. Chosen(setting)?.Arguments ?? [], "--path", folder];
+        List<string> arguments = [.. Chosen(setting)?.Arguments ?? []];
+        // Nobody would see the game's window or the editor's: Godot runs headless, whatever the setting or the configuration say.
+        if (unseen && !GodotExecutables.RunsHeadless([.. arguments, .. own]))
+        {
+            arguments.Add(GodotExecutables.Headless);
+        }
+        arguments.AddRange(["--path", folder]);
         if (configuration.GodotEditor)
         {
             arguments.Add("--editor");
@@ -132,6 +138,7 @@ public static class GodotLaunch
             Console = configuration.Console,
             Godot = folder,
             GodotVersion = version,
+            GodotUnseen = unseen,
             ScriptsAlone = project.IsScriptGame,
             GameName = project.IsScriptGame ? project.Name : null,
         };
