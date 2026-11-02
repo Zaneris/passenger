@@ -98,8 +98,10 @@ RID reaches every referenced project's restore). Every recipe and CI set `AVALON
   unlabelled DCP containers and network are recorded in `AspireContainerOwnership` and ended the same way; persistent
   containers and the person's own never are.
 - **Colours are tokens** (`Passenger.*` in `Theme/Tokens.axaml`), given in every theme (dark and light, `Harbour.axaml`
-  and each look `just themes` writes); Fluent's keys are mapped once in `Theme/FluentKeys.axaml`. UiRulesTests fails on a
-  colour or non-zero CornerRadius written outside `Theme/` (but the content's own) and on an unmapped Fluent key.
+  and each look `just themes` writes); Fluent's keys are mapped once in `Theme/FluentKeys.axaml`. UiRulesTests fails on
+  a colour or non-zero CornerRadius written outside `Theme/` (but the content's own) and on an unmapped Fluent key.
+  Passenger gives no access keys: `Shell.axaml`'s ContentPresenter style shows words as written (a name's underscores
+  whole), and a native menu item's words go through `MainWindow.NativeWords`.
 - **An identifier is named from its home** (`[IdentifierHome]`: action and tool window ids, DAP and LSP names,
   `McpTools`, each `PASSENGER_` variable's const, the theme's keys as `TokenKeys` and `IconKeys` and its styles' classes
   as `StyleClasses`, generated from their XAML): PSG0001 (`src/Passenger.Analyzers`, every rule's id and words in
