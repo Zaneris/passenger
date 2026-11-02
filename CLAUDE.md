@@ -580,7 +580,10 @@ site-shots` retakes its images.
   members are still being made (`_made`, its last member); a tree asked since its last making that lacks it brings it in
   again (`GodotGame.brought`). A typed member refuses an untyped Array or Dictionary set through the debugger, so a
   value sent back keeps the element types the game sent (`GodotArray`, `GodotDictionary.KeyType`); a resource loaded
-  from a file comes by its path alone, its id from the helper's `held` (`GodotGame.HeldAsync`). A macOS export of an
+  from a file comes by its path alone, its id from the helper's `held` (`GodotGame.HeldAsync`). A node instancing a
+  scene no text says (an imported model, a binary scene) keeps the names below it unknown (`GodotTreeNode.NodesUnread`);
+  a GDScript signal's parameters are known only where written and its own emits agree, as Godot passes whatever an emit
+  gives; a connection's flags may bind the sender as one more argument (`GodotConnection.Bound`). A macOS export of an
   arm64 or universal game refuses a project without `textures/vram_compression/import_etc2_astc`. Its .NET host rolls
   forward only to released runtimes, so a new game's framework is one it can run (`GodotGames.Runnable`). An agent's
   input and layout reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing;
