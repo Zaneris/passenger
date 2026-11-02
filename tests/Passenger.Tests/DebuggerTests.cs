@@ -1879,20 +1879,22 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         int Said(string word) => Ui.Shared(spins).Split('\n').Count(l => l.StartsWith(word, StringComparison.Ordinal));
     }
 
+    /// <summary>An exception whose own Message outlasts the debugger's wait for code it runs is still named where the
+    /// program stopped, by its type and the message it was made with, beside the stop's frames and locals.</summary>
     [AvaloniaFact]
-    public void An_exception_the_debugger_cannot_describe_still_shows_where_the_program_stopped()
+    public void An_exception_whose_Message_outlasts_the_debuggers_wait_is_still_named_where_the_program_stopped()
     {
-        // Its Source outlasts the debugger's wait for code it runs, so the description reading it is given up.
-        Write("Program.cs", "int index = 5;\nthrow new Slow();\n\nsealed class Slow : Exception\n{\n"
-            + "    public override string? Source { get { Thread.Sleep(8000); return \"late\"; } set { } }\n}\n");
+        Write("Program.cs", "int index = 5;\nthrow new Slow(\"made slow\");\n\nsealed class Slow(string message) : Exception(message)\n{\n"
+            + "    public override string Message { get { Thread.Sleep(8000); return \"late\"; } }\n}\n");
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
         StartDebugging(window);
-        WaitDebugging(window, () => window.BottomPanel.Debug.Frames.Count > 0, "the stop's frames, though its exception is not described");
+        WaitDebugging(window, () => window.BottomPanel.Debug.Frames.Count > 0, "the stop's frames");
         Assert.Equal(2, window.BottomPanel.Debug.Frames[0].Line);
         Assert.Contains(new LineMark(1, LineMarkKind.ExecutionPoint), editor.LineMarks);
         Ui.WaitFor(() => Value(window, "index") == "5", "the stop's locals");
-        Ui.WaitFor(() => window.Status?.Contains("could not describe", StringComparison.Ordinal) == true, "why the exception is not named in the status bar");
+        Ui.WaitFor(() => Thrown(editor) == (1, "Slow: made slow"), () => $"the exception named at its line by what it was made with, where the line says {Thrown(editor)}");
+        Assert.Contains("paused on Slow: made slow", window.Status, StringComparison.Ordinal);
         Ui.Run(window, AppActions.Stop);
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
         window.Close();
