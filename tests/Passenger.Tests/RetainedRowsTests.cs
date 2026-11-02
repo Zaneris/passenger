@@ -7,8 +7,9 @@ using Passenger.Text;
 
 namespace Passenger.Tests;
 
-/// <summary>The rows on screen are each drawn once and moved by the compositor as the view scrolls: what a scrolled view
-/// shows is, pixel for pixel, what the same view shows with every row drawn afresh.</summary>
+/// <summary>The rows on screen are each drawn once and moved by the compositor as the view scrolls, and drawn again only
+/// where a key changed them: what a scrolled or typed-into view shows is, pixel for pixel, what the same view shows with
+/// every row drawn afresh.</summary>
 public sealed class RetainedRowsTests
 {
     [AvaloniaFact]
@@ -63,6 +64,54 @@ public sealed class RetainedRowsTests
             Assert.True(mostDrawn < rowsOnScreen / 2,
                 $"{(wrapped ? "Soft-wrapped" : "Not wrapped")}, a wheel's step drew as many as {mostDrawn} rows of the {rowsOnScreen} on screen: the rows on screen were drawn again, not moved");
         }
+    }
+
+    [AvaloniaFact]
+    public void A_key_draws_again_only_the_rows_it_changed_and_those_the_caret_left_or_entered()
+    {
+        EditorRig rig = new(string.Join('\n', Enumerable.Range(0, 200).Select(Line)));
+        CodeEditor editor = rig.Editor;
+        TextSnapshot text = rig.Document.Snapshot;
+        int Find(int line, string what) => text.GetLineStart(line) + text.GetLine(line).ToString().IndexOf(what, StringComparison.Ordinal);
+        editor.SetMarkers([.. Enumerable.Range(0, 200).Where(i => i % 5 == 1).Select(i => new Marker(new TextRange(Find(i, "unused"), Find(i, " =")), MarkerKind.Warning, "never read"))]);
+        editor.SetInlayHints([.. Enumerable.Range(0, 200).Where(i => i % 5 == 0).Select(i => new InlayHint(Find(i, "3,"), "width:", PadRight: true))]);
+        editor.Selections = SelectionSet.Single(text.GetLineStart(12) + 8);
+        Ui.Settle();
+        int rowsOnScreen = (int)(editor.Bounds.Height / editor.LineHeight);
+
+        long Drawn(string key, Action press)
+        {
+            long before = editor.RowsDrawn;
+            long bytes = GC.GetAllocatedBytesForCurrentThread();
+            press();
+            Ui.Settle();
+            long drawn = editor.RowsDrawn - before;
+            TestContext.Current.TestOutputHelper?.WriteLine($"{key}: {drawn} rows drawn of {rowsOnScreen} on screen, {(GC.GetAllocatedBytesForCurrentThread() - bytes) / 1024} KB on the UI thread");
+            return drawn;
+        }
+
+        Drawn("every row drawn again", () => editor.ShowWhitespaces = editor.ShowWhitespaces);
+
+        long typed = Drawn("a letter typed", () => rig.Window.KeyTextInput("x"));
+        Assert.True(typed == 1, $"A letter typed in a line drew {typed} rows: rows it did not change were drawn again");
+        long down = Drawn("Down", () => Ui.Press(rig.Window, "down"));
+        Assert.True(down == 2, $"Down drew {down} rows, where only the line the caret left and the one it entered changed");
+        long selected = Drawn("Shift+Down", () => Ui.Press(rig.Window, "shift down"));
+        Assert.True(selected == 2, $"Shift+Down drew {selected} rows, where only the line it selected and the one the caret entered changed");
+        long unselected = Drawn("Escape", () => Ui.Press(rig.Window, "escape"));
+        Assert.True(unselected == 2, $"Escape drew {unselected} rows, where only the two lines the selection left changed");
+        int line = editor.CaretPosition.Line;
+        long split = Drawn("Enter", () => Ui.Press(rig.Window, "enter"));
+        // The line split and those below it, each numbered one more; none above it.
+        int below = editor.LinesShown.Last - line + 1;
+        Assert.True(split <= below, $"Enter on line {line + 1} drew {split} rows, where the {below} from it down changed: the lines above it were drawn again");
+        byte[] typedInto = Pixels(rig, editor);
+        editor.ShowWhitespaces = editor.ShowWhitespaces;
+        Ui.Settle();
+        byte[] fresh = Pixels(rig, editor);
+        int differs = typedInto.AsSpan().CommonPrefixLength(fresh);
+        Assert.True(differs == typedInto.Length,
+            $"After the keys the view differs from its rows drawn afresh at {differs / 4 % PixelWidth(rig, editor)}, {differs / 4 / PixelWidth(rig, editor)} (pixels): a row kept through a key shows what it showed before");
     }
 
     private static string Line(int i) => (i % 10) switch

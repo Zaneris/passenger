@@ -1,15 +1,17 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Editor;
 
 /// <summary>The rows on screen as visuals of their own, each recorded once and then moved by the compositor: a scroll
-/// moves the layer that holds them and records only the rows come into view (<see cref="PrepareFrame"/>). Any other
-/// change records every row again (<see cref="Redraw"/>). A row draws in the editor's x and its own y: its gutter clipped
-/// to it, its text and what lies on it clipped to the text's side of the gutter; the carets, a snippet's fields, a diff's
-/// rules and the fold preview are an overlay recorded again for each frame that moves or changes them.</summary>
+/// moves the layer that holds them and records only the rows come into view (<see cref="PrepareFrame"/>). An edit, a move
+/// of the carets or a change of what lies on the text records again only the rows whose drawing it changed, each row's
+/// drawing told by what it is drawn from (<see cref="KeyOf"/>); a change of the look records them all (<see cref="Redraw"/>).
+/// A row draws in the editor's x and its own y: its gutter clipped to it, its text and what lies on it clipped to the
+/// text's side of the gutter; the carets, a snippet's fields, a diff's rules and the fold preview are an overlay.</summary>
 public sealed partial class CodeEditor
 {
     /// <summary>The layer the scroll moves, the rows standing in it where the text puts them.</summary>
@@ -24,13 +26,14 @@ public sealed partial class CodeEditor
     /// <summary>Whether a frame has been asked for, every row then drawn again, or the overlay.</summary>
     private bool framePending;
     private bool rowsStale = true;
+    private bool rowsChanged;
     private bool overlayStale = true;
 
     /// <summary>The frames prepared, by which a row, a label and a shape say when they were last drawn.</summary>
     private long frameNumber;
 
     /// <summary>What the rows drawn last were drawn with, any of which changed draws them all again.</summary>
-    private (TextSnapshot? Text, Size Size, double Gutter, double ScrollX, bool Focused, Palette? Palette, Metrics Metrics) drawnWith;
+    private (Size Size, double Gutter, double ScrollX, bool Focused, Palette? Palette, Metrics Metrics, bool OverGutter, bool Numbers) drawnWith;
 
     /// <summary>What the frame being drawn shows: its rows' first and the offsets they span, which lines bear a caret, the
     /// tints, and the look of a focused or unfocused editor.</summary>
@@ -71,6 +74,15 @@ public sealed partial class CodeEditor
         RequestFrame();
     }
 
+    /// <summary>Asks the next frame to draw again the rows whose drawing changed: an edit, the carets moved, what lies on the
+    /// text set anew.</summary>
+    private void RedrawChanged()
+    {
+        rowsChanged = true;
+        overlayStale = true;
+        RequestFrame();
+    }
+
     /// <summary>Asks the next frame to draw the overlay again: the carets' blink, the fold preview.</summary>
     private void RedrawOverlay()
     {
@@ -108,9 +120,9 @@ public sealed partial class CodeEditor
         double lineHeight = metrics.LineHeight;
         TextSnapshot text = document.Snapshot;
         bool focused = IsFocused;
-        (TextSnapshot?, Size, double, double, bool, Palette?, Metrics) drawing = (text, size, gutter, scroll.X, focused, palette, metrics);
+        (Size, double, double, bool, Palette?, Metrics, bool, bool) drawing = (size, gutter, scroll.X, focused, palette, metrics, overGutter, ShowLineNumbers);
         bool stale = rowsStale || drawing != drawnWith;
-        bool moved = frameText is null || scroll.Y != frameScrollY;
+        bool moved = frameText is null || scroll.Y != frameScrollY || rowsChanged;
         if (!stale && !moved)
         {
             // The carets' blink or the fold preview: the rows and what they were drawn with stand.
@@ -123,6 +135,7 @@ public sealed partial class CodeEditor
             return;
         }
         rowsStale = false;
+        rowsChanged = false;
         overlayStale = false;
         drawnWith = drawing;
         frameScrollY = scroll.Y;
@@ -165,7 +178,7 @@ public sealed partial class CodeEditor
             widest = Math.Max(widest, shown[i].Indent + lineViews[i].Width + HintsWidth(GapsOn(shown[i])));
         }
 
-        PlaceRows(shown, row, stale, now);
+        PlaceRows(shown, lineViews, row, stale, now);
         rowsLayer.Place(new Rect(0, -scroll.Y, size.Width, size.Height));
         overlay.Place(new Rect(size));
         overlay.Redraw();
@@ -183,9 +196,9 @@ public sealed partial class CodeEditor
         RefreshStripe();
     }
 
-    /// <summary>Gives each row shown a slot: the one that drew it, if all need not be drawn again, else a free one, which
-    /// draws it; slots left over draw nothing.</summary>
-    private void PlaceRows(List<RowSpan> shown, int firstRow, bool stale, long now)
+    /// <summary>Gives each row shown a slot: the one that drew it, if all need not be drawn again, which draws it again only
+    /// where what it is drawn from changed; else a free one, which draws it; slots left over draw nothing.</summary>
+    private void PlaceRows(List<RowSpan> shown, LineView[] views, int firstRow, bool stale, long now)
     {
         keptSlots.Clear();
         foreach (RowSlot slot in slots)
@@ -204,6 +217,13 @@ public sealed partial class CodeEditor
                 kept.Showing = true;
                 kept.Index = i;
                 Place(kept, firstRow + i);
+                ulong key = KeyOf(shown[i], views[i]);
+                if (key != kept.Key)
+                {
+                    kept.Key = key;
+                    kept.Drawn = now;
+                    kept.Visual.Redraw();
+                }
             }
             else
             {
@@ -229,6 +249,7 @@ public sealed partial class CodeEditor
             slot.Span = shown[i];
             slot.Index = i;
             slot.Drawn = now;
+            slot.Key = KeyOf(shown[i], views[i]);
             Place(slot, firstRow + i);
             slot.Visual.Redraw();
         }
@@ -396,6 +417,191 @@ public sealed partial class CodeEditor
         DrawFoldPreview(context);
     }
 
+    /// <summary>The rows the slots draw carried through an edit, as the views are: a row of a line it did not reach is the
+    /// same row, moved with the text after it; one it reached is let go, to be drawn again.</summary>
+    private void FollowSlots(DocumentChangedEventArgs change)
+    {
+        IReadOnlyList<TextEdit> edits = change.Edits;
+        if (edits.Count == 0 || !ReferenceEquals(frameText, change.Before))
+        {
+            return;
+        }
+        TextSnapshot before = change.Before;
+        int first = edits[0].Start;
+        int last = edits[^1].Start + edits[^1].Length;
+        int shift = change.After.Length - before.Length;
+        int lines = change.After.LineCount - before.LineCount;
+        foreach (RowSlot slot in slots)
+        {
+            if (slot.Span is not { } span || span.Line >= before.LineCount)
+            {
+                continue;
+            }
+            LineSpan line = before.GetLine(span.Line);
+            if (line.Start > last)
+            {
+                slot.Span = span with { Start = span.Start + shift, Line = span.Line + lines };
+                slot.Placeholder = slot.Placeholder is { } chip ? (chip.Line + lines, chip.Chip) : null;
+            }
+            else if (line.EndIncludingBreak >= first)
+            {
+                slot.Span = null;
+                slot.Forget();
+            }
+        }
+        frameText = change.After;
+    }
+
+    /// <summary>What a row is drawn from, mixed into one number: its view, its hints, whether a caret is on it, and every
+    /// tint, change, use, bracket, selection, match, choice, link, squiggle, placeholder and annotation on it by where it
+    /// stands on the row; its line's number, and its fold's chevron. The rest a row draws with is the frame's
+    /// (<see cref="drawnWith"/>), whose change draws every row again.</summary>
+    private ulong KeyOf(RowSpan span, LineView view)
+    {
+        RowKey key = new();
+        int start = span.Start;
+        int end = span.End;
+        int line = span.Line;
+        key.Add(line);
+        key.Add(span.Row);
+        key.Add(span.Length);
+        key.Add(span.IsLast);
+        key.Add(span.Indent);
+        key.Add(view.Text);
+        key.Add(view.X);
+        foreach (Gap gap in GapsOn(span))
+        {
+            key.Add(gap.Column);
+            key.Add(gap.Width);
+            key.Add(gap.Label);
+            key.Add(gap.PadLeft);
+            key.Add(gap.Composing);
+        }
+        bool caret = caretLines.Contains(line);
+        key.Add(caret);
+        key.Add(caret && frameNoneSelected);
+        if (frameTints is not null && frameTints.TryGetValue(line, out IBrush? change))
+        {
+            key.Add(change);
+        }
+        IReadOnlyList<InlineChange> inline = InlineChanges;
+        for (int i = Sorted.FirstAfter(inline, static c => c.Range.End, start); i < inline.Count && inline[i].Range.Start < end; i++)
+        {
+            key.Add(inline[i].Range, start, end);
+            key.Add((int)inline[i].Kind);
+        }
+        if (frameMarked!.Of(line) is { } tint)
+        {
+            key.Add(tint);
+        }
+        foreach ((int partLine, TextRange part, IBrush brush) in frameMarked.Parts)
+        {
+            if (partLine == line)
+            {
+                key.Add(part, start, end);
+                key.Add(brush);
+            }
+        }
+        IReadOnlyList<UsageHighlight> uses = UsageHighlights;
+        for (int i = Sorted.FirstAfter(uses, static u => u.Range.End, start); i < uses.Count && uses[i].Range.Start <= end; i++)
+        {
+            key.Add(uses[i].Range, start, end);
+            key.Add(uses[i].IsWrite);
+        }
+        if (frameBraced is { } pair)
+        {
+            foreach (TextRange bracket in (ReadOnlySpan<TextRange>)[pair.Touched, pair.Matching])
+            {
+                if (bracket.Start >= start && bracket.Start < end)
+                {
+                    key.Add(bracket, start, end);
+                }
+            }
+        }
+        IReadOnlyList<Selection> items = selections.Items;
+        for (int i = FirstSelectionEndingFrom(start); i < items.Count && items[i].Start < span.EndIncludingBreak; i++)
+        {
+            key.Add(new TextRange(items[i].Start, items[i].End), start, end);
+            key.Add(items[i].End > end);
+        }
+        IReadOnlyList<TextRange> found = Highlights;
+        for (int i = Sorted.FirstAfter(found, static r => r.End, start); i < found.Count && found[i].Start <= end; i++)
+        {
+            key.Add(found[i], start, end);
+            key.Add(i == CurrentHighlight);
+        }
+        if (choosing is { } session)
+        {
+            for (int i = 0; i < session.Ranges.Count; i++)
+            {
+                if (session.Ranges[i].End >= start && session.Ranges[i].Start <= end)
+                {
+                    key.Add(session.Ranges[i], start, end);
+                    key.Add(i == session.Current);
+                }
+            }
+        }
+        if (links is not null)
+        {
+            foreach (TextLink link in links(frameText!, line))
+            {
+                key.Add(link.Range, start, end);
+            }
+        }
+        MarkerList markers = decorations.Markers;
+        for (int i = markers.FirstReaching(start); i < markers.Count && markers[i].Range.Start <= end; i++)
+        {
+            key.Add(markers[i].Range, start, end);
+            key.Add((int)markers[i].Kind);
+        }
+        if (span.IsLast)
+        {
+            if (FoldedAt(line) is { } fold)
+            {
+                key.Add(fold.Placeholder);
+            }
+            LineOrdered<LineAnnotation> annotations = decorations.AnnotationsByLine;
+            for (int i = annotations.From(line); i < annotations.Count && annotations.LineOf(i) == line; i++)
+            {
+                key.Add(annotations[i].Text);
+                key.Add((int)annotations[i].Look);
+            }
+        }
+        if (span.Row == 0)
+        {
+            key.Add(Folding.Placeholders.ContainsKey(line));
+            key.Add(FirstStartingOn(frameText!, line));
+        }
+        return key.Value;
+    }
+
+    /// <summary>A mix of numbers, each changing it: what a row is drawn from, told apart from what it was drawn from.</summary>
+    private struct RowKey()
+    {
+        public ulong Value { get; private set; } = 14695981039346656037;
+
+        public void Add(long part)
+        {
+            ulong mixed = (Value ^ (ulong)part) * 1099511628211;
+            Value = mixed ^ (mixed >> 29);
+        }
+
+        public void Add(double part) => Add(BitConverter.DoubleToInt64Bits(part));
+
+        public void Add(bool part) => Add(part ? 3L : 5L);
+
+        /// <summary>An object by which one it is, a string by what it says.</summary>
+        public void Add(object? part) => Add(part is string text ? text.GetHashCode(StringComparison.Ordinal)
+            : part is null ? 0L : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(part));
+
+        /// <summary>A range by where it stands on a row, from the row's start, as far as the row.</summary>
+        public void Add(TextRange range, int start, int end)
+        {
+            Add(Math.Clamp(range.Start, start, end) - start);
+            Add(Math.Clamp(range.End, start, end) - start);
+        }
+    }
+
     /// <summary>A visual the editor places itself, holding others.</summary>
     private sealed class Layer : Visual
     {
@@ -441,6 +647,9 @@ public sealed partial class CodeEditor
         public int Index { get; set; }
         public long Drawn { get; set; }
         public bool Showing { get; set; }
+
+        /// <summary>What its row was drawn from, mixed into one number (<see cref="KeyOf"/>).</summary>
+        public ulong Key { get; set; }
 
         /// <summary>The fold's placeholder chip its row drew, and its annotations' boxes, in the text's rows.</summary>
         public (int Line, Rect Chip)? Placeholder { get; set; }

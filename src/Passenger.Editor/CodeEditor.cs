@@ -181,7 +181,7 @@ public sealed partial class CodeEditor : Control
             return;
         }
         inlineChanges.Set(document, [.. changes.OrderBy(c => c.Range.Start)]);
-        Redraw();
+        RedrawChanged();
     }
 
     /// <summary>The bookmarked lines, marked on the error stripe.</summary>
@@ -243,7 +243,15 @@ public sealed partial class CodeEditor : Control
                 FollowInputMethod();
                 break;
         }
-        Redraw();
+        // The gutter's columns read change marks and bookmarks, which a row's key leaves to them; a fold moves rows.
+        if (kind is DecorationKind.ChangeMarks or DecorationKind.Bookmarks or DecorationKind.Folds)
+        {
+            Redraw();
+        }
+        else
+        {
+            RedrawChanged();
+        }
     }
 
     /// <summary>A press on the gutter at a line (from zero) that none of its columns took: the host's. With a handler, a
@@ -567,7 +575,7 @@ public sealed partial class CodeEditor : Control
     {
         highlights.Set(document, ranges);
         CurrentHighlight = current;
-        Redraw();
+        RedrawChanged();
     }
 
     /// <summary>Selects a range and scrolls it into view, as finding it does.</summary>
@@ -717,7 +725,7 @@ public sealed partial class CodeEditor : Control
             Reveal(selections.Primary.Caret);
         }
         RestartBlink();
-        Redraw();
+        RedrawChanged();
         FollowInputMethod();
         if (changed)
         {
@@ -795,7 +803,7 @@ public sealed partial class CodeEditor : Control
         }
         widestStale = true;
         InvalidateArrange();
-        Redraw();
+        RedrawChanged();
     }
 
     private void OnHighlighterChanged(object? sender, EventArgs e)
@@ -815,7 +823,7 @@ public sealed partial class CodeEditor : Control
     {
         if (BracesChanged())
         {
-            Redraw();
+            RedrawChanged();
         }
         bool moved = coloursMoved;
         coloursMoved = false;
@@ -824,7 +832,7 @@ public sealed partial class CodeEditor : Control
             return;
         }
         colouring++;
-        Redraw();
+        RedrawChanged();
     }
 
     private void OnScrollBarChanged(object? sender, AvaloniaPropertyChangedEventArgs e)

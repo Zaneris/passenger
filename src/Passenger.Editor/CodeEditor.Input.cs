@@ -263,7 +263,7 @@ public sealed partial class CodeEditor
         if (inGutter != overGutter)
         {
             overGutter = inGutter;
-            Redraw();
+            RedrawChanged();
         }
         PointerPointProperties held = e.GetCurrentPoint(this).Properties;
         if (drag.Mode == DragMode.None || !(held.IsLeftButtonPressed || held.IsMiddleButtonPressed))
@@ -632,7 +632,7 @@ public sealed partial class CodeEditor
         {
             editor.preedit = preeditText ?? string.Empty;
             editor.preeditCursor = cursorPos;
-            editor.Redraw();
+            editor.RedrawChanged();
             editor.FollowInputMethod();
         }
 

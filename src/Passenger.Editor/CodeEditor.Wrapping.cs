@@ -521,6 +521,7 @@ public sealed partial class CodeEditor
     private void OnChangedFirst(object? sender, DocumentChangedEventArgs change)
     {
         views.Follow(change, advances);
+        FollowSlots(change);
         decorations.Follow(change);
         wrappedHints = decorations.InlayHints;
         FollowWraps(change);
