@@ -602,11 +602,11 @@ public sealed class KeymapChoiceTests : IDisposable
         return [.. ((string[])["Rerun", "Stop", "Apply Hot Reload Changes"]).Select(words => tips.Single(tip => tip == words || tip.StartsWith($"{words} (", StringComparison.Ordinal)))];
     }
 
-    /// <summary>Duplicate, Compare Files, Show Diff, Parameter Info, Toggle Case, Generate, Clone Caret and the moves by a
-    /// character, a line and to the text's ends have, in each keymap, the keys Rider's keymap of that preset on this
-    /// platform resolves them to (<see cref="RiderKeymaps"/>), and the Mac's Cmd+Up and Down besides in Visual Studio's and
-    /// IntelliJ IDEA's. A key Rider gives several of them, told apart by where it is pressed, has one action and the rest
-    /// take it where they are (<see cref="AppActions.KeysIn"/>); Rider's New is New Item, by the keys Generate does not take.</summary>
+    /// <summary>Duplicate, Compare Files, Show Diff, Parameter Info, Toggle Case, Generate, Clone Caret, the moves by a
+    /// character, a line and to the text's ends, and Context Help (with External Documentation's) have in each keymap the keys
+    /// Rider's of that preset on this platform resolves them to (<see cref="RiderKeymaps"/>), the Mac's Cmd+Up and Down too in
+    /// Visual Studio's and IntelliJ IDEA's. A key Rider gives several, told apart by where it is pressed, has one action, the
+    /// rest taking it there (<see cref="AppActions.KeysIn"/>); Rider's New is New Item, by the keys Generate does not take.</summary>
     [AvaloniaFact]
     public void Each_keymaps_keys_for_Duplicate_Parameter_Info_Toggle_Case_and_Generate_are_those_Riders_keymap_resolves_them_to()
     {
@@ -628,6 +628,7 @@ public sealed class KeymapChoiceTests : IDisposable
                 (EditorActions.CloneCaretBelow, visualStudio ? "CloneCaretBelowWithVirtualSpace" : "EditorCloneCaretBelow", []),
                 (EditorActions.TextStart, "EditorTextStart", mac && !vsCode ? ["meta UP"] : []),
                 (EditorActions.TextEnd, "EditorTextEnd", mac && !vsCode ? ["meta DOWN"] : []),
+                (AppActions.ContextHelp, "ContextHelp", [.. RiderKeymaps.Resolve(rider, "ExternalJavaDoc").Select(s => s.Notation())]),
             ];
             foreach ((string action, string riders, string[] besides) in checks)
             {

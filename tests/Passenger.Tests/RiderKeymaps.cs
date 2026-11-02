@@ -29,6 +29,8 @@ internal static class RiderKeymaps
             ["EditorRight"] = ["RIGHT"],
             ["EditorTextStart"] = ["control HOME"],
             ["EditorTextEnd"] = ["control END"],
+            ["ContextHelp"] = ["F1"],
+            ["ExternalJavaDoc"] = ["shift F1"],
         }),
         [MacOS] = (Default, new()
         {
@@ -38,16 +40,21 @@ internal static class RiderKeymaps
             ["EditorDown"] = ["DOWN", "control N"],
             ["EditorLeft"] = ["LEFT", "control B"],
             ["EditorRight"] = ["RIGHT", "control F"],
+            ["ContextHelp"] = ["meta shift F1"],
+            ["ExternalJavaDoc"] = ["shift F1"],
         }),
         ["Visual Studio"] = (Default, new()
         {
             ["ParameterInfo"] = ["shift control SPACE"],
             ["NewElement"] = ["control N", "alt INSERT"],
+            ["ExternalJavaDoc"] = ["shift F1"],
         }),
         ["Visual Studio OSX"] = (MacOS, new()
         {
             ["Generate"] = ["control meta N"],
             ["NewElement"] = ["meta N", "alt INSERT"],
+            ["ContextHelp"] = ["F1"],
+            ["ExternalJavaDoc"] = ["shift F1", "meta F1"],
         }),
         ["VSCode"] = (Default, new()
         {
@@ -59,6 +66,7 @@ internal static class RiderKeymaps
             ["EditorToggleCase"] = [],
             ["EditorCloneCaretAbove"] = ["ctrl alt up", "shift ctrl alt up"],
             ["EditorCloneCaretBelow"] = ["ctrl alt down", "shift ctrl alt down"],
+            ["ContextHelp"] = [],
         }),
         ["VSCode OSX"] = (MacOS, new()
         {

@@ -598,7 +598,18 @@ public sealed record GodotNamesFound(
     [property: JsonPropertyName("uses")] IReadOnlyList<GodotNameUse> Uses)
 {
     public static readonly GodotNamesFound None = new(null, GodotNameKind.Signal, string.Empty, GodotNameVia.Own, []);
+
+    /// <summary>What of Godot's engine the caret is on, by Godot's own names; null for anything else.</summary>
+    [JsonPropertyName("engine")]
+    public GodotEngineMember? Engine { get; init; }
 }
+
+/// <summary>A class of Godot's engine, or one of its members, by Godot's own names: the class (<c>Node2D</c>), and the
+/// member's kind and name (<c>position</c>); none for the class itself, or a member GodotSharp gives no name of Godot's.</summary>
+public sealed record GodotEngineMember(
+    [property: JsonPropertyName("class")] string Class,
+    [property: JsonPropertyName("kind")] GodotNameKind? Kind,
+    [property: JsonPropertyName("member")] string? Member);
 
 /// <summary>A use of a member by one of Godot's other names for it, in a file of the solution's own: where the name is
 /// written, and what it holds before the member's name (<c>EmitSignal</c> for an EmitSignalX).</summary>

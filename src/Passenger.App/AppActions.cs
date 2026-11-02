@@ -338,6 +338,10 @@ public static class AppActions
     public const string ExtractResource = "app.code.extractResource";
     public const string ExtractStyle = "app.code.extractStyle";
     public const string QuickDocumentation = "app.code.quickDocumentation";
+
+    // Rider's ContextHelp (F1, Cmd+Shift+F1 in Mac OS X 10.5+ and VSCode OSX, none in VSCode) with ExternalJavaDoc's
+    // Shift+F1 (and Cmd+F1 in Visual Studio OSX): the caret's symbol's page in its documentation.
+    public const string ContextHelp = "app.contextHelp";
     public const string NextError = "app.code.nextError";
     public const string PreviousError = "app.code.previousError";
     public const string FocusEditor = "app.focusEditor";
@@ -700,6 +704,7 @@ public static class AppActions
                 .Bind(ChangeSignature, "meta R , S", "meta R , meta S")
                 .Bind(Move, "meta R , O", "meta R , meta O")
                 .Bind(QuickDocumentation, "meta K , I", "meta K , meta I", "control shift F1")
+                .Bind(ContextHelp, "F1", "shift F1", "meta F1")
                 .Bind(NextError, "alt PAGE_DOWN")
                 .Bind(PreviousError, "alt PAGE_UP")
                 .Bind(OpenInNewWindow, "shift F4")
@@ -826,6 +831,7 @@ public static class AppActions
             .Bind(ChangeSignature, "control R , S", "control R , control S")
             .Bind(Move, "control R , O", "control R , control O")
             .Bind(QuickDocumentation, "control K , I", "control K , control I", "control shift F1")
+            .Bind(ContextHelp, "F1", "shift F1")
             .Bind(NextError, "alt PAGE_DOWN")
             .Bind(PreviousError, "alt PAGE_UP")
             .Bind(OpenInNewWindow, "shift F4")
@@ -908,6 +914,7 @@ public static class AppActions
                 .Bind(IntroduceParameter, "meta alt P")
                 .Bind(ChangeSignature, "meta F6")
                 .Bind(QuickDocumentation, "meta K , meta I", "control button2")
+                .Bind(ContextHelp, "meta shift F1", "shift F1")
                 .Bind(NextError, "alt F8")
                 .Bind(PreviousError, "shift F8", "alt shift F8")
                 .Bind(ToggleBreakpoint, "F9")
@@ -1021,6 +1028,7 @@ public static class AppActions
             .Bind(IntroduceParameter, "control alt P")
             .Bind(ChangeSignature, "control F6")
             .Bind(QuickDocumentation, "control K , control I")
+            .Bind(ContextHelp, "shift F1")
             .Bind(NextError, "alt F8")
             .Bind(PreviousError, "alt shift F8", "shift F8")
             .Bind(ToggleBreakpoint, "F9")
@@ -1156,6 +1164,7 @@ public static class AppActions
                 .Bind(ChangeSignature, "meta F6")
                 .Bind(Move, "F6")
                 .Bind(QuickDocumentation, "F1", "control J", "control button2")
+                .Bind(ContextHelp, "meta shift F1", "shift F1")
                 .Bind(NextError, "F2")
                 .Bind(PreviousError, "shift F2")
                 .Bind(ToggleBreakpoint, "meta F8")
@@ -1272,6 +1281,7 @@ public static class AppActions
             .Bind(ChangeSignature, "control F6")
             .Bind(Move, "F6")
             .Bind(QuickDocumentation, "control Q", "alt button2")
+            .Bind(ContextHelp, "F1", "shift F1")
             .Bind(NextError, "F2")
             .Bind(PreviousError, "shift F2")
             .Bind(ToggleBreakpoint, "control F8")

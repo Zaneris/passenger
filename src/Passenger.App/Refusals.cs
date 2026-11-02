@@ -115,6 +115,12 @@ public static class Refusals
     /// outlines, and none has it open.</summary>
     public static string NoOutline(string file) => $"{file} has no outline: no language server has it open";
 
+    /// <summary>Why Context Help has nothing to name in a file shown: neither C#'s server nor GDScript's has it.</summary>
+    public static string NoContextHelp(string file) => $"{file} has no context help: Context Help opens Godot's class reference from C# and GDScript";
+
+    /// <summary>Context Help with the caret on nothing of Godot's engine: the project's own code, or .NET's.</summary>
+    public const string NoGodotDocumentation = "The caret is on no Godot class or member, whose page in Godot's class reference Context Help opens";
+
     /// <summary>An action whose whole work is to move the person's keys (Focus Editor), asked for by an agent, which never
     /// moves them.</summary>
     public const string PersonsKeys = "It moves the person's keys, which only the person does";

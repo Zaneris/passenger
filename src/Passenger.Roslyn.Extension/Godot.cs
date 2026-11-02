@@ -274,6 +274,36 @@ internal static partial class GodotSource
         return null;
     }
 
+    /// <summary>A symbol of GodotSharp's engine by Godot's own names: a class by its name, a property, method or signal (its
+    /// event) by its class's and its own (<see cref="GodotSharpNames"/>), a script's override of an engine method as the method
+    /// it overrides, anything else of a class's as the class; null for what is not the engine's.</summary>
+    internal static GodotEngineMember? EngineMember(ISymbol symbol, INamedTypeSymbol godotObject, Compilation compilation)
+    {
+        Engine engine = Engine.Of(godotObject.ContainingAssembly);
+        ISymbol at = symbol is IMethodSymbol { MethodKind: MethodKind.Constructor } made ? made.ContainingType : symbol;
+        while (at is IMethodSymbol { OverriddenMethod: { } overridden } && at.ContainingType is { } declaring && !engine.Owns(declaring))
+        {
+            at = overridden;
+        }
+        if (at is INamedTypeSymbol type)
+        {
+            return engine.Owns(type) && engine.NameOf(type) is { } name ? new GodotEngineMember(name, null, null) : null;
+        }
+        if (at.ContainingType is not { } owner || !engine.Owns(owner) || engine.NameOf(owner) is not { } of)
+        {
+            return null;
+        }
+        (string? nested, GodotNameKind kind) = at switch
+        {
+            IPropertySymbol => ("PropertyName", GodotNameKind.Property),
+            IMethodSymbol { MethodKind: MethodKind.Ordinary } => ("MethodName", GodotNameKind.Method),
+            IEventSymbol => ("SignalName", GodotNameKind.Signal),
+            _ => (null, GodotNameKind.Property),
+        };
+        return nested is not null && GodotSharpNames.Of(compilation, owner, nested, at.Name) is { } named
+            ? new GodotEngineMember(of, kind, named) : new GodotEngineMember(of, null, null);
+    }
+
     /// <summary>The node a member of a type names by its path where a scene sets it: a NodePath's any node, a node type's a
     /// node of that type; null for any other type.</summary>
     private static GodotTypeRef? NodeOf(Engine engine, ITypeSymbol of) =>

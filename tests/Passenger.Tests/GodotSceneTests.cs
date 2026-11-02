@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Godot;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
@@ -49,11 +50,13 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
             public override void _Ready()
             {
+                Position = new Vector2(Speed, 0);
                 Label score = GetNode<Label>("Hud/Score");
                 Button pressed = GetNode<Button>("Hud/Score");
                 Label lost = GetNode<Label>("Hud/Scor");
                 Label unique = GetNode<Label>("%Score");
                 Button start = GetNode<Button>("Hud/Start");
+                start.Pressed += OnStartPressed;
                 Node2D sprite = GetNode<Node2D>("Player/Sprite");
                 PackedScene player = GD.Load<PackedScene>("res://player.tscn");
                 PackedScene gone = GD.Load<PackedScene>("res://gone.tscn");
@@ -483,6 +486,43 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             window.OpenFile(moved);
             string lost = $"main.tscn:{LineOf(Scene, "[node name=\"Main\"")} has no node 'Hud/Scor' under Main: Hud has no child Scor";
             Ui.WaitFor(() => Marked(window).Contains(lost), () => $"the moved script to be checked against its scene: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Context Help on Node2D's Position, which Main sets, browses the property's place on Node2D's page of Godot's
+    /// class reference for the version of the Godot found; on Main's override of _Ready, Node's virtual _ready's place on
+    /// Node's; on a signal Button's base class gives, its place there; on the project's own handler it says there is none.</summary>
+    [AvaloniaFact]
+    public void Context_help_browses_an_engine_members_place_in_godots_class_reference()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            string docs = $"https://docs.godotengine.org/en/{GodotDocs.VersionOf(game.Godot!.Version)}/classes/";
+            foreach ((string at, string page) in new[]
+            {
+                ("        Posi", "class_node2d.html#class-node2d-property-position"),
+                ("void _Rea", "class_node.html#class-node-private-method-ready"),
+                ("GetNode<Bu", "class_button.html"),
+                ("start.Pre", "class_basebutton.html#class-basebutton-signal-pressed"),
+                ("GetNo", "class_node.html#class-node-method-get-node"),
+            })
+            {
+                Ui.PlaceAfter(editor, at);
+                Ui.Press(window, Ui.Shortcut(AppActions.ContextHelp));
+                Uri wanted = new(docs + page);
+                Ui.WaitFor(() => window.Browsed.Contains(wanted), () => $"{wanted} to be browsed from {at} ({window.Status}): {string.Join(", ", window.Browsed)}");
+            }
+            int browsed = window.Browsed.Count;
+            Ui.PlaceAfter(editor, "void OnScor");
+            Ui.Press(window, Ui.Shortcut(AppActions.ContextHelp));
+            Ui.WaitFor(() => window.Status == Refusals.NoGodotDocumentation, () => $"Context Help on the project's own handler to say it has no page ({window.Status})");
+            Assert.Equal(browsed, window.Browsed.Count);
         }
         finally
         {

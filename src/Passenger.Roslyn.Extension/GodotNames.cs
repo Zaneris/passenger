@@ -10,7 +10,8 @@ using static Passenger.Roslyn.Extension.SyntaxReads;
 
 namespace Passenger.Roslyn.Extension;
 
-/// <summary>The member of a Godot script's code at a caret by every name Godot knows it by (<see cref="GodotGenerated"/>).</summary>
+/// <summary>The member of a Godot script's code at a caret by every name Godot knows it by (<see cref="GodotGenerated"/>), or
+/// the engine's class or member there by Godot's own names (<see cref="GodotSource.EngineMember"/>).</summary>
 public sealed class GodotNames : IExtensionDocumentMessageHandler<GodotNamesAsked, GodotNamesFound>
 {
     public Task<GodotNamesFound> ExecuteAsync(GodotNamesAsked message, ExtensionMessageContext context, Document document, CancellationToken cancellationToken) =>
@@ -45,6 +46,7 @@ internal static class GodotGenerated
             return GodotNamesFound.None;
         }
         (ISymbol Source, GodotNameKind Kind, GodotNameVia Via)? found = null;
+        GodotEngineMember? engine = null;
         SyntaxToken token = root.FindToken(position);
         if (token.IsKind(SyntaxKind.StringLiteralToken) && token.SpanStart < position && position < token.Span.End
             && NameString(token, model, cancel) is (var kind, INamedTypeSymbol on) && Member(on, kind, token.ValueText) is { } named)
@@ -53,15 +55,16 @@ internal static class GodotGenerated
         }
         else if (await SymbolFinder.FindSymbolAtPositionAsync(document, position, cancel).ConfigureAwait(false) is { } symbol)
         {
+            engine = GodotSource.EngineMember(symbol, godotObject, model.Compilation);
             found = SourceOf(symbol, godotObject, solution);
         }
         if (found is not ({ } source, var foundKind, var via))
         {
-            return GodotNamesFound.None;
+            return GodotNamesFound.None with { Engine = engine };
         }
         string written = foundKind == GodotNameKind.Signal ? source.Name[..^Handler.Length] : source.Name;
         IReadOnlyList<GodotNameUse> uses = asked.Uses ? await UsesAsync(solution, source, foundKind, written, cancel).ConfigureAwait(false) : [];
-        return new GodotNamesFound(SymbolNames.Named(solution, source), foundKind, written, via, uses);
+        return new GodotNamesFound(SymbolNames.Named(solution, source), foundKind, written, via, uses) { Engine = engine };
     }
 
     /// <summary>The code's member a symbol at a caret stands for, and by which of Godot's names it was reached: itself (a

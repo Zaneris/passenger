@@ -4,6 +4,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Passenger.App;
 using Passenger.App.Editors;
+using Passenger.App.Godot;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
@@ -74,6 +75,25 @@ public sealed class GDScriptTests
         int declared = Script.Split('\n').ToList().FindIndex(l => l.StartsWith("func twice", StringComparison.Ordinal));
         Ui.WaitFor(() => editor.CaretPosition.Line == declared, () => $"the caret at twice's declaration, line {declared + 1}; it is at {editor.CaretPosition.Line + 1}");
         Ui.WaitFor(() => File.ReadAllText(layout) == Layout, () => $"the project's own editor layout kept while the headless editor runs:\n{File.ReadAllText(layout)}");
+        window.Close();
+    }
+
+    /// <summary>Context Help on a call of Godot's engine browses its method's place on its class's page of Godot's class
+    /// reference, for the version of the Godot found; on the script's own function it says there is none, browsing nothing.</summary>
+    [AvaloniaFact]
+    public void Context_help_on_a_call_of_godots_engine_browses_its_place_in_the_class_reference()
+    {
+        MainWindow window = Open();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "\t\tget_tr");
+        Ui.Press(window, Ui.Shortcut(AppActions.ContextHelp));
+        Uri page = new($"https://docs.godotengine.org/en/{GodotDocs.VersionOf(godot!.Version)}/classes/class_node.html#class-node-method-get-tree");
+        Ui.WaitFor(() => window.Browsed.Contains(page), () => $"get_tree's place in the class reference to be browsed ({window.Status}): {string.Join(", ", window.Browsed)}");
+
+        Ui.PlaceAfter(editor, "var doubled := tw");
+        Ui.Press(window, Ui.Shortcut(AppActions.ContextHelp));
+        Ui.WaitFor(() => window.Status == Refusals.NoGodotDocumentation, () => $"Context Help on the script's own function to say it has no page ({window.Status})");
+        Assert.Equal([page], window.Browsed);
         window.Close();
     }
 

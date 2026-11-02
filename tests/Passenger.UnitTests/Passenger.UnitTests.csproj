@@ -183,6 +183,12 @@
     <Compile Include="../../src/Passenger.App/Godot/GodotLiveReads.cs" Link="App/GodotLiveReads.cs" />
   </ItemGroup>
 
+  <!-- A Godot class's or member's place in Godot's class reference, and what a GDScript card names, from names and texts
+       alone, compiled in since its project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Godot/GodotDocs.cs" Link="App/GodotDocs.cs" />
+  </ItemGroup>
+
   <!-- What a program's output says of its serving, from its lines alone, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Run/ListeningLines.cs" Link="App/ListeningLines.cs" />

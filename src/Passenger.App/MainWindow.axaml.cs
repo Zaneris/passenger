@@ -110,6 +110,7 @@ public partial class MainWindow : IdeWindow
         AddConflicts();
         AddErrors();
         AddAbout();
+        AddContextHelp();
         AddUpdates();
         AddWhatsNew();
         AddAgents();
