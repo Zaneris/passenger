@@ -1752,6 +1752,7 @@ public sealed partial class BuildRunController
         {
             game.Debugged = debug.SessionNamed(launched.Name);
             game.ReloadsScripts = debug.HotReloadOn();
+            EndsWithGame(game);
             IdeErrors.Observe(DebugScriptsAsync(game, launched.Name));
         }
         else
@@ -1859,6 +1860,51 @@ public sealed partial class BuildRunController
     /// <summary>An app's inspector (or a Godot game's debugger) let go once its run or debugging ends: one that never
     /// connected (startup hooks turned off in the app, a game that failed first) waits no longer. Its failed bindings stay in
     /// Problems until the next launch of its kind.</summary>
+    /// <summary>A debugged Godot game's session is shown ended as the game ends, its connection and then its process gone,
+    /// whatever its debugger is still doing.</summary>
+    private static void EndsWithGame(Godot.GodotGame game)
+    {
+        if (game.Debugged is not { } debugged)
+        {
+            return;
+        }
+        void Changed(object? sender, EventArgs e)
+        {
+            if (game.State != LiveTree.LiveAppState.Ended)
+            {
+                return;
+            }
+            game.StateChanged -= Changed;
+            // A session over already (Stop, Detach) let the game go: nothing is to be waited for.
+            if (debugged.State != DebugState.Ended)
+            {
+                IdeErrors.Observe(GoneAsync());
+            }
+        }
+        async Task GoneAsync()
+        {
+            if (game.ProcessId is int id && await BackgroundWork.Run(() => Exits(id, TimeSpan.FromSeconds(5))))
+            {
+                debugged.ProgramGone();
+            }
+        }
+        game.StateChanged += Changed;
+
+        static bool Exits(int id, TimeSpan limit)
+        {
+            try
+            {
+                using System.Diagnostics.Process process = System.Diagnostics.Process.GetProcessById(id);
+                process.WaitForExit(limit);
+            }
+            catch (Exception gone) when (gone is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                // Gone already, or not to be waited on: whether it runs says which.
+            }
+            return !DotnetProcesses.Runs(id);
+        }
+    }
+
     private static void EndWith(IDisposable? app, Task ended)
     {
         if (app is not null)

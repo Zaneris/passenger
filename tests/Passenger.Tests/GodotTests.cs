@@ -217,6 +217,45 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         }
     }
 
+    /// <summary>A debugged game that ends is shown ended in the Debug window as it ends: its session over, and nothing shown
+    /// debugged, while its debugger has yet to go, which it does after.</summary>
+    [AvaloniaFact]
+    public void A_debugged_game_that_ends_is_shown_ended_at_once_while_its_debugger_has_yet_to_go()
+    {
+        MainWindow window = game.Open(ScriptPath);
+        try
+        {
+            Choose(window, Generated(window, "Spinner"));
+            Ui.Launched(window, window.DebugAsync(), "the game's build and start under the debugger", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => window.Session.Games is [{ State: Passenger.App.LiveTree.LiveAppState.Connected, ProcessId: int }]
+                && window.Debugger.SessionNamed("Spinner on Godot") is { State: DebugState.Running },
+                () => $"the game to run under the debugger, connected ({Debugged(window)}; {Ui.Said(window)})", TimeSpan.FromMinutes(1));
+            DebugSession session = window.Debugger.SessionNamed("Spinner on Godot")!;
+            int adapter = session.AdapterProcessId;
+            int played = window.Session.Games[0].ProcessId!.Value;
+            // Whether the debugger still ran as the session was shown ended, read as it was.
+            bool? debuggerRan = null;
+            session.StateChanged += (_, _) =>
+            {
+                if (session.State == DebugState.Ended)
+                {
+                    debuggerRan ??= Processes.IsRunning(adapter);
+                }
+            };
+            Processes.Kill(played);
+            Ui.WaitFor(() => session.State == DebugState.Ended, () => $"the game's session to end with the game ({Debugged(window)}; {Running([("Spinner", played)])})",
+                TimeSpan.FromMinutes(1));
+            Assert.True(debuggerRan == true, "The game's session was shown ended only once its debugger had gone, not as the game ended");
+            Assert.False(window.Debugger.IsDebugging, $"Something was still shown debugged once the game had ended: {Debugged(window)}");
+            Ui.WaitFor(() => session.AdapterEnded.IsCompleted, "the game's debugger to go after", TimeSpan.FromMinutes(1));
+            Assert.True(Processes.Gone(adapter), $"The game's debugger did not go once its session ended: {Processes.Describe(adapter)}");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>Profile starts the game under the profiler, and its snapshot holds the samples of the script's own loop.</summary>
     [AvaloniaFact]
     public void Profile_records_the_game_its_scripts_loop_among_the_samples()

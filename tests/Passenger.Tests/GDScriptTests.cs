@@ -16,7 +16,7 @@ namespace Passenger.Tests;
 /// <summary>GDScript through Godot's own language server, in the headless Godot editor Passenger starts for a project the
 /// test writes (its user folders the run's): a script is coloured, completes a Godot class's member, hovers its docs and
 /// goes to a declaration, keeping the project's editor layout as it was; an error typed shows in Problems as typed, a
-/// warning with its name. Without a Godot (GODOT, the PATH, Applications) each test skips saying why. A Godot editor of
+/// warning with its name; and a project deleted under that editor is let go of, said once. Without a Godot (GODOT, the PATH, Applications) each test skips saying why. A Godot editor of
 /// its own each, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptTests
@@ -99,6 +99,35 @@ public sealed class GDScriptTests
         Ui.Press(window, "BACK_SPACE");
         Ui.WaitFor(() => !problems.FileProblems.Any(p => p.Severity == ProblemSeverity.Error),
             () => $"the error gone with what made it; Problems has {string.Join("; ", problems.FileProblems.Select(p => p.Message))}");
+        window.Close();
+    }
+
+    /// <summary>A project deleted under the headless editor Passenger started for it, in that editor's first seconds, ends the
+    /// putting back of what the editor writes there, said once rather than at every look.</summary>
+    [AvaloniaFact]
+    public void A_project_deleted_under_its_headless_editor_is_let_go_of_said_once()
+    {
+        MainWindow window = Open();
+        string project = PathNames.Canonical(folder);
+        try
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+        catch (Exception held) when (held is IOException or UnauthorizedAccessException)
+        {
+            // Windows keeps a folder the editor works in, and what it holds open: the project.godot goes all the same.
+            File.Delete(Path.Combine(folder, "project.godot"));
+        }
+        // The project as the log names it, by the path its script was opened by or its real one.
+        string[] Said() => [.. Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Split('\n')
+            .Where(l => l.Contains("GDScript: ", StringComparison.Ordinal) && (l.Contains(project, StringComparison.Ordinal) || l.Contains(folder, StringComparison.Ordinal)))];
+        static bool Gone(string line) => line.Contains(" is gone, so what Godot's headless editor wrote there is no longer put back", StringComparison.Ordinal);
+        Ui.WaitFor(() => Said().Any(Gone), () => $"the IDE's log to say {project} is gone ({string.Join(" | ", Said())})");
+        Ui.Hold(TimeSpan.FromSeconds(1), "what the headless editor writes looked at again, as it is every 200 ms in its first seconds");
+        // A file the deletion held a moment (Windows) may be said before; nothing is tried once the going is said.
+        string[] said = Said();
+        Assert.True(said.Count(Gone) == 1 && Gone(said[^1]),
+            $"The project's going was to be said once, and nothing tried there after; the log says:\n{string.Join('\n', said)}");
         window.Close();
     }
 

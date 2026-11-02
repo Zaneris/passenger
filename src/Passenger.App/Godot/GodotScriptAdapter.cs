@@ -40,6 +40,9 @@ public sealed class GodotScriptAdapter
     /// <summary>The game's process, where this adapter launched it.</summary>
     private System.Diagnostics.Process? launched;
 
+    /// <summary>Whether its session starts a program in a tab of the Terminal window when asked (runInTerminal).</summary>
+    private bool runsInTerminal;
+
     /// <summary>What each row a person may set names, by its expression: the object it is of and the property, for this stop.</summary>
     private readonly Dictionary<string, (ulong Owner, string Property)> settable = new(StringComparer.Ordinal);
 
@@ -106,22 +109,29 @@ public sealed class GodotScriptAdapter
 
     private static Task<T> OnUi<T>(Func<Task<T>> work) => UiThread.InvokeAsync(work);
 
+    /// <summary>What it answers the session's initialize with.</summary>
+    private static DapCapabilities Capabilities => new()
+    {
+        SupportsConfigurationDoneRequest = true,
+        SupportsConditionalBreakpoints = true,
+        SupportsHitConditionalBreakpoints = true,
+        SupportsLogPoints = true,
+        SupportsEvaluateForHovers = true,
+        SupportsExceptionInfoRequest = true,
+        SupportsExceptionFilterOptions = true,
+        SupportsSetExpression = true,
+        SupportsDataBreakpoints = false,
+        DataBreakpointsUnavailable = "Godot's debugger watches no data",
+        ExceptionBreakpointFilters = [new DapExceptionFilter(ErrorsFilter, "GDScript errors", Default: true, SupportsCondition: true)],
+    };
+
     private void Register()
     {
-        connection.Handle<InitializeArguments, DapCapabilities>(DapCommands.Initialize, _ => Task.FromResult(new DapCapabilities
+        connection.Handle<InitializeArguments, DapCapabilities>(DapCommands.Initialize, arguments =>
         {
-            SupportsConfigurationDoneRequest = true,
-            SupportsConditionalBreakpoints = true,
-            SupportsHitConditionalBreakpoints = true,
-            SupportsLogPoints = true,
-            SupportsEvaluateForHovers = true,
-            SupportsExceptionInfoRequest = true,
-            SupportsExceptionFilterOptions = true,
-            SupportsSetExpression = true,
-            SupportsDataBreakpoints = false,
-            DataBreakpointsUnavailable = "Godot's debugger watches no data",
-            ExceptionBreakpointFilters = [new DapExceptionFilter(ErrorsFilter, "GDScript errors", Default: true, SupportsCondition: true)],
-        }), then: () => Tell(DapEvents.Initialized, null));
+            runsInTerminal = arguments.SupportsRunInTerminalRequest == true;
+            return Task.FromResult(Capabilities);
+        }, then: () => Tell(DapEvents.Initialized, null));
         connection.Handle<AttachArguments>(DapCommands.Attach, _ => OnUi(AttachAsync));
         connection.Handle<LaunchArguments>(DapCommands.Launch, arguments => OnUi(() => LaunchAsync(arguments)));
         connection.Handle<InputArguments>(DapCommands.Input, arguments => OnUi(() => InputAsync(arguments)));
@@ -186,8 +196,12 @@ public sealed class GodotScriptAdapter
     /// once the game has connected, from which its stops come here.</summary>
     private async Task<bool> LaunchAsync(LaunchArguments arguments)
     {
-        System.Diagnostics.ProcessStartInfo start = ChildProcesses.Command(arguments.Program ?? throw new DapException(DapCommands.Launch, "No program to launch"),
-            arguments.Args ?? [], arguments.Cwd);
+        string program = arguments.Program ?? throw new DapException(DapCommands.Launch, "No program to launch");
+        if (arguments.Console == "integratedTerminal" && runsInTerminal)
+        {
+            return await LaunchInTerminalAsync(program, arguments);
+        }
+        System.Diagnostics.ProcessStartInfo start = ChildProcesses.Command(program, arguments.Args ?? [], arguments.Cwd);
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;
         start.RedirectStandardInput = true;
@@ -215,6 +229,23 @@ public sealed class GodotScriptAdapter
             await end.Exited;
             ChildProcesses.Kill(process);
         }));
+        return await AttachAsync();
+    }
+
+    /// <summary>Has the session start the game in a tab of the Terminal window, which reads its keys and shows what it writes
+    /// (<see cref="GodotExecutables.InTerminal"/>), and ends it there with a Stop; its end is its connection's. Answered once
+    /// the game has connected.</summary>
+    private async Task<bool> LaunchInTerminalAsync(string program, LaunchArguments arguments)
+    {
+        try
+        {
+            await connection.RequestAsync<RunInTerminalResponse>(DapCommands.RunInTerminal,
+                new RunInTerminalArguments("integrated", game.Name, arguments.Cwd, [GodotExecutables.InTerminal(program), .. arguments.Args ?? []], arguments.Env));
+        }
+        catch (DapException refused)
+        {
+            throw new DapException(DapCommands.Launch, $"Could not start {game.Name} in the terminal: {refused.Reason}");
+        }
         return await AttachAsync();
     }
 
@@ -532,9 +563,9 @@ public sealed class GodotScriptAdapter
         ? new VariablesResponse(await read())
         : throw new DapException(DapCommands.Variables, "Those values are of a stop the game has gone on from");
 
-    /// <summary>Set Value: the member or property a row names takes the value typed, read as GDScript in the frame (or, where
-    /// that reads nothing, as the row shows a value of its type, "(1, 2)"), set in the game through
-    /// <c>scene:set_object_property</c>, then read back; a value Godot would not take for it is said, the old one kept.</summary>
+    /// <summary>Set Value: the member or property a row names takes the value typed, read as every typed Godot value is
+    /// (<see cref="GodotVariant.ReadAsync"/>: as its type's value is shown, else as GDScript in the frame), set in the game
+    /// through <c>scene:set_object_property</c>, then read back; a value Godot would not take for it is said, the old one kept.</summary>
     private async Task<SetExpressionResponse> SetAsync(SetExpressionArguments arguments)
     {
         if (stop is null)
@@ -547,16 +578,20 @@ public sealed class GodotScriptAdapter
         }
         int level = arguments.FrameId is int frameId ? Level(frameId, DapCommands.SetExpression) : 0;
         (object? before, GodotType type) = await ReadBackAsync(target, level);
-        object? value;
-        try
+        (object? value, string? wanted) = await GodotVariant.ReadAsync(type, arguments.Value, async text =>
         {
-            value = (await ReadAsync(arguments.Value, level)).Value;
-        }
-        catch (DapException unread)
+            try
+            {
+                return ((await ReadAsync(text, level)).Value, null);
+            }
+            catch (DapException unread)
+            {
+                return (null, unread.Reason);
+            }
+        });
+        if (wanted is not null)
         {
-            // What a row shows of a vector or a colour is no GDScript, yet reads as its type does.
-            (object? parsed, string? wanted) = type is GodotType.String or GodotType.StringName or GodotType.NodePath ? (null, "a GDScript value") : GodotVariant.Parse(type, arguments.Value);
-            value = wanted is null ? parsed : throw new DapException(DapCommands.SetExpression, $"{arguments.Value} reads as no value here: {unread.Reason}");
+            throw new DapException(DapCommands.SetExpression, $"{arguments.Value} reads as no value here: {target.Property} takes {wanted}");
         }
         if (value is GodotObjectId or GodotObject)
         {
@@ -758,14 +793,18 @@ public sealed class GodotScriptAdapter
         IdeErrors.Observe(connection.DisposeAsync().AsTask());
     });
 
-    /// <summary>The game ended, its connection with it: its session hears the end.</summary>
+    /// <summary>The game ended, its connection with it: its session hears the end, but of a game this adapter launched, which
+    /// it tells with its exit code once the game's process has gone and what it wrote has been told.</summary>
     internal void GameEnded()
     {
         stackAsked?.TrySetException(new LiveTree.LiveAppException($"{game.Name} has ended"));
         variablesAsked?.TrySetException(new LiveTree.LiveAppException($"{game.Name} has ended"));
         evaluationAsked?.TrySetException(new LiveTree.LiveAppException($"{game.Name} has ended"));
         stop = null;
-        Tell(DapEvents.Terminated, new TerminatedEvent());
+        if (launched is null)
+        {
+            Tell(DapEvents.Terminated, new TerminatedEvent());
+        }
     }
 
     /// <summary>Whether an error the game raised is this debugger's own doing, kept out of Problems: one an evaluation raised,

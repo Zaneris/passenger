@@ -735,16 +735,20 @@ public sealed class DebugController : IDisposable
     }
 
     /// <summary>Debugs a Godot game of GDScript alone (<see cref="Run.LaunchPlan.ScriptsAlone"/>): its GDScript session, in a tab
-    /// of the plan's name, launches the game itself (<see cref="Godot.GodotScriptAdapter"/>), its console the game's output, and
-    /// Stop there ends it. Null once the session is open, else why not.</summary>
+    /// of the plan's name, launches the game itself (<see cref="Godot.GodotScriptAdapter"/>), its console the game's output, or
+    /// a tab of the Terminal window when its configuration uses the terminal, and Stop there ends it. Null once the session is
+    /// open, else why not.</summary>
     public Task<string?> LaunchScriptsAsync(Run.LaunchPlan plan, Godot.GodotGame game)
     {
         UiThread.Check();
+        Func<RunInTerminalArguments, Task<Run.TerminalRun>>? inTerminal = plan.Console == Run.ConsoleKind.Terminal && RunInTerminal is { } run
+            ? arguments => run(plan.Name, arguments)
+            : null;
         InProcessEnd end = new($"GDScript adapter of {plan.Name}");
         Godot.GodotScriptAdapter adapter = new(game, end, null);
         adapter.Start();
-        return OpenAsync((built, log, output, starting) => DebugSession.LaunchInProcessAsync(end, DebugEngine.GDScript, plan, Breakpoints, built, log, output, ColumnOf, starting),
-            plan.Name, launched: true, plan: plan);
+        return OpenAsync((built, log, output, starting) => DebugSession.LaunchInProcessAsync(end, DebugEngine.GDScript, plan, Breakpoints, built, log, output, inTerminal,
+            ColumnOf, starting), plan.Name, launched: true, inTerminal: inTerminal is not null, plan: plan);
     }
 
     /// <summary>Launches another program in a native tab, with hooks installed before its adapter starts.</summary>

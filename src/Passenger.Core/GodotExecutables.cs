@@ -134,6 +134,25 @@ public static partial class GodotExecutables
         return null;
     }
 
+    /// <summary>What runs a Godot in a terminal: on Windows the console wrapper beside its .exe, where there is one, since
+    /// Godot's own .exe writes to no console it is started in; the executable itself anywhere else.</summary>
+    public static string InTerminal(string executable)
+    {
+        if (!OperatingSystem.IsWindows() || !executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return executable;
+        }
+        string bare = executable[..^".exe".Length];
+        foreach (string wrapper in (string[])[".console.exe", "_console.exe", " console.exe"])
+        {
+            if (File.Exists(bare + wrapper))
+            {
+                return bare + wrapper;
+            }
+        }
+        return executable;
+    }
+
     /// <summary>The app bundle an executable is the program of (X.app/Contents/MacOS/Godot), or null.</summary>
     private static string? BundleOf(string file) =>
         Path.GetDirectoryName(file) is { } macOS && Path.GetFileName(macOS) == "MacOS" && Path.GetDirectoryName(macOS) is { } contents

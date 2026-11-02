@@ -192,21 +192,32 @@ public static class GodotScripts
     /// <summary>How long after a headless editor answers the files it writes over as it starts are watched.</summary>
     private static readonly TimeSpan Starting = TimeSpan.FromSeconds(10);
 
-    /// <summary>The files a headless editor writes over in its first seconds put back each time it does.</summary>
+    /// <summary>The files a headless editor writes over in its first seconds put back each time it does, until the project
+    /// goes (a test's, deleted under it: on Windows its folder stays while the editor works in it), which ends it, said once.</summary>
     private static async Task KeepAsync(string project, Dictionary<string, byte[]?> before)
     {
         long began = Stopwatch.GetTimestamp();
+        HashSet<string> told = [];
         while (Stopwatch.GetElapsedTime(began) < Starting)
         {
-            PutBack(project, before);
+            if (!PutBack(project, before, told))
+            {
+                return;
+            }
             await Task.Delay(TimeSpan.FromMilliseconds(200));
         }
-        PutBack(project, before);
+        PutBack(project, before, told);
     }
 
-    /// <summary>The files a headless editor wrote over put back as they were, one not there before deleted.</summary>
-    private static void PutBack(string project, Dictionary<string, byte[]?> before)
+    /// <summary>The files a headless editor wrote over put back as they were, one not there before deleted; false once the
+    /// project has gone (its project.godot), when there is nothing to put back. A file that could not be put back is said once.</summary>
+    private static bool PutBack(string project, Dictionary<string, byte[]?> before, HashSet<string> told)
     {
+        if (!File.Exists(Path.Combine(project, GodotProject.FileName)))
+        {
+            IdeErrors.Write($"GDScript: {project} is gone, so what Godot's headless editor wrote there is no longer put back");
+            return false;
+        }
         foreach ((string name, byte[]? bytes) in before)
         {
             string path = Path.Combine(project, name);
@@ -223,8 +234,12 @@ public static class GodotScripts
             }
             catch (Exception unwritten) when (unwritten is IOException or UnauthorizedAccessException)
             {
-                IdeErrors.Write($"GDScript: {path}, which Godot's headless editor wrote over, could not be put back: {unwritten.Message}");
+                if (told.Add(path))
+                {
+                    IdeErrors.Write($"GDScript: {path}, which Godot's headless editor wrote over, could not be put back: {unwritten.Message}");
+                }
             }
         }
+        return true;
     }
 }

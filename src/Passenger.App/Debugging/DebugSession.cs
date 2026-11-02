@@ -112,6 +112,10 @@ public sealed class DebugSession
     /// <summary>The adapter's one disconnect, once asked: nothing more is asked of it, since it may go before answering.</summary>
     private Task? disconnected;
 
+    /// <summary>Whether the conversation with the adapter is over (<see cref="End"/>): a session shown ended as its program
+    /// ended may still wait for its adapter to go.</summary>
+    private bool closed;
+
     /// <summary>Done once the disconnect is asked, which ends a start's waits.</summary>
     private readonly TaskCompletionSource ending = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -377,18 +381,20 @@ public sealed class DebugSession
             elsewhere: false, place: null, engine: engine);
 
     /// <summary>Has an adapter inside the IDE launch a plan's program itself (a Godot game of GDScript alone, its output told as
-    /// the adapter reads it), <paramref name="engine"/> saying which files' breakpoints it takes, with the store's breakpoints;
-    /// <paramref name="starting"/> is handed the session as it begins.</summary>
+    /// the adapter reads it, or with <paramref name="runInTerminal"/> in the terminal it starts), <paramref name="engine"/>
+    /// saying which files' breakpoints it takes, with the store's breakpoints; <paramref name="starting"/> is handed the
+    /// session as it begins.</summary>
     public static Task<DebugSession> LaunchInProcessAsync(InProcessEnd adapter, DebugEngine engine, Run.LaunchPlan plan, BreakpointStore breakpoints, BuiltLines lines,
-        Action<string> log, Action<OutputEvent> output, Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null) =>
+        Action<string> log, Action<OutputEvent> output, Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal = null,
+        Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null) =>
         StartAsync(() => Task.FromResult<AdapterEnd>(adapter), plan.Program, DapCommands.Launch, new LaunchArguments
         {
             Program = plan.Program,
             Args = plan.Arguments,
             Cwd = plan.WorkingDirectory,
             Env = plan.Environment,
-            Console = "internalConsole",
-        }, breakpoints, lines, log, output, null, columns, starting, elsewhere: false, place: null, engine: engine);
+            Console = runInTerminal is null ? "internalConsole" : "integratedTerminal",
+        }, breakpoints, lines, log, output, runInTerminal, columns, starting, elsewhere: false, place: null, engine: engine);
 
     /// <summary>Passenger's own adapter, started beside the app or where the program is (<see cref="AdapterStart"/>), forked
     /// off the window's thread.</summary>
@@ -523,7 +529,8 @@ public sealed class DebugSession
     }
 
     /// <summary>Ends the program and the adapter. A program that will not go is killed with the adapter; one in the terminal
-    /// that is stopped, rather than at its own end, goes with all it started.</summary>
+    /// that is stopped, rather than at its own end, goes with all it started. Once the adapter has said the program ended,
+    /// the session is ended as the window shows it, the adapter's own end waited for after.</summary>
     public async Task StopAsync()
     {
         UiThread.Check();
@@ -544,6 +551,11 @@ public sealed class DebugSession
                 Terminal!.Stopping();
             }
         }
+        // The program has gone: the window shows the session ended at once, the adapter's end waited for behind it.
+        if (programEnded && Terminal?.Ended.IsCompleted != false)
+        {
+            Ended(ExitCode);
+        }
         await EndProcessesAsync(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(3));
         if (Terminal is { } terminal)
         {
@@ -554,6 +566,20 @@ public sealed class DebugSession
             await TerminalEnd(terminal);
         }
         End(ExitCode);
+    }
+
+    /// <summary>The program has gone, heard other than from the adapter (a Godot game's connection, then its process, ended):
+    /// the session is shown ended at once and the adapter asked to end, as when it says so itself, so an adapter slow to go
+    /// leaves no program shown running.</summary>
+    public void ProgramGone()
+    {
+        UiThread.Check();
+        if (State == DebugState.Ended || programEnded)
+        {
+            return;
+        }
+        programEnded = true;
+        IdeErrors.Observe(StopAsync());
     }
 
     /// <summary>Detach: the debugger takes its breakpoints out of the program it attached to and lets go of it, and the
@@ -606,8 +632,8 @@ public sealed class DebugSession
     public Task CloseAsync(bool letGo = true)
     {
         UiThread.Check();
-        return State == DebugState.Ended ? Task.CompletedTask
-            : Attached && letGo ? EndProcessesAsync(ClosingLetGo + TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1.5), terminate: false, letGoWithin: ClosingLetGo)
+        return closed ? Task.CompletedTask
+            : Attached && letGo && State != DebugState.Ended ? EndProcessesAsync(ClosingLetGo + TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1.5), terminate: false, letGoWithin: ClosingLetGo)
             : EndProcessesAsync(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
     }
 
@@ -1403,7 +1429,19 @@ public sealed class DebugSession
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>Ends the session, and the conversation with its adapter, once.</summary>
     private void End(int? exitCode)
+    {
+        Ended(exitCode);
+        if (!closed)
+        {
+            closed = true;
+            IdeErrors.Observe(connection.DisposeAsync().AsTask());
+        }
+    }
+
+    /// <summary>The session has ended as the window shows it, once: its breakpoints' words let go of, its exit code kept.</summary>
+    private void Ended(int? exitCode)
     {
         if (State == DebugState.Ended)
         {
@@ -1422,7 +1460,6 @@ public sealed class DebugSession
             breakpoints.Leave(this);
         }
         SetState(DebugState.Ended);
-        IdeErrors.Observe(connection.DisposeAsync().AsTask());
     }
 
     /// <summary>An event's body, copied off the connection's buffer for reading on the UI thread.</summary>

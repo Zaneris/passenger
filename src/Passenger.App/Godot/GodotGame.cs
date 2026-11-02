@@ -55,9 +55,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     /// <summary>The id under which the game's live editing knows the path of Passenger's helper (<see cref="GodotAgent"/>).</summary>
     private const long AgentPath = 7046;
 
-    private GodotGame(string name, string folder, string? version, bool headless, TcpListener listener, GodotScriptStart? scripts)
+    private GodotGame(string name, string folder, string? version, bool headless, bool scriptsAlone, TcpListener listener, GodotScriptStart? scripts)
     {
         Name = name;
+        ScriptsAlone = scriptsAlone;
         Folder = folder;
         Version = version;
         Headless = headless;
@@ -80,7 +81,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         listener.Start(1);
         bool headless = plan.Arguments.Contains("--headless")
             || plan.Arguments.Zip(plan.Arguments.Skip(1)).Any(p => p is ("--display-driver", "headless"));
-        GodotGame game = new(plan.Name, folder, plan.GodotVersion, headless, listener, scripts);
+        GodotGame game = new(plan.Name, folder, plan.GodotVersion, headless, plan.ScriptsAlone, listener, scripts);
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         List<string> arguments = [.. plan.Arguments];
         List<string> debugging = [RemoteDebug, $"tcp://127.0.0.1:{port}"];
@@ -152,6 +153,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
 
     /// <summary>Whether Godot runs it headless (<c>--headless</c>), drawing nothing.</summary>
     public bool Headless { get; }
+
+    /// <summary>Whether it is a game of GDScript alone (<see cref="LaunchPlan.ScriptsAlone"/>), which runs no .NET code.</summary>
+    public bool ScriptsAlone { get; }
 
     public LiveAppState State { get; private set; } = LiveAppState.Waiting;
 
@@ -726,7 +730,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             throw new LiveAppException(why);
         }
         GodotProperty property = inspected[(ulong)element].Properties.First(p => p.Name == value.Name);
-        (object? read, string? wanted) = GodotVariant.Parse(property.Type, text);
+        (object? read, string? wanted) = await GodotVariant.ReadAsync(property.Type, text, script: null);
         if (wanted is not null)
         {
             throw new LiveAppException($"{value.Name} takes {wanted}");

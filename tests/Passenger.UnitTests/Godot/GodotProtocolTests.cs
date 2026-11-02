@@ -165,6 +165,33 @@ public class GodotProtocolTests
         Assert.True(value is null && whyNot is { Length: > 0 }, $"'{text}' as a {type} read as {GodotVariant.Shown(value)}, where it should say what it takes");
     }
 
+    [Theory]
+    [InlineData(GodotType.String, "\"tock\"", "tock")]
+    [InlineData(GodotType.String, "tock", "tock")]
+    [InlineData(GodotType.String, "\"say \\\"hi\\\"\\n\"", "say \"hi\"\n")]
+    [InlineData(GodotType.String, "\"a\" + \"b\"", "\"a\" + \"b\"")]
+    [InlineData(GodotType.StringName, "&\"ready\"", "ready")]
+    [InlineData(GodotType.NodePath, "^\"/root/Main\"", "/root/Main")]
+    [InlineData(GodotType.Vector2, "(1, 2)", "(1, 2)")]
+    [InlineData(GodotType.Float, "1", "1")]
+    public async Task A_typed_value_reads_one_way_in_the_tree_and_in_Variables_its_type_first_a_strings_literal_as_it_says(GodotType type, string text, string shown)
+    {
+        (object? value, string? whyNot) = await GodotVariant.ReadAsync(type, text, script: null);
+        (object? paused, string? pausedWhyNot) = await GodotVariant.ReadAsync(type, text, _ => Task.FromResult<(object?, string?)>((null, "no GDScript was to be read")));
+        Assert.True(whyNot is null && pausedWhyNot is null && GodotVariant.Shown(value) == shown && GodotVariant.Shown(paused) == shown,
+            $"'{text}' as a {type} read as {GodotVariant.Shown(value)} ({whyNot}) in the tree and {GodotVariant.Shown(paused)} ({pausedWhyNot}) in Variables, not {shown}");
+    }
+
+    [Fact]
+    public async Task A_typed_value_its_type_cannot_read_is_read_as_GDScript_where_a_paused_frame_can_and_refused_saying_both_where_neither_reads_it()
+    {
+        Assert.Equal(1.5, (await GodotVariant.ReadAsync(GodotType.Int, "speed * 0.5", text => Task.FromResult<(object?, string?)>((text == "speed * 0.5" ? 1.5 : null, null)))).Value);
+        (object? running, string? whyNot) = await GodotVariant.ReadAsync(GodotType.Int, "speed * 0.5", script: null);
+        Assert.True(running is null && whyNot == "a whole number", $"With no frame to read GDScript in, 'speed * 0.5' as an int read as {running} ({whyNot})");
+        (object? unread, string? said) = await GodotVariant.ReadAsync(GodotType.Int, "nope", _ => Task.FromResult<(object?, string?)>((null, "Identifier \"nope\" not declared")));
+        Assert.True(unread is null && said == "a whole number, or GDScript that reads as one (Identifier \"nope\" not declared)", $"'nope' as an int read as {unread} ({said})");
+    }
+
     [Fact]
     public void Bytes_counting_more_than_they_hold_are_refused_before_anything_is_made_of_them()
     {

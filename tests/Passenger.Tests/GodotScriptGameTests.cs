@@ -14,8 +14,8 @@ namespace Passenger.Tests;
 /// works on it: the game and Godot's editor are its run configurations and Build says there is nothing to build; Run starts
 /// its game; Debug is its GDScript session alone, a breakpoint in a script stopping it and a member set from Variables
 /// changing what it prints; a saved script reaches the game Run runs with Hot Reload; and Profile records Godot's own frames,
-/// saying the run has no samples. Godot runs headless, its user folders the run's. Without a Godot 4 each test skips saying
-/// why. Debugged, so run alone.</summary>
+/// saying the run has no samples, as Attach Profiler does; Debug takes the configuration's external console. Godot runs
+/// headless, its user folders the run's. Without a Godot 4 each test skips saying why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Game>
 {
@@ -159,6 +159,80 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
         }
     }
 
+    /// <summary>Debug with the configuration's external console runs the game in a tab of the Terminal window, which shows what
+    /// it says rather than the Debug window's console, its GDScript session still stopping it at a breakpoint; Stop ends it
+    /// there.</summary>
+    [AvaloniaFact]
+    public void Debug_with_the_external_console_runs_the_game_in_the_terminal_and_a_breakpoint_still_stops_it()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Choose(window, ConsoleKind.Terminal);
+            Ui.Launched(window, window.DebugAsync(), "the game's start in the terminal under the debugger", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.GDScript, Terminal: { } shown } && TerminalText(shown).Contains("tick 20", StringComparison.Ordinal),
+                () => $"the game to say its word in the terminal ({Sessions(window)}; {Ui.Said(window)}; {(window.Debugger.Session?.Terminal is { } run ? TerminalText(run) : "no terminal")})",
+                TimeSpan.FromMinutes(1));
+            TerminalRun terminal = window.Debugger.Session!.Terminal!;
+            Assert.DoesNotContain("tick ", Console(window), StringComparison.Ordinal);
+
+            // The terminal took the keys as it showed the game.
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            int line = LineOf(editor, "counter += 1");
+            editor.GoTo(new TextPosition(line, 1));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            Assert.True(window.Debugger.Breakpoints.In(TickerPath).Any(b => b.Line == line), $"No breakpoint was set at ticker.gd's line {line + 1}: {window.Status}");
+            Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.GDScript, State: DebugState.Paused } && Stopped(editor) == line,
+                () => $"the game in the terminal to stop at the breakpoint in ticker.gd's _process ({Sessions(window)}, {Ui.Said(window)})", TimeSpan.FromMinutes(1));
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging && terminal.Ended.IsCompleted && window.Session.Games.Count == 0,
+                () => $"the game in the terminal to end with its session ({Sessions(window)}; {window.Status})", TimeSpan.FromMinutes(1));
+            Assert.True(Processes.Gone(terminal.ProcessId), $"Stop left the game running in the terminal: {Processes.Describe(terminal.ProcessId)}");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Attach Profiler to the game Run runs records its frames as Godot's own profiler measures them, its script's
+    /// _process among them, and says the run has no samples: the game runs no .NET code, so no EventPipe session is asked of it.</summary>
+    [AvaloniaFact]
+    public void Attach_Profiler_to_the_game_Run_runs_records_its_frames_alone()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Choose(window);
+            Ui.Launched(window, window.RunAsync(), "the game's start", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => Run(window).Contains("tick 20", StringComparison.Ordinal) && window.Session.Games is [{ ProcessId: int }],
+                () => $"the game to run, connected ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
+            Assert.Null(Ui.Await(window.AttachProfilerAsync(), "the profiler's attach to the game", TimeSpan.FromMinutes(1)));
+            Assert.Equal(Passenger.App.Profiling.ProfilerCommands.FramesAloneSaid("Ticker on Godot"), window.Status);
+            int attached = Counted(Run(window));
+            Ui.WaitFor(() => Counted(Run(window)) > attached + 200, () => $"the profiled game to run its script ({Run(window)})", TimeSpan.FromMinutes(1));
+            Assert.Equal(Passenger.Profiler.ProfilingSession.NoHeapOfScripts, window.Actions.WhyNot(AppActions.MemorySnapshot, window.Actions.Context()));
+
+            Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the game's snapshot", TimeSpan.FromMinutes(2));
+            Assert.True(read.Snapshot is { FramesAlone: true, Samples: 0, Game: not null, GameFrames.Count: > 100 },
+                $"{read.Message}: {read.Snapshot?.GameFrames.Count} of Godot's frames, {read.Snapshot?.Samples} samples, {read.Snapshot?.Game?.Why}");
+            Assert.True(window.IsRunning, $"The game ended with its profile, where an attached profiler leaves it running ({window.Status})");
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>The last count the game said (its word and its frame), or 0.</summary>
+    private static int Counted(string said) => said.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith("tick ", StringComparison.Ordinal))
+        .Select(l => int.TryParse(l["tick ".Length..], System.Globalization.CultureInfo.InvariantCulture, out int count) ? count : 0).LastOrDefault();
+
+    private static string TerminalText(TerminalRun run) =>
+        string.Join('\n', run.Session.Screen.Scrollback.Select(l => l.Text()).Concat(run.Session.Screen.Lines.Select(l => l.Text())));
+
     /// <summary>A window on the project with its script open, no C# language server.</summary>
     private MainWindow Open()
     {
@@ -170,13 +244,15 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
         return window;
     }
 
-    /// <summary>A copy of the game's generated configuration chosen, Godot run headless with the run's user folders.</summary>
-    private void Choose(MainWindow window)
+    /// <summary>A copy of the game's generated configuration chosen, Godot run headless with the run's user folders, in the
+    /// console given.</summary>
+    private void Choose(MainWindow window, ConsoleKind console = ConsoleKind.Internal)
     {
         Ui.WaitFor(() => window.Configurations.Any(c => c.Generated && c.Name == "Ticker"),
             () => $"the game's configuration ({string.Join(", ", window.Configurations.Select(c => c.Name))})", TimeSpan.FromMinutes(1));
         RunConfiguration generated = window.Configurations.Single(c => c.Generated && c.Name == "Ticker");
-        window.SetConfigurations([generated with { Name = "Ticker on Godot", Generated = false, Arguments = "--headless", Environment = new(game.Homes) }], "Ticker on Godot");
+        window.SetConfigurations([generated with { Name = "Ticker on Godot", Generated = false, Arguments = "--headless", Environment = new(game.Homes), Console = console }],
+            "Ticker on Godot");
     }
 
     private static int LineOf(CodeEditor editor, string code)

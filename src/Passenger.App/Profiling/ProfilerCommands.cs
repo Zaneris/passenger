@@ -451,7 +451,7 @@ public sealed class ProfilerCommands
         profilingName = name;
         View.Running(name, () => running.Elapsed, killable);
         parts.Dock.Show(ToolWindowIds.Profiler);
-        parts.Say($"Profiling {name} from now: Get Snapshot when it has done what is to be measured");
+        parts.Say(running.Samples ? $"Profiling {name} from now: Get Snapshot when it has done what is to be measured" : FramesAloneSaid(name));
         IdeErrors.Observe(running.ExitedAsync().ContinueWith(_ => UiThread.Post(() =>
         {
             if (profiled.Profiling == running && profiled == Session)
@@ -682,13 +682,15 @@ public sealed class ProfilerCommands
                 return paused;
             }
             ProfilingSession running;
+            Godot.GodotGame? game = target.Elsewhere is null ? profiled.Games.FirstOrDefault(g => g.ProcessId == target.ProcessId) : null;
             Action unfollow = SayPauses(work, target.ProcessId, target.Elsewhere?.Container, target.Name, ToProfile);
             try
             {
                 using (BackgroundWork.Scope())
                 {
-                    running = target.Elsewhere is not null
-                        ? await AttachElsewhereAsync(target, snapshotFolder, work)
+                    // A game of GDScript alone runs no .NET code to sample: Godot's own profiler's frames are the whole run.
+                    running = target.Elsewhere is not null ? await AttachElsewhereAsync(target, snapshotFolder, work)
+                        : game is { ScriptsAlone: true } ? ProfilingSession.AttachFrames(target.ProcessId, target.File, snapshotFolder)
                         : await ProfilingSession.AttachAsync(target.ProcessId, target.File, snapshotFolder, work.Stopping);
                 }
             }
@@ -710,7 +712,7 @@ public sealed class ProfilerCommands
                 await running.DisposeAsync();
                 return profiled.IsEnded || profiled != Session ? Refusals.SolutionClosed : "A run is already being profiled";
             }
-            if (target.Elsewhere is null && profiled.Games.FirstOrDefault(g => g.ProcessId == target.ProcessId) is { } game)
+            if (game is not null)
             {
                 Record(running, game);
             }

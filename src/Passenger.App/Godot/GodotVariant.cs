@@ -638,6 +638,62 @@ public static class GodotVariant
         return numbers.Count == count ? (new GodotMath(type, numbers), null) : (null, $"{count} {(integers ? "whole numbers" : "numbers")} separated by commas");
     }
 
+    /// <summary>The value a typed text gives a property of <paramref name="type"/>, read one way wherever a Godot value is
+    /// typed (the Live Visual Tree's properties, Variables' Set Value): as <see cref="Parse"/> reads it, a string's in quotes
+    /// ("…", &amp;"…", ^"…") as the literal it is; where that reads nothing, as GDScript in the paused frame
+    /// <paramref name="script"/> reads in ("speed * 2", "Vector2.ZERO", "null"), which a running game has none of. WhyNot
+    /// says what the type takes, and what GDScript said, where neither reads it.</summary>
+    public static async Task<(object? Value, string? WhyNot)> ReadAsync(GodotType type, string text, Func<string, Task<(object? Value, string? Error)>>? script)
+    {
+        (object? value, string? wanted) = type is GodotType.String or GodotType.StringName or GodotType.NodePath && Literal(text) is { } literal
+            ? Parse(type, literal)
+            : Parse(type, text);
+        if (wanted is null || script is null)
+        {
+            return (value, wanted);
+        }
+        (object? read, string? error) = await script(text);
+        return error is null ? (read, null) : (null, $"{wanted}, or GDScript that reads as one ({error})");
+    }
+
+    /// <summary>What a GDScript string literal says (one in quotes, a name's after &amp;, a node path's after ^, its escapes
+    /// read), or null for text that is no one literal.</summary>
+    public static string? Literal(string text)
+    {
+        string trimmed = text.Trim();
+        int open = trimmed.StartsWith("&\"", StringComparison.Ordinal) || trimmed.StartsWith("^\"", StringComparison.Ordinal) ? 1 : 0;
+        if (trimmed.Length < open + 2 || trimmed[open] != '"' || trimmed[^1] != '"')
+        {
+            return null;
+        }
+        StringBuilder said = new();
+        for (int i = open + 1; i < trimmed.Length - 1; i++)
+        {
+            char c = trimmed[i];
+            if (c == '"')
+            {
+                return null;
+            }
+            if (c != '\\')
+            {
+                said.Append(c);
+                continue;
+            }
+            if (++i >= trimmed.Length - 1)
+            {
+                return null;
+            }
+            said.Append(trimmed[i] switch
+            {
+                'n' => '\n',
+                't' => '\t',
+                'r' => '\r',
+                char other => other,
+            });
+        }
+        return said.ToString();
+    }
+
     /// <summary>A real number as Godot writes it: whole ones without a fraction, the rest in their shortest round-trip form.</summary>
     public static string Number(double value) => value.ToString(value == Math.Floor(value) && Math.Abs(value) < 1e15 ? "0" : "R", CultureInfo.InvariantCulture);
 }
