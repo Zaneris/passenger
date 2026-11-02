@@ -13,8 +13,8 @@ namespace Passenger.Tests;
 /// as saved, a component's scoped CSS another program wrote is bundled again and applied, another static file changed
 /// reloads the page, and an applied update refreshes it: on the SDK the machine builds with, and on .NET 10's SDK, which
 /// speaks the earlier way, where one is installed; and a Blazor Web App with WebAssembly components, whose client's build
-/// makes its pages' browser tools, is kept up too; where a build makes none, Debug says why. Debugged through the window, so
-/// run alone.</summary>
+/// makes its pages' browser tools, is kept up too, as are a referenced Razor class library's stylesheet and scoped CSS; where a
+/// build makes none, Debug says why. Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class BrowserRefreshTests : IDisposable
 {
@@ -87,6 +87,61 @@ public sealed class BrowserRefreshTests : IDisposable
             Told(window, client, "UpdateStaticFile", "app.css", console);
             Assert.Contains("kept-up-in-place", Served(port, "/app.css"), StringComparison.Ordinal);
             Ui.WaitFor(() => console().Contains("Hot Reload: app.css applied in 1 page", StringComparison.Ordinal), () => $"the console to say where app.css went:\n{console()}");
+        }
+        finally
+        {
+            End(window, client);
+        }
+    }
+
+    /// <summary>A Razor class library Bell references, as the SDK's template makes one, with a stylesheet and a component's
+    /// scoped CSS: under debug, its stylesheet saved in the editor is applied in place by the URL the app serves it at, and
+    /// its scoped CSS another program wrote is bundled again by the library and applied, each served as written.</summary>
+    [AvaloniaFact]
+    public void Under_debug_a_referenced_Razor_class_librarys_stylesheet_and_scoped_CSS_apply_in_place()
+    {
+        string bell = Path.Combine(folder, "Bell");
+        int port = BellApp.Make(bell);
+        string kit = Path.Combine(folder, "Kit");
+        Ui.AwaitPumped(Waiting.Apart(async () =>
+        {
+            ChildResult made = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(
+                ["new", "razorclasslib", "--output", kit, "--name", "Kit", "--framework", TestProjects.Framework, "--support-pages-and-views", "--no-restore"]),
+                limit: TimeSpan.FromMinutes(3));
+            Assert.True(made.Succeeded, $"dotnet new razorclasslib did not make the test's library (exit code {made.ExitCode}):\n{made.Output}{made.Error}");
+            return made;
+        }), "dotnet new razorclasslib to make the test's library", TimeSpan.FromMinutes(3) + TestFolders.Spare);
+        TestFolders.Write(kit, "wwwroot/kit.css", ".kit {\n    color: teal;\n}\n");
+        TestFolders.Write(kit, "Banner.razor", "<div class=\"banner\">Kit</div>\n");
+        string scoped = TestFolders.Write(kit, "Banner.razor.css", ".banner {\n    color: teal;\n}\n");
+        TestFolders.Write(folder, "nuget.config", "<configuration>\n  <packageSources><clear /><add key=\"local\" value=\"Bell/feed\" /></packageSources>\n</configuration>\n");
+        string project = Path.Combine(bell, "Bell.csproj");
+        File.WriteAllText(project, File.ReadAllText(project).Replace("</Project>",
+            "  <ItemGroup>\n    <ProjectReference Include=\"../Kit/Kit.csproj\" />\n  </ItemGroup>\n\n</Project>", StringComparison.Ordinal));
+        Restore.Run(project);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        RefreshClient? client = null;
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Bell: http"), "Bell's http configuration", TimeSpan.FromMinutes(2));
+            Assert.True(window.SelectConfiguration("Bell: http"));
+            Ui.Launched(window, window.DebugAsync(), "Bell to start under the debugger", TimeSpan.FromMinutes(3));
+            Func<string> console = () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
+            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, port, console), StringComparison.Ordinal);
+            client = Ui.AwaitPumped(Waiting.Apart(() => RefreshClient.ConnectAsync(port)), "the page's refresh client to connect to Passenger through the app");
+
+            window.OpenFile(Path.Combine(kit, "wwwroot", "kit.css"));
+            Ui.Settle();
+            BellApp.Edit(window, ".kit {", ".kit-in-place { color: rebeccapurple; }\n\n.kit {");
+            Assert.True(window.Perform(AppActions.Save), $"Save could not run: {window.Status}");
+            Told(window, client, "UpdateStaticFile", "_content/Kit/kit.css", console);
+            Assert.Contains("kit-in-place", Served(port, "/_content/Kit/kit.css"), StringComparison.Ordinal);
+            Ui.WaitFor(() => console().Contains("Hot Reload: _content/Kit/kit.css applied in 1 page", StringComparison.Ordinal),
+                () => $"the console to say where kit.css went:\n{console()}");
+
+            File.AppendAllText(scoped, "\n.kit-scoped {\n    color: rebeccapurple;\n}\n");
+            Told(window, client, "UpdateStaticFile", "_content/Kit/Kit.bundle.scp.css", console);
+            Assert.Contains("kit-scoped", Served(port, "/_content/Kit/Kit.bundle.scp.css"), StringComparison.Ordinal);
         }
         finally
         {

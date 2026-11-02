@@ -13,8 +13,13 @@ namespace Passenger.App.Run;
 public sealed record BuildStep(string Project, string? Framework, string? Output = null);
 
 /// <summary>A web app's build as its browser refresh needs it (<see cref="Debugging.BrowserRefresh"/>): the folder of the SDK
-/// it builds with, its intermediate output folder, and the global properties its build is given.</summary>
-public sealed record WebBuild(string Sdk, string Intermediate, IReadOnlyDictionary<string, string> Properties);
+/// it builds with, its intermediate output folder, the global properties its build is given, and the projects it references
+/// (a Razor class library, a Blazor Web App's client), whose scoped CSS its pages take in, each with the framework its build
+/// of them is for where they have several.</summary>
+public sealed record WebBuild(string Sdk, string Intermediate, IReadOnlyDictionary<string, string> Properties)
+{
+    public IReadOnlyList<(string Project, string? Framework)> Referenced { get; init; } = [];
+}
 
 /// <summary>Why a configuration cannot be launched, in words for the person.</summary>
 public class LaunchException(string message) : Exception(message);
@@ -289,12 +294,13 @@ public sealed partial record LaunchPlan
             Console = configuration.Console,
             BrowserUrl = configuration.LaunchBrowser && configuration.BrowserUrl.Length > 0 ? Expand(configuration.BrowserUrl) : null,
             Page = configuration.BrowserUrl.Length > 0 ? BrowserLaunch.Address(Expand(configuration.BrowserUrl)) is { } page ? BrowserLaunch.Shown(page) : null : null,
-            Web = WebOf(project, framework, properties, workspace),
+            Web = WebOf(project, framework, properties, workspace, projects),
         };
     }
 
     /// <summary>A web project's build as its evaluation says it; null for another, or one whose evaluation says too little.</summary>
-    private static WebBuild? WebOf(ProjectModel project, string? framework, IReadOnlyDictionary<string, string> properties, WorkspaceModel? workspace)
+    private static WebBuild? WebOf(ProjectModel project, string? framework, IReadOnlyDictionary<string, string> properties, WorkspaceModel? workspace,
+        IReadOnlyList<ProjectModel> projects)
     {
         if (!project.IsWeb || properties.GetValueOrDefault(MSBuildNames.ExtensionsPath) is not { Length: > 0 } sdk
             || properties.GetValueOrDefault(MSBuildNames.IntermediateOutputPath) is not { Length: > 0 } intermediate)
@@ -308,7 +314,13 @@ public sealed partial record LaunchPlan
         }
         // MSBuild writes its default folders with backslashes, which only Windows takes for separators.
         string folder = System.IO.Path.DirectorySeparatorChar == '\\' ? intermediate : intermediate.Replace('\\', System.IO.Path.DirectorySeparatorChar);
-        return new WebBuild(System.IO.Path.TrimEndingDirectorySeparator(sdk), PathNames.Canonical(System.IO.Path.Combine(project.Folder, folder)), globals);
+        string? runsOn = framework ?? project.TargetFrameworks.FirstOrDefault();
+        return new WebBuild(System.IO.Path.TrimEndingDirectorySeparator(sdk), PathNames.Canonical(System.IO.Path.Combine(project.Folder, folder)), globals)
+        {
+            // A project of several frameworks is built for the app's where it has it, as the app's build takes it.
+            Referenced = [.. project.WithReferenced(projects).Skip(1)
+                .Select(p => (p.Path, p.TargetFrameworks.Count > 1 && runsOn is not null && p.TargetFrameworks.Contains(runsOn, StringComparer.OrdinalIgnoreCase) ? runsOn : null))],
+        };
     }
 
     /// <summary>Why a container configuration has no plan of this machine's: Run, Debug and Profile bring its containers up.</summary>

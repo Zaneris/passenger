@@ -4,8 +4,10 @@ using Passenger.App.Debugging;
 
 namespace Passenger.UnitTests.Web;
 
-/// <summary>A web app's development manifest read as the app serves its files by it: where the browser tools its pages load
-/// were written, a Blazor Web App's by its WebAssembly client's build.</summary>
+/// <summary>A web app's development manifest read as the app serves its files by it: each file by the URL it is served at,
+/// a Razor class library's under its own and its folder's files come since too, the library's scoped CSS by its bundle's URL
+/// without the fingerprint, and where the browser tools its pages load were written, a Blazor Web App's by its WebAssembly
+/// client's build.</summary>
 public class DevelopmentAssetsTests
 {
     private static readonly string Solution = Path.Combine(Path.GetTempPath(), "solution");
@@ -41,6 +43,53 @@ public class DevelopmentAssetsTests
         Assert.NotNull(read);
         Assert.True(read.BrowserTools == Path.TrimEndingDirectorySeparator(tools),
             $"The browser tools were taken to be in {read.BrowserTools}, not the client's {tools}, so Passenger would prove itself to the page with no key or another");
+    }
+
+    /// <summary>Bell's own wwwroot, Kit's (a Razor class library it references) under _content/Kit, and Kit's bundled scoped
+    /// CSS, fingerprinted.</summary>
+    private static DevelopmentAssets BellWithKit()
+    {
+        JsonObject kit = Children(
+            ("kit.css", Asset(1, "kit.css")),
+            ("Kit.h77jbnbuq3.bundle.scp.css", Asset(2, "Kit.bundle.scp.css")));
+        kit["Patterns"] = new JsonArray(new JsonObject { ["ContentRootIndex"] = 1, ["Pattern"] = "**", ["Depth"] = 2 });
+        byte[] manifest = Manifest([Folder("Bell", "wwwroot"), Folder("Kit", "wwwroot"), Folder("Kit", "obj", "Debug", "net10.0", "scopedcss", "projectbundle")], Children(
+            ("app.css", Asset(0, "app.css")),
+            ("css", Children(("site.css", Asset(0, "css/site.css")))),
+            ("_content", Children(("Kit", kit)))));
+        return DevelopmentAssets.Read(manifest) ?? throw new InvalidOperationException("The manifest was not read");
+    }
+
+    [Fact]
+    public void Each_file_the_app_serves_is_told_by_its_URL_a_referenced_librarys_under_its_own()
+    {
+        DevelopmentAssets assets = BellWithKit();
+        Assert.Equal("app.css", assets.UrlOf(Path.Combine(Solution, "Bell", "wwwroot", "app.css")));
+        Assert.Equal("css/site.css", assets.UrlOf(Path.Combine(Solution, "Bell", "wwwroot", "css", "site.css")));
+        Assert.True(assets.UrlOf(Path.Combine(Solution, "Kit", "wwwroot", "kit.css")) == "_content/Kit/kit.css",
+            "The library's stylesheet was not told by the URL the app serves it at, so the page never applies it");
+        Assert.True(assets.UrlOf(Path.Combine(Solution, "Kit", "wwwroot", "images", "logo.png")) == "_content/Kit/images/logo.png",
+            "A file come since in the library's wwwroot, which the app serves as it comes, was not told to the page");
+        Assert.Null(assets.UrlOf(Path.Combine(Solution, "Kit", "Banner.razor")));
+        Assert.Null(assets.UrlOf(Path.Combine(Solution, "Bell", "wwwroot", "added.css")));
+    }
+
+    [Fact]
+    public void A_referenced_librarys_scoped_CSS_is_told_by_its_bundles_URL_without_the_fingerprint()
+    {
+        DevelopmentAssets assets = BellWithKit();
+        Assert.True(assets.BundleUrlOf(Path.Combine(Solution, "Kit", "Kit.csproj")) == "_content/Kit/Kit.bundle.scp.css",
+            $"Kit's scoped CSS was told as {assets.BundleUrlOf(Path.Combine(Solution, "Kit", "Kit.csproj"))}, not the bundle the app serves at its own name");
+        Assert.Null(assets.BundleUrlOf(Path.Combine(Solution, "Plain", "Plain.csproj")));
+    }
+
+    [Fact]
+    public void A_file_served_at_two_URLs_is_told_by_the_shorter()
+    {
+        DevelopmentAssets? read = DevelopmentAssets.Read(Manifest([Folder("Bell", "wwwroot")], Children(
+            ("favicon.x2rx4ajns0.png", Asset(0, "favicon.png")),
+            ("favicon.png", Asset(0, "favicon.png")))));
+        Assert.Equal("favicon.png", read?.UrlOf(Path.Combine(Solution, "Bell", "wwwroot", "favicon.png")));
     }
 
     [Fact]
