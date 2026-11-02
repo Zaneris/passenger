@@ -528,8 +528,9 @@ site-shots` retakes its images.
   debug loop and lets the game go on; an evaluation's errors come after its answer, so each is followed by a
   `get_stack_dump`; `reload_scripts` keeps members by name, an added one null. Stop ends a game a moment before its
   debug session ends: a test waits for the session too, and a session is shown ended once its adapter says the program
-  ended (`DebugSession.Ended`, `ProgramGone`). Windows' Godot .exe writes to no console, so a terminal run goes through
-  its console wrapper (`GodotExecutables.InTerminal`). An agent's call on a game is held to one limit
+  ended (`DebugSession.Ended`, `ProgramGone`). Windows' Godot .exe writes to no console, so every terminal run of a
+  game, Run and Debug, C# and GDScript, goes through its console wrapper (`GodotConsole`), the debugger taking the
+  game's own process the wrapper starts (`TerminalRun.Debuggee`). An agent's call on a game is held to one limit
   (`GodotGame.Within`, `GameLimit`), app_ tools wait for no evaluation (`PassengerTools.OnApp`), and a typed Godot value
   has one reader (`GodotVariant.ReadAsync`). Godot's frame counter runs on while a game is paused, so the frame count is
   the helper's (`GodotGame.Frame`); in a headless game Next Frame never pauses again, so the helper's `step` ends it;
@@ -642,9 +643,10 @@ and `tests/BlazorGraphs` that fill the package cache), GitHub (`PASSENGER_RELEAS
 (`PASSENGER_START=headless`). It shortens `PASSENGER_EVAL_TIMEOUT_MS` (3 s), `PASSENGER_WATCH_LATER_MS` (3 s),
 `PASSENGER_MCP_PROGRESS_MS` (1 s) and `PASSENGER_REGEX_TIMEOUT_MS` (1 s); a test holding a server to not answering sets
 that server's limits, never the run's. After each window test its windows close (those it closed itself too) and what
-they started is waited out (`TestsLeaveNothingBehind`). A plain `[Fact]` using `HeadlessUnitTestSession.Dispatch` must
-not end on the session's thread (`await Task.Yield()` before throwing). A sleeping Mac fails tests: full runs go under
-`caffeinate -is`.
+they started is waited out (`TestsLeaveNothingBehind`), and each takes its own dispatcher as it begins (`UiThread.Own`):
+a headless test's dispatcher is its own, so a test that opens no IDE window would otherwise post to a finished one. A
+plain `[Fact]` using `HeadlessUnitTestSession.Dispatch` must not end on the session's thread (`await Task.Yield()`
+before throwing). A sleeping Mac fails tests: full runs go under `caffeinate -is`.
 
 **Collections and shared projects** (`Collections.cs`). Window tests run one at a time on the session's thread. Beside
 them run only the debug adapter's protocol tests (`DebugSession.Collection`) and `Beside` classes (no window, nothing
