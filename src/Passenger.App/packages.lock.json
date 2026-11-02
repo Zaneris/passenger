@@ -235,8 +235,8 @@
       },
       "GregsEx": {
         "type": "Transitive",
-        "resolved": "0.5.5",
-        "contentHash": "+hEewxVdermTNbUWMKWGyt9uQnIkIgFJpaJ5rZSRyj0yYaQyBkYCmn+MlTKyQHI4rjGcU7JxoV9uIBlTjbIXIQ=="
+        "resolved": "0.5.7",
+        "contentHash": "N9B3TvoU9cYT3KlF1vwhsXE8SDMCcOORtMDuXiGTbIMolfKGAFGQPpF+Z+x/Wq328zZgdxlIxR/NxMMOYzOuag=="
       },
       "Grpc.Core.Api": {
         "type": "Transitive",
@@ -471,32 +471,32 @@
       "passenger.dap": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.2.3, )"
+          "Passenger.Core": "[0.2.4, )"
         }
       },
       "passenger.editor": {
         "type": "Project",
         "dependencies": {
           "Avalonia": "[12.1.4, )",
-          "Passenger.Core": "[0.2.3, )",
-          "Passenger.Text": "[0.2.3, )"
+          "Passenger.Core": "[0.2.4, )",
+          "Passenger.Text": "[0.2.4, )"
         }
       },
       "passenger.languages": {
         "type": "Project",
         "dependencies": {
           "Microsoft.CodeAnalysis.CSharp": "[5.9.0, )",
-          "Passenger.Editor": "[0.2.3, )",
-          "Passenger.Lsp": "[0.2.3, )",
-          "Passenger.Text": "[0.2.3, )",
-          "Tint": "[0.2.2, )"
+          "Passenger.Editor": "[0.2.4, )",
+          "Passenger.Lsp": "[0.2.4, )",
+          "Passenger.Text": "[0.2.4, )",
+          "Tint": "[0.2.3, )"
         }
       },
       "passenger.lsp": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.2.3, )",
-          "Passenger.Text": "[0.2.3, )",
+          "Passenger.Core": "[0.2.4, )",
+          "Passenger.Text": "[0.2.4, )",
           "StreamJsonRpc": "[2.26.150, )"
         }
       },
@@ -504,9 +504,9 @@
         "type": "Project",
         "dependencies": {
           "NuGet.Configuration": "[7.9.0, )",
-          "Passenger.Core": "[0.2.3, )",
-          "Passenger.Text": "[0.2.3, )",
-          "Passenger.Workspace": "[0.2.3, )"
+          "Passenger.Core": "[0.2.4, )",
+          "Passenger.Text": "[0.2.4, )",
+          "Passenger.Workspace": "[0.2.4, )"
         }
       },
       "passenger.profiler": {
@@ -515,43 +515,43 @@
           "Microsoft.Diagnostics.NETCore.Client": "[0.2.750501, )",
           "Microsoft.Diagnostics.Runtime": "[4.2.751201, )",
           "Microsoft.Diagnostics.Tracing.TraceEvent": "[4.0.0, )",
-          "Passenger.Core": "[0.2.3, )"
+          "Passenger.Core": "[0.2.4, )"
         }
       },
       "passenger.terminal": {
         "type": "Project",
         "dependencies": {
           "Avalonia": "[12.1.4, )",
-          "Passenger.Editor": "[0.2.3, )",
+          "Passenger.Editor": "[0.2.4, )",
           "Porta.Pty": "[2.2.3, )"
         }
       },
       "passenger.text": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.2.3, )"
+          "Passenger.Core": "[0.2.4, )"
         }
       },
       "passenger.vcs": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.2.3, )",
-          "Passenger.Text": "[0.2.3, )"
+          "Passenger.Core": "[0.2.4, )",
+          "Passenger.Text": "[0.2.4, )"
         }
       },
       "passenger.workspace": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.2.3, )",
-          "Passenger.Text": "[0.2.3, )"
+          "Passenger.Core": "[0.2.4, )",
+          "Passenger.Text": "[0.2.4, )"
         }
       },
       "passenger.xaml": {
         "type": "Project",
         "dependencies": {
           "Microsoft.CodeAnalysis.CSharp": "[5.9.0, )",
-          "Passenger.Core": "[0.2.3, )",
-          "Passenger.Text": "[0.2.3, )"
+          "Passenger.Core": "[0.2.4, )",
+          "Passenger.Text": "[0.2.4, )"
         }
       },
       "Microsoft.CodeAnalysis.CSharp": {
@@ -615,11 +615,11 @@
       },
       "Tint": {
         "type": "CentralTransitive",
-        "requested": "[0.2.2, )",
-        "resolved": "0.2.2",
-        "contentHash": "F46YenrvE7ZT2f8bOeVfnfEGJ6/VbLYTrD265S7/7YMdA0r3jjT5BjJ7HLX3yJO1BeZCTkBLQ6bgs1NlJ6IByA==",
+        "requested": "[0.2.3, )",
+        "resolved": "0.2.3",
+        "contentHash": "nIs4K4wMj1T9b7QPgdK4eDCRXENtsH2gl9JMZGH2TcWhqLhsaPuCfbrIjaGCQFZ279gluYgRqBxzw5JxeuKf1Q==",
         "dependencies": {
-          "GregsEx": "0.5.5"
+          "GregsEx": "0.5.7"
         }
       }
     },
