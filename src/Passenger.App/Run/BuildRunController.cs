@@ -737,7 +737,7 @@ public sealed partial class BuildRunController
             return Said(Refusals.NoGodotScene);
         }
         RunConfiguration? configuration = session.Configurations.Chosen is { GodotEditor: false, IsContainer: false } chosen && PathNames.Same(chosen.Project, project.Path)
-            && chosen.Program.Length == 0 ? chosen
+            && chosen.NamesNoOtherProgram(session.Projects) ? chosen
             : session.Configurations.All.FirstOrDefault(c => c.Generated && !c.GodotEditor && PathNames.Same(c.Project, project.Path));
         if (configuration is null || !session.Configurations.Select(configuration.Name))
         {
@@ -955,7 +955,7 @@ public sealed partial class BuildRunController
             parts.Views.Run.Clear();
             UnfollowWatched();
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
-            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.Program.Length == 0;
+            bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.NamesNoOtherProgram(session.Projects);
             bool godot = chosen.RunsGodot(session.Projects);
             // A game's errors, which Godot writes every frame they happen, folded in its console.
             parts.Views.Run.Fold = godot && !chosen.GodotEditor ? new Godot.GodotConsoleFold() : null;
@@ -1165,7 +1165,7 @@ public sealed partial class BuildRunController
                 return Said(gone);
             }
             work.Say($"Starting {GameCopies.Name(chosen.Name, next)}…");
-            bool reloaded = parts.Settings().HotReload && chosen.Program.Length == 0;
+            bool reloaded = parts.Settings().HotReload && chosen.NamesNoOtherProgram(session.Projects);
             if (await RunCopyAsync(chosen, plan, next, reloaded) is { } refused)
             {
                 return Said(refused);

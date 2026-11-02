@@ -115,6 +115,58 @@ public sealed class GodotExecutablesTests : IDisposable
         Assert.Equal(said, GodotExecutables.Mismatch(sdk, godot));
     }
 
+    [Theory]
+    [InlineData("%GODOT%", false)]
+    [InlineData("$GODOT", false)]
+    [InlineData("${GODOT}", false)]
+    [InlineData("$(GODOT)", false)]
+    [InlineData(" \"%GODOT%\" ", false)]
+    [InlineData("%godot%", true)]
+    [InlineData("/Applications/Godot_mono.app/Contents/MacOS/Godot", false)]
+    [InlineData("/Applications/Godot_v4.7.2-stable_mono.app", false)]
+    [InlineData("/usr/local/bin/godot4-mono", false)]
+    [InlineData("/opt/Godot_v4.7.2-stable_mono_linux.arm64", false)]
+    [InlineData(@"C:\Tools\Godot_v4.7.2-stable_mono_win64.exe", true)]
+    [InlineData(@"C:\Tools\Godot_v4.7.2-stable_mono_win64_console.exe", true)]
+    [InlineData(@"C:\Tools\godot.exe", true)]
+    public void A_launch_profiles_program_naming_GODOT_or_a_Godot_executable_is_Godot(string program, bool windows)
+    {
+        Assert.True(GodotExecutables.NamesGodot(program, windows), $"{program} was not taken for Godot, so its launch profile would run the game as a plain program: no remote debugger, no Live Tree, a window for an agent's game");
+    }
+
+    [Theory]
+    [InlineData("%GODOT_HOME%", false)]
+    [InlineData("%godot%", false)]
+    [InlineData("dotnet", false)]
+    [InlineData("/Applications/Blender.app/Contents/MacOS/Godot", false)]
+    [InlineData("/usr/bin/godotenv", false)]
+    [InlineData(@"C:\Tools\MyGame.exe", true)]
+    [InlineData("", false)]
+    public void A_launch_profiles_other_program_is_not_Godot(string program, bool windows)
+    {
+        Assert.False(GodotExecutables.NamesGodot(program, windows), $"{program} was taken for Godot, so its launch profile would run the project's game in its place");
+    }
+
+    [Fact]
+    public void A_launch_profiles_editor_flag_opens_Godots_editor_and_its_game_arguments_do_not()
+    {
+        Assert.True(GodotExecutables.OpensEditor(["--path", ".", "--editor"]), "--editor was not taken for opening the editor, so the profile would wait for a game that never connects");
+        Assert.True(GodotExecutables.OpensEditor(["-e", "--path", "."]), "-e was not taken for opening the editor");
+        Assert.False(GodotExecutables.OpensEditor(["--path", ".", "--run-tests", "--quit-on-finish"]), "A game's own arguments were taken for opening the editor");
+    }
+
+    [Fact]
+    public void A_path_naming_the_project_is_left_to_the_launch_and_one_naming_another_folder_refused()
+    {
+        string game = Folder("game");
+        string other = Folder("other");
+        Assert.Equal(["--run-tests", "--quit-on-finish"], GodotExecutables.WithoutPath(["--path", "./", "--run-tests", "--quit-on-finish"], game, game));
+        Assert.Equal(["--verbose"], GodotExecutables.WithoutPath(["--verbose", "--path", game + Path.DirectorySeparatorChar], other, game));
+        Assert.Equal(["--verbose"], GodotExecutables.WithoutPath(["--path", "game", "--verbose"], root, game));
+        Assert.Equal(["--headless"], GodotExecutables.WithoutPath(["--headless"], other, game));
+        Assert.Null(GodotExecutables.WithoutPath(["--path", "../other"], game, game));
+    }
+
     private string Folder(string name) => Directory.CreateDirectory(Path.Combine(root, name)).FullName;
 
     private static string Touch(string file)

@@ -177,7 +177,7 @@ public sealed partial record LaunchPlan
             // Godot runs a game of GDScript alone as it is: no MSBuild to ask, nothing to build.
             ProjectModel scripts = ProjectModel.OfScriptGame(System.IO.Path.GetDirectoryName(configuration.Project)!);
             Dictionary<string, string> variables = configuration.Environment.ToDictionary(v => v.Key, v => System.Environment.ExpandEnvironmentVariables(v.Value));
-            if (configuration.Program.Length == 0)
+            if (configuration.Program.Length == 0 || configuration.NamesGodot)
             {
                 return await GodotLaunch.PlanAsync(configuration, scripts, scripts.Folder, null, null, System.Environment.ExpandEnvironmentVariables,
                     Passenger.App.Godot.GodotUserFolders.Into(variables, godotFolders), godot, null, headless, cancel, atHand);
@@ -236,7 +236,7 @@ public sealed partial record LaunchPlan
         string target = PathNames.Canonical(properties.GetValueOrDefault(CarriedProperties.TargetPath) is { Length: > 0 } path
             ? path
             : throw new LaunchException($"MSBuild could not say what {project.Name} builds"));
-        if (configuration.Program.Length == 0 && project.GodotFolder is { } game)
+        if ((configuration.Program.Length == 0 || configuration.NamesGodot) && project.GodotFolder is { } game)
         {
             return await GodotLaunch.PlanAsync(configuration, project, game, target, framework, Expand, Passenger.App.Godot.GodotUserFolders.Into(Variables(), godotFolders), godot,
                 properties.GetValueOrDefault(MSBuildNames.GodotSdkVersion), headless, cancel, atHand);

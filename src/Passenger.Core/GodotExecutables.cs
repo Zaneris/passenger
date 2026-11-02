@@ -56,6 +56,33 @@ public static partial class GodotExecutables
     public static bool RunsHeadless(IReadOnlyList<string> arguments) =>
         arguments.Contains(Headless) || arguments.Zip(arguments.Skip(1)).Any(pair => pair is ("--display-driver", "headless"));
 
+    /// <summary>Whether Godot given these arguments opens its editor on the project rather than its game.</summary>
+    public static bool OpensEditor(IReadOnlyList<string> arguments) => arguments.Any(IsEditorFlag);
+
+    /// <summary>Whether an argument is the flag that opens Godot's editor (<c>--editor</c>, <c>-e</c>).</summary>
+    public static bool IsEditorFlag(string argument) => argument is "--editor" or "-e";
+
+    /// <summary>Godot's arguments without each <c>--path</c> naming the project's <paramref name="folder"/> (from the working
+    /// folder <paramref name="working"/>), for a launch that names it itself; null where one names another folder.</summary>
+    public static IReadOnlyList<string>? WithoutPath(IReadOnlyList<string> arguments, string working, string folder)
+    {
+        List<string> kept = [];
+        for (int i = 0; i < arguments.Count; i++)
+        {
+            if (arguments[i] != "--path" || i + 1 == arguments.Count)
+            {
+                kept.Add(arguments[i]);
+                continue;
+            }
+            string named = Path.TrimEndingDirectorySeparator(PathNames.Canonical(Path.Combine(working, arguments[++i])));
+            if (!PathNames.Same(named, Path.TrimEndingDirectorySeparator(folder)))
+            {
+                return null;
+            }
+        }
+        return kept;
+    }
+
     /// <summary>What the Applications folders are called where they hold Godot.</summary>
     public const string ApplicationsWords = "Applications";
 
@@ -123,6 +150,28 @@ public static partial class GodotExecutables
         string folder = Path.GetDirectoryName(file)!;
         string sharp = Path.Combine(folder, "GodotSharp");
         return Read(new GodotFound(file, from) { Exists = true }, sharp, Path.GetFileName(file));
+    }
+
+    /// <summary>Whether a program a launch profile names is Godot: GODOT as cmd, a shell or MSBuild names it (%GODOT%,
+    /// $GODOT, ${GODOT}, $(GODOT)), or a path whose file is Godot as it is installed (a name a PATH holds it under, an
+    /// official download's executable or console wrapper, a Godot app bundle or the program inside one).</summary>
+    public static bool NamesGodot(string program, bool windows)
+    {
+        string named = program.Trim().Trim('"').Trim();
+        if (named is "%" + Variable + "%" or "$" + Variable or "${" + Variable + "}" or "$(" + Variable + ")"
+            || (windows && named.Equals("%" + Variable + "%", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+        char[] separators = windows ? ['/', '\\'] : ['/'];
+        string[] parts = named.TrimEnd(separators).Split(separators);
+        string name = parts[^1];
+        if (name.EndsWith(".app", StringComparison.OrdinalIgnoreCase) || parts is [.., { } bundle, "Contents", "MacOS", _] && bundle.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+        {
+            return (name.EndsWith(".app", StringComparison.OrdinalIgnoreCase) ? name : parts[^4]).StartsWith("Godot", StringComparison.OrdinalIgnoreCase);
+        }
+        string bare = windows && name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name[..^".exe".Length] : name;
+        return Names.Contains(bare, StringComparer.OrdinalIgnoreCase) || DownloadVersion().IsMatch(name);
     }
 
     /// <summary>The Godot a Windows console wrapper starts (Godot_v4.7_console.exe starts Godot_v4.7.exe beside it), or

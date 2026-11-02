@@ -192,9 +192,18 @@ public sealed record RunConfiguration
     public string? Unsupported { get; init; }
 
     /// <summary>Whether it runs a Godot project's game or editor on Godot among these projects (<see cref="GodotLaunch"/>):
-    /// one of a project Godot.NET.Sdk builds that names no program of its own.</summary>
+    /// one of a project Godot.NET.Sdk builds that names no program of its own, or names Godot as a launch profile does
+    /// (<see cref="NamesGodot"/>).</summary>
     public bool RunsGodot(IEnumerable<ProjectModel> projects) =>
-        !IsContainer && Program.Length == 0 && (RunsScriptGame || projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project))?.GodotFolder is not null);
+        !IsContainer && (Program.Length == 0 || NamesGodot) && (RunsScriptGame || projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, Project))?.GodotFolder is not null);
+
+    /// <summary>Whether the program it names is Godot (%GODOT%, a path to a Godot executable: <see cref="GodotExecutables.NamesGodot"/>),
+    /// which for a Godot project's runs its game as one naming no program does, on the Godot Settings names or the one found.</summary>
+    [JsonIgnore]
+    public bool NamesGodot => Program.Length > 0 && GodotExecutables.NamesGodot(Program, OperatingSystem.IsWindows());
+
+    /// <summary>Whether it runs its project's own program among these projects: it names none, or Godot for a Godot project's game.</summary>
+    public bool NamesNoOtherProgram(IEnumerable<ProjectModel> projects) => Program.Length == 0 || RunsGodot(projects);
 
     /// <summary>Whether it runs a Godot project of GDScript alone, its project.godot its project (<see cref="ProjectModel.IsScriptGame"/>):
     /// no C# project is built or debugged for it.</summary>
@@ -300,6 +309,9 @@ public sealed record RunConfiguration
             LaunchProfile = profile.Name,
             Program = profile.RunsProject ? string.Empty : profile.ExecutablePath ?? string.Empty,
             Arguments = profile.CommandLineArgs ?? string.Empty,
+            // A Godot project's profile running Godot on it with --editor opens its editor, as the editor's configuration does.
+            GodotEditor = project.GodotFolder is not null && !profile.RunsProject && profile.ExecutablePath is { } program
+                && GodotExecutables.NamesGodot(program, OperatingSystem.IsWindows()) && GodotExecutables.OpensEditor(CommandLine.Split(profile.CommandLineArgs)),
             Environment = profile.Environment(),
             WorkingDirectory = string.IsNullOrWhiteSpace(profile.WorkingDirectory) ? DotnetRunFolder : profile.WorkingDirectory,
             LaunchBrowser = profile.LaunchBrowser,

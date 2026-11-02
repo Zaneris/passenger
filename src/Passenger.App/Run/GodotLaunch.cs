@@ -6,8 +6,9 @@ namespace Passenger.App.Run;
 
 /// <summary>A Godot project's game and editor as a launch starts them: on the Godot Settings names (its command line's
 /// program, its arguments given every start), else the one found (<see cref="GodotExecutables"/>), with <c>--path</c>
-/// naming the project's folder, and <c>--editor</c> for its editor. Godot loads the project's C# itself, from the
-/// assembly its build makes there.</summary>
+/// naming the project's folder, and <c>--editor</c> for its editor; a launch profile running Godot on the project
+/// (%GODOT%) runs its game so too, its own arguments after. Godot loads the project's C# itself, from the assembly its
+/// build makes there.</summary>
 public static class GodotLaunch
 {
     /// <summary>The Godot to run, as the setting's command line names it or as found without it; null when none is.</summary>
@@ -58,11 +59,11 @@ public static class GodotLaunch
         return words is [{ Length: > 0 } program, ..] ? (program, [.. words.Skip(1)]) : null;
     }
 
-    /// <summary>The plan of a Godot project's configuration that names no program of its own: its game, or its editor on the
-    /// scene of the file at hand (<see cref="GodotProject.SceneOf"/>), on the Godot found, its arguments after those that start
-    /// it, in its working folder or the Godot project's, headless where nobody sees it (<paramref name="unseen"/>); of GDScript
-    /// alone (no <paramref name="target"/>) on any Godot 4, nothing built. A <see cref="LaunchException"/> says why not: no
-    /// project.godot or Godot, a Godot.NET.Sdk (<paramref name="sdk"/>) newer than it, no scene, another assembly than it builds.</summary>
+    /// <summary>The plan of a Godot project's configuration that names no program of its own, or Godot: its game, or its editor
+    /// on the scene of the file at hand (<see cref="GodotProject.SceneOf"/>), on the Godot found, its arguments after those that
+    /// start it, in its working folder or the Godot project's, headless where nobody sees it (<paramref name="unseen"/>); of
+    /// GDScript alone (no <paramref name="target"/>) on any Godot 4, nothing built. A <see cref="LaunchException"/> says why not:
+    /// no project.godot or Godot, a Godot.NET.Sdk (<paramref name="sdk"/>) newer than it, no scene, another assembly or folder.</summary>
     internal static async Task<LaunchPlan> PlanAsync(RunConfiguration configuration, ProjectModel project, string folder, string? target, string? framework,
         Func<string, string> expand, IReadOnlyDictionary<string, string> environment, string? setting, string? sdk, bool unseen, CancellationToken cancel, string? atHand = null)
     {
@@ -83,7 +84,23 @@ public static class GodotLaunch
             throw new LaunchException($"{configuration.Name} cannot run: Godot loads the game's C# from {loaded}.dll, as its {GodotProject.FileName}'s dotnet/project/assembly_name "
                 + $"says, but {project.Name} builds {Path.GetFileName(target)}: name the one assembly in both");
         }
+        string working = configuration.WorkingDirectory is { Length: > 0 } given
+            ? Path.TrimEndingDirectorySeparator(PathNames.Canonical(Path.Combine(project.Folder, expand(given))))
+            : folder;
         IReadOnlyList<string> own = CommandLine.Split(expand(configuration.Arguments));
+        if (configuration.NamesGodot)
+        {
+            // A launch profile running Godot names the project itself, which the launch names once below.
+            own = GodotExecutables.WithoutPath(own, working, folder) ?? throw new LaunchException($"{configuration.Name} cannot run: it runs Godot with a --path that is not "
+                + $"{project.Name}'s Godot project ({folder}): make its --path name that folder, or leave it out");
+            own = configuration.GodotEditor ? [.. own.Where(a => !GodotExecutables.IsEditorFlag(a))] : own;
+            if (string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable(GodotExecutables.Variable))
+                && !environment.Keys.Any(k => string.Equals(k, GodotExecutables.Variable, StringComparison.OrdinalIgnoreCase)))
+            {
+                // What the profile named, for the game and the tools it starts.
+                environment = new Dictionary<string, string>(environment, StringComparer.Ordinal) { [GodotExecutables.Variable] = found.Executable };
+            }
+        }
         string? starts = configuration.GodotEditor ? null : configuration.GodotScene;
         if (starts == RunConfiguration.CurrentScene)
         {
@@ -120,9 +137,6 @@ public static class GodotLaunch
         }
         int leading = arguments.Count;
         arguments.AddRange(own);
-        string working = configuration.WorkingDirectory is { Length: > 0 } given
-            ? Path.TrimEndingDirectorySeparator(PathNames.Canonical(Path.Combine(project.Folder, expand(given))))
-            : folder;
         return new LaunchPlan
         {
             Name = configuration.Name,
