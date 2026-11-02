@@ -7,7 +7,8 @@ namespace Passenger.App.Workspace;
 
 /// <summary>What a folder's window had open, kept in the folder's place in the store: the editors' splits, tabs (pinned
 /// or not) and carets, the editor windows, the recent files, the projects unloaded, the target frameworks chosen and the
-/// files' folds, so opening the folder again brings them back. Only the window a person uses keeps it, as with the layout.</summary>
+/// files' folds and whether Godot's script editor was offered, so opening the folder again brings them back. Only the window a
+/// person uses keeps it, as with the layout.</summary>
 public sealed record WorkspaceState : IStateDocument<WorkspaceState>
 {
     public EditorLayout? Editors { get; init; }
@@ -26,6 +27,9 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
 
     /// <summary>The folds of the files opened lately, each as it closed, the latest first.</summary>
     public List<KeptFolds> Folds { get; init; } = [];
+
+    /// <summary>Whether the banner's offer of Passenger as Godot's script editor was taken or dismissed, never to come again.</summary>
+    public bool GodotEditorOffered { get; init; }
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 

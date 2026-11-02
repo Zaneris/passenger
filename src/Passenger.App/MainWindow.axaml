@@ -120,6 +120,8 @@
         <DockPanel Grid.Row="1">
             <!-- What .NET the machine or the folder lacks, with its fix (MainWindow.Dotnet.cs). -->
             <app:Banner Name="DotnetBanner" />
+            <!-- A Godot project's offer of Passenger as Godot's script editor, made once (MainWindow.GodotEditor.cs). -->
+            <app:Banner Name="GodotBanner" />
             <!-- Tool windows round the editor: stripes of their buttons down both edges. -->
             <docking:DockHost Name="Dock">
                 <docking:DockHost.Center>

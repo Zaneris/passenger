@@ -9,9 +9,16 @@ namespace Passenger.App;
 /// told, in its version's editor settings file, to open its C# scripts and its other scripts in this Passenger at their
 /// line, which a launch then hands to the window on the project (<see cref="LaunchHandOff"/>). It asks first, showing
 /// what it writes and where, then says what it changed; where the file cannot be read or written, it shows the values to
-/// set in Godot's Editor Settings instead.</summary>
+/// set in Godot's Editor Settings instead. A Godot project's first opening in a person's window offers it in the banner
+/// over the editor, once: taken or dismissed, never again for that folder (<see cref="Workspace.WorkspaceState.GodotEditorOffered"/>).</summary>
 public partial class MainWindow
 {
+    /// <summary>Whether the open folder's offer of Passenger as Godot's script editor was taken or dismissed.</summary>
+    private bool godotEditorOffered;
+
+    /// <summary>The folder whether to offer it was last looked at for, so a folder is looked at once a window.</summary>
+    private string? godotOfferLooked;
+
     private void AddGodotEditor()
     {
         actions!.Add(new IdeAction(AppActions.GodotScriptEditor, "Make Passenger Godot's Script Editor…", "Godot", _ => IdeErrors.Observe(MakeGodotScriptEditorAsync()))
@@ -21,7 +28,56 @@ public partial class MainWindow
             Words = ["Godot", "External Editor", "Exec Path"],
             Works = AppActions.GodotScriptEditor,
         });
+        GodotBanner.Link(actions[AppActions.GodotScriptEditor]!.Title, () =>
+        {
+            GodotEditorOffered();
+            Request(AppActions.GodotScriptEditor);
+        });
+        GodotBanner.Link("Dismiss", GodotEditorOffered);
     }
+
+    /// <summary>What the banner over the editor says of Godot's script editor, null while it says nothing.</summary>
+    public string? GodotSaid => GodotBanner.Said;
+
+    /// <summary>The offer taken or dismissed: gone, and kept with the folder so it never comes again.</summary>
+    private void GodotEditorOffered()
+    {
+        godotEditorOffered = true;
+        GodotBanner.Say(null);
+        KeepWorkspace();
+    }
+
+    /// <summary>Offers Passenger as Godot's script editor in the banner where the folder is a Godot project a person's window
+    /// keeps, not yet offered, and the Godot found can take it and does not open its scripts here already; looked at off
+    /// the window's thread, once a folder.</summary>
+    private void OfferGodotEditor()
+    {
+        UiThread.Check();
+        if (!keepsWorkspace || godotEditorOffered || Folder is not { } folder || godotOfferLooked == folder || GodotFolder() is null)
+        {
+            return;
+        }
+        godotOfferLooked = folder;
+        IdeErrors.Observe(OfferGodotEditorAsync(folder));
+    }
+
+    private async Task OfferGodotEditorAsync(string folder)
+    {
+        string? setting = settings.GodotExecutable;
+        bool scripts = !Projects.Any(p => p.GodotFolder is not null);
+        IReadOnlyDictionary<string, string>? folders = GodotFolders;
+        IReadOnlyList<KeyValuePair<string, object>> values = GodotEditorSettings.ForPassenger(ScriptEditor);
+        GodotSetUp found = await BackgroundWork.Run(() => GodotSetUp.Of(GodotLaunch.Found(setting), scripts, folders));
+        if (Folder != folder || godotEditorOffered || found.Problem is not null
+            || found.Values is { } now && values.All(v => now.TryGetValue(v.Key, out object? had) && Equals(had, v.Value)))
+        {
+            return;
+        }
+        GodotBanner.Say($"Godot {found.Version}'s editor can open this project's scripts in Passenger, at their line");
+    }
+
+    /// <summary>The program Godot's editor is told to open its scripts in: this Passenger.</summary>
+    private static string ScriptEditor => Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
 
     /// <summary>The open folder's Godot project: a project of it on Godot.NET.Sdk beside a project.godot, else the folder
     /// itself holding one.</summary>
@@ -39,8 +95,7 @@ public partial class MainWindow
         }
         using (work)
         {
-            string executable = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
-            IReadOnlyList<KeyValuePair<string, object>> values = GodotEditorSettings.ForPassenger(executable);
+            IReadOnlyList<KeyValuePair<string, object>> values = GodotEditorSettings.ForPassenger(ScriptEditor);
             string? setting = settings.GodotExecutable;
             // A Godot project of GDScript alone takes any Godot 4, .NET or not.
             bool scripts = !Projects.Any(p => p.GodotFolder is not null);

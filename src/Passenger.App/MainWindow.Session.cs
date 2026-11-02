@@ -395,8 +395,12 @@ public partial class MainWindow
             if (session == next)
             {
                 ShowDotnet();
+                OfferGodotEditor();
             }
         };
+        // Another folder's offer is not this one's.
+        GodotBanner.Say(null);
+        godotEditorOffered = false;
         ShowDotnet();
         ShowSdk();
         unreadSaid = null;

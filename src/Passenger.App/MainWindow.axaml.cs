@@ -790,6 +790,7 @@ public partial class MainWindow : IdeWindow
         UnloadedProjects = [.. session.KeptUnloaded],
         TargetFrameworks = session.Frameworks.Kept,
         Folds = session.Folds.Capture(Editors.Documents),
+        GodotEditorOffered = godotEditorOffered,
     });
 
     /// <summary>The open folder's state as the store kept it, once the window keeps state: its layout (else the one
@@ -832,6 +833,8 @@ public partial class MainWindow : IdeWindow
         {
             session.Opened(shown.Path);
         }
+        godotEditorOffered = kept.GodotEditorOffered;
+        OfferGodotEditor();
     }
 
     /// <summary>The Structure tool window, built as it is first shown or asked for.</summary>

@@ -69,9 +69,29 @@ public sealed record GodotCallable
     public override string ToString() => "<Callable>";
 }
 
-/// <summary>A Dictionary, its entries in order.</summary>
+/// <summary>What a typed container holds, as its encoding names it: nothing (Kind 0, any value), a built-in type (1), a
+/// class by its name (2), or a script by its path (3).</summary>
+public readonly record struct GodotElement(int Kind, GodotType Type, string Name)
+{
+    public static GodotElement Any => default;
+
+    public static GodotElement Of(GodotType type) => type == GodotType.Nil ? default : new GodotElement(1, type, string.Empty);
+}
+
+/// <summary>An Array as read, its items in order, and what it is typed to hold (<see cref="GodotElement.Any"/> for an
+/// untyped one), which a value sent back keeps: a typed member refuses an untyped array.</summary>
+public sealed class GodotArray(IEnumerable<object?> items) : List<object?>(items)
+{
+    public GodotElement Element { get; init; }
+}
+
+/// <summary>A Dictionary, its entries in order, and what its keys and values are typed to hold.</summary>
 public sealed record GodotDictionary(IReadOnlyList<KeyValuePair<object?, object?>> Entries)
 {
+    public GodotElement KeyType { get; init; }
+
+    public GodotElement ValueType { get; init; }
+
     public override string ToString() => Entries.Count == 0 ? "{}"
         : $"{{ {string.Join(", ", Entries.Select(e => $"{GodotVariant.Shown(e.Key, quoted: true)}: {GodotVariant.Shown(e.Value, quoted: true)}"))} }}";
 }
@@ -146,12 +166,12 @@ public static class GodotVariant
             case GodotType.Signal:
                 return new GodotSignal(Text(bytes, ref at), (ulong)Long(bytes, ref at));
             case GodotType.Dictionary:
-                ContainerType(bytes, ref at, (header >> 16) & 3);
-                ContainerType(bytes, ref at, (header >> 18) & 3);
-                return Dictionary(bytes, ref at, depth);
+                GodotElement keys = ContainerType(bytes, ref at, (header >> 16) & 3);
+                GodotElement values = ContainerType(bytes, ref at, (header >> 18) & 3);
+                return Dictionary(bytes, ref at, depth) with { KeyType = keys, ValueType = values };
             case GodotType.Array:
-                ContainerType(bytes, ref at, (header >> 16) & 3);
-                return Array(bytes, ref at, depth);
+                GodotElement items = ContainerType(bytes, ref at, (header >> 16) & 3);
+                return new GodotArray(Array(bytes, ref at, depth)) { Element = items };
             case GodotType.PackedByteArray:
                 return PackedBytes(bytes, ref at);
             case GodotType.PackedInt32Array:
@@ -172,7 +192,7 @@ public static class GodotVariant
     }
 
     /// <summary>The bytes of a value: null, bool, a whole number, a real one, a string, a name, a node path, a math value,
-    /// an object's id, a dictionary, a list or a string array.</summary>
+    /// an object's id, a dictionary, a list or a packed array.</summary>
     public static byte[] Write(object? value)
     {
         List<byte> bytes = [];
@@ -254,8 +274,54 @@ public static class GodotVariant
                     PutText(bytes, text + "\0");
                 }
                 break;
+            case byte[] packed:
+                Put(bytes, (uint)GodotType.PackedByteArray);
+                Put(bytes, (uint)packed.Length);
+                bytes.AddRange(packed);
+                for (int i = 0; i < Pad(packed.Length); i++)
+                {
+                    bytes.Add(0);
+                }
+                break;
+            case int[] packed:
+                Put(bytes, (uint)GodotType.PackedInt32Array);
+                Put(bytes, (uint)packed.Length);
+                foreach (int item in packed)
+                {
+                    Put(bytes, (uint)item);
+                }
+                break;
+            case long[] packed:
+                Put(bytes, (uint)GodotType.PackedInt64Array);
+                Put(bytes, (uint)packed.Length);
+                foreach (long item in packed)
+                {
+                    PutLong(bytes, item);
+                }
+                break;
+            case float[] packed:
+                Put(bytes, (uint)GodotType.PackedFloat32Array);
+                Put(bytes, (uint)packed.Length);
+                foreach (float item in packed)
+                {
+                    Put(bytes, BitConverter.SingleToUInt32Bits(item));
+                }
+                break;
+            case double[] packed:
+                Put(bytes, (uint)GodotType.PackedFloat64Array);
+                Put(bytes, (uint)packed.Length);
+                foreach (double item in packed)
+                {
+                    PutLong(bytes, BitConverter.DoubleToInt64Bits(item));
+                }
+                break;
+            case GodotMath[] packed:
+                WritePacked(bytes, packed);
+                break;
             case GodotDictionary dictionary:
-                Put(bytes, (uint)GodotType.Dictionary);
+                Put(bytes, (uint)GodotType.Dictionary | (uint)(dictionary.KeyType.Kind << 16) | (uint)(dictionary.ValueType.Kind << 18));
+                PutContainerType(bytes, dictionary.KeyType);
+                PutContainerType(bytes, dictionary.ValueType);
                 Put(bytes, (uint)dictionary.Entries.Count);
                 foreach ((object? key, object? entry) in dictionary.Entries)
                 {
@@ -265,7 +331,9 @@ public static class GodotVariant
                 break;
             case IEnumerable<object?> items:
                 List<object?> all = [.. items];
-                Put(bytes, (uint)GodotType.Array);
+                GodotElement typed = items is GodotArray array ? array.Element : default;
+                Put(bytes, (uint)GodotType.Array | (uint)(typed.Kind << 16));
+                PutContainerType(bytes, typed);
                 Put(bytes, (uint)all.Count);
                 foreach (object? item in all)
                 {
@@ -276,6 +344,146 @@ public static class GodotVariant
                 throw new GodotVariantException($"A {value.GetType().Name} has no Variant to write");
         }
     }
+
+    /// <summary>Vectors or colours as the packed array of their type, in single precision as Godot keeps them.</summary>
+    private static void WritePacked(List<byte> bytes, GodotMath[] packed)
+    {
+        GodotType each = packed.Length > 0 ? packed[0].Type : GodotType.Vector2;
+        GodotType type = each switch
+        {
+            GodotType.Vector2 => GodotType.PackedVector2Array,
+            GodotType.Vector3 => GodotType.PackedVector3Array,
+            GodotType.Vector4 => GodotType.PackedVector4Array,
+            GodotType.Color => GodotType.PackedColorArray,
+            _ => throw new GodotVariantException($"A {each} has no packed array"),
+        };
+        Put(bytes, (uint)type);
+        Put(bytes, (uint)packed.Length);
+        foreach (GodotMath item in packed)
+        {
+            if (item.Type != each)
+            {
+                throw new GodotVariantException($"A packed array of {each} cannot hold a {item.Type}");
+            }
+            foreach (double value in item.Values)
+            {
+                Put(bytes, BitConverter.SingleToUInt32Bits((float)value));
+            }
+        }
+    }
+
+    /// <summary>A Variant type's name as Godot writes it ("int", "Vector2i", "AABB"); "Variant" for Nil, any value.</summary>
+    public static string TypeName(GodotType type) => type switch
+    {
+        GodotType.Nil => "Variant",
+        GodotType.Bool => "bool",
+        GodotType.Int => "int",
+        GodotType.Float => "float",
+        GodotType.Vector2I => "Vector2i",
+        GodotType.Vector3I => "Vector3i",
+        GodotType.Vector4I => "Vector4i",
+        GodotType.Rect2I => "Rect2i",
+        GodotType.Aabb => "AABB",
+        GodotType.Rid => "RID",
+        _ => type.ToString(),
+    };
+
+    /// <summary>The Variant type of a value as read (<see cref="Read(ReadOnlySpan{byte})"/>).</summary>
+    public static GodotType TypeOf(object? value) => value switch
+    {
+        null => GodotType.Nil,
+        bool => GodotType.Bool,
+        long or int => GodotType.Int,
+        double or float => GodotType.Float,
+        string => GodotType.String,
+        GodotName => GodotType.StringName,
+        GodotNodePath => GodotType.NodePath,
+        GodotMath math => math.Type,
+        GodotRid => GodotType.Rid,
+        GodotObjectId or GodotObject => GodotType.Object,
+        GodotCallable => GodotType.Callable,
+        GodotSignal => GodotType.Signal,
+        GodotDictionary => GodotType.Dictionary,
+        byte[] => GodotType.PackedByteArray,
+        int[] => GodotType.PackedInt32Array,
+        long[] => GodotType.PackedInt64Array,
+        float[] => GodotType.PackedFloat32Array,
+        double[] => GodotType.PackedFloat64Array,
+        string[] => GodotType.PackedStringArray,
+        GodotMath[] { Length: > 0 } packed => packed[0].Type switch
+        {
+            GodotType.Vector3 => GodotType.PackedVector3Array,
+            GodotType.Vector4 => GodotType.PackedVector4Array,
+            GodotType.Color => GodotType.PackedColorArray,
+            _ => GodotType.PackedVector2Array,
+        },
+        GodotMath[] => GodotType.PackedVector2Array,
+        _ => GodotType.Array,
+    };
+
+    /// <summary>A new value of a type, as Godot makes one: zero, false, empty, a colour opaque black; null for a type with no
+    /// value a person types.</summary>
+    public static object? Default(GodotType type) => type switch
+    {
+        GodotType.Bool => false,
+        GodotType.Int => 0L,
+        GodotType.Float => 0.0,
+        GodotType.String => string.Empty,
+        GodotType.StringName => new GodotName(string.Empty),
+        GodotType.NodePath => new GodotNodePath([], [], false),
+        GodotType.Color => new GodotMath(type, [0, 0, 0, 1]),
+        GodotType.Quaternion => new GodotMath(type, [0, 0, 0, 1]),
+        GodotType.Basis => new GodotMath(type, [1, 0, 0, 0, 1, 0, 0, 0, 1]),
+        GodotType.Transform2D => new GodotMath(type, [1, 0, 0, 1, 0, 0]),
+        GodotType.Transform3D => new GodotMath(type, [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]),
+        GodotType.Projection => new GodotMath(type, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+        _ when Count(type) > 0 => new GodotMath(type, new double[Count(type)]),
+        GodotType.Array => new GodotArray([]),
+        GodotType.Dictionary => new GodotDictionary([]),
+        _ => null,
+    };
+
+    /// <summary>What a packed array holds each of: an int's, a float's, a string's, a vector's or a colour's type; Nil for any
+    /// other type.</summary>
+    public static GodotType ElementOf(GodotType packed) => packed switch
+    {
+        GodotType.PackedByteArray or GodotType.PackedInt32Array or GodotType.PackedInt64Array => GodotType.Int,
+        GodotType.PackedFloat32Array or GodotType.PackedFloat64Array => GodotType.Float,
+        GodotType.PackedStringArray => GodotType.String,
+        GodotType.PackedVector2Array => GodotType.Vector2,
+        GodotType.PackedVector3Array => GodotType.Vector3,
+        GodotType.PackedVector4Array => GodotType.Vector4,
+        GodotType.PackedColorArray => GodotType.Color,
+        _ => GodotType.Nil,
+    };
+
+    /// <summary>A list's or packed array's items as values, in order; null for a value that holds no items.</summary>
+    public static IReadOnlyList<object?>? Items(object? value) => value switch
+    {
+        List<object?> items => items,
+        string[] strings => strings,
+        GodotMath[] packed => packed,
+        byte[] packed => [.. packed.Select(b => (object?)(long)b)],
+        int[] packed => [.. packed.Select(i => (object?)(long)i)],
+        long[] packed => [.. packed.Select(i => (object?)i)],
+        float[] packed => [.. packed.Select(f => (object?)(double)f)],
+        double[] packed => [.. packed.Select(d => (object?)d)],
+        _ => null,
+    };
+
+    /// <summary>Items as a value of a container's type: an array typed as <paramref name="element"/> says for an Array, else
+    /// the packed array of that type, each item as it takes them.</summary>
+    public static object? Packed(GodotType type, IReadOnlyList<object?> items, GodotElement element = default) => type switch
+    {
+        GodotType.PackedByteArray => items.Select(i => (byte)Convert.ToInt64(i, CultureInfo.InvariantCulture)).ToArray(),
+        GodotType.PackedInt32Array => items.Select(i => (int)Convert.ToInt64(i, CultureInfo.InvariantCulture)).ToArray(),
+        GodotType.PackedInt64Array => items.Select(i => Convert.ToInt64(i, CultureInfo.InvariantCulture)).ToArray(),
+        GodotType.PackedFloat32Array => items.Select(i => (float)Convert.ToDouble(i, CultureInfo.InvariantCulture)).ToArray(),
+        GodotType.PackedFloat64Array => items.Select(i => Convert.ToDouble(i, CultureInfo.InvariantCulture)).ToArray(),
+        GodotType.PackedStringArray => items.Select(i => i as string ?? string.Empty).ToArray(),
+        GodotType.PackedVector2Array or GodotType.PackedVector3Array or GodotType.PackedVector4Array or GodotType.PackedColorArray => items.OfType<GodotMath>().ToArray(),
+        _ => new GodotArray(items) { Element = element },
+    };
 
     private static void WriteMath(List<byte> bytes, GodotMath math)
     {
@@ -373,16 +581,24 @@ public static class GodotVariant
         return new GodotObject(type, properties);
     }
 
-    /// <summary>Passes over a typed container's element type: a builtin type's number, or a class's or script's name.</summary>
-    private static void ContainerType(ReadOnlySpan<byte> bytes, ref int at, uint kind)
+    /// <summary>A typed container's element type: a builtin type's number, or a class's or script's name.</summary>
+    private static GodotElement ContainerType(ReadOnlySpan<byte> bytes, ref int at, uint kind) => kind switch
     {
-        if (kind == 1)
+        1 => new GodotElement(1, (GodotType)UInt(bytes, ref at), string.Empty),
+        2 or 3 => new GodotElement((int)kind, GodotType.Object, Text(bytes, ref at)),
+        _ => default,
+    };
+
+    /// <summary>Writes a typed container's element type as <see cref="ContainerType"/> reads it.</summary>
+    private static void PutContainerType(List<byte> bytes, GodotElement element)
+    {
+        if (element.Kind == 1)
         {
-            UInt(bytes, ref at);
+            Put(bytes, (uint)element.Type);
         }
-        else if (kind is 2 or 3)
+        else if (element.Kind is 2 or 3)
         {
-            Text(bytes, ref at);
+            PutText(bytes, element.Name);
         }
     }
 
@@ -663,6 +879,48 @@ public static class GodotVariant
         }
         (object? read, string? error) = await script(text);
         return error is null ? (read, null) : (null, $"{wanted}, or GDScript that reads as one ({error})");
+    }
+
+    /// <summary>A value as typed text reads with no type to read it as: null, true or false, a whole or real number, a
+    /// string's literal (a name's after &amp;, a node path's after ^), a vector's two to four numbers in parentheses; else
+    /// the text as typed, a string.</summary>
+    public static object? Guessed(string text)
+    {
+        string trimmed = text.Trim();
+        if (trimmed == "null")
+        {
+            return null;
+        }
+        if (trimmed is "true" or "false")
+        {
+            return trimmed == "true";
+        }
+        if (long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out long whole))
+        {
+            return whole;
+        }
+        if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out double real))
+        {
+            return real;
+        }
+        if (Literal(trimmed) is { } said)
+        {
+            return trimmed[0] switch
+            {
+                '&' => new GodotName(said),
+                '^' => Parse(GodotType.NodePath, said).Value,
+                _ => said,
+            };
+        }
+        if (trimmed.StartsWith('(') && trimmed.EndsWith(')') && trimmed[1..^1].Split(',', StringSplitOptions.TrimEntries) is { Length: >= 2 and <= 4 } parts)
+        {
+            GodotType vector = parts.Length switch { 2 => GodotType.Vector2, 3 => GodotType.Vector3, _ => GodotType.Vector4 };
+            if (Parse(vector, trimmed) is ({ } read, null))
+            {
+                return read;
+            }
+        }
+        return text;
     }
 
     /// <summary>What a GDScript string literal says (one in quotes, a name's after &amp;, a node path's after ^, its escapes

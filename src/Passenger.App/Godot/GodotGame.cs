@@ -816,6 +816,29 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         return GodotScriptRead.Read(said, asks) ?? throw new LiveAppException($"Passenger's helper in {Name} answered with values Passenger could not read");
     }
 
+    /// <summary>The object a node's property holds (a resource), by its id, class and file, read through Passenger's helper:
+    /// the game sends a resource loaded from a file by its path alone. One sent by its id is that id.</summary>
+    public async Task<(ulong Id, string Class, string Path)> HeldAsync(long element, string property)
+    {
+        UiThread.Check();
+        if (InspectedOf(element)?.Properties.FirstOrDefault(p => p.Name == property)?.Value is GodotObjectId { } sent)
+        {
+            heldObjects.Add(sent.Id);
+            return (sent.Id, inspected.GetValueOrDefault(sent.Id)?.Class ?? string.Empty, string.Empty);
+        }
+        List<object?> said = await AskAsync("held", element, property);
+        if (said is not [long id, string named, string path, ..])
+        {
+            throw new LiveAppException($"Passenger's helper in {Name} said no object for {property}");
+        }
+        heldObjects.Add((ulong)id);
+        return ((ulong)id, named, path);
+    }
+
+    /// <summary>The objects nodes' properties hold that were read by their ids (<see cref="HeldAsync"/>), whose values set are
+    /// none of <see cref="Tuning"/>'s.</summary>
+    private readonly HashSet<ulong> heldObjects = [];
+
     /// <summary>Has the game make Passenger's helper beside the scene its live editing names, its script the file written.</summary>
     private async Task BringAsync()
     {
@@ -1079,7 +1102,8 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         await SetValueAsync(element, value.Name, read);
     }
 
-    /// <summary>Sets a node's property to a value of its type, recorded among the values set (<see cref="Tuning"/>).</summary>
+    /// <summary>Sets an object's property to a value of its type: a node's recorded among the values set (<see cref="Tuning"/>),
+    /// a resource's a node holds not (<see cref="HeldAsync"/>), as Keep writes a node's.</summary>
     public async Task SetValueAsync(long element, string name, object? value)
     {
         UiThread.Check();
@@ -1088,7 +1112,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             throw new LiveAppException(why);
         }
         GodotProperty property = inspected[(ulong)element].Properties.First(p => p.Name == name);
-        Tuning.Set((ulong)element, PlaceOf((ulong)element) ?? new GodotNodePlace([], null), property, value);
+        if (!heldObjects.Contains((ulong)element))
+        {
+            Tuning.Set((ulong)element, PlaceOf((ulong)element) ?? new GodotNodePlace([], null), property, value);
+        }
         await SetPropertyAsync((ulong)element, name, value);
     }
 

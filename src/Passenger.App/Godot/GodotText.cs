@@ -35,7 +35,42 @@ public static class GodotText
         GodotName name => "&" + Quoted(name.Name),
         GodotNodePath path => $"NodePath({Quoted(path.ToString())})",
         GodotMath math => $"{SceneName(math.Type)}({string.Join(", ", math.Values.Select(v => math.Type is GodotType.Vector2I or GodotType.Vector3I or GodotType.Vector4I or GodotType.Rect2I ? ((long)v).ToString(CultureInfo.InvariantCulture) : Number(v)))})",
+        GodotDictionary dictionary => Each(dictionary.Entries.SelectMany(e => new[] { e.Key, e.Value })) is { } parts
+            ? Typed($"{{{string.Join(", ", parts.Chunk(2).Select(p => $"{p[0]}: {p[1]}"))}}}", dictionary.KeyType, dictionary.ValueType)
+            : null,
+        List<object?> items => Each(items) is { } parts ? Typed($"[{string.Join(", ", parts)}]", items is GodotArray typed ? typed.Element : default, null) : null,
+        string[] or byte[] or int[] or long[] or float[] or double[] or GodotMath[] => GodotVariant.Items(value) is { } items && Each(items) is { } parts
+            ? $"{SceneName(GodotVariant.TypeOf(value))}({string.Join(", ", value is GodotMath[] ? parts.Select(p => p[(p.IndexOf('(', StringComparison.Ordinal) + 1)..^1]) : parts)})"
+            : null,
         _ => null,
+    };
+
+    /// <summary>Each value as a scene writes it, or null where one cannot be written.</summary>
+    private static List<string>? Each(IEnumerable<object?> values)
+    {
+        List<string> written = [];
+        foreach (object? value in values)
+        {
+            if (Scene(value) is not { } one)
+            {
+                return null;
+            }
+            written.Add(one);
+        }
+        return written;
+    }
+
+    /// <summary>A container's text in its type's form where it is typed ("Array[int]([1, 2])"); as it is where it is not.</summary>
+    private static string Typed(string text, GodotElement first, GodotElement? second) =>
+        first.Kind == 0 && second is not { Kind: not 0 } ? text
+        : second is { } values ? $"Dictionary[{ElementName(first)}, {ElementName(values)}]({text})"
+        : $"Array[{ElementName(first)}]({text})";
+
+    private static string ElementName(GodotElement element) => element.Kind switch
+    {
+        0 => "Variant",
+        1 => GodotVariant.TypeName(element.Type),
+        _ => element.Name,
     };
 
     /// <summary>A scalar real as a scene writes it: a whole one with ".0", so it reads back as a real.</summary>
@@ -62,15 +97,7 @@ public static class GodotText
     }
 
     /// <summary>A Variant type's name as a scene writes a value of it.</summary>
-    private static string SceneName(GodotType type) => type switch
-    {
-        GodotType.Vector2I => "Vector2i",
-        GodotType.Vector3I => "Vector3i",
-        GodotType.Vector4I => "Vector4i",
-        GodotType.Rect2I => "Rect2i",
-        GodotType.Aabb => "AABB",
-        _ => type.ToString(),
-    };
+    private static string SceneName(GodotType type) => GodotVariant.TypeName(type);
 
     /// <summary>A value as C# writes a member's default, for the member's declared type (<paramref name="declared"/>: "float",
     /// "double", an enum's name), or null for one C# is not written for here. An enum's value is its name among the

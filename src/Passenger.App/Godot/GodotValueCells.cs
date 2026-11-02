@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.LiveTree;
 using Passenger.App.Xaml;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Inspector;
 using Passenger.Xaml.Features;
@@ -30,8 +31,9 @@ public interface IGodotTuner
 
 /// <summary>The properties pane's editors for a running Godot game's values, each fit for its value as its type and hint
 /// read (<see cref="GodotHints"/>): a check box, a slider within a range, a choice of names, a colour's swatch that opens the
-/// colour picker, axes that scrub, a resource's thumbnail that opens the project's resources. A value lands in the game as
-/// the pointer moves, and a value changed is noted under its row with what it was, and Keep.</summary>
+/// colour picker, axes that scrub, a resource's thumbnail that opens the project's resources and its Properties its own, an
+/// array's or a dictionary's words that open its items or entries. A value lands in the game as the pointer moves, and a
+/// value changed is noted under its row with what it was, and Keep.</summary>
 public sealed class GodotValueCells(GodotGame game, IGodotTuner tuner) : ILiveValueCells
 {
     public GodotGame Game => game;
@@ -54,7 +56,8 @@ internal sealed class GodotValueCell : LiveValueCell
     private ComboBox? choice;
     private (Button Button, Border Swatch, TextBlock Hex)? colour;
     private (UniformGrid Panel, List<ScrubField> Fields)? axes;
-    private (Button Button, Image Thumbnail, TextBlock Name)? resource;
+    private (DockPanel Panel, Button Button, Image Thumbnail, TextBlock Name, Button Properties)? resource;
+    private (Button Button, TextBlock Words)? items;
 
     private long element;
     private GodotProperty? property;
@@ -95,12 +98,15 @@ internal sealed class GodotValueCell : LiveValueCell
         this.element = element;
         property = game.InspectedOf(element)?.Properties.FirstOrDefault(p => p.Name == value.Name);
         bool notes = property is not null && game.Tuning.Of((ulong)element, value.Name) is { Changed: true } tuned && Noted(tuned);
-        if (property is null || game.WhyNotSet(element, value.Name) is not null)
+        if (property is null)
         {
             return (false, notes);
         }
         hint = GodotHints.Of(property);
-        if (hint.Editing == GodotEditing.Text)
+        string? whyNot = game.WhyNotSet(element, value.Name);
+        // A resource's own properties are read and set by its id, however the node holds it.
+        bool ownProperties = hint is { Editing: GodotEditing.Resource, PathString: false } && property.Value is string { Length: > 0 } or GodotObjectId;
+        if (hint.Editing == GodotEditing.Text || whyNot is not null && !ownProperties)
         {
             return (false, notes);
         }
@@ -114,7 +120,8 @@ internal sealed class GodotValueCell : LiveValueCell
                 GodotEditing.Choice => ShowChoice(property.Value),
                 GodotEditing.Colour => ShowColour(property.Value),
                 GodotEditing.Axes => ShowAxes(property.Value),
-                _ => ShowResource(property.Value),
+                GodotEditing.Items or GodotEditing.Entries => ShowItems(property.Value),
+                _ => ShowResource(property.Value, whyNot, ownProperties),
             };
             foreach (Control child in editor.Children)
             {
@@ -387,28 +394,75 @@ internal sealed class GodotValueCell : LiveValueCell
         return new GodotMath(shown.Type, [.. values.Select(v => hint.Integers ? Math.Round(v) : (double)(float)v)]);
     }
 
-    private Control ShowResource(object? value)
+    /// <summary>A resource's thumbnail and name, which opens the project's resources where the node takes another
+    /// (<paramref name="whyNot"/> null), and its Properties, which opens its own where it holds one.</summary>
+    private Control ShowResource(object? value, string? whyNot, bool ownProperties)
     {
         if (resource is null)
         {
             Image thumbnail = new() { Width = 18, Height = 18, Stretch = Stretch.Uniform };
             TextBlock name = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-            Button button = Add(new Button
+            Button button = new()
             {
                 Classes = { StyleClasses.Compact },
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Left,
                 Padding = new Thickness(4, 2, 8, 2),
                 Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { thumbnail, name } },
-            });
+            };
             button.Click += (_, _) => PickResource(button);
-            resource = (button, thumbnail, name);
+            Button properties = new() { Classes = { StyleClasses.Link }, Content = "Properties", FontSize = 11, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            properties.Click += (_, _) => EditResource(properties);
+            DockPanel.SetDock(properties, Dock.Right);
+            DockPanel panel = Add(new DockPanel { Children = { properties, button } });
+            resource = (panel, button, thumbnail, name, properties);
         }
         string? path = value as string;
         resource.Value.Name.Text = path is { Length: > 0 } ? Path.GetFileName(path) : value is null ? "None" : GodotVariant.Shown(value);
-        ToolTip.SetTip(resource.Value.Button, path is { Length: > 0 } ? $"{path}: choose another of the project's" : "Choose one of the project's");
+        resource.Value.Button.IsEnabled = whyNot is null;
+        ToolTip.SetTip(resource.Value.Button, whyNot ?? (path is { Length: > 0 } ? $"{path}: choose another of the project's" : "Choose one of the project's"));
+        resource.Value.Properties.IsVisible = ownProperties;
+        ToolTip.SetTip(resource.Value.Properties, "Its own properties, read and set in the game: a resource several nodes hold changes in each");
         IdeErrors.Observe(ThumbnailAsync(resource.Value.Thumbnail, path));
-        return resource.Value.Button;
+        return resource.Value.Panel;
+    }
+
+    /// <summary>The resource's own properties over its row (<see cref="GodotResourceEditor"/>).</summary>
+    private void EditResource(Button from)
+    {
+        if (property is { } shown)
+        {
+            tuner.ShowPopup(new GodotResourceEditor(game, element, shown.Name, tuner), from);
+        }
+    }
+
+    /// <summary>An array's or dictionary's words, which open its items or entries to set (<see cref="GodotItemsEditor"/>).</summary>
+    private Control ShowItems(object? value)
+    {
+        if (items is null)
+        {
+            TextBlock words = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+            Button button = Add(new Button
+            {
+                Classes = { StyleClasses.Compact },
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Padding = new Thickness(4, 2, 8, 2),
+                Content = words,
+            });
+            button.Click += (_, _) =>
+            {
+                if (property is { } shown)
+                {
+                    tuner.ShowPopup(new GodotItemsEditor(game, element, shown, hint, tuner), button);
+                }
+            };
+            items = (button, words);
+        }
+        items.Value.Words.Text = GodotVariant.Shown(value);
+        int count = hint.Editing == GodotEditing.Entries ? (value as GodotDictionary)?.Entries.Count ?? 0 : GodotVariant.Items(value)?.Count ?? 0;
+        ToolTip.SetTip(items.Value.Button, hint.Editing == GodotEditing.Entries ? $"{Plural.Of(count, "entry", "entries")}: set its keys and values" : $"{Plural.Of(count, "item")}: set them");
+        return items.Value.Button;
     }
 
     private async Task ThumbnailAsync(Image image, string? path)

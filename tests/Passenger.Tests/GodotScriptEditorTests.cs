@@ -1,4 +1,6 @@
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.Core;
 using Passenger.Workspace;
@@ -81,6 +83,53 @@ public sealed class GodotScriptEditorTests
             () => $"the status to say the settings are to be set in Godot's Editor Settings; it says {window.Status}");
         Assert.True(asked.SequenceEqual(["Make Passenger Godot's Script Editor?", "Set Godot's Script Editor by Hand"]),
             $"Passenger was to ask to write the settings, then show the values to set by hand; it asked: {string.Join(" | ", asked)}");
+    }
+
+    /// <summary>A Godot project's first opening in a window that keeps its folders' state offers Passenger as Godot's script
+    /// editor in the banner over the editor; dismissed, the banner goes, and the folder opened again in another window on
+    /// the same state offers it no more, while another Godot project is offered it still.</summary>
+    [AvaloniaFact]
+    public void A_Godot_projects_first_opening_offers_the_script_editor_in_a_banner_once_and_never_again_once_dismissed()
+    {
+        string godot = StandInGodot(out _);
+        string state = TestFolders.Create("godot-offer-state-");
+        string folder = NewGodotProject();
+        MainWindow first = Kept(state, godot, folder);
+        Ui.WaitFor(() => first.GodotSaid?.Contains("editor can open this project's scripts in Passenger", StringComparison.Ordinal) == true,
+            () => $"the banner to offer Passenger as Godot's script editor (it says {first.GodotSaid ?? "nothing"}; {first.Status})");
+        Assert.True(first.GetVisualDescendants().OfType<Button>().Any(b => b.IsEffectivelyVisible && Equals(b.Content, "Make Passenger Godot's Script Editor…")),
+            "The banner does not offer Make Passenger Godot's Script Editor…");
+        Ui.ClickButton(first, "Dismiss");
+        Ui.WaitFor(() => first.GodotSaid is null, () => $"the banner to go once dismissed (it says {first.GodotSaid})");
+        first.Close();
+
+        MainWindow again = Kept(state, godot, folder);
+        Assert.True(again.GodotSaid is null, $"The folder opened again offered it once more: {again.GodotSaid}");
+        again.Close();
+
+        MainWindow other = Kept(state, godot, NewGodotProject());
+        Ui.WaitFor(() => other.GodotSaid is not null, () => $"another Godot project to be offered it ({other.Status})");
+        other.Close();
+    }
+
+    /// <summary>A window that keeps its folders' state in <paramref name="state"/>, Settings naming the stand-in Godot, on a
+    /// folder, once it is quiet.</summary>
+    private static MainWindow Kept(string state, string godot, string folder)
+    {
+        MainWindow window = new() { Width = 1000, Height = 700, StateFolder = state, StartsLanguageServer = false, Autosaves = false };
+        window.Show();
+        window.ApplySettings(window.Settings with { GodotExecutable = godot });
+        window.KeepLayout();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        return window;
+    }
+
+    private static string NewGodotProject()
+    {
+        string folder = TestFolders.Create("godot-game-");
+        TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\n");
+        return folder;
     }
 
     [AvaloniaFact]

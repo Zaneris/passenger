@@ -3,7 +3,8 @@ using System.Globalization;
 namespace Passenger.App.Godot;
 
 /// <summary>How the properties pane edits a running game's value: as text, a check box, a slider within a range, a choice
-/// among names, a colour, axes that scrub, or a resource of the project's.</summary>
+/// among names, a colour, axes that scrub, a resource of the project's (and its own properties), an array's items, or a
+/// dictionary's keys and values.</summary>
 public enum GodotEditing
 {
     Text,
@@ -13,6 +14,8 @@ public enum GodotEditing
     Colour,
     Axes,
     Resource,
+    Items,
+    Entries,
 }
 
 /// <summary>A range a number is set within: its ends and step, whether a value typed may go past either end, whether the
@@ -73,6 +76,12 @@ public sealed record GodotHint(GodotEditing Editing)
 
     /// <summary>Whether a resource is a path the property holds as a string (a file hint), not a resource object.</summary>
     public bool PathString { get; init; }
+
+    /// <summary>The type an array's items are (a dictionary's values), where the property says: Nil for any.</summary>
+    public GodotType Element { get; init; }
+
+    /// <summary>The type a dictionary's keys are, where the property says: Nil for any.</summary>
+    public GodotType Key { get; init; }
 }
 
 /// <summary>Godot's property hints read as the editor a value takes (<see cref="Of"/>): a number's range, an enum's names, a
@@ -85,6 +94,9 @@ public static class GodotHints
     public const long File = 13;
     public const long ResourceType = 17;
     public const long ColorNoAlpha = 21;
+    public const long TypeString = 23;
+    public const long ArrayType = 31;
+    public const long DictionaryType = 38;
 
     /// <summary>The editor a property's value takes: text for one no editor fits.</summary>
     public static GodotHint Of(GodotProperty property)
@@ -115,6 +127,14 @@ public static class GodotHints
                 return new GodotHint(GodotEditing.Resource) { Classes = Split(property.HintString) };
             case GodotType.String when property.Hint == File:
                 return new GodotHint(GodotEditing.Resource) { Classes = Split(property.HintString), PathString = true };
+            case GodotType.Array:
+                return new GodotHint(GodotEditing.Items) { Element = property.Hint is ArrayType or TypeString ? TypeNamed(property.HintString) : GodotType.Nil };
+            case >= GodotType.PackedByteArray:
+                return new GodotHint(GodotEditing.Items) { Element = GodotVariant.ElementOf(property.Type) };
+            case GodotType.Dictionary when property.Hint == DictionaryType && property.HintString.Split(';') is [string key, string element]:
+                return new GodotHint(GodotEditing.Entries) { Key = TypeNamed(key), Element = TypeNamed(element) };
+            case GodotType.Dictionary:
+                return new GodotHint(GodotEditing.Entries);
             default:
                 return new GodotHint(GodotEditing.Text);
         }
@@ -202,6 +222,29 @@ public static class GodotHints
         property.Hint == Range && RangeOf(property.HintString, property.Type is GodotType.Int or GodotType.Vector2I or GodotType.Vector3I or GodotType.Vector4I) is { } range
             ? range with { Tracked = false }
             : null;
+
+    /// <summary>A container's element type as its hint names it: Godot's name for a built-in type ("int", "Vector2"), or its
+    /// number before an element's own hint ("2:", "2/1:0,10"); a class's name, an object; Nil for none.</summary>
+    public static GodotType TypeNamed(string hint)
+    {
+        string named = hint.Trim();
+        int end = named.IndexOfAny(['/', ':']);
+        if (int.TryParse(end < 0 ? named : named[..end], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+        {
+            return System.Enum.IsDefined((GodotType)number) ? (GodotType)number : GodotType.Nil;
+        }
+        return named switch
+        {
+            "" or "Variant" => GodotType.Nil,
+            "bool" => GodotType.Bool,
+            "int" => GodotType.Int,
+            "float" => GodotType.Float,
+            "AABB" => GodotType.Aabb,
+            "RID" => GodotType.Rid,
+            _ when System.Enum.TryParse(named, ignoreCase: true, out GodotType type) => type,
+            _ => GodotType.Object,
+        };
+    }
 
     private static IReadOnlyList<string> Split(string hint) => [.. hint.Split(',').Select(p => p.Trim()).Where(p => p.Length > 0)];
 

@@ -344,6 +344,20 @@ func step(ask: int, ends_step: bool) -> void:
     _ends_step = ends_step
 
 
+## The id of the object a node's property holds, its class and its file: a resource loaded from a file, which the game sends
+## by its path, read and set by its id from then on.
+func held(ask: int, id: int, property: String) -> void:
+    var node := _node(id)
+    if node == null:
+        _say(ask, false, ["the node is gone"])
+        return
+    var value = node.get(property)
+    if typeof(value) != TYPE_OBJECT or not is_instance_valid(value):
+        _say(ask, false, ["%s holds no object" % property])
+        return
+    _say(ask, true, [value.get_instance_id(), value.get_class(), value.resource_path if value is Resource else ""])
+
+
 func _index(node: Node) -> void:
     if node == self:
         return
