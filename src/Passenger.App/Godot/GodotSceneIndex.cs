@@ -72,7 +72,10 @@ public sealed class GodotSceneIndex
         foreach (string path in project.Paths)
         {
             TextSnapshot? open = texts.Open(path);
-            if (!project.Read.TryGetValue(path, out (GodotFile File, TextSnapshot? From) read) || project.Dirty.Contains(path) || !ReferenceEquals(read.From, open))
+            TextSnapshot? from = project.Read.TryGetValue(path, out (GodotFile File, TextSnapshot? From) read) ? read.From
+                : project.Raw.TryGetValue(path, out (string Text, TextSnapshot? From) other) ? other.From : null;
+            bool known = project.Read.ContainsKey(path) || project.Raw.ContainsKey(path) || project.Beside.ContainsKey(path);
+            if (!known || project.Dirty.Contains(path) || !ReferenceEquals(from, open))
             {
                 unread.Add((path, open));
             }
@@ -82,12 +85,13 @@ public sealed class GodotSceneIndex
         {
             return kept;
         }
-        IReadOnlyList<(string Path, TextSnapshot? Open, GodotFile? File, string? Uid)> parsed = await BackgroundWork.Run(() => (IReadOnlyList<(string, TextSnapshot?, GodotFile?, string?)>)
-            [.. unread.Select(u => Parsed(u.Path, u.Open))]);
-        foreach ((string path, TextSnapshot? open, GodotFile? file, string? uid) in parsed)
+        IReadOnlyList<(string Path, TextSnapshot? Open, GodotFile? File, string? Uid, string? Text)> parsed = await BackgroundWork.Run(
+            () => (IReadOnlyList<(string, TextSnapshot?, GodotFile?, string?, string?)>)[.. unread.Select(u => Parsed(u.Path, u.Open))]);
+        foreach ((string path, TextSnapshot? open, GodotFile? file, string? uid, string? text) in parsed)
         {
             project.Dirty.Remove(path);
             project.Beside.Remove(path);
+            project.Raw.Remove(path);
             if (file is null)
             {
                 project.Read.Remove(path);
@@ -100,11 +104,16 @@ public sealed class GodotSceneIndex
             {
                 project.Beside[path] = uid;
             }
+            if (text is not null)
+            {
+                project.Raw[path] = (text, open);
+            }
         }
-        foreach (string gone in project.Read.Keys.Concat(project.Beside.Keys).Where(p => !project.Paths.Contains(p)).ToList())
+        foreach (string gone in project.Read.Keys.Concat(project.Beside.Keys).Concat(project.Raw.Keys).Where(p => !project.Paths.Contains(p)).ToList())
         {
             project.Read.Remove(gone);
             project.Beside.Remove(gone);
+            project.Raw.Remove(gone);
         }
         Dictionary<string, GodotFile> files = new(StringComparer.Ordinal);
         foreach ((string path, (GodotFile file, _)) in project.Read)
@@ -127,21 +136,30 @@ public sealed class GodotSceneIndex
                 uids[uid] = res;
             }
         }
-        return project.Scenes = new GodotScenes(folder, files, uids, cached is not null);
+        Dictionary<string, string> raw = new(StringComparer.Ordinal);
+        foreach ((string path, (string text, _)) in project.Raw)
+        {
+            if (GodotScenes.ResPathOf(folder, path) is { } res)
+            {
+                raw[res] = text;
+            }
+        }
+        return project.Scenes = new GodotScenes(folder, files, uids, cached is not null, raw);
     }
 
-    /// <summary>Whether a file of a Godot project is one the index reads: a text scene or resource, or a file beside another
-    /// giving it its uid.</summary>
-    private static bool Read(string path) => GodotFile.IsText(path) || GodotUids.IsBeside(path);
+    /// <summary>Whether a file of a Godot project is one the index reads: a text scene or resource, a file beside another
+    /// giving it its uid, or one defining names its code's strings give (project.godot, a shader, a translation).</summary>
+    private static bool Read(string path) => GodotFile.IsText(path) || GodotUids.IsBeside(path) || GodotDefinitions.Reads(path);
 
-    /// <summary>A file the index reads, from its open text or the disk: a scene or resource parsed, or the uid a file beside
-    /// another gives it; neither for one that cannot be read.</summary>
-    private static (string Path, TextSnapshot? Open, GodotFile? File, string? Uid) Parsed(string path, TextSnapshot? open)
+    /// <summary>A file the index reads, from its open text or the disk: a scene or resource parsed, the uid a file beside
+    /// another gives it, or another's text; none for one that cannot be read.</summary>
+    private static (string Path, TextSnapshot? Open, GodotFile? File, string? Uid, string? Text) Parsed(string path, TextSnapshot? open)
     {
         string? text = open?.ToString() ?? EditorArea.ReadText(path);
-        return text is null ? (path, open, null, null)
-            : GodotUids.IsBeside(path) ? (path, open, null, GodotUids.OfBeside(path, text))
-            : (path, open, GodotFile.Parse(text), null);
+        return text is null ? (path, open, null, null, null)
+            : GodotUids.IsBeside(path) ? (path, open, null, GodotUids.OfBeside(path, text), null)
+            : GodotFile.IsText(path) ? (path, open, GodotFile.Parse(text), null, null)
+            : (path, open, null, null, text);
     }
 
     /// <summary>The cache of uids Godot's editor keeps under a project's folder; null for none, or one that cannot be read.</summary>
@@ -237,10 +255,10 @@ public sealed class GodotSceneIndex
         }
     }
 
-    /// <summary>A file the editor opened: a scene's or resource's typing, once it pauses, is a change of its project's.</summary>
+    /// <summary>A file the editor opened: a scene's, resource's or other defining file's typing, once it pauses, is a change of its project's.</summary>
     public void Attach(OpenDocument document)
     {
-        if (!GodotFile.IsText(document.Path) || typed.ContainsKey(document))
+        if (!(GodotFile.IsText(document.Path) || GodotDefinitions.Reads(document.Path)) || typed.ContainsKey(document))
         {
             return;
         }
@@ -282,6 +300,9 @@ public sealed class GodotSceneIndex
 
         /// <summary>Each file as last read, with the open text it was read from (null for the disk's).</summary>
         public Dictionary<string, (GodotFile File, TextSnapshot? From)> Read { get; } = new(PathNames.Comparer);
+
+        /// <summary>The texts of project.godot, its shaders and translations, as last read, with the open text each was read from.</summary>
+        public Dictionary<string, (string Text, TextSnapshot? From)> Raw { get; } = new(PathNames.Comparer);
 
         /// <summary>The uid each .uid and .import file gives the file beside it, as last read.</summary>
         public Dictionary<string, string> Beside { get; } = new(PathNames.Comparer);

@@ -20,8 +20,8 @@ public sealed class GodotCode : IExtensionWorkspaceMessageHandler<GodotCodeReque
 /// <summary>A Godot project's C# as Roslyn binds it against GodotSharp, never by names alone: the file's classes Godot runs
 /// as scripts (each class's script path is the one Godot's source generator gives it, <c>[ScriptPath]</c>), their
 /// <c>[Export]</c> members and <c>[Signal]</c> delegates, the calls of Node's GetNode and GetNodeOrNull on the node the
-/// code runs on with the type each asks for, and the res:// paths and uid:// names its strings give; and of the project's types what the
-/// scenes ask: an engine class's chain by Godot's names (<c>[GodotClassName]</c>, else the C# name), a script's class's,
+/// code runs on with the type each asks for, the res:// paths and uid:// names its strings give, and its strings naming what the
+/// project's own files define (<see cref="GodotKinds"/>); and of the project's types what the scenes ask: an engine class's chain by Godot's names (<c>[GodotClassName]</c>, else the C# name), a script's class's,
 /// and a node's signal or method by the name a scene writes (an engine one's snake_case, a script's own as declared).</summary>
 internal static class GodotSource
 {
@@ -62,7 +62,13 @@ internal static class GodotSource
         List<GodotChain?> scriptChains = [.. asked.Scripts.Select(s => scripts[s] is { } type ? new GodotChain(s, [.. Lineage(type)], engine.First(type) is { } first ? engine.NameOf(first) : null, type.Name) : null)];
         List<GodotSignature?> signals = [.. asked.Signals.Select(s => Signal(engine, s.Script is null ? null : scripts[s.Script], s.Engine, s.Name))];
         List<GodotSignature?> methods = [.. asked.Methods.Select(m => Method(engine, m.Script is null ? null : scripts[m.Script], m.Engine, m.Name))];
-        return new GodotCodeFound(classes, calls, resources, chains, scriptChains, signals, methods) { Strings = Strings(root, model, engine, godotObject, text, cancel) };
+        IReadOnlyList<GodotKindRead> kinds = GodotKinds.Read(solution, root, model, declared, text, cancel);
+        return new GodotCodeFound(classes, calls, resources, chains, scriptChains, signals, methods)
+        {
+            Strings = Strings(root, model, engine, godotObject, text, cancel),
+            Kinds = kinds,
+            Added = await GodotKinds.AddedAsync(solution, documents[0].Project, kinds, cancel).ConfigureAwait(false),
+        };
     }
 
     /// <summary>The file's strings Godot's calls take naming a signal, a method or a property (<see cref="GodotGenerated.NameCall"/>),

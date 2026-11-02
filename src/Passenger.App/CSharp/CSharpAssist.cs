@@ -22,7 +22,7 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         {
             IdeErrors.Observe(completion.Start(last.ToString()));
         }
-        else if (last is '"' or '/' or '%' && !context.InRazor && InGodotPath(caret))
+        else if (last is '"' or '/' or '%' && !context.InRazor && InGodotPath(caret) || last == '"' && !context.InRazor && InGodotFile() && InGodotKind(caret))
         {
             IdeErrors.Observe(completion.Start(null));
         }
@@ -137,15 +137,17 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         return true;
     }
 
-    /// <summary>A Godot node a GetNode path names (<see cref="ShowNodeRename"/>), an Aspire resource's name in a string (the
-    /// AppHost's declaration and its services' reads), else the server's rename.</summary>
+    /// <summary>A Godot name of a kind in a string (<see cref="ShowKindRename"/>) or a node a GetNode path names
+    /// (<see cref="ShowNodeRename"/>), an Aspire resource's name in a string (the AppHost's declaration and its services'
+    /// reads), else the server's rename.</summary>
     public override bool Rename(int caret)
     {
-        if (context.Editors.Active is { } shown && context.CSharp?.GodotOf?.Invoke(shown.Path) is not null && InGodotPath(caret))
+        if (context.Editors.Active is { } shown && InGodotFile() && (InGodotPath(caret) || InString(shown.Text.Snapshot, caret)))
         {
+            bool path = InGodotPath(caret);
             IdeErrors.Observe(popups.Carried("Rename", async () =>
             {
-                if (!await ShowNodeRename(shown, caret) && context.Editors.Active == shown)
+                if (!await ShowKindRename(shown, caret) && !(path && await ShowNodeRename(shown, caret)) && context.Editors.Active == shown)
                 {
                     actions.ShowServerRename();
                 }

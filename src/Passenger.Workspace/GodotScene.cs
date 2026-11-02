@@ -246,7 +246,7 @@ public sealed class GodotFile
         }
         int valueStart = SkipSpaces(text, at + 1);
         int end = ValueEnd(text, valueStart, inTag);
-        entry = new GodotEntry(key, keyStart, Read(text, valueStart, end));
+        entry = new GodotEntry(key, keyStart, ValueAt(text, valueStart, end));
         return end;
     }
 
@@ -289,7 +289,7 @@ public sealed class GodotFile
     }
 
     /// <summary>A value's meaning where Passenger reads one: a string's, a call's one argument's, or a bare word's.</summary>
-    private static GodotValue Read(string text, int start, int end)
+    internal static GodotValue ValueAt(string text, int start, int end)
     {
         if (start >= end)
         {

@@ -431,6 +431,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "after it (Foo.cs, Foo.Designer.cs, Foo.axaml) unless renameFiles is false, and always its XAML's x:Class and " +
         "Razor component (Foo.razor, Foo.razor.css); an Aspire resource's name where its AppHost " +
         "declares it and its services read it; a Godot node's name (in a scene, or a GetNode path) in its scenes and the code's paths; " +
+        "a Godot input action, group, animation, autoload, shader parameter or translation key a string names, where defined and in each such string; " +
         "a XAML element's name with its code-behind's uses; a JSON property (in " +
         "package.json's scripts, every npm run of one); a compose file's names, its override's too. MSBuild files have none.")]
     public Task<string> Rename(string newName, string? path = null, int? line = null, int? column = null, string? symbol = null,
@@ -454,6 +455,22 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
             await SaveLandedAsync(cancel);
             return $"{compose.Said}: {string.Join(", ", compose.Files.Select(f => Relative(f.Path)))}";
+        }
+        // A Godot name a string gives (an input action, a group, an autoload…) is renamed where the project defines it, as from the window.
+        if (served is ServerServed { Web: null } named && named.Document.Language == Languages.Language.CSharp
+            && await window.Assist.Languages.CSharp.GodotKindAtAsync(named.Document, offset) is { } kind)
+        {
+            if (kind.Name == newName)
+            {
+                return $"{newName} is its name already";
+            }
+            RefactorOutcome kindRenamed = await window.Assist.Languages.CSharp.RenameKindAsync(kind, newName);
+            if (kindRenamed.Problem is { } refused)
+            {
+                throw new InvalidOperationException(refused);
+            }
+            await SaveLandedAsync(cancel);
+            return $"{kindRenamed.Said}: {string.Join(", ", kindRenamed.Files.Select(f => Relative(f.Path)))}";
         }
         // A Godot node a GetNode path names is renamed in its scenes, as from its scene.
         if (served is ServerServed { Web: null } code && code.Document.Language == Languages.Language.CSharp

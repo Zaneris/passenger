@@ -281,4 +281,64 @@ public class GodotChecksTests
         Assert.Equal(("res://old_player.tscn", false, "No file res://old_player.tscn is in the Godot project: Godot loads uid://bplayer, res://player.tscn, by its uid"),
             (scene[loaded.Start..loaded.End], loaded.Error, loaded.Message));
     }
+
+    /// <summary>A string naming an input action project.godot lacks, and not one of Godot's own, is an error saying where Godot
+    /// looks; a group no scene gives a node is one unless the code adds it; an animation its player's libraries lack is one
+    /// where the code tells the player by its path, and never where it does not; an autoload a path names through /root that
+    /// project.godot lacks, and a node its scene lacks, are errors too.</summary>
+    [Fact]
+    public void A_string_naming_what_the_project_does_not_define_is_an_error_saying_where_godot_looks()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [ext_resource type="Script" path="res://Main.cs" id="1"]
+
+            [sub_resource type="AnimationLibrary" id="AnimationLibrary_1"]
+            _data = {
+            &"run": SubResource("Animation_1")
+            }
+
+            [node name="Main" type="Node2D"]
+            script = ExtResource("1")
+
+            [node name="Enemy" type="Area2D" parent="." groups=["enemies"]]
+
+            [node name="Anim" type="AnimationPlayer" parent="."]
+            libraries/ = SubResource("AnimationLibrary_1")
+
+            """;
+        const string project = "[autoload]\n\nHud=\"*res://hud.tscn\"\n\n[input]\n\njump={\n\"events\": []\n}\n";
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>
+        {
+            ["res://main.tscn"] = GodotFile.Parse(scene),
+            ["res://hud.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[node name=\"Hud\" type=\"CanvasLayer\"]\n\n[node name=\"Score\" type=\"Label\" parent=\".\"]\n"),
+        }, texts: new Dictionary<string, string> { ["res://project.godot"] = project });
+        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotKindRead Read(GodotStringKind kind, string name, string? node = null, bool adds = false) => new(kind, name, At, End, true, adds, 0, node, null, null);
+        GodotCodeFound found = Found(asked, [Call("/root/Hud/Score", null), Call("/root/Hud/Scor", null), Call("/root/Main", null), Call("/root/Gone", null)]) with
+        {
+            Kinds =
+            [
+                Read(GodotStringKind.Action, "jump"), Read(GodotStringKind.Action, "ui_accept"), Read(GodotStringKind.Action, "jmp"),
+                Read(GodotStringKind.Group, "enemies"), Read(GodotStringKind.Group, "allies"), Read(GodotStringKind.Group, "spawned"), Read(GodotStringKind.Group, "made", adds: true),
+                Read(GodotStringKind.Animation, "run", "Anim"), Read(GodotStringKind.Animation, "walk", "Anim"), Read(GodotStringKind.Animation, "fly"),
+                Read(GodotStringKind.Translation, "HELLO"),
+            ],
+            Added = [new GodotKindAdded(GodotStringKind.Group, "spawned")],
+        };
+        Assert.Equal(
+        [
+            "No input action 'jmp' is in project.godot's [input], nor among Godot's own ui_ actions",
+            "No group 'allies' is given to a node by the project's scenes, nor added by its code",
+            "No animation 'walk' is in the animation libraries of Anim (main.tscn:15)",
+            "hud.tscn:3 has no node 'Scor' under Hud, the autoload Hud: Hud has no child Scor",
+            "No autoload 'Gone' is in project.godot's [autoload], nor is a scene's root node so named",
+        ], GodotChecks.Findings(scenes, asked, found, _ => true).Select(f => f.Message));
+
+        GodotChecks.Candidates actions = GodotChecks.Named(scenes, GodotStringKind.Action, [], null, null, null);
+        Assert.Equal("jump", actions.Names[0].Name);
+        Assert.Contains(actions.Names, n => n.Name == "ui_accept" && n.Places.Count == 0);
+        Assert.False(GodotChecks.Named(scenes, GodotStringKind.Animation, ["res://Main.cs"], null, null, null).Whole, "a player the code does not tell is never checked");
+    }
 }

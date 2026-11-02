@@ -58,11 +58,13 @@ internal sealed partial class CSharpAssist
             || OffsetOf(lsp, c.At) == quoted - 1);
 
     /// <summary>What completion offers in a Godot path's string: a GetNode call's nodes, from the node each scene runs its
-    /// script on, those of the type it asks for (all where none is); a res:// path's files of the project. With where the
-    /// string's characters start and the rest after the caret, which an item replaces; null anywhere else.</summary>
+    /// script on, those of the type it asks for (all where none is), and from its "/" the autoloads; a res:// path's files of
+    /// the project; a string of a kind's names (<see cref="KindCompletion"/>). With where the string's characters start and
+    /// the rest after the caret, which an item replaces; null anywhere else.</summary>
     private async Task<CodeCompletion.OwnItems?> GodotCompletionAsync(LspDocument lsp, TextSnapshot asked, int caret, CancellationToken cancel)
     {
-        if (!InGodotPath(caret) || context.Editors.Active is not { } document || context.CSharp is not { } csharp
+        bool inPath = InGodotPath(caret);
+        if (!(inPath || InString(asked, caret)) || context.Editors.Active is not { } document || context.CSharp is not { } csharp
             || await csharp.GodotAsync(document.Path, cancel) is not { } read || lsp.Text.Snapshot != asked)
         {
             return null;
@@ -70,6 +72,18 @@ internal sealed partial class CSharpAssist
         (int start, int end) = StringAround(asked, caret);
         string tail = caret < end ? asked.GetText(caret, end - caret) : string.Empty;
         string typed = asked.GetText(start, caret - start);
+        if (KindAt(lsp, read, caret, start) is { } kind)
+        {
+            return KindCompletion(read, kind, start, tail);
+        }
+        if (!inPath)
+        {
+            return null;
+        }
+        if (typed.StartsWith('/') && CallAt(lsp, read, caret, start) is not null)
+        {
+            return AutoloadCompletion(read, start, tail);
+        }
         if (typed.StartsWith("res://", StringComparison.Ordinal) && csharp.GodotScenes is { } index)
         {
             IReadOnlyList<CompletionItem> files = [.. index.FilesUnder(read.Folder).Select(f => GodotScenes.ResPathOf(read.Folder, f)).OfType<string>()
@@ -108,8 +122,9 @@ internal sealed partial class CSharpAssist
         return offered.Count == 0 ? null : new CodeCompletion.OwnItems(start, offered, tail) { WordCharacters = PathCharacters };
     }
 
-    /// <summary>What the hover card says of a Godot project's C#: the node a GetNode path names in each scene its script runs
-    /// in, or that none answers; the file a uid:// names; an <c>[Export]</c> member's value in each scene and resource that sets it.</summary>
+    /// <summary>What the hover card says of a Godot project's C#: where a string of a kind's name is defined
+    /// (<see cref="KindHover"/>); the node a GetNode path names in each scene its script runs in, or that none answers; the
+    /// file a uid:// names; an <c>[Export]</c> member's value in each scene and resource that sets it.</summary>
     private async Task<string?> GodotHoverAsync(OpenDocument document, int offset, CancellationToken cancel)
     {
         if (context.WebOf(document) is not null || context.CSharp is not { } csharp || csharp.For(document)?.Lsp is not { } lsp
@@ -118,6 +133,10 @@ internal sealed partial class CSharpAssist
             return null;
         }
         (int start, _) = StringAround(lsp.Text.Snapshot, offset);
+        if (KindAt(lsp, read, offset, start) is { Exact: true } kind)
+        {
+            return KindHover(read, kind);
+        }
         if (CallAt(lsp, read, offset, start) is { } call && call.Class < read.Found.Classes.Count)
         {
             List<string> lines = [];
@@ -178,7 +197,8 @@ internal sealed partial class CSharpAssist
     private static bool SameFile(string left, string right) => PathNames.Same(left, right) || PathNames.Same(PathNames.Canonical(left), right);
 
     /// <summary>Where Go to Declaration goes from a Godot string: a script's signal, method or property a string Godot's calls
-    /// take names; a res:// path's file; a GetNode path's node, in each scene its script runs in that has it. Null anywhere else.</summary>
+    /// take names; what a string of a kind names (<see cref="GodotKindDeclaredAsync"/>); a res:// path's file; a GetNode
+    /// path's node, in each scene its script runs in that has it. Null anywhere else.</summary>
     private async Task<Declared?> GodotDeclaredAsync(LspDocument lsp, OpenDocument document, int offset)
     {
         TextSnapshot asked = lsp.Text.Snapshot;
@@ -191,6 +211,10 @@ internal sealed partial class CSharpAssist
         {
             LspPosition at = new(place.Line, place.Character);
             return new Declared([new LspLocation(DocumentUris.FromPath(declaring), new LspRange(at, at))], Refusals.NoDeclaration);
+        }
+        if (await GodotKindDeclaredAsync(document, offset) is { } defined)
+        {
+            return defined;
         }
         if (await csharp.GodotAsync(document.Path, CancellationToken.None) is not { } read || lsp.Text.Snapshot != asked)
         {

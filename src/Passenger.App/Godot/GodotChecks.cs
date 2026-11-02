@@ -12,8 +12,9 @@ internal sealed record GodotRead(string Folder, GodotScenes Scenes, GodotCodeReq
 /// extension of the project's types for the scenes the file's scripts run in (<see cref="Asks"/>), and what is wrong
 /// (<see cref="Findings"/>): a GetNode path no node answers in any scene a script runs in, one whose node is not of the
 /// type asked for, a res:// path no file answers, a scene's connection to a method the script lacks, or that takes other
-/// parameters than its signal gives, and a string Godot's calls take naming a member a script lacks or connecting one of
-/// other arguments. Pure: it reads only what it is given (and whether a file is there).</summary>
+/// parameters than its signal gives, a string Godot's calls take naming a member a script lacks or connecting one of
+/// other arguments, and one naming what the project's files do not define (<see cref="Named"/>). Pure: it reads only what
+/// it is given (and whether a file is there).</summary>
 internal static class GodotChecks
 {
     /// <summary>One finding: where it is in the file (the server's places), whether it is an error, and its words.</summary>
@@ -55,6 +56,26 @@ internal static class GodotChecks
             {
                 signals.Add(SignalAsked(connected));
                 methods.Add(MethodAsked(connected));
+            }
+        }
+        // An autoload's node, which a GetNode path through /root names, is its script's class or its scene's tree.
+        foreach (GodotDefined autoload in scenes.Defined.Autoloads)
+        {
+            string? loaded = scenes.Defined.AutoloadFile(autoload.Name);
+            if (IsCSharp(loaded))
+            {
+                written.Add(loaded!);
+            }
+            foreach (GodotTreeNode below in loaded is not null && GodotProject.IsScene(loaded) && scenes.Tree(loaded) is { } tree ? tree.Below() : [])
+            {
+                if (below.Type is { } type)
+                {
+                    engine.Add(type);
+                }
+                if (IsCSharp(below.Script))
+                {
+                    written.Add(below.Script!);
+                }
             }
         }
         return new GodotCodeRequest(path, [.. engine], [.. written], [.. signals.Distinct()], [.. methods.Distinct()]);
@@ -213,6 +234,22 @@ internal static class GodotChecks
         foreach (GodotStringRead read in found.Strings)
         {
             if (StringFinding(found, read) is { } finding)
+            {
+                findings.Add(finding);
+            }
+        }
+        HashSet<(GodotStringKind, string)> added = [.. found.Added.Select(a => (a.Kind, a.Name)), .. found.Kinds.Where(k => k.Adds).Select(k => (k.Kind, k.Name))];
+        foreach (GodotKindRead read in found.Kinds.Where(k => k.Exact && !k.Adds && !added.Contains((k.Kind, k.Name))))
+        {
+            Candidates named = Named(scenes, read.Kind, ScriptsOf(found, read.Class), read.Node, read.Export, read.Member);
+            if (named.Whole && !named.Names.Any(n => n.Name == read.Name))
+            {
+                findings.Add(new Finding(read.At, read.End, true, $"No {What(read.Kind)} '{read.Name}' is {named.Where}"));
+            }
+        }
+        foreach (GodotNodeCall call in found.Calls)
+        {
+            if (AutoloadFinding(scenes, found, call) is { } finding)
             {
                 findings.Add(finding);
             }
@@ -406,6 +443,148 @@ internal static class GodotChecks
     }
 
     private static bool SameFile(string left, string right) => Core.PathNames.Same(left, right) || Core.PathNames.Same(Core.PathNames.Canonical(left), Core.PathNames.Canonical(right));
+
+    /// <summary>What a string of a kind may name, as Godot looks for it: the names defined, the words saying where Godot looks
+    /// (after "No input action 'jump' is"), and whether those are all it may name, so a name none of them is is known
+    /// missing (not where the object the call is made on is not told, or what defines its names is not all read).</summary>
+    public sealed record Candidates(IReadOnlyList<GodotDefined> Names, string Where, bool Whole);
+
+    /// <summary>A kind as its words name it.</summary>
+    public static string What(GodotStringKind kind) => kind switch
+    {
+        GodotStringKind.Action => "input action",
+        GodotStringKind.Group => "group",
+        GodotStringKind.Animation => "animation",
+        GodotStringKind.Autoload => "autoload",
+        GodotStringKind.ShaderParameter => "shader parameter",
+        _ => "translation",
+    };
+
+    /// <summary>The scripts a class of the file runs as; none for a string written outside its classes.</summary>
+    public static IReadOnlyList<string> ScriptsOf(GodotCodeFound found, int index) => index >= 0 && index < found.Classes.Count ? found.Classes[index].Scripts : [];
+
+    /// <summary>What a string of a kind may name (<see cref="Candidates"/>), given in a class running as some scripts on an
+    /// object the code tells by a node's path from the script's node or an exported member a scene sets to it (and for a
+    /// shader parameter, the node's property holding its material): an animation player's animations, a material's shader's
+    /// uniforms, in each scene the script runs in; the project's for one not told.</summary>
+    public static Candidates Named(GodotScenes scenes, GodotStringKind kind, IReadOnlyList<string> scripts, string? node, string? export, string? member)
+    {
+        GodotDefinitions defined = scenes.Defined;
+        bool project = scenes.Texts.ContainsKey(GodotDefinitions.ProjectRes);
+        switch (kind)
+        {
+            case GodotStringKind.Action:
+                return new Candidates([.. defined.Actions, .. GodotDefinitions.BuiltInActions.Where(b => !defined.Actions.Any(a => a.Name == b)).Select(b => new GodotDefined(b, "Godot's own input action", []))],
+                    "in project.godot's [input], nor among Godot's own ui_ actions", project);
+            case GodotStringKind.Group:
+                return new Candidates(defined.Groups, "given to a node by the project's scenes, nor added by its code", true);
+            case GodotStringKind.Autoload:
+                return new Candidates(defined.Autoloads, "in project.godot's [autoload]", project);
+            case GodotStringKind.Translation:
+                return new Candidates(defined.Translations, $"in the translations project.godot lists ({Core.Plural.Listed([.. defined.TranslationFiles.Select(f => f.Split('/')[^1])])})",
+                    defined.TranslationFiles.Count > 0 && defined.TranslationsWhole);
+        }
+        List<GodotTreeNode> told = [];
+        bool whole = node is not null || export is not null;
+        foreach ((string scene, GodotTreeNode runner) in scripts.SelectMany(scenes.RunsOf))
+        {
+            string? path = node ?? (export is null ? null : runner.Written.Select(w => w.Node.Section.Property(export)?.Value).LastOrDefault(v => v is not null) is { Call: "NodePath", Text: { } set } ? set : null);
+            if (path is not null && GodotScenes.Resolve(runner, path).Found is { } target)
+            {
+                if (!told.Any(t => t.Same(target)))
+                {
+                    told.Add(target);
+                }
+            }
+            else
+            {
+                whole = false;
+            }
+        }
+        whole &= told.Count > 0;
+        if (kind == GodotStringKind.Animation)
+        {
+            if (!whole)
+            {
+                return new Candidates(defined.Animations, "in any animation library of the project's scenes", false);
+            }
+            List<GodotDefined> names = [];
+            foreach (GodotTreeNode player in told)
+            {
+                (IReadOnlyList<GodotDefined> own, bool read) = defined.AnimationsOf(player);
+                whole &= read && GodotDefinitions.IsPlayer(player);
+                names.AddRange(own);
+            }
+            return new Candidates(Merged(names), $"in the animation libraries of {Core.Plural.Listed([.. told.Select(p => $"{p.Name} ({Place(scenes, p.Declared.Scene, p)})").Distinct()])}", whole);
+        }
+        List<string> shaders = [.. whole && member is not null ? told.Select(t => defined.ShaderOf(t, member)).OfType<string>().Distinct(StringComparer.Ordinal) : []];
+        if (!whole || member is null || shaders.Count < told.Count)
+        {
+            return new Candidates(Merged([.. defined.Shaders.SelectMany(s => defined.Uniforms(s).Names)]), "a uniform of any shader of the project", false);
+        }
+        List<GodotDefined> uniforms = [];
+        foreach (string shader in shaders)
+        {
+            (IReadOnlyList<GodotDefined> own, bool read) = defined.Uniforms(shader);
+            whole &= read;
+            uniforms.AddRange(own);
+        }
+        return new Candidates(Merged(uniforms), $"a uniform of {Core.Plural.Listed([.. shaders.Select(GodotDefinitions.Shown)])}, the shader of {Core.Plural.Listed([.. told.Select(t => $"{t.Name}'s {member}")])}", whole);
+    }
+
+    /// <summary>Names of several players or shaders, each name once with every place of it.</summary>
+    private static IReadOnlyList<GodotDefined> Merged(IEnumerable<GodotDefined> names) =>
+        [.. names.GroupBy(n => n.Name, StringComparer.Ordinal).Select(g => new GodotDefined(g.Key, g.First().Detail, [.. g.SelectMany(n => n.Places).DistinctBy(p => (p.Res, p.Start))]))];
+
+    /// <summary>The autoload a node path names through <c>/root/Name</c>, and where the name lies in the path; null for any other path.</summary>
+    public static (string Name, int Start, int End)? AutoloadIn(string path)
+    {
+        const string root = "/root/";
+        if (!path.StartsWith(root, StringComparison.Ordinal))
+        {
+            return null;
+        }
+        int end = path.IndexOfAny(['/', ':'], root.Length);
+        end = end < 0 ? path.Length : end;
+        return end > root.Length ? (path[root.Length..end], root.Length, end) : null;
+    }
+
+    /// <summary>A GetNode path through <c>/root/Name</c>'s finding: a name no autoload has and no scene's root is named
+    /// (the scene running is one of /root's children by its root's name), a node under an autoload's scene its tree lacks,
+    /// or an autoload's node not of the type asked for; null where it holds or is not known.</summary>
+    private static Finding? AutoloadFinding(GodotScenes scenes, GodotCodeFound found, GodotNodeCall call)
+    {
+        if (!call.Exact || AutoloadIn(call.Path) is not ({ } name, _, int end) || !scenes.Texts.ContainsKey(GodotDefinitions.ProjectRes))
+        {
+            return null;
+        }
+        string? loaded = scenes.Defined.AutoloadFile(name);
+        if (loaded is null)
+        {
+            bool aRoot = scenes.Files.Where(f => f.Value.Header?.Tag == "gd_scene").Any(f => scenes.Tree(f.Key)?.Name == name);
+            return aRoot ? null : new Finding(call.At, call.End, true, $"No autoload '{name}' is in project.godot's [autoload], nor is a scene's root node so named");
+        }
+        string rest = call.Path[end..].TrimStart('/');
+        if (GodotProject.IsScene(loaded) && scenes.Tree(loaded) is { } tree)
+        {
+            GodotResolved resolved = GodotScenes.Resolve(tree, rest);
+            if (resolved is { Found: null, Unknown: false, Missing: ({ } start, { } stop) })
+            {
+                return new Finding(call.At, call.End, true, $"{Place(scenes, loaded, tree)} has no node '{rest}' under {tree.Name}, the autoload {name}: {resolved.Reached?.Name ?? tree.Name} has no child {rest[start..stop]}");
+            }
+            if (resolved.Found is { } target && call.Type is { } wanted && Fits(wanted, target, found) == false)
+            {
+                return new Finding(call.At, call.End, !call.OrNull, $"'{call.Path}' is {Article(Shown(target))} in {Place(scenes, target.Declared.Scene, target)}, not {Article(wanted.Shown)}");
+            }
+            return null;
+        }
+        if (rest.Split(':')[0].Length == 0 && call.Type is { Engine: false } type && IsCSharp(loaded) && found.Scripts.FirstOrDefault(s => s?.Name == loaded) is { } script
+            && !script.Chain.Contains(type.Name))
+        {
+            return new Finding(call.At, call.End, !call.OrNull, $"The autoload {name} is {Article(script.Shown)} ({loaded.Split('/')[^1]}), not {Article(type.Shown)}");
+        }
+        return null;
+    }
 
     /// <summary>Whether a node is of a type: its engine class's chain holds an engine type, its C# script's class's chain a
     /// type of the code; null where what it is is not known.</summary>

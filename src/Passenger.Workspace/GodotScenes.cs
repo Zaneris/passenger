@@ -171,15 +171,20 @@ public sealed class GodotScenes
     private readonly Dictionary<string, IReadOnlyList<(string Scene, GodotTreeNode Node)>> runs = new(StringComparer.Ordinal);
     private readonly Lock building = new();
     private readonly Lazy<IReadOnlyDictionary<string, string>> named;
+    private readonly Lazy<GodotDefinitions> defined;
 
     /// <summary>The scenes and resources by res:// path, and the uid:// names Godot keeps of the project's other files (its
     /// .uid and .import files' and its cache's, <see cref="GodotUids"/>, uid by uid) beside those the files' headers give;
-    /// <paramref name="cached"/> when Godot's editor keeps a cache of them, so a uid none names is known to name no file.</summary>
-    public GodotScenes(string folder, IReadOnlyDictionary<string, GodotFile> files, IReadOnlyDictionary<string, string>? uids = null, bool cached = false)
+    /// <paramref name="cached"/> when Godot's editor keeps a cache of them, so a uid none names is known to name no file;
+    /// and the texts of its other files that define names (<see cref="GodotDefinitions.Reads"/>), by res:// path.</summary>
+    public GodotScenes(string folder, IReadOnlyDictionary<string, GodotFile> files, IReadOnlyDictionary<string, string>? uids = null, bool cached = false,
+        IReadOnlyDictionary<string, string>? texts = null)
     {
         Folder = folder;
         Files = files;
+        Texts = texts ?? new Dictionary<string, string>(StringComparer.Ordinal);
         KeepsUids = cached;
+        defined = new(() => new GodotDefinitions(this));
         named = new(() =>
         {
             Dictionary<string, string> all = new(uids ?? new Dictionary<string, string>(), StringComparer.Ordinal);
@@ -205,6 +210,12 @@ public sealed class GodotScenes
 
     /// <summary>Its text scenes and resources by res:// path.</summary>
     public IReadOnlyDictionary<string, GodotFile> Files { get; }
+
+    /// <summary>Its project.godot, shaders and translations by res:// path, as text.</summary>
+    public IReadOnlyDictionary<string, string> Texts { get; }
+
+    /// <summary>What its files define for the strings its code gives Godot's calls, read once.</summary>
+    public GodotDefinitions Defined => defined.Value;
 
     /// <summary>The res:// path of a file under a Godot project's folder; null outside it.</summary>
     public static string? ResPathOf(string folder, string path) =>

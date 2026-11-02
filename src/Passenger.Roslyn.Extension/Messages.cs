@@ -37,13 +37,14 @@ public static class Handlers
     public const string GodotCode = "Passenger.Roslyn.Extension.GodotCode";
     public const string GodotNames = "Passenger.Roslyn.Extension.GodotNames";
     public const string GodotPaths = "Passenger.Roslyn.Extension.GodotPaths";
+    public const string GodotKindStrings = "Passenger.Roslyn.Extension.GodotKindStrings";
 
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
-        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames, GodotPaths,
+        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings,
     ];
 }
 
@@ -342,7 +343,67 @@ public sealed record GodotCodeFound(
 
     [JsonPropertyName("strings")]
     public IReadOnlyList<GodotStringRead> Strings { get; init; } = [];
+
+    [JsonPropertyName("kinds")]
+    public IReadOnlyList<GodotKindRead> Kinds { get; init; } = [];
+
+    /// <summary>The names of the file's <see cref="Kinds"/> that a call elsewhere in the project's code adds, so they
+    /// are defined though no file of Godot's says them.</summary>
+    [JsonPropertyName("added")]
+    public IReadOnlyList<GodotKindAdded> Added { get; init; } = [];
 }
+
+/// <summary>What a string Godot's calls take names that a Godot project defines outside its code: an input action
+/// (project.godot's [input]), a group (its scenes' nodes'), an animation (an animation library of its scenes), an autoload
+/// (project.godot's [autoload], a GetNode path's /root/Name), a shader parameter (a shader's uniform) or a translation's key
+/// (the CSV and PO files project.godot lists).</summary>
+public enum GodotStringKind
+{
+    Action,
+    Group,
+    Animation,
+    Autoload,
+    ShaderParameter,
+    Translation,
+}
+
+/// <summary>A string of a kind as the file gives it to Godot's call (<c>Input.IsActionPressed("jump")</c>): what it names
+/// and where its characters are written (when <paramref name="Exact"/>), whether the call adds it (<c>AddToGroup</c>,
+/// <c>InputMap.AddAction</c>), the class it is written in (by its index in the answer's), and the object the call is made
+/// on where the code tells it: a node by its path from the node the class runs on, or by the <c>[Export]</c> member a scene
+/// sets to it, and for a material the node's property holding it (<c>material</c>); none where it is not told.</summary>
+public sealed record GodotKindRead(
+    [property: JsonPropertyName("kind")] GodotStringKind Kind,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("exact")] bool Exact,
+    [property: JsonPropertyName("adds")] bool Adds,
+    [property: JsonPropertyName("class")] int Class,
+    [property: JsonPropertyName("node")] string? Node,
+    [property: JsonPropertyName("export")] string? Export,
+    [property: JsonPropertyName("member")] string? Member);
+
+public sealed record GodotKindAdded([property: JsonPropertyName("kind")] GodotStringKind Kind, [property: JsonPropertyName("name")] string Name);
+
+/// <summary>Each string of a kind naming the name asked for: its file, where the name's characters lie, and as
+/// <see cref="GodotKindRead"/> tells it, the scripts its class runs as (res://) and the object its call is made on.</summary>
+public sealed record GodotKindUses([property: JsonPropertyName("uses")] IReadOnlyList<GodotKindUse> Uses);
+
+public sealed record GodotKindUse(
+    [property: JsonPropertyName("file")] string File,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("scripts")] IReadOnlyList<string> Scripts,
+    [property: JsonPropertyName("node")] string? Node,
+    [property: JsonPropertyName("export")] string? Export,
+    [property: JsonPropertyName("member")] string? Member);
+
+/// <summary>The strings of a kind naming one name, asked for in the C# of the projects of a Godot project's folder.</summary>
+public sealed record GodotKindAsked(
+    [property: JsonPropertyName("folder")] string Folder,
+    [property: JsonPropertyName("kind")] GodotStringKind Kind,
+    [property: JsonPropertyName("name")] string Name);
 
 /// <summary>A string Godot's calls take naming a signal, a method or a property (<c>EmitSignal("Scored")</c>,
 /// <c>new Callable(this, "OnScored")</c>, <c>Set("Speed", 2)</c>), as the file gives it: what it names, where it is written

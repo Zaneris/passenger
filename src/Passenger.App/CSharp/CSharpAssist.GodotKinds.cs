@@ -1,0 +1,308 @@
+using System.Text.RegularExpressions;
+using Passenger.App.Godot;
+using Passenger.App.Workspace;
+using Passenger.Core;
+using Passenger.Lsp;
+using Passenger.Roslyn.Extension;
+using Passenger.Text;
+using Passenger.Workspace;
+using Passenger.Xaml.Features;
+
+namespace Passenger.App.CSharp;
+
+/// <summary>A Godot project's strings that name what its own files define (<see cref="GodotStringKind"/>: input actions,
+/// groups, animations, autoloads, shader parameters, translations), each completed from where Godot defines it
+/// (<see cref="GodotChecks.Named"/>), led by Go to Declaration to its definition, and renamed in one command of Undo in
+/// those files and every string of the code naming it (<see cref="RenameKindAsync"/>); a GetNode path's <c>/root/Name</c>
+/// is an autoload's.</summary>
+internal sealed partial class CSharpAssist
+{
+    /// <summary>A line up to the caret that ends inside a string given to one of Godot's calls taking such a name, or set
+    /// to an animation player's animation, so a quote typed there opens the list.</summary>
+    private static readonly Regex KindString = new(
+        @"(\b(IsAction\w*|GetAction\w*|ActionPress|ActionRelease|GetAxis|GetVector|HasAction|AddAction|EraseAction|Action\w*Event\w*|Action\w*Deadzone|EventIsAction"
+        + @"|IsInGroup|AddToGroup|RemoveFromGroup|\w*InGroup|CallGroup\w*|NotifyGroup\w*|SetGroup\w*|HasGroup"
+        + @"|Play\w*|Queue|HasAnimation|GetAnimation|AnimationSetNext|AnimationGetNext|\w*BlendTime|SetAutoplay|Set(Current|Assigned)Animation|Capture"
+        + @"|\w*ShaderParameter|Tr|TrN|Translate|TranslatePlural)\s*\(([^""()]|""[^""]*"")*|\b(CurrentAnimation|AssignedAnimation|Autoplay)\s*=\s*)""[^""]*$",
+        RegexOptions.CultureInvariant);
+
+    /// <summary>The characters an animation's name holds beyond a word's (a library's own after its '/'), which narrow its
+    /// list rather than close it.</summary>
+    private const string KindCharacters = "/.-";
+
+    /// <summary>Whether the file shown is a Godot project's C#.</summary>
+    private bool InGodotFile() => context.Editors.Active is { } shown && context.CSharp?.GodotOf?.Invoke(shown.Path) is not null;
+
+    /// <summary>Whether the caret is where a string of a kind is typed, so a quote typed there opens its list.</summary>
+    private bool InGodotKind(int caret)
+    {
+        TextSnapshot text = context.Editor.Document.Snapshot;
+        int line = text.GetLineFromOffset(Math.Min(caret, text.Length));
+        return KindString.IsMatch(text.GetText(text.GetLineStart(line), Math.Min(caret, text.Length) - text.GetLineStart(line)));
+    }
+
+    /// <summary>The string of a kind holding an offset, by the server's places; null for none.</summary>
+    private static GodotKindRead? KindAt(LspDocument lsp, GodotRead read, int offset, int quoted) =>
+        read.Found.Kinds.FirstOrDefault(k => OffsetOf(lsp, k.At) <= offset && offset <= OffsetOf(lsp, k.End) || OffsetOf(lsp, k.At) == quoted - 1);
+
+    /// <summary>What completion offers in a string of a kind: every name it may name (Godot's own input actions after the
+    /// project's), each with what it is; null where the list would be empty.</summary>
+    private static CodeCompletion.OwnItems? KindCompletion(GodotRead read, GodotKindRead kind, int start, string tail)
+    {
+        GodotChecks.Candidates named = GodotChecks.Named(read.Scenes, kind.Kind, GodotChecks.ScriptsOf(read.Found, kind.Class), kind.Node, kind.Export, kind.Member);
+        IReadOnlyList<CompletionItem> items = [.. named.Names.Select(n => new CompletionItem
+        {
+            Label = n.Name,
+            Kind = CompletionItemKind.Constant,
+            Detail = n.Places.FirstOrDefault(p => p.Defines) is { } place ? $"{n.Detail} · {place.Shown}" : n.Detail,
+            FilterText = n.Name,
+            SortText = (n.Places.Count == 0 ? "~" : " ") + n.Name,
+        })];
+        return items.Count == 0 ? null : new CodeCompletion.OwnItems(start, items, tail) { WordCharacters = KindCharacters };
+    }
+
+    /// <summary>What the hover card says of a string of a kind: what it names and each place the project defines it, or
+    /// that Godot defines it itself, or where Godot looks for it.</summary>
+    private static string KindHover(GodotRead read, GodotKindRead kind)
+    {
+        GodotChecks.Candidates named = GodotChecks.Named(read.Scenes, kind.Kind, GodotChecks.ScriptsOf(read.Found, kind.Class), kind.Node, kind.Export, kind.Member);
+        string what = GodotChecks.What(kind.Kind);
+        List<GodotPlace> places = [.. named.Names.Where(n => n.Name == kind.Name).SelectMany(n => n.Places.Where(p => p.Defines))];
+        return places.Count > 0 ? string.Join('\n', [$"The {what} {kind.Name}, defined in:", .. places.Select(p => p.Shown)])
+            : named.Names.Any(n => n.Name == kind.Name) ? $"{kind.Name} is Godot's own {what}"
+            : $"No {what} '{kind.Name}' is {named.Where}";
+    }
+
+    /// <summary>What completion offers in a GetNode path from its "/": each autoload by its path under /root, and the nodes of
+    /// an autoload's scene below it.</summary>
+    private static CodeCompletion.OwnItems? AutoloadCompletion(GodotRead read, int start, string tail)
+    {
+        GodotDefinitions defined = read.Scenes.Defined;
+        List<CompletionItem> items = [];
+        foreach (GodotDefined autoload in defined.Autoloads)
+        {
+            string path = "/root/" + autoload.Name;
+            string? loaded = defined.AutoloadFile(autoload.Name);
+            items.Add(new CompletionItem { Label = path, Kind = CompletionItemKind.Module, Detail = $"autoload · {loaded}", FilterText = path, SortText = " " + path });
+            if (loaded is not null && GodotProject.IsScene(loaded) && read.Scenes.Tree(loaded) is { } tree)
+            {
+                items.AddRange(GodotScenes.PathsFrom(tree).Where(p => !p.Path.StartsWith('%')).Select(p => new CompletionItem
+                {
+                    Label = $"{path}/{p.Path}",
+                    Kind = CompletionItemKind.Field,
+                    Detail = $"{GodotChecks.Shown(p.Node)} · {loaded.Split('/')[^1]}",
+                    FilterText = $"{path}/{p.Path}",
+                    SortText = $" {path}/{p.Path}",
+                }));
+            }
+        }
+        return items.Count == 0 ? null : new CodeCompletion.OwnItems(start, items, tail) { WordCharacters = PathCharacters };
+    }
+
+    /// <summary>A name of a kind at an offset of a Godot project's C#: a string of a kind, or an autoload's name in a GetNode
+    /// path; with the scenes read, its kind, the name, what it may name, and where its files write it.</summary>
+    internal sealed record KindNamed(GodotRead Read, GodotStringKind Kind, string Name, GodotChecks.Candidates Candidates, IReadOnlyList<GodotPlace> Places);
+
+    /// <summary>The name of a kind at an offset (<see cref="KindNamed"/>); null where the offset is in no such string.</summary>
+    internal async Task<KindNamed?> GodotKindAtAsync(OpenDocument document, int offset)
+    {
+        if (context.CSharp is not { } csharp || csharp.For(document)?.Lsp is not { } lsp || csharp.GodotOf?.Invoke(document.Path) is null
+            || !InString(lsp.Text.Snapshot, offset) || await csharp.GodotAsync(document.Path, CancellationToken.None) is not { } read)
+        {
+            return null;
+        }
+        (int start, _) = StringAround(lsp.Text.Snapshot, offset);
+        if (KindAt(lsp, read, offset, start) is { Exact: true } kind)
+        {
+            GodotChecks.Candidates named = GodotChecks.Named(read.Scenes, kind.Kind, GodotChecks.ScriptsOf(read.Found, kind.Class), kind.Node, kind.Export, kind.Member);
+            return new KindNamed(read, kind.Kind, kind.Name, named, [.. named.Names.Where(n => n.Name == kind.Name).SelectMany(n => n.Places)]);
+        }
+        if (CallAt(lsp, read, offset, start) is { Exact: true } call && GodotChecks.AutoloadIn(call.Path) is ({ } autoload, int from, int to)
+            && offset - OffsetOf(lsp, call.At) is var at && from <= at && at <= to)
+        {
+            GodotChecks.Candidates named = GodotChecks.Named(read.Scenes, GodotStringKind.Autoload, [], null, null, null);
+            return new KindNamed(read, GodotStringKind.Autoload, autoload, named, [.. named.Names.Where(n => n.Name == autoload).SelectMany(n => n.Places)]);
+        }
+        return null;
+    }
+
+    /// <summary>Where Go to Declaration goes from a name of a kind: each place its files define it (an action's key in
+    /// project.godot, each node's group, a library's animation, a shader's uniform, a translation's key in each file);
+    /// null where the offset is on none.</summary>
+    private async Task<Declared?> GodotKindDeclaredAsync(OpenDocument document, int offset)
+    {
+        if (await GodotKindAtAsync(document, offset) is not { } named)
+        {
+            return null;
+        }
+        List<LspLocation> places = [];
+        List<string?> names = [];
+        foreach (GodotPlace place in named.Places.Where(p => p.Defines))
+        {
+            if (named.Read.Scenes.FileOf(place.Res) is { } file && named.Read.Scenes.Defined.TextOf(place.Res) is { } text)
+            {
+                places.Add(new LspLocation(DocumentUris.FromPath(file), ServerLines.Of(TextSnapshot.From(text)).RangeOf(new TextRange(place.Start, place.End - place.Start))));
+                names.Add($"{GodotChecks.What(named.Kind)} {named.Name} in {place.Shown}");
+            }
+        }
+        return new Declared(places, $"No {GodotChecks.What(named.Kind)} '{named.Name}' is {named.Candidates.Where}") { Names = names, Title = "Definitions" };
+    }
+
+    /// <summary>Rename's box for a name of a kind at the caret; once a name is typed, <see cref="RenameKindAsync"/>. False
+    /// where the caret is on no such name.</summary>
+    private async Task<bool> ShowKindRename(OpenDocument document, int caret)
+    {
+        int version = document.Text.Version;
+        if (await GodotKindAtAsync(document, caret) is not { } named || context.Editors.Active != document || document.Text.Version != version)
+        {
+            return false;
+        }
+        RenameBox box = new(named.Name);
+        popups.ShowModal(box, caret, async name =>
+        {
+            if (name is null || name == named.Name)
+            {
+                return;
+            }
+            RefactorOutcome made = await RenameKindAsync(named, name);
+            context.Say(made.Problem ?? made.Said);
+        });
+        return true;
+    }
+
+    /// <summary>Why a name of a kind may not take a new name, else null: a name Godot's files would not hold as written, one
+    /// a name beside it has already, Godot's own input action, an animation's library left, or a place written with escapes.</summary>
+    internal static string? KindRenameProblem(KindNamed named, string name)
+    {
+        string what = GodotChecks.What(named.Kind);
+        string old = named.Name;
+        if (name.Length == 0 || name.Trim() != name || name.Any(char.IsControl))
+        {
+            return $"'{name}' is no {what}'s name";
+        }
+        if (named.Places.FirstOrDefault(p => !p.Plain) is { } escaped)
+        {
+            return $"{old} is written with escapes at {escaped.Shown}, which Passenger does not rename";
+        }
+        if (named.Kind == GodotStringKind.Action && !named.Places.Any(p => p.Defines))
+        {
+            return $"{old} is Godot's own input action, which project.godot does not define, so it keeps its name";
+        }
+        string refused = named.Kind switch
+        {
+            GodotStringKind.Action or GodotStringKind.Autoload => " =\"[];\\" + GodotScenes.Unnamable,
+            GodotStringKind.Animation => ":,[\"\\" + (old.Contains('/') ? string.Empty : "/"),
+            GodotStringKind.Translation => named.Places.Any(p => p.Res.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)) ? "\"\\,;\t" : "\"\\",
+            _ => "\"\\",
+        };
+        if (name.FirstOrDefault(c => refused.Contains(c)) is var character and not '\0')
+        {
+            return $"A{(what[0] is 'a' or 'i' ? "n" : string.Empty)} {what}'s name here never holds '{character}', so {old} keeps its name";
+        }
+        if (named.Kind == GodotStringKind.ShaderParameter && !Regex.IsMatch(name, "^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant))
+        {
+            return $"A uniform's name is a word of letters, digits and '_', so {old} keeps its name";
+        }
+        if (named.Kind == GodotStringKind.Animation && old.LastIndexOf('/') is var slash and >= 0
+            && (!name.StartsWith(old[..(slash + 1)], StringComparison.Ordinal) || name[(slash + 1)..].Length == 0 || name[(slash + 1)..].Contains('/')))
+        {
+            return $"{old} is the animation {old[(slash + 1)..]} of the library {old[..slash]}, whose name a rename keeps: give it as {old[..(slash + 1)]}…";
+        }
+        if (named.Candidates.Names.Any(n => n.Name == name && n.Places.Count > 0))
+        {
+            return $"There is {Article(what)} {name} already";
+        }
+        return null;
+
+        static string Article(string noun) => (noun[0] is 'a' or 'i' ? "an " : "a ") + noun;
+    }
+
+    /// <summary>A name of a kind renamed, as one command of global undo: every place Godot's files write it
+    /// (<see cref="KindNamed.Places"/>), and every string of the code's naming it that reaches those places (an animation
+    /// player's, a material's: those told to another are left), its files changed as they were read; refused as
+    /// <see cref="KindRenameProblem"/> says. The window's and an agent's alike.</summary>
+    internal async Task<RefactorOutcome> RenameKindAsync(KindNamed named, string name)
+    {
+        if (KindRenameProblem(named, name) is { } problem)
+        {
+            return RefactorOutcome.Refused(problem);
+        }
+        GodotScenes scenes = named.Read.Scenes;
+        string old = named.Name;
+        // An animation of a library is written in it by its own name, after the library's.
+        int own = named.Kind == GodotStringKind.Animation ? old.LastIndexOf('/') + 1 : 0;
+        Dictionary<string, List<TextEdit>> edits = new(PathNames.Comparer);
+        Dictionary<string, string> made = new(PathNames.Comparer);
+        foreach (GodotPlace place in named.Places)
+        {
+            if (scenes.FileOf(place.Res) is not { } file || scenes.Defined.TextOf(place.Res) is not { } text)
+            {
+                continue;
+            }
+            if (place.End > text.Length || text[place.Start..place.End] != old[own..])
+            {
+                return RefactorOutcome.Refused($"{old} was not renamed: {Path.GetFileName(file)} changed as it was read");
+            }
+            made[file] = text;
+            Add(file, new TextEdit(place.Start, place.End - place.Start, name[own..]));
+        }
+        if (context.CSharp?.Session is { } session)
+        {
+            GodotKindUses uses;
+            try
+            {
+                uses = await session.ExtensionAsync<GodotKindUses>(Handlers.GodotKindStrings, new GodotKindAsked(named.Read.Folder, named.Kind, old));
+            }
+            catch (LanguageServerFailed failed)
+            {
+                return RefactorOutcome.Refused($"{old} was not renamed: {failed.Message}");
+            }
+            HashSet<(string, int)> reached = [.. named.Places.Select(p => (p.Res, p.Start))];
+            foreach (GodotKindUse use in uses.Uses)
+            {
+                if (named.Kind is GodotStringKind.Animation or GodotStringKind.ShaderParameter && reached.Count > 0
+                    && !GodotChecks.Named(scenes, named.Kind, use.Scripts, use.Node, use.Export, use.Member).Names.Where(n => n.Name == old)
+                        .SelectMany(n => n.Places).Any(p => reached.Contains((p.Res, p.Start))))
+                {
+                    continue;
+                }
+                if (context.Editors.TextOf(use.File) is not { } text)
+                {
+                    continue;
+                }
+                int at = ServerLines.Of(text).OffsetOf(new LspPosition(use.At.Line, use.At.Character));
+                if (at + old.Length > text.Length || text.GetText(at, old.Length) != old)
+                {
+                    return RefactorOutcome.Refused($"{old} was not renamed: {Path.GetFileName(use.File)} changed as it was read");
+                }
+                made[use.File] = text.ToString();
+                Add(use.File, new TextEdit(at, old.Length, name));
+            }
+        }
+        List<XamlFileChange> changes = [.. edits.Select(e =>
+        {
+            string was = made[e.Key];
+            IReadOnlyList<TextEdit> these = [.. e.Value.Distinct().OrderBy(t => t.Start)];
+            return new XamlFileChange(e.Key, now => now == was ? these : []);
+        })];
+        if (changes.Count == 0)
+        {
+            return RefactorOutcome.Refused($"{old} was not renamed: no file writes it");
+        }
+        if (await actions.ApplyFileChangesAsync($"Rename {old} to {name}", changes) is { } refused)
+        {
+            return RefactorOutcome.Refused(refused);
+        }
+        return new RefactorOutcome($"Renamed {old} to {name} in {Plural.Of(changes.Count, "file")}", null,
+            [.. edits.Select(e => new RefactoredFile(e.Key, "changed", [.. e.Value.Select(t => TextSnapshot.From(made[e.Key]).GetLineFromOffset(t.Start) + 1).Distinct()]))], []);
+
+        void Add(string file, TextEdit edit)
+        {
+            if (!edits.TryGetValue(file, out List<TextEdit>? list))
+            {
+                edits[file] = list = [];
+            }
+            list.Add(edit);
+        }
+    }
+}
