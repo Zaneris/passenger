@@ -368,13 +368,14 @@ public static partial class Nice
     private static partial int SetPriority(int which, int who, int priority);
 }
 
-/// <summary>A test leaves nothing behind for the next, however it ends. A window test starts with no background work held:
-/// each test has a dispatcher of its own, and work a test left running (one that failed before its window settled, or
-/// closed it mid-parse) ends on that dispatcher, which never runs again, and held for ever would fail every window test
-/// after it on <see cref="Ui.Settle"/>'s limit. And after a window test, every window it left open is closed (one that
-/// failed before its own close) and what its windows started (a language server, a build, a debugger, a program) is waited
-/// out, those it closed itself too, then the folders the test made as it ran are removed, the windows that used them gone
-/// first. Any test fails where the person's Godot user folders were written as it ran (<see cref="PersonsGodot"/>).</summary>
+/// <summary>A test leaves nothing behind for the next, however it ends. A window test starts with no background work held,
+/// its dispatcher the one work from other threads goes to: each test has a dispatcher of its own, and work a test left
+/// running (one that failed before its window settled, or closed it mid-parse) ends on that dispatcher, which never runs
+/// again, and held for ever would fail every window test after it on <see cref="Ui.Settle"/>'s limit. And after a window
+/// test, every window it left open is closed (one that failed before its own close) and what its windows started (a
+/// language server, a build, a debugger, a program) is waited out, those it closed itself too, then the folders the test
+/// made as it ran are removed, the windows that used them gone first. Any test fails where the person's Godot user folders
+/// were written as it ran (<see cref="PersonsGodot"/>).</summary>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
 {
@@ -382,6 +383,8 @@ public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
     {
         if (IsWindowTest(methodUnderTest))
         {
+            // Else a test that opens no window posts its work from other threads to the last window's dispatcher, shut down.
+            Passenger.App.UiThread.Own();
             BackgroundWork.Forget();
             Passenger.Core.InFlight.Forget();
             OpenWindows.Watch();

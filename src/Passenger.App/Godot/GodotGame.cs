@@ -25,6 +25,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     private readonly CancellationTokenSource ending = new();
     private readonly SemaphoreSlim writing = new(1, 1);
     private NetworkStream? stream;
+    private volatile bool taken;
 
     /// <summary>When the game last sent a message (a <see cref="System.Diagnostics.Stopwatch"/> timestamp), written as its
     /// messages are read: whether it went on talking is what a question it left unanswered says.</summary>
@@ -166,6 +167,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
 
     public LiveAppState State { get; private set; } = LiveAppState.Waiting;
 
+    /// <summary>Whether Passenger has taken the game's connection, which the window's thread then hears of (<see cref="State"/>
+    /// becoming <see cref="LiveAppState.Connected"/>); read on any thread.</summary>
+    public bool ConnectionTaken => taken;
+
     public string? Problem => null;
 
     public int? ProcessId { get; private set; }
@@ -217,6 +222,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             listener.Stop();
             client.NoDelay = true;
             stream = client.GetStream();
+            taken = true;
             UiThread.Post(Connected);
             byte[] head = new byte[4];
             while (!ending.IsCancellationRequested)

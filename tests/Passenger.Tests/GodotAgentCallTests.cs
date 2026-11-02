@@ -74,7 +74,9 @@ public sealed class GodotAgentCallTests
         string address = plan.Arguments[plan.Arguments.ToList().IndexOf(GodotGame.RemoteDebug) + 1];
         TcpClient standIn = new();
         standIn.Connect(IPAddress.Loopback, new Uri(address).Port);
-        Ui.WaitFor(() => game.State == LiveAppState.Connected, "the stand-in game to connect");
+        Ui.WaitFor(() => game.State == LiveAppState.Connected, () => "the stand-in game to connect: " + (game.ConnectionTaken
+            ? "Passenger took its connection, but the word of it posted to the window's thread never ran there"
+            : "its connect was made, but Passenger never took the connection"));
         return (game, standIn);
     }
 
