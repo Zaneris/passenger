@@ -15,8 +15,9 @@ public enum GodotScriptKind
 /// file's text.</summary>
 public sealed record GodotScriptDeclared(GodotScriptKind Kind, string Name, int Start)
 {
-    /// <summary>A function's or signal's parameters as written (<c>amount: int</c>), a signal written without its parentheses
-    /// taking none; null where its line does not close them, so they are not known.</summary>
+    /// <summary>A function's or signal's parameters as written (<c>amount: int</c>); null where its line does not close them,
+    /// or for a signal written without them or that the script's own emits give other arguments than they say (Godot hands
+    /// an emit's arguments on as they are), so they are not known.</summary>
     public IReadOnlyList<string>? Parameters { get; init; }
 
     /// <summary>How many of its parameters a call must give: those without a default.</summary>
@@ -84,7 +85,7 @@ public sealed partial class GodotScriptDeclarations
                     {
                         members.Add(new GodotScriptDeclared(of, name.Value, start + name.Index)
                         {
-                            Parameters = of is GodotScriptKind.Function or GodotScriptKind.Signal ? ParametersOf(line[(name.Index + name.Length)..], of == GodotScriptKind.Signal) : null,
+                            Parameters = of is GodotScriptKind.Function or GodotScriptKind.Signal ? ParametersOf(line[(name.Index + name.Length)..]) : null,
                         });
                     }
                 }
@@ -103,17 +104,49 @@ public sealed partial class GodotScriptDeclarations
             }
             start = end + 1;
         }
+        Dictionary<string, HashSet<int>> emitted = Emitted(text);
+        for (int i = 0; i < members.Count; i++)
+        {
+            if (members[i] is { Kind: GodotScriptKind.Signal, Parameters: { } declared } signal && emitted.TryGetValue(signal.Name, out HashSet<int>? given)
+                && given.Any(count => count != declared.Count))
+            {
+                members[i] = signal with { Parameters = null };
+            }
+        }
         return new GodotScriptDeclarations(extends, path, named, members);
     }
 
+    /// <summary>How many arguments the script's own emits of each signal give, by its name: <c>name.emit(…)</c> and
+    /// <c>emit_signal("name", …)</c>, each whose arguments close on its line.</summary>
+    private static Dictionary<string, HashSet<int>> Emitted(string text)
+    {
+        Dictionary<string, HashSet<int>> emitted = new(StringComparer.Ordinal);
+        foreach (Match emit in Emit().Matches(text))
+        {
+            int line = text.IndexOf('\n', emit.Index);
+            if (ParametersOf(text[(emit.Index + emit.Length)..(line < 0 ? text.Length : line)]) is not { } given)
+            {
+                continue;
+            }
+            bool named = emit.Groups["name"].Success;
+            string? signal = named ? emit.Groups["name"].Value
+                : given is [{ } first, ..] && first.TrimStart('&') is { Length: > 1 } quoted && quoted[0] is '"' or '\'' && quoted[^1] == quoted[0] ? quoted[1..^1] : null;
+            if (signal is not null)
+            {
+                (emitted.TryGetValue(signal, out HashSet<int>? counts) ? counts : emitted[signal] = []).Add(named ? given.Count : given.Count - 1);
+            }
+        }
+        return emitted;
+    }
+
     /// <summary>The parameters written after a function's or signal's name, each trimmed, split at the commas outside their
-    /// own brackets and strings; none for a signal with no parentheses, null where the line leaves them open.</summary>
-    private static IReadOnlyList<string>? ParametersOf(string after, bool signal)
+    /// own brackets and strings; null where there are no parentheses or the line leaves them open.</summary>
+    private static IReadOnlyList<string>? ParametersOf(string after)
     {
         string rest = after.TrimStart();
         if (rest.Length == 0 || rest[0] != '(')
         {
-            return signal ? [] : null;
+            return null;
         }
         List<string> parameters = [];
         int depth = 0;
@@ -164,6 +197,9 @@ public sealed partial class GodotScriptDeclarations
 
     [GeneratedRegex(@"^(?:@[A-Za-z_]\w*(?:\([^)]*\))?\s+)*(?<static>static\s+)?(?<word>func|signal|var|const|enum)\s+(?<name>[A-Za-z_]\w*)")]
     private static partial Regex Declaration();
+
+    [GeneratedRegex(@"(?<![\w.])(?:self\.)?(?:(?<name>[A-Za-z_]\w*)\.emit|emit_signal)(?=\s*\()")]
+    private static partial Regex Emit();
 
     [GeneratedRegex(@"^(?:@[A-Za-z_]\w*(?:\([^)]*\))?\s+)*class_name\s+(?<name>[A-Za-z_]\w*)(?:\s+extends\s+(?<extends>""[^""]*""|'[^']*'|[A-Za-z_][\w.]*))?")]
     private static partial Regex ClassNamed();

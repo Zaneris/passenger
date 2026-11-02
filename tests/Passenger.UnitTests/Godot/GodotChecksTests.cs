@@ -574,6 +574,44 @@ public class GodotChecksTests
         Assert.Empty(GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, GodotCodeFound.None, _ => true));
     }
 
+    /// <summary>Godot hands a GDScript signal's emitted arguments on as they are, so a signal written without parentheses, or
+    /// one its script emits with other arguments than it declares, is not read against its handlers; one whose emits agree
+    /// with its parameters still is.</summary>
+    [Fact]
+    public void A_gdscript_signal_whose_parameters_say_nothing_of_its_emits_is_not_read_against_its_handlers()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [ext_resource type="Script" path="res://player.gd" id="1"]
+            [ext_resource type="Script" path="res://hud.gd" id="2"]
+
+            [node name="Main" type="Node3D"]
+
+            [node name="Player" type="CharacterBody3D" parent="."]
+            script = ExtResource("1")
+
+            [node name="HUD" type="CanvasLayer" parent="."]
+            script = ExtResource("2")
+
+            [connection signal="coin_collected" from="Player" to="HUD" method="_on_coin_collected"]
+            [connection signal="hit" from="Player" to="HUD" method="_on_coin_collected"]
+            [connection signal="updated" from="Player" to="HUD" method="_on_updated"]
+
+            """;
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
+            texts: new Dictionary<string, string>
+            {
+                ["res://player.gd"] = "extends CharacterBody3D\n\nsignal coin_collected\nsignal hit(by: Node, amount: int)\nsignal updated(zone)\n\n"
+                    + "func collect(coins: int) -> void:\n\tcoin_collected.emit(coins)\n\thit.emit(self, coins)\n\tupdated.emit(0.2, 0.8)\n",
+                ["res://hud.gd"] = "extends CanvasLayer\n\nfunc _on_coin_collected(coins):\n\tpass\n\nfunc _on_updated(low: float, high: float) -> void:\n\tpass\n",
+            });
+        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/main.tscn", scenes, "res://main.tscn");
+        GodotCodeFound found = new([], [], [], [], [], [.. asked.Signals.Select(_ => (GodotSignature?)null)], [.. asked.Methods.Select(_ => (GodotSignature?)null)]);
+        IReadOnlyList<GodotChecks.SceneFinding> findings = GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, found, _ => true);
+        Assert.Equal(["hit gives 2 (Node, int), but _on_coin_collected takes 1 (coins)"], findings.Select(f => f.Message));
+    }
+
     /// <summary>With the engine's answers alone, as a game of GDScript alone has them from GodotSharp: a signal a node of no
     /// script lacks is an error; a handler its GDScript lacks is one, offering to make it with the signal's parameters as
     /// GDScript writes them, a bound value's too; and a handler its script declares taking other than the signal gives is one.</summary>

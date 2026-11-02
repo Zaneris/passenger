@@ -65,13 +65,27 @@ public class GodotScriptDeclarationsTests
             .ChainOf("res://a.gd").Engine);
     }
 
+    /// <summary>A signal's declared parameters stand where the script's own emits give as many, and are not known where one
+    /// gives another count (another object's emit of a signal of the same name is not the script's).</summary>
+    [Fact]
+    public void A_signal_the_scripts_own_emits_give_other_arguments_than_declared_has_its_parameters_unknown()
+    {
+        GodotScriptDeclarations read = GodotScriptDeclarations.Read(
+            "signal updated(zone)\nsignal hit(amount: int)\nsignal named(a, b)\nsignal other(a)\n\nfunc f(offsets):\n"
+            + "\tupdated.emit(offsets[1], offsets[2])\n\tself.hit.emit(3)\n\temit_signal(&\"named\", 1)\n\tenemy.other.emit()\n\tother.emit(\"a, b\")\n");
+        Assert.Null(read.Member(GodotScriptKind.Signal, "updated")!.Parameters);
+        Assert.Equal(["amount: int"], read.Member(GodotScriptKind.Signal, "hit")!.Parameters!);
+        Assert.Null(read.Member(GodotScriptKind.Signal, "named")!.Parameters);
+        Assert.Equal(["a"], read.Member(GodotScriptKind.Signal, "other")!.Parameters!);
+    }
+
     [Fact]
     public void A_functions_and_a_signals_parameters_are_read_with_how_many_a_call_must_give()
     {
         GodotScriptDeclarations read = GodotScriptDeclarations.Read(
             "signal died\nsignal hit(amount: int, by: Node = null)\nfunc heal(points := 1, to: Array[int] = [1, 2]) -> void:\n\tpass\n"
             + "func take(a, b: Dictionary = {\"x\": 1}):\n\tpass\nfunc open(\n\ta,\n):\n\tpass\n");
-        Assert.Equal([], read.Member(GodotScriptKind.Signal, "died")!.Parameters!);
+        Assert.Null(read.Member(GodotScriptKind.Signal, "died")!.Parameters);
         Assert.Equal(["amount: int", "by: Node = null"], read.Member(GodotScriptKind.Signal, "hit")!.Parameters!);
         Assert.Equal(1, read.Member(GodotScriptKind.Signal, "hit")!.Required);
         Assert.Equal((2, 0), (read.Member(GodotScriptKind.Function, "heal")!.Parameters!.Count, read.Member(GodotScriptKind.Function, "heal")!.Required));
