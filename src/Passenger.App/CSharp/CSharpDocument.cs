@@ -289,11 +289,12 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         IReadOnlyList<Diagnostic> configuration = await ConfigurationFindingsAsync([.. aspire, .. compose], cancel);
         IReadOnlyList<Diagnostic> localization = await LocalizationFindingsAsync(cancel);
         IReadOnlyList<Diagnostic> godot = await GodotFindingsAsync(cancel);
+        IReadOnlyList<Diagnostic> classes = await StylesheetFindingsAsync(lsp, cancel);
         if (cancel.IsCancellationRequested || version != document.Text.Version || Lsp != lsp)
         {
             return null;
         }
-        IReadOnlyList<Diagnostic> own = [.. found, .. aspire, .. compose, .. configuration, .. localization, .. godot];
+        IReadOnlyList<Diagnostic> own = [.. found, .. aspire, .. compose, .. configuration, .. localization, .. godot, .. classes];
         IReadOnlyList<Diagnostic> carried = lsp.PullsProjectWide ? diagnostics.Late : [];
         document.Markers = diagnostics.Take([.. own, .. carried], DiagnosticMarks.Marker, carried.Count);
         ShowGodotMarks();

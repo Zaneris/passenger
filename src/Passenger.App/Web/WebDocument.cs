@@ -74,6 +74,12 @@ public sealed class WebDocument : IServerDocument, IDisposable
 
     public WebServerKind Kind { get; }
 
+    /// <summary>The stylesheets the folder's pages link, whose classes an HTML file's are checked against.</summary>
+    public PageStylesheets? Stylesheets { get; init; }
+
+    /// <summary>What the pages link changed: an HTML file's classes are checked again.</summary>
+    public void StylesheetsChanged() => Pull(TimeSpan.Zero);
+
     /// <summary>The language the server is told the file is in (<c>typescriptreact</c>, <c>scss</c>, <c>jsonc</c>).</summary>
     public string LanguageId { get; }
 
@@ -358,7 +364,13 @@ public sealed class WebDocument : IServerDocument, IDisposable
     {
         if (session?.Server.Provides("diagnosticProvider") == true && await diagnostics.PulledAsync(lsp, cancel) is { } pulled)
         {
-            Show(pulled);
+            int version = document.Text.Version;
+            IReadOnlyList<Diagnostic> classes = await StylesheetFindingsAsync(cancel);
+            if (cancel.IsCancellationRequested || version != document.Text.Version)
+            {
+                return;
+            }
+            Show([.. pulled, .. classes]);
         }
         if (session?.Server.Provides("colorProvider") == true)
         {
@@ -399,6 +411,19 @@ public sealed class WebDocument : IServerDocument, IDisposable
             Tags = diagnostic.Tags,
             Data = diagnostic.Data,
         };
+    }
+
+    /// <summary>The classes an HTML file writes that no stylesheet it links defines, for the text as it stands; none for
+    /// another file, or while one linked could not be read.</summary>
+    private async Task<IReadOnlyList<Diagnostic>> StylesheetFindingsAsync(CancellationToken cancel)
+    {
+        if (Kind != WebServerKind.Html || Stylesheets is not { } stylesheets)
+        {
+            return [];
+        }
+        TextSnapshot text = document.Text.Snapshot;
+        PageClasses classes = await stylesheets.ClassesAsync(document.Path, cancel);
+        return await BackgroundWork.Run(() => PageStylesheets.Unknown(text, razor: false, classes), cancel);
     }
 
     /// <summary>A swatch in the gutter for each line that writes a colour, the first on the line.</summary>

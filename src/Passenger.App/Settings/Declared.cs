@@ -234,6 +234,13 @@ public static class Declared
             + "tsconfig.json, jsconfig.json, appsettings.json, launchSettings.json and global.json use the schemas Passenger "
             + "carries from SchemaStore, which are never downloaded."));
 
+    public static readonly ToggleSetting DownloadStylesheets = new(s => s.DownloadStylesheets, (s, v) => s with { DownloadStylesheets = v },
+        new(D.StylesheetsPage, "Allow downloading the stylesheets a page links from the web",
+            "css stylesheet stylesheets class classes remote download web http https cdn bootstrap link completion html razor blazor",
+            "A page's <link rel=\"stylesheet\"> to an address on the web (a CDN's Bootstrap) has the stylesheet downloaded once, kept in "
+            + "Passenger's cache, to complete, describe and check the classes it defines; one whose link gives an integrity hash is "
+            + "used only while it matches. The app's own stylesheets and its packages' are read from disk, never downloaded."));
+
     public static readonly ToggleSetting DockerHubTags = new(s => s.DockerHubTags, (s, v) => s with { DockerHubTags = v },
         new(D.DockerPage, "Complete image tags from Docker Hub",
             "docker hub dockerfile containerfile image images tag tags from completion registry remote download web network",

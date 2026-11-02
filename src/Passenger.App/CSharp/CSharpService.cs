@@ -1604,6 +1604,9 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// lacks, pulls its diagnostics again; no other file.</summary>
     internal void LocalizationChanged() => Each(document => document.LocalizationChanged());
 
+    /// <summary>What the folder's pages link changed: each open Razor file's classes are checked again.</summary>
+    internal void StylesheetsChanged() => Each(document => document.StylesheetsChanged());
+
     /// <summary>The localized strings a C# or Razor file reads, asked of Passenger's extension for the code as the server holds it,
     /// each key's resource with its files found and read off the UI thread (<see cref="ResourceFiles"/>), open ones as the
     /// editor has them; null without the server.</summary>
@@ -1658,6 +1661,9 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     /// <summary>The folder's Godot scenes and resources, read once and followed; none without a session.</summary>
     public Godot.GodotSceneIndex? GodotScenes { get; init; }
+
+    /// <summary>The stylesheets the folder's pages link, whose classes a Razor file's are checked against; none without a session.</summary>
+    public Web.PageStylesheets? Stylesheets { get; init; }
 
     /// <summary>A Godot project's C# file was read against its scenes, as a pull of it read it: what the open scenes are
     /// read against may have changed.</summary>

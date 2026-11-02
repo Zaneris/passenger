@@ -29,6 +29,7 @@ public sealed partial class SettingsDialog : IdeWindow
     public const string EslintPage = "ESLint";
     public const string PrettierPage = "Prettier";
     public const string SchemasPage = "Remote JSON Schemas";
+    public const string StylesheetsPage = "Remote Stylesheets";
     public const string DockerPage = "Docker";
     public const string GodotPage = "Godot";
     public const string KeymapPage = "Keymap";
@@ -57,7 +58,7 @@ public sealed partial class SettingsDialog : IdeWindow
     public static readonly string[] DiscordChoices = ["Passenger only", "The solution", "The solution and the file"];
 
     private static readonly string[] Order = [Appearance, SystemPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, LiveTemplatesPage,
-        BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, DockerPage, GodotPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
+        BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, StylesheetsPage, DockerPage, GodotPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
 
     /// <summary>The names of Attributes format's choices, in <see cref="Passenger.Xaml.Features.XamlAttributeStyle"/>'s
     /// order.</summary>
@@ -356,6 +357,7 @@ public sealed partial class SettingsDialog : IdeWindow
             + "as the login shell finds it. Without one, those files keep their colours only.");
         AddCodeQualityTools();
         Add(Declared.DownloadJsonSchemas);
+        Add(Declared.DownloadStylesheets);
         Add(Declared.DockerHubTags);
         Add(Declared.BuildKitChecks);
         Add(Declared.GodotExecutable);

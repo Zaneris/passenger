@@ -106,6 +106,7 @@ public partial class MainWindow
         session.GodotScenes.FilesChanged(changes.Paths);
         session.MSBuild.FilesChanged(changes.Paths, changes.Structure);
         session.Web?.FilesChanged(changes.Paths);
+        session.Stylesheets.FilesChanged([.. changes.Paths, .. changes.ComeOrGone, .. changes.Restored], every: changes.Lost || changes.Overflowed);
         EndpointFilesChanged(changes);
         FollowOpenFiles(changes.Paths, every: changes.Lost || changes.Overflowed);
         if (changes.Paths.Count > 0 || changes.Git)

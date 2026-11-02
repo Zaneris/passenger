@@ -117,6 +117,18 @@ public sealed class ProjectSession : IAsyncDisposable
         Xaml.Evaluations = path => evaluations.GetValueOrDefault(path);
         Frameworks.Changed += (_, project) => FollowFramework(project);
         GodotScenes = new Godot.GodotSceneIndex { Texts = setup.Editors.Texts, Files = () => (Index.Root, Index.Files), GameOf = GodotOf };
+        Stylesheets = new Web.PageStylesheets
+        {
+            Texts = setup.Editors.Texts,
+            Files = () => (Index.Root, Index.Files),
+            Projects = () => Projects,
+            Remote = new Web.RemoteStylesheets(() => setup.Settings().DownloadStylesheets),
+        };
+        Stylesheets.Changed += (_, _) =>
+        {
+            CSharp?.StylesheetsChanged();
+            Web?.StylesheetsChanged();
+        };
         GodotScenes.Changed += (_, _) => CSharp?.GodotScenesChanged();
         GodotMarks = new Godot.GodotSceneMarks(GodotScenes, GodotOf, () => CSharp, setup.Editors.Commands) { Godot = () => setup.Settings().GodotExecutable };
         GodotScenes.Changed += (_, _) => GodotMarks.Changed();
@@ -202,7 +214,10 @@ public sealed class ProjectSession : IAsyncDisposable
         session.Index.Changed += (_, change) => session.AspireFiles.CameAndWent(folder, change.Came, change.Gone);
         session.Index.Build(folder);
         session.Watcher = new FolderWatcher(folder, setup.Watching);
-        session.Web = new Web.WebLanguages(folder, setup.Settings, setup.Engine) { DockerHub = setup.DockerHub, GodotEnvironment = setup.GodotEnvironment ?? new Dictionary<string, string>() };
+        session.Web = new Web.WebLanguages(folder, setup.Settings, setup.Engine)
+        {
+            DockerHub = setup.DockerHub, GodotEnvironment = setup.GodotEnvironment ?? new Dictionary<string, string>(), Stylesheets = session.Stylesheets,
+        };
         // A compose file's check reads what each .NET service's project reads, once the language server has loaded it.
         session.Web.Checks.Code = () => new Containers.ComposeCode(session.Projects, session.CSharp is { IsReady: true } csharp ? csharp.Session : null);
         session.Web.Checks.GapsChanged += (_, _) => session.CSharp?.ComposeGapsChanged();
@@ -770,6 +785,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The scenes and resources of the folder's Godot projects, read once each is asked about and followed.</summary>
     public Godot.GodotSceneIndex GodotScenes { get; }
 
+    /// <summary>The stylesheets the folder's pages link, read as they are asked for and followed through the watcher.</summary>
+    public Web.PageStylesheets Stylesheets { get; }
+
     /// <summary>The marks of the open Godot scenes and resources, read against their project's scenes and code.</summary>
     internal Godot.GodotSceneMarks GodotMarks { get; }
 
@@ -1227,6 +1245,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 GodotOf = BuiltGodotOf,
                 GodotScenes = GodotScenes,
                 GodotCodeRead = GodotMarks.Changed,
+                Stylesheets = Stylesheets,
             };
             CSharpChanged?.Invoke(this, EventArgs.Empty);
             CSharpService started = CSharp;

@@ -29,6 +29,9 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>The window's MSBuild code help, for a project file shown.</summary>
     public Func<MSBuildService?>? MSBuild { get; set; }
 
+    /// <summary>The stylesheets the window's pages link, for a Razor or HTML file shown.</summary>
+    public Func<PageStylesheets?>? Stylesheets { get; set; }
+
     /// <summary>The scenes of the window's Godot projects, C# or GDScript alone, for a scene shown.</summary>
     public Func<Godot.GodotSceneIndex?>? GodotScenes { get; set; }
 

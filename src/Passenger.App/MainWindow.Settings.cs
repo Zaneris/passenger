@@ -114,6 +114,10 @@ public partial class MainWindow
         session.Web?.UseNode(next.NodeInterpreter);
         session.Web?.UseTools();
         session.Web?.UseDockerHub(next.DockerHubTags);
+        if (next.DownloadStylesheets != before.DownloadStylesheets)
+        {
+            session.Stylesheets.DownloadsChanged();
+        }
         session.Web?.Checks.UseBuildKit(next.BuildKitChecks);
         ListenForAgents(next.McpServer);
         FollowAgentFolders(before, next);

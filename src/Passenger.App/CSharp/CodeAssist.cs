@@ -80,7 +80,8 @@ public sealed class CodeAssist
         CSharpAssist csharp = new(context, popups, completion, parameterInfo, navigation, actions, xaml);
         context.Languages = new LanguageAssists(new HttpAssist(context, navigation), new MSBuildAssist(context, popups, completion), xaml,
             new ComposeAssist(context, popups, completion, navigation, actions), new SettingsAssist(context, completion, navigation),
-            new WebAssist(context, popups, completion, parameterInfo, actions), new GodotAssist(context, popups, completion, navigation, csharp), csharp);
+            new CssClassAssist(context, completion, navigation), new WebAssist(context, popups, completion, parameterInfo, actions),
+            new GodotAssist(context, popups, completion, navigation, csharp), csharp);
         // Every editor a split makes is wired the same; what it asks is answered for the active one, which it is.
         editors.ForEachEditor(editor =>
         {
@@ -284,6 +285,13 @@ public sealed class CodeAssist
     {
         get => context.MSBuild;
         set => context.MSBuild = value;
+    }
+
+    /// <summary>The stylesheets the window's pages link, for a Razor or HTML file shown.</summary>
+    public Func<PageStylesheets?>? Stylesheets
+    {
+        get => context.Stylesheets;
+        set => context.Stylesheets = value;
     }
 
     /// <summary>The scenes of the window's Godot projects, for a scene shown.</summary>

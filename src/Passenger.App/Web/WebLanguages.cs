@@ -105,6 +105,9 @@ public sealed class WebLanguages : IAsyncDisposable
     /// <c>PASSENGER_DOCKER_HUB</c> names, else Docker Hub's own (<see cref="DockerHubTags"/>).</summary>
     public Uri? DockerHub { get; init; }
 
+    /// <summary>The stylesheets the folder's pages link, whose classes an HTML file's are checked against.</summary>
+    public PageStylesheets? Stylesheets { get; init; }
+
     /// <summary>The variables a Godot editor started for GDScript runs with beyond the IDE's own: a test's user folders.</summary>
     public IReadOnlyDictionary<string, string> GodotEnvironment { get; init; } = new Dictionary<string, string>();
 
@@ -182,7 +185,7 @@ public sealed class WebLanguages : IAsyncDisposable
         {
             return;
         }
-        WebDocument features = new(document, language.Kind, language.LanguageId);
+        WebDocument features = new(document, language.Kind, language.LanguageId) { Stylesheets = Stylesheets };
         documents[document] = features;
         if (language.Kind == WebServerKind.GDScript)
         {
@@ -393,6 +396,16 @@ public sealed class WebLanguages : IAsyncDisposable
     }
 
     public WebDocument? For(OpenDocument document) => documents.GetValueOrDefault(document);
+
+    /// <summary>What the folder's pages link changed: each open HTML file's classes are checked again.</summary>
+    public void StylesheetsChanged()
+    {
+        UiThread.Check();
+        foreach (WebDocument features in documents.Values.Where(d => d.Kind == WebServerKind.Html))
+        {
+            features.StylesheetsChanged();
+        }
+    }
 
     /// <summary>What the status bar says of a file's server while it cannot answer (starting, no Node.js); null once it can.</summary>
     public string? StateOf(OpenDocument document) =>
