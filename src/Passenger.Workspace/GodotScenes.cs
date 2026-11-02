@@ -43,6 +43,10 @@ public sealed class GodotTreeNode
     /// nodes are not known.</summary>
     public bool Placeholder { get; private set; }
 
+    /// <summary>Whether it instances a scene no text says the nodes of (an imported model, a binary scene, one not found),
+    /// so a name below it that no section adds is not known.</summary>
+    public bool NodesUnread { get; internal set; }
+
     /// <summary>The scene and section that name it, its declaration, then every later section that changes it.</summary>
     public IReadOnlyList<(string Scene, GodotNode Node)> Written { get; private set; }
 
@@ -133,6 +137,7 @@ public sealed class GodotTreeNode
             Unique = node.Unique,
             Instance = node.Instance,
             Placeholder = node.Placeholder,
+            NodesUnread = node.NodesUnread,
         };
         made[node] = copy;
         foreach (GodotTreeNode child in node.children)
@@ -373,7 +378,7 @@ public sealed class GodotScenes
 
     /// <summary>Where a node path leads from a node: its names in turn, "." and ".." among them, a first <c>%Name</c> among the
     /// unique nodes it finds, what follows a ':' (a property's) left aside. Unknown for an absolute path, one above the
-    /// tree's root, or one into a placeholder's nodes.</summary>
+    /// tree's root, or one into a placeholder's nodes or those of a scene no text says (<see cref="GodotTreeNode.NodesUnread"/>).</summary>
     public static GodotResolved Resolve(GodotTreeNode from, string path)
     {
         List<(int, int, GodotTreeNode)> steps = [];
@@ -411,6 +416,10 @@ public sealed class GodotScenes
             {
                 at = next;
                 steps.Add((start, end, at));
+            }
+            else if (at.NodesUnread)
+            {
+                return new GodotResolved(null, steps, null, Unknown: true);
             }
             else
             {
@@ -674,7 +683,7 @@ public sealed class GodotScenes
             }
             else
             {
-                made = new GodotTreeNode(node.Name, parent, (scene, node));
+                made = new GodotTreeNode(node.Name, parent, (scene, node)) { NodesUnread = node.Instance is not null };
                 made.Own(root);
             }
             made.Take(scene, node, file, declares: true);

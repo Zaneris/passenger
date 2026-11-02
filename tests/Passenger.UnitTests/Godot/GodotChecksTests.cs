@@ -318,6 +318,32 @@ public class GodotChecksTests
         ], findings.Select(f => (scene[f.Start..f.End], f.Message)));
     }
 
+    /// <summary>A node a scene adds under an imported model's own nodes is no node under one the scene lacks: Godot finds
+    /// its parent in the model, which no text says; one under a missing node of the scene's own still is.</summary>
+    [Fact]
+    public void A_node_added_inside_an_imported_model_is_not_marked_as_left_out()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [ext_resource type="PackedScene" path="res://chicken.glb" id="1_model"]
+
+            [node name="Chicken" instance=ExtResource("1_model")]
+
+            [node name="Mesh" parent="Rig/Skeleton3D" index="0"]
+
+            [node name="Halo" type="Node3D" parent="."]
+
+            [node name="Lost" type="Node3D" parent="Halo/Gone"]
+
+            """;
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://chicken.tscn"] = GodotFile.Parse(scene) });
+        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/Chicken.cs", scenes, "res://chicken.tscn");
+        GodotCodeFound found = new([], [], [], [], [], [], []);
+        IReadOnlyList<GodotChecks.SceneFinding> findings = GodotChecks.SceneFindings(scenes, "res://chicken.tscn", asked, found, _ => true);
+        Assert.Equal([("Halo/Gone", "No node 'Halo/Gone' is in the scene, so Godot leaves Lost out")], findings.Select(f => (scene[f.Start..f.End], f.Message)));
+    }
+
     /// <summary>An exported node a scene sets to a node of another type, or a NodePath it sets to no node, is an error at the
     /// member's name naming the scene and line; one of the type, or a path leaving the tree, is not.</summary>
     [Fact]

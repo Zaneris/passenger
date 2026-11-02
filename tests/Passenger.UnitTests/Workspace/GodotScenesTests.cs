@@ -148,6 +148,45 @@ public class GodotScenesTests
         Assert.Equal(["Hud", "Hud/Score", "Hud/Start", "Player", "Player/Sprite", "Player/Sprite/Weapon", "%Score"], GodotScenes.PathsFrom(root).Select(p => p.Path));
     }
 
+    /// <summary>A scene that inherits an imported model, whose nodes no text says, finds the nodes it adds itself, and a
+    /// path into the model's own is not known, in it and in a scene instancing it; a path into a text scene still goes missing.</summary>
+    [Fact]
+    public void A_path_into_an_imported_models_nodes_is_not_the_scenes_to_say()
+    {
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>
+        {
+            ["res://chicken.tscn"] = GodotFile.Parse("""
+                [gd_scene format=3]
+
+                [ext_resource type="PackedScene" path="res://chicken.glb" id="1_model"]
+
+                [node name="Chicken" instance=ExtResource("1_model")]
+
+                [node name="Mesh" parent="Rig/Skeleton3D" index="0"]
+
+                [node name="Halo" type="Node3D" parent="."]
+                """),
+            ["res://world.tscn"] = GodotFile.Parse("""
+                [gd_scene format=3]
+
+                [ext_resource type="PackedScene" path="res://chicken.tscn" id="1_chicken"]
+
+                [node name="World" type="Node3D"]
+
+                [node name="Chicken" parent="." instance=ExtResource("1_chicken")]
+                """),
+        });
+        GodotTreeNode chicken = scenes.Tree("res://chicken.tscn")!;
+        Assert.True(chicken.NodesUnread);
+        Assert.Equal("Halo", GodotScenes.Resolve(chicken, "Halo").Found?.Name);
+        Assert.True(GodotScenes.Resolve(chicken, "Rig/Skeleton3D").Unknown, "The model's nodes are Godot's import's to say, not the scene's");
+        GodotTreeNode world = scenes.Tree("res://world.tscn")!;
+        Assert.True(GodotScenes.Resolve(world, "Chicken/Rig/Skeleton3D/Mesh").Unknown, "An instance of the scene keeps the model's nodes unknown");
+        Assert.Equal("Halo", GodotScenes.Resolve(world, "Chicken/Halo").Found?.Name);
+        GodotResolved missing = GodotScenes.Resolve(world, "Chicken/Halo/Gone");
+        Assert.Equal((false, (13, 17)), (missing.Unknown, missing.Missing));
+    }
+
     [Fact]
     public void A_script_runs_on_its_own_scenes_node_and_on_every_instance_of_that_scene()
     {
