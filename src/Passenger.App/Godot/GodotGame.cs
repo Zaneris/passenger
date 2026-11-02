@@ -35,6 +35,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     private (long At, string Said)? lastRaised;
 
     private TaskCompletionSource<GodotNode?>? treeAsked;
+
+    /// <summary>The scene tree as the game last sent it, where a node set from the properties pane is placed.</summary>
+    private GodotNode? lastTree;
     private readonly Dictionary<ulong, TaskCompletionSource<GodotObjectState>> objectsAsked = [];
     private readonly Dictionary<ulong, GodotObjectState> inspected = [];
     private readonly Dictionary<long, TaskCompletionSource<(int Width, int Height, string Path)>> picturesAsked = [];
@@ -63,6 +66,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         Folder = folder;
         Version = version;
         Headless = headless;
+        Tuning = new GodotTuning(folder);
         this.listener = listener;
         ScriptsDebugged = scripts is not null;
         StartBreakpoints = scripts?.Breakpoints ?? [];
@@ -379,12 +383,15 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
                 ProcessId = (int)id;
                 break;
             case GodotWords.SceneTree:
-                treeAsked?.TrySetResult(GodotNode.Tree(message.Data));
+                GodotNode? told = GodotNode.Tree(message.Data);
+                lastTree = told ?? lastTree;
+                treeAsked?.TrySetResult(told);
                 break;
             case GodotWords.InspectObjects:
                 foreach (GodotObjectState state in GodotObjectState.Read(message.Data))
                 {
                     inspected[state.Id] = state;
+                    Tuning.Read(state);
                     if (objectsAsked.Remove(state.Id, out TaskCompletionSource<GodotObjectState>? asked))
                     {
                         asked.TrySetResult(state);
@@ -934,12 +941,53 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             new LayoutInfo(none, null, 0, 0, flat, null, null, string.Empty, string.Empty), properties, []);
     }
 
-    public string? WhyNotSet(long element, PropertyValue value) =>
+    /// <summary>The values set from the properties pane, kept or not.</summary>
+    public GodotTuning Tuning { get; }
+
+    /// <summary>A node's properties as last read, or null before.</summary>
+    public GodotObjectState? InspectedOf(long element) => inspected.GetValueOrDefault((ulong)element);
+
+    /// <summary>Where a node is in the scene tree as last sent (its chain from the root, each scene's root with its scene),
+    /// with its script as last read; null for a node the tree does not hold.</summary>
+    public GodotNodePlace? PlaceOf(ulong id)
+    {
+        if (lastTree is not { } root || Chain(root, id) is not { } chain)
+        {
+            return null;
+        }
+        string? script = inspected.GetValueOrDefault(id)?.Properties.FirstOrDefault(p => p.Name == "script")?.Value as string;
+        return new GodotNodePlace([.. chain.Skip(1).Select(n => (n.Name, n.SceneFile))], script is { Length: > 0 } ? script : null);
+
+        static List<GodotNode>? Chain(GodotNode node, ulong id)
+        {
+            if (node.Id == id)
+            {
+                return [node];
+            }
+            foreach (GodotNode child in node.Children)
+            {
+                if (Chain(child, id) is { } below)
+                {
+                    below.Insert(0, node);
+                    return below;
+                }
+            }
+            return null;
+        }
+    }
+
+    public string? WhyNotSet(long element, PropertyValue value) => WhyNotSet(element, value.Name);
+
+    /// <summary>Why a property of a node cannot be set now, or null when it can: a resource's only where the node is in a
+    /// scene, which live editing reaches it through.</summary>
+    public string? WhyNotSet(long element, string name) =>
         State != LiveAppState.Connected ? $"{Name} is not running"
-        : !inspected.TryGetValue((ulong)element, out GodotObjectState? state) || state.Properties.FirstOrDefault(p => p.Name == value.Name) is not { } property
-            ? $"{value.Name} is not one of the node's properties as last read"
+        : !inspected.TryGetValue((ulong)element, out GodotObjectState? state) || state.Properties.FirstOrDefault(p => p.Name == name) is not { } property
+            ? $"{name} is not one of the node's properties as last read"
         : property.Settable ? null
-        : $"{value.Name} is a {property.Type}{((property.Usage & (1 << 28)) != 0 ? ", read-only" : string.Empty)}, which is not set from here";
+        : property is { Type: GodotType.Object, Hint: GodotHints.ResourceType } && (property.Usage & (1 << 28)) == 0
+            ? PlaceOf((ulong)element) is { } place && place.Chain.Any(c => c.Scene.Length > 0) ? null : $"{name} is set through its scene, which {state.Class} is in none of"
+        : $"{name} is a {property.Type}{((property.Usage & (1 << 28)) != 0 ? ", read-only" : string.Empty)}, which is not set from here";
 
     public async Task SetAsync(long element, PropertyValue value, string text)
     {
@@ -953,7 +1001,47 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         {
             throw new LiveAppException($"{value.Name} takes {wanted}");
         }
-        await SetPropertyAsync((ulong)element, value.Name, read);
+        await SetValueAsync(element, value.Name, read);
+    }
+
+    /// <summary>Sets a node's property to a value of its type, recorded among the values set (<see cref="Tuning"/>).</summary>
+    public async Task SetValueAsync(long element, string name, object? value)
+    {
+        UiThread.Check();
+        if (WhyNotSet(element, name) is { } why)
+        {
+            throw new LiveAppException(why);
+        }
+        GodotProperty property = inspected[(ulong)element].Properties.First(p => p.Name == name);
+        Tuning.Set((ulong)element, PlaceOf((ulong)element) ?? new GodotNodePlace([], null), property, value);
+        await SetPropertyAsync((ulong)element, name, value);
+    }
+
+    /// <summary>The id under which the game's live editing knows a node set a resource.</summary>
+    private const long TunedPath = 7047;
+
+    /// <summary>Sets a node's resource to a file of the project's (<c>res://</c>), which the game loads: through live editing
+    /// of the scene the node is nearest the root of, which reaches it in every copy of that scene.</summary>
+    public async Task SetResourceAsync(long element, string name, string resource)
+    {
+        UiThread.Check();
+        if (WhyNotSet(element, name) is { } why)
+        {
+            throw new LiveAppException(why);
+        }
+        GodotProperty property = inspected[(ulong)element].Properties.First(p => p.Name == name);
+        if (property.Type != GodotType.Object)
+        {
+            await SetValueAsync(element, name, resource);
+            return;
+        }
+        GodotNodePlace place = PlaceOf((ulong)element) ?? throw new LiveAppException($"{name}'s node has left {Name}");
+        int root = place.Chain.ToList().FindLastIndex(c => c.Scene.Length > 0);
+        string below = string.Join('/', place.Chain.Skip(root + 1).Select(c => c.Name));
+        Tuning.Set((ulong)element, place, property, resource);
+        await SendAsync(GodotWords.LiveSetRoot, GodotAgent.PathOf("/root"), place.Chain[root].Scene);
+        await SendAsync(GodotWords.LiveNodePath, GodotAgent.PathOf(below.Length == 0 ? "." : below), TunedPath);
+        await SendAsync(GodotWords.LiveNodePropertyResource, TunedPath, name, resource);
     }
 
     public void Dispose()

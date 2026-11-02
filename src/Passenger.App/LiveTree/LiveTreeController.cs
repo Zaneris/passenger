@@ -12,8 +12,11 @@ using Passenger.Text;
 namespace Passenger.App.LiveTree;
 
 /// <summary>What a window lends its Live Visual Tree: the tool windows' frame, the window's actions, the status bar, going to
-/// a place in a file, and the editors, whose text the app's XAML places are read in.</summary>
-public sealed record LiveTreeParts(DockHost Dock, ActionRegistry Actions, Action<string> Say, Action<string, TextPosition> Navigate, EditorArea Editors);
+/// a place in a file, the editors, whose text the app's XAML places are read in, a change of files as one command of Undo
+/// (a Godot value kept; null once made, else why not), and a popup beside a control of the window's.</summary>
+public sealed record LiveTreeParts(DockHost Dock, ActionRegistry Actions, Action<string> Say, Action<string, TextPosition> Navigate, EditorArea Editors,
+    Func<string, IReadOnlyList<Passenger.Xaml.Features.XamlFileChange>, Task<string?>> Change, Action<Avalonia.Controls.Control, Avalonia.Controls.Control> ShowPopup,
+    Action ClosePopup);
 
 /// <summary>The window's Live Visual Tree, over the session it has: it follows the Avalonia or WPF app of the Debug tab chosen,
 /// else the Godot game launched last (<see cref="ProjectSession.LiveSource"/>), shows its window as the app's UI comes up,
@@ -21,7 +24,7 @@ public sealed record LiveTreeParts(DockHost Dock, ActionRegistry Actions, Action
 /// (again whenever its controls come and go), for the chosen control's details, for Select Element and for the outline over
 /// the control chosen. While the app is paused nothing is asked, since its UI thread answers nothing: the window keeps what
 /// it last had and says so, and asks again once the app runs. A UI-thread object of the window.</summary>
-public sealed class LiveTreeController
+public sealed partial class LiveTreeController
 {
     private readonly LiveTreeParts parts;
     private readonly ToolWindow window;
@@ -112,6 +115,8 @@ public sealed class LiveTreeController
         made.ValueSet += (_, set) => IdeErrors.Observe(SetAsync(set.Value, set.Text));
         made.NotEdited += (_, why) => parts.Say(why);
         made.PropertiesAlone = app is Godot.GodotGame;
+        made.Cells = app is Godot.GodotGame tuned ? new Godot.GodotValueCells(tuned, this) : null;
+        made.ShowAside(unkept);
         made.ShowTree(tree);
         made.ShowDetails(details.Details, details.Problem);
         if (chosen is long id && tree is not null)
@@ -439,6 +444,8 @@ public sealed class LiveTreeController
             was.MonitorsChanged -= OnMonitors;
             was.Picked -= OnGamePicked;
             was.LoopChanged -= OnLoopChanged;
+            was.Tuning.Changed -= OnTuning;
+            OfferUnkept(was);
         }
         app = next;
         pickChosen = false;
@@ -446,6 +453,7 @@ public sealed class LiveTreeController
         {
             view.PropertiesAlone = next is Godot.GodotGame;
             view.ShowGame(next is Godot.GodotGame, next is Godot.GodotGame { LoopHeld: true });
+            view.Cells = next is Godot.GodotGame tuned ? new Godot.GodotValueCells(tuned, this) : null;
         }
         ShowMonitors(MonitorsOf(next as Godot.GodotGame));
         Choose(null);
@@ -469,6 +477,7 @@ public sealed class LiveTreeController
             game.MonitorsChanged += OnMonitors;
             game.Picked += OnGamePicked;
             game.LoopChanged += OnLoopChanged;
+            game.Tuning.Changed += OnTuning;
         }
         ShowState();
         if (next is { State: LiveAppState.Connected })
@@ -720,6 +729,10 @@ public sealed class LiveTreeController
             return;
         }
         ShowState();
+        if (app is Godot.GodotGame { State: LiveAppState.Ended } ended)
+        {
+            OfferUnkept(ended);
+        }
         if (app!.State == LiveAppState.Connected)
         {
             parts.Dock.Show(window.Id);
@@ -923,6 +936,7 @@ public sealed class LiveTreeController
             {
                 ShowDetails(AppPlaces.InEditor(details, parts.Editors), null);
                 watchedShown = WatchedNow();
+                ShowKeepAll();
             }
         }
         catch (LiveAppException error)

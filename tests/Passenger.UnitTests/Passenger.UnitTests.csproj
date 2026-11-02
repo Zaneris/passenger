@@ -145,6 +145,15 @@
     <Compile Include="../../src/Passenger.App/Godot/GodotOffer.cs" Link="App/GodotOffer.cs" />
   </ItemGroup>
 
+  <!-- How the properties pane edits a running game's values and where Keep writes one, from a property's hint and the
+       scenes' and scripts' texts alone, compiled in since their project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Godot/GodotHints.cs" Link="App/GodotHints.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotText.cs" Link="App/GodotText.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotKeep.cs" Link="App/GodotKeep.cs" />
+    <Compile Include="../../src/Passenger.Languages/CSharp/CSharpParsing.cs" Link="Languages/CSharpParsing.cs" />
+  </ItemGroup>
+
   <!-- What a program's output says of its serving, from its lines alone, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Run/ListeningLines.cs" Link="App/ListeningLines.cs" />
