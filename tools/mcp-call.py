@@ -162,7 +162,7 @@ def call(start, folder, tool, text):
                 if "progress" in message:
                     print(f"mcp-call: {message['progress']}", file=sys.stderr, flush=True)
                 elif "stopped" in message:
-                    print(f"mcp-call: the server over {folder} is ending")
+                    print(f"mcp-call: the server over {folder} {'has ended' if message.get('ended') else 'is ending'}")
                     return 0
                 elif "failed" in message:
                     print(f"mcp-call: {message['failed']} (the keeper's log: {log})", file=sys.stderr)
@@ -237,6 +237,7 @@ class Keeper:
         self.last = time.monotonic()
         self.ready = threading.Event()
         self.ending = threading.Event()
+        self.ended = threading.Event()
         self.failure = None
         self.server = None
 
@@ -265,6 +266,14 @@ class Keeper:
             listener.close()
             os.unlink(self.sock)
             self.end()
+            self.ended.set()
+            # The calls still being answered (a stop's among them) are given a moment to say so before the process ends.
+            deadline = time.monotonic() + END_LIMIT / 4
+            while time.monotonic() < deadline:
+                with self.lock:
+                    if self.busy == 0:
+                        break
+                time.sleep(0.05)
 
     def start(self):
         # A state of its own beside the logs, so a worktree's server never writes into the person's Passenger.
@@ -339,9 +348,13 @@ class Keeper:
             if request is None:
                 return
             if request.get("stop"):
-                send(connection, {"stopped": True})
                 log("asked to stop")
                 self.ending.set()
+                # Answered once the server has ended, so a call after the stop starts a keeper and a server of its own.
+                send(connection, {"stopped": True, "ended": self.ended.wait(END_LIMIT * 3 + 5)})
+                return
+            if self.ending.is_set():
+                send(connection, {"failed": "the server is ending, so this call was not made: call again"})
                 return
             self.ready.wait(START_LIMIT)
             if self.failure is not None or not self.ready.is_set():
