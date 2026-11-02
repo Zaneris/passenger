@@ -78,7 +78,7 @@ public static class Declared
         new(D.EditorPage, "Rainbow braces", "brackets parentheses colour color nesting"));
 
     public static readonly ToggleSetting CloseTags = new(s => s.CloseTags, (s, v) => s with { CloseTags = v },
-        new(D.EditorPage, "Close tags on '>' and '</'", "auto close closing end tags markup xml xaml html msbuild elements"));
+        new(D.EditorPage, "Close tags on '>' and '</'", "auto close closing end tags markup xml xaml html razor blazor msbuild elements"));
 
     public static readonly ToggleSetting SolutionWideAnalysis = new(s => s.SolutionWideAnalysis, (s, v) => s with { SolutionWideAnalysis = v },
         new(D.EditorPage, "Solution-wide analysis", "errors problems whole solution analysis inspections without build"));

@@ -222,6 +222,15 @@ internal sealed class RazorHtml
         }
     }
 
+    /// <summary>A file's HTML as Razor last gave it, by its path: Razor spells a file's URI its own way.</summary>
+    public string? TextOf(string path)
+    {
+        lock (texts)
+        {
+            return texts.FirstOrDefault(known => DocumentUris.ToPath(known.Key) == path).Value;
+        }
+    }
+
     /// <summary>Lets go of a closed file's HTML, by its path: Razor spells a file's URI its own way. The HTML server's
     /// document of it is closed too.</summary>
     public void Forget(string path)

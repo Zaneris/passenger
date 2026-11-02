@@ -18,10 +18,10 @@ namespace Passenger.Tests;
 
 /// <summary>Razor through the window, on a Blazor app made by <c>dotnet new blazor</c> with components of its own (one
 /// with its code in a code-behind, Tally.razor.cs, and no <c>@code</c>) and a Razor Page: a component's colours and its
-/// errors, completion of components, their parameters, HTML's elements and the C#, go to declaration from a tag, rename
-/// across markup and code, the code-behind's members completed, checked, found and renamed from the markup and back, a
-/// caller in a component's code block placed in its .razor by Call Hierarchy, a JS interop call going to its JavaScript, and a
-/// Razor Page's errors and completion.
+/// errors, completion of components, their parameters, HTML's elements and the C#, its tags closed as they are typed, go
+/// to declaration from a tag, rename across markup and code, the code-behind's members completed, checked, found and
+/// renamed from the markup and back, a caller in a component's code block placed in its .razor by Call Hierarchy, a JS
+/// interop call going to its JavaScript, and a Razor Page's errors and completion.
 /// Each test opens its own window, on the server the last one left running, warm, and on the app as written (<see
 /// cref="SharedProject"/>).</summary>
 public sealed class RazorTests : IClassFixture<BlazorShop>
@@ -139,6 +139,48 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
         window.KeyTextInput("urr");
         Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "currentCount", "the code block's field, completed in C#");
         window.Close();
+    }
+
+    /// <summary>Typed a key at a time, as a person types: a start tag's '>' in a component's markup writes its end tag
+    /// after the caret, which one Undo takes away; "&lt;/" then writes the open element's name; a void element closes
+    /// itself; a generic's '>' in the code block writes nothing; and the setting that closes tags turns it off.</summary>
+    [AvaloniaFact]
+    public void A_start_tags_close_in_a_components_markup_writes_its_end_tag_and_a_generics_in_its_code_block_writes_none()
+    {
+        MainWindow window = app.Open("Components/Greeting.razor");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "<p>Hello, @Name!</p>\n");
+        TypeEach(window, "<section>");
+        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<section>|</section>", () => $"Razor's end tag after the caret; the line reads {XamlTests.CaretLine(editor)}");
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.Equal("<section>|", XamlTests.CaretLine(editor));
+        TypeEach(window, "</");
+        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<section></section>|", () => $"the open element's name after its \"</\"; the line reads {XamlTests.CaretLine(editor)}");
+        TypeEach(window, "<br>");
+        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<section></section><br />|", () => $"the void element closed in itself; the line reads {XamlTests.CaretLine(editor)}");
+
+        Ui.PlaceAfter(editor, "public int Times { get; set; }");
+        editor.ApplyEdits([new TextEdit(editor.Selections.Primary.Caret, 0, "\n\n    private readonly List")], SelectionSet.Single(editor.Selections.Primary.Caret + "\n\n    private readonly List".Length));
+        Ui.Settle();
+        TypeEach(window, "<int>");
+        Assert.Equal("    private readonly List<int>|", XamlTests.CaretLine(editor));
+
+        window.ApplySettings(window.Settings with { CloseTags = false });
+        Ui.PlaceAfter(editor, "<br />");
+        TypeEach(window, "<b>");
+        Assert.Equal("<section></section><br /><b>|", XamlTests.CaretLine(editor));
+        window.Close();
+    }
+
+    /// <summary>Text typed a key at a time, as a person types it.</summary>
+    private static void TypeEach(MainWindow window, string text)
+    {
+        foreach (char c in text)
+        {
+            window.KeyTextInput(c.ToString());
+        }
+        Ui.Settle();
     }
 
     [AvaloniaFact]

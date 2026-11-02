@@ -267,6 +267,9 @@ public sealed class LanguageServer : IAsyncDisposable
     /// <summary>Lets go of what Razor gave the client of a closed Razor file's HTML.</summary>
     internal void ForgetRazorHtml(string path) => client.Html.Forget(path);
 
+    /// <summary>A Razor file's HTML as Razor last gave it, its C# blanked out; null before it gave any.</summary>
+    internal string? RazorHtmlOf(string path) => client.Html.TextOf(path);
+
     /// <summary>The HTML server's diagnostics of a Razor file's HTML, on the lines it has as the file does.</summary>
     internal Task<IReadOnlyList<Diagnostic>> RazorHtmlDiagnosticsAsync(string path, string text, CancellationToken cancel) =>
         client.Html.DiagnosticsAsync(path, text, cancel);
@@ -1687,6 +1690,8 @@ public sealed class LanguageServer : IAsyncDisposable
         [JsonRpcMethod(LspMethods.LinkedEditingRange)]
         public object? HtmlLinkedEditing(JsonElement? forwarded = null) => null;
 
+        /// <summary>Asked by Razor after an '=' alone, for an attribute's quotes, which Passenger's typing never asks
+        /// for: its tags are closed from Razor's own answer and its HTML (<see cref="LspDocument.AutoInsertAsync"/>).</summary>
         [JsonRpcMethod(LspMethods.OnAutoInsert)]
         public object? HtmlAutoInsert(JsonElement? forwarded = null) => null;
 

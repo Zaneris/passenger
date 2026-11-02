@@ -230,6 +230,18 @@ public sealed record FormattingOptions(int TabSize, bool InsertSpaces, bool Trim
 
 public sealed record DocumentFormattingParams(TextDocumentIdentifier TextDocument, FormattingOptions Options);
 
+/// <summary>A character typed at a place, the caret past it, which the server may answer by writing more there.</summary>
+public sealed record AutoInsertParams(
+    [property: JsonPropertyName("_vs_textDocument")] TextDocumentIdentifier TextDocument,
+    [property: JsonPropertyName("_vs_position")] LspPosition Position,
+    [property: JsonPropertyName("_vs_ch")] string Character,
+    [property: JsonPropertyName("_vs_options")] FormattingOptions Options);
+
+/// <summary>What the server writes after a character typed: its edit, in plain text or as a snippet.</summary>
+public sealed record AutoInserted(
+    [property: JsonPropertyName("_vs_textEdit")] LspTextEdit? TextEdit,
+    [property: JsonPropertyName("_vs_textEditFormat")] InsertTextFormat TextEditFormat = InsertTextFormat.PlainText);
+
 public sealed record DocumentRangeFormattingParams(TextDocumentIdentifier TextDocument, LspRange Range, FormattingOptions Options);
 
 // Symbols

@@ -750,6 +750,26 @@ public sealed class LspDocument : IDisposable
         await Server.RequestAsync<List<LspTextEdit>>(LspMethods.RangeFormatting,
             new DocumentRangeFormattingParams(Identifier, RangeOf(range), FormattingOptions.Of(indent, conventions, Text.Snapshot)), cancel) ?? [];
 
+    /// <summary>What the server writes on its own after a character typed at an offset, the caret past it (Razor's end
+    /// tag after a start tag's '>'); null where it writes nothing.</summary>
+    public async Task<AutoInserted?> AutoInsertAsync(int offset, string typed, IndentOptions indent, EditorConfig conventions, CancellationToken cancel = default) =>
+        await Server.RequestAsync<AutoInserted>(LspMethods.OnAutoInsert,
+            new AutoInsertParams(Identifier, PositionOf(offset), typed, FormattingOptions.Of(indent, conventions, Text.Snapshot)), cancel) is { TextEdit: not null } answer
+            ? answer : null;
+
+    /// <summary>A Razor file's HTML as Razor makes it of the text as it stands, its C# blanked out so its places are the
+    /// file's: a fold's question, the cheapest, has Razor give it first. Null for a file not Razor's, or one Razor gave
+    /// none for.</summary>
+    public async Task<string?> RazorHtmlAsync(CancellationToken cancel = default)
+    {
+        if (!IsRazor)
+        {
+            return null;
+        }
+        await Read(Server.RequestAsync<JsonElement>(LspMethods.FoldingRange, new FoldingRangeParams(new TextDocumentIdentifier(Uri)), cancel));
+        return Server.RazorHtmlOf(DocumentUris.ToPath(Uri));
+    }
+
     /// <summary>The whole document's tokens; <paramref name="sent"/>, when given, is told where the request reached the
     /// server among its words that its colours moved.</summary>
     public async Task<(SemanticTokens? Tokens, int Version)> SemanticTokensAsync(CancellationToken cancel = default, SentRequest? sent = null)
