@@ -17,25 +17,27 @@ public sealed partial class PassengerTools
     /// limit of its own, and the call's sum of them, its messages' turns and writes among them, is held to this too.</summary>
     private static TimeSpan GameLimit => Waits.Of(TimeSpan.FromSeconds(40));
 
-    /// <summary>The Godot game an app_ tool's app means, once it has connected: with none named, the game Passenger debugs
-    /// when no Avalonia or WPF app runs; run, debug or profile as it was started; or its configuration's name. Null where the
-    /// app meant is another; a game paused in the debugger, not yet connected or ended is refused saying what to do.</summary>
+    /// <summary>The Godot game an app_ tool's app means, once it has connected: with none named, the chosen game when no
+    /// Avalonia or WPF app runs; run, debug or profile as the chosen one was started; or the name of any game running, a
+    /// copy's among them. Null where the app meant is another; a game paused in the debugger, not yet connected or ended is
+    /// refused saying what to do.</summary>
     private async Task<GodotGame?> GameAsync(string? app, CancellationToken cancel)
     {
-        if (Session.Game is not { } game)
+        if (Session.Game is not { } chosen)
         {
             return null;
         }
-        bool meant = app switch
+        GodotGame? meant = app switch
         {
-            null => !Session.Inspecting.Any(a => a.App.State is LiveAppState.Waiting or LiveAppState.Connected),
-            "ide" => false,
-            "run" => RunApp() is null && game.Debugged is null && Session.Profiled is null,
-            "debug" => DebugApp() is null && game.Debugged is not null,
-            "profile" => Session.ProfiledApp is null && Session.Profiled is not null && game.Debugged is null,
-            _ => game.Name.Equals(app, StringComparison.OrdinalIgnoreCase),
+            null => !Session.Inspecting.Any(a => a.App.State is LiveAppState.Waiting or LiveAppState.Connected) ? chosen : null,
+            "ide" => null,
+            "run" => RunApp() is null && chosen.Debugged is null && Session.Profiled is null ? chosen : null,
+            "debug" => DebugApp() is null && chosen.Debugged is not null ? chosen : null,
+            "profile" => Session.ProfiledApp is null && Session.Profiled is not null && chosen.Debugged is null ? chosen : null,
+            _ => chosen.Name.Equals(app, StringComparison.OrdinalIgnoreCase) ? chosen
+                : Session.Games.FirstOrDefault(g => g.Name.Equals(app, StringComparison.OrdinalIgnoreCase)),
         };
-        if (!meant)
+        if (meant is not { } game)
         {
             return null;
         }

@@ -457,7 +457,8 @@ public sealed partial class PassengerTools
         return (others.FirstOrDefault(a => a.Name == name) ?? others.FirstOrDefault(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))?.App
             ?? throw new ArgumentException($"No app '{name}': name run, debug, ide or an app the folder runs{Listed()}");
 
-        string Listed() => Session.Inspecting.Where(a => a.Kind != RunningKind.Run).Select(a => a.Tab?.Name ?? a.Name).ToList() is { Count: > 0 } names
+        string Listed() => Session.Inspecting.Where(a => a.Kind != RunningKind.Run).Select(a => a.Tab?.Name ?? a.Name)
+            .Concat(Session.Games.Select(g => g.Name)).Distinct().ToList() is { Count: > 0 } names
             ? $" ({string.Join(", ", names)})"
             : string.Empty;
     }

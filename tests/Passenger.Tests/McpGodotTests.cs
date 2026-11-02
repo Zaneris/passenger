@@ -125,8 +125,8 @@ public sealed class GodotGameFolder : IAsyncLifetime
 /// <summary>Agents running a Godot game in C# as they run an Avalonia app: run starts it, Passenger its remote debugger;
 /// the app_ tools read its scene tree and a node's values and its scripts' members, set one (which the game then prints),
 /// click its button and type into its text box through Passenger's helper in the game, and say plainly that a headless game
-/// has no picture; and debug_start stops it at a breakpoint in its script's _Process. Without a Godot 4 .NET build, each
-/// skips saying why.</summary>
+/// has no picture; debug_start stops it at a breakpoint in its script's _Process; and each of two copies run side by side
+/// answers to its own name. Without a Godot 4 .NET build, each skips saying why.</summary>
 [Collection(Alone.Name)]
 public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
 {
@@ -200,6 +200,29 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
         string picked = await Game(client, McpTools.AppClick, new() { ["x"] = 60, ["y"] = 25 });
         Assert.Contains("Select Element picked Button#Toggle", picked, StringComparison.Ordinal);
         Assert.DoesNotContain("toggled on", Text(await Call(client, McpTools.Output)), StringComparison.Ordinal);
+        await Call(client, McpTools.Stop);
+    }
+
+    /// <summary>An agent runs the game and Run Another Copy beside it, then reaches each copy's nodes by the name its run gives
+    /// it, the first's too, though the Live Visual Tree follows the copy started last.</summary>
+    [Fact]
+    public async Task An_agent_reaches_each_of_two_copies_of_a_game_by_its_name()
+    {
+        await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false);
+        JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
+        Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"The game ended as it started: {ran}");
+        string another = await Game(client, McpTools.IdeAction, new() { ["action"] = Passenger.App.AppActions.RunAnotherCopy });
+        string copied = $"{Headless} #2";
+        await Until(async () => (await Result(client, McpTools.AppTree, new() { ["app"] = copied })).IsError != true, $"the copy's tree once it has loaded its scene ({another})");
+        List<int> processes = [];
+        foreach (string copy in new[] { Headless, copied })
+        {
+            JsonElement windows = await Call(client, McpTools.AppWindows, new() { ["app"] = copy });
+            Assert.True(windows.GetProperty("app").GetString() == copy, $"Asked for {copy}, the agent reached {windows} ({another})");
+            processes.Add(windows.GetProperty("processId").GetInt32());
+            Assert.Contains("Main#Main @", await Game(client, McpTools.AppTree, new() { ["app"] = copy }), StringComparison.Ordinal);
+        }
+        Assert.True(processes.Distinct().Count() == 2, $"Both names reached one game, process {processes[0]}");
         await Call(client, McpTools.Stop);
     }
 
