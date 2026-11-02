@@ -5,6 +5,7 @@ using Passenger.App.LiveTree;
 using Passenger.App.Run;
 using Passenger.Core;
 using Passenger.Inspector;
+using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
 
@@ -587,6 +588,54 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
 
     /// <summary>The game's scene tree now, its root Window first.</summary>
     public async Task<GodotNode> SceneTreeAsync() => (await TreeOfBringingAsync()).Tree;
+
+    /// <summary>Whether the game has been seen with its first scene open, after which it is not looked for again.</summary>
+    private bool opened;
+
+    /// <summary>Waits for the game to open its first scene, as it does a moment after it connects: its tree read again until a
+    /// scene no autoload adds is open under its root, within <paramref name="limit"/>. A <see cref="LiveAppException"/> says
+    /// it opened none in that time, or that it was paused meanwhile.</summary>
+    public async Task FirstSceneAsync(TimeSpan limit, CancellationToken cancel)
+    {
+        UiThread.Check();
+        long began = System.Diagnostics.Stopwatch.GetTimestamp();
+        HashSet<string>? autoloads = null;
+        while (!opened)
+        {
+            if (Debugged is { State: Debugging.DebugState.Paused })
+            {
+                throw new LiveAppException($"{Name} is paused in the debugger before it opened its first scene, and its scene tree answers nothing until it runs: debug_continue");
+            }
+            GodotNode tree = await SceneTreeAsync();
+            autoloads ??= await BackgroundWork.Run(() => Autoloads(Folder));
+            opened = tree.Children.Any(c => c.SceneFile.Length > 0 && !autoloads.Contains(c.Name));
+            if (opened)
+            {
+                return;
+            }
+            if (System.Diagnostics.Stopwatch.GetElapsedTime(began) >= limit)
+            {
+                throw new LiveAppException($"{Name} has opened no scene in the {limit.TotalSeconds:0} s since it connected, and Passenger's helper comes into the game beside one");
+            }
+            Mcp.AgentCall.Say($"Waiting for {Name} to open its first scene");
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancel);
+        }
+    }
+
+    /// <summary>The names of the autoloads a project's project.godot gives, the nodes Godot adds under /root before its
+    /// first scene; none where it cannot be read.</summary>
+    private static HashSet<string> Autoloads(string folder)
+    {
+        try
+        {
+            GodotFile file = GodotFile.Parse(File.ReadAllText(Path.Combine(folder, GodotProject.FileName)));
+            return [.. file.Sections.Where(s => s.Tag == "autoload").SelectMany(s => s.Properties).Select(p => p.Key)];
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
 
     /// <summary>The game's scene tree now, and how many times the helper had been made when it was asked
     /// (<see cref="brought"/>), which a question shared with an earlier one dates from that one.</summary>

@@ -17,10 +17,10 @@ public sealed partial class PassengerTools
     /// limit of its own, and the call's sum of them, its messages' turns and writes among them, is held to this too.</summary>
     private static TimeSpan GameLimit => Waits.Of(TimeSpan.FromSeconds(40));
 
-    /// <summary>The Godot game an app_ tool's app means, once it has connected: with none named, the chosen game when no
-    /// Avalonia or WPF app runs; run, debug or profile as the chosen one was started; or the name of any game running, a
-    /// copy's among them. Null where the app meant is another; a game paused in the debugger, not yet connected or ended is
-    /// refused saying what to do.</summary>
+    /// <summary>The Godot game an app_ tool's app means, once it has connected and opened its first scene: with none named, the
+    /// chosen game when no Avalonia or WPF app runs; run, debug or profile as the chosen one was started; or the name of any
+    /// game running, a copy's among them. Null where the app meant is another; a game paused in the debugger, not yet
+    /// connected, with no scene open in time or ended is refused saying what to do.</summary>
     private async Task<GodotGame?> GameAsync(string? app, CancellationToken cancel)
     {
         if (Session.Game is not { } chosen)
@@ -46,12 +46,17 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException($"{game.Name} is paused in the debugger, and its scene tree answers nothing until it runs: debug_continue");
         }
         await When(() => game.State != LiveAppState.Waiting, AppUiLimit, cancel, On(h => game.StateChanged += h, h => game.StateChanged -= h));
-        return game.State switch
+        switch (game.State)
         {
-            LiveAppState.Connected => game,
-            LiveAppState.Waiting => throw new TimeoutException($"{game.Name} has not connected to Passenger, its remote debugger, in {AppUiLimit.TotalSeconds:0} s"),
-            _ => throw new InvalidOperationException($"{game.Name} has ended: run or debug_start starts it again"),
-        };
+            case LiveAppState.Connected:
+                // A copy just started, connected before its first scene, has nothing yet for the helper to come in beside.
+                await game.FirstSceneAsync(AppUiLimit, cancel);
+                return game;
+            case LiveAppState.Waiting:
+                throw new TimeoutException($"{game.Name} has not connected to Passenger, its remote debugger, in {AppUiLimit.TotalSeconds:0} s");
+            default:
+                throw new InvalidOperationException($"{game.Name} has ended: run or debug_start starts it again");
+        }
     }
 
     /// <summary>The game's scene tree as the app_ tools read one: each node's id, type (a script's by its file's name), name

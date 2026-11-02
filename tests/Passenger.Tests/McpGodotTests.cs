@@ -203,17 +203,19 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
         await Call(client, McpTools.Stop);
     }
 
-    /// <summary>An agent runs the game and Run Another Copy beside it, then reaches each copy's nodes by the name its run gives
-    /// it, the first's too, though the Live Visual Tree follows the copy started last.</summary>
+    /// <summary>An agent runs the game and Run Another Copy beside it, and at once reads the copy's tree, the call waiting for the
+    /// copy to open its scene; then reaches each copy's nodes by the name its run gives it, the first's too, though the Live
+    /// Visual Tree follows the copy started last.</summary>
     [Fact]
-    public async Task An_agent_reaches_each_of_two_copies_of_a_game_by_its_name()
+    public async Task An_agent_reaches_each_of_two_copies_of_a_game_by_its_name_the_copys_tree_asked_as_it_starts()
     {
         await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false);
         JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
         Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"The game ended as it started: {ran}");
         string another = await Game(client, McpTools.IdeAction, new() { ["action"] = Passenger.App.AppActions.RunAnotherCopy });
         string copied = $"{Headless} #2";
-        await Until(async () => (await Result(client, McpTools.AppTree, new() { ["app"] = copied })).IsError != true, $"the copy's tree once it has loaded its scene ({another})");
+        string first = await Game(client, McpTools.AppTree, new() { ["app"] = copied });
+        Assert.True(first.Contains("Main#Main @", StringComparison.Ordinal), $"The copy's tree asked as it started lacks its scene ({another}):\n{first}");
         List<int> processes = [];
         foreach (string copy in new[] { Headless, copied })
         {
