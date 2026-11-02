@@ -88,9 +88,9 @@ App and the tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collecti
   none (`SharedConsole`); a console reads a child through `ChildProcesses.Output`/`Errors` (on macOS and Linux its pipe
   through a socket, a waiting read allocating nothing), a child's lines are heard through `ChildProcesses.Hear`, never
   Process's `Begin*ReadLine` (banned: its disposal faults a read under it). Started elsewhere: the terminal's shell
-  (Porta.Pty), vstest.console, Velopack's Update.exe and an agent's `--mcp-attach` Passenger (`StartApart`); a program
-  run in the terminal is `Adopt`ed. Passenger's own standard input is taken at its start (`StandardInput`, fd 0 then the
-  null device), so nothing it starts reads it.
+  (Porta.Pty), vstest.console, Velopack's Update.exe and an agent's `--mcp-attach` Passenger (`StartApart`), and the
+  system web view's own helpers (WebView2's, WebKit's); a program run in the terminal is `Adopt`ed. Passenger's own
+  standard input is taken at its start (`StandardInput`, fd 0 then the null device), so nothing it starts reads it.
 - **No secret on a command line** (any process can read it): give it through the environment, or don't make it. Secrets
   everywhere (Details, logs, consoles, hints, agents' answers, `ChildProcesses.Shown`'s echoes) are masked by one rule,
   `ContainerSecrets`.
@@ -318,8 +318,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   Godot scene's tree, `GodotSceneOutline`, or a Markdown file's headings as Passenger reads them, `MarkdownOutline`),
   which Structure, File Structure and MCP's `outline` read, a row going on through Go to Declaration a
   `SymbolRow.Leads`; a view laid over the text follows a place gone to through `CodeEditor.WentTo`; a preview holds no
-  text (`HoldsText` false). The Markdown preview draws only the blocks near its sight (`MarkdownBlocks`), a page kept
-  per tab, a scroll it sets going through `Jump`.
+  text (`HoldsText` false); a preview beside its text (Markdown's, an SVG's, an HTML file's) is the group's side,
+  followed in `EditorGroup.FollowSidePreview`, its toggle `PreviewAction`, an SVG drawn as a drawing through
+  `ZoomedPicture` (`SvgPicture`), never a bitmap, an HTML page in the system's web view (`HtmlPreview`), never made in a
+  window nobody sees (`PassengerApp.ShowsNoWindow`; WebView2 refuses a thread that isn't STA). The Markdown preview
+  draws only the blocks near its sight (`MarkdownBlocks`), a page kept per tab, a scroll it sets going through `Jump`.
 - **Docking.** A kept layout records windows by `ToolWindowIds`, so a value never changes; add a window with one
   `Dock.Add`; its floats close with their window (`DockHost.CloseFloats`); its action gives it the keys
   (`DockHost.Activate`, `ToolWindow.TakeKeys`), and Escape in it unhandled is Focus Editor (`ToolPane`). A view is built
@@ -622,6 +625,8 @@ site-shots` retakes its images.
   every tree goes through `TreeKeys.Attach`, which keeps both.
 - **`FormattedText` lays its lines out again at every draw**: text drawn frame after frame is kept as a `TextLayout` or
   `TextLine` until what it says or its width changes.
+- **Svg.Skia stays at 5.1** while Avalonia's Skia is SkiaSharp 3 (5.2 needs SkiaSharp 4); its `SKSvg` disposes its
+  picture, so a picture drawn is never let go while a frame may still draw it.
 - **Avalonia renders a visual again when its Bounds, ZIndex or RenderTransform change**, and `InvalidateArrange`
   invalidates it too: retained content moves through its parent layer.
 - **EventPipe from a program's start**: .NET 10's LoggingEventSource misreads the `FilterSpecs` it is made with, so a
