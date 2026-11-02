@@ -507,6 +507,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     {
         File.WriteAllText(Path.Combine(game.Folder, "other.tscn"), "[gd_scene format=3]\n\n[node name=\"Other\" type=\"Node\"]\n");
         MainWindow window = game.Open(null, languageServer: false);
+        IReadOnlyList<(string Name, int? Process)> games = [];
         try
         {
             RunConfiguration generated = Generated(window, "Spinner");
@@ -531,13 +532,17 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             tree.Sources.SelectedIndex = 1;
             Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Other") && !tree.Rows.Any(r => r.Element.Name == "Main"),
                 () => $"the second game's nodes once it is chosen again ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
-            // Stop ends the chosen session; the other is ended in turn.
+            games = [.. window.Session.Games.Select(g => (g.Name, g.ProcessId))];
+            // Stop ends the chosen session, the game a moment before its debugger lets go of it: a Stop meanwhile is the same one's.
             Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => window.Session.Games.Count < 2, "the second game to end");
+            Ui.WaitFor(() => window.Session.Games.Count == 1 && window.Session.Games[0].Name == main.Name && !window.Debugger.Tabs.Any(t => t.IsLive && t.Name.StartsWith(other.Name, StringComparison.Ordinal)),
+                () => $"the second game and its sessions to end ({Debugged(window)}; {Running(games)})");
+            Ui.WaitFor(() => !tree.Sources.IsVisible && tree.Rows.Any(r => r.Element.Name == "Main"),
+                () => $"the Live Visual Tree to show the first game alone once the second ended ({string.Join(", ", tree.SourceNames)}; {Running(games)})", TimeSpan.FromMinutes(1));
         }
         finally
         {
-            End(window);
+            End(window, games);
             File.Delete(Path.Combine(game.Folder, "other.tscn"));
         }
     }
@@ -630,16 +635,24 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         Ui.WaitFor(() => !window.IsRunning, "the game to end");
     }
 
-    private static void End(MainWindow window)
+    /// <summary>Stop of what still runs, then the window closed; a failure names each game given whose process still runs.</summary>
+    private static void End(MainWindow window, IReadOnlyList<(string Name, int? Process)>? games = null)
     {
         if (window.Debugger.IsDebugging || window.IsRunning || window.Profiling is not null)
         {
             Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, () => $"the game to end ({string.Join(", ", window.Debugger.Tabs.Select(t =>
-                $"{t.Name}{(t.IsChosen ? " chosen" : string.Empty)}: {(t.IsLive ? t.Session?.State.ToString() ?? "opening" : "ended")}"))}; {window.Status})");
+            Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, () => $"the game to end ({Debugged(window)}; {window.Status}; {Running(games ?? [])})");
         }
         window.Close();
     }
+
+    /// <summary>Each Debug tab's state, the chosen one marked.</summary>
+    private static string Debugged(MainWindow window) => string.Join(", ", window.Debugger.Tabs.Select(t =>
+        $"{t.Name}{(t.IsChosen ? " chosen" : string.Empty)}: {(t.IsLive ? t.Session?.State.ToString() ?? "opening" : "ended")}"));
+
+    /// <summary>Whether each game's process still runs, by its id.</summary>
+    private static string Running(IReadOnlyList<(string Name, int? Process)> games) => string.Join(", ", games.Select(g =>
+        $"{g.Name}'s process {(g.Process is int id ? $"{id} {(DotnetProcesses.Runs(id) ? "still runs" : "has ended")}" : "unknown")}"));
 
     /// <summary>A Godot 4 C# project of one scene, its node's script <see cref="Script"/>, on the Godot found: its
     /// Godot.NET.Sdk the version that Godot carries, restored from that Godot's own packages alone.</summary>

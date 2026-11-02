@@ -1415,9 +1415,11 @@ public sealed class DebugController : IDisposable
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>The tab to show once the chosen one's program has ended: one paused, else the last that is debugged.</summary>
+    /// <summary>The tab to show once the chosen one's program has ended: one paused, else the last that is debugged, a
+    /// companion's (a Godot game's GDScript) only once its program's own has ended, as it is chosen only once it stops.</summary>
     private DebugTab? Next() =>
-        view.Sessions.FirstOrDefault(t => t.IsLive && t.Session?.State == DebugState.Paused) ?? view.Sessions.LastOrDefault(t => t.IsLive && t.Session is not null);
+        view.Sessions.FirstOrDefault(t => t.IsLive && t.Session?.State == DebugState.Paused)
+        ?? view.Sessions.LastOrDefault(t => t.IsLive && t.Session is not null && t.Companion is not { IsLive: true });
 
     /// <summary>The sessions Stop ended while they started, whose failed start is said as stopped rather than as a failure.</summary>
     private readonly HashSet<DebugSession> stoppedStarting = [];
