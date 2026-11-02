@@ -29,6 +29,10 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
 
     private readonly HashSet<OpenDocument> documents = [];
 
+    /// <summary>Each open scene's own typing, which holds its check from the first key until it is read again, so an
+    /// agent's diagnostics waits for the marks of the text as it stands.</summary>
+    private readonly Dictionary<OpenDocument, (Debounce Pause, EventHandler<DocumentChangedEventArgs> Typed)> typing = [];
+
     /// <summary>What each open scene's marks offer to mend them, by their words.</summary>
     private readonly Dictionary<OpenDocument, IReadOnlyDictionary<string, GodotOffer>> offers = [];
     private Debounce? again;
@@ -38,6 +42,10 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
         UiThread.Check();
         if (GodotFile.IsText(document.Path) && documents.Add(document))
         {
+            Debounce pause = new(Settle, () => MarkAsync(document), () => document.Checking(Checker));
+            EventHandler<DocumentChangedEventArgs> typed = (_, _) => pause.Restart();
+            typing[document] = (pause, typed);
+            document.Text.Changed += typed;
             IdeErrors.Observe(MarkAsync(document));
         }
     }
@@ -46,6 +54,11 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
     {
         UiThread.Check();
         offers.Remove(document);
+        if (typing.Remove(document, out (Debounce Pause, EventHandler<DocumentChangedEventArgs> Typed) typed))
+        {
+            document.Text.Changed -= typed.Typed;
+            typed.Pause.Stop();
+        }
         if (documents.Remove(document) && document.Markers.Count > 0)
         {
             document.Markers = [];
@@ -73,7 +86,14 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
     }
 
     /// <summary>Its changes stopped for good: the window's session ended.</summary>
-    public void Stop() => again?.Stop();
+    public void Stop()
+    {
+        again?.Stop();
+        foreach ((Debounce pause, _) in typing.Values)
+        {
+            pause.Stop();
+        }
+    }
 
     private async Task MarkAsync(OpenDocument document)
     {
