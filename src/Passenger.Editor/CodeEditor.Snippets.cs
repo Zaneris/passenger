@@ -112,7 +112,7 @@ public sealed partial class CodeEditor
         if (!selections.Items.All(s => places.Any(r => r.Start <= s.Start && s.End <= r.End)))
         {
             EndSnippet();
-            InvalidateVisual();
+            Redraw();
         }
     }
 

@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
@@ -1286,55 +1287,58 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>Labels drawn in the last frame (line numbers, hints, placeholders, annotations), by what they show. A
-    /// frame keeps the ones it draws again and disposes the rest.</summary>
+    /// <summary>Labels drawn (line numbers, hints, placeholders, annotations), by what they show, each with the frame that
+    /// last drew it: a row drawn later draws again those the rows on screen drew without formatting them, and a frame
+    /// disposes those no row on screen drew (<see cref="Begin"/>).</summary>
     private sealed class LabelCache<TKey>
         where TKey : notnull
     {
-        private Dictionary<TKey, TextLine> previous = [];
-        private Dictionary<TKey, TextLine> current = [];
+        private readonly Dictionary<TKey, (TextLine Line, long Drawn)> kept = [];
+        private long now;
 
         public TextLine Get(TKey key, Func<TextLine> format) => TryGet(key, out TextLine? line) ? line : Add(key, format());
 
         /// <summary>The label kept for what it shows, kept on for this frame.</summary>
         public bool TryGet(TKey key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TextLine? line)
         {
-            if (current.TryGetValue(key, out line))
+            ref (TextLine Line, long Drawn) entry = ref CollectionsMarshal.GetValueRefOrNullRef(kept, key);
+            if (System.Runtime.CompilerServices.Unsafe.IsNullRef(ref entry))
             {
-                return true;
+                line = null;
+                return false;
             }
-            if (previous.Remove(key, out line))
-            {
-                current[key] = line;
-                return true;
-            }
-            return false;
+            entry.Drawn = now;
+            line = entry.Line;
+            return true;
         }
 
         public TextLine Add(TKey key, TextLine line)
         {
-            current[key] = line;
+            kept[key] = (line, now);
             return line;
         }
 
-        public void EndFrame()
+        /// <summary>Starts a frame, disposing the labels last drawn before <paramref name="keepFrom"/>.</summary>
+        public void Begin(long frame, long keepFrom)
         {
-            foreach (TextLine stale in previous.Values)
+            now = frame;
+            foreach ((TKey key, (TextLine line, long drawn)) in kept)
             {
-                stale.Dispose();
+                if (drawn < keepFrom)
+                {
+                    line.Dispose();
+                    kept.Remove(key);
+                }
             }
-            previous.Clear();
-            (previous, current) = (current, previous);
         }
 
         public void Clear()
         {
-            foreach (TextLine line in previous.Values.Concat(current.Values))
+            foreach ((TextLine line, long _) in kept.Values)
             {
                 line.Dispose();
             }
-            previous.Clear();
-            current.Clear();
+            kept.Clear();
         }
     }
 

@@ -38,6 +38,13 @@
                       GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained" />
   </ItemGroup>
 
+  <!-- The window's process, and the tests' that drive it: no more than 4 MB allocated between collections of the young
+       generation. On a large heap such a collection pauses a little shorter than at the default's 6 MB, and a scroll's
+       first pass, which promotes the lines it lays out, never pauses past a 144 Hz screen's 6.9 ms frame (#1157). -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Passenger.App' or '$(MSBuildProjectName)' == 'Passenger.Tests'">
+    <RuntimeHostConfigurationOption Include="System.GC.Gen0MaxBudget" Value="4194304" />
+  </ItemGroup>
+
   <!-- Passenger's own code writes a whole file only through AtomicFile, FileText.Save or OwnFiles, and hears a child's
        output only through ChildProcesses.Hear: File.WriteAll* and Process's Begin*ReadLine are banned under src/
        (src/BannedSymbols.txt), which warnings as errors make a failed build. Compared without case, as macOS and Windows

@@ -263,7 +263,7 @@ public sealed partial class CodeEditor
         if (inGutter != overGutter)
         {
             overGutter = inGutter;
-            InvalidateVisual();
+            Redraw();
         }
         PointerPointProperties held = e.GetCurrentPoint(this).Properties;
         if (drag.Mode == DragMode.None || !(held.IsLeftButtonPressed || held.IsMiddleButtonPressed))
@@ -298,7 +298,7 @@ public sealed partial class CodeEditor
                 break;
             case DragMode.Gutter:
                 dragging?.Drag(Math.Clamp(LineAtY(position.Y), 0, text.LineCount - 1));
-                InvalidateVisual();
+                Redraw();
                 break;
         }
     }
@@ -321,7 +321,7 @@ public sealed partial class CodeEditor
         if (overGutter)
         {
             overGutter = false;
-            InvalidateVisual();
+            Redraw();
         }
         hoverTimer.Stop();
         EndHover();
@@ -632,7 +632,7 @@ public sealed partial class CodeEditor
         {
             editor.preedit = preeditText ?? string.Empty;
             editor.preeditCursor = cursorPos;
-            editor.InvalidateVisual();
+            editor.Redraw();
             editor.FollowInputMethod();
         }
 

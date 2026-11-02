@@ -34,7 +34,7 @@ public sealed partial class CodeEditor
         }
         usages.Set(document, [.. uses.OrderBy(u => u.Range.Start)]);
         UsagesKept = keep && uses.Count > 0;
-        InvalidateVisual();
+        Redraw();
     }
 
     /// <summary>The bracket the primary caret touches and its pair, which are highlighted; null with none.</summary>

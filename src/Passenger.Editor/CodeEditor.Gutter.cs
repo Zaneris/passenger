@@ -27,7 +27,9 @@ public sealed partial class CodeEditor
     /// <summary>The column a press was taken to drag by, while it drags.</summary>
     private IGutterColumn? dragging;
 
-    private readonly Dictionary<string, IBrush> gutterBrushes = [];
+    /// <summary>The brushes the columns draw with, by token: the look's own, by which a change is told, and its immutable
+    /// copy, drawn with.</summary>
+    private readonly Dictionary<string, (IBrush Found, IBrush Drawn)> gutterBrushes = [];
     private readonly Dictionary<(string Key, double Scale, bool Bold), TextRunProperties> gutterRuns = [];
     private readonly Dictionary<(string Key, double Thickness, PenLineCap Cap, PenLineJoin Join), IPen> gutterPens = [];
     private readonly Dictionary<Color, IBrush> gutterColours = [];
@@ -48,7 +50,7 @@ public sealed partial class CodeEditor
         }
         MeasureColumns();
         InvalidateArrange();
-        InvalidateVisual();
+        Redraw();
     }
 
     /// <summary>Every column, left to right.</summary>
@@ -60,7 +62,7 @@ public sealed partial class CodeEditor
         {
             InvalidateArrange();
         }
-        InvalidateVisual();
+        Redraw();
     }
 
     /// <summary>Measures the columns at the font in force: whether the room they take changed.</summary>
@@ -147,27 +149,29 @@ public sealed partial class CodeEditor
         GutterClick click = new(drag.Anchor, modifiers, at, Context: false);
         (double left, double width) = StripOf(column);
         bool done = column.Drop(new GutterPress(click, at.X - left, width));
-        InvalidateVisual();
+        Redraw();
         if (!done && !PressColumns(click, null, Columns().TakeWhile(c => c != column).Count() + 1))
         {
             GutterClicked?.Invoke(this, click);
         }
     }
 
-    internal double GutterTopOf(int line) => TopOf(line) - scroll.Y;
+    internal double GutterTopOf(int line) => TopOf(line) - gutterTop;
 
-    internal double GutterBottomOf(int line) => BottomOf(line) - scroll.Y;
+    internal double GutterBottomOf(int line) => BottomOf(line) - gutterTop;
 
     internal bool GutterHides(int line) => IsHidden(line);
 
-    /// <summary>A token's brush in the look in force, kept until the look changes; transparent for one the look lacks.</summary>
+    /// <summary>A token's brush in the look in force, immutable, kept until the look changes; transparent for one the look
+    /// lacks.</summary>
     internal IBrush GutterBrush(string key)
     {
-        if (!gutterBrushes.TryGetValue(key, out IBrush? brush))
+        if (!gutterBrushes.TryGetValue(key, out (IBrush Found, IBrush Drawn) brush))
         {
-            gutterBrushes[key] = brush = FindBrush(key) ?? Brushes.Transparent;
+            IBrush found = FindBrush(key) ?? Brushes.Transparent;
+            gutterBrushes[key] = brush = (found, found.ToImmutable());
         }
-        return brush;
+        return brush.Drawn;
     }
 
     /// <summary>A pen of a token's brush in the look in force, kept until the look changes, immutable as a frame keeps it.</summary>
@@ -199,9 +203,9 @@ public sealed partial class CodeEditor
     /// <summary>Whether a brush the columns drew with is another in the resources now (a colour scheme laid over them).</summary>
     private bool GutterBrushesChanged()
     {
-        foreach ((string key, IBrush brush) in gutterBrushes)
+        foreach ((string key, (IBrush found, IBrush _)) in gutterBrushes)
         {
-            if (!ReferenceEquals(FindBrush(key) ?? Brushes.Transparent, brush))
+            if (!ReferenceEquals(FindBrush(key) ?? Brushes.Transparent, found))
             {
                 return true;
             }
@@ -254,28 +258,26 @@ public sealed partial class CodeEditor
         return tints;
     }
 
-    /// <summary>The gutter beside the rows shown: the columns and the folds' chevrons, then each line's number beside its
-    /// first row (a wrapped line's other rows left bare) unless a column covered it.</summary>
-    private void DrawGutter(DrawingContext context, List<RowSpan> shown, int row, HashSet<int> caretLines, double gutter, double height)
+    /// <summary>The gutter beside a row the frame shows, at the top of the row's visual, clipped to it: the columns, as
+    /// one line's frame, then on a line's first row the fold's chevron and its number unless a column covered it. A
+    /// wrapped line's other rows draw what the columns draw down beside them.</summary>
+    private void DrawGutterRow(DrawingContext context, RowSlot slot, RowSpan span)
     {
-        context.FillRectangle(palette.Gutter, new Rect(0, 0, gutter, height));
-        if (!ShowLineNumbers || shown.Count == 0)
+        if (!ShowLineNumbers)
         {
             return;
         }
-        int first = shown[0].Line;
-        int last = shown[^1].Line;
+        int line = span.Line;
+        double lineHeight = metrics.LineHeight;
         double right = NumbersRight;
+        gutterTop = slot.Row * lineHeight;
         GutterFrame frame = gutterFrame ??= new GutterFrame(this);
-        frame.Begin(context, right, height, metrics.LineHeight, metrics.CharWidth, first, last, document.Snapshot.LineCount);
-        for (int i = 0; i < shown.Count; i++)
+        frame.Begin(context, right, lineHeight, lineHeight, metrics.CharWidth, line, line, frameText!.LineCount);
+        if (span.Row == 0)
         {
-            if (shown[i].Row == 0)
-            {
-                frame.Shown.Add(new GutterLine(shown[i].Line, ((row + i) * metrics.LineHeight) - scroll.Y));
-            }
+            frame.Shown.Add(new GutterLine(line, 0));
         }
-        GutterFont font = new(metrics.CharWidth, metrics.LineHeight);
+        GutterFont font = new(metrics.CharWidth, lineHeight);
         double x = right + columnRoom.Right;
         for (int i = rightColumns.Count - 1; i >= 0; i--)
         {
@@ -296,23 +298,25 @@ public sealed partial class CodeEditor
             leftColumns[i].Draw(frame);
             x += width;
         }
-        DrawFoldMarkers(context, first, last, gutter);
-        foreach (GutterLine line in frame.Lines)
+        if (span.Row == 0)
         {
-            if (frame.Covers(line.Line))
+            DrawFoldMarkers(context, line, frameGutter);
+        }
+        foreach (GutterLine shown in frame.Lines)
+        {
+            if (frame.Covers(shown.Line))
             {
                 continue;
             }
-            bool current = caretLines.Contains(line.Line);
+            bool current = caretLines.Contains(shown.Line);
             // Found without a closure made for each number each frame.
-            if (!numbers.TryGet((line.Line + 1, current), out TextLine? number))
+            if (!numbers.TryGet((shown.Line + 1, current), out TextLine? number))
             {
-                number = numbers.Add((line.Line + 1, current), Format((line.Line + 1).ToString(CultureInfo.InvariantCulture), [], current ? numberRuns.Current : numberRuns.Other));
+                number = numbers.Add((shown.Line + 1, current), Format((shown.Line + 1).ToString(CultureInfo.InvariantCulture), [], current ? numberRuns.Current : numberRuns.Other));
             }
-            double y = line.Top + (metrics.LineHeight - number.Height) / 2;
+            double y = shown.Top + (lineHeight - number.Height) / 2;
             number.Draw(context, new Point(right - number.WidthIncludingTrailingWhitespace, y));
         }
         frame.End();
-        gutterLabels.EndFrame();
     }
 }

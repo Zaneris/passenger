@@ -19,7 +19,8 @@ public interface IGutterColumn
     /// <summary>Its width at the editor's font, zero while it has nothing to show.</summary>
     double Width(GutterFont font);
 
-    /// <summary>Draws what it shows beside the lines on screen, in its strip of the gutter.</summary>
+    /// <summary>Draws what it shows beside a row on screen, in its strip of the gutter: the frame's line, from the row's
+    /// top, clipped to the row.</summary>
     void Draw(GutterFrame frame);
 
     /// <summary>A press on the gutter at a line, offered to each column in turn until one takes it: what this one does
@@ -69,19 +70,20 @@ public readonly record struct GutterPress(GutterClick Click, double X, double Wi
     public bool OnStrip => X >= 0 && X < Width;
 }
 
-/// <summary>A line on screen as a column draws beside it: the line (from zero) and the top of its first row in the editor.</summary>
+/// <summary>A line on screen as a column draws beside it: the line (from zero) and the top of its first row, from the top
+/// of the row drawn.</summary>
 public readonly record struct GutterLine(int Line, double Top);
 
-/// <summary>What a column draws with, one frame at a time: the drawing context, its strip of the gutter, the lines on
-/// screen, where any line is, and the look's brushes and labels in the editor's font. Kept by the editor from frame to
-/// frame, so a frame makes none.</summary>
+/// <summary>What a column draws with, one row of the gutter at a time: the drawing context, its strip of the gutter, the
+/// line beside the row, where any line is from the row's top, and the look's brushes and labels in the editor's font.
+/// Kept by the editor from frame to frame, so a frame makes none.</summary>
 public sealed class GutterFrame
 {
     private readonly CodeEditor editor;
     private readonly List<GutterLine> lines = [];
     private readonly HashSet<int> covered = [];
-    private Dictionary<GutterShape, StreamGeometry> shapes = [];
-    private Dictionary<GutterShape, StreamGeometry> lastShapes = [];
+    private readonly Dictionary<GutterShape, (StreamGeometry Shape, long Drawn)> shapes = [];
+    private long now;
     private DrawingContext? context;
 
     internal GutterFrame(CodeEditor editor)
@@ -99,14 +101,14 @@ public sealed class GutterFrame
     /// <summary>Where the line numbers end, in the editor's coordinates.</summary>
     public double NumbersRight { get; private set; }
 
-    /// <summary>The gutter's height.</summary>
+    /// <summary>The height of what it draws: the row's.</summary>
     public double Height { get; private set; }
 
     public double LineHeight { get; private set; }
 
     public double CharWidth { get; private set; }
 
-    /// <summary>The first and last lines (from zero) with a row on screen.</summary>
+    /// <summary>The first and last lines (from zero) it draws beside: the row's line.</summary>
     public int First { get; private set; }
 
     public int Last { get; private set; }
@@ -114,10 +116,11 @@ public sealed class GutterFrame
     /// <summary>How many lines the text has.</summary>
     public int LineCount { get; private set; }
 
-    /// <summary>The lines whose first row is on screen, in order: a wrapped line's other rows have none.</summary>
+    /// <summary>The line of the row it draws beside, if that is the line's first row: a wrapped line's other rows have none.</summary>
     public ReadOnlySpan<GutterLine> Lines => CollectionsMarshal.AsSpan(lines);
 
-    /// <summary>A line's top and the bottom of its last row, in the editor's coordinates; a folded line's are its fold's.</summary>
+    /// <summary>A line's top and the bottom of its last row, from the top of the row it draws beside; a folded line's are its
+    /// fold's.</summary>
     public double TopOf(int line) => editor.GutterTopOf(line);
 
     public double BottomOf(int line) => editor.GutterBottomOf(line);
@@ -135,27 +138,26 @@ public sealed class GutterFrame
     /// <summary>A brush of a colour the text names (a swatch), kept from frame to frame.</summary>
     public IBrush Brush(Color colour) => editor.GutterColour(colour);
 
-    /// <summary>A shape the columns drew in the last frame, of the same kind and size, kept for this one.</summary>
+    /// <summary>A shape the columns drew beside a row on screen, of the same kind and size, kept for this one.</summary>
     public bool TryShape(GutterShape key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out StreamGeometry? shape)
     {
-        if (shapes.TryGetValue(key, out shape))
+        ref (StreamGeometry Shape, long Drawn) entry = ref CollectionsMarshal.GetValueRefOrNullRef(shapes, key);
+        if (System.Runtime.CompilerServices.Unsafe.IsNullRef(ref entry))
         {
-            return true;
+            shape = null;
+            return false;
         }
-        if (lastShapes.Remove(key, out shape))
-        {
-            shapes[key] = shape;
-            return true;
-        }
-        return false;
+        entry.Drawn = now;
+        shape = entry.Shape;
+        return true;
     }
 
-    /// <summary>A shape made for this frame at the origin, which the next draws again wherever it stands then
-    /// (<see cref="DrawShape"/>), so a scroll moves the columns' marks without making them again.</summary>
+    /// <summary>A shape made at the origin, which a row drawn later draws again wherever it stands then
+    /// (<see cref="DrawShape"/>), so a row come into view takes the columns' marks without making them again.</summary>
     public StreamGeometry AddShape(GutterShape key)
     {
         StreamGeometry shape = new();
-        shapes[key] = shape;
+        shapes[key] = (shape, now);
         ShapesMade++;
         return shape;
     }
@@ -205,16 +207,23 @@ public sealed class GutterFrame
     {
         context = null;
         lines.Clear();
-        lastShapes.Clear();
-        (lastShapes, shapes) = (shapes, lastShapes);
+    }
+
+    /// <summary>Starts a frame, letting go of the shapes last drawn before <paramref name="keepFrom"/>.</summary>
+    internal void Keep(long frame, long keepFrom)
+    {
+        now = frame;
+        foreach ((GutterShape key, (StreamGeometry _, long drawn)) in shapes)
+        {
+            if (drawn < keepFrom)
+            {
+                shapes.Remove(key);
+            }
+        }
     }
 
     /// <summary>Lets go of the shapes kept, for a new look or font.</summary>
-    internal void ForgetShapes()
-    {
-        shapes.Clear();
-        lastShapes.Clear();
-    }
+    internal void ForgetShapes() => shapes.Clear();
 }
 
 /// <summary>A shape a gutter column draws, made at the origin: what it is (the column's own name for it) and how large.</summary>

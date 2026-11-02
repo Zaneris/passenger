@@ -41,7 +41,7 @@ public sealed partial class CodeEditor
                 switcher.IsVisible = value && contextLabel is not null;
             }
             InvalidateArrange();
-            InvalidateVisual();
+            Redraw();
         }
     }
 

@@ -11,10 +11,10 @@ using Passenger.Text;
 
 namespace Passenger.Editor;
 
-/// <summary>A frame: the rows on screen, each row's view (<see cref="ViewsOf"/>), and what goes over and beside them.
-/// A frame walks the rows it shows, never the lines a fold hides between them, and finds the carets, selections and
-/// markers on a row by halving rather than by looking at each. A line's number and marks are drawn on its first row, what
-/// follows its code (a fold's placeholder, annotations) after its last.</summary>
+/// <summary>What a row draws: its view (<see cref="ViewsOf"/>), and what goes over and beside it. A frame walks the rows
+/// it shows, never the lines a fold hides between them, and finds the carets, selections and markers on a row by halving
+/// rather than by looking at each. A line's number and marks are drawn on its first row, what follows its code (a fold's
+/// placeholder, annotations) after its last.</summary>
 public sealed partial class CodeEditor
 {
     private readonly LabelCache<(string Text, int Style)> labels = new();
@@ -34,154 +34,17 @@ public sealed partial class CodeEditor
         set
         {
             showWhitespaces = value;
-            InvalidateVisual();
+            Redraw();
         }
     }
 
+    /// <summary>The editor's own drawing: the ground under the text and the gutter's. The rows draw themselves over it
+    /// (<see cref="PrepareFrame"/>), so this is drawn again only for a change, never for a scroll.</summary>
     public override void Render(DrawingContext context)
     {
-        Frames++;
-        WrapOnScreen();
         Size size = Bounds.Size;
-        double gutter = GutterWidth;
-        double left = TextLeft - scroll.X;
-        double lineHeight = metrics.LineHeight;
-        TextSnapshot text = document.Snapshot;
-
         context.FillRectangle(palette.Background, new Rect(size));
-
-        int row = Math.Max(0, (int)(scroll.Y / lineHeight));
-        List<RowSpan> shown = RowsOnScreen(text, row, Math.Max(0, (int)((scroll.Y + size.Height) / lineHeight)));
-        placeholders.Clear();
-        drawnAnnotations.Clear();
-        int first = shown.Count > 0 ? shown[0].Line : 0;
-        int last = shown.Count > 0 ? shown[^1].Line : -1;
-        LineView[] lineViews = ViewsOf(text, shown, scroll.X - TextPadLeft, Math.Max(0, size.Width - gutter));
-        int rangeStart = shown.Count > 0 ? lineViews[0].Span.Start : 0;
-        int rangeEnd = shown.Count > 0 ? lineViews[shown.Count - 1].Span.EndIncludingBreak : 0;
-        HashSet<int> caretLines = CaretLines(text, rangeStart, rangeEnd);
-        bool noneSelected = NoneSelected();
-        LineTints marked = TintsOf(first, last);
-        Dictionary<int, IBrush>? tints = ChangeBackgrounds ? ChangeTints(first, last) : null;
-        // The rows go down the lines, and the annotations with them from the first on screen.
-        LineOrdered<LineAnnotation> annotations = decorations.AnnotationsByLine;
-        int annotation = annotations.From(first);
-        bool focused = IsFocused;
-        BracePair? braced = MatchedBraces;
-        double widest = 0;
-
-        using (context.PushClip(new Rect(gutter, 0, Math.Max(0, size.Width - gutter), size.Height)))
-        {
-            for (int i = 0; i < shown.Count; i++)
-            {
-                RowSpan span = shown[i];
-                int line = span.Line;
-                LineView view = lineViews[i];
-                double y = (row + i) * lineHeight - scroll.Y;
-                double from = left + span.Indent;
-                Gap[] gaps = GapsOn(span);
-                widest = Math.Max(widest, span.Indent + view.Width + HintsWidth(gaps));
-
-                if (noneSelected && caretLines.Contains(line))
-                {
-                    context.FillRectangle(palette.CurrentLine, new Rect(gutter, y, size.Width - gutter, lineHeight));
-                }
-                if (tints is not null && tints.TryGetValue(line, out IBrush? change))
-                {
-                    context.FillRectangle(change, new Rect(gutter, y, size.Width - gutter, lineHeight));
-                }
-                DrawInlineChanges(context, view, gaps, from, y);
-                if (marked.Of(line) is { } tint)
-                {
-                    context.FillRectangle(tint, new Rect(gutter, y, size.Width - gutter, lineHeight));
-                }
-                else
-                {
-                    foreach ((int partLine, TextRange part, IBrush brush) in marked.Parts)
-                    {
-                        if (partLine == line)
-                        {
-                            FillRange(context, view, gaps, from, y, part, brush);
-                        }
-                    }
-                }
-                DrawUsages(context, view, gaps, from, y);
-                if (braced is { } pair)
-                {
-                    DrawBraces(context, view, gaps, from, y, pair);
-                }
-                DrawSelections(context, view, gaps, from, y, size.Width, focused);
-                DrawHighlights(context, view, gaps, from, y);
-                DrawChoices(context, view, gaps, from, y);
-                if (showWhitespaces)
-                {
-                    DrawWhitespace(context, text, view, gaps, from, y);
-                }
-                if (gaps.Length == 0)
-                {
-                    view.Draw(context, from, y + (lineHeight - view.Height) / 2);
-                }
-                else
-                {
-                    DrawWithHints(context, view, gaps, from, y);
-                }
-                DrawLinks(context, text, view, gaps, from, y);
-                DrawMarkers(context, view, gaps, from, y, gutter, size.Width);
-                if (!span.IsLast)
-                {
-                    if (caretLines.Contains(line))
-                    {
-                        DrawWrapSign(context, from + XWith(view, gaps, span.Length, afterHints: false), y);
-                    }
-                    continue;
-                }
-                double end = from + view.CodeWidth + HintsWidth(gaps);
-                if (FoldedAt(line) is { } fold)
-                {
-                    end = DrawPlaceholder(context, line, fold, end, y);
-                }
-                while (annotation < annotations.Count && annotations.LineOf(annotation) < line)
-                {
-                    annotation++;
-                }
-                int after = annotation;
-                while (after < annotations.Count && annotations.LineOf(after) == line)
-                {
-                    after++;
-                }
-                if (after > annotation)
-                {
-                    DrawAnnotations(context, annotations, annotation, after, end, y);
-                }
-            }
-
-            if (focused && caretOn)
-            {
-                DrawCarets(context, text, rangeStart, rangeEnd, row, row + shown.Count - 1, left);
-            }
-            DrawSnippet(context, text, left);
-            if (ChangeBackgrounds)
-            {
-                DrawChangeRules(context, first, last, gutter, size.Width);
-            }
-        }
-
-        DrawGutter(context, shown, row, caretLines, gutter, size.Height);
-        DrawFoldPreview(context);
-        views.EndFrame();
-        labels.EndFrame();
-        numbers.EndFrame();
-        shapes.EndFrame();
-        // The widest line drawn since the text changed, so a long line deleted gives its width back, but the view stays.
-        widestLine = widestStale ? Math.Max(widest, scroll.X + Viewport.Width - TextPadLeft - (metrics.CharWidth * 4)) : Math.Max(widestLine, widest);
-        widestStale = false;
-        if (widestLine != measuredWidth)
-        {
-            // The widest line drawn changed: the horizontal extent follows, outside the render pass.
-            measuredWidth = widestLine;
-            Dispatcher.UIThread.Post(UpdateScrollBars);
-        }
-        RefreshStripe();
+        context.FillRectangle(palette.Gutter, new Rect(0, 0, GutterWidth, size.Height));
     }
 
     private bool NoneSelected()
@@ -420,7 +283,7 @@ public sealed partial class CodeEditor
     }
 
     /// <summary>A line's annotations after its code, a few spaces on, each in its look.</summary>
-    private void DrawAnnotations(DrawingContext context, LineOrdered<LineAnnotation> annotations, int from, int to, double x, double y)
+    private void DrawAnnotations(DrawingContext context, LineOrdered<LineAnnotation> annotations, int from, int to, double x, double y, RowSlot slot)
     {
         x += metrics.CharWidth * 3;
         for (int i = from; i < to; i++)
@@ -438,7 +301,7 @@ public sealed partial class CodeEditor
                 context.FillRectangle(palette.ErrorGround, new Rect(x - metrics.CharWidth / 2, y + 1, text.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight - 2), 3);
             }
             text.Draw(context, new Point(x, top));
-            drawnAnnotations.Add((annotation, new Rect(x - metrics.CharWidth / 2, y, text.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight)));
+            slot.Annotations.Add((annotation, new Rect(x - metrics.CharWidth / 2, (slot.Row * metrics.LineHeight) + y, text.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight)));
             x += text.WidthIncludingTrailingWhitespace + metrics.CharWidth * 2;
         }
     }
@@ -504,25 +367,25 @@ public sealed partial class CodeEditor
         Folded,
     }
 
-    /// <summary>The shapes drawn in the last frame (squiggles, tabs' arrows, wrap signs, fold chevrons), by what they are and
-    /// where: a frame draws again those it drew before without making them, and lets go of the rest.</summary>
+    /// <summary>The shapes drawn (squiggles, tabs' arrows, wrap signs, fold chevrons), by what they are and how large, each
+    /// with the frame that last drew it: a row drawn later draws again those the rows on screen drew without making them,
+    /// and a frame lets go of those no row on screen drew (<see cref="Begin"/>).</summary>
     private sealed class ShapeCache
     {
-        private Dictionary<ShapeKey, StreamGeometry> previous = [];
-        private Dictionary<ShapeKey, StreamGeometry> current = [];
+        private readonly Dictionary<ShapeKey, (StreamGeometry Shape, long Drawn)> kept = [];
+        private long now;
 
         public bool TryGet(ShapeKey key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out StreamGeometry? shape)
         {
-            if (current.TryGetValue(key, out shape))
+            ref (StreamGeometry Shape, long Drawn) entry = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrNullRef(kept, key);
+            if (System.Runtime.CompilerServices.Unsafe.IsNullRef(ref entry))
             {
-                return true;
+                shape = null;
+                return false;
             }
-            if (previous.Remove(key, out shape))
-            {
-                current[key] = shape;
-                return true;
-            }
-            return false;
+            entry.Drawn = now;
+            shape = entry.Shape;
+            return true;
         }
 
         /// <summary>How many shapes have been made: what drawing them has cost.</summary>
@@ -531,21 +394,24 @@ public sealed partial class CodeEditor
         public StreamGeometry Add(ShapeKey key, StreamGeometry shape)
         {
             Made++;
-            current[key] = shape;
+            kept[key] = (shape, now);
             return shape;
         }
 
-        public void EndFrame()
+        /// <summary>Starts a frame, letting go of the shapes last drawn before <paramref name="keepFrom"/>.</summary>
+        public void Begin(long frame, long keepFrom)
         {
-            previous.Clear();
-            (previous, current) = (current, previous);
+            now = frame;
+            foreach ((ShapeKey key, (StreamGeometry _, long drawn)) in kept)
+            {
+                if (drawn < keepFrom)
+                {
+                    kept.Remove(key);
+                }
+            }
         }
 
-        public void Clear()
-        {
-            previous.Clear();
-            current.Clear();
-        }
+        public void Clear() => kept.Clear();
     }
 
     /// <summary>The text's I-beam and a link's hand, made once.</summary>
@@ -689,8 +555,8 @@ public sealed partial class CodeEditor
 
     /// <summary>Every brush the editor paints with, from the look in force's <c>Passenger.Editor.*</c>,
     /// <c>Passenger.Syntax.*</c> and other tokens, never a colour of its own, so the look always draws the editor (a
-    /// token the theme left out draws nothing); and the problem counts' icons, the theme's <c>Icon.*</c> geometries, or
-    /// none. Read again as the editor joins a window.</summary>
+    /// token the theme left out draws nothing), each taken as an immutable brush; and the problem counts' icons, the
+    /// theme's <c>Icon.*</c> geometries, or none. Read again as the editor joins a window.</summary>
     private sealed class Palette
     {
         private static readonly IBrush None = Brushes.Transparent;
@@ -775,11 +641,21 @@ public sealed partial class CodeEditor
         {
             Palette defaults = Default;
             List<object?> found = [];
+            Dictionary<IBrush, IBrush> fixedOf = new(ReferenceEqualityComparer.Instance);
+            // Fixed, so drawing one adds no resource to a row's drawing to be tracked, and one brush stays one look.
             IBrush? F(string key)
             {
                 IBrush? brush = Find(control, key);
                 found.Add(brush);
-                return brush;
+                if (brush is null)
+                {
+                    return null;
+                }
+                if (!fixedOf.TryGetValue(brush, out IBrush? still))
+                {
+                    fixedOf[brush] = still = brush.ToImmutable();
+                }
+                return still;
             }
             Palette palette = new()
             {

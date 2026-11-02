@@ -73,6 +73,9 @@ public sealed partial class CodeEditor : Control
         Cursor = IbeamCursor;
         stripe = new ErrorStripe(this);
         counts = new ProblemCounts(this);
+        overlay = new Painted(DrawOverlay);
+        prepareFrame = _ => PrepareFrame();
+        AddLayers();
         VisualChildren.Add(vertical);
         VisualChildren.Add(horizontal);
         VisualChildren.Add(stripe);
@@ -87,7 +90,7 @@ public sealed partial class CodeEditor : Control
         {
             caretOn = !caretOn;
             Blinks++;
-            InvalidateVisual();
+            RedrawOverlay();
         });
         decorations = new DocumentDecorations(document);
         ownsDecorations = true;
@@ -178,7 +181,7 @@ public sealed partial class CodeEditor : Control
             return;
         }
         inlineChanges.Set(document, [.. changes.OrderBy(c => c.Range.Start)]);
-        InvalidateVisual();
+        Redraw();
     }
 
     /// <summary>The bookmarked lines, marked on the error stripe.</summary>
@@ -240,7 +243,7 @@ public sealed partial class CodeEditor : Control
                 FollowInputMethod();
                 break;
         }
-        InvalidateVisual();
+        Redraw();
     }
 
     /// <summary>A press on the gutter at a line (from zero) that none of its columns took: the host's. With a handler, a
@@ -435,7 +438,7 @@ public sealed partial class CodeEditor : Control
         measuredWidth = 0;
         ForgetLines();
         InvalidateArrange();
-        InvalidateVisual();
+        Redraw();
         FollowInputMethod();
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -456,7 +459,7 @@ public sealed partial class CodeEditor : Control
             }
             toldShowing = null;
             colouring++;
-            InvalidateVisual();
+            Redraw();
         }
     }
 
@@ -531,7 +534,7 @@ public sealed partial class CodeEditor : Control
         // Kept for rows the text may no longer have (its file reloaded shorter while its tab was hidden or closed).
         scroll = new Vector(offset.X, WithinRows(offset.Y));
         UpdateScrollBars();
-        InvalidateVisual();
+        Redraw();
         FollowInputMethod();
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -564,7 +567,7 @@ public sealed partial class CodeEditor : Control
     {
         highlights.Set(document, ranges);
         CurrentHighlight = current;
-        InvalidateVisual();
+        Redraw();
     }
 
     /// <summary>Selects a range and scrolls it into view, as finding it does.</summary>
@@ -611,7 +614,7 @@ public sealed partial class CodeEditor : Control
         awaitedY = null;
         HideFoldPreview();
         UpdateScrollBars();
-        InvalidateVisual();
+        Scrolled();
         FollowInputMethod();
         ScrollChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -673,6 +676,8 @@ public sealed partial class CodeEditor : Control
     {
         base.OnGotFocus(e);
         RestartBlink();
+        // The selections take the focused look.
+        Redraw();
     }
 
     protected override void OnLostFocus(FocusChangedEventArgs e)
@@ -681,7 +686,7 @@ public sealed partial class CodeEditor : Control
         blink.Stop();
         ownKeys?.Reset();
         document.BreakUndoGroup();
-        InvalidateVisual();
+        Redraw();
     }
 
     /// <summary>A command would have made more carets than <see cref="SelectionSet.MaxCount"/> and made that many at most,
@@ -712,7 +717,7 @@ public sealed partial class CodeEditor : Control
             Reveal(selections.Primary.Caret);
         }
         RestartBlink();
-        InvalidateVisual();
+        Redraw();
         FollowInputMethod();
         if (changed)
         {
@@ -790,7 +795,7 @@ public sealed partial class CodeEditor : Control
         }
         widestStale = true;
         InvalidateArrange();
-        InvalidateVisual();
+        Redraw();
     }
 
     private void OnHighlighterChanged(object? sender, EventArgs e)
@@ -810,7 +815,7 @@ public sealed partial class CodeEditor : Control
     {
         if (BracesChanged())
         {
-            InvalidateVisual();
+            Redraw();
         }
         bool moved = coloursMoved;
         coloursMoved = false;
@@ -819,7 +824,7 @@ public sealed partial class CodeEditor : Control
             return;
         }
         colouring++;
-        InvalidateVisual();
+        Redraw();
     }
 
     private void OnScrollBarChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
@@ -896,7 +901,7 @@ public sealed partial class CodeEditor : Control
         // The stripe and the counts paint with the palette too, so they are drawn again with the next frame.
         stripeDrawn = default;
         InvalidateArrange();
-        InvalidateVisual();
+        Redraw();
     }
 
     private static int Digits(int value) => value < 10 ? 1 : (int)Math.Floor(Math.Log10(value)) + 1;

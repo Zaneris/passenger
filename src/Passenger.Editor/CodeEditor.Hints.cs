@@ -36,7 +36,7 @@ public sealed partial class CodeEditor
                 // A hint takes room on its row.
                 Rewrap();
             }
-            InvalidateVisual();
+            Redraw();
         }
     }
 
@@ -51,7 +51,7 @@ public sealed partial class CodeEditor
                 showTypeHints = value;
                 Rewrap();
             }
-            InvalidateVisual();
+            Redraw();
         }
     }
 

@@ -2,35 +2,46 @@ using Avalonia;
 
 namespace Passenger.Editor;
 
-/// <summary>Where the last frame drew each line-end annotation, so a pointer resting on one is told which.</summary>
+/// <summary>Where the rows on screen drew each line-end annotation, so a pointer resting on one is told which.</summary>
 public sealed partial class CodeEditor
 {
-    /// <summary>The annotations the last frame drew, each with its box in the control: cleared and filled again each frame,
-    /// keeping its room.</summary>
-    private readonly List<(LineAnnotation Annotation, Rect Box)> drawnAnnotations = [];
-
     /// <summary>The annotation drawn under a point, if any.</summary>
     private LineAnnotation? AnnotationAt(Point at)
     {
-        foreach ((LineAnnotation annotation, Rect box) in drawnAnnotations)
+        Point inRows = at + new Vector(0, scroll.Y);
+        foreach (RowSlot slot in slots)
         {
-            if (box.Contains(at))
+            if (slot.Span is null)
             {
-                return annotation;
+                continue;
+            }
+            foreach ((LineAnnotation annotation, Rect box) in slot.Annotations)
+            {
+                if (box.Contains(inRows))
+                {
+                    return annotation;
+                }
             }
         }
         return null;
     }
 
-    /// <summary>Where the last frame drew an annotation of a line (from zero) that says <paramref name="text"/>, in the
-    /// control; null where it drew none.</summary>
+    /// <summary>Where a row on screen drew an annotation of a line (from zero) that says <paramref name="text"/>, in the
+    /// control; null where none drew it.</summary>
     public Rect? AnnotationBox(int line, string text)
     {
-        foreach ((LineAnnotation annotation, Rect box) in drawnAnnotations)
+        foreach (RowSlot slot in slots)
         {
-            if (annotation.Line == line && string.Equals(annotation.Text, text, StringComparison.Ordinal))
+            if (slot.Span is null)
             {
-                return box;
+                continue;
+            }
+            foreach ((LineAnnotation annotation, Rect box) in slot.Annotations)
+            {
+                if (annotation.Line == line && string.Equals(annotation.Text, text, StringComparison.Ordinal))
+                {
+                    return box.Translate(new Vector(0, -scroll.Y));
+                }
             }
         }
         return null;

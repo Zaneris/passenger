@@ -14,9 +14,10 @@ namespace Passenger.Tests;
 /// <summary>Scrolling a C# file of 50,000 lines costs a frame what scrolling one of 500 does. With the server's colours,
 /// tens of thousands of inlay hints and thousands of warnings, breakpoints and bookmarks in the gutter, soft wrap off and
 /// on, a wheel's step and a step a screen long (a fast fling's, or a scrollbar drag's) allocate on the UI thread, format
-/// and colour only what comes into view, make no shape for the squiggles and marks they move, and the error stripe is drawn
-/// as the rectangles its track has room for, never one for each line with a problem. The files are the project's from the start, so one warm server compiles them once.
-/// Allocations counted, so run alone.</summary>
+/// and colour only what comes into view, draw only the rows come into view, the rows on screen moved as they were drawn,
+/// make no shape for the squiggles and marks they move, and the error stripe is drawn as the rectangles its track has room
+/// for, never one for each line with a problem. The files are the project's from the start, so one warm server compiles
+/// them once. Allocations counted, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class ScrollingTests : IClassFixture<ScrollingTests.Project>
 {
@@ -77,6 +78,13 @@ public sealed class ScrollingTests : IClassFixture<ScrollingTests.Project>
                     $"{how}, {scroll}: a frame through 50,000 lines formatted {many.Formatted} characters and coloured {many.Coloured}, against {few.Formatted} and {few.Coloured} through 500: lines drawn already were made again");
                 Assert.True(many.Shapes == 0 && few.Shapes == 0,
                     $"{how}, {scroll}: a frame made {many.Shapes} shapes through 50,000 lines and {few.Shapes} through 500, where the squiggles and the gutter's marks it moved were drawn already");
+                foreach (Scrolls scrolled in new[] { small, large })
+                {
+                    (long Drawn, long Shown, int Frame) most = scrolled.MostDrawn(scroll);
+                    Assert.True(most.Drawn <= most.Shown,
+                        $"{how}, {scroll} through {scrolled.Name}: frame {most.Frame} drew {most.Drawn} rows where {most.Shown} came into view, in the round that drew least: "
+                        + "rows on screen already were drawn again, where the compositor moves them as they were drawn");
+                }
             }
             Assert.True(large.Rectangles > 0 && large.Rectangles <= editor.Bounds.Height / 2,
                 $"{how}, the error stripe drew {Project.Methods(Project.Big) * Project.WarningsEach} warnings as {large.Rectangles} rectangles down a track {editor.Bounds.Height:0} pixels tall, which the compositor draws again in every frame that scrolls");
@@ -93,6 +101,14 @@ public sealed class ScrollingTests : IClassFixture<ScrollingTests.Project>
         public static readonly string[] Kinds = ["a wheel's step", "a step a screen long"];
 
         private readonly Dictionary<string, (long Bytes, long Formatted, long Coloured, long Shapes)> least = Kinds.ToDictionary(k => k, _ => (long.MaxValue, long.MaxValue, long.MaxValue, long.MaxValue));
+
+        /// <summary>For each kind, the round's frame that drew the most rows beyond those come into view, of the round where
+        /// that was least: the rows it drew and the rows come into view.</summary>
+        private readonly Dictionary<string, (long Drawn, long Shown, int Frame)> mostDrawn = [];
+
+        public string Name => Path.GetFileName(path);
+
+        public (long Drawn, long Shown, int Frame) MostDrawn(string kind) => mostDrawn[kind];
 
         /// <summary>The rectangles the stripe drew for the file's marks, as the last round left it.</summary>
         public int Rectangles { get; private set; }
@@ -123,8 +139,11 @@ public sealed class ScrollingTests : IClassFixture<ScrollingTests.Project>
         {
             Ui.Settle();
             List<(long Bytes, long Formatted, long Coloured, long Shapes)> frames = [];
+            (long Drawn, long Shown, int Frame) most = (0, 0, -1);
             for (int i = 0; i < 2 * steps; i++)
             {
+                (int First, int Last) before = RowsOnScreen(editor);
+                long drawn = editor.RowsDrawn;
                 long bytes = GC.GetAllocatedBytesForCurrentThread();
                 long formatted = editor.CharactersFormatted;
                 long coloured = editor.CharactersColoured;
@@ -132,11 +151,31 @@ public sealed class ScrollingTests : IClassFixture<ScrollingTests.Project>
                 window.MouseWheel(over, new Vector(0, i < steps ? -delta : delta));
                 Ui.Draw();
                 frames.Add((GC.GetAllocatedBytesForCurrentThread() - bytes, editor.CharactersFormatted - formatted, editor.CharactersColoured - coloured, editor.ShapesMade - shapes));
+                (int First, int Last) after = RowsOnScreen(editor);
+                long shown = (after.Last - after.First + 1) - Math.Max(0, Math.Min(after.Last, before.Last) - Math.Max(after.First, before.First) + 1);
+                long rows = editor.RowsDrawn - drawn;
+                if (most.Frame < 0 || rows - shown > most.Drawn - most.Shown)
+                {
+                    most = (rows, shown, i);
+                }
+            }
+            if (!mostDrawn.TryGetValue(kind, out (long Drawn, long Shown, int Frame) fewest) || most.Drawn - most.Shown < fewest.Drawn - fewest.Shown)
+            {
+                mostDrawn[kind] = most;
             }
             Assert.True(editor.LinesShown.First == 0, $"Scrolled down {Path.GetFileName(path)} and back up, the view shows line {editor.LinesShown.First + 1} at its top");
             (long Bytes, long Formatted, long Coloured, long Shapes) middle = (Middle(frames.Select(f => f.Bytes)), Middle(frames.Select(f => f.Formatted)), Middle(frames.Select(f => f.Coloured)), Middle(frames.Select(f => f.Shapes)));
             (long Bytes, long Formatted, long Coloured, long Shapes) so = least[kind];
             least[kind] = (Math.Min(so.Bytes, middle.Bytes), Math.Min(so.Formatted, middle.Formatted), Math.Min(so.Coloured, middle.Coloured), Math.Min(so.Shapes, middle.Shapes));
+        }
+
+        /// <summary>The rows the view shows, the first and the last, as it counts them: every row that has a pixel on screen.</summary>
+        private static (int First, int Last) RowsOnScreen(CodeEditor editor)
+        {
+            double top = editor.ScrollOffset.Y;
+            int first = (int)(top / editor.LineHeight);
+            int last = Math.Min(editor.RowsShown - 1, (int)((top + editor.Bounds.Height) / editor.LineHeight));
+            return (first, last);
         }
 
         private static long Middle(IEnumerable<long> values)
