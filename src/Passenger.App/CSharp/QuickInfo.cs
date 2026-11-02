@@ -36,6 +36,7 @@ internal sealed class QuickInfo
         this.popups = popups;
         this.completing = completing;
         popups.Add(hoverCard);
+        hoverCard.Play = context.Play;
         leaving = new Debounce(TimeSpan.FromMilliseconds(300), () =>
         {
             if (!HoverHeld)
@@ -88,13 +89,16 @@ internal sealed class QuickInfo
     /// <summary>Whether a card of a value is in use: it has the keys, its menu is open, or a value is being typed in it.</summary>
     public bool ValuesInUse => hoverCard.IsVisible && hoverCard.Values is { } values && (hoverCard.IsKeyboardFocusWithin || values.IsInUse);
 
-    /// <summary>Whether a card of a value stays: in use, or the pointer is on it.</summary>
-    private bool HoverHeld => ValuesInUse || (hoverCard.IsVisible && hoverCard.Values is not null && hoverCard.IsPointerOver);
+    /// <summary>Whether a card of a value, or one holding something to use, stays: in use, or the pointer is on it.</summary>
+    private bool HoverHeld => ValuesInUse || (hoverCard.IsVisible && Reachable && hoverCard.IsPointerOver);
 
-    /// <summary>The pointer left the word the card is of: a value's card goes after a pause, any other at once.</summary>
+    /// <summary>Whether the card shown is one the pointer may go to: a value's rows, or something to use (a sound's Play).</summary>
+    private bool Reachable => hoverCard.Values is not null || hoverCard.Usable;
+
+    /// <summary>The pointer left the word the card is of: a card the pointer may go to goes after a pause, any other at once.</summary>
     public void PointerLeft()
     {
-        if (hoverCard.IsVisible && hoverCard.Values is not null)
+        if (hoverCard.IsVisible && Reachable)
         {
             LeaveValues();
         }
@@ -253,7 +257,7 @@ internal sealed class QuickInfo
     /// the pointer comes back to it or it is in use.</summary>
     private void LeaveValues()
     {
-        if (hoverCard.IsVisible && hoverCard.Values is not null)
+        if (hoverCard.IsVisible && Reachable)
         {
             leaving.Restart();
         }

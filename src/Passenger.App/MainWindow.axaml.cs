@@ -235,6 +235,7 @@ public partial class MainWindow : IdeWindow
         assist.Navigate += (_, target) => NavigateTo(target.Path, target.Position);
         assist.Message += (_, message) => status.Text = message;
         assist.Browse += (_, page) => Browse(page);
+        assist.Play += (_, file) => IdeErrors.Observe(PlaySoundAsync(file));
         assist.FilesChanging = FollowingAsync;
         assist.HttpRouteTargets = HttpRouteTargets;
         assist.RouteCallers = RouteCallers;
@@ -268,7 +269,7 @@ public partial class MainWindow : IdeWindow
         assist.DebuggerValue = async (offset, cancel) => Editors.Active is { } shown && Debugging.XamlBreakpoints.Compiled(shown.Path)
             ? bindingValues!.HoverAt(shown, offset)
             : await session.Debug.HoverAt(offset, cancel);
-        assist.GutterWords = line => Editors.Active is { } beside ? session.Debug.GutterWords(beside.Path, line) : null;
+        assist.GutterWords = line => Editors.Active is { } beside ? GutterWordsOf(beside, line) : null;
         // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys, Godot's checks.
         assist.EditorFixes = (file, offset) => [.. Passenger.App.LiveTree.BindingErrors.Fixes(file, offset, session.FailedBindings.Select(b => b.Failure)),
             .. session.Web?.Checks.Fixes(file, offset) ?? [], .. assist.AspireFixes(file, offset), .. assist.ComposeReadFixes(file, offset), .. MigrationFixes(file, offset),
@@ -963,7 +964,7 @@ public partial class MainWindow : IdeWindow
     }
 
     /// <summary>A press on an icon of the gutter's marks: a test's menu, a route's or an .http request's, a run
-    /// configuration's or a colour's picker; false where the line has none of these.</summary>
+    /// configuration's, a colour's picker or a scene mark's menu; false where the line has none of these.</summary>
     private bool PressMark(CodeEditor editor, OpenDocument document, GutterClick click)
     {
         if (document.TestMarks.Any(m => m.Line == click.Line))
@@ -988,7 +989,7 @@ public partial class MainWindow : IdeWindow
             ShowRunMarkMenu(editor, document, click.Line);
             return true;
         }
-        return PickColour(editor, document, click);
+        return PickColour(editor, document, click) || ShowSceneMarkMenu(editor, document, click.Line);
     }
 
     /// <summary>The Breakpoints window, a breakpoint chosen in it.</summary>

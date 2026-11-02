@@ -185,7 +185,22 @@ internal interface IHoverCard
 
     /// <summary>What a language server says of a place.</summary>
     void AddHover(Hover hover);
+
+    /// <summary>A file the code names, previewed: by its words where it cannot be shown.</summary>
+    void AddPreview(FilePreview preview) => AddText(preview.Words);
 }
+
+/// <summary>What a file a path in the code names is: a picture, a sound, a scene.</summary>
+internal enum PreviewKind
+{
+    Picture,
+    Sound,
+    Scene,
+}
+
+/// <summary>A file a path in the code names, as its card previews it: the file, the name the code gives it, what it is,
+/// its words (the name, what it is, a scene's top nodes), and a scene's top nodes, its root's first, as its words name each.</summary>
+internal sealed record FilePreview(string File, string Named, PreviewKind Kind, string Words, IReadOnlyList<string> Nodes);
 
 /// <summary>Where Go to Declaration goes, the window's and an agent's alike: its places as a language server names them,
 /// each with the words its choice shows (<see cref="Names"/>, none for one shown by its line of code); else a page that

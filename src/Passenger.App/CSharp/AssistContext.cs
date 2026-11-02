@@ -40,6 +40,8 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
 
     public event EventHandler<Uri>? Browsed;
 
+    public event EventHandler<string>? Played;
+
     public CodeEditor Editor => editors.CodeEditor;
 
     public int Caret => Editor.Selections.Primary.Caret;
@@ -199,6 +201,9 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
 
     /// <summary>A page to open in the browser: an ESLint rule's, an image's registry page.</summary>
     public void Browse(Uri page) => Browsed?.Invoke(this, page);
+
+    /// <summary>A sound file to play: one a path in the code names, its card's Play pressed.</summary>
+    public void Play(string file) => Played?.Invoke(this, file);
 
     /// <summary>A file's text as the editor has it, else the disk's (<see cref="EditorArea.TextOf"/>); empty when it cannot be read.</summary>
     public string ReadOpenOrDisk(string path) => editors.TextOf(path)?.ToString() ?? string.Empty;

@@ -122,16 +122,27 @@ internal sealed partial class CSharpAssist
         return offered.Count == 0 ? null : new CodeCompletion.OwnItems(start, offered, tail) { WordCharacters = PathCharacters };
     }
 
-    /// <summary>What the hover card says of a Godot project's C#: where a string of a kind's name is defined
-    /// (<see cref="KindHover"/>); the node a GetNode path names in each scene its script runs in, or that none answers; the
-    /// file a uid:// names; an <c>[Export]</c> member's value in each scene and resource that sets it.</summary>
-    private async Task<string?> GodotHoverAsync(OpenDocument document, int offset, CancellationToken cancel)
+    /// <summary>What the hover card says of a Godot project's C# (<see cref="GodotWords"/>), and the preview of the file a
+    /// res:// path or uid:// name there names (<see cref="GodotPreviews"/>); neither for a file of no Godot project.</summary>
+    private async Task<(string? Words, FilePreview? Preview)> GodotHoverAsync(OpenDocument document, int offset, CancellationToken cancel)
     {
         if (context.WebOf(document) is not null || context.CSharp is not { } csharp || csharp.For(document)?.Lsp is not { } lsp
             || csharp.GodotOf?.Invoke(document.Path) is null || await csharp.GodotAsync(document.Path, cancel) is not { } read)
         {
-            return null;
+            return (null, null);
         }
+        string? words = GodotWords(lsp, document, offset, read);
+        FilePreview? preview = read.Found.Resources.FirstOrDefault(r => OffsetOf(lsp, r.At) <= offset && offset <= OffsetOf(lsp, r.End)) is { } named
+            ? await BackgroundWork.Run(() => GodotPreviews.Of(read.Scenes, named.Path, path => File.Exists(path)), cancel)
+            : null;
+        return (words, preview);
+    }
+
+    /// <summary>What the hover card says of a Godot project's C#: where a string of a kind's name is defined
+    /// (<see cref="KindHover"/>); the node a GetNode path names in each scene its script runs in, or that none answers; the
+    /// file a uid:// names; an <c>[Export]</c> member's value in each scene and resource that sets it.</summary>
+    private static string? GodotWords(LspDocument lsp, OpenDocument document, int offset, GodotRead read)
+    {
         (int start, _) = StringAround(lsp.Text.Snapshot, offset);
         if (KindAt(lsp, read, offset, start) is { Exact: true } kind)
         {

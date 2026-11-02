@@ -41,6 +41,18 @@ internal sealed partial class InfoCard : Border, IHoverCard
 
     public bool IsEmpty => parts.Children.Count == 0;
 
+    /// <summary>Whether it holds something to use (a sound's Play), so it takes the pointer and stays while the pointer is on it.</summary>
+    public bool Usable { get; private set; }
+
+    /// <summary>Plays a sound a preview offers; nothing without it.</summary>
+    public Action<string>? Play { get; set; }
+
+    /// <summary>The largest a preview's picture is drawn, in logical units.</summary>
+    private const double PictureSize = 128;
+
+    /// <summary>The pictures its previews decoded, let go as it is cleared.</summary>
+    private readonly List<Avalonia.Media.Imaging.Bitmap> pictures = [];
+
     /// <summary>The rows of a value the card shows, null for a card of words alone.</summary>
     public Debugging.VariablesList? Values { get; private set; }
 
@@ -48,6 +60,7 @@ internal sealed partial class InfoCard : Border, IHoverCard
     public string Text => string.Join('\n', parts.Children.Select(part => part switch
     {
         TextBlock words => words.Text,
+        Panel row => string.Join(' ', row.Children.OfType<TextBlock>().Select(t => t.Text)),
         Debugging.VariablesList values => string.Join('\n', values.Tree.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Name} = {r.TypeLabel}{r.Shown}")),
         _ => null,
     }).OfType<string>());
@@ -55,7 +68,13 @@ internal sealed partial class InfoCard : Border, IHoverCard
     public void Clear()
     {
         parts.Children.Clear();
+        foreach (Avalonia.Media.Imaging.Bitmap picture in pictures)
+        {
+            picture.Dispose();
+        }
+        pictures.Clear();
         Values = null;
+        Usable = false;
         fitted = 0;
         IsHitTestVisible = false;
         MaxWidth = WordsWidth;
@@ -110,6 +129,57 @@ internal sealed partial class InfoCard : Border, IHoverCard
     });
 
     void IHoverCard.AddText(string text) => AddText(text);
+
+    /// <summary>A file's preview: a picture drawn small (decoded off the window's thread), a sound with a button that plays
+    /// it, a scene's top nodes in the code's font, each over its words.</summary>
+    public void AddPreview(FilePreview preview)
+    {
+        switch (preview.Kind)
+        {
+            case PreviewKind.Picture:
+                Image picture = new() { MaxWidth = PictureSize, MaxHeight = PictureSize, Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly, HorizontalAlignment = HorizontalAlignment.Left };
+                parts.Children.Add(picture);
+                IdeErrors.Observe(ShowPictureAsync(picture, preview.File));
+                AddText(preview.Named);
+                break;
+            case PreviewKind.Sound:
+                Button play = ToolButtons.Of(IconKeys.Run, "Play", () => Play?.Invoke(preview.File));
+                parts.Children.Add(new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    Children = { play, new TextBlock { Text = preview.Named, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Foreground = Brush(TokenKeys.TextMuted) } },
+                });
+                Usable = true;
+                IsHitTestVisible = true;
+                break;
+            default:
+                AddText(preview.Named);
+                if (preview.Nodes.Count > 0)
+                {
+                    AddCode(string.Join('\n', preview.Nodes.Select((n, i) => i == 0 ? n : $"  {n}")));
+                }
+                break;
+        }
+    }
+
+    /// <summary>A picture into its place once decoded, at most the pixels its largest size takes on this screen.</summary>
+    private async Task ShowPictureAsync(Image picture, string file)
+    {
+        double scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 2;
+        if (await Godot.GodotResources.PreviewAsync(file, (int)Math.Ceiling(PictureSize * Math.Max(scale, 1))) is not { } made)
+        {
+            return;
+        }
+        if (picture.Parent != parts)
+        {
+            // Cleared while it decoded: another card's words stand there now.
+            made.Dispose();
+            return;
+        }
+        pictures.Add(made);
+        picture.Source = made;
+    }
 
     /// <summary>A language server's hover, its Markdown shown (<see cref="AddMarkdown"/>).</summary>
     public void AddHover(Lsp.Hover hover)

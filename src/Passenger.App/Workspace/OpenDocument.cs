@@ -31,6 +31,10 @@ public sealed class OpenDocument : Observable
     /// <summary>The line of each of <see cref="lineAnnotations"/> and of <see cref="liveValues"/>, carried by the text.</summary>
     private AnchoredLine[] annotationLines = [];
     private AnchoredLine[] liveLines = [];
+    private IReadOnlyList<SceneMark> sceneMarks = [];
+
+    /// <summary>The line of each of <see cref="sceneMarks"/>, carried by the text.</summary>
+    private AnchoredLine[] sceneLines = [];
     private IReadOnlyList<TestMark> testMarks = [];
     private IReadOnlyList<ColourMark> colourMarks = [];
     private IReadOnlyList<ChangeMark> changeMarks = [];
@@ -235,6 +239,10 @@ public sealed class OpenDocument : Observable
             if (liveValues.Count > 0 && Set(ref liveValues, Carried(liveValues, liveLines), nameof(LiveValues)))
             {
                 Decorations.SetLineAnnotations(ShownAnnotations);
+            }
+            if (sceneMarks.Count > 0 && Carried(sceneMarks, sceneLines) is var carried && !ReferenceEquals(carried, sceneMarks))
+            {
+                Set(ref sceneMarks, carried, nameof(SceneMarks));
             }
             FollowHeld(change.Edits);
             if (Markers.Count > 0)
@@ -494,6 +502,46 @@ public sealed class OpenDocument : Observable
 
     /// <summary>Every run icon its gutter draws: a run configuration's and a route's, put together once for each of theirs.</summary>
     public IReadOnlyList<RunMark> GutterRunMarks => gutterRunMarks ??= routeMarks.Count == 0 ? runMarks : [.. runMarks, .. routeMarks];
+
+    /// <summary>The marks of a Godot script's code leading into its scenes (a class's, a handler's), each carried with its
+    /// line as the text is edited until the next reading of the scenes replaces them.</summary>
+    public IReadOnlyList<SceneMark> SceneMarks
+    {
+        get => sceneMarks;
+        set
+        {
+            if (value.Count == 0 && sceneMarks.Count == 0)
+            {
+                return;
+            }
+            foreach (AnchoredLine line in sceneLines)
+            {
+                line.Detach();
+            }
+            sceneLines = new AnchoredLine[value.Count];
+            for (int i = 0; i < sceneLines.Length; i++)
+            {
+                sceneLines[i] = new AnchoredLine(value[i].Line);
+                sceneLines[i].Attach(Text);
+            }
+            Set(ref sceneMarks, value);
+        }
+    }
+
+    /// <summary>Scene marks with the lines their anchors carried them to; the same list when none moved.</summary>
+    private static IReadOnlyList<SceneMark> Carried(IReadOnlyList<SceneMark> marks, AnchoredLine[] lines)
+    {
+        SceneMark[]? moved = null;
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (lines[i].Follow())
+            {
+                moved ??= [.. marks];
+                moved[i] = moved[i] with { Line = lines[i].Line };
+            }
+        }
+        return moved ?? marks;
+    }
 
     /// <summary>The colours its lines write or name (XAML's, C#'s), each a swatch in the gutter.</summary>
     public IReadOnlyList<ColourMark> ColourMarks

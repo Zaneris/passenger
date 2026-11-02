@@ -249,7 +249,8 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     {
         if (!service.AsksHints)
         {
-            document.InlayHints = HintList.Empty;
+            // A path's node is what the text before it comes to, shown whatever the hints of the server's kinds are set to.
+            document.InlayHints = HintList.Of(GodotHints(document.Text.Version));
             return true;
         }
         (IReadOnlyList<LspInlayHint> hints, int hinted) = await lsp.InlayHintsAsync(cancel);
@@ -261,7 +262,8 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         TextSnapshot text = document.Text.Snapshot;
         ParsedText? syntax = hints.Any(h => h.Kind == Passenger.Lsp.InlayHintKind.Type) ? document.Syntax?.Current : null;
         bool razor = lsp.IsRazor;
-        HintList shown = await BackgroundWork.Run(() => Shown(text, syntax, razor, hints), cancel);
+        IReadOnlyList<InlayHint> godot = GodotHints(hinted);
+        HintList shown = await BackgroundWork.Run(() => Shown(text, syntax, razor, hints, godot), cancel);
         if (cancel.IsCancellationRequested || hinted != document.Text.Version)
         {
             return false;
@@ -294,6 +296,7 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
         IReadOnlyList<Diagnostic> own = [.. found, .. aspire, .. compose, .. configuration, .. localization, .. godot];
         IReadOnlyList<Diagnostic> carried = lsp.PullsProjectWide ? diagnostics.Late : [];
         document.Markers = diagnostics.Take([.. own, .. carried], DiagnosticMarks.Marker, carried.Count);
+        ShowGodotMarks();
         service.FileProblemsChanged(document);
         return own;
     }
@@ -343,11 +346,13 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
 
     /// <summary>The hints shown of those the server gave for a text: parameter names but those that say nothing, and
     /// types where <see cref="TypeHints"/> puts them (by the text's <paramref name="syntax"/>), each kept with the
-    /// server's own for its hover card. Reads nothing but what it is given, so it runs off the UI thread.</summary>
-    private static HintList Shown(TextSnapshot text, ParsedText? syntax, bool razor, IReadOnlyList<LspInlayHint> hints)
+    /// server's own for its hover card; with the scenes' hints of GetNode paths (<paramref name="godot"/>). Reads nothing
+    /// but what it is given, so it runs off the UI thread.</summary>
+    private static HintList Shown(TextSnapshot text, ParsedText? syntax, bool razor, IReadOnlyList<LspInlayHint> hints, IReadOnlyList<InlayHint> godot)
     {
         ServerLines lines = ServerLines.Of(text);
-        List<InlayHint> shown = new(hints.Count);
+        List<InlayHint> shown = new(hints.Count + godot.Count);
+        shown.AddRange(godot);
         foreach (LspInlayHint hint in hints)
         {
             string label = hint.Label.Trim();

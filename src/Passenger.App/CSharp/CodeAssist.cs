@@ -164,6 +164,13 @@ public sealed class CodeAssist
         remove => context.Browsed -= value;
     }
 
+    /// <summary>A sound a card's Play asks for.</summary>
+    public event EventHandler<string>? Play
+    {
+        add => context.Played += value;
+        remove => context.Played -= value;
+    }
+
     /// <summary>An option of Rename's turned on or off, for the window to keep.</summary>
     public event EventHandler? RenameSettingsChanged
     {

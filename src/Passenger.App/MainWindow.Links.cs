@@ -127,6 +127,27 @@ public partial class MainWindow
         IdeErrors.Observe(Launcher.LaunchUriAsync(address));
     }
 
+    private readonly List<string> played = [];
+
+    /// <summary>Every sound file the window was asked to play, in order, kept since a window shown nowhere plays none.</summary>
+    public IReadOnlyList<string> Played => played;
+
+    /// <summary>Plays a sound file through the system's player (<see cref="Sounds"/>), saying why where it cannot; a window
+    /// shown nowhere (an agent's, a test's) plays nothing.</summary>
+    public async Task PlaySoundAsync(string file)
+    {
+        UiThread.Check();
+        played.Add(file);
+        if (Debugging.BrowserRun.Headless)
+        {
+            return;
+        }
+        if (await Sounds.PlayAsync(file) is { } why)
+        {
+            status.Text = why;
+        }
+    }
+
     private readonly List<string> shownInFileManager = [];
 
     /// <summary>Every file and folder the window showed in the file manager, in order (where a publish landed, the

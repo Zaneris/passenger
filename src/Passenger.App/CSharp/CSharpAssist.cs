@@ -54,10 +54,13 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
     }
 
     /// <summary>The server's description of the symbol, then a configuration key's values, a localized key's languages and
-    /// what a Godot project's scenes say of a node path or an exported member.</summary>
+    /// what a Godot project's scenes say of a node path or an exported member; on a res:// path, its file previewed in
+    /// place of the server's description of a string.</summary>
     public override async Task<bool> HoverAsync(IHoverCard card, OpenDocument document, int offset, CancellationToken cancel)
     {
-        if (context.ServerOf(document)?.Lsp is { } lsp)
+        (string? godot, FilePreview? preview) = await GodotHoverAsync(document, offset, cancel);
+        // A path's file is what its string says; the server would describe System.String.
+        if (preview is null && context.ServerOf(document)?.Lsp is { } lsp)
         {
             await QuickInfo.ServerHoverAsync(lsp, card, offset, cancel);
         }
@@ -71,10 +74,14 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
             cancel.ThrowIfCancellationRequested();
             card.AddText(localized);
         }
-        if (await GodotHoverAsync(document, offset, cancel) is { } scenes)
+        cancel.ThrowIfCancellationRequested();
+        if (godot is not null)
         {
-            cancel.ThrowIfCancellationRequested();
-            card.AddText(scenes);
+            card.AddText(godot);
+        }
+        if (preview is not null)
+        {
+            card.AddPreview(preview);
         }
         return true;
     }
