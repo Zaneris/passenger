@@ -228,13 +228,15 @@ Projects in `src/`; `find_symbol` finds the rest:
   `Keystroke.ModifierOf`, an agent's too); the code font in force is the resource `CodeFonts.Key` (Settings › Editor),
   shown through `CodeFonts.InCodeFont` (`Follow` for a control's own property), `CodeEditor.CodeFont` the carried
   fallback, never a `FontFamily` written elsewhere; the terminal takes the editor's font and cell
-  (`CodeEditor.FontFamilyProperty`, `MeasureFont`) unless given its own. The
-  gutter's columns but numbers and folds are the App's (`IGutterColumn`), the editor naming no debugger, test or VCS
-  concept (EditorRulesTests); what a file's editors draw is its one `DocumentDecorations`, never fed per split. With
-  soft wrap, an offset becomes a place through `Rows`/`RowSpan` (a place on a line through `WrapOf`), the lines off
-  screen wrapped on the pool (`WrapRest`). Wraps, rows, folds, hints and built lines are runs an edit moves only where
-  it reaches, so a key costs what it changed, not the file's size: keep it so. Row views are carried so too, a
-  highlighter carrying the colours of lines an edit didn't reach (`IHighlighter.Showing`, `KeptColours`).
+  (`CodeEditor.FontFamilyProperty`, `MeasureFont`) unless given its own. The gutter's columns but numbers and folds are
+  the App's (`IGutterColumn`), the editor naming no debugger, test or VCS concept (EditorRulesTests); what a file's
+  editors draw is its one `DocumentDecorations`, never fed per split. With soft wrap, an offset becomes a place through
+  `Rows`/`RowSpan` (a place on a line through `WrapOf`), the lines off screen wrapped on the pool (`WrapRest`). Wraps,
+  rows, folds, hints and built lines are runs an edit moves only where it reaches, so a key costs what it changed, not
+  the file's size: keep it so. Row views are carried so too, a highlighter carrying the colours of lines an edit didn't
+  reach (`IHighlighter.Showing`, `KeptColours`). A scroll frame draws only what moved: shapes are made at the origin and
+  drawn through a translation (`CodeEditor.DrawShape`, `GutterFrame.DrawShape`), the error stripe draws touching marks
+  of one look as one rectangle, and runs of one look go to the formatter as one (`ScrollingTests` holds them).
 - `Passenger.Languages`: C# coloured by Roslyn's parser in-process (`CSharpHighlighter`, also each open file's one
   syntax service, `OpenDocument.Syntax`: never a fresh parse; every in-process parse takes its options from
   `CSharpParsing`, a folder's file's through `CompilationSymbols`, `EditorArea.ParseOptions`, the XAML core's through
