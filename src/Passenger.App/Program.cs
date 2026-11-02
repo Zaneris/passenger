@@ -25,6 +25,11 @@ internal static class Program
         {
             return asked;
         }
+        // Run by git as its gpg to sign a commit, nothing of the IDE started; synchronously, as Main returns gpg's exit code.
+        if (Synchronously.Run(() => Passenger.Vcs.GpgLoopback.RunAsync(args)) is int signed)
+        {
+            return signed;
+        }
         // First, as Velopack asks; an update never installs as a second Passenger starts, which would end the first.
         if (Installation.Installed)
         {

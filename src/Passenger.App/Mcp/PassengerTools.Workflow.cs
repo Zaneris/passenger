@@ -124,7 +124,8 @@ public sealed partial class PassengerTools
 
     [McpServerTool(Name = McpTools.VcsCommit, Title = "Commit", Destructive = true), Description(
         "Commits the paths given, else every changed file but the unversioned (saved first), with message; amend changes the " +
-        "last commit (with paths [], its message alone), push pushes after. Returns the commit and how the push went; a push the remote refuses is an error with " +
+        "last commit (with paths [], its message alone), push pushes after; signed as git's config says and signed off as the Commit window's Sign-off is, " +
+        "as the window commits. Returns the commit and how the push went; a push the remote refuses is an error with " +
         "git's reason, the commit made all the same.")]
     public Task<string> VcsCommit(string message, IReadOnlyList<string>? paths = null, bool amend = false, bool push = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
@@ -135,7 +136,7 @@ public sealed partial class PassengerTools
             ? [.. vcs.Changes.Where(c => c.Kind is not ChangeKind.Unversioned && c.Uncommittable is null)]
             : [.. paths.Select(Resolve).Select(p => vcs.Changes.FirstOrDefault(c => c.Path == p) ?? throw new ArgumentException($"{Relative(p)} has no changes to commit"))];
         AgentCall.Say($"Committing {Plural.Of(chosen.Count, "file")}{(push ? " and pushing" : string.Empty)}");
-        CommitResult result = await vcs.CommitAsync(chosen, message, amend, push, ask: false);
+        CommitResult result = await vcs.CommitAsync(chosen, message, amend, push, ask: false, signing: new CommitSigning(SignOff: vcs.SignOff));
         if (!result.Commit.Succeeded)
         {
             throw new InvalidOperationException(result.Commit.Message);

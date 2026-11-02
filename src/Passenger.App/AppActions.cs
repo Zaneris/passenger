@@ -467,6 +467,9 @@ public static class AppActions
     // The Refresh of the windows that read what they show again on asking: no keys of Rider's.
     public const string EndpointsRefresh = "app.endpoints.refresh";
     public const string GitLogRefresh = "app.vcs.refreshLog";
+
+    // Commit Signing…, the Commit window's and the Git menu's: no keys of Rider's.
+    public const string CommitSigning = "app.vcs.commitSigning";
     public const string CommitRefresh = "app.vcs.refreshChanges";
     public const string NuGetRefresh = "app.nuget.refresh";
     public const string LiveTreeRefresh = "app.liveTree.refresh";

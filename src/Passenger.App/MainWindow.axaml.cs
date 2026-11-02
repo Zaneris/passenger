@@ -837,6 +837,7 @@ public partial class MainWindow : IdeWindow
         RestoreUnitTests(opening.UnitTests.Value);
         session.Tests.Keep(opening.UnitTestResults.Value.Methods);
         branchFavorites = opening.GitBranches.Value;
+        session.Vcs.SignOff = opening.Commit.Value.SignOff;
         if (gitView?.Log.Branches is { } branches)
         {
             branches.Favorites = branchFavorites;

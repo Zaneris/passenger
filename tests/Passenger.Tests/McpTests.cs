@@ -850,6 +850,33 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(said.SequenceEqual(expected), $"vcs_log said of the commits' signatures\n{string.Join('\n', said)}\nwhere they are\n{string.Join('\n', expected)}");
     }
 
+    /// <summary>vcs_commit signs as the Commit window does, with the key git's config names; where the key needs a
+    /// passphrase and nobody is at the agent's own IDE to give it, the commit is not made and the answer says why.</summary>
+    [Fact]
+    public async Task An_agents_vcs_commit_is_signed_with_the_key_gits_config_names_and_one_needing_a_passphrase_says_why_not()
+    {
+        Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
+        string repository = PathNames.Canonical(TestFolders.Create("mcp-signing-"));
+        string keys = PathNames.Canonical(TestFolders.Create("mcp-signing-keys-"));
+        DeleteAtEnd(repository);
+        DeleteAtEnd(keys);
+        string own = await TestSshKeys.MakeAsync(keys, "own");
+        await TestSshKeys.SigningRepositoryAsync(repository, own);
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        File.WriteAllText(Path.Combine(repository, "Shop.cs"), "class Shop\n{\n    int count;\n}\n");
+        Assert.EndsWith(" Signed by an agent", (await Call(client, McpTools.VcsCommit, new() { ["message"] = "Signed by an agent" })).GetString(), StringComparison.Ordinal);
+        Assert.Equal("Signed by an agent G", (await TestGit.RunAsync(repository, "log", "-1", "--format=%s %G?")).Trim());
+
+        string guarded = await TestSshKeys.MakeAsync(keys, "guarded", "nobody-types-this");
+        await TestGit.RunAsync(repository, "config", "user.signingkey", guarded + ".pub");
+        File.WriteAllText(Path.Combine(repository, "Shop.cs"), "class Shop\n{\n    long count;\n}\n");
+        CallToolResult refused = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Needs a passphrase" });
+        Assert.True(refused.IsError == true && Text(refused).Contains("The commit was not signed: git asked for the passphrase of key guarded, and nobody is at this IDE to give it", StringComparison.Ordinal),
+            $"vcs_commit with a key needing a passphrase nobody can give answered: {Text(refused)}");
+        Assert.Equal("Signed by an agent", (await TestGit.RunAsync(repository, "log", "-1", "--format=%s")).Trim());
+    }
+
     /// <summary>A rebase stopped on a conflict that the agent resolves is still said by vcs_status, and vcs_commit refuses to
     /// commit beside it, naming Continue Rebase and Abort Rebase: no commit of the agent's takes the place of the rebase's
     /// on its detached head, and the rebase is still in progress.</summary>

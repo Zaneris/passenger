@@ -1350,10 +1350,14 @@ public sealed partial class Git
     }
 
     /// <summary>Commits these files' changes (new ones added first) and nothing else the index holds, with a message,
-    /// amending the last commit when asked (with no files, its message alone). Finishing a merge (or a cherry-pick or a revert stopped for conflicts), which git commits only whole, the files
+    /// amending the last commit when asked (with no files, its message alone), signed and signed off as
+    /// <paramref name="signing"/> says, a key's passphrase asked of <paramref name="asker"/>. Finishing a merge (or a
+    /// cherry-pick or a revert stopped for conflicts), which git commits only whole, the files
     /// <paramref name="excluded"/> are taken out of it and kept as changes.</summary>
-    public async Task<GitResult> CommitAsync(IReadOnlyList<string> paths, string message, bool amend = false, bool merging = false, IReadOnlyList<string>? excluded = null)
+    public async Task<GitResult> CommitAsync(IReadOnlyList<string> paths, string message, bool amend = false, bool merging = false, IReadOnlyList<string>? excluded = null,
+        CommitSigning? signing = null, GitAsker? asker = null)
     {
+        signing ??= CommitSigning.AsConfigured;
         string[] relative = [.. paths.Select(Relative).Distinct()];
         // No paths is an amend of the message alone: "add -A --" with none would add the whole tree.
         if (relative.Length > 0)
@@ -1377,11 +1381,11 @@ public sealed partial class Git
         AtomicFile.Write(file, Encoding.UTF8.GetBytes(message), UnixFileMode.UserRead | UnixFileMode.UserWrite);
         try
         {
-            string[] commit = ["commit", "-F", file, .. amend ? new[] { "--amend" } : []];
+            string[] commit = [.. signing.Before, "commit", "-F", file, .. amend ? new[] { "--amend" } : [], .. signing.After];
             // --only with no paths amends the message alone, leaving out what else the index holds (an IDE rename, a git add).
-            return merging ? await RunAsync(Root, commit)
-                : relative.Length > 0 ? await OnFilesAsync([.. commit, "--only"], relative)
-                : await RunAsync(Root, [.. commit, .. amend ? new[] { "--only" } : []]);
+            return merging ? await RunAsync(Root, commit, environment: signing.Environment, asker: asker)
+                : relative.Length > 0 ? await OnFilesAsync([.. commit, "--only"], relative, asker, signing.Environment)
+                : await RunAsync(Root, [.. commit, .. amend ? new[] { "--only" } : []], environment: signing.Environment, asker: asker);
         }
         finally
         {
@@ -1670,7 +1674,8 @@ public sealed partial class Git
 
     /// <summary>Runs git over files named on its input, each a literal pathspec ended by a NUL (composed where git takes
     /// names composed), never on its command line, which holds only so many (32,767 characters on Windows).</summary>
-    private async Task<GitResult> OnFilesAsync(IReadOnlyList<string> arguments, IReadOnlyCollection<string> relative)
+    private async Task<GitResult> OnFilesAsync(IReadOnlyList<string> arguments, IReadOnlyCollection<string> relative, GitAsker? asker = null,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         bool composed = relative.Any(name => !Ascii.IsValid(name)) && await ComposesAsync();
         StringBuilder names = new();
@@ -1678,7 +1683,7 @@ public sealed partial class Git
         {
             names.Append(Literal(GitForm(name, composed))).Append('\0');
         }
-        return await RunAsync(Root, [.. arguments, "--pathspec-from-file=-", "--pathspec-file-nul"], names.ToString());
+        return await RunAsync(Root, [.. arguments, "--pathspec-from-file=-", "--pathspec-file-nul"], names.ToString(), environment, asker: asker);
     }
 
     private string Full(string relative) => new DiskNames(Root).Full(relative);

@@ -124,6 +124,17 @@ public sealed class TestRun : IAsyncDisposable
         OwnEnvironment.Set("GIT_CONFIG_COUNT", null);
         // Nor the person's ssh-agent, which ssh-keygen asks first for the key a commit is signed with.
         OwnEnvironment.Set("SSH_AUTH_SOCK", null);
+        // Nor the person's GnuPG keyring and agent: gpg keeps a signing test's keys in the run's.
+        string gnupg = Path.Combine(Root, "gnupg");
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(gnupg);
+        }
+        else
+        {
+            Directory.CreateDirectory(gnupg, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        Environment.SetEnvironmentVariable("GNUPGHOME", gnupg);
         // The terminals' shells keep their history in the run's: sh takes HISTFILE, zsh its startup files from ZDOTDIR.
         Environment.SetEnvironmentVariable("HISTFILE", Path.Combine(Root, "history"));
         Environment.SetEnvironmentVariable("ZDOTDIR", Directory.CreateDirectory(Path.Combine(Root, "zsh")).FullName);
@@ -2252,8 +2263,66 @@ public static class TestSshKeys
         return key;
     }
 
+    /// <summary>A new ed25519 key guarded by <paramref name="passphrase"/>, which ssh-keygen is given as git's askpass
+    /// helper gives it (Passenger's own executable answering from a socket the test serves), never on its command line.</summary>
+    public static async Task<string> MakeAsync(string folder, string name, string passphrase)
+    {
+        string key = Path.Combine(folder, name);
+        string socket = Path.Combine(Passenger.Core.SocketFolders.Own(StateStore.DefaultRoot), $"{Environment.ProcessId}-keygen-{name}");
+        File.Delete(socket);
+        using System.Net.Sockets.Socket listener = new(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified);
+        listener.Bind(new System.Net.Sockets.UnixDomainSocketEndPoint(socket));
+        listener.Listen(4);
+        using CancellationTokenSource ended = new();
+        // ssh-keygen asks for the passphrase, then for it again.
+        Task answering = Waiting.Apart(async () =>
+        {
+            while (!ended.IsCancellationRequested)
+            {
+                using System.Net.Sockets.Socket asked = await listener.AcceptAsync(ended.Token);
+                await using System.Net.Sockets.NetworkStream stream = new(asked);
+                byte[] prompt = new byte[4096];
+                while (await stream.ReadAsync(prompt, ended.Token) > 0)
+                {
+                }
+                await stream.WriteAsync(System.Text.Encoding.UTF8.GetBytes("+" + passphrase), ended.Token);
+                asked.Shutdown(System.Net.Sockets.SocketShutdown.Send);
+            }
+        });
+        System.Diagnostics.ProcessStartInfo start = Passenger.Core.ChildProcesses.Command("ssh-keygen", ["-q", "-t", "ed25519", "-C", name, "-f", key], folder);
+        start.Environment["SSH_ASKPASS"] = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Passenger.exe" : "Passenger");
+        start.Environment["SSH_ASKPASS_REQUIRE"] = "force";
+        start.Environment[Passenger.Vcs.GitAskPass.Variable] = socket;
+        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(start, limit: Limit.Scaled());
+        await ended.CancelAsync();
+        try
+        {
+            await answering;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        File.Delete(socket);
+        Assert.True(made.Succeeded && File.Exists(key), $"ssh-keygen made no key {name} guarded by a passphrase, exiting {made.ExitCode}: {made.Error}{made.Output}");
+        return key;
+    }
+
     /// <summary>A key's public half as an allowed signers file lists it after the signer's name.</summary>
     public static string Public(string key) => File.ReadAllText(key + ".pub").Trim();
+
+    /// <summary>A repository made in <paramref name="root"/> (<see cref="TestGit.InitAsync"/>) whose own config signs every
+    /// commit with SSH key <paramref name="key"/>, listed for tests@passenger.invalid in an allowed signers file beside it.</summary>
+    public static async Task SigningRepositoryAsync(string root, string key)
+    {
+        File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
+        await TestGit.InitAsync(root);
+        string allowed = Path.Combine(Path.GetDirectoryName(key)!, "allowed_signers");
+        File.WriteAllText(allowed, $"tests@passenger.invalid {Public(key)}\n");
+        await TestGit.RunAsync(root, "config", "gpg.format", "ssh");
+        await TestGit.RunAsync(root, "config", "gpg.ssh.allowedSignersFile", allowed);
+        await TestGit.RunAsync(root, "config", "user.signingkey", key + ".pub");
+        await TestGit.RunAsync(root, "config", "commit.gpgsign", "true");
+    }
 
     /// <summary>A key's fingerprint as git names a signature's key (%GK).</summary>
     public static async Task<string> FingerprintAsync(string key)
@@ -2283,6 +2352,42 @@ public static class TestSshKeys
         File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n    long count;\n}\n");
         await TestGit.RunAsync(root, "-c", $"user.signingkey={unknown}.pub", "commit", "-q", "-S", "-a", "-m", "Signed by an unknown signer");
         return (known, unknown);
+    }
+}
+
+/// <summary>GPG keys a test signs its commits with, made by gpg in the run's own keyring (GNUPGHOME), never the person's.</summary>
+public static class TestGpgKeys
+{
+    private static readonly TimeSpan Limit = TimeSpan.FromMinutes(1);
+
+    /// <summary>The gpg a commit is signed with, or null where it is not on the PATH.</summary>
+    public static string? Gpg => Passenger.Core.Programs.OnPath(OperatingSystem.IsWindows() ? "gpg.exe" : "gpg");
+
+    /// <summary>Why a test that signs with GPG cannot run here, or null.</summary>
+    public static string? WhyNot => Gpg is null ? "gpg is not on the PATH, so no commit can be signed with a GPG key here" : null;
+
+    /// <summary>A new key for tests@passenger.invalid guarded by <paramref name="passphrase"/>, given gpg on its input,
+    /// never its command line; its id, the agent ended after so the passphrase is asked for again.</summary>
+    public static async Task<string> MakeAsync(string passphrase)
+    {
+        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(Gpg!,
+            ["--batch", "--pinentry-mode", "loopback", "--passphrase-fd", "0", "--quick-gen-key", "Passenger Tests <tests@passenger.invalid>", "ed25519", "sign", "never"]),
+            passphrase + "\n", Limit.Scaled());
+        Assert.True(made.Succeeded, $"gpg made no key to sign with, exiting {made.ExitCode}: {made.Error}");
+        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(Gpg!,
+            ["--list-secret-keys", "--with-colons", "tests@passenger.invalid"]), limit: Limit.Scaled());
+        string id = listed.Output.Split('\n').Select(l => l.Split(':')).First(f => f[0] == "sec")[4];
+        await EndAgentAsync();
+        return id;
+    }
+
+    /// <summary>The run's gpg-agent ended, its passphrases forgotten.</summary>
+    public static async Task EndAgentAsync()
+    {
+        if (Passenger.Core.Programs.OnPath(OperatingSystem.IsWindows() ? "gpgconf.exe" : "gpgconf") is { } gpgconf)
+        {
+            await Passenger.Core.ChildProcesses.RunAsync(Passenger.Core.ChildProcesses.Command(gpgconf, ["--kill", "gpg-agent"]), limit: Limit.Scaled());
+        }
     }
 }
 

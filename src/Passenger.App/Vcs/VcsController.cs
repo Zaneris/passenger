@@ -64,6 +64,26 @@ public sealed class VcsController : IDisposable
     /// <summary>The signatures of the commits the window shows, read as they are shown.</summary>
     public CommitSignatures Signatures { get; } = new();
 
+    /// <summary>Whether commits made here are signed off (--signoff), as the folder keeps it: the Commit window's Sign-off,
+    /// which vcs_commit follows too.</summary>
+    public bool SignOff
+    {
+        get => signOff;
+        set
+        {
+            if (signOff != value)
+            {
+                signOff = value;
+                SignOffChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    private bool signOff;
+
+    /// <summary>Raised when <see cref="SignOff"/> changes, for the folder to keep it.</summary>
+    public event EventHandler? SignOffChanged;
+
     /// <summary>Why git cannot read the folder's repository: it refused the one the folder is in (one another user owns,
     /// until safe.directory names it), in git's words, or it is not installed (<see cref="GitMissing"/>); null when it
     /// took one or found none. Each read looks again, so the window follows once git lets it in or is installed.</summary>
@@ -729,10 +749,11 @@ public sealed class VcsController : IDisposable
         return labels;
     }
 
-    /// <summary>Commits the chosen files with a message, then pushes when asked (Commit, and Commit and Push; the remote
-    /// asked for as <see cref="PushAsync"/> asks): the commit's outcome with the commit made, and the push's once the
-    /// commit is made and one was asked for.</summary>
-    public async Task<CommitResult> CommitAsync(IReadOnlyList<FileChange> chosen, string message, bool amend, bool push, bool ask = true)
+    /// <summary>Commits the chosen files with a message, signed and signed off as <paramref name="signing"/> says (as git's
+    /// config says where it is null), a signing key's passphrase asked in the window, then pushes when asked (Commit, and
+    /// Commit and Push; the remote asked for as <see cref="PushAsync"/> asks): the commit's outcome with the commit made,
+    /// and the push's once the commit is made and one was asked for. A commit not signed says why and how to mend it.</summary>
+    public async Task<CommitResult> CommitAsync(IReadOnlyList<FileChange> chosen, string message, bool amend, bool push, bool ask = true, CommitSigning? signing = null)
     {
         UiThread.Check();
         if (git is not { } repository)
@@ -775,10 +796,23 @@ public sealed class VcsController : IDisposable
             }
             string[] paths = [.. Paths(chosen)];
             string[] excluded = merging ? [.. Paths(Changes.Where(c => c.Kind is not ChangeKind.Unversioned && !chosen.Contains(c)))] : [];
-            GitResult commit = await repository.CommitAsync(paths, message, amend, merging, excluded);
+            SigningSetup setup = await repository.SigningAsync();
+            CommitSigning given = signing ?? CommitSigning.AsConfigured;
+            GitAsker? asker = Asker();
+            if (asker is not null && (given.Sign ?? setup.Signs) && setup.Format is SigningFormat.OpenPgp && GpgOf(setup) is { } gpg)
+            {
+                // Signed through Passenger's own gpg, which asks the window for the key's passphrase.
+                given = given with { Config = [$"gpg.program={asker.Helper}"], Environment = new Dictionary<string, string> { [GpgLoopback.Variable] = gpg } };
+            }
+            GitResult commit = await repository.CommitAsync(paths, message, amend, merging, excluded, given, asker);
+            commit = commit with { Output = ContainerSecrets.InSaid(commit.Output), Error = ContainerSecrets.InSaid(commit.Error) };
             if (!commit.Succeeded)
             {
-                VcsOutcome failed = Report(false, commit.Message);
+                bool signs = given.Sign ?? setup.Signs;
+                string said = !signs ? commit.Message
+                    : commit.Unanswered is { } unanswered ? SigningFailure.Unsigned + unanswered
+                    : SigningFailure.Of(commit.Error, setup) ?? commit.Message;
+                VcsOutcome failed = Report(false, said);
                 await RefreshAsync();
                 return new CommitResult(failed, null, null);
             }
@@ -977,13 +1011,7 @@ public sealed class VcsController : IDisposable
     private async Task<GitResult?> RemoteAsync(Working? work, Func<CancellationToken, GitAsker?, Task<GitResult>> run)
     {
         CancellationToken stopping = work?.Stopping ?? CancellationToken.None;
-        GitAsker? asker = null;
-        if (AskGit is { } ask)
-        {
-            // Taken now, in the call's own flow: git's questions come on the socket's.
-            AgentCall? call = AgentCall.Current;
-            asker = AskerOf((question, cancel) => UiThread.InvokeAsync(() => ask(question, call, cancel)));
-        }
+        GitAsker? asker = Asker();
         try
         {
             GitResult said = await run(stopping, asker);
@@ -998,6 +1026,105 @@ public sealed class VcsController : IDisposable
     /// <summary>Asks the person what git asks while it reaches a remote (a login, a key's passphrase), given the agent's
     /// call the operation serves, if any: the window's, unset with none to ask in, when git asks nobody.</summary>
     public Func<GitQuestion, AgentCall?, CancellationToken, Task<GitAnswer>>? AskGit { get; set; }
+
+    /// <summary>Who answers what an operation's git asks, through the window (<see cref="AskGit"/>), for the agent's call
+    /// the operation serves, taken now in the call's own flow (git's questions come on the socket's); null with no window.</summary>
+    private GitAsker? Asker()
+    {
+        if (AskGit is not { } ask)
+        {
+            return null;
+        }
+        AgentCall? call = AgentCall.Current;
+        GitHold? held = changing;
+        return AskerOf(async (question, cancel) =>
+        {
+            // The change's own hold let go too while the person answers, as its git's is.
+            using IDisposable? away = held?.Apart();
+            return await UiThread.InvokeAsync(() => ask(question, call, cancel));
+        });
+    }
+
+    /// <summary>The hold of the change to the tree under way (<see cref="OneAtATimeAsync"/>), let go while git asks the
+    /// person something for it.</summary>
+    private volatile GitHold? changing;
+
+    /// <summary>The gpg the person signs OpenPGP with, as a path: the one git's config names, else the one on the PATH;
+    /// null where none is there, when git is left to find its own.</summary>
+    private static string? GpgOf(SigningSetup setup) => setup.Program is { } named
+        ? Path.IsPathRooted(named) ? (File.Exists(named) ? named : null) : Programs.OnPath(named)
+        : Programs.OnPath(OperatingSystem.IsWindows() ? "gpg.exe" : "gpg");
+
+    /// <summary>How the tree's git config has a commit signed; none outside a working tree.</summary>
+    public async Task<SigningSetup> SigningAsync()
+    {
+        UiThread.Check();
+        return git is { } repository ? await repository.SigningAsync() : SigningSetup.None;
+    }
+
+    /// <summary>Raised when the signing set-up changed what git signs with, for the Commit window to say it again.</summary>
+    public event EventHandler? SigningChanged;
+
+    /// <summary>Commit Signing…'s choice set in git's config (<see cref="Git.SetSigningAsync"/>), an SSH key's public half
+    /// read from its file (or taken from the key given whole) to list it as the person's; then the Commit window says it
+    /// again and every signature is read again, as what git trusts may have changed.</summary>
+    public async Task<VcsOutcome> SetUpSigningAsync(SigningChoice choice)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        string? publicKey = choice.Format is SigningFormat.Ssh && choice.Key is { } key ? await BackgroundWork.Run(() => PublicKeyOf(key, repository.Root)) : null;
+        if (choice.Format is SigningFormat.Ssh && publicKey is null)
+        {
+            return Report(false, choice.Key is null ? "Signing with SSH needs a key: choose one, or type its file" : $"{choice.Key} is no SSH public key, nor beside one (.pub)");
+        }
+        GitResult set = await repository.SetSigningAsync(choice with { PublicKey = publicKey });
+        Signatures.Forget();
+        SigningChanged?.Invoke(this, EventArgs.Empty);
+        string where = choice.Global ? "for all your repositories" : "for this repository";
+        return Report(set.Succeeded, set.Succeeded
+            ? $"Commits {where} are signed with {(await repository.SigningAsync()).KeyShown}{(choice.SignEvery ? string.Empty : " where Sign is checked")}"
+            : $"Commit signing was not set up: {set.Message}");
+    }
+
+    /// <summary>An SSH key's public half: given whole (key::), its file's first line, or the .pub beside its private half.</summary>
+    private static string? PublicKeyOf(string key, string root)
+    {
+        if (key.StartsWith("key::", StringComparison.Ordinal))
+        {
+            return key[5..];
+        }
+        if (key.StartsWith("ssh-", StringComparison.Ordinal))
+        {
+            return key;
+        }
+        string file = Path.GetFullPath(key.StartsWith("~/", StringComparison.Ordinal) ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), key[2..]) : key, root);
+        foreach (string candidate in file.EndsWith(".pub", StringComparison.Ordinal) ? [file] : new[] { file + ".pub", file })
+        {
+            try
+            {
+                if (File.Exists(candidate) && File.ReadLines(candidate).FirstOrDefault()?.Trim() is { } line && line.Contains(' ', StringComparison.Ordinal)
+                    && !line.Contains("PRIVATE KEY", StringComparison.Ordinal))
+                {
+                    return line;
+                }
+            }
+            catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+            {
+                IdeErrors.Write($"Commit Signing: {candidate} could not be read: {unread.Message}");
+            }
+        }
+        return null;
+    }
+
+    /// <summary>The allowed signers file Commit Signing… lists the person's key in where it sets signing up for all their
+    /// repositories: git's own folder in the person's config folder (XDG_CONFIG_HOME, else ~/.config).</summary>
+    public static string GlobalAllowedSigners => Path.Combine(
+        Environment.GetEnvironmentVariable("XDG_CONFIG_HOME") is { Length: > 0 } config && Path.IsPathRooted(config) ? config
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config"),
+        "git", "allowed_signers");
 
     /// <summary>Who answers git through <paramref name="ask"/>: this build's own executable, run by git as its helper, asking
     /// over a socket in the state's socket folder; null where that folder cannot be had, when git asks nobody.</summary>
@@ -1279,13 +1406,15 @@ public sealed class VcsController : IDisposable
         IsBusy = true;
         BusyChanged?.Invoke(this, EventArgs.Empty);
         // Held whole, the waits between its gits too (a rollback's retries): the files and the lists follow what it did.
-        using IDisposable held = BackgroundWork.Scope();
+        using GitHold held = new();
+        changing = held;
         try
         {
             return await change();
         }
         finally
         {
+            changing = null;
             IsBusy = false;
             BusyChanged?.Invoke(this, EventArgs.Empty);
             idle?.TrySetResult();

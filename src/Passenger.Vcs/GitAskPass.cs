@@ -25,10 +25,11 @@ public enum GitQuestionKind
     Other,
 }
 
-/// <summary>A question git or ssh asks while it reaches a remote, as its askpass helper is given it: its kind, its words,
-/// and what it is about (a login's URL, with the user where git names one; a key's file; ssh's host). Read from git's and
-/// ssh's English words: a prompt in another language is <see cref="GitQuestionKind.Other"/>, asked in its own words.</summary>
-public sealed partial record GitQuestion(GitQuestionKind Kind, string Prompt, string? About = null, string? User = null)
+/// <summary>A question git or ssh asks while it reaches a remote, or ssh-keygen or Passenger's gpg while a commit is signed
+/// (<see cref="Signs"/>), as its askpass helper is given it: its kind, its words, and what it is about (a login's URL,
+/// with the user where git names one; a key's file or a GPG key; ssh's host). Read from their English words: a prompt in
+/// another language is <see cref="GitQuestionKind.Other"/>, asked in its own words.</summary>
+public sealed partial record GitQuestion(GitQuestionKind Kind, string Prompt, string? About = null, string? User = null, bool Signs = false)
 {
     public static GitQuestion Of(string prompt)
     {
@@ -44,6 +45,14 @@ public sealed partial record GitQuestion(GitQuestionKind Kind, string Prompt, st
         {
             return new GitQuestion(GitQuestionKind.Passphrase, prompt, key.Groups["key"].Value);
         }
+        if (SigningPassphrase().Match(asked) is { Success: true } signing)
+        {
+            return new GitQuestion(GitQuestionKind.Passphrase, prompt, signing.Groups["key"].Value, Signs: true);
+        }
+        if (GpgPassphrase().Match(asked) is { Success: true } gpg)
+        {
+            return new GitQuestion(GitQuestionKind.Passphrase, prompt, gpg.Groups["key"].Value, Signs: true) { IsGpg = true };
+        }
         if (SshPassword().Match(asked) is { Success: true } ssh)
         {
             return new GitQuestion(GitQuestionKind.Password, prompt, ssh.Groups["host"].Value, ssh.Groups["user"].Value);
@@ -55,9 +64,14 @@ public sealed partial record GitQuestion(GitQuestionKind Kind, string Prompt, st
         return new GitQuestion(GitQuestionKind.Other, prompt);
     }
 
-    /// <summary>Where it asks for, as a person names it: a URL's host and port, a key's file name, ssh's host.</summary>
+    /// <summary>Whether it is Passenger's gpg asking for a GPG or X.509 key's passphrase, the key named by its id and user.</summary>
+    public bool IsGpg { get; init; }
+
+    /// <summary>Where it asks for, as a person names it: a URL's host and port, a key's file name (a GPG key's id and user),
+    /// ssh's host.</summary>
     public string Place => Kind switch
     {
+        GitQuestionKind.Passphrase when IsGpg => About ?? "the key",
         GitQuestionKind.Passphrase => Path.GetFileName(About ?? string.Empty),
         _ when About is { } about && about.IndexOf("://", StringComparison.Ordinal) is int scheme and >= 0 => HostOf(about[(scheme + 3)..]),
         _ => About ?? "the remote",
@@ -106,6 +120,14 @@ public sealed partial record GitQuestion(GitQuestionKind Kind, string Prompt, st
 
     [GeneratedRegex(@"^Enter passphrase for key '(?<key>.+)':$")]
     private static partial Regex KeyPassphrase();
+
+    /// <summary>ssh-keygen's, signing with a key's file.</summary>
+    [GeneratedRegex(@"^Enter passphrase for ""(?<key>.+)"":$")]
+    private static partial Regex SigningPassphrase();
+
+    /// <summary>Passenger's gpg's (<see cref="GpgLoopback"/>), signing with a GPG key.</summary>
+    [GeneratedRegex(@"^Enter passphrase for GPG key (?<key>.+):$")]
+    private static partial Regex GpgPassphrase();
 
     [GeneratedRegex(@"^(?<user>[^@\s']+)@(?<host>[^@\s']+)'s password:$")]
     private static partial Regex SshPassword();
@@ -343,7 +365,7 @@ internal sealed class Prompting : IAsyncDisposable
 
 /// <summary>The background work an operation holds while git runs (<see cref="BackgroundWork.Scope"/>), let go while a
 /// question waits on the person, which no screenshot or test waits for, and taken again once it is answered.</summary>
-internal sealed class GitHold : IDisposable
+public sealed class GitHold : IDisposable
 {
     private readonly Lock gate = new();
     private readonly string file;

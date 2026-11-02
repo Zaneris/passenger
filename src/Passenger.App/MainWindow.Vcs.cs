@@ -145,6 +145,13 @@ public partial class MainWindow
         commitView?.Bind(vcs);
         gitView?.Bind(vcs);
         vcs.SaveFirst = Editors.SaveAllLandedAsync;
+        vcs.SignOffChanged += (_, _) =>
+        {
+            if (session == next)
+            {
+                session.State?.Commit.Set(new CommitState { SignOff = vcs.SignOff });
+            }
+        };
         vcs.ChooseRemote = ChooseRemoteAsync;
         vcs.AskGit = AskGitAsync;
         vcs.Message += (_, message) =>
@@ -316,7 +323,8 @@ public partial class MainWindow
         {
             IdeErrors.Write($"Git: {call.Agent}'s {call.Tool} needed {question.Asks}, with nobody at the window to give it");
             return GitAnswer.No($"git asked for {question.Asks}, and nobody is at {(AgentsOwn ? "this IDE" : "the window")} to give it: "
-                + "a credential helper (git config credential.helper), or an ssh agent holding the key, lets git reach the remote without asking");
+                + (question.Signs ? "an agent holding the key (ssh-add, gpg-agent) lets git sign without asking"
+                    : "a credential helper (git config credential.helper), or an ssh agent holding the key, lets git reach the remote without asking"));
         }
         GitQuestionDialog dialog = new(question, call?.Agent);
         GitQuestion = dialog;
@@ -675,6 +683,11 @@ public partial class MainWindow
             WhyNot = context => NeedsFolder(context) ?? session.Vcs.WhyNotCreate,
             Menus = [new MenuPlace("Git", 4, 1)],
         });
+        actions.Add(new IdeAction(AppActions.CommitSigning, SigningFailure.SetUp, "Git", _ => IdeErrors.Observe(ShowCommitSigningAsync()))
+        {
+            WhyNot = NeedsRepository,
+            Menus = [new MenuPlace("Git", 4, 2)],
+        });
         // The Commit and Git windows' Refresh: the working tree's changes, and the log shown, read again.
         actions.Add(new IdeAction(AppActions.CommitRefresh, "Refresh Changes", "Git", _ => IdeErrors.Observe(session.Vcs.RefreshAsync())) { WhyNot = NeedsRepository });
         actions.Add(new IdeAction(AppActions.GitLogRefresh, "Refresh Git Log", "Git", _ =>
@@ -694,6 +707,31 @@ public partial class MainWindow
     }
 
     private const string NoDiff = "No diff has the keys";
+
+    /// <summary>The Commit Signing dialog while it is open; null once it closes.</summary>
+    public CommitSigningDialog? CommitSigning { get; private set; }
+
+    /// <summary>Commit Signing…: how commits are signed, set up in the dialog as git's config has it now, then written to git's
+    /// config as chosen.</summary>
+    private async Task ShowCommitSigningAsync()
+    {
+        VcsController vcs = session.Vcs;
+        SigningSetup setup = await vcs.SigningAsync();
+        CommitSigningDialog dialog = new(setup, vcs.Repository, VcsController.GlobalAllowedSigners);
+        CommitSigning = dialog;
+        try
+        {
+            await dialog.ShowDialog(this);
+        }
+        finally
+        {
+            CommitSigning = null;
+        }
+        if (dialog.Choice is { } choice && vcs == session.Vcs)
+        {
+            await vcs.SetUpSigningAsync(choice);
+        }
+    }
 
     private static DiffView? DiffWithKeys(ActionContext context) => (context.Focused as Visual)?.FindAncestorOfType<DiffView>(includeSelf: true);
 

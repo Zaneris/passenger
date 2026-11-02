@@ -192,6 +192,7 @@ public sealed class ProjectState
         UnitTests = new(Path.Combine(Folder, "unitTests.json"));
         UnitTestResults = new(Path.Combine(Folder, "unitTestResults.json"));
         GitBranches = new(Path.Combine(Folder, "gitBranches.json"));
+        Commit = new(Path.Combine(Folder, "commit.json"));
         Godot = new(Path.Combine(Folder, "godot.json"));
         Endpoints = new(Path.Combine(Folder, "endpoints.json"));
         Publish = new(Path.Combine(Folder, "publish.json"));
@@ -234,6 +235,9 @@ public sealed class ProjectState
     /// <summary>The branches marked and unmarked as favourites in the Git log.</summary>
     public StateDocument<ToolWindows.GitBranchesState> GitBranches { get; }
 
+    /// <summary>Whether its commits are signed off, as the Commit window's Sign-off was last left.</summary>
+    public StateDocument<Vcs.CommitState> Commit { get; }
+
     /// <summary>Whether its Godot games' audio is muted as their debugging starts.</summary>
     public StateDocument<Passenger.App.Godot.GodotState> Godot { get; }
 
@@ -252,7 +256,7 @@ public sealed class ProjectState
     /// <summary>Reads, off the UI thread and at once, the documents a folder's open restores, so the restore takes them in
     /// with no read of its own. Done at once for those read already.</summary>
     public Task ReadAsync() => Task.WhenAll(Workspace.ValueAsync(), Layout.ValueAsync(), Breakpoints.ValueAsync(), Bookmarks.ValueAsync(),
-        RunConfigurations.ValueAsync(), Find.ValueAsync(), UnitTests.ValueAsync(), UnitTestResults.ValueAsync(), GitBranches.ValueAsync(),
+        RunConfigurations.ValueAsync(), Find.ValueAsync(), UnitTests.ValueAsync(), UnitTestResults.ValueAsync(), GitBranches.ValueAsync(), Commit.ValueAsync(),
         Godot.ValueAsync(), Endpoints.ValueAsync(), Publish.ValueAsync());
 
     public void Flush()
@@ -268,6 +272,7 @@ public sealed class ProjectState
         UnitTests.Flush();
         UnitTestResults.Flush();
         GitBranches.Flush();
+        Commit.Flush();
         Godot.Flush();
         Endpoints.Flush();
         Publish.Flush();
