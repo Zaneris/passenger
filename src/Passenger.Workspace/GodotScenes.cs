@@ -172,6 +172,8 @@ public sealed class GodotScenes
     private readonly Lock building = new();
     private readonly Lazy<IReadOnlyDictionary<string, string>> named;
     private readonly Lazy<GodotDefinitions> defined;
+    private readonly Dictionary<string, GodotScriptDeclarations?> scripts = new(StringComparer.Ordinal);
+    private readonly Lazy<IReadOnlyDictionary<string, string>> classes;
 
     /// <summary>The scenes and resources by res:// path, and the uid:// names Godot keeps of the project's other files (its
     /// .uid and .import files' and its cache's, <see cref="GodotUids"/>, uid by uid) beside those the files' headers give;
@@ -185,6 +187,18 @@ public sealed class GodotScenes
         Texts = texts ?? new Dictionary<string, string>(StringComparer.Ordinal);
         KeepsUids = cached;
         defined = new(() => new GodotDefinitions(this));
+        classes = new(() =>
+        {
+            Dictionary<string, string> all = new(StringComparer.Ordinal);
+            foreach (string res in Texts.Keys.Where(GodotScriptDeclarations.IsScript).Order(StringComparer.Ordinal))
+            {
+                if (ScriptOf(res)?.ClassName is { } name)
+                {
+                    all.TryAdd(name, res);
+                }
+            }
+            return all;
+        });
         named = new(() =>
         {
             Dictionary<string, string> all = new(uids ?? new Dictionary<string, string>(), StringComparer.Ordinal);
@@ -214,11 +228,86 @@ public sealed class GodotScenes
     /// <summary>Its text scenes and resources by res:// path.</summary>
     public IReadOnlyDictionary<string, GodotFile> Files { get; }
 
-    /// <summary>Its project.godot, shaders and translations by res:// path, as text.</summary>
+    /// <summary>Its project.godot, shaders, translations and GDScripts by res:// path, as text.</summary>
     public IReadOnlyDictionary<string, string> Texts { get; }
 
     /// <summary>What its files define for the strings its code gives Godot's calls, read once.</summary>
     public GodotDefinitions Defined => defined.Value;
+
+    /// <summary>A GDScript's own declarations, read once; null for a script the project's texts lack.</summary>
+    public GodotScriptDeclarations? ScriptOf(string res)
+    {
+        lock (building)
+        {
+            if (scripts.TryGetValue(res, out GodotScriptDeclarations? kept))
+            {
+                return kept;
+            }
+        }
+        GodotScriptDeclarations? read = GodotScriptDeclarations.IsScript(res) && Texts.TryGetValue(res, out string? text) ? GodotScriptDeclarations.Read(text) : null;
+        lock (building)
+        {
+            scripts[res] = read;
+        }
+        return read;
+    }
+
+    /// <summary>A GDScript's class with the scripts it extends (<see cref="GodotScriptChain"/>): by a path (res://, or beside
+    /// it), a uid:// name, or a <c>class_name</c> a script of the project gives; whole once one extends a class none names.</summary>
+    public GodotScriptChain ChainOf(string script)
+    {
+        List<(string, GodotScriptDeclarations)> chain = [];
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        for (string? at = script; at is not null && seen.Add(at);)
+        {
+            if (ScriptOf(at) is not { } declared)
+            {
+                return new GodotScriptChain(chain, false, null);
+            }
+            chain.Add((at, declared));
+            if (declared.Extends is not { } extends)
+            {
+                return new GodotScriptChain(chain, true, "RefCounted");
+            }
+            at = declared.ExtendsPath ? Beside(at, extends) : classes.Value.GetValueOrDefault(extends);
+            if (at is null)
+            {
+                // A class no script names is the engine's, but for an inner class of one (Base.Inner), which is not read.
+                return extends.Contains('.') || declared.ExtendsPath ? new GodotScriptChain(chain, false, null) : new GodotScriptChain(chain, true, extends);
+            }
+        }
+        return new GodotScriptChain(chain, false, null);
+    }
+
+    /// <summary>The res:// path a script's <c>extends</c> path names: a res:// or uid:// one as it is, another from the script's folder.</summary>
+    private string? Beside(string script, string path)
+    {
+        if (path.StartsWith(GodotUids.Scheme, StringComparison.Ordinal))
+        {
+            return ResOfUid(path);
+        }
+        if (path.StartsWith("res://", StringComparison.Ordinal) || !script.StartsWith("res://", StringComparison.Ordinal))
+        {
+            return path.StartsWith("res://", StringComparison.Ordinal) ? path : null;
+        }
+        List<string> names = [.. script["res://".Length..].Split('/')[..^1]];
+        foreach (string name in path.Split('/'))
+        {
+            if (name == "..")
+            {
+                if (names.Count == 0)
+                {
+                    return null;
+                }
+                names.RemoveAt(names.Count - 1);
+            }
+            else if (name is not ("." or ""))
+            {
+                names.Add(name);
+            }
+        }
+        return "res://" + string.Join('/', names);
+    }
 
     /// <summary>The res:// path of a file under a Godot project's folder; null outside it.</summary>
     public static string? ResPathOf(string folder, string path) =>

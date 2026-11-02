@@ -29,6 +29,13 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>The window's MSBuild code help, for a project file shown.</summary>
     public Func<MSBuildService?>? MSBuild { get; set; }
 
+    /// <summary>The scenes of the window's Godot projects, C# or GDScript alone, for a scene shown.</summary>
+    public Func<Godot.GodotSceneIndex?>? GodotScenes { get; set; }
+
+    /// <summary>The scenes of the Godot project a file is of and that project's folder; null for a file of none.</summary>
+    public (Godot.GodotSceneIndex Index, string Folder)? GodotOf(string path) =>
+        GodotScenes?.Invoke() is { } index && index.GameOf(path) is { } folder ? (index, folder) : null;
+
     /// <summary>The languages' own answers, in the one order each command asks them.</summary>
     public LanguageAssists Languages { get; set; } = null!;
 

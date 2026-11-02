@@ -283,6 +283,13 @@ public sealed class CodeAssist
         set => context.MSBuild = value;
     }
 
+    /// <summary>The scenes of the window's Godot projects, for a scene shown.</summary>
+    public Func<Godot.GodotSceneIndex?>? GodotScenes
+    {
+        get => context.GodotScenes;
+        set => context.GodotScenes = value;
+    }
+
     /// <summary>The solution's projects, which a Dockerfile's project is found among.</summary>
     public Func<IReadOnlyList<ProjectModel>>? Projects
     {
@@ -469,7 +476,7 @@ public sealed class CodeAssist
 
     /// <summary>Whether a file is a text scene or resource of a Godot project, which Passenger reads itself.</summary>
     private bool IsGodotScene(OpenDocument? file) =>
-        file is not null && GodotFile.IsText(file.Path) && context.CSharp?.GodotOf?.Invoke(file.Path) is not null;
+        file is not null && GodotFile.IsText(file.Path) && context.GodotOf(file.Path) is not null;
 
     /// <summary>Why an action of a XAML file's alone cannot run: no file, a file not XAML of a project Passenger reads, or
     /// one that cannot be edited.</summary>

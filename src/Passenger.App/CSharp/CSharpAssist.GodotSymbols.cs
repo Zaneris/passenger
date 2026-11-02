@@ -323,10 +323,11 @@ internal sealed partial class CSharpAssist
     {
         List<(string, IReadOnlyList<LspTextEdit>)> files = [];
         List<(string, string)> beside = [];
-        if (context.CSharp is not { GodotScenes: { } index, GodotOf: { } godotOf } csharp)
+        if (context.GodotScenes?.Invoke() is not { } index)
         {
             return (files, beside);
         }
+        Func<string, string?> godotOf = index.GameOf;
         // The index takes the moves in first, so the scenes are read where they are now.
         index.CameOrWent([.. moved.SelectMany(m => new[] { m.From, m.To })]);
         foreach (IGrouping<string, (string From, string To)> project in moved.Where(m => godotOf(m.To) is { } folder && PathNames.Same(godotOf(m.From) ?? string.Empty, folder))
@@ -365,7 +366,7 @@ internal sealed partial class CSharpAssist
                 ServerLines lines = ServerLines.Of(TextSnapshot.From(text));
                 files.Add((path, [.. edits.Select(e => new LspTextEdit(lines.RangeOf(new TextRange(e.Start, e.Length)), e.Text))]));
             }
-            if (csharp.Session is { } session)
+            if (context.CSharp?.Session is { } session)
             {
                 GodotPathsFound found;
                 try

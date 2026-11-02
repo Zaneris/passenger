@@ -22,7 +22,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
     private const string PathCharacters = "/.:-";
 
     /// <summary>Whether a file is a text scene or resource of a Godot project.</summary>
-    private bool IsScene(OpenDocument document) => GodotFile.IsText(document.Path) && context.CSharp?.GodotOf?.Invoke(document.Path) is not null;
+    private bool IsScene(OpenDocument document) => GodotFile.IsText(document.Path) && context.GodotOf(document.Path) is not null;
 
     /// <summary>A '/' typed in a scene's res:// string opens its list of the project's files.</summary>
     public override bool Typed(string text)
@@ -49,7 +49,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
         CancellationTokenSource cancel = completion.Asking();
         int caret = context.Caret;
         TextSnapshot asked = shown.Text.Snapshot;
-        if (ResString(asked, caret) is not ({ } start, { } end) || context.CSharp is not { GodotScenes: { } index, GodotOf: { } godotOf } || godotOf(shown.Path) is not { } folder)
+        if (ResString(asked, caret) is not ({ } start, { } end) || context.GodotOf(shown.Path) is not ({ } index, { } folder))
         {
             completion.Close();
             return true;
@@ -108,7 +108,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
     /// (the file among them as the editor has it), and the file read; null for any other file.</summary>
     private async Task<(GodotScenes Scenes, string Res, GodotFile File)?> SceneOfAsync(OpenDocument document)
     {
-        if (!GodotFile.IsText(document.Path) || context.CSharp is not { GodotScenes: { } index } service || service.GodotOf?.Invoke(document.Path) is not { } folder)
+        if (!GodotFile.IsText(document.Path) || context.GodotOf(document.Path) is not ({ } index, { } folder))
         {
             return null;
         }
@@ -203,18 +203,17 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
 
     /// <summary>A connection's method in the code of its receiving node's script, or its signal's in its sending node's: a
     /// C# script's asked of the extension for that script's file as its scenes are read (a signal's <c>[Signal]</c>
-    /// delegate), a GDScript's read from its file (its <c>func</c>, its <c>signal</c>).</summary>
+    /// delegate), a GDScript's where it or a script it extends declares it (its <c>func</c>, its <c>signal</c>).</summary>
     private async Task<Declared?> ConnectionDeclaredAsync(GodotScenes scenes, string res, GodotConnection connection, bool method)
     {
         GodotChecks.Connected connected = GodotChecks.Connections(scenes, res).First(c => c.Connection.Section == connection.Section);
         GodotTreeNode? node = method ? connected.To : connected.From;
         string what = method ? $"No method {connection.Method}" : $"No signal {connection.Signal}";
-        if (node?.Script is { } written && written.EndsWith(".gd", StringComparison.OrdinalIgnoreCase) && scenes.FileOf(written) is { } gd)
+        if (node?.Script is { } written && GodotScriptDeclarations.IsScript(written) && scenes.FileOf(written) is { } gd)
         {
             string name = method ? connection.Method : connection.Signal;
-            TextSnapshot? text = context.Editors.TextOf(gd) ?? (await BackgroundWork.Run(() => EditorArea.ReadText(gd)) is { } disk ? TextSnapshot.From(disk) : null);
-            return text is not null && await BackgroundWork.Run(() => GodotMembers.DeclaredIn(text, name, signal: !method)) is { } declared
-                ? new Declared(Declared.Served([(gd, declared)], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
+            return await BackgroundWork.Run(() => GodotChecks.ScriptPlace(scenes, written, method ? GodotScriptKind.Function : GodotScriptKind.Signal, name)) is ({ } file, { } declared)
+                ? new Declared(Declared.Served([(file, declared)], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
                 : new Declared([], $"{what} is declared in {Path.GetFileName(gd)}");
         }
         if (node?.Script is not { } script || !GodotChecks.IsCSharp(script) || scenes.FileOf(script) is not { } code || context.CSharp is not { } service)

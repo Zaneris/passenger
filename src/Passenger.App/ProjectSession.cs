@@ -116,7 +116,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Xaml.Snapshots = () => setup.Editors.Texts().Open;
         Xaml.Evaluations = path => evaluations.GetValueOrDefault(path);
         Frameworks.Changed += (_, project) => FollowFramework(project);
-        GodotScenes = new Godot.GodotSceneIndex { Texts = setup.Editors.Texts, Files = () => (Index.Root, Index.Files) };
+        GodotScenes = new Godot.GodotSceneIndex { Texts = setup.Editors.Texts, Files = () => (Index.Root, Index.Files), GameOf = GodotOf };
         GodotScenes.Changed += (_, _) => CSharp?.GodotScenesChanged();
         GodotMarks = new Godot.GodotSceneMarks(GodotScenes, GodotOf, () => CSharp, setup.Editors.Commands);
         GodotScenes.Changed += (_, _) => GodotMarks.Changed();
@@ -773,8 +773,13 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The marks of the open Godot scenes and resources, read against their project's scenes and code.</summary>
     internal Godot.GodotSceneMarks GodotMarks { get; }
 
-    /// <summary>The folder of the Godot project a file's project builds a game for; null for a file of none.</summary>
-    public string? GodotOf(string path) => ProjectOf(path)?.GodotFolder;
+    /// <summary>The folder of the Godot project a file is of: the one its project builds a game for, else the Godot project of
+    /// GDScript alone it lies in (<see cref="WorkspaceModel.ScriptGames"/>), the innermost; null for a file of none.</summary>
+    public string? GodotOf(string path) => ProjectOf(path)?.GodotFolder
+        ?? Workspace?.ScriptGames(Projects).Where(g => PathNames.IsUnder(path, g)).MaxBy(g => g.Length);
+
+    /// <summary>The folder of the Godot project a C# file's project builds a game for; null for a file of none.</summary>
+    private string? BuiltGodotOf(string path) => ProjectOf(path)?.GodotFolder;
 
     /// <summary>What Run, Debug and Profile run among: the folder's projects, then what stands for each Godot project of
     /// GDScript alone it holds (<see cref="ProjectModel.OfScriptGame"/>), which no other part of the IDE takes for a project.</summary>
@@ -1171,6 +1176,8 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             StartCSharp();
         }
+        // A Godot project of GDScript alone found by the walk is the open scenes' project from now on.
+        GodotMarks.Changed();
         WorkspaceChanged?.Invoke(this, EventArgs.Empty);
         // Each project whose evaluation no longer stands (its file or an import changed) is evaluated again.
         Evaluate();
@@ -1216,7 +1223,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 ComposeGaps = () => Web?.Checks.Gaps ?? [],
                 ConfigurationOf = ConfigurationOf,
                 Texts = setup.Editors.Texts,
-                GodotOf = GodotOf,
+                GodotOf = BuiltGodotOf,
                 GodotScenes = GodotScenes,
                 GodotCodeRead = GodotMarks.Changed,
             };

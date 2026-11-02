@@ -295,6 +295,14 @@ public partial class MainWindow
                 Explorer.Refilter();
             }
         };
+        // A scene's tree takes in the scenes it instances and the scripts it names, written on disk or typed.
+        next.GodotScenes.Changed += (_, _) =>
+        {
+            if (session == next && Editors.Active is { } shown && Passenger.Workspace.GodotFile.IsText(shown.Path) && next.GodotOf(shown.Path) is not null)
+            {
+                structure?.Invalidate();
+            }
+        };
         // Files open as it binds (a file opened with no folder) are its too.
         foreach (Workspace.OpenDocument document in Editors.Documents)
         {
@@ -401,6 +409,8 @@ public partial class MainWindow
                 ShowWorkspaceName();
                 FollowSymbols();
                 FindTests();
+                // A Godot project of GDScript alone the walk found outlines its open scene from now on.
+                structure?.FollowServer();
                 // Each file's project, which Problems lists the solution's under, as the projects now are.
                 ShowSolutionProblems();
             }

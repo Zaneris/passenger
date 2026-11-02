@@ -8,7 +8,7 @@ using Passenger.Workspace;
 namespace Passenger.App.Godot;
 
 /// <summary>The text scenes and resources of the folder's Godot projects (<see cref="GodotScenes"/>), with the uids Godot
-/// keeps of their files (<see cref="GodotUids"/>), each project's found by one walk of its folder the first time it is
+/// keeps of their files (<see cref="GodotUids"/>) and the texts of their GDScripts, each project's found by one walk of its folder the first time it is
 /// asked about (<see cref="FolderWalk"/>, which passes over its .godot folder, whose uid cache is read alone), then
 /// followed through the folder's watcher: a file written is read again, one come or gone put in or taken out, the folder
 /// walked again only when changes were lost. An open file is read as the editor has it. Asked on the UI thread; every
@@ -27,6 +27,9 @@ public sealed class GodotSceneIndex
 
     /// <summary>The open folder's files as its index has them: its root and their paths from it.</summary>
     public Func<(string? Root, IReadOnlyList<string> Files)> Files { get; init; } = () => (null, []);
+
+    /// <summary>The folder of the Godot project a file of the open folder is of (<see cref="ProjectSession.GodotOf"/>); null for none.</summary>
+    public Func<string, string?> GameOf { get; init; } = _ => null;
 
     /// <summary>The files of a Godot project's folder a res:// path may name: the folder's index's under it, but those in
     /// hidden folders (.godot's imports) and Godot's own beside each file (.import, .uid).</summary>
@@ -151,8 +154,11 @@ public sealed class GodotSceneIndex
     }
 
     /// <summary>Whether a file of a Godot project is one the index reads: a text scene or resource, a file beside another
-    /// giving it its uid, or one defining names its code's strings give (project.godot, a shader, a translation).</summary>
-    private static bool Read(string path) => GodotFile.IsText(path) || GodotUids.IsBeside(path) || GodotDefinitions.Reads(path);
+    /// giving it its uid, one defining names its code's strings give (project.godot, a shader, a translation), or a GDScript.</summary>
+    private static bool Read(string path) => GodotFile.IsText(path) || GodotUids.IsBeside(path) || Raw(path);
+
+    /// <summary>Whether a file the index reads is kept as text: one defining names, or a GDScript.</summary>
+    private static bool Raw(string path) => GodotDefinitions.Reads(path) || GodotScriptDeclarations.IsScript(path);
 
     /// <summary>A file the index reads, from its open text or the disk: a scene or resource parsed, the uid a file beside
     /// another gives it, or another's text; none for one that cannot be read.</summary>
@@ -265,10 +271,10 @@ public sealed class GodotSceneIndex
         }
     }
 
-    /// <summary>A file the editor opened: a scene's, resource's or other defining file's typing, once it pauses, is a change of its project's.</summary>
+    /// <summary>A file the editor opened: a scene's, resource's, GDScript's or other defining file's typing, once it pauses, is a change of its project's.</summary>
     public void Attach(OpenDocument document)
     {
-        if (!(GodotFile.IsText(document.Path) || GodotDefinitions.Reads(document.Path)) || typed.ContainsKey(document))
+        if (!(GodotFile.IsText(document.Path) || Raw(document.Path)) || typed.ContainsKey(document))
         {
             return;
         }
@@ -311,7 +317,7 @@ public sealed class GodotSceneIndex
         /// <summary>Each file as last read, with the open text it was read from (null for the disk's).</summary>
         public Dictionary<string, (GodotFile File, TextSnapshot? From)> Read { get; } = new(PathNames.Comparer);
 
-        /// <summary>The texts of project.godot, its shaders and translations, as last read, with the open text each was read from.</summary>
+        /// <summary>The texts of project.godot, its shaders, translations and GDScripts, as last read, with the open text each was read from.</summary>
         public Dictionary<string, (string Text, TextSnapshot? From)> Raw { get; } = new(PathNames.Comparer);
 
         /// <summary>The uid each .uid and .import file gives the file beside it, as last read.</summary>

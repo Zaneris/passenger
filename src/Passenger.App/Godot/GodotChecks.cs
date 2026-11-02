@@ -133,8 +133,8 @@ internal static class GodotChecks
     /// <summary>What is wrong in a scene or resource as Godot would load it, by what the extension answered of its connections
     /// and properties (<see cref="SceneAsks"/>): an external resource whose file is not there, an ExtResource or SubResource no
     /// resource of the file has, a node whose parent is not in it, a connection's end no node answers, or whose method or signal
-    /// its node lacks, or of other arguments, a property a node's C# script lacks, or a node path it sets naming no node or one
-    /// of another type; a node whose script is not C# is never said to lack a member, which its script may give it.</summary>
+    /// its node lacks (a GDScript's as its scripts declare them, <see cref="Lacks"/>), or of other arguments, a property a
+    /// node's C# script lacks, or a node path it sets naming no node or one of another type.</summary>
     public static IReadOnlyList<SceneFinding> SceneFindings(GodotScenes scenes, string scene, GodotCodeRequest asked, GodotCodeFound found, Func<string, bool> exists)
     {
         List<SceneFinding> findings = [];
@@ -205,9 +205,25 @@ internal static class GodotChecks
                     Offer = HandlerOffer(scenes, connected, signal, file),
                 });
             }
+            else if (!methodKnown && connected.To is { } receiver && Lacks(scenes, receiver, GodotScriptKind.Function, connection.Method, EngineHas(asked.Methods, found.Methods, MethodAsked(connected)))
+                is { } methods && connection.Section.Attribute("method")?.Value is { } scripted)
+            {
+                findings.Add(new SceneFinding(scripted.TextStart, scripted.TextEnd, true, $"{receiver.Name}, {Article(Shown(receiver))}, has no method {connection.Method}")
+                {
+                    Offer = new GodotOffer { Near = Core.Spelling.Near(connection.Method, methods) },
+                });
+            }
             if (signalKnown && signal is null && connection.Section.Attribute("signal")?.Value is { } emitted)
             {
                 findings.Add(new SceneFinding(emitted.TextStart, emitted.TextEnd, true, $"{connected.From!.Name}, {Article(Shown(connected.From))}, has no signal {connection.Signal}"));
+            }
+            else if (!signalKnown && connected.From is { } sender && Lacks(scenes, sender, GodotScriptKind.Signal, connection.Signal, EngineHas(asked.Signals, found.Signals, SignalAsked(connected)))
+                is { } signals && connection.Section.Attribute("signal")?.Value is { } declaring)
+            {
+                findings.Add(new SceneFinding(declaring.TextStart, declaring.TextEnd, true, $"{sender.Name}, {Article(Shown(sender))}, has no signal {connection.Signal}")
+                {
+                    Offer = new GodotOffer { Near = Core.Spelling.Near(connection.Signal, signals) },
+                });
             }
             int given = (signal?.Parameters.Count ?? 0) + connection.Binds - connection.Unbinds;
             if (method is not null && signal is not null && (given < method.Required || given > method.Parameters.Count) && connection.Section.Attribute("method")?.Value is { } called)
@@ -240,6 +256,34 @@ internal static class GodotChecks
         // A node whose members the code says: one with no script, of a known engine class, or one with a C# script.
         static bool Known(GodotTreeNode? node) => node is not null && (node.Script is null ? node.Type is not null : IsCSharp(node.Script));
     }
+
+    /// <summary>Whether a node's engine class has a member, as the extension answered for it; null where it was not asked.</summary>
+    private static bool? EngineHas(IReadOnlyList<GodotMemberAsked> asked, IReadOnlyList<GodotSignature?> found, GodotMemberAsked one) =>
+        IndexOf(asked, one) is int at and >= 0 && at < found.Count ? found[at] is not null : null;
+
+    /// <summary>The class of a node whose script is GDScript, or that has none (<see cref="GodotScriptChain"/>); null for a
+    /// node of a C# script, or of another kind of script.</summary>
+    public static GodotScriptChain? ChainOf(GodotScenes scenes, GodotTreeNode node) =>
+        node.Script is null ? GodotScriptChain.Of(node.Type) : GodotScriptDeclarations.IsScript(node.Script) ? scenes.ChainOf(node.Script) : null;
+
+    /// <summary>The names of a kind a node of GDScript, or of no script, has, where it lacks the one asked for: none of its
+    /// scripts declares it and they are all its class has beside its engine class, which lacks it too, as the extension
+    /// answered (<paramref name="engine"/>), or, where none answered, as no engine method begins with '_' and a connection's
+    /// handler that does is a script's; null where it has it, or what it has is not known.</summary>
+    private static IReadOnlyList<string>? Lacks(GodotScenes scenes, GodotTreeNode node, GodotScriptKind kind, string name, bool? engine)
+    {
+        if (ChainOf(scenes, node) is not { Whole: true } chain || chain.Find(kind, name) is not null)
+        {
+            return null;
+        }
+        return engine == false || engine is null && kind == GodotScriptKind.Function && name.StartsWith('_') ? chain.Names(kind) : null;
+    }
+
+    /// <summary>Where a GDScript's class declares a member of a kind (it or a script it extends): the script's file and the
+    /// place of its name there, as the project's texts have it; null for none.</summary>
+    public static (string File, Passenger.Text.TextPosition At)? ScriptPlace(GodotScenes scenes, string script, GodotScriptKind kind, string name) =>
+        scenes.ChainOf(script).Find(kind, name) is ({ } res, { } member) && scenes.FileOf(res) is { } file && scenes.Texts.TryGetValue(res, out string? text)
+            ? (file, Passenger.Text.TextSnapshot.From(text).GetPosition(member.Start)) : null;
 
     /// <summary>A scene's value of a script's property that names a node by its path (an exported NodePath, a node's type)
     /// that no node answers from the node it is set on, or that names a node not of the property's type: at the path, as
