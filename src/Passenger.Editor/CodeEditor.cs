@@ -886,6 +886,7 @@ public sealed partial class CodeEditor : Control
         palette = Palette.From(this);
         hintRun = null;
         runProperties.Clear();
+        runLooks.Clear();
         numberRuns = (
             RunWith(palette.LineNumberCurrent),
             RunWith(palette.LineNumber));

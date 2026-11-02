@@ -623,7 +623,8 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>The font and colour a token kind is drawn in, made once per theme.</summary>
+    /// <summary>The font and colour a token kind is drawn in, made once per theme; kinds drawn alike share theirs, by which
+    /// neighbouring runs of one look on a line are formatted and drawn as one (<see cref="ColouredRuns"/>).</summary>
     private TextRunProperties Run(TokenKind kind)
     {
         if (!rainbowBraces && kind is TokenKind.Brace1 or TokenKind.Brace2 or TokenKind.Brace3)
@@ -632,15 +633,30 @@ public sealed partial class CodeEditor
         }
         if (!runProperties.TryGetValue(kind, out TextRunProperties? props))
         {
-            runProperties[kind] = props = palette.Style(kind) is { } style ? StyledRunWith(palette.Syntax(kind), style) : kind switch
+            IBrush brush = palette.Syntax(kind);
+            SyntaxStyle? style = palette.Style(kind);
+            int set = style is not null ? 0 : kind switch
             {
-                TokenKind.UserInput or TokenKind.Italic => ItalicRunWith(palette.Syntax(kind)),
-                TokenKind.Heading or TokenKind.Bold => BoldRunWith(palette.Syntax(kind)),
-                _ => RunWith(palette.Syntax(kind)),
+                TokenKind.UserInput or TokenKind.Italic => 1,
+                TokenKind.Heading or TokenKind.Bold => 2,
+                _ => 0,
             };
+            if (!runLooks.TryGetValue((brush, style, set), out props))
+            {
+                runLooks[(brush, style, set)] = props = style is { } styled ? StyledRunWith(brush, styled) : set switch
+                {
+                    1 => ItalicRunWith(brush),
+                    2 => BoldRunWith(brush),
+                    _ => RunWith(brush),
+                };
+            }
+            runProperties[kind] = props;
         }
         return props;
     }
+
+    /// <summary>The run properties made for each look: a brush, the theme's style or none, and the kind's own (plain, italic, bold).</summary>
+    private readonly Dictionary<(IBrush Brush, SyntaxStyle? Style, int Set), TextRunProperties> runLooks = [];
 
     private static readonly FontFeatureCollection NoLigatures =
         [new FontFeature { Tag = "calt", Value = 0 }, new FontFeature { Tag = "liga", Value = 0 }];

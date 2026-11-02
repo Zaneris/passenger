@@ -1344,7 +1344,9 @@ public sealed partial class CodeEditor
             textSourceIndex >= text.Length ? new TextEndOfParagraph() : new TextCharacters(text.AsMemory(textSourceIndex), props);
     }
 
-    /// <summary>A line's text in its colours. The formatter asks for its runs in order, so the search for the run at a
+    /// <summary>A line's text in its colours, each stretch of one look (neighbouring runs whose kinds are drawn alike, and
+    /// the plain text between them) one run, so a line is as few glyph runs as it has looks: what each frame records and
+    /// draws again for every line on screen. The formatter asks for its runs in order, so the search for the run at a
     /// place goes on from the last one found rather than from the first.</summary>
     private sealed class ColouredRuns(string text, LineRun[] runs, TextRunProperties plain, Func<TokenKind, TextRunProperties> colour) : ITextSource
     {
@@ -1362,23 +1364,37 @@ public sealed partial class CodeEditor
                 next = 0;
             }
             asked = textSourceIndex;
-            for (int i = next; i < runs.Length; i++)
+            int i = Past(next, textSourceIndex);
+            TextRunProperties look = LookAt(i, textSourceIndex);
+            int end = EndAt(i, textSourceIndex);
+            while (end < text.Length)
             {
-                LineRun run = runs[i];
-                if (textSourceIndex < run.Start)
+                i = Past(i, end);
+                if (!ReferenceEquals(LookAt(i, end), look))
                 {
-                    next = i;
-                    return new TextCharacters(text.AsMemory(textSourceIndex, run.Start - textSourceIndex), plain);
+                    break;
                 }
-                if (textSourceIndex < run.Start + run.Length)
-                {
-                    next = i;
-                    return new TextCharacters(text.AsMemory(textSourceIndex, run.Start + run.Length - textSourceIndex), colour(run.Kind));
-                }
+                end = EndAt(i, end);
             }
-            next = runs.Length;
-            return new TextCharacters(text.AsMemory(textSourceIndex), plain);
+            next = i;
+            return new TextCharacters(text.AsMemory(textSourceIndex, end - textSourceIndex), look);
         }
+
+        /// <summary>The first run from <paramref name="from"/> on that ends after a place: the one it is in, or the one after the
+        /// plain text it is in.</summary>
+        private int Past(int from, int at)
+        {
+            while (from < runs.Length && runs[from].Start + runs[from].Length <= at)
+            {
+                from++;
+            }
+            return from;
+        }
+
+        private TextRunProperties LookAt(int run, int at) => run < runs.Length && at >= runs[run].Start ? colour(runs[run].Kind) : plain;
+
+        /// <summary>Where the run or the plain text a place is in ends.</summary>
+        private int EndAt(int run, int at) => run >= runs.Length ? text.Length : at < runs[run].Start ? runs[run].Start : runs[run].Start + runs[run].Length;
     }
 
     /// <summary>One unwrapped line whose tabs are <paramref name="tab"/> pixels wide.</summary>
