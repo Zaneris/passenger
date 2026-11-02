@@ -23,6 +23,21 @@ public abstract class Table
     /// <summary>The number shown beside a row, counting from 1.</summary>
     public virtual int RowNumber(int row) => row + 1;
 
+    /// <summary>What is shown beside a row: its number.</summary>
+    public virtual string RowLabel(int row) => RowNumber(row).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>Where a row shown is in the file's own order.</summary>
+    public virtual int FileRow(int row) => row;
+
+    /// <summary>Whether a cell's text may be written over in the table, which changes the file.</summary>
+    public virtual bool IsEditable(int row, int column) => false;
+
+    /// <summary>Whether a row stands empty for a new one, which a cell written in it makes.</summary>
+    public virtual bool IsNewRow(int row) => false;
+
+    /// <summary>What taking some of its rows out of the file is called, null where they cannot be.</summary>
+    public virtual string? DeleteTitle(int rows) => null;
+
     /// <summary>A cell as a sort compares it: a number, a date, text, or nothing.</summary>
     public abstract CellValue ValueOf(int row, int column);
 

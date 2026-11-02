@@ -133,6 +133,7 @@ public sealed class EditorGroup : DockPanel
                 tables.View.Focus();
             }
         };
+        Editor.WentTo += (_, offset) => tables?.Reveal(offset);
         Editor.SelectionChanged += (_, _) =>
         {
             if (active is not null && Editor.Document == active.Document.Text)
@@ -424,7 +425,7 @@ public sealed class EditorGroup : DockPanel
     private void AttachFind() =>
         Find.Attach(Editor, Table, Active is { IsReadOnly: true } shown ? Refusals.ReadOnly(shown.Name) : null);
 
-    /// <summary>The table of the file shown, while it is a CSV or a workbook, null otherwise.</summary>
+    /// <summary>The table of the file shown, while it is a CSV, a workbook or a resource, null otherwise.</summary>
     public CellGrid? Table => tables is { ShowsTable: true } ? tables.View : null;
 
     /// <summary>The bar and grid of a table file over the editor, or none for any other file.</summary>
@@ -454,6 +455,7 @@ public sealed class EditorGroup : DockPanel
                 }
             };
             tables.View.GotFocus += (_, _) => area.SetActiveGroup(this);
+            tables.Refused += (_, why) => area.Refuse(why);
         }
         tables.Show(file);
     }

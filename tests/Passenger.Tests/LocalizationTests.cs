@@ -111,6 +111,8 @@ public sealed class LocalizationTests : IClassFixture<LocalizationTests.Project>
             Ui.WaitFor(() => window.EditorArea.Active?.Name == "Home.fr.resx", "the French entry to open");
             CodeEditor opened = window.EditorArea.CodeEditor;
             Assert.Contains("<data name=\"Welcome\"", opened.Document.Snapshot.GetLineText(opened.CaretPosition.Line), StringComparison.Ordinal);
+            Ui.WaitFor(() => window.EditorArea.ActiveGroup.Table is { Table: { } keys } table && keys.Cell(table.Caret.Row, 0) == "Welcome" && table.Caret.Column == 1,
+                () => $"the French file's table to choose Welcome's value, not {window.EditorArea.ActiveGroup.Table?.Caret}");
 
             window.OpenFile(project.PathOf("Shop/Pages/Home.razor"));
             Ui.Settle();

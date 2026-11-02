@@ -503,7 +503,12 @@ public sealed partial class CodeEditor : Control
         int offset = document.Snapshot.GetOffset(position);
         SetSelections(SelectionSet.Single(offset), reveal: false);
         ScrollToPlace(offset);
+        WentTo?.Invoke(this, offset);
     }
+
+    /// <summary>Raised as <see cref="GoTo"/> takes the caret to a place, with its offset, for a view laid over the text to
+    /// show that place too.</summary>
+    public event EventHandler<int>? WentTo;
 
     /// <summary>Scrolls an offset a third of the way down the view, as <see cref="GoTo"/> does; not laid out yet, the
     /// first arrange does it, leaving the carets as they stand then (a selection made after the GoTo).</summary>

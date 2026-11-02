@@ -70,6 +70,12 @@ public sealed partial class EditorArea : UserControl
     /// <see cref="Open"/> could not read never opens.</summary>
     public event EventHandler<string>? OpenFailed;
 
+    /// <summary>Raised with why a change asked of a view in a group's place (a table's cell written) was not made.</summary>
+    public event EventHandler<string>? Refused;
+
+    /// <summary>Says why a change asked of a group's view was not made.</summary>
+    internal void Refuse(string why) => Refused?.Invoke(this, why);
+
     /// <summary>A file not written because something else changed it on disk since it was last loaded or saved: which
     /// to keep is the person's question (File Cache Conflict), never settled by writing over the disk's.</summary>
     public event EventHandler<OpenDocument>? SaveConflicted;

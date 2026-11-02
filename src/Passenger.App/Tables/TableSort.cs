@@ -79,6 +79,16 @@ public sealed class SortedTable(Table source, int by, bool descending, int[] ord
 
     public override int RowNumber(int row) => source.RowNumber(order[row]);
 
+    public override string RowLabel(int row) => source.RowLabel(order[row]);
+
+    public override int FileRow(int row) => source.FileRow(order[row]);
+
+    public override bool IsEditable(int row, int column) => source.IsEditable(order[row], column);
+
+    public override bool IsNewRow(int row) => source.IsNewRow(order[row]);
+
+    public override string? DeleteTitle(int rows) => source.DeleteTitle(rows);
+
     public override Table Unsorted => source;
 
     public override (int Column, bool Descending)? Sort => (by, descending);

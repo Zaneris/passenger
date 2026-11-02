@@ -163,6 +163,7 @@ public partial class MainWindow : IdeWindow
         Editors.CaretMoved += (_, _) => UpdateCaret();
         Editors.SaveFailed += (_, problem) => status.Text = problem;
         Editors.OpenFailed += (_, problem) => status.Text = problem;
+        Editors.Refused += (_, problem) => status.Text = problem;
         Editors.Opened += (_, document) => session.Attach(document);
         Editors.Closed += (_, document) => session.Detach(document);
         Editors.ForEachEditor(editor => editor.ProblemsRequested += (_, _) => ShowToolWindow(ToolWindowIds.Problems));
@@ -412,6 +413,13 @@ public partial class MainWindow : IdeWindow
                 }
                 e.Handled = true;
             }
+            return;
+        }
+        if (focused is Tables.CellGrid && !shifted && action is EditorActions.Undo or EditorActions.Redo)
+        {
+            // A table over a file's text takes back that text's edits, its cells written among them, as the Edit menu does.
+            Request(action);
+            e.Handled = true;
             return;
         }
         if (EditorWithKeys(window, focused) is not { } editor)
