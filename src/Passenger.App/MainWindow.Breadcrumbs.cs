@@ -13,7 +13,7 @@ namespace Passenger.App;
 /// folder shows it in the Explorer.</summary>
 public partial class MainWindow
 {
-    private readonly StackPanel breadcrumbs = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Avalonia.Thickness(0, 0, 18, 0) };
+    private readonly PathCrumbs breadcrumbs = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Avalonia.Thickness(0, 0, 18, 0) };
     private IReadOnlyList<DocumentSymbol> outline = [];
     private string? outlined;
     private Debounce? outlineAgain;

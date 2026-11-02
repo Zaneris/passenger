@@ -111,6 +111,56 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Button[] Crumbs() => [.. window.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains(StyleClasses.Crumb))];
     }
 
+    /// <summary>The status bar's path draws the class and the method the caret is in whole, as it draws the file, though they
+    /// come once the server's outline does, after the file's name alone was laid out; in a window too narrow for long names,
+    /// the longest are shortened to an ellipsis after their first letters, never to one, and none is cut by the path's edge.
+    /// The parts that came later were laid out in the room the file's name had taken, so a method showed as its first letter.</summary>
+    [AvaloniaFact]
+    public void The_status_bars_path_draws_the_class_and_method_whole_and_shortens_long_ones_with_an_ellipsis_in_a_narrow_window()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "Helper.Tw");
+        Ui.WaitFor(() => window.Breadcrumbs.Count == 3, "the member the caret is in");
+        Assert.True(DrawnPath(window) is ["Program.cs", "Program", "Main()"], $"With the caret in Main() the path draws {string.Join(" › ", DrawnPath(window))}");
+        editor.GoTo(new TextPosition(1, 0));
+        Ui.Settle();
+        Assert.True(DrawnPath(window) is ["Program.cs", "Program"], $"With the caret in Program the path draws {string.Join(" › ", DrawnPath(window))}");
+        // Down a line into Main(), the caret's place as wide in the status bar as before, so nothing but the path changes there.
+        Ui.Press(window, "DOWN");
+        Assert.True(DrawnPath(window) is ["Program.cs", "Program", "Main()"], $"With the caret moved down into Main() the path draws {string.Join(" › ", DrawnPath(window))}");
+        window.Close();
+
+        project.Write("Lengths.cs", "class AShapeWhoseNameRunsOnAndOnPastTheBar\n{\n    static void MeasuresEachOfItsSidesInTurnAndAddsThemUp()\n    {\n"
+            + "        int sides = 0;\n    }\n}\n");
+        MainWindow narrow = project.Open("Lengths.cs");
+        narrow.Width = MainWindow.SmallestWidth;
+        Ui.PlaceAfter(narrow.EditorArea.CodeEditor, "int sides");
+        Ui.WaitFor(() => narrow.Breadcrumbs.Count == 3, "the member the caret is in");
+        Ui.Settle();
+        string[] drawn = DrawnPath(narrow);
+        Assert.True(drawn.Length == 3 && drawn.All(part => !part.EndsWith(CutMark, StringComparison.Ordinal))
+            && drawn.Any(part => part.EndsWith('…'))
+            && drawn.Where(part => part.EndsWith('…')).All(part => part.Length > 3)
+            && drawn.Zip(narrow.Breadcrumbs).All(p => p.First == p.Second || p.Second.StartsWith(p.First.TrimEnd('…'), StringComparison.Ordinal)),
+            $"In a narrow window the path was to shorten its long parts with an ellipsis after a few letters, each drawn inside it; it draws {string.Join(" › ", drawn)}");
+        narrow.Close();
+    }
+
+    /// <summary>What marks a part of the path its edge cuts, as <see cref="DrawnPath"/> reads it.</summary>
+    private const string CutMark = " (cut by the path's edge)";
+
+    /// <summary>The status bar's path as it draws it, part by part: each part's words as laid out, those the path's edge cuts
+    /// marked so, those it lays outside its room left out.</summary>
+    private static string[] DrawnPath(MainWindow window)
+    {
+        Control host = window.GetVisualDescendants().OfType<Control>().First(c => c.Name == "BreadcrumbHost");
+        return [.. host.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && t.FindAncestorOfType<Button>() is not null)
+            .Select(t => (Text: Ui.Drawn(t), At: t.TranslatePoint(default, host) ?? default, t.Bounds.Width))
+            .Where(t => t.At.X + t.Width > 0.5 && t.At.X < host.Bounds.Width - 0.5)
+            .Select(t => t.At.X < -0.5 || t.At.X + t.Width > host.Bounds.Width + 0.5 ? t.Text + CutMark : t.Text)];
+    }
+
     /// <summary>A file shown before its folder's language server has it names the member the caret is in once the server
     /// does, though nothing changes after: here a file opened alone, its folder opened after, on a server already loaded
     /// (the one the class's last window left), which is ready before the file is opened in it.</summary>

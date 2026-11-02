@@ -182,7 +182,7 @@
                 <app:StatusLine>
                     <!-- Cut where the widgets begin, so a deep file's path never runs on under them, and where what the
                          bar says begins, which takes its room first. -->
-                    <StackPanel Name="BreadcrumbHost" Orientation="Horizontal" VerticalAlignment="Center" ClipToBounds="True" />
+                    <Panel Name="BreadcrumbHost" VerticalAlignment="Center" ClipToBounds="True" />
                     <!-- What the status bar says, with whether it is an error or a warning (a project's load) while it says it;
                          a link to where it has more to see while it has a place (StatusBar.Say), its whole text on hover. -->
                     <Button Name="StatusMessage" Classes="statusMessage">

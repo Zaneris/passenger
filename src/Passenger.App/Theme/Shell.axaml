@@ -1031,8 +1031,10 @@
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TextDisabled}" />
     </Style>
 
-    <!-- The status bar's path: a part is a quiet button, underlined under the pointer. -->
+    <!-- The status bar's path: a part is a quiet button, underlined under the pointer, its words ending in an ellipsis
+         where the path shortens it (PathCrumbs). -->
     <Style Selector="Button.crumb">
+        <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="2,0" />
