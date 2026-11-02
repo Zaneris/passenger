@@ -136,6 +136,11 @@ if (args is ["traces"])
 	Traces.Run();
 	return;
 }
+if (args is ["targeted"])
+{
+	Targeted.Run();
+	return;
+}
 if (args is ["wrapped"])
 {
 	Traces.Wrapped();

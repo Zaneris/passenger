@@ -120,6 +120,8 @@ public sealed class GodotValuesTests : IClassFixture<GodotValuesTests.Game>
             Assert.Equal(["[0] = 1", "[1] = \"two\"", "[2] = (3, 4)", "Raw View = "], Opened(window, "list"));
             Assert.Equal(["[\"hp\"] = 10", "[\"name\"] = \"Bob\"", "Raw View = "], Opened(window, "table"));
             Assert.Equal(["[\"ann\"] = 3", "[\"bo\"] = 4", "Raw View = "], Opened(window, "scores"));
+            // A typed dictionary's rows name their values' type, not the view's item type.
+            Assert.Equal(["int", "int"], Row(window, "scores")!.Children!.Take(2).Select(r => r.Type));
             Assert.Equal(["Raw View = "], Opened(window, "action"));
             Assert.Equal(["Children = Count = 1", "Raw View = "], Opened(window, "player"));
             // The script's own members, its exported ones first, then the node's children, Godot's own members under Raw View.

@@ -198,7 +198,7 @@ public partial class ManagedDebugger
     /// and a pointer (<paramref name="name"/> its row's) to the value it points at. It keeps the type the value's variable is
     /// declared as, where known (<paramref name="declared"/>), and the C# reaching the value (<paramref name="expression"/>),
     /// for its rows' expressions.</summary>
-    private int GetVariablesReference(ICorDebugValue corDebugValue, string friendlyTypeName, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance, string? name = null,
+    private int GetVariablesReference(ICorDebugValue corDebugValue, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue? debuggerProxyInstance, string? name = null,
         DeclaredType? declared = null, string? expression = null)
     {
         if (corDebugValue is ICorDebugReferenceValue { Type: CorElementType.PTR } pointer)
@@ -248,8 +248,10 @@ public partial class ManagedDebugger
             {
                 return 0;
             }
+            // Its own type's, never the one its row shows (a dictionary's row shows its value's).
+            string friendlyTypeName = GetCorDebugTypeFriendlyName(objectValue.ExactType);
             // Decimal is a struct but should be treated as a primitive
-            if (friendlyTypeName is "decimal" or "decimal?")
+            if (friendlyTypeName is "decimal")
             {
                 return 0;
             }
@@ -880,7 +882,7 @@ public partial class ManagedDebugger
             Value = shown,
             Type = type,
             PresentationHint = failed ? FailedHint(shown) : null,
-            VariablesReference = GetVariablesReference(opens?.Invoke() ?? value, type, threadId, stackDepth, proxy, namesPointee ? name : null, declared, expression),
+            VariablesReference = GetVariablesReference(opens?.Invoke() ?? value, threadId, stackDepth, proxy, namesPointee ? name : null, declared, expression),
         };
     }
 

@@ -127,7 +127,7 @@ public partial class ManagedDebugger
             }
             else
             {
-                (value, resultIsError) = await RenderDebuggerDisplayAsync(display.Value, valueToFormat, threadId, frameStackDepth, nesting);
+                (value, resultIsError, string? shownType) = await RenderDebuggerDisplayAsync(display.Value, valueToFormat, threadId, frameStackDepth, nesting);
                 if (resultIsError && EvalStatus.ImplicitOff is not null && !EvalStatus.Explicit)
                 {
                     // While implicit evaluation is off a display reads only fields, which run no code: one needing more is its type in braces.
@@ -135,7 +135,9 @@ public partial class ManagedDebugger
                 }
                 if (display.Name is { } nameFormat)
                 {
-                    (displayName, _) = await RenderDebuggerDisplayAsync(nameFormat, valueToFormat, threadId, frameStackDepth, nesting);
+                    (displayName, _, _) = await RenderDebuggerDisplayAsync(nameFormat, valueToFormat, threadId, frameStackDepth, nesting);
+                    // A row named by its display that shows one value alone (a dictionary's key and value) stands for that value.
+                    friendlyTypeName = shownType ?? friendlyTypeName;
                 }
             }
             friendlyTypeName = display.Type ?? friendlyTypeName;
@@ -325,7 +327,9 @@ public partial class ManagedDebugger
         string typeName = GetCorDebugTypeFriendlyName(corDebugObjectValue.ExactType);
         bool hasDebuggerTypeProxyAttribute = metaDataImport.TryGetCustomAttributeByName(corDebugObjectValue.Class.Token, "System.Diagnostics.DebuggerTypeProxyAttribute", out nint debuggerTypeProxyAttributePointer, out uint debuggerTypeProxyAttributeSize) is Cor.S_OK;
 
-        string? debugProxyTypeName = hasDebuggerTypeProxyAttribute ? GetCustomAttributeResultString(debuggerTypeProxyAttributePointer, debuggerTypeProxyAttributeSize) : null;
+        // A view an assembly declares for the type is taken as its own, before the one it carries.
+        string? debugProxyTypeName = TargetedAt(metaDataImport, corDebugObjectValue.Class.Token).LastOrDefault(t => t.Proxy is not null)?.Proxy
+            ?? (hasDebuggerTypeProxyAttribute ? GetCustomAttributeResultString(debuggerTypeProxyAttributePointer, debuggerTypeProxyAttributeSize) : null);
         if (IsTupleType(typeName))
         {
             return new(typeName, "", CorDebugValueFormatKind.Tuple, debugProxyTypeName);

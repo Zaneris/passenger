@@ -95,7 +95,7 @@ public partial class ManagedDebugger
         }
         if (breakpoint.LogMessage is { } logMessage)
         {
-            (string text, _) = await RenderDebuggerDisplayAsync(logMessage, null, new ThreadId(thread.Id), new FrameStackDepth(0), 0);
+            (string text, _, _) = await RenderDebuggerDisplayAsync(logMessage, null, new ThreadId(thread.Id), new FrameStackDepth(0), 0);
             OnConsole?.Invoke($"{text}\n");
         }
         else if (!breakpoint.Suspend)

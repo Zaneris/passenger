@@ -4,8 +4,8 @@ using Passenger.Tests.Debugging.Helpers;
 namespace Passenger.Tests.Debugging;
 
 /// <summary>Type presentations a client gives the debugger at launch, for a library's types that carry no debugger
-/// attributes of their own (PassengerCasesProxies' Presentable.cs, in PassengerCases' presented case), and a debugger view
-/// a type names closed.</summary>
+/// attributes of their own (PassengerCasesProxies' Presentable.cs, in PassengerCases' presented case), a debugger view
+/// a type names closed, displays and views an assembly declares for a type (Targeted.cs), and a dictionary's rows.</summary>
 [Collection(DebugSession.Collection)]
 public class PresentationsTests(ITestOutputHelper testOutputHelper)
 {
@@ -68,7 +68,51 @@ public class PresentationsTests(ITestOutputHelper testOutputHelper)
             + string.Join(" | ", host.EngineLog().Split('\n').Where(l => l.Contains("proxy", StringComparison.OrdinalIgnoreCase))));
     }
 
+    /// <summary>A dictionary's key–value rows, from the runtime's own view of it, each name its value's own type in the type
+    /// column, where they named the view's item type: an int's int, and in a dictionary of objects each value's type, a
+    /// null's the type it is declared as.</summary>
+    [Fact]
+    public async Task A_dictionarys_rows_name_the_types_of_their_values()
+    {
+        await using DebugSession host = await LaunchTargeted();
+        List<DapVariable> locals = await host.LocalsAsync(await host.WaitForStoppedEvent());
+        List<DapVariable> ages = await host.VariablesAsync(Assert.Single(locals, v => v.Name == "ages").VariablesReference);
+        Assert.True(ages.FirstOrDefault() is { Name: "[\"ann\"]", Value: "31", Type: "int" }, $"The ages open to {Typed(ages)}, where [\"ann\"] = 31 (int) was to be first");
+        List<DapVariable> mixed = await host.VariablesAsync(Assert.Single(locals, v => v.Name == "mixed").VariablesReference);
+        Assert.True(mixed.Take(3).Select(r => (r.Name, r.Value, r.Type)).SequenceEqual([("[\"text\"]", "\"words\"", "string"), ("[\"number\"]", "4.5", "double"), ("[\"none\"]", "null", "object")]),
+            $"The mixed values open to {Typed(mixed)}, each value's own type not named");
+    }
+
+    /// <summary>A [DebuggerDisplay] and a [DebuggerTypeProxy] the program's assembly declares for a type it names (Target,
+    /// TargetTypeName) show its values as the type's own would: the runtime's Version and a library's Gauge read as their
+    /// displays say, and a library's Bookcase opens to the program's view of it, then Raw View.</summary>
+    [Fact]
+    public async Task An_assemblys_display_and_view_for_a_type_show_its_values_as_its_own_attributes_would()
+    {
+        await using DebugSession host = await LaunchTargeted();
+        List<DapVariable> locals = await host.LocalsAsync(await host.WaitForStoppedEvent());
+        Assert.True(locals.Single(v => v.Name == "version") is { Value: "v1.2", Type: "System.Version" }, $"The version reads {Typed(locals.Where(v => v.Name == "version"))}, not as the assembly's display says");
+        Assert.Equal("2.5 bar", locals.Single(v => v.Name == "gauge").Value);
+        List<DapVariable> bookcase = await host.VariablesAsync(locals.Single(v => v.Name == "bookcase").VariablesReference);
+        Assert.True(bookcase.Select(r => (r.Name, r.Value)).SequenceEqual([("Count", "2"), ("First", "\"Dune\""), ("Raw View", "")]),
+            $"The bookcase opens to {Typed(bookcase)}, not to the view the program's assembly declares for it");
+    }
+
     private static string Listed(List<DapVariable> rows) => string.Join(", ", rows.Select(r => $"{r.Name} = {r.Value}"));
+
+    private static string Typed(IEnumerable<DapVariable> rows) => string.Join(", ", rows.Select(r => $"{r.Name} = {r.Value} ({r.Type})"));
+
+    private async Task<DebugSession> LaunchTargeted()
+    {
+        DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["targeted"])
+            .WaitForInitializedEvent();
+        await host.BreakpointsAsync([Debuggees.Line("PassengerCases", "Targeted.cs", "Console.WriteLine($\"targeted")], Debuggees.Source("PassengerCases", "Targeted.cs"))
+            .ConfigurationDoneAsync();
+        return host;
+    }
 
     private static async Task Launch(DebugSession host, IReadOnlyList<DapTypePresentation>? presentations)
     {

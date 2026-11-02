@@ -200,9 +200,9 @@ file static class TestExtensions
     {
         List<DapVariable> expectedVariables =
         [
-            new() { Name = "[5]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[0]", Value = "50", Type = "System.Collections.Generic.DebugViewDictionaryItem<int, int>", VariablesReference = 30, PresentationHint = _viewedElementPresentationHint },
-            new() { Name = "[10]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[1]", Value = "100", Type = "System.Collections.Generic.DebugViewDictionaryItem<int, int>", VariablesReference = 31, PresentationHint = _viewedElementPresentationHint },
-            new() { Name = "[15]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[2]", Value = "150", Type = "System.Collections.Generic.DebugViewDictionaryItem<int, int>", VariablesReference = 32, PresentationHint = _viewedElementPresentationHint },
+            new() { Name = "[5]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[0]", Value = "50", Type = "int", VariablesReference = 30, PresentationHint = _viewedElementPresentationHint },
+            new() { Name = "[10]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[1]", Value = "100", Type = "int", VariablesReference = 31, PresentationHint = _viewedElementPresentationHint },
+            new() { Name = "[15]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[2]", Value = "150", Type = "int", VariablesReference = 32, PresentationHint = _viewedElementPresentationHint },
             new() { Name = "Raw View", Value = "", Type = "", VariablesReference = 33, PresentationHint = new DapPresentationHint("class") },
         ];
         List<DapVariable>? dictionaryVariables = await debugProtocolHost.VariablesAsync(variablesReference);

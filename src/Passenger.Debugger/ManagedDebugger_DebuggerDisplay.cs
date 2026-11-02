@@ -21,8 +21,9 @@ public partial class ManagedDebugger
     /// <summary>How deep displays inside displays go, before a value is shown by its type alone.</summary>
     private const int DisplayNesting = 3;
 
-    /// <summary>The display of a type or the nearest type above it with one: its own [DebuggerDisplay], else the value a
-    /// presentation the client gave for it shows (<see cref="PresentationOf"/>).</summary>
+    /// <summary>The display of a type or the nearest type above it with one: one an assembly declares for it
+    /// (<see cref="TargetedAt"/>), else its own [DebuggerDisplay], else the value a presentation the client gave for it
+    /// shows (<see cref="PresentationOf"/>).</summary>
     private DebuggerDisplay? FindDebuggerDisplay(ICorDebugType type)
     {
         for (ICorDebugType? each = type; each is not null; each = each.Base)
@@ -33,6 +34,10 @@ public partial class ManagedDebugger
             if (name is "System.Object" or "System.ValueType")
             {
                 return null;
+            }
+            if (TargetedAt(metadata, corClass.Token).LastOrDefault(t => t.Display is not null)?.Display is { } targeted)
+            {
+                return targeted;
             }
             if (metadata.TryGetCustomAttributeByName(corClass.Token, "System.Diagnostics.DebuggerDisplayAttribute", out nint blob, out uint size) is Cor.S_OK)
             {
@@ -49,37 +54,34 @@ public partial class ManagedDebugger
     private static unsafe DebuggerDisplay ReadDebuggerDisplay(nint blob, int size)
     {
         BlobReader reader = new((byte*)blob, size);
-        if (reader.ReadUInt16() != 0x0001)
-        {
-            throw new InvalidOperationException("Invalid custom attribute prolog");
-        }
-        string value = reader.ReadSerializedString() ?? string.Empty;
-        string? name = null;
-        string? type = null;
-        ushort named = reader.ReadUInt16();
-        for (int i = 0; i < named; i++)
-        {
-            reader.ReadByte(); // field or property
-            reader.ReadSignatureTypeCode(); // every named argument it has is a string or a Type, written as a string
-            string argument = reader.ReadSerializedString() ?? string.Empty;
-            string? text = reader.ReadSerializedString();
-            if (argument == "Name")
-            {
-                name = text;
-            }
-            else if (argument == "Type")
-            {
-                type = text;
-            }
-        }
-        return new DebuggerDisplay(value, name, type);
+        (string value, Dictionary<string, string?> named) = ModuleMetadataReader.ReadStringAttribute(ref reader);
+        return new DebuggerDisplay(value, named.GetValueOrDefault("Name"), named.GetValueOrDefault("Type"));
     }
 
-    /// <summary>A display format rendered against a value, and whether any fragment failed.</summary>
-    private async Task<(string Text, bool Failed)> RenderDebuggerDisplayAsync(string format, ICorDebugValue? target, ThreadId threadId, FrameStackDepth frameStackDepth, int nesting)
+    private Dictionary<string, TargetedAttribute[]> _targeted = [];
+
+    private int _targetedFor = -1;
+
+    /// <summary>The [DebuggerDisplay] and [DebuggerTypeProxy] attributes the program's assemblies declare for a type
+    /// definition, as though it carried them, the last loaded last; gathered again once the modules change.</summary>
+    private IReadOnlyList<TargetedAttribute> TargetedAt(IMetaDataImport metadata, mdTypeDef token)
+    {
+        if (_targetedFor != ModuleSet_Version)
+        {
+            _targeted = _modules.Values.SelectMany(module => module.MetadataReader.Targeted).GroupBy(t => t.Target, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.ToArray(), StringComparer.Ordinal);
+            _targetedFor = ModuleSet_Version;
+        }
+        return _targeted.Count == 0 ? [] : _targeted.GetValueOrDefault(MetadataTypeNames.Of(metadata, token)) ?? [];
+    }
+
+    /// <summary>A display format rendered against a value, whether any fragment failed, and, for a format that is one
+    /// fragment alone ("{Value}"), the type of the value it shows.</summary>
+    private async Task<(string Text, bool Failed, string? LoneType)> RenderDebuggerDisplayAsync(string format, ICorDebugValue? target, ThreadId threadId, FrameStackDepth frameStackDepth, int nesting)
     {
         StringBuilder rendered = new();
         bool failed = false;
+        string? loneType = null;
         int i = 0;
         while (i < format.Length)
         {
@@ -91,9 +93,10 @@ public partial class ManagedDebugger
             }
             else if (c == '{' && FragmentEnd(format, i) is int end)
             {
-                (string text, bool fragmentFailed) = await RenderFragmentAsync(format[(i + 1)..end], target, threadId, frameStackDepth, nesting);
+                (string text, bool fragmentFailed, string? type) = await RenderFragmentAsync(format[(i + 1)..end], target, threadId, frameStackDepth, nesting);
                 rendered.Append(text);
                 failed |= fragmentFailed;
+                loneType = i == 0 && end == format.Length - 1 ? type : null;
                 i = end + 1;
             }
             else
@@ -102,15 +105,16 @@ public partial class ManagedDebugger
                 i++;
             }
         }
-        return (rendered.ToString(), failed);
+        return (rendered.ToString(), failed, loneType);
     }
 
-    private async Task<(string Text, bool Failed)> RenderFragmentAsync(string fragment, ICorDebugValue? target, ThreadId threadId, FrameStackDepth frameStackDepth, int nesting)
+    /// <summary>A fragment's text, whether it failed, and the type of the value it shows, where it shows one.</summary>
+    private async Task<(string Text, bool Failed, string? Type)> RenderFragmentAsync(string fragment, ICorDebugValue? target, ThreadId threadId, FrameStackDepth frameStackDepth, int nesting)
     {
         (string expression, IReadOnlyList<string> specifiers) = SplitSpecifiers(fragment);
         if (expression.Length == 0)
         {
-            return (string.Empty, false);
+            return (string.Empty, false, null);
         }
         ICorDebugThread thread = _process!.GetThread(threadId.Value);
         try
@@ -121,25 +125,25 @@ public partial class ManagedDebugger
             bool quoted = !specifiers.Contains("nq") && !specifiers.Contains("raw");
             if (result.Text is { } text)
             {
-                return (quoted ? SymbolDisplay.FormatLiteral(text, quote: true) : text, false);
+                return (quoted ? SymbolDisplay.FormatLiteral(text, quote: true) : text, false, "string");
             }
             if ((result.Error is not null || result.Value is null) && target is not null && IsDottedName(expression)
                 && await target.GetPropertyValue(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, GetIlFrameForThreadIdAndStackDepth(threadId, frameStackDepth), expression) is { } implemented)
             {
                 // Roslyn's own types name an explicitly implemented property by its metadata name (System.Collections.ICollection.Count).
                 FormattedValue shown = await FormatCorDebugValueAsync(ResolveCorDebugValue(implemented), threadId, frameStackDepth, quoted, nesting + 1);
-                return (shown.Value, shown.ResultIsError);
+                return (shown.Value, shown.ResultIsError, shown.FriendlyTypeName);
             }
             if (result.Error is not null || result.Value is null)
             {
-                return ($"<error: {ShortError(result.Error)}>", true);
+                return ($"<error: {ShortError(result.Error)}>", true, null);
             }
             FormattedValue formatted = await FormatCorDebugValueAsync(ResolveCorDebugValue(result.Value), threadId, frameStackDepth, quoted, nesting + 1);
-            return (formatted.Value, formatted.ResultIsError);
+            return (formatted.Value, formatted.ResultIsError, formatted.FriendlyTypeName);
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {
-            return ($"<error: {ShortError(error.Message)}>", true);
+            return ($"<error: {ShortError(error.Message)}>", true, null);
         }
     }
 

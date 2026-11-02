@@ -26,7 +26,7 @@ public partial class ManagedDebugger
 
     /// <summary>The presentation with rows that opens a value of this type, and how many of its types, from its own up, are
     /// declared outside the presented one's assembly (the program's own, whose members are listed); none where a type below
-    /// it carries a [DebuggerDisplay] of its own.</summary>
+    /// it carries a [DebuggerDisplay] of its own, or an assembly declares one for it.</summary>
     private (DapTypePresentation Presentation, int Own)? OpenedBy(ICorDebugType type)
     {
         if (_presentations.Count == 0)
@@ -40,7 +40,8 @@ public partial class ManagedDebugger
             IMetaDataImport metadata = corClass.Module.GetMetaDataInterface<IMetaDataImport>();
             string name = metadata.GetTypeDefProps(corClass.Token).szTypeDef;
             if (name is "System.Object" or "System.ValueType"
-                || metadata.TryGetCustomAttributeByName(corClass.Token, "System.Diagnostics.DebuggerDisplayAttribute", out _, out _) is Cor.S_OK)
+                || metadata.TryGetCustomAttributeByName(corClass.Token, "System.Diagnostics.DebuggerDisplayAttribute", out _, out _) is Cor.S_OK
+                || TargetedAt(metadata, corClass.Token).Any(t => t.Display is not null))
             {
                 return null;
             }

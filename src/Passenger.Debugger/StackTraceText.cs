@@ -137,7 +137,7 @@ internal static class StackTraceText
             foreach (CustomAttributeHandle handle in reader.GetMethodDefinition(candidate).GetCustomAttributes())
             {
                 CustomAttribute attribute = reader.GetCustomAttribute(handle);
-                string? attributeName = AttributeName(reader, attribute);
+                string? attributeName = ModuleMetadataReader.AttributeTypeName(reader, attribute);
                 if (attributeName is not (AsyncMachine or IteratorMachine or AsyncIteratorMachine))
                 {
                     continue;
@@ -164,22 +164,6 @@ internal static class StackTraceText
     {
         int end = serialized.IndexOfAny(['[', ',']);
         return (end < 0 ? serialized : serialized[..end]).Trim();
-    }
-
-    private static string? AttributeName(MetadataReader reader, CustomAttribute attribute)
-    {
-        EntityHandle type = attribute.Constructor.Kind switch
-        {
-            HandleKind.MemberReference => reader.GetMemberReference((MemberReferenceHandle)attribute.Constructor).Parent,
-            HandleKind.MethodDefinition => reader.GetMethodDefinition((MethodDefinitionHandle)attribute.Constructor).GetDeclaringType(),
-            _ => default,
-        };
-        return type.Kind switch
-        {
-            HandleKind.TypeReference => MetadataTypeNames.Of(reader, (TypeReferenceHandle)type),
-            HandleKind.TypeDefinition => MetadataTypeNames.Of(reader, (TypeDefinitionHandle)type),
-            _ => null,
-        };
     }
 
     /// <summary>A method's parameters as reflection names them: each type's own short name, then its name where it has one.</summary>
