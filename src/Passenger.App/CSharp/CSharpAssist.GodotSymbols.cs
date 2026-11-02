@@ -138,6 +138,10 @@ internal sealed partial class CSharpAssist
     /// Godot's other names for it (<see cref="GodotNamesAsync"/>), as places for the Find window; none for a member neither does.</summary>
     internal async Task<IReadOnlyList<LspLocation>> GodotUsesAsync(OpenDocument document, LspDocument lsp, int offset)
     {
+        if (GodotScriptDeclarations.IsScript(document.Path))
+        {
+            return await GodotScriptUsesAsync(document, offset);
+        }
         if (document.Language != Languages.Language.CSharp)
         {
             return [];
@@ -146,6 +150,80 @@ internal sealed partial class CSharpAssist
         IReadOnlyList<LspLocation> scenes = GodotLocations(await GodotNamedAsync(names?.Symbol ?? await lsp.SymbolAtAsync(offset)));
         return names is null ? scenes : [.. scenes, .. names.Uses.Select(u => new LspLocation(DocumentUris.FromPath(u.Path),
             new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character))))];
+    }
+
+    /// <summary>The uses of a GDScript's member at an offset (the name there, where its class, it or a script it extends,
+    /// declares one) beside its own language's: each scene's connection calling it or made to it on a node whose class takes
+    /// in the declaring script, and each string of the project's C# naming it on a node the code tells is one
+    /// (<see cref="Handlers.GodotNameStrings"/>).</summary>
+    private async Task<IReadOnlyList<LspLocation>> GodotScriptUsesAsync(OpenDocument document, int offset)
+    {
+        TextSnapshot text = document.Text.Snapshot;
+        int start = Math.Clamp(offset, 0, text.Length);
+        int end = start;
+        while (start > 0 && AssistContext.IsIdentifierChar(text[start - 1]))
+        {
+            start--;
+        }
+        while (end < text.Length && AssistContext.IsIdentifierChar(text[end]))
+        {
+            end++;
+        }
+        if (end == start || context.GodotOf(document.Path) is not ({ } index, { } folder))
+        {
+            return [];
+        }
+        string name = text.GetText(start, end - start);
+        GodotScenes scenes = await index.ScenesAsync(folder);
+        if (scenes.ResPathOf(document.Path) is not { } res
+            || await BackgroundWork.Run(() => scenes.ChainOf(res) is var chain ? chain.Find(GodotScriptKind.Function, name) ?? chain.Find(GodotScriptKind.Signal, name)
+                ?? chain.Find(GodotScriptKind.Variable, name) ?? chain.Find(GodotScriptKind.Constant, name) : null) is not ({ } script, { } member))
+        {
+            return [];
+        }
+        List<LspLocation> uses = [.. await BackgroundWork.Run(() => SceneUses(scenes, script, member))];
+        if (member.Kind is not (GodotScriptKind.Function or GodotScriptKind.Signal or GodotScriptKind.Variable) || context.CSharp?.Session is not { } session)
+        {
+            return uses;
+        }
+        GodotNameKind kind = member.Kind switch { GodotScriptKind.Function => GodotNameKind.Method, GodotScriptKind.Signal => GodotNameKind.Signal, _ => GodotNameKind.Property };
+        GodotKindUses found;
+        try
+        {
+            found = await session.ExtensionAsync<GodotKindUses>(Handlers.GodotNameStrings, new GodotNameStringsAsked(folder, kind, name));
+        }
+        catch (LanguageServerFailed)
+        {
+            return uses;
+        }
+        uses.AddRange(found.Uses.Where(u => GodotChecks.Told(scenes, u.Scripts, u.Node, u.Export).Told.Any(n => GodotChecks.ChainOf(scenes, n)?.Runs(script) == true))
+            .Select(u => new LspLocation(DocumentUris.FromPath(u.File), new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character)))));
+        return uses;
+
+        // Each scene's connection naming the member as its method or signal, on a node whose class takes in its script.
+        static IEnumerable<LspLocation> SceneUses(GodotScenes scenes, string script, GodotScriptDeclared member)
+        {
+            bool method = member.Kind == GodotScriptKind.Function;
+            if (!method && member.Kind != GodotScriptKind.Signal)
+            {
+                yield break;
+            }
+            foreach ((string scene, GodotFile file) in scenes.Files.Where(f => f.Value.Header?.Tag == "gd_scene").OrderBy(f => f.Key, StringComparer.Ordinal))
+            {
+                ServerLines? lines = null;
+                foreach (GodotChecks.Connected connected in GodotChecks.Connections(scenes, scene))
+                {
+                    GodotTreeNode? node = method ? connected.To : connected.From;
+                    if ((method ? connected.Connection.Method : connected.Connection.Signal) != member.Name || node is null || GodotChecks.ChainOf(scenes, node)?.Runs(script) != true
+                        || connected.Connection.Section.Attribute(method ? "method" : "signal")?.Value is not { } value || scenes.FileOf(scene) is not { } path)
+                    {
+                        continue;
+                    }
+                    lines ??= ServerLines.Of(TextSnapshot.From(file.Text));
+                    yield return new LspLocation(DocumentUris.FromPath(path), lines.RangeOf(new TextRange(value.TextStart, value.TextEnd - value.TextStart)));
+                }
+            }
+        }
     }
 
     internal static IReadOnlyList<LspLocation> GodotLocations(GodotNamed? named) => named is null ? [] : [.. GodotUses(named).SelectMany(file =>

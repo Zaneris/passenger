@@ -38,6 +38,7 @@ public static class Handlers
     public const string GodotNames = "Passenger.Roslyn.Extension.GodotNames";
     public const string GodotPaths = "Passenger.Roslyn.Extension.GodotPaths";
     public const string GodotKindStrings = "Passenger.Roslyn.Extension.GodotKindStrings";
+    public const string GodotNameStrings = "Passenger.Roslyn.Extension.GodotNameStrings";
     public const string GodotFix = "Passenger.Roslyn.Extension.GodotFix";
 
     public static readonly IReadOnlyList<string> All =
@@ -45,7 +46,7 @@ public static class Handlers
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, DocumentTexts, DocumentsWritten, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
         AspireRename, AspireParameters, ConnectionReads, WebRoutes, LocalizedReads, SymbolsNamed, SymbolAt, WrittenPlaces,
-        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotFix,
+        ComponentClass, GeneratedTexts, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix,
     ];
 }
 
@@ -423,6 +424,13 @@ public sealed record GodotKindAsked(
     [property: JsonPropertyName("kind")] GodotStringKind Kind,
     [property: JsonPropertyName("name")] string Name);
 
+/// <summary>The strings Godot's calls take naming a member of a kind by a name on an engine class's object, asked for in the
+/// C# of the projects of a Godot project's folder.</summary>
+public sealed record GodotNameStringsAsked(
+    [property: JsonPropertyName("folder")] string Folder,
+    [property: JsonPropertyName("kind")] GodotNameKind Kind,
+    [property: JsonPropertyName("name")] string Name);
+
 /// <summary>A string Godot's calls take naming a signal, a method or a property (<c>EmitSignal("Scored")</c>,
 /// <c>new Callable(this, "OnScored")</c>, <c>Set("Speed", 2)</c>), as the file gives it: what it names, where it is written
 /// (its characters, when <paramref name="Exact"/>), the class of the object it names it on as shown, whether that is a
@@ -439,7 +447,25 @@ public sealed record GodotStringRead(
     [property: JsonPropertyName("script")] bool Script,
     [property: JsonPropertyName("found")] GodotSignature? Found,
     [property: JsonPropertyName("given")] int? Given,
-    [property: JsonPropertyName("signal")] int? Signal);
+    [property: JsonPropertyName("signal")] int? Signal)
+{
+    /// <summary>The class it is written in, by its index in the answer's; -1 outside them.</summary>
+    [JsonPropertyName("class")]
+    public int Class { get; init; } = -1;
+
+    /// <summary>For a member an engine class's object lacks, the node the object is as the code tells it: by its path from the
+    /// node the class runs on, or by the <c>[Export]</c> member a scene sets to it; null where it does not tell.</summary>
+    [JsonPropertyName("node")]
+    public string? Node { get; init; }
+
+    [JsonPropertyName("export")]
+    public string? Export { get; init; }
+
+    /// <summary>For a member an engine class's object lacks, the engine classes asked of (<see cref="GodotCodeRequest.Engine"/>)
+    /// deriving from its class that have it, by Godot's names.</summary>
+    [JsonPropertyName("engines")]
+    public IReadOnlyList<string> Engines { get; init; } = [];
+}
 
 /// <summary>A class of the file that derives from GodotObject: its name, full name and where its name is written, its first
 /// engine class by Godot's name, the scripts its code runs as (res://: its own, and those of the classes deriving from it),

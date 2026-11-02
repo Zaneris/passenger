@@ -67,7 +67,7 @@ internal static partial class GodotSource
         IReadOnlyList<GodotKindRead> kinds = GodotKinds.Read(solution, root, model, declared, text, cancel);
         return new GodotCodeFound(classes, calls, resources, chains, scriptChains, signals, methods)
         {
-            Strings = Strings(root, model, engine, godotObject, text, cancel),
+            Strings = Strings(solution, root, model, engine, godotObject, declared, asked.Engine, text, cancel),
             Kinds = kinds,
             Added = await GodotKinds.AddedAsync(solution, documents[0].Project, kinds, cancel).ConfigureAwait(false),
             Properties = properties,
@@ -75,9 +75,12 @@ internal static partial class GodotSource
     }
 
     /// <summary>The file's strings Godot's calls take naming a signal, a method or a property (<see cref="GodotGenerated.NameCall"/>),
-    /// each with the member it names found on its object's class (a script's own, or its engine class's), an EmitSignal's
-    /// count of arguments, and a Connect's Callable joined to the signal it is connected to.</summary>
-    private static IReadOnlyList<GodotStringRead> Strings(SyntaxNode root, SemanticModel model, Engine engine, INamedTypeSymbol godotObject, SourceText text, CancellationToken cancel)
+    /// each with the class it is written in, the member it names found on its object's class (a script's own, or its engine
+    /// class's), an EmitSignal's count of arguments, and a Connect's Callable joined to the signal it is connected to; one an
+    /// engine class's object lacks with the node the object is (<see cref="GodotKinds.NodeOf"/>), whose script may give it,
+    /// and the engine classes the scenes ask of (<paramref name="engines"/>) that derive from its class and have it.</summary>
+    private static IReadOnlyList<GodotStringRead> Strings(Solution solution, SyntaxNode root, SemanticModel model, Engine engine, INamedTypeSymbol godotObject,
+        IReadOnlyList<INamedTypeSymbol> declared, IReadOnlyList<string> engines, SourceText text, CancellationToken cancel)
     {
         List<GodotStringRead> reads = [];
         Dictionary<int, int> byStart = [];
@@ -108,8 +111,23 @@ internal static partial class GodotSource
             {
                 joined.Add((reads.Count, literal.Token.SpanStart));
             }
+            (string? node, string? export) = found is null && !script ? GodotKinds.NodeOf(solution, call.Object, model, cancel) ?? (null, null) : (null, null);
+            IReadOnlyList<string> having = found is null && !script && engineClass is not null
+                ? [.. engines.Distinct(StringComparer.Ordinal).Where(e => engine.Type(e) is { } type && engine.Chain(type).Contains(engineClass) && call.Kind switch
+                {
+                    GodotNameKind.Signal => Signal(engine, null, e, name),
+                    GodotNameKind.Method => Method(engine, null, e, name),
+                    _ => Property(engine, null, e, name),
+                } is not null)]
+                : [];
             reads.Add(new GodotStringRead(call.Kind, name, PlaceAt(text, exact ? token.SpanStart + 1 : token.SpanStart), PlaceAt(text, exact ? token.Span.End - 1 : token.Span.End), exact,
-                on.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), script, found, given, null));
+                on.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), script, found, given, null)
+            {
+                Class = GodotKinds.ClassOf(declared, token, model, cancel),
+                Node = node,
+                Export = export,
+                Engines = having,
+            });
         }
         foreach ((int signal, int method) in joined)
         {

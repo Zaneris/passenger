@@ -231,6 +231,10 @@ internal sealed partial class CSharpAssist
         {
             return null;
         }
+        if (ScriptMemberDeclared(lsp, read, offset) is { } member)
+        {
+            return member;
+        }
         if (read.Found.Resources.FirstOrDefault(r => OffsetOf(lsp, r.At) <= offset && offset <= OffsetOf(lsp, r.End)) is { } resource)
         {
             string named = resource.Path.Split("::")[0];
@@ -260,6 +264,33 @@ internal sealed partial class CSharpAssist
             Names = names,
             Title = "Nodes",
         };
+    }
+
+    /// <summary>Where Go to Declaration goes from a string naming a member an engine class's object lacks on a node the code
+    /// tells it is: the function, signal, variable or constant of its name the GDScript of each such node declares, it or a
+    /// script it extends (<see cref="GodotChecks.Members"/>); null for an offset in no such string.</summary>
+    private static Declared? ScriptMemberDeclared(LspDocument lsp, GodotRead read, int offset)
+    {
+        if (read.Found.Strings.FirstOrDefault(s => OffsetOf(lsp, s.At) <= offset && offset <= OffsetOf(lsp, s.End)) is not { Found: null, Script: false } named
+            || named.Node is null && named.Export is null)
+        {
+            return null;
+        }
+        GodotChecks.Candidates members = GodotChecks.Members(read.Scenes, named.Kind, GodotChecks.ScriptsOf(read.Found, named.Class), named.Node, named.Export, _ => null);
+        List<LspLocation> places = [];
+        List<string?> names = [];
+        foreach (GodotDefined member in members.Names.Where(n => n.Name == named.Name))
+        {
+            foreach (GodotPlace place in member.Places)
+            {
+                if (read.Scenes.FileOf(place.Res) is { } file && read.Scenes.Defined.TextOf(place.Res) is { } text)
+                {
+                    places.Add(new LspLocation(DocumentUris.FromPath(file), ServerLines.Of(TextSnapshot.From(text)).RangeOf(new TextRange(place.Start, place.End - place.Start))));
+                    names.Add($"{member.Detail} {member.Name} in {place.Shown}");
+                }
+            }
+        }
+        return places.Count == 0 ? null : new Declared(places, Refusals.NoDeclaration) { Names = names, Title = "Declarations" };
     }
 
     /// <summary>The nodes the name of a GetNode path at an offset names, each in the scene its script runs in, with the name

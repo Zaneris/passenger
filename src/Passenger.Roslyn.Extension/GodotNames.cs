@@ -183,6 +183,46 @@ internal static class GodotGenerated
         return uses;
     }
 
+    /// <summary>Every string written as its characters in the C# of the projects in a Godot project's folder that Godot's calls
+    /// take naming a member of the kind and name asked for on an engine class's object, each once though a project builds it
+    /// for several frameworks, with the scripts its class runs as and the node the object is where the code tells it
+    /// (<see cref="GodotKinds.NodeOf"/>), so a GDScript's member is found among them by the node its scenes run it on.</summary>
+    public static async Task<GodotKindUses> MemberStringsAsync(Solution solution, GodotNameStringsAsked asked, CancellationToken cancel)
+    {
+        List<GodotKindUse> uses = [];
+        HashSet<(string, int)> seen = [];
+        foreach (Project project in solution.Projects.Where(p => System.IO.Path.GetDirectoryName(p.FilePath) is { } home
+            && (SamePath(home, asked.Folder) || Passenger.Core.PathNames.IsUnder(home, asked.Folder))))
+        {
+            foreach (Document document in project.Documents)
+            {
+                if (document.FilePath is not { Length: > 0 } path || await document.GetSyntaxRootAsync(cancel).ConfigureAwait(false) is not { } root)
+                {
+                    continue;
+                }
+                List<SyntaxToken> strings = [.. root.DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken) && Exact(t) && t.ValueText == asked.Name)];
+                if (strings.Count == 0 || await document.GetSemanticModelAsync(cancel).ConfigureAwait(false) is not { } model)
+                {
+                    continue;
+                }
+                SourceText text = await document.GetTextAsync(cancel).ConfigureAwait(false);
+                foreach (SyntaxToken token in strings)
+                {
+                    if (NameCall(token, model, cancel) is not { On: INamedTypeSymbol { ContainingAssembly.Name: "GodotSharp" } } call || call.Kind != asked.Kind
+                        || !seen.Add((path, token.SpanStart)))
+                    {
+                        continue;
+                    }
+                    (string? node, string? export) = GodotKinds.NodeOf(solution, call.Object, model, cancel) ?? (null, null);
+                    IReadOnlyList<string> scripts = model.GetEnclosingSymbol(token.SpanStart, cancel)?.ContainingType is { } inside
+                        ? await GodotKinds.ScriptsOfAsync(inside, solution, cancel).ConfigureAwait(false) : [];
+                    uses.Add(new GodotKindUse(path, PlaceAt(text, token.SpanStart + 1), PlaceAt(text, token.Span.End - 1), scripts, node, export, null));
+                }
+            }
+        }
+        return new GodotKindUses(uses);
+    }
+
     /// <summary>The strings written as their characters in the C# of the projects in a Godot project's folder that give a
     /// res:// path naming one asked for, or inside a folder asked for; each once, though a project builds it for several
     /// frameworks.</summary>
@@ -250,9 +290,9 @@ internal static class GodotGenerated
             "property" => GodotNameKind.Property,
             _ => null,
         };
-        ITypeSymbol? on = arguments.FirstOrDefault(a => a != given && a.Parameter?.Type is { Name: "GodotObject", ContainingNamespace.Name: "Godot" }) is { } beside
-            ? Unconverted(beside.Value).Type : instance?.Type;
-        return kind is { } of && on is not null ? new GodotNameCall(of, on, method, arguments) : null;
+        IOperation? named = arguments.FirstOrDefault(a => a != given && a.Parameter?.Type is { Name: "GodotObject", ContainingNamespace.Name: "Godot" }) is { } beside
+            ? Unconverted(beside.Value) : instance;
+        return kind is { } of && named?.Type is { } on ? new GodotNameCall(of, on, method, arguments) { Object = named } : null;
     }
 
     /// <summary>An argument's value as written, before what converts it to its parameter's type.</summary>
@@ -301,5 +341,17 @@ internal static class GodotGenerated
     }
 }
 
-/// <summary>A call of Godot's API given a string naming a signal, a method or a property (<see cref="GodotGenerated.NameCall"/>).</summary>
-internal sealed record GodotNameCall(GodotNameKind Kind, ITypeSymbol On, IMethodSymbol Method, ImmutableArray<IArgumentOperation> Arguments);
+/// <summary>A call of Godot's API given a string naming a signal, a method or a property (<see cref="GodotGenerated.NameCall"/>),
+/// with the object it names it on as written.</summary>
+internal sealed record GodotNameCall(GodotNameKind Kind, ITypeSymbol On, IMethodSymbol Method, ImmutableArray<IArgumentOperation> Arguments)
+{
+    public IOperation? Object { get; init; }
+}
+
+/// <summary>The strings Godot's calls take naming a member of a kind by a name in a Godot project's C#
+/// (<see cref="GodotGenerated.MemberStringsAsync"/>), which a GDScript member's usages list.</summary>
+public sealed class GodotNameStrings : IExtensionWorkspaceMessageHandler<GodotNameStringsAsked, GodotKindUses>
+{
+    public Task<GodotKindUses> ExecuteAsync(GodotNameStringsAsked message, ExtensionMessageContext context, CancellationToken cancellationToken) =>
+        GodotGenerated.MemberStringsAsync(context.Solution, message, cancellationToken);
+}

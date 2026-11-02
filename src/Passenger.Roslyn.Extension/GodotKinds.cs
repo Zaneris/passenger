@@ -39,15 +39,7 @@ internal static class GodotKinds
             {
                 continue;
             }
-            INamedTypeSymbol? inside = model.GetEnclosingSymbol(token.SpanStart, cancel)?.ContainingType;
-            int index = -1;
-            for (int i = 0; i < declared.Count && inside is not null; i++)
-            {
-                if (SymbolEqualityComparer.Default.Equals(declared[i], inside) || SymbolEqualityComparer.Default.Equals(declared[i], inside.ContainingType))
-                {
-                    index = i;
-                }
-            }
+            int index = ClassOf(declared, token, model, cancel);
             (string? node, string? export, string? member) = Told(solution, kind, token, model, cancel);
             bool exact = GodotGenerated.Exact(token);
             reads.Add(new GodotKindRead(kind, token.ValueText, PlaceAt(text, exact ? token.SpanStart + 1 : token.SpanStart), PlaceAt(text, exact ? token.Span.End - 1 : token.Span.End),
@@ -145,7 +137,7 @@ internal static class GodotKinds
         } : (null, null, null);
 
     /// <summary>The scripts a class's code runs as: its own <c>[ScriptPath]</c>'s, and those of the classes deriving from it.</summary>
-    private static async Task<IReadOnlyList<string>> ScriptsOfAsync(INamedTypeSymbol type, Solution solution, CancellationToken cancel)
+    internal static async Task<IReadOnlyList<string>> ScriptsOfAsync(INamedTypeSymbol type, Solution solution, CancellationToken cancel)
     {
         List<string> scripts = [.. ScriptPath(type) is { } own ? [own] : Array.Empty<string>()];
         foreach (INamedTypeSymbol derived in await SymbolFinder.FindDerivedClassesAsync(type, solution, transitive: true, cancellationToken: cancel).ConfigureAwait(false))
@@ -234,6 +226,25 @@ internal static class GodotKinds
         ("Translation", "srcMessage") when method.Name is "AddMessage" or "AddPluralMessage" => (GodotStringKind.Translation, true),
         _ => null,
     };
+
+    /// <summary>The node an object is, as the code tells it (<see cref="NodeOf(Solution, IOperation?, SemanticModel, int, CancellationToken)"/>).</summary>
+    internal static (string? Node, string? Export)? NodeOf(Solution solution, IOperation? value, SemanticModel model, CancellationToken cancel) =>
+        NodeOf(solution, value, model, Deepest, cancel);
+
+    /// <summary>The index among a file's classes Godot runs of the one a token is written in (or a class nested in it); -1 outside them.</summary>
+    internal static int ClassOf(IReadOnlyList<INamedTypeSymbol> declared, SyntaxToken token, SemanticModel model, CancellationToken cancel)
+    {
+        INamedTypeSymbol? inside = model.GetEnclosingSymbol(token.SpanStart, cancel)?.ContainingType;
+        int index = -1;
+        for (int i = 0; i < declared.Count && inside is not null; i++)
+        {
+            if (SymbolEqualityComparer.Default.Equals(declared[i], inside) || SymbolEqualityComparer.Default.Equals(declared[i], inside.ContainingType))
+            {
+                index = i;
+            }
+        }
+        return index;
+    }
 
     /// <summary>The node an object is, as the code tells it: the class's own (<c>this</c>), a GetNode path from it, or the
     /// <c>[Export]</c> member a scene sets to it; through a field, property or local whose every value is one of those

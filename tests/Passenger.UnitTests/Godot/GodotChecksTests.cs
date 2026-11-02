@@ -450,4 +450,72 @@ public class GodotChecksTests
         Assert.Contains(actions.Names, n => n.Name == "ui_accept" && n.Places.Count == 0);
         Assert.False(GodotChecks.Named(scenes, GodotStringKind.Animation, ["res://Main.cs"], null, null, null).Whole, "a player the code does not tell is never checked");
     }
+
+    private const string MixedScene = """
+        [gd_scene format=3]
+
+        [ext_resource type="Script" path="res://Main.cs" id="1"]
+        [ext_resource type="Script" path="res://enemy.gd" id="2"]
+
+        [node name="Main" type="Node2D"]
+        script = ExtResource("1")
+
+        [node name="Enemy" type="CharacterBody2D" parent="."]
+        script = ExtResource("2")
+
+        [connection signal="ready" from="." to="Enemy" method="take_damage"]
+        [connection signal="ready" from="." to="Enemy" method="move_and_slide"]
+        [connection signal="ready" from="." to="Enemy" method="hide_away"]
+        [connection signal="died" from="Enemy" to="." method="OnDied"]
+        [connection signal="dyed" from="Enemy" to="." method="OnDied"]
+
+        """;
+
+    private static GodotScenes Mixed() => new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(MixedScene) },
+        texts: new Dictionary<string, string>
+        {
+            ["res://enemy.gd"] = "extends \"res://actor.gd\"\n\nfunc take_damage(amount: int) -> void:\n\tpass\n",
+            ["res://actor.gd"] = "class_name Actor extends CharacterBody2D\n\nsignal died\n\nvar health := 3\n",
+        });
+
+    [Fact]
+    public void A_scenes_connection_to_a_gdscript_is_read_against_its_scripts_and_the_engines_answer_for_its_class()
+    {
+        GodotScenes scenes = Mixed();
+        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/Main.cs", scenes, "res://main.tscn");
+        Assert.Contains(new GodotMemberAsked("CharacterBody2D", null, "move_and_slide"), asked.Methods);
+        GodotSignature engine = new("x", [], 0, null, null, null);
+        GodotCodeFound found = new([], [], [], [], [],
+            [.. asked.Signals.Select(s => s.Name == "ready" ? engine : null)],
+            [.. asked.Methods.Select(m => m.Name is "move_and_slide" or "OnDied" ? engine : null)]);
+        string text = MixedScene;
+        Assert.Equal(
+        [
+            ("hide_away", "Enemy, a CharacterBody2D (enemy.gd), has no method hide_away"),
+            ("dyed", "Enemy, a CharacterBody2D (enemy.gd), has no signal dyed"),
+        ], GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, found, _ => true).Select(f => (text[f.Start..f.End], f.Message)));
+
+        // With no engine to answer, as in a game of GDScript alone, only a handler named as no engine method is known missing.
+        Assert.Empty(GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, GodotCodeFound.None, _ => true));
+    }
+
+    [Fact]
+    public void A_string_naming_a_member_on_a_node_of_gdscript_is_read_against_its_scripts_and_the_engine_classes_having_it()
+    {
+        GodotScenes scenes = Mixed();
+        GodotCodeRequest asked = GodotChecks.Asks("/game/Main.cs", scenes, ["res://Main.cs"]);
+        GodotStringRead Read(GodotNameKind kind, string name, params string[] engines) =>
+            new(kind, name, At, End, true, "Node", false, null, null, null) { Class = 0, Node = "Enemy", Engines = engines };
+        GodotCodeFound found = new([Main], [], [], [], [], [], [])
+        {
+            Strings = [Read(GodotNameKind.Method, "take_damage"), Read(GodotNameKind.Method, "take_damag"), Read(GodotNameKind.Method, "move_and_slide", "CharacterBody2D"),
+                Read(GodotNameKind.Signal, "died"), Read(GodotNameKind.Property, "health"), Read(GodotNameKind.Property, "heath")],
+        };
+        Assert.Equal(["Enemy, a CharacterBody2D (enemy.gd), has no method 'take_damag'", "Enemy, a CharacterBody2D (enemy.gd), has no property 'heath'"],
+            GodotChecks.Findings(scenes, asked, found, _ => true).Select(f => f.Message));
+        GodotChecks.Candidates members = GodotChecks.Members(scenes, GodotNameKind.Method, ["res://Main.cs"], "Enemy", null, _ => null);
+        Assert.Equal(("take_damage", "res://enemy.gd"), (members.Names.Single().Name, members.Names.Single().Places.Single().Res));
+        Assert.False(members.Whole, "A node whose engine class is not known to lack the name is taken to have all it may");
+        Assert.False(GodotChecks.Members(scenes, GodotNameKind.Method, ["res://Main.cs"], ".", null, _ => false).Whole, "Main's own C# script is read as GDScript");
+    }
 }

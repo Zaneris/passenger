@@ -13,7 +13,8 @@ internal sealed record GodotRead(string Folder, GodotScenes Scenes, GodotCodeReq
 /// (<see cref="Findings"/>): a GetNode path no node answers in any scene a script runs in, one whose node is not of the
 /// type asked for, a res:// path no file answers, a scene's connection to a method the script lacks, or that takes other
 /// parameters than its signal gives, a property a scene sets that the script lacks, a string Godot's calls take naming a
-/// member a script lacks or connecting one of other arguments, and one naming what the project's files do not define
+/// member a script lacks (a C# script's, or the GDScript of the node the code tells, <see cref="Members"/>) or connecting
+/// one of other arguments, and one naming what the project's files do not define
 /// (<see cref="Named"/>); each with what it offers to mend it (<see cref="GodotOffer"/>). Pure: it reads only what it is
 /// given (and whether a file is there).</summary>
 internal static class GodotChecks
@@ -365,6 +366,10 @@ internal static class GodotChecks
             {
                 findings.Add(finding.Error && read.Found is null && read.Kind == GodotNameKind.Method ? finding with { Offer = CallableOffer(scenes, found, read) } : finding);
             }
+            else if (ScriptStringFinding(scenes, asked, found, read) is { } scripted)
+            {
+                findings.Add(scripted);
+            }
         }
         HashSet<(GodotStringKind, string)> added = [.. found.Added.Select(a => (a.Kind, a.Name)), .. found.Kinds.Where(k => k.Adds).Select(k => (k.Kind, k.Name))];
         foreach (GodotKindRead read in found.Kinds.Where(k => k.Exact && !k.Adds && !added.Contains((k.Kind, k.Name))))
@@ -628,24 +633,7 @@ internal static class GodotChecks
                 return new Candidates(defined.Translations, $"in the translations project.godot lists ({Core.Plural.Listed([.. defined.TranslationFiles.Select(f => f.Split('/')[^1])])})",
                     defined.TranslationFiles.Count > 0 && defined.TranslationsWhole);
         }
-        List<GodotTreeNode> told = [];
-        bool whole = node is not null || export is not null;
-        foreach ((string scene, GodotTreeNode runner) in scripts.SelectMany(scenes.RunsOf))
-        {
-            string? path = node ?? (export is null ? null : runner.Written.Select(w => w.Node.Section.Property(export)?.Value).LastOrDefault(v => v is not null) is { Call: "NodePath", Text: { } set } ? set : null);
-            if (path is not null && GodotScenes.Resolve(runner, path).Found is { } target)
-            {
-                if (!told.Any(t => t.Same(target)))
-                {
-                    told.Add(target);
-                }
-            }
-            else
-            {
-                whole = false;
-            }
-        }
-        whole &= told.Count > 0;
+        (IReadOnlyList<GodotTreeNode> told, bool whole) = Told(scenes, scripts, node, export);
         if (kind == GodotStringKind.Animation)
         {
             if (!whole)
@@ -674,6 +662,99 @@ internal static class GodotChecks
             uniforms.AddRange(own);
         }
         return new Candidates(Merged(uniforms), $"a uniform of {Core.Plural.Listed([.. shaders.Select(GodotDefinitions.Shown)])}, the shader of {Core.Plural.Listed([.. told.Select(t => $"{t.Name}'s {member}")])}", whole);
+    }
+
+    /// <summary>The nodes an object a string's call is made on is, as the code tells it (by a node's path from the node its
+    /// class runs on, or by an exported member a scene sets to one), in each scene the class's scripts run in, each once;
+    /// and whether every such scene tells one.</summary>
+    public static (IReadOnlyList<GodotTreeNode> Told, bool Whole) Told(GodotScenes scenes, IReadOnlyList<string> scripts, string? node, string? export)
+    {
+        List<GodotTreeNode> told = [];
+        bool whole = node is not null || export is not null;
+        foreach ((string scene, GodotTreeNode runner) in scripts.SelectMany(scenes.RunsOf))
+        {
+            string? path = node ?? (export is null ? null : runner.Written.Select(w => w.Node.Section.Property(export)?.Value).LastOrDefault(v => v is not null) is { Call: "NodePath", Text: { } set } ? set : null);
+            if (path is not null && GodotScenes.Resolve(runner, path).Found is { } target)
+            {
+                if (!told.Any(t => t.Same(target)))
+                {
+                    told.Add(target);
+                }
+            }
+            else
+            {
+                whole = false;
+            }
+        }
+        return (told, whole && told.Count > 0);
+    }
+
+    /// <summary>What a string naming a member of a kind may name on an engine class's object the code tells a node of
+    /// (<see cref="Told"/>), as the GDScript each such node runs declares (<see cref="GodotScriptChain"/>): its names of the
+    /// kind (a property's its variables and constants), each where its script declares it, the nodes in words, and whether
+    /// those are all it may name: each node told in every scene, each of GDScript or of no script, its scripts all read, and
+    /// its engine class known to lack it (<paramref name="engine"/>: true where it has it, null where not known).</summary>
+    public static Candidates Members(GodotScenes scenes, GodotNameKind kind, IReadOnlyList<string> scripts, string? node, string? export, Func<string?, bool?> engine)
+    {
+        (IReadOnlyList<GodotTreeNode> told, bool whole) = Told(scenes, scripts, node, export);
+        GodotScriptKind[] kinds = kind switch
+        {
+            GodotNameKind.Method => [GodotScriptKind.Function],
+            GodotNameKind.Signal => [GodotScriptKind.Signal],
+            _ => [GodotScriptKind.Variable, GodotScriptKind.Constant],
+        };
+        List<GodotDefined> names = [];
+        foreach (GodotTreeNode target in told)
+        {
+            GodotScriptChain? chain = ChainOf(scenes, target);
+            whole &= chain is { Whole: true } && engine(target.Type) == false;
+            if (chain is null)
+            {
+                continue;
+            }
+            foreach ((string script, GodotScriptDeclarations declared) in chain.Scripts)
+            {
+                string shown = script.Split('/')[^1];
+                Passenger.Text.TextSnapshot? lines = scenes.Texts.TryGetValue(script, out string? text) ? Passenger.Text.TextSnapshot.From(text) : null;
+                foreach (GodotScriptDeclared member in declared.Members.Where(m => kinds.Contains(m.Kind)))
+                {
+                    int line = lines is null ? 1 : lines.GetLineFromOffset(member.Start) + 1;
+                    names.Add(new GodotDefined(member.Name, $"{Word(member.Kind)} of {shown}", [new GodotPlace(script, member.Start, member.Start + member.Name.Length, true, $"{shown}:{line}")]));
+                }
+            }
+        }
+        string where = string.Join(" or ", told.Select(t => $"{t.Name}, {Article(Shown(t))}"));
+        return new Candidates(Merged(names), where, whole && told.Count > 0);
+
+        static string Word(GodotScriptKind kind) => kind switch
+        {
+            GodotScriptKind.Function => "function",
+            GodotScriptKind.Signal => "signal",
+            GodotScriptKind.Variable => "variable",
+            _ => "constant",
+        };
+    }
+
+    /// <summary>A string naming a member an engine class's object lacks, on a node of GDScript the code tells it is: one no
+    /// script of any node it is declares (<see cref="Members"/>), with the names near it; null where one may have it.</summary>
+    private static Finding? ScriptStringFinding(GodotScenes scenes, GodotCodeRequest asked, GodotCodeFound found, GodotStringRead read)
+    {
+        if (read.Found is not null || read.Script || read.Node is null && read.Export is null)
+        {
+            return null;
+        }
+        // The engine class of each node, where the extension was asked of it, has the member as it answered.
+        Candidates members = Members(scenes, read.Kind, ScriptsOf(found, read.Class), read.Node, read.Export,
+            type => type is not null && asked.Engine.Contains(type) ? read.Engines.Contains(type) : null);
+        if (!members.Whole || members.Names.Any(n => n.Name == read.Name))
+        {
+            return null;
+        }
+        string what = read.Kind switch { GodotNameKind.Signal => "signal", GodotNameKind.Method => "method", _ => "property" };
+        return new Finding(read.At, read.End, true, $"{members.Where}, has no {what} '{read.Name}'")
+        {
+            Offer = read.Exact ? new GodotOffer { Near = Core.Spelling.Near(read.Name, members.Names.Select(n => n.Name)) } : null,
+        };
     }
 
     /// <summary>Names of several players or shaders, each name once with every place of it.</summary>
