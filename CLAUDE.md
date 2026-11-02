@@ -617,10 +617,12 @@ it started scale by `PASSENGER_WAIT_SCALE`. `FLAKES.md` records each CI failure'
 
 **Isolation.** A run keeps to its own folder (`TestRun`): the IDE's state, logs and sockets, every test folder
 (`TestFolders.Create`), shells' history, an empty Git configuration, NuGet's home on macOS and Linux, MSBuild's node
-salt, container labels, user secrets (`TestRun.UserSecrets`), dotnet new's templates, Aspire's HOME and CLI. It never
-reaches nuget.org (local feeds: `AvaloniaApp.Feed`, `StandInFeed`, and the restore-only `tests/EfGraphs`,
-`tests/AspireGraphs` and `tests/BlazorGraphs` that fill the package cache), GitHub (`PASSENGER_RELEASES` dead),
-registries (`PASSENGER_BUILDKIT_CHECKS=off`), Docker Hub, symbol servers, Discord, or the person's Passenger
+salt, container labels, user secrets (`TestRun.UserSecrets`), dotnet new's templates, Aspire's HOME and CLI, Godot's
+user folders (`PASSENGER_GODOT_HOME`, `GodotUserFolders`: every Godot a window starts takes the window's), the person's
+own Godot folders held untouched by `PersonsGodot`, which fails a test or run that writes them. It never reaches
+nuget.org (local feeds: `AvaloniaApp.Feed`, `StandInFeed`, and the restore-only `tests/EfGraphs`, `tests/AspireGraphs`
+and `tests/BlazorGraphs` that fill the package cache), GitHub (`PASSENGER_RELEASES` dead), registries
+(`PASSENGER_BUILDKIT_CHECKS=off`), Docker Hub, symbol servers, Discord, or the person's Passenger
 (`PASSENGER_START=headless`). It shortens `PASSENGER_EVAL_TIMEOUT_MS` (3 s), `PASSENGER_WATCH_LATER_MS` (3 s),
 `PASSENGER_MCP_PROGRESS_MS` (1 s) and `PASSENGER_REGEX_TIMEOUT_MS` (1 s); a test holding a server to not answering sets
 that server's limits, never the run's. After each window test its windows close (those it closed itself too) and what
