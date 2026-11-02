@@ -118,6 +118,8 @@ ICONS = [
     ("Overlays", "Layer", "20_regular"),
     # A Godot game's loop stepped one frame while it is held.
     ("NextFrame", "Next", "20_regular"),
+    # A debugged Godot game's audio muted from the Debug window's toolbar.
+    ("MuteAudio", "Speaker Mute", "20_regular"),
     # Apply Hot Reload Changes on the toolbar and the Run and Debug windows: a flame.
     ("HotReload", "Fire", "20_regular"),
     # The Hierarchy window's stripe button: a type over the types it derives from or that derive from it.

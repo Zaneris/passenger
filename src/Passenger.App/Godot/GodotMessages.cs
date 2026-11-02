@@ -86,6 +86,7 @@ public static class GodotWords
     public const string ClearSelection = "scene:clear_selection";
     public const string ObjectsSelected = "remote_objects_selected";
     public const string NothingSelected = "remote_nothing_selected";
+    public const string MuteAudio = "scene:debug_mute_audio";
 
     /// <summary>The function of Godot's that takes a picture of the game, whose errors say why it took none.</summary>
     public const string ScreenshotFunction = "_msg_rq_screenshot";

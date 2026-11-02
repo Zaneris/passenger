@@ -202,6 +202,18 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
         await Call(client, McpTools.Stop);
     }
 
+    /// <summary>A game an agent debugs starts with its audio muted, whatever the folder keeps: Mute Game Audio, run by the agent,
+    /// lets it play.</summary>
+    [Fact]
+    public async Task A_game_an_agent_debugs_starts_muted()
+    {
+        await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false, environment: Homes);
+        await Call(client, McpTools.DebugStart, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
+        string unmuted = await Game(client, McpTools.IdeAction, new() { ["action"] = Passenger.App.AppActions.MuteGameAudio });
+        Assert.Contains("audio plays", unmuted, StringComparison.Ordinal);
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>An app_ tool's answer for the game; one refused fails with the game's last words, Godot's errors among them.</summary>
     private async Task<string> Game(McpClient client, [IdentifierOf(typeof(McpTools))] string tool, Dictionary<string, object?> arguments)
     {

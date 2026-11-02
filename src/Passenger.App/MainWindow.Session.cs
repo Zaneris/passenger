@@ -266,6 +266,7 @@ public partial class MainWindow
         liveTree?.Bind(next);
         bindingValues?.Bind(next);
         overlays?.Bind(next);
+        gameAudio?.Bind(next);
         BindVcs(next);
         BindBookmarks(next);
         BindEndpoints(next);

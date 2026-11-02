@@ -171,7 +171,21 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     public GodotMonitors? Monitors { get; private set; }
 
     /// <summary>The Debug session the game runs under, while one does: its stops pause the game's answers.</summary>
-    public Debugging.DebugSession? Debugged { get; set; }
+    public Debugging.DebugSession? Debugged
+    {
+        get;
+        set
+        {
+            if (field != value)
+            {
+                field = value;
+                DebuggedChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    /// <summary>The game's Debug session was given, or another.</summary>
+    public event EventHandler? DebuggedChanged;
 
     public event EventHandler? StateChanged;
 
@@ -254,6 +268,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         if (recording is { IsStopped: false })
         {
             Profiling(true);
+        }
+        if (AudioMuted)
+        {
+            Send(GodotWords.MuteAudio, true);
         }
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -797,6 +815,37 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         await SendAsync(GodotWords.SelectType, (long)GodotPicking.Off);
         await SendAsync(GodotWords.SelectAvoidLocked, true);
         await SendAsync(GodotWords.SelectPreferGroup, true);
+    }
+
+    /// <summary>Whether the game's audio is muted by Godot's debug mute: it plays on, silent. One muted before it connects is
+    /// muted as it does.</summary>
+    public bool AudioMuted { get; private set; }
+
+    /// <summary>The game's audio was muted or let play.</summary>
+    public event EventHandler? AudioChanged;
+
+    /// <summary>Has a game yet to connect start with its audio muted, which it is told as it connects.</summary>
+    public void StartMuted()
+    {
+        UiThread.Check();
+        AudioMuted = true;
+        AudioChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Mutes the game's audio, or lets it play, done once the game is told; one yet to connect is told as it does.
+    /// Godot answers nothing: a refusal would come as an error the game raises.</summary>
+    public async Task MuteAudioAsync(bool muted)
+    {
+        UiThread.Check();
+        if (AudioMuted != muted)
+        {
+            AudioMuted = muted;
+            AudioChanged?.Invoke(this, EventArgs.Empty);
+        }
+        if (State == LiveAppState.Connected)
+        {
+            await SendAsync(GodotWords.MuteAudio, muted);
+        }
     }
 
     /// <summary>Whether Passenger holds the game's loop (<see cref="HoldLoopAsync"/>): its nodes process nothing, its time

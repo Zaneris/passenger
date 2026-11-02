@@ -100,6 +100,9 @@ public static class AppActions
     public const string PauseGameLoop = "app.godot.pauseLoop";
     public const string NextFrame = "app.godot.nextFrame";
 
+    // A debugged Godot game's audio muted from the Debug window, kept with the folder: no key of Rider's.
+    public const string MuteGameAudio = "app.godot.muteAudio";
+
     // Passenger made the script editor of the Godot found, in its editor settings: no key of Rider's.
     public const string GodotScriptEditor = "app.godot.scriptEditor";
 

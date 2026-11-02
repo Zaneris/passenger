@@ -120,6 +120,18 @@ public sealed class DebugModel
     /// view's toolbar holds it once built.</summary>
     public OverlaysButton Overlays { get; } = new();
 
+    /// <summary>Mute Game Audio, shown while the chosen tab's program is a Godot game, pressed while its audio is muted: the
+    /// view's toolbar holds it once built.</summary>
+    public Avalonia.Controls.Primitives.ToggleButton GameAudio { get; } = GameAudioToggle();
+
+    private static Avalonia.Controls.Primitives.ToggleButton GameAudioToggle()
+    {
+        Avalonia.Controls.Primitives.ToggleButton toggle = ToolButtons.Toggle(IconKeys.MuteAudio, "Mute Game Audio");
+        ActionTips.Set(toggle, AppActions.MuteGameAudio, "Mute Game Audio");
+        toggle.IsVisible = false;
+        return toggle;
+    }
+
     public event EventHandler<DapThread>? ThreadChosen;
 
     public event EventHandler<DapStackFrame>? FrameChosen;

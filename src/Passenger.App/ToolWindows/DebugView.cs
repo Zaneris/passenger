@@ -143,6 +143,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
                 Tool(AppActions.Evaluate, IconKeys.Evaluate, "Evaluate Expression"),
                 new Border { Width = 12 },
                 model.Overlays,
+                model.GameAudio,
             },
         };
         Border topBar = ToolBars.Top(top);

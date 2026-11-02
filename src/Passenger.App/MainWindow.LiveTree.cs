@@ -35,5 +35,10 @@ public partial class MainWindow
         bindingValues = new BindingValuesController(Editors, liveTree);
         overlays = new OverlaysCommands(new OverlaysParts(Bottom, actions!, text => status.Text = text));
         overlays.Bind(session);
+        gameAudio = new Godot.GameAudioCommands(new Godot.GameAudioParts(Bottom.Debug.GameAudio, actions!, text => status.Text = text, () => AgentsOwn));
+        gameAudio.Bind(session);
     }
+
+    /// <summary>The audio of the Godot game a Debug tab debugs, muted from the Debug window.</summary>
+    private Godot.GameAudioCommands? gameAudio;
 }
