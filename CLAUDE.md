@@ -376,11 +376,17 @@ Projects in `src/`; `find_symbol` finds the rest:
   from the declared type read from metadata (`DeclaredType`). A library's types are shown as the App tells the debugger
   at launch (`DapTypePresentation`; Godot's in `GodotValues`), never by engine code naming a library. An exception's
   description reads its fields first, type and stored messages (`StoredChain`), its getters only adding, never a
-  `ToString`. A debugged web app's pages are kept up through the SDK's own browser refresh (`BrowserRefresh`, its
-  protocol chosen by the variable the SDK's middleware reads, `LaunchPlan.Web`). A session's built lines and Hot Reload
-  begin at its build's save (`DebugController.Building`, `BuiltEdits`). The debugger's own rows are named in `DapRows`,
-  break modes in `DapBreakModes`; an engine row is built by `ValueRow` (`FailedRow`, `GroupRow`), CoreLib found by
-  `ManagedDebugger.CoreLib`. A breakpoint's words, in the gutter's hover, Problems and MCP alike, come from
+  `ToString`. A Blazor app's WebAssembly half is debugged by `WebAssemblyAdapter` (an `InProcessEnd`) over
+  `Passenger.Dap`'s `CdpConnection`, through .NET's own proxy from the browser project's WebAssembly pack
+  (`BrowserDebugging`), in a Chromium `BrowserRun` starts on the folder's profile (`ChromiumBrowsers`); a Blazor Web
+  App's WebAssembly tab is its server tab's `Companion`. Chrome runs a new-document script only once `Page.enable` came,
+  so a page's conversation enables Page first, or nothing binds; an app-hosted `/_framework/debug/ws-proxy` binds once
+  per app process to its first browser's port; with a fixed `--remote-debugging-port` Chrome writes no
+  DevToolsActivePort. A debugged web app's pages are kept up through the SDK's own browser refresh (`BrowserRefresh`,
+  its protocol chosen by the variable the SDK's middleware reads, `LaunchPlan.Web`). A session's built lines and Hot
+  Reload begin at its build's save (`DebugController.Building`, `BuiltEdits`). The debugger's own rows are named in
+  `DapRows`, break modes in `DapBreakModes`; an engine row is built by `ValueRow` (`FailedRow`, `GroupRow`), CoreLib
+  found by `ManagedDebugger.CoreLib`. A breakpoint's words, in the gutter's hover, Problems and MCP alike, come from
   `BreakpointStates`. Every kind of breakpoint is refused, matched and hit through one pipeline (`IHitBreakpoint`:
   `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a lambda on its statement's line keeps the
   lambda's column (`LambdaBreakpoints`).
