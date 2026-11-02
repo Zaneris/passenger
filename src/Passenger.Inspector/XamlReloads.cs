@@ -1,0 +1,498 @@
+using System.CodeDom.Compiler;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Templates;
+using Avalonia.Data;
+using Avalonia.Diagnostics;
+using Avalonia.Input;
+using Avalonia.LogicalTree;
+using Avalonia.Markup.Xaml;
+using Avalonia.Markup.Xaml.Diagnostics;
+using Avalonia.Styling;
+using Avalonia.VisualTree;
+using Passenger.Core;
+
+namespace Passenger.Inspector;
+
+/// <summary>XAML Hot Reload in an Avalonia app: a XAML file's text applied, on the UI thread, by Avalonia's runtime XAML
+/// loader to what the app made from it: each open instance of its x:Class populated again in place (the object, its
+/// DataContext and its code's state kept), or for a file of styles or resources without one, the object its build made
+/// from it swapped for one made from the text. What populating adds to (styles, resources, templates, key bindings,
+/// classes, the root's event handlers) is cleared first and put back if the text fails, so the app stays as it was. A root
+/// property the edit did not change keeps what the app holds in it now; the name generator's x:Name fields point at the
+/// new controls; an instance made later takes the newest text as it loads.</summary>
+internal sealed class XamlReloads(Func<IReadOnlyList<TopLevel>> tops)
+{
+    /// <summary>The newest text applied of each x:Class, by its type, with the text its build made instances from.</summary>
+    private readonly Dictionary<Type, (XamlChange Change, string? Built)> latest = [];
+
+    /// <summary>The text each object made from an x:Class holds once it took one.</summary>
+    private readonly ConditionalWeakTable<object, string> holds = new();
+
+    public XamlReloaded Reload(XamlChange change) =>
+        XamlReloading.Refusal(change, out XamlRoot now, out _) ?? (now.Class is { } named ? ReloadClass(change, named) : ReloadIncluded(change));
+
+    /// <summary>A control of a reloaded x:Class loaded: made from its build's XAML, it takes the newest text applied.</summary>
+    public void Loaded(object? control)
+    {
+        if (control is not AvaloniaObject made || latest.Count == 0 || !latest.TryGetValue(made.GetType(), out (XamlChange Change, string? Built) newest)
+            || (holds.TryGetValue(made, out string? held) && held == newest.Change.Text))
+        {
+            return;
+        }
+        try
+        {
+            Apply(made, newest.Change, newest.Built, []);
+        }
+        catch (Refusal refused)
+        {
+            InspectorTrace.Step($"{Words.TypeName(made.GetType())} loaded and could not take {newest.Change.File}: {refused.Message}");
+        }
+    }
+
+    private XamlReloaded ReloadClass(XamlChange change, string named)
+    {
+        if (XamlReloading.Loaded(change.Assembly) is not { } assembly)
+        {
+            return new XamlReloaded([], null, []);
+        }
+        if (assembly.GetType(named) is not { } type)
+        {
+            return XamlReloading.Refused($"{Path.GetFileName(change.File)}'s x:Class {named} is not in the app's {change.Assembly}: restart the app to apply it", []);
+        }
+        if (!typeof(AvaloniaObject).IsAssignableFrom(type))
+        {
+            return XamlReloading.Refused($"{Path.GetFileName(change.File)}'s x:Class {named} is no Avalonia object, which XAML Hot Reload makes again: restart the app to apply it", []);
+        }
+        string? built = latest.TryGetValue(type, out (XamlChange Change, string? Built) known) ? known.Built : change.Before;
+        List<string> objects = [];
+        List<XamlProblem> said = [];
+        foreach (AvaloniaObject made in Reachable().OfType<AvaloniaObject>().Where(o => o.GetType() == type).ToList())
+        {
+            try
+            {
+                Apply(made, change, holds.TryGetValue(made, out string? held) ? held : built, said);
+            }
+            catch (Refusal refused)
+            {
+                return new XamlReloaded(objects, refused.Message, said);
+            }
+            objects.Add(Called(made));
+        }
+        latest[type] = (change, built);
+        return new XamlReloaded(objects, null, said);
+    }
+
+    /// <summary>A file of styles or resources the build included where it is named: each object its build made from it (its
+    /// source info is the file's) swapped, where it is, for one made from the text.</summary>
+    private XamlReloaded ReloadIncluded(XamlChange change)
+    {
+        if (XamlReloading.Loaded(change.Assembly) is not { } assembly)
+        {
+            return new XamlReloaded([], null, []);
+        }
+        List<(object Made, Action<object> Swap)> found = [.. Providers().Where(p => From(p.Made, change.File))];
+        List<string> objects = [];
+        List<XamlProblem> said = [];
+        foreach ((object made, Action<object> swap) in found)
+        {
+            object loaded;
+            try
+            {
+                loaded = Load(change, null, assembly, said);
+            }
+            catch (Exception error)
+            {
+                return new XamlReloaded(objects, Why(change, error, said, null), said);
+            }
+            if (loaded.GetType() != made.GetType() && !(made is IStyle && loaded is IStyle) && !(made is IResourceProvider && loaded is IResourceProvider))
+            {
+                return XamlReloading.Refused($"{Path.GetFileName(change.File)} now makes {Words.TypeName(loaded.GetType())} where the app holds {Words.TypeName(made.GetType())}: restart the app to apply it", said);
+            }
+            swap(loaded);
+            objects.Add(Words.TypeName(made.GetType()));
+        }
+        return new XamlReloaded(objects, null, said);
+    }
+
+    /// <summary>Populates one object again from the text, its reset taken back if the text fails.</summary>
+    private void Apply(AvaloniaObject made, XamlChange change, string? before, List<XamlProblem> said)
+    {
+        XamlRoot now = XamlRoot.Read(change.Text);
+        XamlRoot? was = XamlReloading.Readable(before);
+        Held held = new(made);
+        held.Reset(now, was);
+        try
+        {
+            Load(change, made, made.GetType().Assembly, said);
+        }
+        catch (Exception error)
+        {
+            held.PutBack();
+            throw new Refusal(Why(change, error, said, made.GetType()));
+        }
+        held.Keep(now, was);
+        Named(made);
+        holds.AddOrUpdate(made, change.Text);
+    }
+
+    private static object Load(XamlChange change, object? root, Assembly local, List<XamlProblem> said)
+    {
+        RuntimeXamlLoaderDocument document = new(new Uri(change.Uri), root, change.Text) { Document = change.File };
+        RuntimeXamlLoaderConfiguration configuration = new()
+        {
+            LocalAssembly = local,
+            CreateSourceInfo = true,
+            UseCompiledBindingsByDefault = change.CompiledBindings == true,
+            DiagnosticHandler = diagnostic =>
+            {
+                XamlProblem problem = new(XamlReloading.Unplaced(diagnostic.Title), diagnostic.LineNumber, diagnostic.LinePosition,
+                    diagnostic.Severity >= RuntimeXamlDiagnosticSeverity.Error);
+                // What follows from a type it could not resolve, said at that type's own place, adds nothing.
+                bool follows = problem.Message.Contains("{Unknown type}", StringComparison.Ordinal)
+                    && said.Any(p => p.Error && p.Line == problem.Line && p.Column == problem.Column);
+                if (diagnostic.Severity >= RuntimeXamlDiagnosticSeverity.Warning && !follows && !said.Contains(problem))
+                {
+                    said.Add(problem);
+                }
+                return diagnostic.Severity;
+            },
+        };
+        return AvaloniaRuntimeXamlLoader.Load(document, configuration);
+    }
+
+    /// <summary>Why a text could not apply, in the person's words: the compiler's first error (a handler the class lacks said
+    /// as such), else what the load threw, its place left to the problem it adds.</summary>
+    private static string Why(XamlChange change, Exception error, List<XamlProblem> said, Type? root)
+    {
+        string file = Path.GetFileName(change.File);
+        if (said.FirstOrDefault(p => p.Error) is not { } first)
+        {
+            Exception cause = error is TargetInvocationException { InnerException: { } inner } ? inner : error;
+            string message = XamlReloading.Unplaced(cause.Message.Split('\n')[0]);
+            System.Xml.XmlException? xml = cause as System.Xml.XmlException;
+            said.Add(new XamlProblem(message, xml?.LineNumber, xml?.LinePosition, true));
+            return $"{file} could not apply: {message}";
+        }
+        if (XamlReloading.MissingHandler(change.Text, first.Line, first.Column, root) is { } handler)
+        {
+            said[said.IndexOf(first)] = first with { Message = handler };
+            return $"{file} could not apply: {handler}";
+        }
+        return $"{file} could not apply: {first.Message}";
+    }
+
+    private static string Called(AvaloniaObject made) => Words.Describe(made.GetType(), (made as StyledElement)?.Name);
+
+    /// <summary>Whether the build made an object from this file, by the source info it gave it.</summary>
+    private static bool From(object made, string file) =>
+        XamlSourceInfo.GetXamlSourceInfo(made) is { SourceUri: { } uri } && PathNames.Same(uri.IsFile ? uri.LocalPath : uri.ToString(), file);
+
+    /// <summary>Every object the app holds that a XAML file's root can make: its Application, each top level's visuals and
+    /// logical children, and the styles and resources each of them holds, outer before inner.</summary>
+    private IEnumerable<object> Reachable()
+    {
+        HashSet<object> seen = new(ReferenceEqualityComparer.Instance);
+        if (Application.Current is { } app && seen.Add(app))
+        {
+            yield return app;
+        }
+        foreach (TopLevel top in tops())
+        {
+            foreach (object made in new object[] { top }.Concat(top.GetVisualDescendants()).Concat(((ILogical)top).GetLogicalDescendants()))
+            {
+                if (seen.Add(made))
+                {
+                    yield return made;
+                }
+            }
+        }
+        foreach ((object made, _) in Providers())
+        {
+            if (seen.Add(made))
+            {
+                yield return made;
+            }
+        }
+    }
+
+    /// <summary>The styles and resource dictionaries the app holds, each with how to put another in its place, outer
+    /// before inner: the Application's, then each element's.</summary>
+    private IEnumerable<(object Made, Action<object> Swap)> Providers()
+    {
+        HashSet<object> seen = new(ReferenceEqualityComparer.Instance);
+        List<(IList<IStyle> Styles, IResourceDictionary Resources)> owners = [];
+        if (Application.Current is { } app)
+        {
+            owners.Add((app.Styles, app.Resources));
+        }
+        foreach (TopLevel top in tops())
+        {
+            foreach (StyledElement element in new Visual[] { top }.Concat(top.GetVisualDescendants()).OfType<StyledElement>())
+            {
+                owners.Add((element.Styles, element.Resources));
+            }
+        }
+        foreach ((IList<IStyle> styles, IResourceDictionary resources) in owners)
+        {
+            foreach ((object Made, Action<object> Swap) provider in Styles(styles, seen).Concat(Resources(resources, seen)))
+            {
+                yield return provider;
+            }
+        }
+    }
+
+    private static IEnumerable<(object Made, Action<object> Swap)> Styles(IList<IStyle> styles, HashSet<object> seen)
+    {
+        if (!seen.Add(styles))
+        {
+            yield break;
+        }
+        for (int i = 0; i < styles.Count; i++)
+        {
+            IStyle style = styles[i];
+            int at = i;
+            yield return (style, swapped => styles[at] = (IStyle)swapped);
+            IEnumerable<(object, Action<object>)> inner = style switch
+            {
+                Styles nested => Styles(nested, seen).Concat(Resources(nested.Resources, seen)),
+                StyleBase single => Resources(single.Resources, seen),
+                _ => [],
+            };
+            foreach ((object, Action<object>) found in inner)
+            {
+                yield return found;
+            }
+        }
+    }
+
+    private static IEnumerable<(object Made, Action<object> Swap)> Resources(IResourceDictionary resources, HashSet<object> seen)
+    {
+        if (!seen.Add(resources))
+        {
+            yield break;
+        }
+        IList<IResourceProvider> merged = resources.MergedDictionaries;
+        for (int i = 0; i < merged.Count; i++)
+        {
+            IResourceProvider provider = merged[i];
+            int at = i;
+            yield return (provider, swapped => merged[at] = (IResourceProvider)swapped);
+            if (provider is IResourceDictionary inner)
+            {
+                foreach ((object, Action<object>) found in Resources(inner, seen))
+                {
+                    yield return found;
+                }
+            }
+        }
+        foreach ((ThemeVariant variant, IThemeVariantProvider theme) in resources.ThemeDictionaries.ToList())
+        {
+            yield return (theme, swapped => resources.ThemeDictionaries[variant] = (IThemeVariantProvider)swapped);
+        }
+    }
+
+    /// <summary>Points the name generator's x:Name fields of an object at the controls its name scope now has by their names.</summary>
+    private static void Named(AvaloniaObject made)
+    {
+        if (made is not StyledElement element || NameScope.GetNameScope(element) is not { } scope)
+        {
+            return;
+        }
+        foreach (FieldInfo field in made.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+        {
+            if (field.GetCustomAttribute<GeneratedCodeAttribute>() is { Tool: { } tool } && tool.StartsWith("Avalonia.Generators", StringComparison.Ordinal)
+                && scope.Find(field.Name) is { } control && field.FieldType.IsInstanceOfType(control))
+            {
+                field.SetValue(made, control);
+            }
+        }
+    }
+
+    /// <summary>What populating an object again adds to, taken away first and kept to put back: its styles, resources,
+    /// data templates, key bindings and classes, its root's handlers, and its own local values.</summary>
+    private sealed class Held
+    {
+        private readonly AvaloniaObject made;
+        private readonly IList<IStyle>? styles;
+        private readonly List<IStyle> heldStyles;
+        private readonly IResourceDictionary? resources;
+        private readonly IList<IDataTemplate>? templates;
+        private readonly List<IDataTemplate> heldTemplates;
+        private readonly List<KeyBinding>? keys;
+        private readonly List<KeyBinding> heldKeys;
+        private readonly List<string> heldClasses;
+        private readonly Dictionary<AvaloniaProperty, object?> locals;
+        private readonly List<(EventInfo Event, Delegate Handler)> unhooked = [];
+
+        public Held(AvaloniaObject made)
+        {
+            this.made = made;
+            (styles, resources, templates) = made switch
+            {
+                Application app => ((IList<IStyle>?)app.Styles, (IResourceDictionary?)app.Resources, (IList<IDataTemplate>?)app.DataTemplates),
+                Control control => (control.Styles, control.Resources, control.DataTemplates),
+                StyledElement element => (element.Styles, element.Resources, null),
+                _ => (null, null, null),
+            };
+            keys = (made as InputElement)?.KeyBindings;
+            heldStyles = styles is null ? [] : [.. styles];
+            heldTemplates = templates is null ? [] : [.. templates];
+            heldKeys = keys is null ? [] : [.. keys];
+            heldClasses = made is StyledElement styled ? [.. styled.Classes.Where(c => !c.StartsWith(':'))] : [];
+            locals = Locals(made);
+        }
+
+        /// <summary>Clears what populating adds to, and what the text before set on the root that the text now does not.</summary>
+        public void Reset(XamlRoot now, XamlRoot? was)
+        {
+            styles?.Clear();
+            templates?.Clear();
+            keys?.Clear();
+            switch (made)
+            {
+                case Application app:
+                    app.Resources = new ResourceDictionary();
+                    break;
+                case StyledElement element:
+                    element.Resources = new ResourceDictionary();
+                    if (now.Attributes.ContainsKey("Classes") || was?.Attributes.ContainsKey("Classes") == true)
+                    {
+                        element.Classes.RemoveAll(heldClasses);
+                    }
+                    break;
+            }
+            if (was is null)
+            {
+                return;
+            }
+            foreach ((string name, string value) in was.Attributes)
+            {
+                if (made.GetType().GetEvent(name, BindingFlags.Public | BindingFlags.Instance) is { EventHandlerType: { } kind } handled
+                    && Handler(kind, value) is { } handler)
+                {
+                    handled.RemoveEventHandler(made, handler);
+                    unhooked.Add((handled, handler));
+                }
+            }
+            foreach (string dropped in was.Dropped(now))
+            {
+                if (Property(made, dropped) is { IsReadOnly: false } property)
+                {
+                    made.ClearValue(property);
+                }
+            }
+        }
+
+        /// <summary>The text failed: the object as it was.</summary>
+        public void PutBack()
+        {
+            if (styles is not null)
+            {
+                styles.Clear();
+                foreach (IStyle style in heldStyles)
+                {
+                    styles.Add(style);
+                }
+            }
+            if (templates is not null)
+            {
+                templates.Clear();
+                foreach (IDataTemplate template in heldTemplates)
+                {
+                    templates.Add(template);
+                }
+            }
+            if (keys is not null)
+            {
+                keys.Clear();
+                keys.AddRange(heldKeys);
+            }
+            switch (made)
+            {
+                case Application app when resources is not null:
+                    app.Resources = resources;
+                    break;
+                case StyledElement element:
+                    if (resources is not null)
+                    {
+                        element.Resources = resources;
+                    }
+                    element.Classes.RemoveAll([.. element.Classes.Where(c => !c.StartsWith(':'))]);
+                    element.Classes.AddRange(heldClasses);
+                    break;
+            }
+            foreach ((AvaloniaProperty property, object? _) in Locals(made).Where(l => !locals.ContainsKey(l.Key)))
+            {
+                made.ClearValue(property);
+            }
+            foreach ((AvaloniaProperty property, object? value) in locals.Where(l => !Equals(made.GetValue(l.Key), l.Value)))
+            {
+                made.SetValue(property, value);
+            }
+            foreach ((EventInfo handled, Delegate handler) in unhooked)
+            {
+                handled.AddEventHandler(made, handler);
+            }
+        }
+
+        /// <summary>The text applied: a root property it sets as the text before did keeps what the app held in it, unless
+        /// that is part of the tree (a control, which the text made again).</summary>
+        public void Keep(XamlRoot now, XamlRoot? was)
+        {
+            if (was is null)
+            {
+                return;
+            }
+            foreach ((AvaloniaProperty property, object? value) in locals)
+            {
+                if (value is not (Visual or ILogical or IStyle) && was.Keeps(now, NameOf(property)) && !Equals(made.GetValue(property), value))
+                {
+                    made.SetValue(property, value);
+                }
+            }
+        }
+
+        private static Dictionary<AvaloniaProperty, object?> Locals(AvaloniaObject made)
+        {
+            Dictionary<AvaloniaProperty, object?> values = [];
+            Type type = made.GetType();
+            foreach (AvaloniaProperty property in AvaloniaPropertyRegistry.Instance.GetRegistered(type).Concat(AvaloniaPropertyRegistry.Instance.GetRegisteredAttached(type)))
+            {
+                if (!property.IsDirect && !property.IsReadOnly && property.OwnerType != typeof(XamlSourceInfo)
+                    && made.GetDiagnostic(property) is { Priority: BindingPriority.LocalValue } local)
+                {
+                    values.TryAdd(property, local.Value);
+                }
+            }
+            return values;
+        }
+
+        private static string NameOf(AvaloniaProperty property) => property.IsAttached ? $"{property.OwnerType.Name}.{property.Name}" : property.Name;
+
+        /// <summary>A root's property by the name its XAML gives it (Owner.Name when attached).</summary>
+        private static AvaloniaProperty? Property(AvaloniaObject made, string name)
+        {
+            int dot = name.IndexOf('.', StringComparison.Ordinal);
+            return dot < 0
+                ? AvaloniaPropertyRegistry.Instance.FindRegistered(made, name)
+                : AvaloniaPropertyRegistry.Instance.GetRegisteredAttached(made.GetType())
+                    .FirstOrDefault(p => p.OwnerType.Name == name[..dot] && p.Name == name[(dot + 1)..]);
+        }
+
+        /// <summary>The handler an attribute names on the object, as its XAML made it: equal to it, so it can be taken off.</summary>
+        private Delegate? Handler(Type kind, string method)
+        {
+            foreach (MethodInfo candidate in made.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).Where(m => m.Name == method))
+            {
+                if (Delegate.CreateDelegate(kind, made, candidate, throwOnBindFailure: false) is { } handler)
+                {
+                    return handler;
+                }
+            }
+            return null;
+        }
+    }
+}

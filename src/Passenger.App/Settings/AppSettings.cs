@@ -118,6 +118,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>Hot Reload on file save: a C# file saved while the program is debugged applies its edits.</summary>
     public bool HotReloadOnSave { get; init; }
 
+    /// <summary>XAML Hot Reload on file save: a XAML file saved applies the XAML edits to the Avalonia or WPF app run or
+    /// debugged, which takes them through Passenger's inspector.</summary>
+    public bool XamlHotReloadOnSave { get; init; } = true;
+
     /// <summary>An edit Hot Reload cannot apply (a rude edit) restarts the debugged program, built again with the same
     /// configuration and breakpoints, without asking; off, the restart is asked first.</summary>
     public bool RestartOnRudeEdit { get; init; } = true;

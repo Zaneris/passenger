@@ -49,6 +49,36 @@ public sealed record HotReloadOutcome(HotReloadResult Result, string Said)
 
     /// <summary>Of several programs' apply (a container run's services), those whose edits need them restarted, by name.</summary>
     public IReadOnlyList<string> Restart { get; init; } = [];
+
+    /// <summary>A program's C# apply and its XAML's said as one, C#'s first, the worse result standing; null when neither ran.</summary>
+    public static HotReloadOutcome? Both(HotReloadOutcome? code, HotReloadOutcome? xaml)
+    {
+        if (code is null || xaml is null)
+        {
+            return code ?? xaml;
+        }
+        List<string> said = [.. new[] { code, xaml }.Where(o => o.Result != HotReloadResult.NothingToApply || o.Problems.Count > 0).Select(o => o.Said)];
+        return new HotReloadOutcome(Worse(code.Result, xaml.Result), said.Count == 0 ? code.Said : string.Join("; ", said))
+        {
+            Problems = [.. code.Problems, .. xaml.Problems],
+            Files = [.. code.Files, .. xaml.Files],
+            Modules = code.Modules,
+            Methods = code.Methods,
+            Took = code.Took + xaml.Took,
+        };
+    }
+
+    /// <summary>Of two results, the one to act on: errors first, then a restart, a failure, an apply, and nothing applied.</summary>
+    internal static HotReloadResult Worse(HotReloadResult one, HotReloadResult other) => Rank(one) <= Rank(other) ? one : other;
+
+    private static int Rank(HotReloadResult result) => result switch
+    {
+        HotReloadResult.Errors => 0,
+        HotReloadResult.RestartNeeded => 1,
+        HotReloadResult.Failed => 2,
+        HotReloadResult.Applied => 3,
+        _ => 4,
+    };
 }
 
 /// <summary>How a restart for edits Hot Reload could not apply is made, given what the apply came to and whether it is for

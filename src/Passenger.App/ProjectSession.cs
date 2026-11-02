@@ -140,6 +140,7 @@ public sealed class ProjectSession : IAsyncDisposable
             Server = () => CSharp?.Session,
             HotReloadOn = () => setup.Settings().HotReloadWhileDebugging,
             HotReloadOnSave = () => setup.Settings().HotReloadOnSave,
+            XamlOnSave = () => setup.Settings().XamlHotReloadOnSave,
         };
         Debug.SelectionChanged += (_, _) =>
         {
@@ -624,8 +625,18 @@ public sealed class ProjectSession : IAsyncDisposable
     public (LaunchPlan Plan, LiveApp? App) Inspected(LaunchPlan plan)
     {
         UiThread.Check();
-        LiveApp? app = LiveTree.LiveApp.For(plan, Overlays);
+        LiveApp? app = Reloaded(LiveTree.LiveApp.For(plan, Overlays));
         return (app?.Plan ?? plan, app);
+    }
+
+    /// <summary>An app Run or Debug launches, given its XAML Hot Reload.</summary>
+    private LiveApp? Reloaded(LiveApp? app)
+    {
+        if (app is not null)
+        {
+            app.Xaml = new LiveTree.XamlHotReload(app, setup.Editors.TextOf, Xaml.ProjectAsync);
+        }
+        return app;
     }
 
     /// <summary>A Debug tab came, went or was chosen: the chosen tab's app may be another, and the apps whose failed bindings
@@ -655,7 +666,7 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         UiThread.Check();
         RunApp?.Dispose();
-        RunApp = hotReload ? null : LiveTree.LiveApp.For(plan, Overlays);
+        RunApp = hotReload ? null : Reloaded(LiveTree.LiveApp.For(plan, Overlays));
         InspectedChanged?.Invoke(this, EventArgs.Empty);
         return RunApp?.Plan ?? plan;
     }

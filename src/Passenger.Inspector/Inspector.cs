@@ -10,9 +10,9 @@ using Avalonia.VisualTree;
 namespace Passenger.Inspector;
 
 /// <summary>The inspector's work on the app's UI thread: the windows and their visual trees, an element looked at closely,
-/// Select Element and the outline over the element chosen, a word to Passenger as controls come and go, and for an agent
-/// the windows' pictures and input to them (<see cref="Pictures"/>, <see cref="Driver"/>). Elements are named by ids that
-/// last as long as the element does.</summary>
+/// Select Element and the outline over the element chosen, a word to Passenger as controls come and go, for an agent the
+/// windows' pictures and input to them (<see cref="Pictures"/>, <see cref="Driver"/>), and XAML Hot Reload
+/// (<see cref="XamlReloads"/>). Elements are named by ids that last as long as the element does.</summary>
 internal sealed class Inspector : Inspecting<Visual>
 {
     private readonly List<IDisposable> handlers = [];
@@ -20,6 +20,7 @@ internal sealed class Inspector : Inspecting<Visual>
     private readonly Driver driver;
     private readonly PropertyBreaks breaks = new();
     private readonly ValueWatch values;
+    private readonly XamlReloads reloads;
 
     /// <param name="overlays">The renderer debug overlays the launch asked for (<see cref="Wire.OverlaysVariable"/>), or null.</param>
     public Inspector(Connection connection, string? overlays = null) : base(connection)
@@ -28,7 +29,12 @@ internal sealed class Inspector : Inspecting<Visual>
         picker = new Picker(this, connection);
         driver = new Driver(this);
         values = new ValueWatch(connection);
-        handlers.Add(Control.LoadedEvent.AddClassHandler(typeof(Control), (sender, _) => Changed(sender)));
+        reloads = new XamlReloads(TopLevels);
+        handlers.Add(Control.LoadedEvent.AddClassHandler(typeof(Control), (sender, _) =>
+        {
+            reloads.Loaded(sender);
+            Changed(sender);
+        }));
         handlers.Add(Control.UnloadedEvent.AddClassHandler(typeof(Control), (sender, _) => Changed(sender)));
         handlers.Add(Window.WindowOpenedEvent.AddClassHandler(typeof(Window), (sender, _) =>
         {
@@ -102,6 +108,8 @@ internal sealed class Inspector : Inspecting<Visual>
     }
 
     protected override void Later(TimeSpan delay, Action action) => DispatcherTimer.RunOnce(action, delay);
+
+    protected override XamlReloaded Reload(XamlChange change) => reloads.Reload(change);
 
     /// <summary>Whether a visual is the inspector's own (Select Element's outline), which the tree leaves out.</summary>
     public bool IsOwn(Visual visual) => picker.IsOwn(visual);

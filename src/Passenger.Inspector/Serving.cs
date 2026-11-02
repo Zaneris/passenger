@@ -132,6 +132,7 @@ internal abstract class Inspecting<T>(Connection connection) where T : class
                 Wire.Watch => Done(request, () => Watch(request)),
                 Wire.Values => new Reply { Id = request.Id, Values = ValuesOf(request) },
                 Wire.Overlays => new Reply { Id = request.Id, Windows = SetOverlays(request) },
+                Wire.Reload => new Reply { Id = request.Id, Reloaded = Reload(request.Change ?? throw new Refusal("No XAML file was given")) },
                 _ => new Reply { Id = request.Id, Error = $"The inspector does not know '{request.Method}'" },
             };
         }
@@ -186,6 +187,9 @@ internal abstract class Inspecting<T>(Connection connection) where T : class
 
     /// <summary>The renderer debug overlays asked for set, and the windows as they are then; refused by a framework with none.</summary>
     protected abstract List<AppWindow> SetOverlays(Request request);
+
+    /// <summary>A XAML file's text applied to what the app made from it, or why it could not be.</summary>
+    protected abstract XamlReloaded Reload(XamlChange change);
 
     /// <summary>Whether an element is one the tree leaves out (the inspector's own), whose coming is no change in the app.</summary>
     protected abstract bool LeftOut(T element);

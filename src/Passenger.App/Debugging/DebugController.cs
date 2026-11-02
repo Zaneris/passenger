@@ -371,9 +371,10 @@ public sealed class DebugController : IDisposable
     private Task<Applying>? applying;
 
     /// <summary>Why Apply Changes cannot run: nothing debugged, a session without Hot Reload, or one that stopped taking
-    /// changes.</summary>
+    /// changes; none while its app's XAML has edits, which need no Edit and Continue.</summary>
     public string? WhyNotApply() => NotLive()
         ?? (Reloaded!.Session!.State == DebugState.Starting ? StillStarting
+        : Reloaded.App?.Xaml is { Changed: true } ? null
         : Reloaded.Session.Engine == DebugEngine.WebAssembly ? BrowserReload
         : hotReload is null ? (Reloaded.Session.Attached
             ? "Hot Reload applies changes to a program the debugger launched, not to one it attached to"
@@ -421,8 +422,8 @@ public sealed class DebugController : IDisposable
     /// an agent's, a resume's): one at a time, so one asked while another is under way waits for it and then applies only
     /// what still has edits, sending no program a second update for the same edits. Each target's console says what its
     /// apply came to; those that need a restart for their edits are restarted as <paramref name="restart"/> says (none when
-    /// null). Answers what they came to, said as one.</summary>
-    internal async Task<HotReloadApplied> ApplyAsync(IReadOnlyList<IHotReloadTarget> targets, HotReloadRestart? restart)
+    /// null). Answers what they came to, said as one; <paramref name="xamlOnly"/>, of their apps' XAML alone.</summary>
+    internal async Task<HotReloadApplied> ApplyAsync(IReadOnlyList<IHotReloadTarget> targets, HotReloadRestart? restart, bool xamlOnly = false)
     {
         UiThread.Check();
         Applying? before = null;
@@ -432,13 +433,13 @@ public sealed class DebugController : IDisposable
         }
         if (before is not null)
         {
-            targets = [.. targets.Where(target => target.HotReload is { Changed: true })];
+            targets = [.. targets.Where(target => (!xamlOnly && target.HotReload is { Changed: true }) || target is DebugTab { App.Xaml.Changed: true })];
             if (targets.Count == 0)
             {
                 return new HotReloadApplied(before.Outcome, false);
             }
         }
-        Task<Applying> mine = ApplyOnceAsync(targets);
+        Task<Applying> mine = ApplyOnceAsync(targets, xamlOnly);
         applying = mine;
         Applying done;
         try
@@ -468,7 +469,7 @@ public sealed class DebugController : IDisposable
     /// as its own.</summary>
     private sealed record Applying(HotReloadOutcome Outcome, HotReloadOutcome? Services, DebugTab? Tab, HotReloadOutcome? Program);
 
-    private async Task<Applying> ApplyOnceAsync(IReadOnlyList<IHotReloadTarget> targets)
+    private async Task<Applying> ApplyOnceAsync(IReadOnlyList<IHotReloadTarget> targets, bool xamlOnly)
     {
         using IDisposable held = BackgroundWork.Scope();
         if (targets.Count == 0)
@@ -486,8 +487,7 @@ public sealed class DebugController : IDisposable
             foreach (IHotReloadTarget target in targets)
             {
                 DebugSession? session = (target as DebugTab)?.Session;
-                each.Add((target, session, target.HotReload is { } reload ? await reload.ApplyAsync()
-                    : new HotReloadOutcome(HotReloadResult.Failed, $"{target.Name} is not debugged with Hot Reload")));
+                each.Add((target, session, await ApplyTargetAsync(target, xamlOnly)));
             }
             tabs = [.. each.Where(e => !e.Target.Quiet).Select(e => ((DebugTab)e.Target, e.Session, e.Outcome))];
             foreach ((DebugTab tab, DebugSession? session, HotReloadOutcome its) in tabs)
@@ -537,6 +537,18 @@ public sealed class DebugController : IDisposable
         return new Applying(outcome, services, applied, program);
 
         static bool Unapplied(HotReloadOutcome its) => its.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply);
+    }
+
+    /// <summary>A program's edits applied: its C# first (with edits of its own, or nothing else to apply), so a handler or field
+    /// its XAML names is there, then its app's XAML (<see cref="LiveTree.XamlHotReload"/>).</summary>
+    private static async Task<HotReloadOutcome> ApplyTargetAsync(IHotReloadTarget target, bool xamlOnly)
+    {
+        LiveTree.XamlHotReload? xaml = target is DebugTab { App.Xaml: { Changed: true } edited } ? edited : null;
+        HotReloadOutcome? code = !xamlOnly && target.HotReload is { } reload && (xaml is null || (reload.Changed && reload.WhyNot is null))
+            ? await reload.ApplyAsync()
+            : null;
+        HotReloadOutcome? markup = xaml is null ? null : await xaml.ApplyAsync(paused: (target as DebugTab)?.Session?.State == DebugState.Paused);
+        return HotReloadOutcome.Both(code, markup) ?? new HotReloadOutcome(HotReloadResult.Failed, $"{target.Name} is not debugged with Hot Reload");
     }
 
     /// <summary>The update handlers of a program run with Hot Reload told of an update it took (<see cref="ToldHandlers(DebugTab, DebugSession)"/>).</summary>
@@ -591,7 +603,7 @@ public sealed class DebugController : IDisposable
         {
             return false;
         }
-        List<string> files = [.. its.Files.Select(PathNames.Canonical)];
+        List<string> files = [.. its.Files.Where(f => !Xaml.XamlService.IsXaml(f)).Select(PathNames.Canonical)];
         // The stop shown keeps its place in the text, then the files' lines are the program's.
         bool shown = tab == chosen;
         (string Path, int Line)? shownAt = shown && executionPoint is { } point && files.Contains(point.Path) ? (point.Path, Current(point.Path, point.Line)) : null;
@@ -604,7 +616,8 @@ public sealed class DebugController : IDisposable
             executionPoint = (now.Path, Built(now.Path, now.Line));
         }
         await session.SendBreakpointsAgainAsync(files);
-        if (its.Result == HotReloadResult.Applied)
+        // An update of code alone: XAML Hot Reload changes no module.
+        if (its.Result == HotReloadResult.Applied && its.Modules.Count > 0)
         {
             ToldHandlers(tab, session);
             tab.Browser?.Updated();
@@ -1343,14 +1356,7 @@ public sealed class DebugController : IDisposable
         {
             return only;
         }
-        HotReloadResult result = each.Select(e => e.Outcome.Result).OrderBy(r => r switch
-        {
-            HotReloadResult.Errors => 0,
-            HotReloadResult.RestartNeeded => 1,
-            HotReloadResult.Failed => 2,
-            HotReloadResult.Applied => 3,
-            _ => 4,
-        }).First();
+        HotReloadResult result = each.Select(e => e.Outcome.Result).Aggregate(HotReloadOutcome.Worse);
         // Nothing applied says more when Roslyn said why (a stale project's file).
         List<string> said = [.. each.Where(e => e.Outcome.Result != HotReloadResult.NothingToApply || e.Outcome.Problems.Count > 0).Select(e => $"{e.Name}: {e.Outcome.Said}")];
         return new HotReloadOutcome(result, said.Count == 0 ? HotReload.NothingApplied([]) : string.Join("; ", said))
@@ -1999,15 +2005,20 @@ public sealed class DebugController : IDisposable
     /// <summary>Whether a save while the program is debugged applies the edits (Settings' Apply changes on file save).</summary>
     public Func<bool> HotReloadOnSave { get; init; } = () => false;
 
-    /// <summary>An apply a save asked for, run once the saves of one Save All are done.</summary>
+    /// <summary>An apply a save asked for, run once the saves of one Save All are done, and whether one of them was a XAML
+    /// file's.</summary>
     private bool applyOnSave;
+    private bool xamlOnSave;
 
     private void OnSaved(object? sender, EventArgs e)
     {
         // A program run with Hot Reload takes a save's edits, whatever else is debugged.
         bool run = running.Any(r => r.Reload.Changed);
         bool debugged = HotReload is { Changed: true } && HotReloadOnSave() && WhyNotApply() is null;
-        if (applyOnSave || !run && !debugged)
+        bool xaml = sender is OpenDocument saved && Xaml.XamlService.IsXaml(saved.Path) && XamlOnSave()
+            && view.Sessions.Any(t => t.IsLive && t.App?.Xaml is { Changed: true });
+        xamlOnSave |= xaml;
+        if (applyOnSave || !run && !debugged && !xaml)
         {
             return;
         }
@@ -2016,14 +2027,32 @@ public sealed class DebugController : IDisposable
         Dispatcher.UIThread.Post(() =>
         {
             applyOnSave = false;
+            bool markupSaved = xamlOnSave;
+            xamlOnSave = false;
             if (!disposed && Session == savedSession)
             {
-                IdeErrors.Observe(SavedAsync());
+                IdeErrors.Observe(SavedAsync(markupSaved));
             }
         });
 
-        Task SavedAsync() => ApplyAsync([.. run ? running : [], .. debugged && HotReload is { Changed: true } ? Debugged() : []], SettingsRestart);
+        // The C# applied first, with its programs' XAML; then, for a XAML file saved, the XAML of every other program debugged.
+        async Task SavedAsync(bool markupSaved)
+        {
+            List<IHotReloadTarget> code = [.. run ? running : [], .. debugged && HotReload is { Changed: true } ? Debugged() : []];
+            if (code.Count > 0)
+            {
+                await ApplyAsync(code, SettingsRestart);
+            }
+            List<IHotReloadTarget> markup = [.. view.Sessions.Where(t => markupSaved && t.IsLive && !code.Contains(t) && t.App?.Xaml is { Changed: true })];
+            if (markup.Count > 0 && !disposed)
+            {
+                await ApplyAsync(markup, SettingsRestart, xamlOnly: true);
+            }
+        }
     }
+
+    /// <summary>Whether a XAML file's save applies the XAML edits to the apps debugged (Settings' XAML Hot Reload on save).</summary>
+    public Func<bool> XamlOnSave { get; init; } = () => false;
 
     /// <summary>Apply Hot Reload Changes: the programs run with Hot Reload through the debugger take the edits whenever
     /// they have any (or nothing else would take them), whatever else is debugged, and the chosen session debugged with Hot
@@ -2250,6 +2279,11 @@ public sealed class DebugController : IDisposable
         if (disposed || !view.Sessions.Contains(tab))
         {
             return;
+        }
+        // XAML applied while the program was paused, whose UI answers once it runs.
+        if (session.State == DebugState.Running && tab.App?.Xaml is { Waiting: true, Changed: true })
+        {
+            IdeErrors.Observe(ApplyAsync([tab], SettingsRestart, xamlOnly: true));
         }
         if (tab != chosen)
         {

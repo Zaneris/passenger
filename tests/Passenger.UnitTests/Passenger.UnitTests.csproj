@@ -55,6 +55,12 @@
     <Compile Include="../../src/Passenger.App/Debugging/DevelopmentAssets.cs" Link="App/DevelopmentAssets.cs" />
   </ItemGroup>
 
+  <!-- How XAML Hot Reload compares two texts of a XAML file's root, compiled in since its project is the inspector, which
+       an app loads. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.Inspector/XamlRoot.cs" Link="Inspector/XamlRoot.cs" />
+  </ItemGroup>
+
   <!-- Where an AppHost's dashboard is called from where it listens, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Aspire/DashboardAddress.cs" Link="App/DashboardAddress.cs" />

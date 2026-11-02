@@ -75,6 +75,8 @@ internal sealed class Inspector : Inspecting<DependencyObject>
 
     protected override List<AppWindow> SetOverlays(Request request) => throw new Refusal("Renderer debug overlays are Avalonia's: a WPF app has none");
 
+    protected override XamlReloaded Reload(XamlChange change) => throw new Refusal("XAML Hot Reload does not reach a WPF app yet");
+
     protected override void Later(TimeSpan delay, Action action)
     {
         DispatcherTimer timer = new(DispatcherPriority.Background) { Interval = delay };

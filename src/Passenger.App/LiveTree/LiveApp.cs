@@ -321,13 +321,24 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     public async Task<XamlValues> ValuesAsync(XamlRead read) =>
         (await AskAsync(new Request(0, Wire.Values) { Xaml = read })).Values ?? throw new LiveAppException($"{Name} read no bindings");
 
+    /// <summary>A XAML file's text applied to what the app made from it (XAML Hot Reload), answered with what it came to.</summary>
+    public async Task<XamlReloaded> ReloadAsync(XamlChange change) =>
+        (await AskAsync(new Request(0, Wire.Reload) { Change = change }, limit: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the XAML came to");
+
+    /// <summary>How long the app may take to apply a XAML file: its first compiles Avalonia's XAML compiler itself, slower
+    /// again under the debugger.</summary>
+    public static TimeSpan ReloadLimit => Waits.Of(TimeSpan.FromSeconds(30));
+
+    /// <summary>Its XAML Hot Reload, given by the session that launched it; null for Passenger's own windows.</summary>
+    public XamlHotReload? Xaml { get; set; }
+
     /// <summary>Input to the app, as a person gives it, answered once it has been handled and laid out.</summary>
     public async Task<InputDone> InputAsync(InputAction input, CancellationToken giveUp = default) =>
         (await AskAsync(new Request(0, Wire.Input) { Input = input }, giveUp)).Done ?? throw new LiveAppException($"{Name} did not say what the input did");
 
-    /// <summary>A request's answer; <paramref name="giveUp"/> stops the wait for it (the app paused under the debugger
-    /// before it could answer), its answer then forgotten.</summary>
-    private async Task<Reply> AskAsync(Request request, CancellationToken giveUp = default)
+    /// <summary>A request's answer within <see cref="AnswerLimit"/> or <paramref name="limit"/>; <paramref name="giveUp"/> stops
+    /// the wait for it (the app paused under the debugger before it could answer), its answer then forgotten.</summary>
+    private async Task<Reply> AskAsync(Request request, CancellationToken giveUp = default, TimeSpan? limit = null)
     {
         if (State != LiveAppState.Connected || stream is not { } open)
         {
@@ -357,7 +368,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         Reply reply;
         try
         {
-            reply = await answer.WaitAsync(AnswerLimit, giveUp);
+            reply = await answer.WaitAsync(limit ?? AnswerLimit, giveUp);
         }
         catch (OperationCanceledException) when (giveUp.IsCancellationRequested)
         {
@@ -368,7 +379,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         {
             // Forgotten, so its answer, if it ever comes, finds no one waiting.
             asked.Forget(id, answer);
-            throw new LiveAppException(NotAnswered(Name));
+            throw new LiveAppException(limit is { } longer ? $"{Name} did not answer within {longer.TotalSeconds:0} s" : NotAnswered(Name));
         }
         return reply.Error is { } why ? throw new LiveAppException(why) : reply;
     }

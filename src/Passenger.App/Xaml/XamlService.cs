@@ -130,6 +130,14 @@ public sealed class XamlService : IDisposable
         return await BackgroundWork.Run(() => (texts(path) ?? EditorArea.Read(path)) is { } text ? XamlDocument.Read(path, text.ToString(), project, null) : null);
     }
 
+    /// <summary>The project a XAML file is in as its XAML is read, its load begun if it has not been; null for a file of no
+    /// C# project, or of one whose XAML Passenger does not read.</summary>
+    public Task<XamlProject?> ProjectAsync(string path)
+    {
+        UiThread.Check();
+        return !disposed && IsXaml(path) && ProjectOf(path) is { } loading ? loading.Loaded : Task.FromResult<XamlProject?>(null);
+    }
+
     /// <summary>An open XAML file's text as it stands, by its path; null when it is not open.</summary>
     public TextSnapshot? OpenText(string path)
     {

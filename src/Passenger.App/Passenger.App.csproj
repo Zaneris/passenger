@@ -201,12 +201,16 @@
     </ItemGroup>
   </Target>
 
-  <!-- The inspector becomes this project's output under inspector/: its own assembly alone, since the app it loads into
-       brings the Avalonia it uses. -->
+  <!-- The inspector becomes this project's output under inspector/: its own assembly and XAML Hot Reload's compiler, since
+       the app it loads into brings the Avalonia it uses. -->
   <Target Name="IncludeInspector" BeforeTargets="AssignTargetPaths">
     <MSBuild Projects="../Passenger.Inspector/Passenger.Inspector.csproj" Targets="GetTargetPath"
              RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
       <Output TaskParameter="TargetOutputs" ItemName="InspectorAssembly" />
+    </MSBuild>
+    <MSBuild Projects="../Passenger.Inspector/Passenger.Inspector.csproj" Targets="GetCarriedFiles"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="InspectorFile" />
     </MSBuild>
     <ItemGroup>
       <InspectorFile Include="@(InspectorAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(InspectorAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />

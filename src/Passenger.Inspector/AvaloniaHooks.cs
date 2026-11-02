@@ -48,10 +48,14 @@ internal static class AvaloniaHooks
 }
 
 /// <summary>Where a hook runs: its own context, which takes Avalonia's assemblies from the program whatever their 12.x
-/// version, since the default context would refuse one older than the 12.x the hook was compiled against. Nothing of it
-/// touches Avalonia, so a hook asks it before Avalonia is loaded.</summary>
+/// version, since the default context would refuse one older than the 12.x the hook was compiled against, and Avalonia's
+/// runtime XAML compiler from beside the hook where the program carries none. Nothing of it touches Avalonia, so a hook
+/// asks it before Avalonia is loaded.</summary>
 internal sealed class AppAvaloniaContext(string what, string hook) : AssemblyLoadContext($"{what} ({Path.GetFileName(hook)})")
 {
+    /// <summary>Avalonia's runtime XAML compiler (XAML Hot Reload's), which a program seldom carries.</summary>
+    private const string XamlLoader = "Avalonia.Markup.Xaml.Loader";
+
     /// <summary>The Avalonia the program will load, from the assemblies the runtime was given for it (null when it has
     /// none), and whether the hooks serve it: its major version theirs.</summary>
     public static (Version? Version, bool Served) ProgramAvalonia()
@@ -61,7 +65,10 @@ internal sealed class AppAvaloniaContext(string what, string hook) : AssemblyLoa
     }
 
     protected override Assembly? Load(AssemblyName name) =>
-        name.Name is { } simple && (simple.StartsWith("Avalonia", StringComparison.Ordinal) || simple.StartsWith("MicroCom", StringComparison.Ordinal))
+        name.Name is XamlLoader && StartupHooks.TrustedAssembly(XamlLoader + ".dll") is null
+            && Path.Combine(Path.GetDirectoryName(hook)!, XamlLoader + ".dll") is { } carried && File.Exists(carried)
+            ? LoadFromAssemblyPath(carried)
+            : name.Name is { } simple && (simple.StartsWith("Avalonia", StringComparison.Ordinal) || simple.StartsWith("MicroCom", StringComparison.Ordinal))
             ? Default.LoadFromAssemblyName(new AssemblyName(simple))
             : null;
 }

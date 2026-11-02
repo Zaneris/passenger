@@ -9,7 +9,8 @@ namespace Passenger.App;
 
 /// <summary>Hot Reload while debugging in the window: what an Apply Changes came to in the status bar and Problems' Hot
 /// Reload tab, and the restart an edit the runtime cannot take needs: at once (Settings' Always restart, on by
-/// default), or asked: Yes, No, Always or Never.</summary>
+/// default), or asked: Yes, No, Always or Never. XAML edits reach an Avalonia or WPF app through its inspector, Run's on
+/// a save or Apply Changes, a debugged one's with its C#.</summary>
 public partial class MainWindow
 {
     /// <summary>The debugging session the person said Never to restarting for, which is not asked again.</summary>
@@ -31,8 +32,8 @@ public partial class MainWindow
     {
         Add(AppActions.ApplyHotReloadChanges, "Apply Hot Reload Changes", "Run", context =>
         {
-            // A container run's services take the edits through the debugger attached to each, whatever else is debugged.
-            if (session.Debug.HotReload is not null || session.Debug.Running.Count > 0)
+            // A container run's services take the edits through their debuggers, Run's app without dotnet watch its XAML.
+            if (session.Debug.HotReload is not null || session.Debug.Running.Count > 0 || session.Debug.IsDebugging || RunXamlEdited)
             {
                 IdeErrors.Observe(ApplyHotReloadAsync(session.Debug.SettingsRestart));
             }
@@ -44,6 +45,7 @@ public partial class MainWindow
         }, _ => session.Debug.Running.Count > 0 ? null
             : session.Debug.HotReload is not null || session.Debug.IsDebugging ? session.Debug.WhyNotApply()
             : buildRun.WatchesHotReload ? null
+            : RunXamlEdited ? null
             : buildRun.IsRunning && session.RunPlan is { GodotEditor: true } editor ? GodotEditorRunsWithout(editor.Name)
             : buildRun.IsRunning ? $"This program runs without Hot Reload: Run it with Hot Reload on ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)}), or Debug it"
             : $"Nothing runs: Debug the program, or Run it with Hot Reload on ({SettingsDialog.PlaceOfPage(SettingsDialog.HotReloadPage)})", ("Run", 0, 9));
@@ -51,6 +53,73 @@ public partial class MainWindow
         Editors.Opened += (_, document) => document.Saved += (_, _) => UnfollowWatch();
         // A GDScript file saved reaches the Godot game that runs it with Hot Reload.
         Editors.Opened += (_, document) => document.Saved += (_, _) => IdeErrors.Observe(buildRun.ReloadScriptAsync(document.Path));
+        // A XAML file's edits are followed for each app run or debugged, and reach Run's on its save as Settings say.
+        Editors.Opened += (_, document) =>
+        {
+            if (!Xaml.XamlService.IsXaml(document.Path))
+            {
+                return;
+            }
+            document.Text.Changed += (_, change) =>
+            {
+                if (change.Edits.Count > 0)
+                {
+                    foreach (InspectedApp inspected in session.Inspecting)
+                    {
+                        inspected.App.Xaml?.Edited(document.Path, change.Before);
+                    }
+                }
+            };
+            document.Saved += (_, _) => XamlSaved();
+        };
+    }
+
+    /// <summary>Whether the app Run runs without dotnet watch has XAML edits it has not taken.</summary>
+    private bool RunXamlEdited => !buildRun.WatchesHotReload && session.RunApp is { Xaml.Changed: true, State: not Passenger.App.LiveTree.LiveAppState.Ended };
+
+    /// <summary>An apply a XAML file's save asked of Run's app, run once the saves of one Save All are done.</summary>
+    private bool xamlOnSave;
+
+    private void XamlSaved()
+    {
+        if (xamlOnSave || !settings.XamlHotReloadOnSave || !RunXamlEdited)
+        {
+            return;
+        }
+        xamlOnSave = true;
+        ProjectSession saved = session;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            xamlOnSave = false;
+            if (session == saved && !saved.IsEnded)
+            {
+                IdeErrors.Observe(ApplyRunXamlAsync());
+            }
+        });
+    }
+
+    /// <summary>The XAML edits applied to the app Run runs, said where Hot Reload says what it applied: the status bar, the
+    /// Run window and Problems' Hot Reload tab. Null when it has none to take.</summary>
+    private async Task<HotReloadOutcome?> ApplyRunXamlAsync()
+    {
+        if (!RunXamlEdited || session.RunApp?.Xaml is not { } xaml)
+        {
+            return null;
+        }
+        ProjectSession current = session;
+        HotReloadOutcome? outcome = await xaml.ApplyAsync(paused: false);
+        if (outcome is null || session != current || current.IsEnded)
+        {
+            return outcome;
+        }
+        Bottom.Run.Append($"Hot Reload: {outcome.Said}\n", outcome.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply));
+        Bottom.Problems.ShowHotReload(outcome.Said, outcome.Problems);
+        if (outcome.Problems.Any(p => p.Severity == Run.ProblemSeverity.Error))
+        {
+            Dock.Show(ToolWindowIds.Problems);
+        }
+        Say(outcome.Said, outcome.Problems.Count > 0 ? HotReloadPlace : null);
+        return outcome;
     }
 
     /// <summary>Why Godot's editor Run started takes no Hot Reload (<see cref="GodotLaunch.EditorReloads"/>).</summary>
@@ -188,6 +257,10 @@ public partial class MainWindow
         using (working)
         {
             ProjectSession current = session;
+            if (!current.Debug.IsDebugging && current.Debug.Running.Count == 0 && await ApplyRunXamlAsync() is { } run)
+            {
+                return new HotReloadApplied(run, false);
+            }
             return await current.Debug.ApplyAllAsync((outcome, running) => session == current && !current.IsEnded
                 ? restart(outcome, running) : Task.FromResult(false));
         }

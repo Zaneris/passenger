@@ -8,14 +8,14 @@ using System.Text.Json.Serialization;
 // also tells without being asked (a Reply with an Event): hello once its UI runs, treeChanged as controls come and go,
 // picked when the person points at one, bindingFailed as a binding fails (from before hello), untold when it could not
 // tell all it had. While the app is paused its binding values are read through the debugger's evaluation of
-// BindingValues.Read.
+// BindingValues.Read. A XAML file's edit reaches what the app made from it through reload (XAML Hot Reload).
 namespace Passenger.Inspector;
 
 /// <summary>The names both ends agree on.</summary>
 public static class Wire
 {
     /// <summary>Bumped by a change either end must know of: a hello of another version is refused, saying so.</summary>
-    public const int Version = 8;
+    public const int Version = 9;
 
     /// <summary>The app's environment: the socket's path, where it connects.</summary>
     [IdentifierHome]
@@ -44,6 +44,7 @@ public static class Wire
     public const string Watch = "watch";
     public const string Values = "values";
     public const string Overlays = "overlays";
+    public const string Reload = "reload";
 
     /// <summary>Avalonia's renderer debug overlays, by the names of its RendererDebugOverlays flags, in its order.</summary>
     public static readonly IReadOnlyList<string> OverlayNames = ["Fps", "DirtyRects", "LayoutTimeGraph", "RenderTimeGraph"];
@@ -76,7 +77,8 @@ public static class Wire
 
 /// <summary>What Passenger asks: the windows' tree, an element's details, Select Element on or off, an element outlined in
 /// the app (none to take the outline away), the windows alone, a picture of a window (or of the element's part of it),
-/// input to the app, or a property breakpoint's watch on an element's property (On false to end it).</summary>
+/// input to the app, a property breakpoint's watch on an element's property (On false to end it), or a XAML file's text
+/// applied.</summary>
 public sealed record Request(int Id, string Method, long? Element = null, bool? On = null)
 {
     /// <summary>With Watch: the property, by the name the element's details list it under (Owner.Name when attached).</summary>
@@ -109,7 +111,28 @@ public sealed record Request(int Id, string Method, long? Element = null, bool? 
     /// <summary>With Overlays: the renderer debug overlays every window of the app shows from now (<see cref="Wire.OverlayNames"/>),
     /// none to take them away; answered with the windows.</summary>
     public IReadOnlyList<string>? Overlays { get; init; }
+
+    /// <summary>With Reload: the XAML file's text to apply to what the app made from it.</summary>
+    public XamlChange? Change { get; init; }
 }
+
+/// <summary>A XAML file's text to apply to what the app made from it (XAML Hot Reload): the file's path as the disk names
+/// it, its text now and as the app has it (the build's, or the text last applied), the assembly its build compiled it
+/// into, the URI its build gave it (avares://Assembly/Folder/File.axaml, a pack URI in WPF), and whether a binding in it
+/// compiles unless it says otherwise (Avalonia's project setting).</summary>
+public sealed record XamlChange(string File, string Text, string? Before, string Assembly, string Uri)
+{
+    public bool? CompiledBindings { get; init; }
+}
+
+/// <summary>What a XAML file's text came to in the app: the objects that took it (Type#Name), each made again from it, or
+/// why it could not apply (<see cref="Refused"/>: nothing changed), with the places in the file the app's XAML compiler
+/// named. No objects and nothing refused: nothing open in the app was made from the file.</summary>
+public sealed record XamlReloaded(IReadOnlyList<string> Objects, string? Refused, IReadOnlyList<XamlProblem> Problems);
+
+/// <summary>Something the app's XAML compiler said of a XAML file, at its line and column (from one, as an XML reader counts
+/// them; none when it named no place): an error, which keeps the text from applying, or a warning.</summary>
+public sealed record XamlProblem(string Message, int? Line, int? Column, bool Error);
 
 /// <summary>A XAML file's bindings to read with their values: the file as the IDE has it, its elements by where the app's build
 /// recorded each, and the element chosen in the Live Visual Tree, which tells apart the instances of an element made more than
@@ -258,6 +281,9 @@ public sealed record Reply
     public InputDone? Done { get; init; }
 
     public XamlValues? Values { get; init; }
+
+    /// <summary>What a XAML file's text came to, with Reload.</summary>
+    public XamlReloaded? Reloaded { get; init; }
 
     /// <summary>What the app could not tell, with Untold.</summary>
     public Untold? Untold { get; init; }

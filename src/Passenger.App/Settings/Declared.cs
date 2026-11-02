@@ -206,6 +206,10 @@ public static class Declared
     public static readonly ToggleSetting HotReloadOnSave = new(s => s.HotReloadOnSave, (s, v) => s with { HotReloadOnSave = v },
         new(D.HotReloadPage, "Apply changes when a file is saved", "hot reload save apply changes debug edit and continue"));
 
+    public static readonly ToggleSetting XamlHotReloadOnSave = new(s => s.XamlHotReloadOnSave, (s, v) => s with { XamlHotReloadOnSave = v },
+        new(D.HotReloadPage, "Apply XAML changes to the running app when a XAML file is saved",
+            "hot reload xaml axaml save apply changes running app avalonia wpf run debug"));
+
     public static readonly ToggleSetting RestartOnRudeEdit = new(s => s.RestartOnRudeEdit, (s, v) => s with { RestartOnRudeEdit = v },
         new(D.HotReloadPage, "Always restart for a change it cannot apply", "hot reload rude edit restart ask always never dotnet watch"));
 
