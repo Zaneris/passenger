@@ -61,9 +61,10 @@ Headless, dispatcher timers fire only inside a running frame (`Screenshot.Pump`,
 
 **Build facts.** Everything builds under `artifacts/`. Package versions live only in `Directory.Packages.props` (each
 kept pin saying why), shared properties only in `Directory.Build.props` (the version too). Packages come from nuget.org
-alone, as it signed them, at what each project's `packages.lock.json` pins: CI restores locked, so commit a rewritten lock
-file with its change. Every lock file holds all eight `RuntimeIdentifiers`, even a Windows-only project's (a publish's
-RID reaches every referenced project's restore). Every recipe and CI set `AVALONIA_TELEMETRY_OPTOUT=1`.
+alone, as it signed them, at what each project's `packages.lock.json` pins: CI restores locked, so commit a rewritten
+lock file with its change. Every lock file holds all eight `RuntimeIdentifiers`, even a Windows-only project's (a
+publish's RID reaches every referenced project's restore). Every recipe and CI set `AVALONIA_TELEMETRY_OPTOUT=1`. The
+App and the tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collection fits a 144 Hz frame.
 
 ## Rules
 
@@ -234,9 +235,13 @@ Projects in `src/`; `find_symbol` finds the rest:
   `Rows`/`RowSpan` (a place on a line through `WrapOf`), the lines off screen wrapped on the pool (`WrapRest`). Wraps,
   rows, folds, hints and built lines are runs an edit moves only where it reaches, so a key costs what it changed, not
   the file's size: keep it so. Row views are carried so too, a highlighter carrying the colours of lines an edit didn't
-  reach (`IHighlighter.Showing`, `KeptColours`). A scroll frame draws only what moved: shapes are made at the origin and
-  drawn through a translation (`CodeEditor.DrawShape`, `GutterFrame.DrawShape`), the error stripe draws touching marks
-  of one look as one rectangle, and runs of one look go to the formatter as one (`ScrollingTests` holds them).
+  reach (`IHighlighter.Showing`, `KeptColours`). A scroll frame draws only what moved: each row is a retained visual
+  (`CodeEditor.Rows.cs`), drawn again by a change through `Redraw()`, moved by a scroll through `Scrolled()`, the
+  caret's blink drawing only the overlay (`RedrawOverlay()`; the editor's own `InvalidateVisual` draws only its ground),
+  what is looked up from a drawn row kept in its `RowSlot`, a gutter column drawing beside one row, clipped to it
+  (`IGutterColumn.Draw`); shapes are made at the origin and drawn through a translation (`CodeEditor.DrawShape`,
+  `GutterFrame.DrawShape`), the error stripe draws touching marks of one look as one rectangle, and runs of one look go
+  to the formatter as one (`ScrollingTests`, `RetainedRowsTests`).
 - `Passenger.Languages`: C# coloured by Roslyn's parser in-process (`CSharpHighlighter`, also each open file's one
   syntax service, `OpenDocument.Syntax`: never a fresh parse; every in-process parse takes its options from
   `CSharpParsing`, a folder's file's through `CompilationSymbols`, `EditorArea.ParseOptions`, the XAML core's through
@@ -297,9 +302,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   person's own), `ProjectSession` (one folder's services made and ended together; a handler acts only while its session
   is bound, `Bind`), `StatusBar` (`StatusPlace` makes its words a link; a message naming a Settings page takes it from
   `SettingsDialog.PlaceOfPage`), `IdeKeys` (the one keymap in every window but a dialog; a part with keys of its own is
-  an `IOwnKeys`). The toolbar is the title bar: anything new on it goes inside `ToolbarStart` or `ToolbarEnd`, or
-  Windows takes a press on it for the caption's. Logs are `logs/` under the state root (`IdeLog`; Settings › Diagnostics
-  turns on protocol traces).
+  an `IOwnKeys`). A Passenger nobody sees (`PassengerApp.ShowsNoWindow`: `--mcp`, `--headless`, a screenshot; a window's
+  `MainWindow.Unseen`) runs every Godot game, editor and GdUnit4 Godot headless (`LaunchPlan`, `GdUnit4Settings`) and
+  its browsers headless, and plays no sound. The toolbar is the title bar: anything new on it goes inside `ToolbarStart`
+  or `ToolbarEnd`, or Windows takes a press on it for the caption's. Logs are `logs/` under the state root (`IdeLog`;
+  Settings › Diagnostics turns on protocol traces).
 - **Editors.** `EditorArea` (a file in two windows is one `OpenDocument`; wire every editor through `ForEachEditor`;
   `CloseTab` is the one close); a preview holds no text (`HoldsText` false). The Markdown preview draws only the blocks
   near its sight (`MarkdownBlocks`), a page kept per tab, a scroll it sets going through `Jump`.
@@ -416,11 +423,12 @@ Projects in `src/`; `find_symbol` finds the rest:
   Create through Add's own actions, `MainWindow.ServiceSetup`), `Updates` (only an installed copy updates itself; What's
   New from `docs/release-notes/X.Y.Z.md`).
 - **MCP.** `PassengerTools` (every tool, run on the UI thread, answering with what its operation returned), `McpHost`
-  (`--mcp FOLDER`, a window's socket, `--mcp-attach` through `McpProxy`), `HeadStart` (an `--mcp` folder's opening
-  begun before its window, which its first session takes up), `AgentConnection` (admission and questions). A relay
-  records itself as `PID.relay` in the socket folder (`McpProxy.RelayAt`), which an update has follow it
+  (`--mcp FOLDER`, a window's socket, `--mcp-attach` through `McpProxy`), `HeadStart` (an `--mcp` folder's opening begun
+  before its window, which its first session takes up), `AgentConnection` (admission and questions). A relay records
+  itself as `PID.relay` in the socket folder (`McpProxy.RelayAt`), which an update has follow it
   (`Updater.FollowRelays`: it execs itself from the updated app as the same session, `McpProxy.Follow`) or, on Windows,
-  ends (`EndRelays`), signalling the relay alone, never its agent's process group.
+  ends (`EndRelays`), signalling the relay alone, never its agent's process group. `app_details` with `members` reads a
+  Godot game's script members (`PassengerTools.GameMembersAsync`).
 
 Releases and the site: `ci.yml` and `release.yml` (from a `vX.Y.Z` tag, its body `docs/release-notes/X.Y.Z.md`, refused
 while it is the stand-in) call `test.yml`: the gate on every system in two shards, and for CI the report lane too. `site/` is passenger-ide.net, plain HTML
@@ -528,8 +536,9 @@ site-shots` retakes its images.
   node selection, once set up, starts picking and takes the game's clicks until turned off; a headless game picks no 3D
   mesh without a collision shape. Godot reads the debugger's messages between a script's lines, so a call to Passenger's
   helper can run inside its own initialiser, whose defaults then overwrite what it set: the helper comes in only once
-  its live-edit path was sent (`GodotGame.AskAsync`). Its .NET host rolls forward only to released runtimes, so a new
-  game's framework is one it can run (`GodotGames.Runnable`). An agent's input and layout reach a game through
+  its live-edit path was sent (`GodotGame.AskAsync`), and every call goes through its `asked`, which waits while its
+  members are still being made (`_made`, its last member). Its .NET host rolls forward only to released runtimes, so a
+  new game's framework is one it can run (`GodotGames.Runnable`). An agent's input and layout reach a game through
   Passenger's helper node (`PassengerAgent.gd`, brought in by live editing; `PassengerTools.Godot.cs`).
 - **Windows**: a folder a process works in can't be deleted, and MSBuild nodes start in their launcher's folder and
   outlive it, so a child whose descendants must end with it is held with `ChildProcesses.HoldFamily`; a write waits out a
@@ -578,6 +587,8 @@ site-shots` retakes its images.
   every tree goes through `TreeKeys.Attach`, which keeps both.
 - **`FormattedText` lays its lines out again at every draw**: text drawn frame after frame is kept as a `TextLayout` or
   `TextLine` until what it says or its width changes.
+- **Avalonia renders a visual again when its Bounds, ZIndex or RenderTransform change**, and `InvalidateArrange`
+  invalidates it too: retained content moves through its parent layer.
 - **EventPipe from a program's start**: .NET 10's LoggingEventSource misreads the `FilterSpecs` it is made with, so a
   category takes no `:Level` there or none of its logs come (`LiveRequests.LogsSpec`). Its sampler takes a thread only
   where it can stop it, so a test program's method that must own its samples spins in a loop that calls nothing. A
