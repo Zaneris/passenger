@@ -54,8 +54,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(wrong.IsError == true && Text(wrong).Contains("there are passed, failed, skipped and notRun", StringComparison.Ordinal), $"tests_list in no state answered: {Text(wrong)}");
     }
 
-    /// <summary>A project whose global.json asks for a .NET SDK that is not installed: workspace says so, and run
-    /// refuses in the same words rather than finding no executable project.</summary>
+    /// <summary>A project whose global.json asks for a .NET SDK that is not installed: workspace says so and how the person
+    /// mends it, and run refuses in the same words rather than finding no executable project.</summary>
     [Fact]
     public async Task An_agent_where_global_json_asks_for_an_SDK_not_installed_hears_so_from_workspace_and_run()
     {
@@ -67,7 +67,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
         const string Missing = "The .NET SDK 1.0.100 that global.json asks for is not installed: install it, or have global.json name one that is";
         JsonElement workspace = await Call(client, McpTools.Workspace);
-        Assert.True(workspace.TryGetProperty("sdkMissing", out JsonElement missing) && missing.GetString() == Missing,
+        Assert.True(workspace.TryGetProperty("sdkMissing", out JsonElement missing)
+            && missing.GetString() == $"{Missing}. The person installs it with Install .NET SDK in the banner over Passenger's window; an agent may ask them to, never install it itself",
             $"workspace, where global.json asks for an SDK not installed, answered: {workspace}");
         CallToolResult run = await Result(client, McpTools.Run);
         Assert.True(run.IsError == true && Text(run).Contains(Missing, StringComparison.Ordinal), $"run without the SDK answered: {Text(run)}");
@@ -1623,6 +1624,6 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         ["SHELL"] = File.Exists("/bin/zsh") ? "/bin/zsh" : "/bin/sh",
         ["TERM"] = null,
         ["ZDOTDIR"] = null,
-        ["DOTNET_ROOT"] = null,
+        [RuntimeVariables.Root] = null,
     };
 }

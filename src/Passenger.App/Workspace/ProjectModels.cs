@@ -58,6 +58,9 @@ public sealed class ProjectModels
     /// <summary>Why the host loaded no .NET SDK for the folder, the last time it was asked; null while it loads one.</summary>
     public MissingSdk? MissingSdk { get; private set; }
 
+    /// <summary>The version of the SDK the host loaded for the folder, once it has; null before, or with none.</summary>
+    public string? SdkVersion { get; private set; }
+
     /// <summary>The folder came to have no .NET SDK to load, build and run its projects, or has one again
     /// (<see cref="MissingSdk"/>).</summary>
     public event EventHandler? SdkChanged;
@@ -146,6 +149,7 @@ public sealed class ProjectModels
         made.Clear();
         Problem = null;
         MissingSdk = null;
+        SdkVersion = null;
         IsComplete = false;
         Followed = false;
     }
@@ -321,6 +325,7 @@ public sealed class ProjectModels
                 stale = projects;
                 sdk = host.Sdk;
             }
+            SdkVersion = host.Version;
             Problem = null;
             SdkIs(null);
             if (stale.Count == 0)
@@ -369,6 +374,7 @@ public sealed class ProjectModels
                 IdeErrors.Write($"The project host could not evaluate the projects of {following}: {Problem}");
                 if (error is ProjectHostFailed { MissingSdk: { } missing })
                 {
+                    SdkVersion = null;
                     SdkIs(missing);
                 }
                 Changed?.Invoke(this, []);

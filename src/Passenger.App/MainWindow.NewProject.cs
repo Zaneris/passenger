@@ -22,11 +22,12 @@ public partial class MainWindow
     {
         actions!.Add(new IdeAction(AppActions.NewSolution, "New Solution…", "IDE", _ => ShowNewSolution())
         {
+            WhyNot = _ => WithoutAnySdk(),
             Menus = [new MenuPlace("File", 0, -1)],
         });
         actions.Add(new IdeAction(AppActions.NewProject, "New Project…", "IDE", _ => ShowNewProject(ChosenSolutionFolder()))
         {
-            WhyNot = _ => Solution is null ? Refusals.NoSolution : null,
+            WhyNot = _ => Solution is null ? Refusals.NoSolution : WithoutAnySdk(),
         });
     }
 

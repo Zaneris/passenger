@@ -370,9 +370,18 @@ public partial class MainWindow
         {
             if (session == next)
             {
+                ShowDotnet();
                 ShowSdk();
             }
         };
+        next.Models.Changed += (_, _) =>
+        {
+            if (session == next)
+            {
+                ShowDotnet();
+            }
+        };
+        ShowDotnet();
         ShowSdk();
         unreadSaid = null;
         next.WorkspaceChanged += (_, _) =>
@@ -557,14 +566,17 @@ public partial class MainWindow
             sdkSaid = null;
             return;
         }
-        Explorer.Tree.ShowSdk($"{Refusals.NoSdk(missing, Folder)}\n\n{missing.Said}");
+        Explorer.Tree.ShowSdk($"{SdkWords(missing)}\n\n{missing.Said}");
         SaySdk(missing);
     }
+
+    /// <summary>The want of a .NET SDK in the banner's words, or dotnet's before the machine's .NET is read.</summary>
+    private string SdkWords(MissingSdk missing) => WithoutSdk() ?? Refusals.NoSdk(missing, Folder);
 
     /// <summary>The want of a .NET SDK said in the status bar as an error, a click there opening its download page.</summary>
     private void SaySdk(MissingSdk missing)
     {
-        sdkSaid = Refusals.NoSdk(missing, Folder);
+        sdkSaid = SdkWords(missing);
         status.Say(sdkSaid, ProblemSeverity.Error, SdkPlace(missing));
     }
 

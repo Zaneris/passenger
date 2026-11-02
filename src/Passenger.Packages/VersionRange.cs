@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Packages;
 
 /// <summary>A NuGet version range as a project or an advisory writes one: a bare version (<see cref="Bare"/>, that or

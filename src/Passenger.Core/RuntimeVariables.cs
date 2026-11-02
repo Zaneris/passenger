@@ -33,6 +33,9 @@ public static class RuntimeVariables
     /// MSBuild.</summary>
     public const string HostPath = "DOTNET_HOST_PATH";
 
+    /// <summary>The folder of the .NET installation a program's apphost takes its runtime from, before the system's own.</summary>
+    public const string Root = "DOTNET_ROOT";
+
     /// <summary>"1" has WPF record where in its XAML each object was made (VisualDiagnostics.GetXamlSourceInfo) and
     /// raise BindingDiagnostics.BindingFailed; read as WPF first loads XAML, so it stays in the environment.</summary>
     public const string XamlDiagnosticsSourceInfo = "ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO";

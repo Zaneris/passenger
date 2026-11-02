@@ -2751,7 +2751,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             active is null ? null : $"{Relative(active.Path)}:{caret!.Value.Line + 1}:{caret.Value.Column + 1}",
             Session.Debug.Session?.State.ToString().ToLowerInvariant() ?? "not debugging")
         {
-            SdkMissing = session.Models.MissingSdk is { } missing ? Refusals.NoSdk(missing, session.Folder) : null,
+            SdkMissing = window.DotnetWant is { Install: not null } wanted && Refusals.Dotnet(wanted, session.Folder) is { } lacking
+                ? $"{lacking}. The person installs it with Install .NET SDK in the banner over Passenger's window; an agent may ask them to, never install it itself"
+                : session.Models.MissingSdk is { } missing ? Refusals.NoSdk(missing, session.Folder) : null,
             UnreadSolution = session.Workspace?.Unread is { } unread ? UnreadSolutionSaid(unread) : null,
         };
     }
@@ -2883,7 +2885,8 @@ public sealed record Workspace(
 {
     public IReadOnlyList<AspireOwnedAppInfo> AspireApps { get; init; } = [];
 
-    /// <summary>Why the folder has no .NET SDK to load, build and run its projects with, as Run refuses for it; null with one.</summary>
+    /// <summary>What .NET the machine or the folder lacks (no .NET, a runtime alone, global.json's SDK, an SDK older than a
+    /// project's framework) and how the person mends it; null lacking nothing.</summary>
     public string? SdkMissing { get; init; }
 
     /// <summary>The container run under way, beside the AppHosts, its services as their resources are; null with none.</summary>

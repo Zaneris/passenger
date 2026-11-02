@@ -49,9 +49,42 @@ public static class Refusals
     {
         { Asked: { } asked } => $"The .NET SDK {asked} that {(missing.GlobalJson is { } file ? PathNames.Shown(PathNames.Canonical(file), folder) : "global.json")} "
             + "asks for is not installed: install it, or have global.json name one that is",
-        { NoneInstalled: true } => "No .NET SDK is installed: install one to load, build and run projects",
+        { NoHost: true } => NoDotnet,
+        { NoneInstalled: true } => $"Only the .NET runtime is installed: {NeedsTheSdk}",
         _ => $"No .NET SDK was found for this folder: {ChildResult.FirstLineOf(missing.Said)}",
     };
+
+    /// <summary>No dotnet at all, runtime or SDK, was found.</summary>
+    public const string NoDotnet = $"No .NET is installed: files open and edit, and Git and the terminal work, but {NeedsTheSdk}";
+
+    private const string NeedsTheSdk = "projects need the .NET SDK to load, build, run and test";
+
+    /// <summary>What .NET the machine or the folder lacks, as the banner, an action's refusal and an agent say it; null with
+    /// nothing lacking.</summary>
+    public static string? Dotnet(DotnetWant want, string? folder) => want.Lack switch
+    {
+        DotnetLack.NoDotnet => NoDotnet,
+        DotnetLack.RuntimeOnly => $"Only the .NET runtime is installed{(want.Root is { } root ? $", in {PathNames.Shown(root, null)}" : string.Empty)}: {NeedsTheSdk}",
+        DotnetLack.GlobalJsonSdk or DotnetLack.NoSdk => NoSdk(want.Missing!, folder),
+        DotnetLack.OlderThanProject => $"{want.Newer!.Value.Project} targets .NET {want.Newer.Value.Framework}, which the .NET SDK {want.Sdk} does not build: "
+            + $"it needs the .NET {want.Newer.Value.Framework} SDK",
+        DotnetLack.OffPath => $"Passenger uses the .NET SDK {want.Sdk} in {PathNames.Shown(want.Root!, null)}, which your shell's PATH does not name, "
+            + "so a terminal outside Passenger finds no dotnet",
+        _ => null,
+    };
+
+    /// <summary>What an agent's ide_action of Install .NET SDK or Add .NET to the Shell's PATH is refused with.</summary>
+    public const string AgentInstalls = "An agent never installs software or changes the person's PATH: ask the person, who does it with the banner over "
+        + "Passenger's window, or Tools, Install .NET SDK…";
+
+    /// <summary>Install .NET SDK with nothing lacking: the newest SDK found, and where.</summary>
+    public static string NothingToInstall(DotnetMachine? machine, DotnetWant want) =>
+        machine?.NewestSdk is { } sdk && machine.Found is { } found
+            ? $"The .NET SDK {want.Sdk ?? sdk} is installed, in {PathNames.Shown(found.Root, null)}: nothing is missing"
+            : "Passenger is still looking for .NET";
+
+    /// <summary>Add .NET to the Shell's PATH where the shell's PATH has it already.</summary>
+    public static string OnPathAlready(string root) => $"{PathNames.Shown(root, null)} is on your shell's PATH already";
 
     /// <summary>No run configuration to run, debug or profile (the <paramref name="verb"/>): the folder has no SDK to
     /// load its projects with (<see cref="NoSdk"/>), or no executable project.</summary>

@@ -642,8 +642,9 @@ public static class ProjectHosts
                     // The host started for the folder says why it loads no SDK.
                     wanted = null;
                 }
-                // A host's SDK is MSBuild's folder, named for its version under the dotnet's sdk folder.
-                if (wanted is not null && Running.FirstOrDefault(h => Path.GetFileName(Path.TrimEndingDirectorySeparator(h.Sdk)) == wanted) is { } same)
+                // A host's SDK is MSBuild's folder, named for its version under the sdk folder of the dotnet the folder takes.
+                string? root = wanted is null ? null : Dotnet.Find()?.Root;
+                if (root is not null && Running.FirstOrDefault(h => PathNames.Same(Path.TrimEndingDirectorySeparator(h.Sdk), Path.Combine(root, "sdk", wanted!))) is { } same)
                 {
                     return same;
                 }
@@ -656,6 +657,26 @@ public static class ProjectHosts
         finally
         {
             Gate.Release();
+        }
+    }
+
+    /// <summary>Ends the hosts whose SDK lies under a folder (an installation that goes), so none is asked again.</summary>
+    public static async Task EndUnderAsync(string folder)
+    {
+        List<ProjectHost> ending;
+        await Gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            ending = [.. Running.Where(h => PathNames.IsUnder(PathNames.Canonical(h.Sdk), PathNames.Canonical(folder)))];
+            Running.RemoveAll(ending.Contains);
+        }
+        finally
+        {
+            Gate.Release();
+        }
+        foreach (ProjectHost host in ending)
+        {
+            await host.DisposeAsync().ConfigureAwait(false);
         }
     }
 }

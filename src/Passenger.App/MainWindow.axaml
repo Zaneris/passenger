@@ -117,12 +117,16 @@
             </app:ToolbarRow>
         </Border>
 
-        <!-- Tool windows round the editor: stripes of their buttons down both edges. -->
-        <docking:DockHost Name="Dock" Grid.Row="1">
-            <docking:DockHost.Center>
-                <editors:EditorArea Name="Editors" />
-            </docking:DockHost.Center>
-        </docking:DockHost>
+        <DockPanel Grid.Row="1">
+            <!-- What .NET the machine or the folder lacks, with its fix (MainWindow.Dotnet.cs). -->
+            <app:Banner Name="DotnetBanner" />
+            <!-- Tool windows round the editor: stripes of their buttons down both edges. -->
+            <docking:DockHost Name="Dock">
+                <docking:DockHost.Center>
+                    <editors:EditorArea Name="Editors" />
+                </docking:DockHost.Center>
+            </docking:DockHost>
+        </DockPanel>
 
         <!-- The status bar: where the caret is and how the file is stored. -->
         <Border Classes="statusBar" Grid.Row="2">

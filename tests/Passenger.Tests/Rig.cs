@@ -126,6 +126,8 @@ public sealed class TestRun : IAsyncDisposable
         NuGetHome();
         // No test reaches GitHub: a Passenger that checks for updates without a stand-in asks where nothing listens.
         Environment.SetEnvironmentVariable(Passenger.App.Updates.ReleaseFeed.Variable, "http://127.0.0.1:9/repos/Zaneris/passenger/releases/latest");
+        // Nor Microsoft's .NET release metadata: Install .NET SDK without a stand-in asks where nothing listens.
+        Environment.SetEnvironmentVariable(Passenger.Core.DotnetReleases.Variable, "http://127.0.0.1:9/");
         // Nor NuGet's symbol server: a theme's sources asked for without a stand-in of the test's come from where nothing listens.
         Environment.SetEnvironmentVariable(Passenger.App.Xaml.SourceLink.Variable, "http://127.0.0.1:9/");
         // Nor the web for a JSON schema a file names: those Passenger does not carry are asked of where nothing listens.

@@ -22,13 +22,13 @@ public sealed class MachineDotnetTests : IDisposable
 
     private readonly string folder = PathNames.Canonical(TestFolders.Create("machine-dotnet-"));
     private readonly string? path = Environment.GetEnvironmentVariable("PATH");
-    private readonly string? root = Environment.GetEnvironmentVariable("DOTNET_ROOT");
+    private readonly string? root = Environment.GetEnvironmentVariable(RuntimeVariables.Root);
 
     public void Dispose()
     {
         Dotnet.HostSearch = null;
         Environment.SetEnvironmentVariable("PATH", path);
-        Environment.SetEnvironmentVariable("DOTNET_ROOT", root);
+        Environment.SetEnvironmentVariable(RuntimeVariables.Root, root);
         TestFolders.Delete(folder);
     }
 
@@ -39,7 +39,7 @@ public sealed class MachineDotnetTests : IDisposable
         Dotnet.HostSearch = () => found ?? throw new FileNotFoundException("No .NET command line found: install the .NET SDK, or set DOTNET_ROOT to where it is.");
         IEnumerable<string> others = (path ?? string.Empty).Split(Path.PathSeparator).Where(at => at.Length > 0 && !File.Exists(Path.Combine(at, DotnetName)));
         Environment.SetEnvironmentVariable("PATH", string.Join(Path.PathSeparator, found is null ? others : others.Prepend(Path.GetDirectoryName(found)!)));
-        Environment.SetEnvironmentVariable("DOTNET_ROOT", found is null ? null : Path.GetDirectoryName(found));
+        Environment.SetEnvironmentVariable(RuntimeVariables.Root, found is null ? null : Path.GetDirectoryName(found));
     }
 
     [AvaloniaFact]

@@ -109,7 +109,7 @@ public sealed class LinkedDotnetTests(LinkedDotnetTests.Linked linked) : McpRig,
                 await Copy(runtime, Path.Combine(own, "shared", "Microsoft.NETCore.App", Path.GetFileName(runtime)));
                 string bin = Directory.CreateDirectory(Path.Combine(folder, "bin")).FullName;
                 File.CreateSymbolicLink(Path.Combine(bin, "dotnet"), Path.Combine(installation, "dotnet"));
-                Environment["DOTNET_ROOT"] = null;
+                Environment[RuntimeVariables.Root] = null;
                 Environment[RuntimeVariables.HostPath] = null;
                 Environment[$"DOTNET_ROOT_{RuntimeInformation.ProcessArchitecture.ToString().ToUpperInvariant()}"] = own;
                 Environment["PATH"] = bin + Path.PathSeparator + System.Environment.GetEnvironmentVariable("PATH");
