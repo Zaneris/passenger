@@ -192,7 +192,10 @@ App and the tests run with a 4 MB `System.GC.Gen0MaxBudget`, so a young collecti
   twice is a shortcut (`shift , shift`, `Shortcut.IsDoubleTap`). A key IntelliJ gives two actions by place goes to one,
   said where it's bound; the place takes it through `AppActions.KeysIn` (an IDE action's, `MainWindow.PlaceTakes`).
   Mouse gestures too: `Keymap.Bind` takes Rider's mouse notation (`meta shift button1`), an editor asks its window's
-  keymap (`CodeEditor.GesturesProperty`) and names no IDE action, and the side buttons run window-wide (`IdeKeys`).
+  keymap (`CodeEditor.GesturesProperty`) and names no IDE action, and the side buttons run window-wide (`IdeKeys`). A
+  person's mouse shortcuts sit in an action's `shortcuts` list beside its keys, the list giving exactly both
+  (`Keymap.Set`); a gesture gives one click and one drag (`EditorActions.IsDrag`), the click run on release where it was
+  pressed (`CodeEditor.ClickRuns`).
 - **Workflows run only by hand** (the owner's choice): never `gh workflow run` unless the owner says. Commit messages go
   through a file (`git commit -F msg.txt`): backticks in a `-m` string are zsh command substitution.
 
@@ -323,10 +326,11 @@ Projects in `src/`; `find_symbol` finds the rest:
   when first shown: what the IDE writes while it's hidden lives in a model, and code reaches a view only through a
   property that builds it for a person's action.
 - **C#.** `CSharpService`, `ServerDiagnostics` (one pull at a time after a pause), `CodeAssist` (the window's wiring)
-  over its parts; each language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a
-  server's edit to a file not open written in the 2 s before it was asked waits for the server to read it (`Patience`,
-  the window's and an agent's alike, said as the action's work), and any other file of the solution written or deleted a
-  moment before (`DocumentsWritten`), or heard changed that no command has seen the server read, however long ago
+  over its parts; Show Usages' popup (`UsagesPopup`) is fed by Find Usages' one finder (`UsagesFound.PopupAt`); each
+  language's answers a `LanguageAssist`, asked in `LanguageAssists`' one order. `WorkspaceEdits`: a server's edit to a
+  file not open written in the 2 s before it was asked waits for the server to read it (`Patience`, the window's and an
+  agent's alike, said as the action's work), and any other file of the solution written or deleted a moment before
+  (`DocumentsWritten`), or heard changed that no command has seen the server read, however long ago
   (`WatchedFiles.Changing`, settled before each attempt by `WorkspaceEdits.SettleAsync`); one written as the server
   worked is refused. `ServerWatches` watches for the server what it registers (`WatchedFiles`), beside the folder's
   watcher. A place the server names in a source generator's document reaches the file it was written in through
@@ -399,30 +403,31 @@ Projects in `src/`; `find_symbol` finds the rest:
 - **Debugging.** `DebugController` (a `DebugTab` per session, several at once), `DebugSession` (its adapter an
   `AdapterEnd`: `ProcessEnd` the engine's, `InProcessEnd` one inside the IDE such as `GodotScriptAdapter`, a game's
   GDScript over its debug connection; `DebugSession.Engine` sends each file's breakpoints to the adapter that runs it; a
-  game's GDScript tab is its C# tab's `Companion`), `BreakpointStore`; Variables and the hover card are one list; a
-  row's expression is the debugger's `evaluateName` (`RowExpressions`), never built in the window, a member row's cast
-  from the declared type read from metadata (`DeclaredType`). A library's types are shown as the App tells the debugger
-  at launch (`DapTypePresentation`; Godot's in `GodotValues`), never by engine code naming a library. An exception's
-  description reads its fields first, type and stored messages (`StoredChain`), its getters only adding, never a
-  `ToString`; its stack trace is read from what it stores (`TryStoredStackTrace`: frames through
-  `ICorDebugExceptionObjectValue`, written by `StackTraceText`), a getter or `ToString` only where that can't be read. A
-  `[DebuggerDisplay]` naming its row and showing one value gives the row that value's type (a dictionary's rows), and an
-  assembly's `[DebuggerDisplay]`/`[DebuggerTypeProxy]` with `Target` is the type's own, before it (`TargetedAt`). A
-  Blazor app's WebAssembly half is debugged by `WebAssemblyAdapter` (an `InProcessEnd`) over `Passenger.Dap`'s
-  `CdpConnection`, through .NET's own proxy from the browser project's WebAssembly pack (`BrowserDebugging`), in a
-  Chromium `BrowserRun` starts on the folder's profile (`ChromiumBrowsers`); a Blazor Web App's WebAssembly tab is its
-  server tab's `Companion`. Chrome runs a new-document script only once `Page.enable` came, so a page's conversation
-  enables Page first, or nothing binds; an app-hosted `/_framework/debug/ws-proxy` binds once per app process to its
-  first browser's port; with a fixed `--remote-debugging-port` Chrome writes no DevToolsActivePort. A debugged web app's
-  pages are kept up through the SDK's own browser refresh, what the app serves read from its build's
-  `staticwebassets.development.json` (`DevelopmentAssets`; a Blazor Web App's browser tools and key are its WebAssembly
-  client's) (`BrowserRefresh`, its protocol chosen by the variable the SDK's middleware reads, `LaunchPlan.Web`). A
-  session's built lines and Hot Reload begin at its build's save (`DebugController.Building`, `BuiltEdits`). The
-  debugger's own rows are named in `DapRows`, break modes in `DapBreakModes`; an engine row is built by `ValueRow`
-  (`FailedRow`, `GroupRow`), CoreLib found by `ManagedDebugger.CoreLib`. A breakpoint's words, in the gutter's hover,
-  Problems and MCP alike, come from `BreakpointStates`. Every kind of breakpoint is refused, matched and hit through one
-  pipeline (`IHitBreakpoint`: `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a lambda on its
-  statement's line keeps the lambda's column (`LambdaBreakpoints`).
+  game's GDScript tab is its C# tab's `Companion`), `BreakpointStore`; Variables and the hover card are one list, Quick
+  Evaluate's value shown in the card's (`DebugController.QuickValueRead`); a row's expression is the debugger's
+  `evaluateName` (`RowExpressions`), never built in the window, a member row's cast from the declared type read from
+  metadata (`DeclaredType`). A library's types are shown as the App tells the debugger at launch (`DapTypePresentation`;
+  Godot's in `GodotValues`), never by engine code naming a library. An exception's description reads its fields first,
+  type and stored messages (`StoredChain`), its getters only adding, never a `ToString`; its stack trace is read from
+  what it stores (`TryStoredStackTrace`: frames through `ICorDebugExceptionObjectValue`, written by `StackTraceText`), a
+  getter or `ToString` only where that can't be read. A `[DebuggerDisplay]` naming its row and showing one value gives
+  the row that value's type (a dictionary's rows), and an assembly's `[DebuggerDisplay]`/`[DebuggerTypeProxy]` with
+  `Target` is the type's own, before it (`TargetedAt`). A Blazor app's WebAssembly half is debugged by
+  `WebAssemblyAdapter` (an `InProcessEnd`) over `Passenger.Dap`'s `CdpConnection`, through .NET's own proxy from the
+  browser project's WebAssembly pack (`BrowserDebugging`), in a Chromium `BrowserRun` starts on the folder's profile
+  (`ChromiumBrowsers`); a Blazor Web App's WebAssembly tab is its server tab's `Companion`. Chrome runs a new-document
+  script only once `Page.enable` came, so a page's conversation enables Page first, or nothing binds; an app-hosted
+  `/_framework/debug/ws-proxy` binds once per app process to its first browser's port; with a fixed
+  `--remote-debugging-port` Chrome writes no DevToolsActivePort. A debugged web app's pages are kept up through the
+  SDK's own browser refresh, what the app serves read from its build's `staticwebassets.development.json`
+  (`DevelopmentAssets`; a Blazor Web App's browser tools and key are its WebAssembly client's) (`BrowserRefresh`, its
+  protocol chosen by the variable the SDK's middleware reads, `LaunchPlan.Web`). A session's built lines and Hot Reload
+  begin at its build's save (`DebugController.Building`, `BuiltEdits`). The debugger's own rows are named in `DapRows`,
+  break modes in `DapBreakModes`; an engine row is built by `ValueRow` (`FailedRow`, `GroupRow`), CoreLib found by
+  `ManagedDebugger.CoreLib`. A breakpoint's words, in the gutter's hover, Problems and MCP alike, come from
+  `BreakpointStates`. Every kind of breakpoint is refused, matched and hit through one pipeline (`IHitBreakpoint`:
+  `Unreadable`, `Reconcile`, `HitStopsAsync`). A C# breakpoint inside a lambda on its statement's line keeps the
+  lambda's column (`LambdaBreakpoints`).
 - **Tests window.** `TestFinder` (tests from code before any build), kept results across restarts `TestResultsState` (a
   method's code stamp `DeclaredTest.Code`; this session's results too, `TestNode.Standing`), `TestRunners`;
   `VsTestRunner` is the only file that knows VSTest's object model (VSTest starts a debugged .NET test host itself and
