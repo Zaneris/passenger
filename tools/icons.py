@@ -136,6 +136,11 @@ ICONS = [
     ("Database", "Database", "20_regular"),
     # A web project's web root (wwwroot) in the Explorer: the folder whose files are served on the web.
     ("WebRootFolder", "Folder Globe", "20_regular"),
+    # A signed commit's mark in the Git log: a good signature, one unverified, a bad one and one expired.
+    ("SignatureGood", "Shield Checkmark", "16_regular"),
+    ("SignatureUnverified", "Shield Question", "16_regular"),
+    ("SignatureBad", "Shield Dismiss", "16_regular"),
+    ("SignatureExpired", "Shield Error", "16_regular"),
 ]
 
 # Resource key, then two icons (folder and size and style, as above) whose parts make it: the first's shape outside its

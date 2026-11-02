@@ -677,7 +677,11 @@ public partial class MainWindow
         });
         // The Commit and Git windows' Refresh: the working tree's changes, and the log shown, read again.
         actions.Add(new IdeAction(AppActions.CommitRefresh, "Refresh Changes", "Git", _ => IdeErrors.Observe(session.Vcs.RefreshAsync())) { WhyNot = NeedsRepository });
-        actions.Add(new IdeAction(AppActions.GitLogRefresh, "Refresh Git Log", "Git", _ => IdeErrors.Observe(GitWindow.RefreshAsync())) { WhyNot = NeedsRepository });
+        actions.Add(new IdeAction(AppActions.GitLogRefresh, "Refresh Git Log", "Git", _ =>
+        {
+            session.Vcs.Signatures.Forget();
+            IdeErrors.Observe(GitWindow.RefreshAsync());
+        }) { WhyNot = NeedsRepository });
 
         string? NeedsRepository(ActionContext context) => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : null);
 

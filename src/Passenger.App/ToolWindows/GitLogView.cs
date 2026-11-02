@@ -35,6 +35,10 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     private readonly Border branchFilter;
     private readonly TextBlock branchFilterText;
     private readonly EventHandler onHistoryChanged;
+    private readonly EventHandler onSignatures;
+
+    /// <summary>Raised when signatures the rows asked for have been read, for the rows shown to mark them.</summary>
+    private event EventHandler? SignaturesLanded;
     private IReadOnlyList<GraphRow> all = [];
 
     /// <summary>A history's commits' changes there, by hash.</summary>
@@ -202,6 +206,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             }
         };
         vcs.HistoryChanged += onHistoryChanged;
+        onSignatures = (_, _) => SignaturesLanded?.Invoke(this, EventArgs.Empty);
+        vcs.Signatures.Landed += onSignatures;
         AttachedToVisualTree += (_, _) =>
         {
             if (stale)
@@ -237,7 +243,11 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     }
 
     /// <summary>A history's tab closed: it stops following the history.</summary>
-    public void Close() => vcs.HistoryChanged -= onHistoryChanged;
+    public void Close()
+    {
+        vcs.HistoryChanged -= onHistoryChanged;
+        vcs.Signatures.Landed -= onSignatures;
+    }
 
     /// <summary>The Log follows another folder's working tree from now on, its session's in place of the last's: every
     /// branch again, read again when shown.</summary>
@@ -246,6 +256,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         Close();
         vcs = next;
         vcs.HistoryChanged += onHistoryChanged;
+        vcs.Signatures.Landed += onSignatures;
         Branches?.Bind(next);
         (BranchFilter, BranchFilterName) = (null, null);
         branchFilter.IsVisible = false;
@@ -432,6 +443,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             ? there
             : await repository.CommitFilesAsync(commit);
         string message = await repository.MessageAsync(commit.Hash);
+        CommitSignature? signature = (await vcs.Signatures.ReadAsync(repository, [commit.Hash])).GetValueOrDefault(commit.Hash);
         if (reading != showing)
         {
             return;
@@ -442,7 +454,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             files.Add(change);
         }
         string refs = commit.Refs.Count > 0 ? $"\n{string.Join(", ", commit.Refs)}" : string.Empty;
-        details.Text = $"{message}\n\n{commit.Hash}{refs}\n{commit.Author} <{commit.Email}>\n{commit.Time.ToLocalTime():f}";
+        string signed = signature is null ? string.Empty : $"\n{signature.Said}";
+        details.Text = $"{message}\n\n{commit.Hash}{refs}\n{commit.Author} <{commit.Email}>\n{commit.Time.ToLocalTime():f}{signed}";
     }
 
     /// <summary>Show Diff's keys, as the log's list of a commit's files takes them (<see cref="AppActions.KeysIn"/>), ahead
@@ -458,7 +471,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     }
 
     /// <summary>A commit's row for whichever commit the list hands its container: its part of the graph, its refs as tags,
-    /// the path it had the file at (under another name then), its subject, author and date.</summary>
+    /// the path it had the file at (under another name then), its subject, its signature's mark (read as the row is
+    /// shown), author and date.</summary>
     private Control Row()
     {
         Graph graph = new() { Height = RowHeight };
@@ -468,6 +482,9 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         then[DockProperty] = Dock.Right;
         then.MaxWidth = 280;
         TextBlock words = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        RowIcon mark = new() { [DockProperty] = Dock.Right, Width = 14, Height = 14, IsVisible = false, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        string? marked = null;
+        subject.Children.Add(mark);
         subject.Children.Add(then);
         subject.Children.Add(words);
         List<(Border Tag, TextBlock Text)> tags = [];
@@ -486,6 +503,9 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         line.Children.Add(subject);
         line.Children.Add(author);
         line.Children.Add(date);
+        EventHandler landed = (_, _) => Mark();
+        line.AttachedToVisualTree += (_, _) => SignaturesLanded += landed;
+        line.DetachedFromVisualTree += (_, _) => SignaturesLanded -= landed;
         return line.Showing<GraphRow>(row =>
         {
             graph.Show(row);
@@ -514,7 +534,29 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             words.Text = row.Commit.Subject;
             author.Text = row.Commit.Author;
             date.Text = When(row.Commit.Time);
+            marked = row.Commit.Hash;
+            Mark();
         });
+
+        // The shown commit's signature where it has been read, else asked for; a commit unsigned has none.
+        void Mark()
+        {
+            CommitSignature? signature = null;
+            if (marked is not null && vcs.Repository is { } repository && !vcs.Signatures.TryGet(repository, marked, out signature))
+            {
+                vcs.Signatures.Want(repository, marked);
+            }
+            mark.IsVisible = signature is not null;
+            (mark.DataKey, mark.ForegroundKey) = signature?.State switch
+            {
+                SignatureState.Good => (IconKeys.SignatureGood, TokenKeys.Vcs_Signature_Good),
+                SignatureState.Bad => (IconKeys.SignatureBad, TokenKeys.Vcs_Signature_Bad),
+                SignatureState.Expired => (IconKeys.SignatureExpired, TokenKeys.Vcs_Signature_Expired),
+                SignatureState.Unverified => (IconKeys.SignatureUnverified, TokenKeys.Vcs_Signature_Unverified),
+                _ => (null, null),
+            };
+            ToolTip.SetTip(mark, signature?.Said);
+        }
 
         static TextBlock Muted()
         {

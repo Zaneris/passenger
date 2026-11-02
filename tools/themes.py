@@ -439,6 +439,10 @@ def variant(theme, p, dark):
     t["Passenger.Vcs.Ref"] = mix(panel, text, 0.1)
     t["Passenger.Vcs.RefText"] = legible(mix(text, muted, 0.5), [t["Passenger.Vcs.Ref"]], 4.6, dark)
     t["Passenger.Vcs.Favorite"] = legible(hue("yellow"), [panel], 3.1, dark)
+    t["Passenger.Vcs.Signature.Good"] = t["Passenger.Run"]
+    t["Passenger.Vcs.Signature.Unverified"] = t["Passenger.Test.Skipped"]
+    t["Passenger.Vcs.Signature.Bad"] = t["Passenger.Test.Failed"]
+    t["Passenger.Vcs.Signature.Expired"] = t["Passenger.Vcs.Favorite"]
 
     t["Passenger.Picker.RingInner"] = "#FFFFFF"
     t["Passenger.Picker.RingOuter"] = "#000000"

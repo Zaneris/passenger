@@ -171,7 +171,7 @@ public sealed record GitResult(int Code, string Output, string Error, string? Un
 /// <summary>A Git working tree, through the `git` executable: its status, branches, a file as the last commit has it,
 /// and committing, pushing and switching. Every call runs git in the tree's root, its output read as UTF-8, never
 /// through a shell.</summary>
-public sealed class Git
+public sealed partial class Git
 {
     private Git(string root, string gitDir)
     {

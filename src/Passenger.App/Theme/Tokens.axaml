@@ -145,7 +145,7 @@
             <SolidColorBrush x:Key="Passenger.Test.NotRun" Color="#6B7690" />
 
             <!-- Version control: the gutter's change bars, a file's name by how it changed, the log's lanes, a ref's tag
-                 and words, a favourite branch's star. -->
+                 and words, a favourite branch's star, a signed commit's mark by what its signature is worth. -->
             <SolidColorBrush x:Key="Passenger.Vcs.Added" Color="#2BA676" />
             <SolidColorBrush x:Key="Passenger.Vcs.Modified" Color="#3A6FE0" />
             <SolidColorBrush x:Key="Passenger.Vcs.Deleted" Color="#8C97AC" />
@@ -164,6 +164,10 @@
             <SolidColorBrush x:Key="Passenger.Vcs.Ref" Color="#263048" />
             <SolidColorBrush x:Key="Passenger.Vcs.RefText" Color="#C5CEE0" />
             <SolidColorBrush x:Key="Passenger.Vcs.Favorite" Color="#FFB547" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Good" Color="#34D399" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Unverified" Color="#8C97AC" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Bad" Color="#FF6B7A" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Expired" Color="#FFB547" />
 
             <!-- The colour picker's rings over the colour chosen, and the checkerboard behind what is clear: the same in
                  every theme, as they stand on the colours being chosen rather than the window's. -->
@@ -420,6 +424,10 @@
             <SolidColorBrush x:Key="Passenger.Vcs.Ref" Color="#E3E9F3" />
             <SolidColorBrush x:Key="Passenger.Vcs.RefText" Color="#45506A" />
             <SolidColorBrush x:Key="Passenger.Vcs.Favorite" Color="#C27400" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Good" Color="#0E8A5A" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Unverified" Color="#7A8499" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Bad" Color="#D12F45" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Expired" Color="#C27400" />
 
             <SolidColorBrush x:Key="Passenger.Picker.RingInner" Color="#FFFFFF" />
             <SolidColorBrush x:Key="Passenger.Picker.RingOuter" Color="#000000" />

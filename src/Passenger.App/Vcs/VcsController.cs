@@ -61,6 +61,9 @@ public sealed class VcsController : IDisposable
     /// <summary>The working tree the open folder is in, or null when it is in none.</summary>
     public Git? Repository => git;
 
+    /// <summary>The signatures of the commits the window shows, read as they are shown.</summary>
+    public CommitSignatures Signatures { get; } = new();
+
     /// <summary>Why git cannot read the folder's repository: it refused the one the folder is in (one another user owns,
     /// until safe.directory names it), in git's words, or it is not installed (<see cref="GitMissing"/>); null when it
     /// took one or found none. Each read looks again, so the window follows once git lets it in or is installed.</summary>

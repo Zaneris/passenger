@@ -125,6 +125,10 @@
             <SolidColorBrush x:Key="Passenger.Vcs.Ref" Color="#37322C" />
             <SolidColorBrush x:Key="Passenger.Vcs.RefText" Color="#D9D0C3" />
             <SolidColorBrush x:Key="Passenger.Vcs.Favorite" Color="#F5C76E" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Good" Color="#5CCB8F" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Unverified" Color="#9A9184" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Bad" Color="#F2747E" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Expired" Color="#F5C76E" />
 
             <SolidColorBrush x:Key="Passenger.Picker.RingInner" Color="#FFFFFF" />
             <SolidColorBrush x:Key="Passenger.Picker.RingOuter" Color="#000000" />
@@ -360,6 +364,10 @@
             <SolidColorBrush x:Key="Passenger.Vcs.Ref" Color="#ECE5D8" />
             <SolidColorBrush x:Key="Passenger.Vcs.RefText" Color="#4A433B" />
             <SolidColorBrush x:Key="Passenger.Vcs.Favorite" Color="#BC7000" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Good" Color="#2E8A50" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Unverified" Color="#8C8273" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Bad" Color="#C23A47" />
+            <SolidColorBrush x:Key="Passenger.Vcs.Signature.Expired" Color="#BC7000" />
 
             <SolidColorBrush x:Key="Passenger.Picker.RingInner" Color="#FFFFFF" />
             <SolidColorBrush x:Key="Passenger.Picker.RingOuter" Color="#000000" />

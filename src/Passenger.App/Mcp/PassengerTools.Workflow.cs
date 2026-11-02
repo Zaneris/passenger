@@ -150,7 +150,8 @@ public sealed partial class PassengerTools
     });
 
     [McpServerTool(Name = McpTools.VcsLog, Title = "The history", ReadOnly = true), Description(
-        "The newest commits of every branch, with their branches and tags. With a path, Show History's: the commits from HEAD " +
+        "The newest commits of every branch, with their branches and tags and a signed one's signature (good, unverified, bad or " +
+        "expired, by whom and with which key). With a path, Show History's: the commits from HEAD " +
         "that changed that file (followed through renames) or folder, each with what it did there; with startLine and endLine " +
         "too, those that changed those lines.")]
     public Task<IReadOnlyList<VcsCommit>> VcsLog(int count = 20, string? path = null, int? startLine = null, int? endLine = null,
@@ -165,14 +166,19 @@ public sealed partial class PassengerTools
             (int first, int last) when path is not null && first >= 1 && last >= first => (first - 1, last - 1),
             _ => throw new ArgumentException("startLine and endLine come together, with a path, from 1 and the last at or after the first"),
         };
+        IReadOnlyDictionary<string, CommitSignature?> signatures;
         if (path is null)
         {
-            return (IReadOnlyList<VcsCommit>)[.. (await repository.LogAsync(most)).Select(c => Commit(c, null))];
+            IReadOnlyList<CommitInfo> commits = await repository.LogAsync(most);
+            signatures = await Session.Vcs.Signatures.ReadAsync(repository, [.. commits.Select(c => c.Hash)]);
+            return (IReadOnlyList<VcsCommit>)[.. commits.Select(c => Commit(c, null))];
         }
         // Read now, so a rename made a moment ago is followed to where the last commit has the file.
         await Session.Vcs.RefreshAsync();
         HistoryScope scope = await window.HistoryScopeAsync(Resolve(path), lines);
-        return [.. (await repository.HistoryAsync(scope, most)).Select(h => Commit(h.Commit, h.Changes))];
+        IReadOnlyList<HistoryCommit> history = await repository.HistoryAsync(scope, most);
+        signatures = await Session.Vcs.Signatures.ReadAsync(repository, [.. history.Select(h => h.Commit.Hash)]);
+        return [.. history.Select(h => Commit(h.Commit, h.Changes))];
 
         VcsCommit Commit(CommitInfo commit, IReadOnlyList<FileChange>? changes) => new(
             commit.Short,
@@ -180,7 +186,10 @@ public sealed partial class PassengerTools
             commit.Author,
             commit.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture),
             commit.Refs,
-            changes?.Select(c => new VcsChange(Relative(c.Path), c.Kind.ToString().ToLowerInvariant(), c.From is { } from ? Relative(from) : null)).ToList());
+            changes?.Select(c => new VcsChange(Relative(c.Path), c.Kind.ToString().ToLowerInvariant(), c.From is { } from ? Relative(from) : null)).ToList())
+        {
+            Signature = signatures.GetValueOrDefault(commit.Hash)?.Said,
+        };
     });
 
     [McpServerTool(Name = McpTools.VcsCheckout, Title = "Check out a branch", Destructive = true), Description(
@@ -670,7 +679,12 @@ public sealed record VcsChange(string Path, string Kind, string? From, string? U
 }
 
 /// <summary>A commit as vcs_log lists it; with a path, what it did there.</summary>
-public sealed record VcsCommit(string Hash, string Subject, string Author, string Date, IReadOnlyList<string> Refs, IReadOnlyList<VcsChange>? Changes = null);
+public sealed record VcsCommit(string Hash, string Subject, string Author, string Date, IReadOnlyList<string> Refs, IReadOnlyList<VcsChange>? Changes = null)
+{
+    /// <summary>Its signature in a sentence that begins with what it is worth (Good, Unverified, Bad, Expired); null where
+    /// it is unsigned.</summary>
+    public string? Signature { get; init; }
+}
 
 /// <summary>A frame of a profile: a method, the milliseconds with it on the stack, and those in it alone; for a hot spot in
 /// the folder's own code, where the method is (path:line).</summary>

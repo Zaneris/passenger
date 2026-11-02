@@ -825,6 +825,31 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(font, changed.GetProperty("after").GetString());
     }
 
+    /// <summary>vcs_log gives each signed commit's signature as the Git log's details say it: a good one by its signer
+    /// and key, one by a signer no allowed signers file lists with its key, and none for a commit unsigned.</summary>
+    [Fact]
+    public async Task An_agents_vcs_log_says_each_commits_signature_good_by_its_signer_unverified_or_none()
+    {
+        Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
+        string repository = PathNames.Canonical(TestFolders.Create("mcp-signed-"));
+        string keys = PathNames.Canonical(TestFolders.Create("mcp-signed-keys-"));
+        DeleteAtEnd(repository);
+        DeleteAtEnd(keys);
+        (string known, string unknown) = await TestSshKeys.SignedRepositoryAsync(repository, keys);
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        JsonElement log = await Call(client, McpTools.VcsLog, new() { ["count"] = 5 });
+        string[] said = [.. log.EnumerateArray().Select(c => $"{c.GetProperty("subject").GetString()}: "
+            + (c.TryGetProperty("signature", out JsonElement signature) ? signature.GetString() : "none"))];
+        string[] expected =
+        [
+            $"Signed by an unknown signer: Unverified SSH signature, key {await TestSshKeys.FingerprintAsync(unknown)}: no allowed signers file lists its signer",
+            $"Signed by a known signer: Good SSH signature by tests@passenger.invalid, key {await TestSshKeys.FingerprintAsync(known)}",
+            "First: none",
+        ];
+        Assert.True(said.SequenceEqual(expected), $"vcs_log said of the commits' signatures\n{string.Join('\n', said)}\nwhere they are\n{string.Join('\n', expected)}");
+    }
+
     /// <summary>A rebase stopped on a conflict that the agent resolves is still said by vcs_status, and vcs_commit refuses to
     /// commit beside it, naming Continue Rebase and Abort Rebase: no commit of the agent's takes the place of the rebase's
     /// on its detached head, and the rebase is still in progress.</summary>

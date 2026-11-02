@@ -122,6 +122,8 @@ public sealed class TestRun : IAsyncDisposable
         // Configuration given on git's command line through the environment, which would come before the file's.
         OwnEnvironment.Set("GIT_CONFIG_PARAMETERS", null);
         OwnEnvironment.Set("GIT_CONFIG_COUNT", null);
+        // Nor the person's ssh-agent, which ssh-keygen asks first for the key a commit is signed with.
+        OwnEnvironment.Set("SSH_AUTH_SOCK", null);
         // The terminals' shells keep their history in the run's: sh takes HISTFILE, zsh its startup files from ZDOTDIR.
         Environment.SetEnvironmentVariable("HISTFILE", Path.Combine(Root, "history"));
         Environment.SetEnvironmentVariable("ZDOTDIR", Directory.CreateDirectory(Path.Combine(Root, "zsh")).FullName);
@@ -2226,6 +2228,61 @@ public static class TestGit
         await RunAsync(folder, "config", "core.autocrlf", "false");
         await RunAsync(folder, "add", "-A");
         await RunAsync(folder, "commit", "-q", "-m", "First");
+    }
+}
+
+/// <summary>SSH keys a test signs its commits with, each made by ssh-keygen for that test alone in a folder of its own,
+/// never the person's: no agent holds them, and one with no passphrase signs without asking.</summary>
+public static class TestSshKeys
+{
+    private static readonly TimeSpan Limit = TimeSpan.FromMinutes(1);
+
+    /// <summary>Why a test that signs cannot run here, or null: ssh-keygen is not on the PATH.</summary>
+    public static string? WhyNot => Passenger.Core.Programs.OnPath(OperatingSystem.IsWindows() ? "ssh-keygen.exe" : "ssh-keygen") is null
+        ? "ssh-keygen is not on the PATH, so no commit can be signed with an SSH key here"
+        : null;
+
+    /// <summary>A new ed25519 key with no passphrase, at <c>folder/name</c> and its public half beside it (.pub).</summary>
+    public static async Task<string> MakeAsync(string folder, string name)
+    {
+        string key = Path.Combine(folder, name);
+        Passenger.Core.ChildResult made = await Passenger.Core.ChildProcesses.RunAsync(
+            Passenger.Core.ChildProcesses.Command("ssh-keygen", ["-q", "-t", "ed25519", "-N", string.Empty, "-C", name, "-f", key], folder), limit: Limit.Scaled());
+        Assert.True(made.Succeeded, $"ssh-keygen made no key {name} to sign with, exiting {made.ExitCode}: {made.Error}{made.Output}");
+        return key;
+    }
+
+    /// <summary>A key's public half as an allowed signers file lists it after the signer's name.</summary>
+    public static string Public(string key) => File.ReadAllText(key + ".pub").Trim();
+
+    /// <summary>A key's fingerprint as git names a signature's key (%GK).</summary>
+    public static async Task<string> FingerprintAsync(string key)
+    {
+        Passenger.Core.ChildResult listed = await Passenger.Core.ChildProcesses.RunAsync(
+            Passenger.Core.ChildProcesses.Command("ssh-keygen", ["-l", "-E", "sha256", "-f", key + ".pub"], Path.GetDirectoryName(key)!), limit: Limit.Scaled());
+        Assert.True(listed.Succeeded, $"ssh-keygen gave no fingerprint of {key}: {listed.Error}");
+        return listed.Output.Split(' ')[1];
+    }
+
+    /// <summary>A repository made in <paramref name="root"/> (<see cref="TestGit.InitAsync"/>) of an unsigned first commit,
+    /// one signed by a key the allowed signers file in <paramref name="keys"/> lists for tests@passenger.invalid, and one
+    /// signed by a key it does not list, each set in the repository's own config; the two keys.</summary>
+    public static async Task<(string Known, string Unknown)> SignedRepositoryAsync(string root, string keys)
+    {
+        File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
+        await TestGit.InitAsync(root);
+        string known = await MakeAsync(keys, "known");
+        string unknown = await MakeAsync(keys, "unknown");
+        string allowed = Path.Combine(keys, "allowed_signers");
+        File.WriteAllText(allowed, $"tests@passenger.invalid {Public(known)}\n");
+        await TestGit.RunAsync(root, "config", "gpg.format", "ssh");
+        await TestGit.RunAsync(root, "config", "gpg.ssh.allowedSignersFile", allowed);
+        await TestGit.RunAsync(root, "config", "user.signingkey", known + ".pub");
+        File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n    int count;\n}\n");
+        await TestGit.RunAsync(root, "commit", "-q", "-S", "-a", "-m", "Signed by a known signer");
+        File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n    long count;\n}\n");
+        await TestGit.RunAsync(root, "-c", $"user.signingkey={unknown}.pub", "commit", "-q", "-S", "-a", "-m", "Signed by an unknown signer");
+        return (known, unknown);
     }
 }
 
