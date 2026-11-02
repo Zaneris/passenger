@@ -627,7 +627,24 @@ public sealed class OpenDocument : Observable
     }
 
     /// <summary>What its editors show after its lines: the debugger's annotations, then the app's live values.</summary>
-    public IReadOnlyList<LineAnnotation> ShownAnnotations => liveValues.Count == 0 ? lineAnnotations : [.. lineAnnotations, .. liveValues];
+    public IReadOnlyList<LineAnnotation> ShownAnnotations => liveValues.Count == 0 && errorPins.Count == 0 ? lineAnnotations
+        : [.. lineAnnotations, .. liveValues, .. errorPins.Select(p => new LineAnnotation(p.Line, p.Last, p.Warnings ? LineAnnotationLook.Muted : LineAnnotationLook.Error))];
+
+    private IReadOnlyList<Editors.ErrorPin> errorPins = [];
+
+    /// <summary>The errors a run raised pinned to the file's lines (a Godot game's), each badged in the gutter with its count
+    /// and its last words after its line; its lines are the run's model's, which follows the text.</summary>
+    public IReadOnlyList<Editors.ErrorPin> ErrorPins
+    {
+        get => errorPins;
+        set
+        {
+            if (Set(ref errorPins, value))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
+        }
+    }
 
     /// <summary>Whether the editors showing the file wrap its lines at their width: Settings' soft wrap masks decide as it
     /// opens, View, Active Editor, Soft-Wrap after.</summary>

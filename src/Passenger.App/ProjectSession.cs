@@ -583,6 +583,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>A Godot game was launched, Passenger listening for it.</summary>
     public event EventHandler<Godot.GodotGame>? GameStarted;
 
+    /// <summary>The errors the last Godot game launched raised, pinned to their lines.</summary>
+    public Godot.GodotErrorPins ErrorPins { get; } = new();
+
     /// <summary>The chosen Debug tab's app as <see cref="LiveAppChanged"/> last told it.</summary>
     private LiveApp? liveAppTold;
 

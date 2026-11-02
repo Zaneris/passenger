@@ -944,6 +944,8 @@ public sealed partial class BuildRunController
             // dotnet watch builds the project itself, and runs it again after an edit it cannot apply.
             bool wanted = (hotReload ?? parts.Settings().HotReload) && chosen.Program.Length == 0;
             bool godot = chosen.RunsGodot(session.Projects);
+            // A game's errors, which Godot writes every frame they happen, folded in its console.
+            parts.Views.Run.Fold = godot && !chosen.GodotEditor ? new Godot.GodotConsoleFold() : null;
             bool watched = wanted && !godot;
             // A Godot game takes its edits through the debugger, attached quietly as it starts held; Godot's editor loads its builds itself.
             bool reloaded = wanted && godot && !chosen.GodotEditor;
@@ -1745,6 +1747,10 @@ public sealed partial class BuildRunController
         // An Avalonia or WPF app is launched with the Live Visual Tree's inspector, held by its tab, ending with this debugging.
         (LaunchPlan launched, LiveApp? inspected) = session.Inspected(listened);
         Task<string?> starting = debug.StartAsync(launched, app: inspected, edits: edits);
+        if (game is not null && debug.Chosen?.Console is { } gameConsole)
+        {
+            gameConsole.Fold = new Godot.GodotConsoleFold();
+        }
         // Its tab, chosen as the start began, has the console its failed bindings are written to.
         WatchBindings(inspected, debug.Chosen?.Console);
         string? refused = await starting;
