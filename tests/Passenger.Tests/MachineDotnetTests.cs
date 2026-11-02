@@ -92,7 +92,8 @@ public sealed class MachineDotnetTests : IDisposable
         }
     }
 
-    /// <summary>Console's members are offered after its dot, typed on a line of its own after <paramref name="after"/>.</summary>
+    /// <summary>Console's members are offered after its dot, typed on a line of its own after <paramref name="after"/>, the
+    /// line then made a whole statement, so the program still builds.</summary>
     private static void Completes(MainWindow window, string after)
     {
         Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
@@ -101,6 +102,7 @@ public sealed class MachineDotnetTests : IDisposable
         Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("WriteLine"),
             () => $"Console's members after its dot, where the list shows [{string.Join(", ", window.Assist.CompletionLabels.Take(8))}]");
         Ui.Press(window, "ESCAPE");
+        Typing.Replace(window, "System.Console.", "System.Console.WriteLine(\"completed\");");
     }
 
     private static string Output(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
