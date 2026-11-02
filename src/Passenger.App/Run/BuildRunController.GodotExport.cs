@@ -54,7 +54,8 @@ public sealed record GodotExportPlan(string Program, IReadOnlyList<string> Argum
 
 /// <summary>A Godot project's export: Godot's headless export of a preset in the Run window, its errors folded and linked as
 /// a game's are (<see cref="GodotConsoleFold"/>), a <see cref="Working"/> saying each stage Godot reports, refused before
-/// it starts where the templates it takes are not installed. Stop ends it.</summary>
+/// it starts where the templates it takes are not installed, what its editor writes over of the person's put back once it
+/// ends (<see cref="GodotScripts.PuttingBackAsync"/>). Stop ends it.</summary>
 public sealed partial class BuildRunController
 {
     /// <summary>Exports a preset as Publish of a Godot project does; says how it ended once it has, an export never said to
@@ -132,16 +133,19 @@ public sealed partial class BuildRunController
             try
             {
                 Dictionary<string, string> environment = new(GodotUserFolders.Into(new Dictionary<string, string>(), folders), StringComparer.Ordinal);
-                if (await session.Runner.StartAsync(plan.Program, plan.Arguments, request.Folder, environment) is { } notStarted)
+                (string? notStarted, int code) = await GodotScripts.PuttingBackAsync(request.Folder, async () =>
                 {
-                    return Said(new BuildOutcome(BuildStatus.NotStarted, notStarted));
-                }
-                RunningChanged?.Invoke(this, EventArgs.Empty);
-                using (work.Stopping.Register(session.Runner.Stop))
-                {
-                    int code = await session.Runner.Ended;
-                    return Said(Exported(request, plan, code, session.Runner.WasStopped || work.IsStopped));
-                }
+                    if (await session.Runner.StartAsync(plan.Program, plan.Arguments, request.Folder, environment) is { } unstarted)
+                    {
+                        return (unstarted, 0);
+                    }
+                    RunningChanged?.Invoke(this, EventArgs.Empty);
+                    using (work.Stopping.Register(session.Runner.Stop))
+                    {
+                        return ((string?)null, await session.Runner.Ended);
+                    }
+                });
+                return Said(notStarted is null ? Exported(request, plan, code, session.Runner.WasStopped || work.IsStopped) : new BuildOutcome(BuildStatus.NotStarted, notStarted));
             }
             finally
             {

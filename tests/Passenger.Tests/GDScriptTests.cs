@@ -16,8 +16,9 @@ namespace Passenger.Tests;
 
 /// <summary>GDScript through Godot's own language server, in the headless Godot editor Passenger starts for a project the
 /// test writes (its user folders the run's): a script is coloured, completes a Godot class's member, hovers its docs and
-/// goes to a declaration, keeping the project's editor layout as it was; an error typed shows in Problems as typed, a
-/// warning with its name; and a project deleted under that editor is let go of, said once. Without a Godot (GODOT, the PATH, Applications) each test skips saying why. A Godot editor of
+/// goes to a declaration, keeping the project's editor layout as it was, and its project.godot where an editor plugin
+/// saves it; an error typed shows in Problems as typed, a warning with its name; and a project deleted under that editor
+/// is let go of, said once. Without a Godot (GODOT, the PATH, Applications) each test skips saying why. A Godot editor of
 /// its own each, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptTests
@@ -148,6 +149,37 @@ public sealed class GDScriptTests
         string[] said = Said();
         Assert.True(said.Count(Gone) == 1 && Gone(said[^1]),
             $"The project's going was to be said once, and nothing tried there after; the log says:\n{string.Join('\n', said)}");
+        window.Close();
+    }
+
+    /// <summary>A project whose editor plugin saves the project's settings as it loads (as Dialogic's does) keeps its
+    /// project.godot byte for byte, where the headless editor's save writes what it holds (its header, features, the .NET
+    /// editor's assembly name); a save of the person's in Passenger meanwhile is theirs and stays.</summary>
+    [AvaloniaFact]
+    public void A_projects_settings_saved_by_an_editor_plugin_of_its_headless_editor_are_put_back_as_they_were()
+    {
+        string settings = Path.Combine(folder, "project.godot");
+        TestFolders.Write(folder, "project.godot", File.ReadAllText(settings) + "\n[editor_plugins]\n\nenabled=PackedStringArray(\"res://addons/saver/plugin.cfg\")\n");
+        TestFolders.Write(folder, Path.Combine("addons", "saver", "plugin.cfg"), "[plugin]\n\nname=\"Saver\"\ndescription=\"Saves the settings.\"\n"
+            + "author=\"Tests\"\nversion=\"1.0\"\nscript=\"plugin.gd\"\n");
+        TestFolders.Write(folder, Path.Combine("addons", "saver", "plugin.gd"), "@tool\nextends EditorPlugin\n\n\nfunc _enter_tree() -> void:\n"
+            + "\tProjectSettings.save()\n\tFileAccess.open(\"res://.godot/saver_saved\", FileAccess.WRITE).store_string(\"saved\")\n");
+        byte[] before = File.ReadAllBytes(settings);
+        MainWindow window = Open();
+        Ui.WaitFor(() => File.Exists(Path.Combine(folder, ".godot", "saver_saved")), "the plugin's save of the project's settings in the headless editor", TimeSpan.FromSeconds(60));
+        Ui.WaitFor(() => File.ReadAllBytes(settings).AsSpan().SequenceEqual(before),
+            () => $"project.godot put back as it was, not as the headless editor saved it:\n{File.ReadAllText(settings)}");
+
+        Assert.Null(window.OpenFile(settings));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "config/name=\"Turns");
+        editor.Focus();
+        window.KeyTextInput("s");
+        Ui.Run(window, AppActions.SaveAll);
+        Ui.Hold(TimeSpan.FromSeconds(1), "what the headless editor wrote looked at again, as it is every 200 ms in its first seconds");
+        Assert.True(File.ReadAllText(settings).Contains("config/name=\"Turnss\"", StringComparison.Ordinal),
+            $"The person's own save of project.godot was put back over as if the headless editor had written it:\n{File.ReadAllText(settings)}");
         window.Close();
     }
 

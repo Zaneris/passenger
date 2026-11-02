@@ -5,6 +5,7 @@ using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.Core;
 using Passenger.Lsp;
+using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
@@ -13,13 +14,15 @@ namespace Passenger.App.Godot;
 /// project (its language server listening on the port its Editor Settings give, <see cref="GodotServerWords.DefaultPort"/>
 /// by default), else a headless
 /// editor Passenger starts for the project through ChildProcesses on a free loopback port, ended with the folder. A
-/// headless editor writes its layout and its .NET tools' messaging file into the project's .godot folder as it starts:
-/// both are put back as they were whenever it writes them in its first seconds, so the person's own editor and tools
-/// find their own.</summary>
+/// headless editor writes into the project as it starts: project.godot, saved by an editor plugin with what that editor
+/// holds, and its layout, script states and .NET tools' messaging file; each is put back as it was whenever it writes
+/// them in its first seconds, so the person's project and their own editor and tools are left as they were.</summary>
 public static class GodotScripts
 {
-    /// <summary>What a headless editor writes into the project as it starts that is the person's editor's own.</summary>
-    private static readonly string[] Kept = [Path.Combine(".godot", "editor", "editor_layout.cfg"), Path.Combine(".godot", "mono", "metadata", "ide_messaging_meta.txt")];
+    /// <summary>What a headless editor writes into the project as it starts that is the person's: the project's settings (a
+    /// plugin's save writes the .NET editor's assembly name, a newer Godot's features) and their editor's own files.</summary>
+    private static readonly string[] Kept = [GodotProject.FileName, Path.Combine(".godot", "editor", "editor_layout.cfg"),
+        Path.Combine(".godot", "editor", "script_editor_cache.cfg"), Path.Combine(".godot", "mono", "metadata", "ide_messaging_meta.txt")];
 
     /// <summary>The Godot project a file is in: the nearest folder above it holding a project.godot; null for none.</summary>
     public static string? ProjectOf(string path)
@@ -59,7 +62,7 @@ public static class GodotScripts
             IdeErrors.Write($"GDScript: the Godot editor open on {project} answers on port {port}");
             return own;
         }
-        Dictionary<string, byte[]?> before = Read(project);
+        Before before = new(project);
         int lsp = FreePort();
         ProcessStartInfo editor = ChildProcesses.Command(found.Executable,
             [.. GodotLaunch.Chosen(setting)?.Arguments ?? [], GodotExecutables.Headless, "--editor", "--path", project, "--lsp-port", lsp.ToString(System.Globalization.CultureInfo.InvariantCulture)],
@@ -68,10 +71,10 @@ public static class GodotScripts
         {
             editor.Environment[name] = value;
         }
-        LanguageSession started = await LanguageSession.StartAsync(Start(editor, project, logFolder, lsp), cancel);
+        Task<LanguageSession> starting = LanguageSession.StartAsync(Start(editor, project, logFolder, lsp), cancel);
         // Apart, as the editor's first seconds are its own: it saves its layout a moment after it loads it, its server already listening.
-        IdeErrors.Observe(BackgroundWork.Unheld(() => KeepAsync(project, before)));
-        return started;
+        IdeErrors.Observe(BackgroundWork.Unheld(() => KeepAsync(before, starting)));
+        return await starting;
     }
 
     /// <summary>The person's editor's server, where one listens on the port and works on this project; null where none
@@ -145,91 +148,138 @@ public static class GodotScripts
             : Path.Combine(Variable("XDG_CONFIG_HOME") is { Length: > 0 } config ? config : Path.Combine(home, ".config"), "godot");
     }
 
-    /// <summary>A headless editor's run on a project (an import), what it writes over of the person's editor put back once
-    /// it has ended, however it ended.</summary>
+    /// <summary>A headless editor's run on a project (an import, an export), what it writes over of the person's put back
+    /// once it has ended, however it ended.</summary>
     internal static async Task<T> PuttingBackAsync<T>(string project, Func<Task<T>> run)
     {
-        Dictionary<string, byte[]?> before = await BackgroundWork.Run(() => Read(project));
+        using Before before = await BackgroundWork.Run(() => new Before(project));
         try
         {
             return await run();
         }
         finally
         {
-            await BackgroundWork.Run(() => PutBack(project, before, []));
+            await BackgroundWork.Run(() => before.PutBack([]));
         }
-    }
-
-    /// <summary>The files of <see cref="Kept"/> as they are, null for one not there.</summary>
-    private static Dictionary<string, byte[]?> Read(string project)
-    {
-        Dictionary<string, byte[]?> read = [];
-        foreach (string name in Kept)
-        {
-            try
-            {
-                string path = Path.Combine(project, name);
-                read[name] = File.Exists(path) ? File.ReadAllBytes(path) : null;
-            }
-            catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
-            {
-                // Left as the editor leaves it.
-            }
-        }
-        return read;
     }
 
     /// <summary>How long after a headless editor answers the files it writes over as it starts are watched.</summary>
     private static readonly TimeSpan Starting = TimeSpan.FromSeconds(10);
 
-    /// <summary>The files a headless editor writes over in its first seconds put back each time it does, until the project
-    /// goes (a test's, deleted under it: on Windows its folder stays while the editor works in it), which ends it, said once.</summary>
-    private static async Task KeepAsync(string project, Dictionary<string, byte[]?> before)
+    /// <summary>The files a headless editor writes over in its first seconds put back each time it does, while its server
+    /// starts and for a while after it answers, however its start ended, until the project goes (a test's, deleted under
+    /// it: on Windows its folder stays while the editor works in it), which ends it, said once.</summary>
+    private static async Task KeepAsync(Before before, Task<LanguageSession> starting)
     {
-        long began = Stopwatch.GetTimestamp();
-        HashSet<string> told = [];
-        while (Stopwatch.GetElapsedTime(began) < Starting)
+        using (before)
         {
-            if (!PutBack(project, before, told))
+            long? answered = null;
+            HashSet<string> told = [];
+            while (answered is not { } at || Stopwatch.GetElapsedTime(at) < Starting)
             {
-                return;
+                if (!before.PutBack(told))
+                {
+                    return;
+                }
+                await Task.Delay(TimeSpan.FromMilliseconds(200));
+                answered ??= starting.IsCompleted ? Stopwatch.GetTimestamp() : null;
             }
-            await Task.Delay(TimeSpan.FromMilliseconds(200));
+            before.PutBack(told);
         }
-        PutBack(project, before, told);
     }
 
-    /// <summary>The files a headless editor wrote over put back as they were, one not there before deleted; false once the
-    /// project has gone (its project.godot), when there is nothing to put back. A file that could not be put back is said once.</summary>
-    private static bool PutBack(string project, Dictionary<string, byte[]?> before, HashSet<string> told)
+    /// <summary>The files of <see cref="Kept"/> as they were before a headless editor ran (null for one not there), with
+    /// their times; one a save of Passenger's writes meanwhile is the person's own from then on, so is no longer put back.</summary>
+    private sealed class Before : IDisposable
     {
-        if (!File.Exists(Path.Combine(project, GodotProject.FileName)))
+        private readonly string project;
+        private readonly Dictionary<string, (byte[]? Bytes, DateTime Written)> files = [];
+
+        /// <summary>The names of those files Passenger has saved since, heard on any saving thread.</summary>
+        private readonly HashSet<string> saved = new(StringComparer.Ordinal);
+
+        /// <summary>Held over each file's put back and each save heard, so a save that begins as a file is put back lands after it.</summary>
+        private readonly Lock gate = new();
+
+        public Before(string project)
         {
-            IdeErrors.Write($"GDScript: {project} is gone, so what Godot's headless editor wrote there is no longer put back");
-            return false;
-        }
-        foreach ((string name, byte[]? bytes) in before)
-        {
-            string path = Path.Combine(project, name);
-            try
+            this.project = project;
+            FileText.Writing += OnWriting;
+            foreach (string name in Kept)
             {
-                if (bytes is null)
+                try
                 {
-                    File.Delete(path);
+                    string path = Path.Combine(project, name);
+                    files[name] = File.Exists(path) ? (File.ReadAllBytes(path), File.GetLastWriteTimeUtc(path)) : (null, default);
                 }
-                else if (!File.Exists(path) || !File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes))
+                catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
                 {
-                    AtomicFile.Write(path, bytes);
+                    // Left as the editor leaves it.
                 }
             }
-            catch (Exception unwritten) when (unwritten is IOException or UnauthorizedAccessException)
+        }
+
+        private void OnWriting(string path)
+        {
+            foreach (string name in Kept)
             {
-                if (told.Add(path))
+                if (PathNames.Same(path, Path.Combine(project, name)))
                 {
-                    IdeErrors.Write($"GDScript: {path}, which Godot's headless editor wrote over, could not be put back: {unwritten.Message}");
+                    lock (gate)
+                    {
+                        saved.Add(name);
+                    }
                 }
             }
         }
-        return true;
+
+        /// <summary>The files a headless editor wrote over put back as they were, with their times, one not there before
+        /// deleted; false once the project has gone (its project.godot), when there is nothing to put back. A file that could
+        /// not be put back is said once.</summary>
+        public bool PutBack(HashSet<string> told)
+        {
+            if (!File.Exists(Path.Combine(project, GodotProject.FileName)))
+            {
+                IdeErrors.Write($"GDScript: {project} is gone, so what Godot's headless editor wrote there is no longer put back");
+                return false;
+            }
+            foreach ((string name, (byte[]? bytes, DateTime written)) in files)
+            {
+                string path = Path.Combine(project, name);
+                try
+                {
+                    lock (gate)
+                    {
+                        if (saved.Contains(name))
+                        {
+                            continue;
+                        }
+                        if (bytes is null)
+                        {
+                            if (File.Exists(path))
+                            {
+                                File.Delete(path);
+                            }
+                        }
+                        else if (!File.Exists(path) || !File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes))
+                        {
+                            AtomicFile.Write(path, bytes);
+                            File.SetLastWriteTimeUtc(path, written);
+                            IdeErrors.Write($"GDScript: {path}, which Godot's headless editor wrote over, is put back as it was");
+                        }
+                    }
+                }
+                catch (Exception unwritten) when (unwritten is IOException or UnauthorizedAccessException)
+                {
+                    if (told.Add(path))
+                    {
+                        IdeErrors.Write($"GDScript: {path}, which Godot's headless editor wrote over, could not be put back: {unwritten.Message}");
+                    }
+                }
+            }
+            return true;
+        }
+
+        public void Dispose() => FileText.Writing -= OnWriting;
     }
 }
