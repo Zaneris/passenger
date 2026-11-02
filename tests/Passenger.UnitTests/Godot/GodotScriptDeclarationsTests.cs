@@ -64,4 +64,18 @@ public class GodotScriptDeclarationsTests
         Assert.Equal("RefCounted", new GodotScenes("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { ["res://a.gd"] = "func f():\n\tpass\n" })
             .ChainOf("res://a.gd").Engine);
     }
+
+    [Fact]
+    public void A_functions_and_a_signals_parameters_are_read_with_how_many_a_call_must_give()
+    {
+        GodotScriptDeclarations read = GodotScriptDeclarations.Read(
+            "signal died\nsignal hit(amount: int, by: Node = null)\nfunc heal(points := 1, to: Array[int] = [1, 2]) -> void:\n\tpass\n"
+            + "func take(a, b: Dictionary = {\"x\": 1}):\n\tpass\nfunc open(\n\ta,\n):\n\tpass\n");
+        Assert.Equal([], read.Member(GodotScriptKind.Signal, "died")!.Parameters!);
+        Assert.Equal(["amount: int", "by: Node = null"], read.Member(GodotScriptKind.Signal, "hit")!.Parameters!);
+        Assert.Equal(1, read.Member(GodotScriptKind.Signal, "hit")!.Required);
+        Assert.Equal((2, 0), (read.Member(GodotScriptKind.Function, "heal")!.Parameters!.Count, read.Member(GodotScriptKind.Function, "heal")!.Required));
+        Assert.Equal((2, 1), (read.Member(GodotScriptKind.Function, "take")!.Parameters!.Count, read.Member(GodotScriptKind.Function, "take")!.Required));
+        Assert.Null(read.Member(GodotScriptKind.Function, "open")!.Parameters);
+    }
 }

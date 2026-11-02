@@ -15,7 +15,8 @@ namespace Passenger.App.CSharp;
 /// completion offers the nodes of the scenes the script runs in (those of the type asked for), the hover card says the node
 /// it names in each, Go to Declaration goes to the node's section and Rename renames the node in every scene and every path
 /// of the code that names it (<see cref="RenameNodesAsync"/>); a res:// path completes from the project's files and goes
-/// to its file; an <c>[Export]</c> member's card says each value the scenes set it to.</summary>
+/// to its file; a string naming a member on a node of GDScript completes from its script's members and hovers the one it
+/// names; an <c>[Export]</c> member's card says each value the scenes set it to.</summary>
 internal sealed partial class CSharpAssist
 {
     /// <summary>A line up to the caret that ends inside the string a GetNode or GetNodeOrNull call is given.</summary>
@@ -52,6 +53,46 @@ internal sealed partial class CSharpAssist
     /// <summary>A place the server names in a file, as an offset of its text.</summary>
     private static int OffsetOf(LspDocument lsp, Place at) => lsp.OffsetOf(new LspPosition(at.Line, at.Character));
 
+    /// <summary>The string naming a member on an engine class's object the code tells the node of that holds an offset, by
+    /// the server's places; null for none.</summary>
+    private static GodotStringRead? MemberStringAt(LspDocument lsp, GodotRead read, int offset, int quoted) =>
+        read.Found.Strings.FirstOrDefault(s => !s.Script && (s.Node is not null || s.Export is not null)
+            && (OffsetOf(lsp, s.At) <= offset && offset <= OffsetOf(lsp, s.End) || OffsetOf(lsp, s.At) == quoted - 1));
+
+    /// <summary>What completion offers in a string naming a member on a node of GDScript: the functions, signals, or
+    /// variables and constants its scripts declare (<see cref="GodotChecks.Members"/>), each with where; null where none.</summary>
+    private static CodeCompletion.OwnItems? MemberCompletion(GodotRead read, GodotStringRead named, int start, string tail)
+    {
+        GodotChecks.Candidates members = GodotChecks.Members(read.Scenes, named.Kind, GodotChecks.ScriptsOf(read.Found, named.Class), named.Node, named.Export, _ => null);
+        CompletionItemKind kind = named.Kind switch { GodotNameKind.Method => CompletionItemKind.Method, GodotNameKind.Signal => CompletionItemKind.Event, _ => CompletionItemKind.Property };
+        IReadOnlyList<CompletionItem> items = [.. members.Names.Select(n => new CompletionItem
+        {
+            Label = n.Name,
+            Kind = kind,
+            Detail = n.Places.FirstOrDefault() is { } place ? $"{n.Detail.Split(' ')[0]} · {place.Shown}" : n.Detail,
+            FilterText = n.Name,
+            SortText = " " + n.Name,
+        })];
+        return items.Count == 0 ? null : new CodeCompletion.OwnItems(start, items, tail);
+    }
+
+    /// <summary>What the hover card says of a string naming a member on a node of GDScript: each declaration of its name the
+    /// node's scripts hold, as written, with where; null where none declares it.</summary>
+    private static string? MemberHover(GodotRead read, GodotStringRead named)
+    {
+        GodotChecks.Candidates members = GodotChecks.Members(read.Scenes, named.Kind, GodotChecks.ScriptsOf(read.Found, named.Class), named.Node, named.Export, _ => null);
+        List<string> lines = [];
+        foreach (GodotPlace place in members.Names.Where(n => n.Name == named.Name).SelectMany(n => n.Places))
+        {
+            if (read.Scenes.Texts.TryGetValue(place.Res, out string? text))
+            {
+                TextSnapshot script = TextSnapshot.From(text);
+                lines.Add($"{script.GetLineText(script.GetLineFromOffset(place.Start)).Trim().TrimEnd(':')}\n{place.Shown}, on {members.Where}");
+            }
+        }
+        return lines.Count == 0 ? null : string.Join("\n", lines.Distinct());
+    }
+
     /// <summary>The GetNode call whose string holds an offset, by the server's places; null for none.</summary>
     private static GodotNodeCall? CallAt(LspDocument lsp, GodotRead read, int offset, int quoted) =>
         read.Found.Calls.FirstOrDefault(c => OffsetOf(lsp, c.At) <= offset && offset <= OffsetOf(lsp, c.End)
@@ -75,6 +116,10 @@ internal sealed partial class CSharpAssist
         if (KindAt(lsp, read, caret, start) is { } kind)
         {
             return KindCompletion(read, kind, start, tail);
+        }
+        if (MemberStringAt(lsp, read, caret, start) is { } member)
+        {
+            return MemberCompletion(read, member, start, tail);
         }
         if (!inPath)
         {
@@ -147,6 +192,10 @@ internal sealed partial class CSharpAssist
         if (KindAt(lsp, read, offset, start) is { Exact: true } kind)
         {
             return KindHover(read, kind);
+        }
+        if (MemberStringAt(lsp, read, offset, start) is { } member && MemberHover(read, member) is { } declared)
+        {
+            return declared;
         }
         if (CallAt(lsp, read, offset, start) is { } call && call.Class < read.Found.Classes.Count)
         {

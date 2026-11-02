@@ -90,4 +90,67 @@ public sealed class GodotScriptScenesTests
 
         static string Listed(StructureView structure) => string.Join(", ", structure.Rows.Select(r => $"{new string(' ', r.Depth)}{r.Name} {r.Detail}"));
     }
+
+    private const string Sounds = """
+        [gd_scene load_steps=2 format=3]
+
+        [ext_resource type="Script" path="res://main.gd" id="1_main"]
+
+        [node name="Main" type="Node2D"]
+        script = ExtResource("1_main")
+
+        [node name="Start" type="Button" parent="."]
+
+        [node name="Sound" type="CheckButton" parent="."]
+
+        [connection signal="pressd" from="Start" to="." method="_on_start_pressed"]
+        [connection signal="toggled" from="Sound" to="." method="sound_toggled"]
+        [connection signal="toggled" from="Sound" to="." method="_on_start_pressed"]
+
+        """;
+
+    /// <summary>Read against the engine's classes as the Godot found's GodotSharp declares them: a signal the Start button
+    /// lacks is an error, a handler main.gd lacks though its name is no engine method's is one too, and so is a handler
+    /// taking none of the toggle's bool; the missing one is made from its mark, taking the toggle's bool as GDScript writes
+    /// it, and its mark goes. Without a .NET build of Godot, which carries GodotSharp, the test skips saying why.</summary>
+    [AvaloniaFact]
+    public void A_gdscript_games_scene_is_read_against_the_engines_signals_and_makes_a_missing_handler_from_its_mark()
+    {
+        GodotFound? godot = GodotExecutables.Find(null);
+        Assert.SkipWhen(godot?.Sharp is null, godot is null ? "No Godot was found (GODOT, the PATH, Applications): install Godot 4's .NET build, whose GodotSharp tells its classes"
+            : $"The Godot found carries no GodotSharp telling its classes: {godot.WhyNot}");
+        string folder = PathNames.Canonical(TestFolders.Create("godot-script-engine-"));
+        File.WriteAllText(Path.Combine(folder, "project.godot"), "config_version=5\n\n[application]\n\nconfig/name=\"Sounds\"\nrun/main_scene=\"res://main.tscn\"\n");
+        File.WriteAllText(Path.Combine(folder, "main.gd"), Script);
+        File.WriteAllText(Path.Combine(folder, "main.tscn"), Sounds);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Assert.Null(window.OpenFile(Path.Combine(folder, "main.tscn")));
+            string signal = "Start, a Button, has no signal pressd";
+            string handler = "Main, a Node2D (main.gd), has no method sound_toggled";
+            string given = "toggled gives 1 (bool), but _on_start_pressed takes none";
+            Ui.WaitFor(() => GodotSceneTests.Marked(window) is { } marked && marked.Contains(signal) && marked.Contains(handler) && marked.Contains(given),
+                () => $"the scene read against the engine's classes: {string.Join("; ", GodotSceneTests.Marked(window))}", TimeSpan.FromMinutes(1));
+
+            string fix = "Create function sound_toggled(toggled_on: bool) in main.gd";
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "method=\"sound_tog");
+            Ui.Run(window, AppActions.QuickFix);
+            Ui.WaitFor(() => window.Assist.Offered.Contains(fix), () => $"{fix} to be offered: {string.Join("; ", window.Assist.Offered)} ({window.Status})");
+            int index = window.Assist.Offered.ToList().IndexOf(fix);
+            for (int i = 0; i < index; i++)
+            {
+                Ui.Press(window, "DOWN");
+            }
+            Ui.Press(window, "ENTER");
+            string made = "func sound_toggled(toggled_on: bool) -> void:\n\tpass\n";
+            Ui.WaitFor(() => File.ReadAllText(Path.Combine(folder, "main.gd")).EndsWith("\n\n\n" + made, StringComparison.Ordinal),
+                () => $"main.gd to take the handler ({window.Status}):\n{File.ReadAllText(Path.Combine(folder, "main.gd"))}");
+            Ui.WaitFor(() => !GodotSceneTests.Marked(window).Contains(handler), () => $"the handler's mark to go: {string.Join("; ", GodotSceneTests.Marked(window))}", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
 }

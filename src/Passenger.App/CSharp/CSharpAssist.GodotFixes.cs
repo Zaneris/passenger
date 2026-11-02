@@ -12,8 +12,9 @@ namespace Passenger.App.CSharp;
 
 /// <summary>The fixes of Godot's checks, Passenger's own and listed first, in a C# file and in an open scene alike: a path or
 /// name changed to one near it that the scenes answer; a handler, an exported property or a GetNode call's type made by
-/// Passenger's extension in the script's code (<see cref="GodotSource"/>); and a name the project's files lack defined where
-/// Godot looks for it, asked first with the line it writes. Each one command of global undo, worked out again as it is chosen.</summary>
+/// Passenger's extension in the script's code (<see cref="GodotSource"/>); a GDScript's handler made last in its script
+/// (<see cref="GodotWrites.WithFunction"/>); and a name the project's files lack defined where Godot looks for it, asked first
+/// with the line it writes. Each one command of global undo, worked out again as it is chosen.</summary>
 internal sealed partial class CSharpAssist
 {
     /// <summary>The fixes of the Godot marks on an offset's line of a C# file or an open scene (<paramref name="marks"/>'s).</summary>
@@ -47,6 +48,10 @@ internal sealed partial class CSharpAssist
             {
                 yield return MakeFix(range, message, make, offer.Shown ?? make.Name);
             }
+            if (offer.Function is { } function)
+            {
+                yield return FunctionFix(range, message, function);
+            }
             foreach (GodotDefine define in offer.Defines)
             {
                 yield return DefineFix(range, message, define);
@@ -77,6 +82,17 @@ internal sealed partial class CSharpAssist
             {
                 Again = _ => Now(message, range) is ({ } current, _, { Make: { } again }) ? MakeFix(current, message, again, shown) : null,
                 Elsewhere = (_, patience) => MakeGodotAsync(title, make, done, patience),
+            };
+        }
+
+        EditorFix FunctionFix(TextRange range, string message, GodotScriptFunction function)
+        {
+            string title = $"Create function {function.Name}({string.Join(", ", function.Parameters)}) in {function.Script.Split('/')[^1]}";
+            return new EditorFix(title, "a function a signal is connected to", range, string.Empty)
+            {
+                Again = _ => Now(message, range) is ({ } current, _, { Function: { } again }) && again.Script == function.Script && again.Name == function.Name
+                    && again.Parameters.SequenceEqual(function.Parameters) ? FunctionFix(current, message, function) : null,
+                Elsewhere = (_, _) => MakeFunctionAsync(file, title, function),
             };
         }
 
@@ -112,6 +128,23 @@ internal sealed partial class CSharpAssist
             csharp.For(document)?.RefreshDiagnostics();
         }
         return made;
+    }
+
+    /// <summary>A GDScript's function made last in its script, as one command, in its text as the editor has it when open;
+    /// refused once the script declares it.</summary>
+    private async Task<RefactorOutcome> MakeFunctionAsync(OpenDocument file, string title, GodotScriptFunction function)
+    {
+        if (context.GodotOf(file.Path) is not (_, { } folder) || GodotScenes.FileOf(folder, function.Script) is not { } path)
+        {
+            return RefactorOutcome.Refused($"{title} was not applied: {function.Script} is not of the open folder's Godot project");
+        }
+        string shown = Path.GetFileName(path);
+        if (await actions.ApplyFileChangesAsync(title, [new XamlFileChange(path, now => GodotScriptDeclarations.Read(now).Member(GodotScriptKind.Function, function.Name) is null
+            ? [TextEdit.Between(now, GodotWrites.WithFunction(now, function.Name, function.Parameters))] : [])]) is { } refused)
+        {
+            return RefactorOutcome.Refused(refused);
+        }
+        return new RefactorOutcome($"Created {function.Name} in {shown}", null, [new RefactoredFile(path, "changed", [])], []);
     }
 
     /// <summary>What a name's definition asks before it is written: where it goes and the line it writes, as the file now

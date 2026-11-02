@@ -6,8 +6,8 @@ namespace Passenger.App.Godot;
 
 /// <summary>What a Godot check's finding offers to mend it, carried with its mark: the texts its place may become, nearest
 /// first (a node's path, a defined name); a member made in a script's code, or a GetNode call's type changed, by Passenger's
-/// extension (<see cref="Make"/>, with what its fix's title shows of it); and the settings or groups that would define the name
-/// it names (<see cref="Defines"/>).</summary>
+/// extension (<see cref="Make"/>, with what its fix's title shows of it); a GDScript's function made (<see cref="Function"/>);
+/// and the settings or groups that would define the name it names (<see cref="Defines"/>).</summary>
 internal sealed record GodotOffer
 {
     [JsonPropertyName("near")]
@@ -22,9 +22,13 @@ internal sealed record GodotOffer
     [JsonPropertyName("defines")]
     public IReadOnlyList<GodotDefine> Defines { get; init; } = [];
 
+    /// <summary>A function made in a GDScript, a signal's handler a scene connects to it.</summary>
+    [JsonPropertyName("function")]
+    public GodotScriptFunction? Function { get; init; }
+
     /// <summary>Whether it offers anything.</summary>
     [JsonIgnore]
-    public bool Any => Near.Count > 0 || Make is not null || Defines.Count > 0;
+    public bool Any => Near.Count > 0 || Make is not null || Defines.Count > 0 || Function is not null;
 
     public JsonElement ToJson() => JsonSerializer.SerializeToElement(this);
 
@@ -66,3 +70,9 @@ internal sealed record GodotDefine(
     [JsonPropertyName("nodeName")]
     public string? NodeName { get; init; }
 }
+
+/// <summary>A function to make in a GDScript (its res://): its name and its parameters as written (<c>body: Node2D</c>).</summary>
+internal sealed record GodotScriptFunction(
+    [property: JsonPropertyName("script")] string Script,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("parameters")] IReadOnlyList<string> Parameters);

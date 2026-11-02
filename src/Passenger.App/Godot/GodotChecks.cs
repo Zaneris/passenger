@@ -211,8 +211,22 @@ internal static class GodotChecks
             {
                 findings.Add(new SceneFinding(scripted.TextStart, scripted.TextEnd, true, $"{receiver.Name}, {Article(Shown(receiver))}, has no method {connection.Method}")
                 {
-                    Offer = new GodotOffer { Near = Core.Spelling.Near(connection.Method, methods) },
+                    Offer = new GodotOffer
+                    {
+                        Near = Core.Spelling.Near(connection.Method, methods),
+                        Function = ScriptHandler(scenes, connected, SignalOf(scenes, asked, found, connected), file),
+                    },
                 });
+            }
+            else if (!methodKnown && connected.To is { } handler && ChainOf(scenes, handler)?.Find(GodotScriptKind.Function, connection.Method) is (_, { Parameters: { } taken } function)
+                && SignalOf(scenes, asked, found, connected) is { } carried && connection.Section.Attribute("method")?.Value is { } handled)
+            {
+                int passed = carried.Count + connection.Binds - connection.Unbinds;
+                if (passed < function.Required || passed > taken.Count)
+                {
+                    findings.Add(new SceneFinding(handled.TextStart, handled.TextEnd, true,
+                        $"{connection.Signal} {Gives(passed, carried.Select(p => p.Type.Length == 0 ? "Variant" : p.Type).Concat(Enumerable.Repeat("bound", Math.Max(0, connection.Binds))))}, but {connection.Method} {Takes(taken)}"));
+                }
             }
             if (signalKnown && signal is null && connection.Section.Attribute("signal")?.Value is { } emitted)
             {
@@ -256,6 +270,28 @@ internal static class GodotChecks
 
         // A node whose members the code says: one with no script, of a known engine class, or one with a C# script.
         static bool Known(GodotTreeNode? node) => node is not null && (node.Script is null ? node.Type is not null : IsCSharp(node.Script));
+    }
+
+    /// <summary>What the engine's classes answer of a scene's connections and nodes where no C# is read with it (a game of
+    /// GDScript alone, a scene of no C# script), from the GodotSharp the Godot found carries (<see cref="GodotEngineClasses"/>):
+    /// each engine class's chain, and each signal and method asked of a node's engine class, its script none of C#'s.</summary>
+    public static GodotCodeFound EngineAnswers(GodotCodeRequest asked, GodotEngineClasses engine)
+    {
+        if (!engine.Any)
+        {
+            return GodotCodeFound.None;
+        }
+        List<GodotChain> chains = [.. asked.Engine.Where(engine.Knows).Select(e => new GodotChain(e, engine.Chain(e), e, e))];
+        GodotSignature? Signal(GodotMemberAsked one) => one is { Script: null, Engine: { } type } && engine.Signal(type, one.Name) is { } signal
+            ? new GodotSignature(one.Name, [.. signal.Parameters.Select(p => p.Type.Length == 0 ? "Variant" : p.Type)], signal.Parameters.Count, null, null, null)
+            {
+                Names = [.. signal.Parameters.Select(p => p.Name)],
+            }
+            : null;
+        GodotSignature? Method(GodotMemberAsked one) => one is { Script: null, Engine: { } type } && engine.Method(type, one.Name) is { } method
+            ? new GodotSignature(one.Name, [.. Enumerable.Repeat("Variant", Math.Min(method.Parameters, 32))], method.Required, null, null, null)
+            : null;
+        return new GodotCodeFound([], [], [], chains, [], [.. asked.Signals.Select(Signal)], [.. asked.Methods.Select(Method)]);
     }
 
     /// <summary>Whether a node's engine class has a member, as the extension answered for it; null where it was not asked.</summary>
@@ -867,6 +903,64 @@ internal static class GodotChecks
                 }
             }
         }
+    }
+
+    /// <summary>The parameters a connection's signal carries, by name and GDScript's type (none untyped): its sending node's
+    /// GDScript's declaration of it where one declares it, else its engine class's as answered; null where not known.</summary>
+    private static IReadOnlyList<(string Name, string Type)>? SignalOf(GodotScenes scenes, GodotCodeRequest asked, GodotCodeFound found, Connected connected)
+    {
+        if (connected.From is { } sender && ChainOf(scenes, sender)?.Find(GodotScriptKind.Signal, connected.Connection.Signal) is (_, { Parameters: { } declared }))
+        {
+            return [.. declared.Select(p => p.Split(':', '=') is [{ } named, { } typed, ..] && p.Contains(':', StringComparison.Ordinal) ? (named.Trim(), typed.Trim()) : (p.Split('=')[0].Trim(), string.Empty))];
+        }
+        int at = IndexOf(asked.Signals, SignalAsked(connected));
+        return at >= 0 && at < found.Signals.Count && found.Signals[at] is { } signal
+            ? [.. signal.Parameters.Select((type, i) => (i < signal.Names.Count ? Snake(signal.Names[i]) : $"arg{i}", ScriptType(type)))]
+            : null;
+    }
+
+    /// <summary>The function a connection's receiving node's GDScript lacks, made in its script: the signal's parameters less those
+    /// the connection unbinds, then one for each value it binds, typed as GDScript writes them; null for a node of no GDScript.</summary>
+    private static GodotScriptFunction? ScriptHandler(GodotScenes scenes, Connected connected, IReadOnlyList<(string Name, string Type)>? signal, GodotFile file)
+    {
+        if (connected.To?.Script is not { } script || !GodotScriptDeclarations.IsScript(script) || !scenes.Texts.ContainsKey(script))
+        {
+            return null;
+        }
+        GodotConnection connection = connected.Connection;
+        IReadOnlyList<string> binds = connection.Section.Attribute("binds")?.Value is { } bound ? [.. Items(file.Written(bound)).Select(v => TypeOfValue(v) ?? string.Empty)] : [];
+        IEnumerable<(string Name, string Type)> given = signal is null ? [] : signal.Take(Math.Max(0, signal.Count - connection.Unbinds));
+        IEnumerable<(string Name, string Type)> extra = binds.Select((type, i) => ($"extra_arg_{i}", type));
+        return new GodotScriptFunction(script, connection.Method, [.. given.Concat(extra).Select(p => p.Type.Length == 0 ? p.Name : $"{p.Name}: {p.Type}")]);
+    }
+
+    /// <summary>A C# type as GDScript writes it: C#'s numbers, strings and truths by GDScript's names, a variant untyped (empty).</summary>
+    internal static string ScriptType(string type) => type switch
+    {
+        "long" or "int" or "uint" or "ulong" or "short" or "ushort" or "byte" or "sbyte" => "int",
+        "double" or "float" => "float",
+        "string" => "String",
+        "bool" => "bool",
+        "Variant" or "object" => string.Empty,
+        "GodotObject" => "Object",
+        "Rid" => "RID",
+        "Aabb" => "AABB",
+        _ => type.Contains('<', StringComparison.Ordinal) ? "Array" : type.Split('.')[^1],
+    };
+
+    /// <summary>A C# parameter's name as GDScript writes one: snake_case (<c>newText</c>'s <c>new_text</c>).</summary>
+    internal static string Snake(string name)
+    {
+        System.Text.StringBuilder written = new();
+        foreach (char c in name.TrimStart('@'))
+        {
+            if (char.IsUpper(c) && written.Length > 0)
+            {
+                written.Append('_');
+            }
+            written.Append(char.ToLowerInvariant(c));
+        }
+        return written.ToString();
     }
 
     /// <summary>The handler a connection's receiving C# script lacks, made in its class: the signal's parameters less those the

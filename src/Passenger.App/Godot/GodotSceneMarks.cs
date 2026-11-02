@@ -11,12 +11,16 @@ namespace Passenger.App.Godot;
 
 /// <summary>Each open text scene or resource of a Godot project marked where Godot would not load what it says
 /// (<see cref="GodotChecks.SceneFindings"/>), its connections read against the code by Passenger's extension through one of
-/// the scene's C# scripts: as it opens, again a moment after what it is read against changes (its project's scenes as
-/// typed or written, the code a pull read, the server loaded), and at once as a C# file of its project is written on disk,
-/// read once the server holds as the disk has them the scene's scripts heard changed (<see cref="CodeAsync"/>). A
-/// UI-thread object.</summary>
+/// the scene's C# scripts, or where it has none, against the engine's classes as the Godot found's GodotSharp declares them
+/// (<see cref="GodotChecks.EngineAnswers"/>): as it opens, again a moment after what it is read against changes (its
+/// project's scenes as typed or written, the code a pull read, the server loaded), and at once as a C# file of its project
+/// is written on disk, read once the server holds as the disk has them the scene's scripts heard changed
+/// (<see cref="CodeAsync"/>). A UI-thread object.</summary>
 internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string?> godotOf, Func<CSharp.CSharpService?> csharp, CommandHistory commands)
 {
+    /// <summary>The Godot the person's settings name (their command line for it), whose GodotSharp tells the engine's classes.</summary>
+    public Func<string?> Godot { get; init; } = () => null;
+
     /// <summary>How long a change waits for the next before the open scenes are read again.</summary>
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(300);
 
@@ -93,7 +97,10 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
         string? code = await BackgroundWork.Run(() => scenes.Tree(res)?.Below().Select(n => n.Script).Where(GodotChecks.IsCSharp).Select(s => scenes.FileOf(s!))
             .OfType<string>().FirstOrDefault(File.Exists));
         GodotCodeRequest asked = await BackgroundWork.Run(() => GodotChecks.SceneAsks(code ?? document.Path, scenes, res));
-        GodotCodeFound found = code is not null && csharp() is { } service ? await CodeAsync(service, scenes, asked) ?? GodotCodeFound.None : GodotCodeFound.None;
+        string? setting = Godot();
+        GodotCodeFound found = code is not null && csharp() is { } service ? await CodeAsync(service, scenes, asked) ?? GodotCodeFound.None
+            : await BackgroundWork.Run(() => Run.GodotLaunch.Found(setting)?.Sharp is { } sharp && Path.Combine(sharp, "Api", "Release", "GodotSharp.dll") is var api && File.Exists(api)
+                ? GodotChecks.EngineAnswers(asked, GodotEngineClasses.Of(api)) : GodotCodeFound.None);
         IReadOnlyList<GodotChecks.SceneFinding> findings = await BackgroundWork.Run(() => GodotChecks.SceneFindings(scenes, res, asked, found, path => File.Exists(path) || Directory.Exists(path)));
         if (Show(document, version, [.. findings.Select(f => new Marker(TextRange.FromBounds(f.Start, Math.Max(f.Start, f.End)), f.Error ? MarkerKind.Error : MarkerKind.Warning, f.Message))]))
         {

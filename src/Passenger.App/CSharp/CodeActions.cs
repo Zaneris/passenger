@@ -533,6 +533,11 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             edit = TypeRename.With(edit, CSharpAssist.GodotNameEdits(godot, written));
         }
+        // A GDScript's member's uses its own language's server never reads: its scenes' connections, the C# strings naming it.
+        if (Passenger.Workspace.GodotScriptDeclarations.IsScript(document.Path) && await context.Languages.CSharp.GodotScriptRenameAsync(document, at.Offset, name) is { Count: > 0 } scripted)
+        {
+            edit = TypeRename.With(edit, scripted);
+        }
         if (await StaleAsync(document, edit, asked, patience) is { } stale)
         {
             return RefactorOutcome.Refused($"Rename was not applied: {stale}");

@@ -42,4 +42,13 @@ public class GodotWritesTests
         Assert.Null(GodotWrites.WithGroup(scene, Start("Enemy"), "hittable"));
         Assert.Equal("[node name=\"Main\" type=\"Node2D\" groups=[\"say \\\"hi\\\"\"]]", GodotWrites.GroupLine(scene, Start("Main"), "say \"hi\""));
     }
+
+    [Fact]
+    public void A_function_is_made_last_in_a_gdscript_two_blank_lines_after_the_last_and_indented_as_the_script_is()
+    {
+        Assert.Equal("extends Node\n\nfunc _ready() -> void:\n    pass\n\n\nfunc _on_hit(body: Node2D) -> void:\n    pass\n",
+            GodotWrites.WithFunction("extends Node\n\nfunc _ready() -> void:\n    pass\n\n", "_on_hit", ["body: Node2D"]));
+        Assert.Equal("extends Node\r\n\r\n\r\nfunc go() -> void:\r\n\tpass\r\n", GodotWrites.WithFunction("extends Node\r\n", "go", []));
+    }
 }
+

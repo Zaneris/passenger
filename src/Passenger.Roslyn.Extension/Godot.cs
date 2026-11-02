@@ -75,10 +75,10 @@ internal static partial class GodotSource
     }
 
     /// <summary>The file's strings Godot's calls take naming a signal, a method or a property (<see cref="GodotGenerated.NameCall"/>),
-    /// each with the class it is written in, the member it names found on its object's class (a script's own, or its engine
-    /// class's), an EmitSignal's count of arguments, and a Connect's Callable joined to the signal it is connected to; one an
-    /// engine class's object lacks with the node the object is (<see cref="GodotKinds.NodeOf"/>), whose script may give it,
-    /// and the engine classes the scenes ask of (<paramref name="engines"/>) that derive from its class and have it.</summary>
+    /// each with its class, the member it names found on its object's class (a script's own, or its engine class's), an
+    /// EmitSignal's count of arguments, and a Connect's Callable joined to its signal; one on an engine class's object with
+    /// the node the object is (<see cref="GodotKinds.NodeOf"/>), whose script may give more, and where its class lacks it, the
+    /// engine classes the scenes ask of (<paramref name="engines"/>) that derive from its class and have it.</summary>
     private static IReadOnlyList<GodotStringRead> Strings(Solution solution, SyntaxNode root, SemanticModel model, Engine engine, INamedTypeSymbol godotObject,
         IReadOnlyList<INamedTypeSymbol> declared, IReadOnlyList<string> engines, SourceText text, CancellationToken cancel)
     {
@@ -113,7 +113,7 @@ internal static partial class GodotSource
             {
                 joined.Add((reads.Count, literal.Token.SpanStart));
             }
-            (string? node, string? export) = found is null && !script ? GodotKinds.NodeOf(solution, call.Object, model, cancel) ?? (null, null) : (null, null);
+            (string? node, string? export) = !script ? GodotKinds.NodeOf(solution, call.Object, model, cancel) ?? (null, null) : (null, null);
             IReadOnlyList<string> having = found is null && !script && engineClass is not null
                 ? [.. engines.Distinct(StringComparer.Ordinal).Where(e => engine.Type(e) is { } type && engine.Chain(type).Contains(engineClass) && call.Kind switch
                 {

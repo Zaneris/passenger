@@ -18,13 +18,15 @@ namespace Passenger.App.CSharp;
 /// path's <c>/root/Name</c> is an autoload's, and a layer's number its name in project.godot's [layer_names].</summary>
 internal sealed partial class CSharpAssist
 {
-    /// <summary>A line up to the caret that ends inside a string given to one of Godot's calls taking such a name, or set
-    /// to an animation player's animation, so a quote typed there opens the list.</summary>
+    /// <summary>A line up to the caret that ends inside a string given to one of Godot's calls taking such a name or a member's,
+    /// or set to an animation player's animation, so a quote typed there opens the list.</summary>
     private static readonly Regex KindString = new(
         @"(\b(IsAction\w*|GetAction\w*|ActionPress|ActionRelease|GetAxis|GetVector|HasAction|AddAction|EraseAction|Action\w*Event\w*|Action\w*Deadzone|EventIsAction"
         + @"|IsInGroup|AddToGroup|RemoveFromGroup|\w*InGroup|CallGroup\w*|NotifyGroup\w*|SetGroup\w*|HasGroup"
         + @"|Play\w*|Queue|HasAnimation|GetAnimation|AnimationSetNext|AnimationGetNext|\w*BlendTime|SetAutoplay|Set(Current|Assigned)?Animation|Capture"
-        + @"|\w*ShaderParameter\w*|Tr|TrN|Translate|TranslatePlural)\s*\(([^""()]|""[^""]*"")*|\b(CurrentAnimation|AssignedAnimation|Animation|Autoplay)\s*=\s*)""[^""]*$",
+        + @"|\w*ShaderParameter\w*|Tr|TrN|Translate|TranslatePlural"
+        + @"|Call|CallDeferred|Callv|Connect|Disconnect|IsConnected|EmitSignal|HasMethod|HasSignal|Get|Set|SetDeferred|ToSignal|Callable)\s*\(([^""()]|""[^""]*"")*"
+        + @"|\b(CurrentAnimation|AssignedAnimation|Animation|Autoplay)\s*=\s*)""[^""]*$",
         RegexOptions.CultureInvariant);
 
     /// <summary>A line up to an offset that ends among the arguments of a call setting or reading a layer by its number.</summary>

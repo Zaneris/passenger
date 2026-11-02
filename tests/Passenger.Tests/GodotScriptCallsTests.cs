@@ -1,3 +1,4 @@
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Workspace;
@@ -10,9 +11,11 @@ namespace Passenger.Tests;
 /// <summary>A Godot 4 game's C# naming a GDScript's members by string, on a node its scene runs enemy.gd on: a call of a
 /// function the script lacks and a connection to a signal it lacks are errors where the strings are written, those it
 /// declares, its engine class's own method and its variable are not; Go to Declaration from the function's string goes to
-/// the script's function, and Find Usages there lists the C# call and the scene's connection beside what Godot's server finds. Its project restores
-/// from the packages the Godot found carries and the script starts GDScript's server in a headless Godot editor, so
-/// without a Godot 4 .NET build the test skips saying why; a Godot editor of its own, so run alone.</summary>
+/// the script's function, and Find Usages there lists the C# call and the scene's connection beside what Godot's server
+/// finds; the string completes the script's functions and hovers the one it names, and a rename of the function in its
+/// script renames the C# string and the scene's connection too, one step of Undo. Its project restores from the packages
+/// the Godot found carries and the script starts GDScript's server in a headless Godot editor, so without a Godot 4 .NET
+/// build each test skips saying why; a Godot editor of its own, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.Game>
 {
@@ -25,7 +28,7 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
         game.Reset();
     }
 
-    private const string Script = """
+    internal const string Script = """
         using Godot;
 
         public partial class Main : Node2D
@@ -48,7 +51,7 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
 
         """;
 
-    private const string Scene = """
+    internal const string Scene = """
         [gd_scene load_steps=3 format=3]
 
         [ext_resource type="Script" path="res://Main.cs" id="1_main"]
@@ -64,7 +67,7 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
 
         """;
 
-    private const string Enemy = "extends CharacterBody2D\n\nsignal died\n\nvar health := 3.0\n\n\nfunc take_damage(amount: int) -> void:\n\thealth -= amount\n"
+    internal const string Enemy = "extends CharacterBody2D\n\nsignal died\n\nvar health := 3.0\n\n\nfunc take_damage(amount: int) -> void:\n\thealth -= amount\n"
         + "\tif health <= 0:\n\t\tdied.emit()\n";
 
     [AvaloniaFact]
@@ -105,6 +108,58 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
             window.Close();
         }
     }
+
+    /// <summary>The C# string completes enemy.gd's functions and hovers take_damage's declaration; renamed in enemy.gd,
+    /// take_damage is renamed in the script by Godot's server, in the C# string calling it and in the scene's connection,
+    /// the misspelt string left, and Undo puts every file back.</summary>
+    [AvaloniaFact]
+    public void A_gdscripts_function_completes_and_hovers_in_a_csharp_string_and_its_rename_follows_the_strings_and_scenes_naming_it()
+    {
+        MainWindow window = game.Open(game.PathOf("Main.cs"), godot: game.Homes);
+        try
+        {
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Ui.WaitFor(() => GodotSceneTests.Marked(window).Contains("Enemy, a CharacterBody2D (enemy.gd), has no method 'take_damag'"),
+                () => $"Main.cs to be read against its scene: {string.Join("; ", GodotSceneTests.Marked(window))}", TimeSpan.FromMinutes(2));
+            Ui.PlaceAfter(editor, "enemy.Call(\"");
+            Ui.Run(window, AppActions.Complete);
+            Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("take_damage"), () => $"enemy.gd's take_damage offered in the string: {string.Join(", ", window.Assist.CompletionLabels)}");
+            Assert.DoesNotContain("health", window.Assist.CompletionLabels);
+            Ui.Press(window, "ESCAPE");
+            GodotSceneTests.Hover(window, "take_damage\", 2)", "func take_damage(amount: int) -> void");
+
+            string code = game.PathOf("Main.cs");
+            string scene = game.PathOf("main.tscn");
+            string enemy = game.PathOf("enemy.gd");
+            Assert.Null(window.OpenFile(enemy));
+            OpenDocument script = window.EditorArea.Active!;
+            Ui.WaitFor(() => window.Session.Web?.For(script)?.Lsp is not null && window.Session.Web.StateOf(script) is null,
+                () => $"Godot's server for enemy.gd: {window.Session.Web?.StateOf(script)} {script.Notice}", TimeSpan.FromSeconds(90));
+            Ui.PlaceAfter(editor, "func take_dam");
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => window.Assist.Renaming == "take_damage", () => $"Rename's box on take_damage ({window.Assist.Renaming}; {window.Status})");
+            window.KeyTextInput("hurt");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => TextOf(window, code).Contains("enemy.Call(\"hurt\", 2)", StringComparison.Ordinal) && TextOf(window, scene).Contains("method=\"hurt\"", StringComparison.Ordinal)
+                && TextOf(window, enemy).Contains("func hurt(amount: int)", StringComparison.Ordinal),
+                () => $"take_damage renamed in the script, the C# string and the scene ({window.Status}):\n{TextOf(window, code)}\n{TextOf(window, scene)}\n{TextOf(window, enemy)}", TimeSpan.FromMinutes(1));
+            Assert.Contains("enemy.Call(\"take_damag\", 2)", TextOf(window, code), StringComparison.Ordinal);
+
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            editor.Focus();
+            Ui.Run(window, EditorActions.Undo);
+            Ui.WaitFor(() => TextOf(window, code) == Script && TextOf(window, scene) == Scene && TextOf(window, enemy) == Enemy,
+                () => $"Undo to put Main.cs, main.tscn and enemy.gd back ({window.Status})");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A file's text as the window has it: an open one's in its editor, which a rename changes unsaved, else the disk's.</summary>
+    private static string TextOf(MainWindow window, string path) =>
+        window.EditorArea.Documents.FirstOrDefault(d => PathNames.Same(d.Path, PathNames.Canonical(path)))?.Text.Snapshot.ToString() ?? File.ReadAllText(path);
 
     /// <summary>A Godot 4 C# project whose main scene's Enemy runs a GDScript, on the Godot found, restored from that Godot's
     /// own packages alone.</summary>

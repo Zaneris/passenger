@@ -348,7 +348,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             found = await server.Lsp.ReferencesAsync(offset = await DeclaredOn(server, at.Line, at.Column));
         }
-        if (found.Count == 0)
+        // A Godot name's uses Passenger finds itself (a GDScript's member in scenes and C#, a string Godot's calls take), as Find Usages does.
+        IReadOnlyList<LspLocation> godot = component is null ? await window.Assist.Languages.CSharp.GodotUsesAsync(served.Document, server.Lsp, offset) : [];
+        if (found.Count == 0 && godot.Count == 0)
         {
             throw new InvalidOperationException($"No symbol at {place}: {server.Language}'s language server finds no usages there");
         }
@@ -357,7 +359,6 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             ?? (served.Document.Language == Languages.Language.CSharp ? await server.Lsp.SymbolAtAsync(offset, cancel) : null);
         string? taken = named is null ? null : $"{named.Shown} ({named.Kind})";
         HashSet<(string, LspPosition)> answered = [.. found.Select(u => (new Uri(u.Uri).LocalPath, u.Range.Start))];
-        IReadOnlyList<LspLocation> godot = component is null ? await window.Assist.Languages.CSharp.GodotUsesAsync(served.Document, server.Lsp, offset) : [];
         found = [.. found, .. await window.Assist.Languages.Xaml.CodeUsesAsync(named), .. godot.Where(u => !answered.Contains((new Uri(u.Uri).LocalPath, u.Range.Start)))];
         // Answered now, saying which files that could use it the server has yet to take in.
         IReadOnlyList<(string Path, string Project)> untaken = server.Web is null && Session.CSharp is { } csharp ? await csharp.UntakenAsync(served.Document, offset, cancel) : [];

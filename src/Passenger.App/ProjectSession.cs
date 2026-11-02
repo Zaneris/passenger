@@ -118,7 +118,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Frameworks.Changed += (_, project) => FollowFramework(project);
         GodotScenes = new Godot.GodotSceneIndex { Texts = setup.Editors.Texts, Files = () => (Index.Root, Index.Files), GameOf = GodotOf };
         GodotScenes.Changed += (_, _) => CSharp?.GodotScenesChanged();
-        GodotMarks = new Godot.GodotSceneMarks(GodotScenes, GodotOf, () => CSharp, setup.Editors.Commands);
+        GodotMarks = new Godot.GodotSceneMarks(GodotScenes, GodotOf, () => CSharp, setup.Editors.Commands) { Godot = () => setup.Settings().GodotExecutable };
         GodotScenes.Changed += (_, _) => GodotMarks.Changed();
         GodotScenes.CodeChanged += (_, _) => GodotMarks.CodeWritten();
         Debug = new DebugController(setup.Editors, setup.Views.Debug)

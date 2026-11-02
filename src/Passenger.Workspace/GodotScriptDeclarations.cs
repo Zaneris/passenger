@@ -13,7 +13,15 @@ public enum GodotScriptKind
 
 /// <summary>A member a GDScript declares outside its inner classes: what it is, its name, and where its name starts in the
 /// file's text.</summary>
-public sealed record GodotScriptDeclared(GodotScriptKind Kind, string Name, int Start);
+public sealed record GodotScriptDeclared(GodotScriptKind Kind, string Name, int Start)
+{
+    /// <summary>A function's or signal's parameters as written (<c>amount: int</c>), a signal written without its parentheses
+    /// taking none; null where its line does not close them, so they are not known.</summary>
+    public IReadOnlyList<string>? Parameters { get; init; }
+
+    /// <summary>How many of its parameters a call must give: those without a default.</summary>
+    public int Required => Parameters?.Count(p => !p.Contains('=', StringComparison.Ordinal)) ?? 0;
+}
 
 /// <summary>A GDScript file's class as its own lines declare it, the way Godot reads a script's top level: what it extends as
 /// written (a quoted path, or a class by its name), its <c>class_name</c>, and its functions (<c>static</c> ones too),
@@ -74,7 +82,10 @@ public sealed partial class GodotScriptDeclarations
                     };
                     if (kind is { } of)
                     {
-                        members.Add(new GodotScriptDeclared(of, name.Value, start + name.Index));
+                        members.Add(new GodotScriptDeclared(of, name.Value, start + name.Index)
+                        {
+                            Parameters = of is GodotScriptKind.Function or GodotScriptKind.Signal ? ParametersOf(line[(name.Index + name.Length)..], of == GodotScriptKind.Signal) : null,
+                        });
                     }
                 }
                 else if (ClassNamed().Match(line) is { Success: true } classed)
@@ -93,6 +104,55 @@ public sealed partial class GodotScriptDeclarations
             start = end + 1;
         }
         return new GodotScriptDeclarations(extends, path, named, members);
+    }
+
+    /// <summary>The parameters written after a function's or signal's name, each trimmed, split at the commas outside their
+    /// own brackets and strings; none for a signal with no parentheses, null where the line leaves them open.</summary>
+    private static IReadOnlyList<string>? ParametersOf(string after, bool signal)
+    {
+        string rest = after.TrimStart();
+        if (rest.Length == 0 || rest[0] != '(')
+        {
+            return signal ? [] : null;
+        }
+        List<string> parameters = [];
+        int depth = 0;
+        int begun = 1;
+        char quote = '\0';
+        for (int at = 1; at < rest.Length; at++)
+        {
+            char c = rest[at];
+            if (quote != '\0')
+            {
+                quote = c == quote ? '\0' : quote;
+                at += c == '\\' ? 1 : 0;
+            }
+            else if (c is '"' or '\'')
+            {
+                quote = c;
+            }
+            else if (c is '(' or '[' or '{')
+            {
+                depth++;
+            }
+            else if (c is ')' or ']' or '}' && depth > 0)
+            {
+                depth--;
+            }
+            else if (c == ',' && depth == 0 || c == ')')
+            {
+                if (rest[begun..at].Trim() is { Length: > 0 } parameter)
+                {
+                    parameters.Add(parameter);
+                }
+                if (c == ')')
+                {
+                    return parameters;
+                }
+                begun = at + 1;
+            }
+        }
+        return null;
     }
 
     /// <summary>What an <c>extends</c> names, unquoted, and whether it is a path.</summary>

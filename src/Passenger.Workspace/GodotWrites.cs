@@ -78,6 +78,18 @@ public static class GodotWrites
         return end > at && text[end - 1] == '\r' ? end - 1 : end;
     }
 
+    /// <summary>A GDScript with a function made last, two blank lines before it as Godot's style has them, its body
+    /// <c>pass</c> indented as the script's first indented line is (a tab where none is).</summary>
+    public static string WithFunction(string text, string name, IReadOnlyList<string> parameters)
+    {
+        string newline = NewlineOf(text);
+        string indent = text.Split('\n').Select(l => l.TrimEnd('\r')).FirstOrDefault(l => l.Length > 0 && l[0] is ' ' or '\t' && l.Trim().Length > 0) is { } line
+            ? line[..(line.Length - line.TrimStart().Length)] : "\t";
+        string body = text.TrimEnd('\r', '\n');
+        string lead = body.Length == 0 ? string.Empty : newline + newline + newline;
+        return $"{body}{lead}func {name}({string.Join(", ", parameters)}) -> void:{newline}{indent}pass{newline}";
+    }
+
     /// <summary>A string as Godot's text writes it, its quotes and backslashes escaped.</summary>
     public static string Quoted(string value) => "\"" + value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
 }

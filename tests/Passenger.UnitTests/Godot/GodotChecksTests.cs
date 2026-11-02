@@ -512,7 +512,7 @@ public class GodotChecksTests
         [node name="Enemy" type="CharacterBody2D" parent="."]
         script = ExtResource("2")
 
-        [connection signal="ready" from="." to="Enemy" method="take_damage"]
+        [connection signal="ready" from="." to="Enemy" method="take_damage" binds= [1]]
         [connection signal="ready" from="." to="Enemy" method="move_and_slide"]
         [connection signal="ready" from="." to="Enemy" method="hide_away"]
         [connection signal="died" from="Enemy" to="." method="OnDied"]
@@ -546,6 +546,46 @@ public class GodotChecksTests
 
         // With no engine to answer, as in a game of GDScript alone, only a handler named as no engine method is known missing.
         Assert.Empty(GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, GodotCodeFound.None, _ => true));
+    }
+
+    /// <summary>With the engine's answers alone, as a game of GDScript alone has them from GodotSharp: a signal a node of no
+    /// script lacks is an error; a handler its GDScript lacks is one, offering to make it with the signal's parameters as
+    /// GDScript writes them, a bound value's too; and a handler its script declares taking other than the signal gives is one.</summary>
+    [Fact]
+    public void A_gdscript_games_connections_are_read_against_the_engines_signals_and_its_handlers_parameters()
+    {
+        const string scene = """
+            [gd_scene format=3]
+
+            [ext_resource type="Script" path="res://main.gd" id="1"]
+
+            [node name="Main" type="Node2D"]
+            script = ExtResource("1")
+
+            [node name="Sound" type="CheckButton" parent="."]
+
+            [connection signal="toggled" from="Sound" to="." method="sound_toggled" binds= [3]]
+            [connection signal="toggld" from="Sound" to="." method="_on_ready"]
+            [connection signal="toggled" from="Sound" to="." method="_on_ready"]
+            [connection signal="toggled" from="Sound" to="." method="_on_flip"]
+
+            """;
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
+            texts: new Dictionary<string, string> { ["res://main.gd"] = "extends Node2D\n\nfunc _on_ready() -> void:\n\tpass\n\nfunc _on_flip(on: bool) -> void:\n\tpass\n" });
+        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/main.tscn", scenes, "res://main.tscn");
+        GodotSignature toggled = new("toggled", ["bool"], 1, null, null, null) { Names = ["toggledOn"] };
+        GodotCodeFound found = new([], [], [], [], [], [.. asked.Signals.Select(s => s.Name == "toggled" ? toggled : null)],
+            [.. asked.Methods.Select(_ => (GodotSignature?)null)]);
+        IReadOnlyList<GodotChecks.SceneFinding> findings = GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, found, _ => true);
+        Assert.Equal(
+        [
+            "Main, a Node2D (main.gd), has no method sound_toggled",
+            "Sound, a CheckButton, has no signal toggld",
+            "toggled gives 1 (bool), but _on_ready takes none",
+        ], findings.Select(f => f.Message));
+        Assert.Equal(("res://main.gd", "sound_toggled"), (findings[0].Offer!.Function!.Script, findings[0].Offer!.Function!.Name));
+        Assert.Equal(["toggled_on: bool", "extra_arg_0: int"], findings[0].Offer!.Function!.Parameters);
+        Assert.Equal(("int", string.Empty, "new_text"), (GodotChecks.ScriptType("long"), GodotChecks.ScriptType("Variant"), GodotChecks.Snake("newText")));
     }
 
     [Fact]

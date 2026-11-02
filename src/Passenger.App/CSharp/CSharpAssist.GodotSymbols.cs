@@ -157,11 +157,24 @@ internal sealed partial class CSharpAssist
             new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character))))];
     }
 
+    /// <summary>The uses of a GDScript's member at an offset (<see cref="GodotScriptNamedAsync"/>), as places for the Find window.</summary>
+    private async Task<IReadOnlyList<LspLocation>> GodotScriptUsesAsync(OpenDocument document, int offset) =>
+        await GodotScriptNamedAsync(document, offset) is { } named ? [.. named.Scenes, .. named.Code] : [];
+
+    /// <summary>The edits a GDScript's member's uses beside its own language's take as it is renamed to <paramref name="name"/>
+    /// (<see cref="GodotScriptNamedAsync"/>): each scene's connection's method or signal and each string of the C# naming it,
+    /// by file, in the server's places.</summary>
+    internal async Task<IReadOnlyList<(string Path, IReadOnlyList<LspTextEdit> Edits)>> GodotScriptRenameAsync(OpenDocument document, int offset, string name) =>
+        await GodotScriptNamedAsync(document, offset) is { } named
+            ? [.. named.Scenes.Concat(named.Code).GroupBy(u => new Uri(u.Uri).LocalPath, PathNames.Comparer)
+                .Select(file => (file.Key, (IReadOnlyList<LspTextEdit>)[.. file.Select(u => new LspTextEdit(u.Range, name))]))]
+            : [];
+
     /// <summary>The uses of a GDScript's member at an offset (the name there, where its class, it or a script it extends,
     /// declares one) beside its own language's: each scene's connection calling it or made to it on a node whose class takes
     /// in the declaring script, and each string of the project's C# naming it on a node the code tells is one
-    /// (<see cref="Handlers.GodotNameStrings"/>).</summary>
-    private async Task<IReadOnlyList<LspLocation>> GodotScriptUsesAsync(OpenDocument document, int offset)
+    /// (<see cref="Handlers.GodotNameStrings"/>); null for an offset on no such member.</summary>
+    private async Task<(IReadOnlyList<LspLocation> Scenes, IReadOnlyList<LspLocation> Code)?> GodotScriptNamedAsync(OpenDocument document, int offset)
     {
         TextSnapshot text = document.Text.Snapshot;
         int start = Math.Clamp(offset, 0, text.Length);
@@ -176,7 +189,7 @@ internal sealed partial class CSharpAssist
         }
         if (end == start || context.GodotOf(document.Path) is not ({ } index, { } folder))
         {
-            return [];
+            return null;
         }
         string name = text.GetText(start, end - start);
         GodotScenes scenes = await index.ScenesAsync(folder);
@@ -184,12 +197,12 @@ internal sealed partial class CSharpAssist
             || await BackgroundWork.Run(() => scenes.ChainOf(res) is var chain ? chain.Find(GodotScriptKind.Function, name) ?? chain.Find(GodotScriptKind.Signal, name)
                 ?? chain.Find(GodotScriptKind.Variable, name) ?? chain.Find(GodotScriptKind.Constant, name) : null) is not ({ } script, { } member))
         {
-            return [];
+            return null;
         }
-        List<LspLocation> uses = [.. await BackgroundWork.Run(() => SceneUses(scenes, script, member))];
+        IReadOnlyList<LspLocation> uses = [.. await BackgroundWork.Run(() => SceneUses(scenes, script, member))];
         if (member.Kind is not (GodotScriptKind.Function or GodotScriptKind.Signal or GodotScriptKind.Variable) || context.CSharp?.Session is not { } session)
         {
-            return uses;
+            return (uses, []);
         }
         GodotNameKind kind = member.Kind switch { GodotScriptKind.Function => GodotNameKind.Method, GodotScriptKind.Signal => GodotNameKind.Signal, _ => GodotNameKind.Property };
         GodotKindUses found;
@@ -199,11 +212,10 @@ internal sealed partial class CSharpAssist
         }
         catch (LanguageServerFailed)
         {
-            return uses;
+            return (uses, []);
         }
-        uses.AddRange(found.Uses.Where(u => GodotChecks.Told(scenes, u.Scripts, u.Node, u.Export).Told.Any(n => GodotChecks.ChainOf(scenes, n)?.Runs(script) == true))
-            .Select(u => new LspLocation(DocumentUris.FromPath(u.File), new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character)))));
-        return uses;
+        return (uses, [.. found.Uses.Where(u => GodotChecks.Told(scenes, u.Scripts, u.Node, u.Export).Told.Any(n => GodotChecks.ChainOf(scenes, n)?.Runs(script) == true))
+            .Select(u => new LspLocation(DocumentUris.FromPath(u.File), new LspRange(new LspPosition(u.At.Line, u.At.Character), new LspPosition(u.End.Line, u.End.Character))))]);
 
         // Each scene's connection naming the member as its method or signal, on a node whose class takes in its script.
         static IEnumerable<LspLocation> SceneUses(GodotScenes scenes, string script, GodotScriptDeclared member)

@@ -459,8 +459,8 @@ public sealed record GodotStringRead(
     [JsonPropertyName("class")]
     public int Class { get; init; } = -1;
 
-    /// <summary>For a member an engine class's object lacks, the node the object is as the code tells it: by its path from the
-    /// node the class runs on, or by the <c>[Export]</c> member a scene sets to it; null where it does not tell.</summary>
+    /// <summary>For a member named on an engine class's object, the node the object is as the code tells it: by its path from
+    /// the node the class runs on, or by the <c>[Export]</c> member a scene sets to it; null where it does not tell.</summary>
     [JsonPropertyName("node")]
     public string? Node { get; init; }
 
