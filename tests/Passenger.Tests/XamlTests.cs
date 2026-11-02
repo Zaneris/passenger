@@ -1693,8 +1693,8 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
 
     /// <summary>Rename on a named element's field in the code-behind a moment after the element's rename was written to its
     /// XAML on disk, as an agent's rename writes it, the language server not yet told of the XAML's change and so knowing
-    /// no field of the new name: the rename waits for the server to read the XAML, saying so, then renames the element in
-    /// it and the field's use.</summary>
+    /// no field of the new name: the rename waits for the server to read the XAML, saying so, however long the steps
+    /// between took (a loaded machine's), then renames the element in it and the field's use.</summary>
     [AvaloniaFact]
     public void An_elements_field_renamed_from_the_code_behind_a_moment_after_its_xaml_was_written_waits_for_the_server_to_read_it()
     {
@@ -1703,7 +1703,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Ui.Settle();
         Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
         TaskCompletionSource told = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        server.HoldNext(Passenger.Lsp.LspMethods.DidChangeWatchedFiles,
+        Task held = server.HoldNext(Passenger.Lsp.LspMethods.DidChangeWatchedFiles,
             p => System.Text.Json.JsonSerializer.Serialize(p).Contains("MainWindow.axaml\"", StringComparison.Ordinal), told.Task);
         try
         {
@@ -1715,8 +1715,12 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             Ui.WaitFor(() => window.Assist.Renaming == "Start", "the rename box on the field's name");
             window.KeyTextInput("Begin");
             Ui.Press(window, "ENTER", settle: false);
-            Assert.True(Ui.Pumped(() => window.Status?.StartsWith("Waiting for the language server to read MainWindow.axaml", StringComparison.Ordinal) == true, TimeSpan.FromSeconds(5)),
-                $"The rename did not wait for the language server to read the XAML written a moment before, which knows no field of the new name yet: the status says {window.Status}");
+            // The rename waits for the server for up to its patience's limit, its first answer included.
+            TimeSpan within = Passenger.App.CSharp.Patience.Limit;
+            Assert.True(Ui.Pumped(() => window.Status?.StartsWith("Waiting for the language server to read MainWindow.axaml", StringComparison.Ordinal) == true, within),
+                $"Within {within.Scaled().TotalSeconds:0} s the rename did not say it waits for the language server to read the XAML written a moment before, "
+                + $"which knows no field of the new name yet ({(held.IsCompleted ? "the XAML's change was held unsent to the server" : "the watcher had not told the server of the XAML's change")}): "
+                + $"the status says {window.Status}");
         }
         finally
         {

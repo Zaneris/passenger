@@ -436,7 +436,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         "package.json's scripts, every npm run of one); a compose file's names, its override's too. MSBuild files have none.")]
     public Task<string> Rename(string newName, string? path = null, int? line = null, int? column = null, string? symbol = null,
         bool renameFiles = true,
-        CancellationToken cancel = default) => OnUi(cancel, () => Patience.RunAsync(Editors.Commands, async patience =>
+        CancellationToken cancel = default) => OnUi(cancel, () => Patience.RunAsync(Editors.Commands, () => Session.CSharp?.Session, async patience =>
     {
         CodePlace at = await AskedAt(path, line, column, symbol, cancel);
         Served served = await Serve(at.Path, cancel);
@@ -584,7 +584,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     public Task<string> ApplyCodeAction(string path, int line, int column, string title, int? endLine = null, int? endColumn = null,
         string? choice = null,
         string? name = null,
-        CancellationToken cancel = default) => OnUi(cancel, () => Patience.RunAsync(Editors.Commands, async patience =>
+        CancellationToken cancel = default) => OnUi(cancel, () => Patience.RunAsync(Editors.Commands, () => Session.CSharp?.Session, async patience =>
     {
         Served served = await Serve(path, cancel);
         switch (served)

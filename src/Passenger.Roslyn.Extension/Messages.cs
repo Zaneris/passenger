@@ -60,12 +60,19 @@ public sealed record TextHeld(
     [property: JsonPropertyName("path")] string Path,
     [property: JsonPropertyName("hash")] string? Hash);
 
-/// <summary>The solution's documents written on disk at or after a time, or gone from it since, asked for: what the server
-/// worked out a moment after may be from those files as they were, until it reads them again or loads their projects
-/// again without them.</summary>
-public sealed record WrittenAsked([property: JsonPropertyName("since")] DateTime Since);
+/// <summary>The solution's documents written on disk at or after a time, or gone from it since, asked for, and of the files
+/// whose change on disk the server is told of (<paramref name="Changed"/>), those that are documents: what the server worked
+/// out a moment after may be from those files as they were, until it reads them again or loads their projects again
+/// without them.</summary>
+public sealed record WrittenAsked(
+    [property: JsonPropertyName("since")] DateTime Since,
+    [property: JsonPropertyName("changed")] IReadOnlyList<string> Changed);
 
-public sealed record WrittenFound([property: JsonPropertyName("documents")] IReadOnlyList<DocumentWritten> Documents);
+/// <summary>The documents written since the time asked, and each changed file asked of that is a document, with its text's
+/// <see cref="TextHash"/> as the server holds it.</summary>
+public sealed record WrittenFound(
+    [property: JsonPropertyName("documents")] IReadOnlyList<DocumentWritten> Documents,
+    [property: JsonPropertyName("changed")] IReadOnlyList<TextHeld> Changed);
 
 /// <summary>A document of the solution written on disk since the time asked, or gone from it (<paramref name="Gone"/>).</summary>
 public sealed record DocumentWritten(

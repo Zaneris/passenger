@@ -754,13 +754,15 @@ public sealed class LanguageServer : IAsyncDisposable
 
     /// <summary>Holds the next request or notification of a method whose parameters <paramref name="which"/> takes unsent
     /// until <paramref name="until"/> ends, as a server busy with it holds its answer, or one slow to take in a file
-    /// changed on disk, for a test of what goes on meanwhile.</summary>
-    public void HoldNext(string method, Func<object, bool> which, Task until)
+    /// changed on disk, for a test of what goes on meanwhile. Done once one is held.</summary>
+    public Task HoldNext(string method, Func<object, bool> which, Task until)
     {
+        Hold hold = new(method, which, until, Answered: false, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
         lock (holding)
         {
-            holding.Add(new Hold(method, which, until, Answered: false, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)));
+            holding.Add(hold);
         }
+        return hold.Holding.Task;
     }
 
     /// <summary>Sends the next request of a method whose parameters <paramref name="which"/> takes and holds its answer until
