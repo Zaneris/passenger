@@ -4,7 +4,7 @@ namespace Passenger.UnitTests.Core;
 
 /// <summary>Which Chromium browser a Blazor app's WebAssembly half is debugged in: the program a setting names, alone where it
 /// names one; else where each browser's installer puts it, Chrome before Edge before the rest, then the PATH; and what is
-/// said where none is.</summary>
+/// said where none is, and where the system refuses one its sandbox.</summary>
 public sealed class ChromiumBrowsersTests
 {
     private static Func<string, bool> Present(params string[] files) => path => files.Contains(path, StringComparer.Ordinal);
@@ -51,5 +51,18 @@ public sealed class ChromiumBrowsersTests
             + "(microsoft.com/edge), or name one in Settings | Run", ChromiumBrowsers.NoneFound(null, "Settings | Run"));
         Assert.Equal("Settings | Run names /opt/gone as the browser to debug them in, and there is no program there: name a Chromium browser that is, or install "
             + "Google Chrome (google.com/chrome) or Microsoft Edge (microsoft.com/edge)", ChromiumBrowsers.NoneFound(" /opt/gone ", "Settings | Run"));
+    }
+
+    [Fact]
+    public void Chromiums_fatal_word_that_it_has_no_usable_sandbox_is_its_refusal_and_its_words_name_the_browser_and_the_fixes()
+    {
+        Assert.True(ChromiumBrowsers.RefusesSandbox("[2817:2817:1102/101500.123456:FATAL:zygote_host_impl_linux.cc(128)] No usable sandbox! If you are running "
+            + "on Ubuntu 23.10+ or another Linux distro that has disabled unprivileged user namespaces with AppArmor, see https://chromium.googlesource.com/"));
+        Assert.False(ChromiumBrowsers.RefusesSandbox("[2817:2817:1102/101500.123456:ERROR:bus.cc(407)] Failed to connect to the bus: no such file"));
+        string said = ChromiumBrowsers.SandboxRefused(new ChromiumFound("/opt/chrome-linux64/chrome", "Chromium"));
+        Assert.StartsWith("Chromium (/opt/chrome-linux64/chrome) ended as it started: the system refused it its sandbox", said, StringComparison.Ordinal);
+        Assert.Contains("Install Google Chrome or Microsoft Edge from their own packages (google.com/chrome, microsoft.com/edge), which carry their profile", said, StringComparison.Ordinal);
+        Assert.EndsWith($"an AppArmor profile that allows it user namespaces: {ChromiumBrowsers.SandboxPage}", said, StringComparison.Ordinal);
+        Assert.DoesNotContain("--no-sandbox", said, StringComparison.Ordinal);
     }
 }

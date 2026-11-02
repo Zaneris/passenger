@@ -14,8 +14,9 @@ namespace Passenger.Tests;
 /// a Blazor Web App debugs its server on Passenger's engine and its client in a WebAssembly tab beside it, a standalone app
 /// in its WebAssembly tab alone; a component's breakpoint stops as the page renders it, Step Over goes to the next line
 /// and Variables shows its field; a server component's breakpoint stops in the same run. With no browser where Settings
-/// names one, Debug says so and how to get one. The apps are the SDK's templates, restored from the package cache
-/// tests/BlazorGraphs fills. Skipped without a Chromium browser. Debugged through the window, so run alone.</summary>
+/// names one, Debug says so and how to get one, and of one the system refuses its sandbox, why and how to run one. The apps
+/// are the SDK's templates, restored from the package cache tests/BlazorGraphs fills. Skipped without a Chromium browser.
+/// Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class BlazorBrowserDebuggingTests : IDisposable
 {
@@ -156,6 +157,61 @@ public sealed class BlazorBrowserDebuggingTests : IDisposable
         {
             End(window);
         }
+    }
+
+    /// <summary>A browser that ends as it starts with Chromium's word that the system refused its sandbox (Ubuntu's AppArmor
+    /// for a Chromium with no profile of its own): Debug says so plainly, naming the browser, the packages that carry their
+    /// profile and Chromium's page on giving it one, and never passes it --no-sandbox.</summary>
+    [AvaloniaFact]
+    public void Debug_in_a_browser_the_system_refuses_its_sandbox_says_so_naming_the_browser_and_the_fixes()
+    {
+        Make("blazorwasm", "Wasm");
+        Profile(Path.Combine(folder, "Properties", "launchSettings.json"));
+        Restore.Run(Path.Combine(folder, "Wasm.csproj"));
+        string started = Path.Combine(folder, "browser-started");
+        string browser = SandboxRefusingBrowser(started);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ApplySettings(window.Settings with { DebugBrowser = browser });
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Wasm: http"), () => $"Wasm's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
+                TimeSpan.FromMinutes(2));
+            Assert.True(window.SelectConfiguration("Wasm: http"));
+            Task<string?> launch = window.DebugAsync();
+            string Words() => $"{Ui.Said(window)}\n{Consoles(window)}";
+            Ui.WaitFor(() => launch.IsCompleted && Words().Contains("the system refused it its sandbox", StringComparison.Ordinal),
+                () => $"Debug to say the system refused the browser its sandbox ({Sessions(window)}; it said: {Words()})", TimeSpan.FromMinutes(3));
+            string said = Words();
+            Assert.Contains($"({browser}) ended as it started: the system refused it its sandbox", said, StringComparison.Ordinal);
+            Assert.Contains("Install Google Chrome or Microsoft Edge from their own packages", said, StringComparison.Ordinal);
+            Assert.Contains($"an AppArmor profile that allows it user namespaces: {ChromiumBrowsers.SandboxPage}", said, StringComparison.Ordinal);
+            string[] arguments = File.ReadAllLines(started);
+            Assert.NotEmpty(arguments);
+            Assert.DoesNotContain(arguments, a => a.Contains("--no-sandbox", StringComparison.Ordinal));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>A stand-in Chromium that writes each start's arguments to <paramref name="started"/>, then Chromium's fatal
+    /// word that it has no usable sandbox, and ends as Chromium's abort does.</summary>
+    private string SandboxRefusingBrowser(string started)
+    {
+        const string Fatal = "[4242:4242:1102/120000.000000:FATAL:zygote_host_impl_linux.cc(128)] No usable sandbox! If you are running on Ubuntu 23.10+ "
+            + "or another Linux distro that has disabled unprivileged user namespaces with AppArmor, see "
+            + "https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md.";
+        if (OperatingSystem.IsWindows())
+        {
+            string script = Path.Combine(folder, "chromium.cmd");
+            File.WriteAllText(script, $"@echo off\r\necho %* >> \"{started}\"\r\necho {Fatal} 1>&2\r\nexit /b 133\r\n");
+            return script;
+        }
+        string program = Path.Combine(folder, "chromium");
+        File.WriteAllText(program, $"#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{started}'\necho '{Fatal}' >&2\nexit 133\n");
+        File.SetUnixFileMode(program, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return program;
     }
 
     /// <summary>Step Over from the component's first line goes to the next, and Variables shows the field it set under this.</summary>

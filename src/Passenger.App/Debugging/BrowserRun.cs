@@ -15,6 +15,9 @@ public sealed partial class BrowserRun : IAsyncDisposable
     /// <summary>How long the browser and the proxy each have to say where they listen.</summary>
     private static readonly TimeSpan StartLimit = TimeSpan.FromSeconds(60);
 
+    /// <summary>How long a browser that ended as it started has for what it wrote to be read.</summary>
+    private static readonly TimeSpan LastWords = TimeSpan.FromSeconds(2);
+
     private static readonly HttpClient Http = OutboundHttp.Client(TimeSpan.FromSeconds(30), 4 * 1024 * 1024);
 
     private readonly Process browser;
@@ -77,7 +80,8 @@ public sealed partial class BrowserRun : IAsyncDisposable
     }
 
     /// <summary>The browser started on a profile with remote debugging on a port it chooses, once it has written which
-    /// (DevToolsActivePort in the profile); null where it ended first, handing its page to another browser on that profile.</summary>
+    /// (DevToolsActivePort in the profile); null where it ended first, handing its page to another browser on that profile.
+    /// One that ended saying the system refused its sandbox throws <see cref="InvalidOperationException"/> saying so.</summary>
     private static async Task<(Process Browser, int Port)?> StartBrowserAsync(ChromiumFound found, string profile, CancellationToken cancel)
     {
         Containers.OwnFiles.Folder(profile);
@@ -103,8 +107,17 @@ public sealed partial class BrowserRun : IAsyncDisposable
         {
             throw new InvalidOperationException($"Could not start {found.Name} ({found.Program}): {error.Message}");
         }
-        IdeErrors.Observe(ChildProcesses.Hear(browser, line => IdeLog.Write(IdeLog.Debugger, $"[{found.Name}] {line}"),
-            line => IdeLog.Write(IdeLog.Debugger, $"[{found.Name}] {line}"), longest: 2000));
+        TaskCompletionSource refused = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Heard(string line)
+        {
+            IdeLog.Write(IdeLog.Debugger, $"[{found.Name}] {line}");
+            if (ChromiumBrowsers.RefusesSandbox(line))
+            {
+                refused.TrySetResult();
+            }
+        }
+        Task heard = ChildProcesses.Hear(browser, Heard, Heard, longest: 2000);
+        IdeErrors.Observe(heard);
         long began = Stopwatch.GetTimestamp();
         while (Stopwatch.GetElapsedTime(began) < Waits.Of(StartLimit))
         {
@@ -115,7 +128,10 @@ public sealed partial class BrowserRun : IAsyncDisposable
             }
             if (!DotnetProcesses.Runs(browser.Id))
             {
-                return null;
+                // What it wrote as it ended may still be on its way through its pipes.
+                await Task.WhenAny(refused.Task, heard, Task.Delay(Waits.Of(LastWords), cancel));
+                cancel.ThrowIfCancellationRequested();
+                return refused.Task.IsCompleted ? throw new InvalidOperationException(ChromiumBrowsers.SandboxRefused(found)) : null;
             }
             await Task.Delay(TimeSpan.FromMilliseconds(100), cancel);
         }

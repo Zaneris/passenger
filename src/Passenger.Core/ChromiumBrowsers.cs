@@ -78,6 +78,19 @@ public static class ChromiumBrowsers
         return null;
     }
 
+    /// <summary>Chromium's page on a browser the system refuses its sandbox, and the AppArmor profile that lets it run.</summary>
+    public const string SandboxPage = "https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md";
+
+    /// <summary>Whether a line a Chromium browser wrote is its refusal to run without the sandbox the system refused it.</summary>
+    public static bool RefusesSandbox(string line) => line.Contains("No usable sandbox!", StringComparison.Ordinal);
+
+    /// <summary>Why a browser ended as it started when the system refused its sandbox, which browser it was, and the ways
+    /// to one that runs.</summary>
+    public static string SandboxRefused(ChromiumFound browser) =>
+        $"{browser.Name} ({browser.Program}) ended as it started: the system refused it its sandbox (\"No usable sandbox!\"), as Ubuntu 23.10 "
+        + "and later do for a Chromium browser with no AppArmor profile of its own. Install Google Chrome or Microsoft Edge from their own packages "
+        + $"(google.com/chrome, microsoft.com/edge), which carry their profile, or give this browser an AppArmor profile that allows it user namespaces: {SandboxPage}";
+
     /// <summary>Why no browser is there to debug in, and how to get one: the program a setting (<paramref name="where"/>)
     /// names is not there, or none was found.</summary>
     public static string NoneFound(string? chosen, string where) => chosen is { Length: > 0 } named
