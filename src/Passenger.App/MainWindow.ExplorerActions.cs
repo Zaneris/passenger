@@ -266,7 +266,8 @@ public partial class MainWindow
         // A Godot project's page, from its project's row, its project.godot's or its folder's.
         if (GodotProjectOfRow(node) is not null)
         {
-            entries.AddRange([Item(A.GodotProject), separator]);
+            // A project's row has Publish already, among its builds.
+            entries.AddRange(node.Kind == NodeKind.Project ? [Item(A.GodotProject), separator] : [Item(A.GodotProject), Item(A.Publish), separator]);
         }
         if (node is { Kind: NodeKind.Project, Path: { } runs } && ProgramConfiguration(runs) is not null)
         {

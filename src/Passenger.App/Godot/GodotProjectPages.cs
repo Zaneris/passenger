@@ -59,6 +59,9 @@ public sealed class GodotProjectPages
     /// <summary>A window's action run, by its id.</summary>
     public required Action<string> Run { get; init; }
 
+    /// <summary>The export of a project's preset asked for, by the project's folder and the preset's name.</summary>
+    public required Action<string, string> Export { get; init; }
+
     /// <summary>A window's action's title as its registry gives it, by its id.</summary>
     public required Func<string, string> TitleOf { get; init; }
 

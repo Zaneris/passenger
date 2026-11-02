@@ -168,7 +168,8 @@ public sealed class GodotPageViewer
 
         Section("Export Presets", facts.Presets.Count == 0 ? [Empty($"No {GodotExports.FileName}: Godot's editor makes it (Project, Export)")]
             : [.. facts.Presets.Select(p => Row(Link(p.Preset.Name, () => pages.GoTo(presets, p.Preset.Line)),
-                Muted($"{p.Preset.Platform}{(p.Preset.ExportPath is { } path ? $" · {path}" : string.Empty)} · {Templates(p)}"), null))]);
+                Muted($"{p.Preset.Platform}{(p.Preset.ExportPath is { } path ? $" · {path}" : string.Empty)} · {Templates(p)}"),
+                Link(ExportWords, () => pages.Export(facts.Folder, p.Preset.Name))))]);
 
         Section("Plugins", facts.Plugins.Count == 0 ? [Empty("No plugins under addons/")]
             : [.. facts.Plugins.Select(p => Row(Plugin(facts.Folder, p), Muted(string.Join(" · ", new[] { p.Version, p.Author }.OfType<string>())),
@@ -184,6 +185,9 @@ public sealed class GodotPageViewer
             Body.Focus();
         }
     }
+
+    /// <summary>The words of a preset's link to its export.</summary>
+    public const string ExportWords = "Export…";
 
     /// <summary>Whether a preset's templates are there, in words: those of each kind it lacks named.</summary>
     private static string Templates(GodotPagePreset preset) => !preset.Checked ? "templates not looked for: no Godot found runs the project" : (preset.MissingRelease, preset.MissingDebug) switch

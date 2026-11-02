@@ -45,6 +45,11 @@ public class GodotProjectReadsTests
         Assert.Equal(["windows_debug_arm64.exe"], GodotExports.TemplatesOf(desktop, debug: true));
         Assert.Equal("res://own/macos.zip", presets[1].Custom(debug: false));
         Assert.Equal(["linux_release.x86_64"], GodotExports.TemplatesOf(new GodotPreset("Pc", "Linux", null, null, null, null, false, 0), debug: false));
+
+        IReadOnlySet<string> needed = GodotExports.NeededBy(presets)!;
+        Assert.Equal(["icudt_godot.dat", "macos.zip", "version.txt", "windows_debug_arm64.exe", "windows_debug_arm64_console.exe", "windows_release_arm64.exe",
+            "windows_release_arm64_console.exe"], needed.Order(StringComparer.Ordinal));
+        Assert.Null(GodotExports.NeededBy([]));
     }
 
     [Fact]

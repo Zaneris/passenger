@@ -23,6 +23,7 @@ public partial class MainWindow
             Open = file => OpenFile(file),
             Run = action => Request(action),
             TitleOf = action => actions![action]!.Title,
+            Export = (folder, preset) => ShowGodotExport(folder, preset),
             SetPlugin = SetGodotPluginAsync,
         };
         actions!.Add(new IdeAction(AppActions.GodotProject, "Godot Project", "Godot", c => ShowGodotProject(GodotProjectOf(c)!))

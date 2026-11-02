@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using Passenger.Core;
 
 namespace Passenger.Workspace;
@@ -15,12 +16,25 @@ public sealed record GodotPreset(string Name, string Platform, string? ExportPat
 
 /// <summary>A Godot project's export presets as its export_presets.cfg says them, read as Godot's ConfigFile text through
 /// <see cref="GodotFile"/>, and the export templates a Godot exports them with: the files each preset's platform takes
-/// (<see cref="TemplatesOf"/>), and the folder a Godot keeps those of its version in (its user data folder's
-/// <c>export_templates/4.7.2.stable.mono</c>).</summary>
+/// (<see cref="TemplatesOf"/>), the folder a Godot keeps those of its version in (its user data folder's
+/// <c>export_templates/4.7.2.stable.mono</c>), and their install from a <c>.tpz</c> Godot's download page offers, a zip
+/// whose <c>templates/</c> holds them and the version they are of.</summary>
 public static class GodotExports
 {
     /// <summary>The file a Godot project's export presets are kept in, beside its project.godot.</summary>
     public const string FileName = "export_presets.cfg";
+
+    /// <summary>The extension of the archive Godot's export templates come in.</summary>
+    public const string Archive = ".tpz";
+
+    /// <summary>The file of a template archive and of an installed version's folder naming the version its templates are of.</summary>
+    public const string VersionFile = "version.txt";
+
+    /// <summary>The folder inside a template archive that holds its files.</summary>
+    private const string Inside = "templates/";
+
+    /// <summary>The files every install takes beside a platform's: the version, and the text server's data a Godot exports with.</summary>
+    private static readonly string[] Always = [VersionFile, "icudt_godot.dat"];
 
     /// <summary>The presets of an export_presets.cfg's text in the order it writes them; one with no name or platform passed over.</summary>
     public static IReadOnlyList<GodotPreset> Read(string text)
@@ -81,6 +95,26 @@ public static class GodotExports
         };
     }
 
+    /// <summary>The files an install for the presets takes from an archive: each one's templates of both kinds (a Windows
+    /// one's console wrappers too), the version and the text server's data; all of the archive's for no preset.</summary>
+    public static IReadOnlySet<string>? NeededBy(IReadOnlyList<GodotPreset> presets)
+    {
+        if (presets.Count == 0)
+        {
+            return null;
+        }
+        HashSet<string> needed = new(Always, StringComparer.Ordinal);
+        foreach (string template in presets.SelectMany(p => TemplatesOf(p, debug: false).Concat(TemplatesOf(p, debug: true))))
+        {
+            needed.Add(template);
+            if (template.StartsWith("windows_", StringComparison.Ordinal))
+            {
+                needed.Add(template[..^".exe".Length] + "_console.exe");
+            }
+        }
+        return needed;
+    }
+
     /// <summary>The templates an export of a preset lacks in a Godot's version folder (null where no folder is known), or the
     /// template of its own it names where that is not there; none where it has what it takes.</summary>
     public static IReadOnlyList<string> Missing(GodotPreset preset, bool debug, string? folder, Func<string, bool> exists, string projectFolder)
@@ -111,4 +145,68 @@ public static class GodotExports
     /// it are unset.</summary>
     public static string? TemplatesFolder(string executable, string version, bool windows, bool macOS, Func<string, string?> variable, Func<string, bool> exists) =>
         GodotEditorSettings.DataFolder(executable, windows, macOS, variable, exists) is { } data ? Path.Combine(data, "export_templates", version) : null;
+
+    /// <summary>The version a template archive's templates are of, as its version file says; null where it has none.</summary>
+    public static string? ArchiveVersion(ZipArchive archive) =>
+        archive.GetEntry(Inside + VersionFile) is { } entry ? ReadAll(entry).Trim() : null;
+
+    /// <summary>The templates of an archive an install takes (<paramref name="needed"/>, or all for null), by name with
+    /// their sizes, in the archive's order.</summary>
+    public static IReadOnlyList<(string Name, long Size)> Chosen(ZipArchive archive, IReadOnlySet<string>? needed) =>
+        [.. archive.Entries.Where(e => e.FullName.StartsWith(Inside, StringComparison.Ordinal) && e.FullName.Length > Inside.Length && !e.FullName.EndsWith('/'))
+            .Select(e => (Name: e.FullName[Inside.Length..], Size: e.Length)).Where(e => !e.Name.Contains('/') && (needed is null || needed.Contains(e.Name)))];
+
+    /// <summary>Installs an archive's templates of a Godot's version into its folder, each written whole as it is read
+    /// (<see cref="AtomicFile"/>), the version file last so a folder cut short is never taken for one installed; null once
+    /// installed, else why not: an archive of another version, or none of those asked.</summary>
+    public static string? Install(string archive, string folder, string version, IReadOnlySet<string>? needed, Action<string> stage, CancellationToken cancel)
+    {
+        using ZipArchive zip = ZipFile.OpenRead(archive);
+        string? holds = ArchiveVersion(zip);
+        if (holds is null)
+        {
+            return $"{Path.GetFileName(archive)} holds no {Inside}{VersionFile}: it is not an archive of Godot's export templates";
+        }
+        if (holds != version)
+        {
+            return $"{Path.GetFileName(archive)} holds the templates of Godot {holds}, and the Godot found is {version}";
+        }
+        IReadOnlyList<(string Name, long Size)> chosen = Chosen(zip, needed);
+        if (!chosen.Any(c => c.Name != VersionFile))
+        {
+            return $"{Path.GetFileName(archive)} holds none of the templates asked for ({Plural.Listed([.. needed ?? new HashSet<string>()])})";
+        }
+        Directory.CreateDirectory(folder);
+        int done = 0;
+        foreach ((string name, long size) in chosen.OrderBy(c => c.Name == VersionFile ? 1 : 0))
+        {
+            cancel.ThrowIfCancellationRequested();
+            stage($"Installing {name} ({Megabytes(size)}), {++done} of {chosen.Count}");
+            ZipArchiveEntry entry = zip.GetEntry(Inside + name)!;
+            AtomicFile.Write(Path.Combine(folder, name), stream => Copy(entry, stream, cancel), null, AtomicFile.Temporary,
+                static (temporary, target) => File.Move(temporary, target, overwrite: true));
+        }
+        return null;
+    }
+
+    /// <summary>A size as a person reads it, in megabytes.</summary>
+    public static string Megabytes(long bytes) => $"{(bytes / (1024.0 * 1024.0)).ToString(bytes < 10 * 1024 * 1024 ? "0.0" : "0", CultureInfo.InvariantCulture)} MB";
+
+    private static void Copy(ZipArchiveEntry entry, Stream into, CancellationToken cancel)
+    {
+        using Stream from = entry.Open();
+        byte[] buffer = new byte[1 << 20];
+        int read;
+        while ((read = from.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            cancel.ThrowIfCancellationRequested();
+            into.Write(buffer, 0, read);
+        }
+    }
+
+    private static string ReadAll(ZipArchiveEntry entry)
+    {
+        using StreamReader reader = new(entry.Open());
+        return reader.ReadToEnd();
+    }
 }

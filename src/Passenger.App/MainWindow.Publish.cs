@@ -26,11 +26,22 @@ public partial class MainWindow
 
     private void AddPublishing()
     {
-        actions!.Add(new IdeAction(A.Publish, "Publish…", "Build", c => ShowPublish(PublishTarget(c).Project!))
+        // A Godot project's game is exported through its presets, any other project published through its profiles.
+        actions!.Add(new IdeAction(A.Publish, "Publish…", "Build", c =>
         {
-            WhyNot = c => PublishTarget(c).Why,
+            if (GodotExportOf(c) is { } game)
+            {
+                ShowGodotExport(game, null);
+            }
+            else
+            {
+                ShowPublish(PublishTarget(c).Project!);
+            }
+        })
+        {
+            WhyNot = c => GodotExportOf(c) is not null ? null : PublishTarget(c).Why,
             Menus = [new MenuPlace("Build", 2, 0)],
-            Words = ["dotnet publish", "Publish Profile", "Deploy"],
+            Words = ["dotnet publish", "Publish Profile", "Deploy", "Export", "Godot Export Presets"],
             Works = A.Publish,
         });
         actions.Add(new IdeAction(A.PublishAgain, "Publish Again", "Build", c => IdeErrors.Observe(PublishAgainAsync(c)))

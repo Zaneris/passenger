@@ -109,6 +109,9 @@ public static class AppActions
     // A Godot project's page over its project.godot: no key of Rider's.
     public const string GodotProject = "app.godot.project";
 
+    // The Godot found's export templates installed from a .tpz the person picks: no key of Rider's.
+    public const string InstallGodotTemplates = "app.godot.installTemplates";
+
     // The .NET SDK installed into the person's own folder, and put on their shell's PATH: no key of Rider's.
     public const string InstallDotnetSdk = "app.dotnet.install";
     public const string AddDotnetToPath = "app.dotnet.addToPath";
