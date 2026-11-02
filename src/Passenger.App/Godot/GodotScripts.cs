@@ -170,6 +170,21 @@ public static class GodotScripts
             : Path.Combine(Variable("XDG_CONFIG_HOME") is { Length: > 0 } config ? config : Path.Combine(home, ".config"), "godot");
     }
 
+    /// <summary>A headless editor's run on a project (an import), what it writes over of the person's editor put back once
+    /// it has ended, however it ended.</summary>
+    internal static async Task<T> PuttingBackAsync<T>(string project, Func<Task<T>> run)
+    {
+        Dictionary<string, byte[]?> before = await BackgroundWork.Run(() => Read(project));
+        try
+        {
+            return await run();
+        }
+        finally
+        {
+            await BackgroundWork.Run(() => PutBack(project, before, []));
+        }
+    }
+
     /// <summary>The files of <see cref="Kept"/> as they are, null for one not there.</summary>
     private static Dictionary<string, byte[]?> Read(string project)
     {

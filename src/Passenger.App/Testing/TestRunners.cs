@@ -4,8 +4,9 @@ namespace Passenger.App.Testing;
 
 /// <summary>A folder's test runners as one: each built test assembly is found and run by the runner its build asks for,
 /// a Testing Platform application (xUnit v3, MSTest's runner, TUnit) through <see cref="TestingPlatformRunner"/>, every
-/// other through VSTest (<see cref="VsTestRunner"/>, started the first time one needs it). So a solution of both shows
-/// them in one tree, and Run All runs both.</summary>
+/// other through VSTest (<see cref="VsTestRunner"/>, started the first time one needs it), and a Godot project's GUT tests,
+/// found from its GDScript, through GUT's command line (<see cref="GutRunner"/>). So a solution of all of them shows them in
+/// one tree, and Run All runs them all.</summary>
 public sealed class TestRunners(string folder, Func<string, CancellationToken, Task<ITestRunner>>? startVsTest = null) : ITestRunner
 {
     /// <summary>What a runner or a test host said: a <paramref name="notable"/> warning or error in the run's output and
@@ -23,6 +24,7 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
     }
 
     private readonly TestingPlatformRunner platform = new();
+    private readonly GutRunner gut = new();
     private readonly Func<string, CancellationToken, Task<ITestRunner>> startVsTest = startVsTest ?? VsTestRunner.StartAsync;
     private ITestRunner? vsTest;
 
@@ -57,14 +59,14 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
         return await vsTest.DiscoverAsync(assemblies, log, cancel);
     }
 
-    /// <summary>Runs tests, VSTest's then the platform's, each by the runner that found them; a run stopped stops there.</summary>
+    /// <summary>Runs tests, VSTest's, the platform's then GUT's, each by the runner that found them; a run stopped stops there.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
         ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, CancellationToken cancel = default)
     {
         RunSummary? summary = null;
-        foreach (ITestRunner runner in new[] { vsTest, platform }.OfType<ITestRunner>())
+        foreach (ITestRunner runner in new ITestRunner?[] { vsTest, platform, gut }.OfType<ITestRunner>())
         {
-            List<TestItem> its = [.. tests.Where(t => byKey.TryGetValue(t.Key, out ITestRunner? by) && by == runner)];
+            List<TestItem> its = [.. tests.Where(t => runner == gut ? t.Framework == GutScripts.Framework : byKey.TryGetValue(t.Key, out ITestRunner? by) && by == runner)];
             if (its.Count == 0)
             {
                 continue;
@@ -83,5 +85,6 @@ public sealed class TestRunners(string folder, Func<string, CancellationToken, T
     {
         vsTest?.Dispose();
         platform.Dispose();
+        gut.Dispose();
     }
 }

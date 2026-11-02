@@ -77,6 +77,14 @@ public partial class MainWindow
             }
         };
         Bottom.Tests.IsRunning = tests.IsBusy;
+        // An open GDScript file read before its Godot project was known to carry GUT is read again once the projects are listed.
+        tests.Finder.Changed += (_, _) =>
+        {
+            if (session == next)
+            {
+                testGutter.ReadUnplaced();
+            }
+        };
         // The open files' tests are read again by the test attributes their projects derive, once those are known.
         tests.Finder.AttributesChanged += (_, _) =>
         {
@@ -89,6 +97,7 @@ public partial class MainWindow
         tests.BeginAspireTest = (project, debug, cancel) => next.Aspire.BeginTestAsync(project, debug, cancel);
         tests.LaunchUnderDebugger = start => LaunchTestHost(next, start, testHosts);
         tests.AttachDebugger = processId => AttachTestHost(next, processId, testHosts);
+        tests.DebugScripts = (start, folder, leading) => DebugTestScripts(next, start, folder, leading, testHosts);
         tests.EndDebugging = () => Task.WhenAll(testHosts.ToArray().Select(EndTestHost));
         async Task EndTestHost(DebugTab tab)
         {
@@ -342,6 +351,70 @@ public partial class MainWindow
             }
             return false;
         }
+    }
+
+    /// <summary>A Godot run of GUT's tests started under the GDScript debugger, Passenger listening for it as its remote
+    /// debugger, its breakpoints set from its start, in a Debug tab ended with the test run; done once its session is open,
+    /// with the run's end.</summary>
+    private async Task<Task> DebugTestScripts(ProjectSession running, Testing.TestHostStart start, string folder, int leading, HashSet<DebugTab> testHosts)
+    {
+        CheckTestSession(running);
+        LaunchPlan plan = new()
+        {
+            Name = "GUT",
+            Program = start.FileName,
+            Arguments = start.Arguments,
+            Leading = leading,
+            WorkingDirectory = folder,
+            Environment = new Dictionary<string, string>(start.Environment),
+            Godot = folder,
+            ScriptsAlone = true,
+            GameName = Passenger.Workspace.GodotProject.Read(folder)?.Name,
+        };
+        ShowToolWindow(ToolWindowIds.Debug);
+        (LaunchPlan listened, Godot.GodotGame? game) = running.Listened(plan, running.Debug.ScriptStart(folder));
+        if (game is null)
+        {
+            throw new InvalidOperationException("GUT's run is not a Godot game the GDScript debugger can listen for");
+        }
+        if (await running.Debug.LaunchScriptsAsync(listened, game) is { } refused)
+        {
+            game.Dispose();
+            throw new InvalidOperationException(refused);
+        }
+        Debugging.DebugSession? debugged = running.Debug.SessionNamed(listened.Name);
+        game.Debugged = debugged;
+        if (debugged is not null && running.Debug.TabOf(debugged) is { } tab)
+        {
+            testHosts.Add(tab);
+        }
+        Task ended = SessionEnd(debugged);
+        IdeErrors.Observe(DisposedOnceAsync(game, ended));
+        return ended;
+
+        static async Task DisposedOnceAsync(Godot.GodotGame game, Task ended)
+        {
+            await ended;
+            game.Dispose();
+        }
+    }
+
+    /// <summary>A debug session's end; done at once for none, or one ended.</summary>
+    private static Task SessionEnd(Debugging.DebugSession? session)
+    {
+        if (session is not { State: not Debugging.DebugState.Ended } running)
+        {
+            return Task.CompletedTask;
+        }
+        TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        running.StateChanged += (_, _) =>
+        {
+            if (running.State == Debugging.DebugState.Ended)
+            {
+                ended.TrySetResult();
+            }
+        };
+        return ended.Task;
     }
 
     private void CheckTestSession(ProjectSession running)

@@ -11,9 +11,10 @@ public static class GodotTestRuns
     /// <summary>The variable GdUnit4's adapter takes Godot's executable from.</summary>
     public const string BinaryVariable = "GODOT_BIN";
 
-    /// <summary>The variables a Godot project's test hosts are given, the user folders a test gives Godot among them, and why
-    /// GdUnit4 finds no Godot where none would run C#. A worker's: finding Godot reads the disk and the login shell's PATH.</summary>
-    public static (IReadOnlyDictionary<string, string> Variables, string? Missing) Variables(string? setting, IReadOnlyDictionary<string, string> userFolders)
+    /// <summary>The variables a Godot project's test hosts are given, the user folders a test gives Godot among them: GODOT_BIN
+    /// naming any Godot 4 found, which runs GUT's GDScript; and why none would run GdUnit4's C# where it would not. A worker's:
+    /// finding Godot reads the disk and the login shell's PATH.</summary>
+    public static (IReadOnlyDictionary<string, string> Variables, string? NoCSharp) Variables(string? setting, IReadOnlyDictionary<string, string> userFolders)
     {
         Dictionary<string, string> variables = new(userFolders, StringComparer.Ordinal);
         if (Environment.GetEnvironmentVariable(BinaryVariable) is { Length: > 0 })
@@ -21,12 +22,11 @@ public static class GodotTestRuns
             return (variables, null);
         }
         GodotFound? found = GodotLaunch.Found(setting);
-        if (found is { WhyNot: null })
+        if (found is { WhyNotScripts: null })
         {
             variables[BinaryVariable] = found.Executable;
-            return (variables, null);
         }
-        return (variables, $"GdUnit4's tests that need Godot's engine cannot run: {found?.WhyNot ?? GodotLaunch.NotFound}");
+        return (variables, found is { WhyNot: null } ? null : $"GdUnit4's tests that need Godot's engine cannot run: {found?.WhyNot ?? GodotLaunch.NotFound}");
     }
 
     /// <summary>A test project's environment with the Godot variables it does not set itself.</summary>

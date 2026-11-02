@@ -218,6 +218,10 @@ public interface ITestDebugLauncher
 
     /// <summary>Attaches the debugger to a test host the runner started; true once the debugger has hold of it.</summary>
     Task<bool> AttachAsync(int processId);
+
+    /// <summary>Starts a Godot run of a project's GDScript tests (GUT's) under the GDScript debugger, the debugger's own
+    /// arguments after the first <paramref name="leading"/>; done once it has started, with the run's end.</summary>
+    Task<Task> DebugScriptsAsync(TestHostStart start, string folder, int leading);
 }
 
 /// <summary>What finds and runs a folder's tests: VSTest's vstest.console (<see cref="VsTestRunner"/>), Microsoft.Testing.Platform's

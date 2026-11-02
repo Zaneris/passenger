@@ -107,6 +107,7 @@ public sealed class ProjectSession : IAsyncDisposable
             // The Godot Run starts the game on, found off the window's thread, with the window's user folders for Godot.
             GodotVariables = cancel => BackgroundWork.Run(() => GodotTestRuns.Variables(setup.Settings().GodotExecutable,
                 setup.GodotEnvironment ?? new Dictionary<string, string>()), cancel),
+            GodotFolders = () => [.. Workspace?.GodotGames ?? [], .. Projects.Select(p => p.GodotFolder).OfType<string>()],
         };
         Containers = new Containers.FolderContainers(folder, setup.Engine());
         Vcs.Work = setup.Work;
@@ -918,7 +919,9 @@ public sealed class ProjectSession : IAsyncDisposable
         CSharp?.Reload([.. before.Projects.Where(p => changed.Contains(p.Path) && p.Evaluated is { Complete: true }).Select(p => p.Path).Distinct(StringComparer.Ordinal)]);
         bool tests = !before.Projects.Where(p => p.IsTestProject).Select(p => p.Path).SequenceEqual(Workspace.Projects.Where(p => p.IsTestProject).Select(p => p.Path))
             || before.Projects.Zip(Workspace.Projects).Any(p => changed.Contains(p.First.Path) && TestFinder.HoldsTests(p.Second)
-                && !ReferenceEquals(CompilationSymbols.Of(p.First), CompilationSymbols.Of(p.Second)));
+                && !ReferenceEquals(CompilationSymbols.Of(p.First), CompilationSymbols.Of(p.Second)))
+            // A Godot project's folder, whose GDScript GUT's tests may be in, is known once its C# project is evaluated.
+            || !before.Projects.Select(p => p.GodotFolder).SequenceEqual(Workspace.Projects.Select(p => p.GodotFolder));
         // A multi-targeted project's outer evaluation lacks its frameworks' own references: told once they are in.
         bool packages = before.Projects.Zip(Workspace.Projects).Any(p => changed.Contains(p.First.Path) && p.Second.Evaluated is not { Complete: false }
             && (p.First.Evaluated is { Complete: false } || !FrameworkPackages(p.First).SequenceEqual(FrameworkPackages(p.Second))));

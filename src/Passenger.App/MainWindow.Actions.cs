@@ -408,7 +408,7 @@ public partial class MainWindow
 
     /// <summary>The test a file's line is in, as its code declares it or a runner found it; null where there is none.</summary>
     private Testing.DeclaredPlace? TestAt(OpenDocument file, int line) =>
-        file.Syntax is { } syntax ? Testing.TestsAtCaret.At(syntax.Current, line, testGutter.Knows) : null;
+        file.Syntax is { } syntax ? Testing.TestsAtCaret.At(syntax.Current, line, testGutter.Knows) : testGutter.ScriptTestAt(file, line);
 
     /// <summary>Adds one of the window's actions, listed in one place of the menus if given.</summary>
     /// <summary>A key the keymap gives one action where another takes it by place (<see cref="AppActions.KeysIn"/>): New
