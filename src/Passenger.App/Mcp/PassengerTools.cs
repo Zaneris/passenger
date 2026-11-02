@@ -1376,7 +1376,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             .Take(Math.Max(1, limit))
             .Select(m => new TestInfoRow(TestName(m), StateName(m.State), m.Path is { } at ? $"{Relative(at)}:{m.Line}" : null)
             {
-                Earlier = m.EarlierRun is { } ran ? Testing.TestNode.EarlierWords(ran, m.CodeChanged) : null,
+                Earlier = m.Standing,
             })];
     });
 
@@ -3025,7 +3025,8 @@ public sealed record TestFailure(string Test, string? Location, string Details);
 
 public sealed record TestInfoRow(string Test, string State, string? Location)
 {
-    /// <summary>When the run its state is from began, where that was an earlier session's, and whether its code changed since.</summary>
+    /// <summary>When the run its state is from began, where that was an earlier session's, and whether its code changed since
+    /// (this session's run too).</summary>
     public string? Earlier { get; init; }
 }
 

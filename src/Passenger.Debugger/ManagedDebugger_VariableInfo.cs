@@ -670,6 +670,20 @@ public partial class ManagedDebugger
                     return;
                 }
                 bool debuggerBrowsableRootHidden = browsable is DebuggerBrowsableState.RootHidden;
+                if (!isStatic && propertyName is "StackTrace" && GetCorDebugTypeFriendlyName(declaringType) == "System.Exception"
+                    && corDebugValue.UnwrapDebugValueToObjectOrNull() is { } thrown && TryStoredStackTrace(thrown, _process!.GetThread(threadId.Value), out string? trace))
+                {
+                    // Read from what the exception stores, never formatted in the program.
+                    result.Add(new VariableInfo
+                    {
+                        Name = propertyName,
+                        Member = propertyName,
+                        Value = trace is null ? "null" : SymbolDisplay.FormatLiteral(trace, quote: true),
+                        Type = "string",
+                        VariablesReference = 0,
+                    });
+                    return;
+                }
 
                 ICorDebugFunction getMethod = corDebugClass.Module.GetFunctionFromToken(getMethodDef);
                 ICorDebugEval eval = variablesReferenceIlFrame.Chain.Thread.CreateEval();

@@ -6,6 +6,18 @@ if (args is ["child"])
 	Console.In.ReadToEnd();
 	return;
 }
+if (args is ["throws"])
+{
+	try
+	{
+		await ThrowsLaterAsync(2);
+	}
+	catch (Exception e)
+	{
+		Console.WriteLine($"caught {e.GetType().Name}");
+	}
+	return;
+}
 int total = await OuterAsync(3);
 Console.WriteLine($"total {total}");
 int ran = await Task.Run(RunAsync);
@@ -81,4 +93,15 @@ static async Task WaitForChildAsync()
 	child.StandardInput.Close();
 	await exited;
 	Console.WriteLine($"child ended with {child.ExitCode}");
+}
+
+// An exception thrown after awaits, through runtime-async callers going on, for its stack trace.
+static async Task ThrowsLaterAsync(int depth)
+{
+	await Task.Yield();
+	if (depth > 0)
+	{
+		await ThrowsLaterAsync(depth - 1);
+	}
+	throw new InvalidOperationException($"from runtime async at {depth}");
 }

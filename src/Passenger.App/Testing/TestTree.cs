@@ -173,7 +173,8 @@ public sealed class TestNode : Observable, ITreeRow
     /// code was not read.</summary>
     internal ulong? RanCode { get; set; }
 
-    /// <summary>A method showing an earlier run's results whose code has changed since that run, or a row of one.</summary>
+    /// <summary>A method showing a run's results, this session's or an earlier one's, whose code has changed since that run,
+    /// or a row of one.</summary>
     public bool CodeChanged
     {
         get => codeChanged || (Kind == TestNodeKind.Row && Parent?.codeChanged == true);
@@ -192,10 +193,19 @@ public sealed class TestNode : Observable, ITreeRow
     }
 
     /// <summary>What the details pane shows: each result's outcome, message, stack, output and the files it carries, after
-    /// when the run they are kept from ran, where they are an earlier session's.</summary>
-    public string Details => EarlierRun is { } ran
-        ? $"{EarlierWords(ran, CodeChanged)}\n\n{DetailsOf(results)}"
+    /// what they stand for where it is not the test as it is (<see cref="Standing"/>).</summary>
+    public string Details => Standing is { } words
+        ? $"{words}\n\n{DetailsOf(results)}"
         : DetailsOf(results);
+
+    /// <summary>What a method's results say over them where they are not of the test as it is: when an earlier session's
+    /// run began, or that its code has changed since this session's run; null for neither.</summary>
+    public string? Standing => EarlierRun is { } ran ? EarlierWords(ran, CodeChanged)
+        : CodeChanged && results.Count > 0 ? ChangedSinceWords
+        : null;
+
+    /// <summary>What this session's results say over them once the test's code has changed since they ran.</summary>
+    public const string ChangedSinceWords = "The test's code has changed since it ran";
 
     /// <summary>What results kept from an earlier session's run say over them: when that run began, and whether the
     /// test's code has changed since.</summary>
@@ -477,6 +487,9 @@ public sealed class TestTree
     /// <summary>The methods showing an earlier session's results, whose code is looked at again as their files are read.</summary>
     private readonly HashSet<TestNode> fromEarlier = new(ReferenceEqualityComparer.Instance);
 
+    /// <summary>The methods this session has run, whose code is looked at again as their files are read too.</summary>
+    private readonly HashSet<TestNode> ranHere = new(ReferenceEqualityComparer.Instance);
+
     /// <summary>A method's code as its file reads now (<see cref="TestFinder.CodeOf"/>); null where it is not known.</summary>
     public Func<TestNode, ulong?>? CodeOf { get; set; }
 
@@ -678,10 +691,10 @@ public sealed class TestTree
         Updated?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Looks at the code of each method showing an earlier session's results again: whether it has changed since.</summary>
+    /// <summary>Looks at the code of each method showing a run's results again: whether it has changed since.</summary>
     public void CheckCode()
     {
-        foreach (TestNode method in fromEarlier)
+        foreach (TestNode method in fromEarlier.Concat(ranHere))
         {
             method.CodeChanged = method.RanCode is { } ran && CodeOf?.Invoke(method) is { } now && now != ran;
         }
@@ -750,6 +763,7 @@ public sealed class TestTree
                 }
             }
             fromEarlier.Remove(method);
+            ranHere.Add(method);
             method.RanCode = CodeOf?.Invoke(method);
         }
         foreach (TestNode row in rows)
@@ -1032,6 +1046,7 @@ public sealed class TestTree
         // A method that has not run in this session shows what an earlier one's run left, until it runs.
         HashSet<TestNode> shown = new(methods, ReferenceEqualityComparer.Instance);
         fromEarlier.RemoveWhere(m => !shown.Contains(m));
+        ranHere.RemoveWhere(m => !shown.Contains(m));
         foreach (TestNode method in methods)
         {
             TakeKept(method);

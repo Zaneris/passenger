@@ -1176,10 +1176,10 @@ public partial class ManagedDebugger
     /// and one it attached to is let go to run on, as a detach lets it go.</summary>
     public Task AbandonAsync() => DisconnectAsync(terminateDebuggee: _launched);
 
-    /// <summary>The exception a thread is stopped with. Its type, the message it was made with, its HResult and its inner
-    /// exceptions are read from its fields, running no code, so a stop always names it; its getters then add what they say
-    /// (an overridden Message, Source, StackTrace) in their time. Once one cannot be run, or implicit evaluation is off,
-    /// none after it is, and the description says why.</summary>
+    /// <summary>The exception a thread is stopped with. Its type, the message it was made with, its HResult, its inner
+    /// exceptions and their stack traces are read from what they store, running no code, so a stop always names it; its
+    /// getters then add what they say (an overridden Message, Source, a StackTrace the debugger could not read) in their
+    /// time. Once one cannot be run, or implicit evaluation is off, none after it is, and the description says why.</summary>
     public async Task<ExceptionInfo> ExceptionInfo(ThreadId threadId)
     {
         _logger?.Invoke($"ExceptionInfo for thread {threadId.Value}");
@@ -1190,7 +1190,7 @@ public partial class ManagedDebugger
             _logger?.Invoke("No current exception");
             throw new InvalidOperationException("No current exception on thread");
         }
-        List<ThrownException> chain = StoredChain(currentException);
+        List<ThrownException> chain = StoredChain(currentException, thread);
         try
         {
             // No code runs to read it once an evaluation has timed out, until the program runs on.
@@ -1204,7 +1204,7 @@ public partial class ManagedDebugger
             {
                 why ??= await Add(each, "Source", said => each.Source = said);
             }
-            foreach (ThrownException each in chain)
+            foreach (ThrownException each in chain.Where(e => !e.TraceRead))
             {
                 why ??= await Add(each, "StackTrace", said => each.StackTrace = said);
             }
@@ -1274,7 +1274,7 @@ public partial class ManagedDebugger
                 TypeName = lastDot is not -1 ? exception.TypeName[(lastDot + 1)..] : exception.TypeName,
                 FullTypeName = exception.TypeName,
                 EvaluateName = evaluateName,
-                StackTrace = exception.StackTrace,
+                StackTrace = exception.StackTrace ?? "",
                 InnerException = at + 1 < chain.Count ? [Details(at + 1, $"{evaluateName}.InnerException")] : [],
                 FormattedDescription = $"**{exception.TypeName}:** '{exception.Message}'",
                 HResult = exception.HResult,
@@ -1304,12 +1304,28 @@ public partial class ManagedDebugger
         /// <summary>Null until it is known: the field is set once the getter has run, or the program has set it.</summary>
         public string? Source { get; set; }
 
-        public string StackTrace { get; set; } = "";
+        /// <summary>What its StackTrace gives: read from what the exception stores where <see cref="TraceRead"/>, else from
+        /// its getter once that has run (null for one never thrown).</summary>
+        public string? StackTrace { get; set; }
+
+        public bool TraceRead { get; init; }
+
+        /// <summary>Its type as its ToString names it, reflection's way ("Ns.Outer+Failed`1[System.Int32]").</summary>
+        public string ClassName { get; init; } = typeName;
+
+        /// <summary>The message it was made with; null for none, where Exception's Message says it was thrown.</summary>
+        public string? MadeMessage { get; init; }
+
+        /// <summary>Whether its type writes its own Message, or its own ToString, below System.Exception's.</summary>
+        public bool OwnMessage { get; init; }
+
+        public bool OwnText { get; init; }
     }
 
     /// <summary>An exception and its inner exceptions, as deep as they go within reason, as their fields hold them: their
-    /// types, and the messages, HResults and sources they were made with. No code runs.</summary>
-    private static List<ThrownException> StoredChain(ICorDebugValue exception)
+    /// types, the messages, HResults and sources they were made with, and their stack traces where the debugger can read
+    /// them (<see cref="TryStoredStackTrace"/>), placed in the code of <paramref name="thread"/>'s frames. No code runs.</summary>
+    private List<ThrownException> StoredChain(ICorDebugValue exception, ICorDebugThread thread)
     {
         List<ThrownException> chain = [];
         bool read = false;
@@ -1318,11 +1334,19 @@ public partial class ManagedDebugger
             for (ICorDebugObjectValue? at = exception.UnwrapDebugValueToObjectOrNull(); at is not null && chain.Count <= 10;
                 at = (ExceptionField(at, "_innerException") as ICorDebugReferenceValue)?.UnwrapDebugValueToObjectOrNull())
             {
+                bool traceRead = TryStoredStackTrace(at, thread, out string? trace);
+                string? made = Text(at, "_message");
                 chain.Add(new ThrownException(((ICorDebugHeapValue2)at).CreateHandle(CorDebugHandleType.HANDLE_STRONG), GetCorDebugTypeFriendlyName(at.ExactType))
                 {
-                    Message = Text(at, "_message") ?? "",
+                    Message = made ?? "",
+                    MadeMessage = made,
                     HResult = ExceptionField(at, "_HResult") is ICorDebugGenericValue number ? BitConverter.ToInt32(number.GetValueAsBytes()) : 0,
                     Source = Text(at, "_source"),
+                    StackTrace = trace,
+                    TraceRead = traceRead,
+                    ClassName = TypeToString(at.ExactType),
+                    OwnMessage = Declares(at.ExactType, "get_Message"),
+                    OwnText = Declares(at.ExactType, "ToString"),
                 });
             }
             read = chain.Count > 0;

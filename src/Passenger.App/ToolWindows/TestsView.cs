@@ -574,7 +574,8 @@ public sealed class TestsView : DockPanel
         private void ShowExpanded(TestNode node) => chevron.Turned = node.IsExpanded;
 
         /// <summary>A test's mark, a grey ring not run, a blue dot running, a green tick passed, a red cross failed, a grey
-        /// dash skipped, how long it took once it ran, and when, where that was an earlier session's run.</summary>
+        /// dash skipped, how long it took once it ran, and when, where that was an earlier session's run, and whether its
+        /// code has changed since.</summary>
         private void ShowState(TestNode node)
         {
             // Each mark centred in the same 16 wide: the dot running a size smaller, the tick passed a size larger.
@@ -591,8 +592,9 @@ public sealed class TestsView : DockPanel
             state.Width = state.Height = size;
             state.Margin = new Thickness((16 - size) / 2, 0, ((16 - size) / 2) + 6, 0);
             duration.Text = node.State is TestState.Passed or TestState.Failed && node.Duration > TimeSpan.Zero ? Format(node.Duration) : string.Empty;
-            earlier.Text = node.Kind is TestNodeKind.Method or TestNodeKind.Row && node.EarlierRun is { } ran
-                ? $"earlier run, {Earlier(ran)}{(node.CodeChanged ? "; code changed" : string.Empty)}"
+            earlier.Text = node.Kind is not (TestNodeKind.Method or TestNodeKind.Row) ? string.Empty
+                : node.EarlierRun is { } ran ? $"earlier run, {Earlier(ran)}{(node.CodeChanged ? "; code changed" : string.Empty)}"
+                : node.CodeChanged && node.State is not (TestState.NotRun or TestState.Running) ? "code changed"
                 : string.Empty;
         }
 

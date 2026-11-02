@@ -1255,7 +1255,8 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 
     /// <summary>A run's results come back when the folder opens again, before any build: each test's outcome, time, data rows
     /// and failure as they were, marked in its row and its details as an earlier run's with when; a test whose code changed
-    /// while the folder was closed says so, one whose code did not says nothing; and a run makes them this session's.</summary>
+    /// while the folder was closed says so, one whose code did not says nothing; a run makes them this session's; and a test
+    /// whose code changes after this session's run says so too.</summary>
     [AvaloniaFact]
     public void A_runs_results_come_back_as_an_earlier_runs_when_the_folder_opens_again_until_the_tests_run_again()
     {
@@ -1293,6 +1294,13 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Assert.All(second.Tests.Tree.Methods, m => Assert.True(m.EarlierRun is null && !m.CodeChanged, $"{m.Name} still shows an earlier run's results after this run"));
         Ui.Settle();
         Assert.DoesNotContain(ShownTexts(second), t => t?.StartsWith("earlier run", StringComparison.Ordinal) == true);
+
+        Write("SumTests.cs", File.ReadAllText(Source).Replace("Assert.Equal(5, 2 + 3);", "Assert.Equal(5, 3 + 2);", StringComparison.Ordinal));
+        Ui.WaitFor(() => Method(second, "Two_and_two_make_five")?.CodeChanged == true, "the test this session ran, whose code changed since, to say so");
+        Assert.False(Method(second, "Two_and_two_make_four")!.CodeChanged, "A test whose code did not change since this session's run says it did");
+        Assert.StartsWith(TestNode.ChangedSinceWords, Method(second, "Two_and_two_make_five")!.Details, StringComparison.Ordinal);
+        Ui.Settle();
+        Assert.True(ShownTexts(second).Contains("code changed"), $"No row says its code changed since this session's run: the window says {string.Join(" | ", ShownTexts(second))}");
         second.Close();
     }
 }

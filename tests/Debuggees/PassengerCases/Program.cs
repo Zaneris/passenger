@@ -131,6 +131,16 @@ if (args is ["implemented"])
 	Implemented.Run();
 	return;
 }
+if (args is ["traces"])
+{
+	Traces.Run();
+	return;
+}
+if (args is ["wrapped"])
+{
+	Traces.Wrapped();
+	return;
+}
 if (args is ["unread", var how])
 {
 	Unread.Run(how);

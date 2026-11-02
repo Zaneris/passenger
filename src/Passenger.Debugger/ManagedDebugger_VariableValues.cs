@@ -17,6 +17,8 @@ public enum CorDebugValueFormatKind
     None,
     DebuggerDisplay,
     ToString,
+    /// <summary>An exception whose types all write System.Exception's ToString, written from what it stores.</summary>
+    Exception,
     Tuple,
     AnonymousType
 }
@@ -68,6 +70,15 @@ public partial class ManagedDebugger
         (string? friendlyTypeName, string? value, CorDebugValueFormatKind formatKind, string? debuggerProxyTypeName, DebuggerDisplay? display) = GetValueForCorDebugValue(valueToFormat, escapeStringValue);
         friendlyTypeName = resolvedValue.FriendlyTypeNameOverride ?? friendlyTypeName;
         bool resultIsError = false;
+        if (formatKind is CorDebugValueFormatKind.Exception)
+        {
+            // Its trace is read rather than formatted in the program; where it cannot be, its ToString runs.
+            if (await ExceptionTextAsync(valueToFormat, threadId, frameStackDepth) is { } written)
+            {
+                return new FormattedValue(friendlyTypeName, written, debuggerProxyTypeName, false);
+            }
+            formatKind = CorDebugValueFormatKind.ToString;
+        }
         if (EvalStatus.ImplicitOff is not null && !EvalStatus.Explicit && formatKind is CorDebugValueFormatKind.ToString)
         {
             // Its ToString does not run while implicit evaluation is off: its type in braces.
@@ -329,7 +340,7 @@ public partial class ManagedDebugger
         }
         if (corDebugObjectValue.ExactType.IsExceptionType())
         {
-            return new(typeName, "", CorDebugValueFormatKind.ToString, debugProxyTypeName);
+            return new(typeName, "", Declares(corDebugObjectValue.ExactType, "ToString") ? CorDebugValueFormatKind.ToString : CorDebugValueFormatKind.Exception, debugProxyTypeName);
         }
         if (typeName == "decimal")
         {
