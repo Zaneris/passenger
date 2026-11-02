@@ -304,6 +304,10 @@ public static class AppActions
     public const string DerivedSymbols = "app.code.derivedSymbols";
 
     public const string FindUsages = "app.code.findUsages";
+
+    // Rider's ShowUsages, its popup at the caret: Shift+Alt+F12 in its Visual Studio keymaps, Shift+F12 in VS Code's, $default's
+    // Ctrl+Alt+F7 (Cmd+Alt+F7 on the Mac); none of them gives it a gesture.
+    public const string ShowUsages = "app.code.showUsages";
     public const string HighlightUsages = "app.code.highlightUsages";
     public const string Reformat = "app.code.reformat";
     public const string CodeCleanup = "app.code.cleanup";
@@ -695,6 +699,7 @@ public static class AppActions
                 .Bind(GoToTypeDeclaration, "meta shift F11", "meta shift button1", "shift button2")
                 .Bind(BaseSymbols, "control alt LEFT", "alt HOME")
                 .Bind(FindUsages, "shift F12")
+                .Bind(ShowUsages, "shift alt F12")
                 .Bind(HighlightUsages, "shift alt F11")
                 .Bind(Reformat, "meta alt ENTER", "meta K , F", "meta K , meta F", "meta K , D", "meta K , meta D")
                 .Bind(ParameterInfo, "meta P")
@@ -824,6 +829,7 @@ public static class AppActions
             .Bind(GoToTypeDeclaration, "control shift F11", "control shift button1")
             .Bind(BaseSymbols, "alt HOME")
             .Bind(FindUsages, "shift F12")
+            .Bind(ShowUsages, "shift alt F12")
             .Bind(HighlightUsages, "shift alt F11")
             .Bind(Reformat, "control alt ENTER", "control K , F", "control K , control F", "control K , D", "control K , control D")
             .Bind(ParameterInfo, "shift control SPACE")
@@ -913,6 +919,7 @@ public static class AppActions
                 .Bind(GoToTypeDeclaration, "control shift B", "shift meta button1")
                 .Bind(DerivedSymbols, "meta F12")
                 .Bind(FindUsages, "alt shift F12")
+                .Bind(ShowUsages, "shift F12")
                 .Bind(HighlightUsages, "meta shift F7")
                 .Bind(Reformat, "alt shift F")
                 .Bind(ReformatWithPrettier, "meta alt shift P")
@@ -1025,6 +1032,7 @@ public static class AppActions
             .Bind(GoToTypeDeclaration, "shift control button1")
             .Bind(DerivedSymbols, "control F12")
             .Bind(FindUsages, "alt shift F12")
+            .Bind(ShowUsages, "shift F12")
             .Bind(HighlightUsages, "control shift F7")
             .Bind(Reformat, "alt shift F")
             .Bind(ReformatWithPrettier, "control alt shift P")
@@ -1159,6 +1167,7 @@ public static class AppActions
                 .Bind(BaseSymbols, "meta U")
                 .Bind(DerivedSymbols, "meta alt B", "meta alt button1")
                 .Bind(FindUsages, "alt F7")
+                .Bind(ShowUsages, "meta alt F7")
                 .Bind(HighlightUsages, "meta shift F7")
                 .Bind(Reformat, "meta alt L")
                 .Bind(ReformatWithPrettier, "meta alt shift P")
@@ -1276,6 +1285,7 @@ public static class AppActions
             .Bind(BaseSymbols, "control U")
             .Bind(DerivedSymbols, "control alt B", "control alt button1")
             .Bind(FindUsages, "alt F7")
+            .Bind(ShowUsages, "control alt F7")
             .Bind(HighlightUsages, "control shift F7")
             .Bind(Reformat, "control alt L")
             .Bind(ReformatWithPrettier, "control alt shift P")

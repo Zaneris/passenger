@@ -46,8 +46,8 @@ internal abstract class LanguageAssist
     /// shown, for an agent; it answers for the same files, and passes (null) where that passes.</summary>
     public virtual Task<Declared?> DeclaredAsync(OpenDocument document, int offset) => NotDeclared;
 
-    /// <summary>Find Usages from an offset.</summary>
-    public virtual Task<bool> UsagesAsync(int offset) => Passed;
+    /// <summary>Find Usages from an offset, or Show Usages' popup there (<paramref name="inPopup"/>).</summary>
+    public virtual Task<bool> UsagesAsync(int offset, bool inPopup) => Passed;
 
     /// <summary>Rename at the caret: its box, or why not.</summary>
     public virtual bool Rename(int caret) => false;
@@ -138,11 +138,11 @@ internal sealed class LanguageAssists(HttpAssist http, MSBuildAssist msbuild, Xa
         return null;
     }
 
-    public async Task UsagesAsync(int offset)
+    public async Task UsagesAsync(int offset, bool inPopup)
     {
         foreach (LanguageAssist language in ladder)
         {
-            if (await language.UsagesAsync(offset))
+            if (await language.UsagesAsync(offset, inPopup))
             {
                 return;
             }

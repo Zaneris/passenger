@@ -565,6 +565,45 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             find.Rows.SkipWhile(r => r.Depth != 0 || r.Label != group).Skip(1).TakeWhile(r => r.Depth != 0);
     }
 
+    /// <summary>Show Usages, from its keys, lists the usages Find Usages finds in a popup under the caret, framed as every
+    /// popup is, the declaration first with what each does and the usage in its line; Enter goes to the one chosen, and its
+    /// link hands the usages to the Find window.</summary>
+    [AvaloniaFact]
+    public void Show_usages_lists_them_in_a_popup_under_the_caret_goes_to_the_one_chosen_and_hands_them_to_the_find_window()
+    {
+        MainWindow window = project.Open("Loop.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "int tot");
+        Point caret = editor.TranslatePoint(editor.PointOf(editor.Selections.Primary.Caret), window)!.Value;
+        Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.ShowUsages)[0].Notation());
+        Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 3 }, () => $"the usages of total in Show Usages' popup ({window.Status})");
+        UsagesPopup usages = (UsagesPopup)window.Popup!;
+        Assert.Equal("Usages of total  3 usages", usages.Title);
+        Assert.Equal([(4, "int total = 0;"), (7, "total += i * 2;"), (9, "return total;")], usages.Rows.Select(u => (u.Line, u.LineText.Trim())));
+        Assert.Equal(Languages.CSharp.UsageKind.Declaration, usages.Rows[0].Kind);
+        Border frame = PopupFrame.FrameOf(usages)!;
+        UiRulesTests.HoldsToPopupRules("Show Usages", frame);
+        Point top = frame.TranslatePoint(default, window)!.Value;
+        Assert.True(top.Y > caret.Y && Math.Abs(top.X - caret.X) < PopupFrame.Wide,
+            $"Show Usages' popup opened at {top}, not under the caret at {caret}");
+        Assert.False(window.Find.Searches.Contains("Usages of total"), "Show Usages listed the usages in the Find window as well as its popup");
+
+        Ui.Press(window, "DOWN");
+        Ui.Press(window, "DOWN");
+        Ui.Press(window, "ENTER");
+        Assert.True(window.Popup is null, "Show Usages' popup stayed open once a usage was chosen");
+        Assert.Equal(new TextPosition(9, 15), editor.CaretPosition);
+
+        Ui.PlaceAfter(editor, "int tot");
+        Ui.Run(window, AppActions.ShowUsages);
+        Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 3 }, "Show Usages' popup again");
+        Ui.Click(((UsagesPopup)window.Popup!).FindWindow);
+        Ui.WaitFor(() => window.Find.Shown == "Usages of total", "Open in Find Window to list the usages there");
+        Assert.True(window.Popup is null, "Show Usages' popup stayed open once its usages went to the Find window");
+        Assert.Equal(3, window.Find.Rows.Count(r => r.Usage is not null));
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void The_error_stripe_marks_a_problem_in_its_colour_says_what_it_is_and_a_click_goes_there()

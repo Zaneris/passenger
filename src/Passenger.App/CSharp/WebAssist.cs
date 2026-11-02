@@ -102,7 +102,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         return new Declared(place is { } found ? Declared.Served([found], ServerPlaces.Texts(context.Editors)) : [], said);
     }
 
-    public override Task<bool> UsagesAsync(int offset)
+    public override Task<bool> UsagesAsync(int offset, bool inPopup)
     {
         if (context.WebCurrent is not { Lsp: not null } web || web.Provides("referencesProvider"))
         {

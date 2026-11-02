@@ -140,13 +140,13 @@ internal sealed partial class XamlAssist : LanguageAssist
             ? $"{found.Symbol.Name}'s declaration cannot be reached: {string.Join("; ", unreached)}" : Refusals.NoDeclaration);
     }
 
-    public override async Task<bool> UsagesAsync(int offset)
+    public override async Task<bool> UsagesAsync(int offset, bool inPopup)
     {
         if (context.XamlCurrent is not { } xaml)
         {
             return false;
         }
-        await XamlUsages(xaml, offset);
+        await XamlUsages(xaml, offset, inPopup);
         return true;
     }
 
@@ -486,7 +486,7 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// <summary>Find Usages in XAML: an element's name where the file names it and where its code-behind uses the field
     /// Avalonia or WPF makes for it; a resource key where any of the project's XAML uses it; a type or member of the
     /// folder's C# where its C# and XAML use it.</summary>
-    private async Task XamlUsages(XamlDocument xaml, int offset)
+    private async Task XamlUsages(XamlDocument xaml, int offset, bool inPopup)
     {
         if (await XamlSymbolAt(xaml, offset, "No usages found") is not { } found)
         {
@@ -503,7 +503,7 @@ internal sealed partial class XamlAssist : LanguageAssist
             context.Say("No usages found");
             return;
         }
-        context.ShowUsages($"Usages of {symbol.Name}", usages);
+        context.ShowUsages($"Usages of {symbol.Name}", usages, inPopup ? offset : null);
     }
 
     /// <summary>What Find Usages finds in XAML, said where it finds nothing else.</summary>

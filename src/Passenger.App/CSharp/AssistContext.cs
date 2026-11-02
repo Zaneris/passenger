@@ -41,7 +41,7 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
 
     public event EventHandler<(string Path, TextPosition Position)>? Navigated;
 
-    public event EventHandler<(string Title, IReadOnlyList<LspLocation> Usages, string? Note)>? UsagesFound;
+    public event EventHandler<UsagesFound>? UsagesFound;
 
     public event EventHandler<string>? Message;
 
@@ -183,9 +183,10 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>A place to go: a file and a line and column (from zero).</summary>
     public void Navigate((string Path, TextPosition Position) place) => Navigated?.Invoke(this, place);
 
-    /// <summary>Find Usages' answer, for the Find window: what was searched for, where it is used, and what the answer
-    /// went without, when it did.</summary>
-    public void ShowUsages(string title, IReadOnlyList<LspLocation> usages, string? note = null) => UsagesFound?.Invoke(this, (title, usages, note));
+    /// <summary>Find Usages' answer, for the Find window, or Show Usages' for its popup at an offset: what was searched for,
+    /// where it is used, and what the answer went without, when it did.</summary>
+    public void ShowUsages(string title, IReadOnlyList<LspLocation> usages, int? popupAt, string? note = null) =>
+        UsagesFound?.Invoke(this, new UsagesFound(title, usages, note, popupAt));
 
     /// <summary>How the window runs a change of files beyond the open ones (<see cref="ChangeFilesAsync"/>).</summary>
     public Func<IReadOnlyCollection<string>, CommandHistory.Recording, Action, Task>? FilesChanging { get; set; }

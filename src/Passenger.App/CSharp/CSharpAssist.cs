@@ -138,9 +138,9 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         return new Declared(context.CSharp is { } csharp ? await csharp.Generated.CopiedAsync(found) : found, Refusals.NoDeclaration);
     }
 
-    public override async Task<bool> UsagesAsync(int offset)
+    public override async Task<bool> UsagesAsync(int offset, bool inPopup)
     {
-        await navigation.ServerUsagesAsync(offset);
+        await navigation.ServerUsagesAsync(offset, inPopup);
         return true;
     }
 

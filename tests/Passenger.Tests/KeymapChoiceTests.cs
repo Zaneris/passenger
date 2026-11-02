@@ -603,10 +603,10 @@ public sealed class KeymapChoiceTests : IDisposable
     }
 
     /// <summary>Duplicate, Compare Files, Show Diff, Parameter Info, Toggle Case, Generate, Clone Caret, the moves by a
-    /// character, a line and to the text's ends, and Context Help (with External Documentation's) have in each keymap the keys
-    /// Rider's of that preset on this platform resolves them to (<see cref="RiderKeymaps"/>), the Mac's Cmd+Up and Down too in
-    /// Visual Studio's and IntelliJ IDEA's. A key Rider gives several, told apart by where it is pressed, has one action, the
-    /// rest taking it there (<see cref="AppActions.KeysIn"/>); Rider's New is New Item, by the keys Generate does not take.</summary>
+    /// character, a line and to the text's ends, Context Help (with External Documentation's) and Show Usages have in each
+    /// keymap the keys and gestures Rider's of that preset on this platform resolves them to (<see cref="RiderKeymaps"/>),
+    /// the Mac's Cmd+Up and Down too in Visual Studio's and IntelliJ IDEA's. A key Rider gives several, told apart by where
+    /// it is pressed, has one action, the rest taking it there (<see cref="AppActions.KeysIn"/>); Rider's New is New Item.</summary>
     [AvaloniaFact]
     public void Each_keymaps_keys_for_Duplicate_Parameter_Info_Toggle_Case_and_Generate_are_those_Riders_keymap_resolves_them_to()
     {
@@ -629,6 +629,7 @@ public sealed class KeymapChoiceTests : IDisposable
                 (EditorActions.TextStart, "EditorTextStart", mac && !vsCode ? ["meta UP"] : []),
                 (EditorActions.TextEnd, "EditorTextEnd", mac && !vsCode ? ["meta DOWN"] : []),
                 (AppActions.ContextHelp, "ContextHelp", [.. RiderKeymaps.Resolve(rider, "ExternalJavaDoc").Select(s => s.Notation())]),
+                (AppActions.ShowUsages, "ShowUsages", []),
             ];
             foreach ((string action, string riders, string[] besides) in checks)
             {
@@ -636,6 +637,13 @@ public sealed class KeymapChoiceTests : IDisposable
                 string[] theirs = [.. RiderKeymaps.Resolve(rider, riders).Concat(besides.Select(Shortcut.Parse)).Select(s => s.Notation()).Distinct().Order(StringComparer.Ordinal)];
                 Assert.True(ours.SequenceEqual(theirs),
                     $"In {DefaultKeymaps.NameOf(preset)}'s keymap {action} runs from [{string.Join("; ", ours)}], where Rider's {rider} gives {riders} [{string.Join("; ", theirs)}]");
+            }
+            foreach ((string action, string riders) in new[] { (AppActions.ShowUsages, "ShowUsages") })
+            {
+                string[] ours = [.. keymap.MouseShortcutsFor(action).Select(g => g.Notation()).Order(StringComparer.Ordinal)];
+                string[] theirs = [.. RiderKeymaps.ResolveMouse(rider, riders).Select(g => g.Notation()).Order(StringComparer.Ordinal)];
+                Assert.True(ours.SequenceEqual(theirs),
+                    $"In {DefaultKeymaps.NameOf(preset)}'s keymap {action} runs from the gestures [{string.Join("; ", ours)}], where Rider's {rider} gives {riders} [{string.Join("; ", theirs)}]");
             }
             foreach (string shared in (string[])[AppActions.CompareFiles, AppActions.ShowDiff])
             {

@@ -136,7 +136,7 @@ public sealed class CodeAssist
     }
 
     /// <summary>Find Usages' answer, for the Find window: what was searched for and where it is used.</summary>
-    public event EventHandler<(string Title, IReadOnlyList<LspLocation> Usages, string? Note)>? UsagesFound
+    public event EventHandler<UsagesFound>? UsagesFound
     {
         add => context.UsagesFound += value;
         remove => context.UsagesFound -= value;
@@ -449,6 +449,7 @@ public sealed class CodeAssist
         Code(AppActions.GoToTypeDeclaration, "Go to Type Declaration", context => IdeErrors.Observe(navigation.GoToTypeDeclaration(Caret)), new("Navigate", 2, 3));
         Code(AppActions.BaseSymbols, "Base Symbols", context => IdeErrors.Observe(navigation.GoToBaseSymbols(Caret)), new("Navigate", 2, 4));
         Code(AppActions.FindUsages, "Find Usages", context => IdeErrors.Observe(navigation.FindUsages(Caret)), new("Navigate", 2, 5), xaml: true);
+        Code(AppActions.ShowUsages, "Show Usages", context => IdeErrors.Observe(navigation.FindUsages(Caret, inPopup: true)), new("Navigate", 2, 8), xaml: true);
         Code(AppActions.ParameterInfo, "Parameter Info", context => IdeErrors.Observe(parameterInfo.Show()), new("View", 1, 2));
         Code(AppActions.NextError, "Next Highlighted Error", _ => navigation.StepToMarker(forward: true), new("Navigate", 3, 0), server: false);
         Code(AppActions.PreviousError, "Previous Highlighted Error", _ => navigation.StepToMarker(forward: false), new("Navigate", 3, 1), server: false);
@@ -542,6 +543,10 @@ public sealed class CodeAssist
         popups.CloseModal();
     }
 }
+
+/// <summary>Find Usages' answer: what was searched for, where it is used, what the answer went without, and, for Show
+/// Usages, the offset its popup opens at.</summary>
+public sealed record UsagesFound(string Title, IReadOnlyList<LspLocation> Usages, string? Note, int? PopupAt);
 
 /// <summary>What the debugger's hover card says of what the pointer rests on: its value as code, and what went wrong reading
 /// it (a binding that failed), said first in the error colour; a value with members as its row instead (<see cref="Values"/>).</summary>

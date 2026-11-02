@@ -29,6 +29,7 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
     private readonly ListBox results;
     private readonly TextBlock empty;
     private readonly CheckBox? option;
+    private readonly DockPanel heading = new();
 
     /// <param name="listHeight">How tall the list grows, for rows taller than a line (Recent Locations' code).</param>
     protected SearchPopup(string title, string placeholder, double width, string? initialQuery = null, (string Label, bool Checked)? option = null,
@@ -48,7 +49,6 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
         results.DoubleTapped += (_, _) => Choose();
         query.TextChanged += (_, _) => QueryChanged();
         query.AddHandler(KeyDownEvent, OnQueryKeyDown, RoutingStrategies.Tunnel);
-        DockPanel heading = new();
         if (option is { } shown)
         {
             // Not focusable: the keys stay with the query.
@@ -122,6 +122,13 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
 
     /// <summary>The query changed: what it finds is listed again.</summary>
     protected abstract void QueryChanged();
+
+    /// <summary>Puts something at the right of the title, beside the switch where there is one (a link).</summary>
+    protected void AddToHeading(Control beside)
+    {
+        DockPanel.SetDock(beside, Dock.Right);
+        heading.Children.Insert(0, beside);
+    }
 
     /// <summary>The switch turned.</summary>
     protected virtual void OptionTurned() => QueryChanged();

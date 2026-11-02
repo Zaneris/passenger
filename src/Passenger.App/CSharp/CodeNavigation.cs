@@ -170,19 +170,21 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
 
     private static bool Before(LspPosition one, LspPosition other) => one.Line < other.Line || (one.Line == other.Line && one.Character < other.Character);
 
-    public async Task FindUsages(int offset)
+    /// <summary>Find Usages, the usages in the Find window, or Show Usages, in a popup at the offset.</summary>
+    public async Task FindUsages(int offset, bool inPopup = false)
     {
         using (BackgroundWork.Scope())
         {
-            await context.Languages.UsagesAsync(offset);
+            await context.Languages.UsagesAsync(offset, inPopup);
         }
     }
 
     /// <summary>Find Usages through the language server: the usages of the name at an offset, with a C# symbol's in XAML,
-    /// for the Find window, which names the files come under the projects that could use it that the server has not taken
-    /// in yet.</summary>
-    public async Task ServerUsagesAsync(int offset)
+    /// for the Find window or the popup, which names the files come under the projects that could use it that the server
+    /// has not taken in yet.</summary>
+    public async Task ServerUsagesAsync(int offset, bool inPopup)
     {
+        int asked = offset;
         if (context.Editors.Active is not { } shown)
         {
             return;
@@ -216,7 +218,7 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
                 end++;
             }
             string name = Editor.Document.Snapshot.GetText(start, end - start);
-            context.ShowUsages($"Usages of {(name.Length > 0 ? name : "symbol")}", usages,
+            context.ShowUsages($"Usages of {(name.Length > 0 ? name : "symbol")}", usages, inPopup ? asked : null,
                 untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Path.GetFileName(u.Path))]) : null);
         }
         catch (LanguageServerFailed failed)
