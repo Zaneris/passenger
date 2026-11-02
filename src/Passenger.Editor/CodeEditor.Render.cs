@@ -53,6 +53,7 @@ public sealed partial class CodeEditor
         int row = Math.Max(0, (int)(scroll.Y / lineHeight));
         List<RowSpan> shown = RowsOnScreen(text, row, Math.Max(0, (int)((scroll.Y + size.Height) / lineHeight)));
         placeholders.Clear();
+        drawnAnnotations.Clear();
         int first = shown.Count > 0 ? shown[0].Line : 0;
         int last = shown.Count > 0 ? shown[^1].Line : -1;
         LineView[] lineViews = ViewsOf(text, shown, scroll.X - TextPadLeft, Math.Max(0, size.Width - gutter));
@@ -437,6 +438,7 @@ public sealed partial class CodeEditor
                 context.FillRectangle(palette.ErrorGround, new Rect(x - metrics.CharWidth / 2, y + 1, text.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight - 2), 3);
             }
             text.Draw(context, new Point(x, top));
+            drawnAnnotations.Add((annotation, new Rect(x - metrics.CharWidth / 2, y, text.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight)));
             x += text.WidthIncludingTrailingWhitespace + metrics.CharWidth * 2;
         }
     }

@@ -270,6 +270,12 @@ public static class Declared
             + $"start after it. Empty, it is the one {Core.GodotExecutables.Variable} names, else the first on the PATH, else on macOS the newest in Applications."),
         Run.GodotLaunch.DescribedAsync);
 
+    public static readonly ToggleSetting GodotLiveValues = new(s => s.GodotLiveValues, (s, v) => s with { GodotLiveValues = v },
+        new(D.GodotPage, "Show a running game's values in the code", "godot live values members fields properties variables hints inline running game sparkline",
+            "While a Godot game runs, each member of a script's class shows its value at the end of its line, read from the game once a "
+            + "second for the lines shown, from the node chosen in the Live Visual Tree where several run the script. Hovering a value "
+            + "shows its last minute."));
+
     public static readonly ToggleSetting TerminalCopyOnSelection = new(s => s.TerminalCopyOnSelection, (s, v) => s with { TerminalCopyOnSelection = v },
         new(D.TerminalPage, "Copy on selection", "copy selection clipboard mouse drag word"));
 

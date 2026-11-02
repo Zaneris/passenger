@@ -175,6 +175,13 @@
     <Compile Include="../../src/Passenger.Languages/CSharp/CSharpParsing.cs" Link="Languages/CSharpParsing.cs" />
   </ItemGroup>
 
+  <!-- A running game's values in the code: the members a script's file declares, the helper's answer, a value's words and
+       its last minute, from texts and values alone, compiled in since their project is the app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Godot/GodotMembers.cs" Link="App/GodotMembers.cs" />
+    <Compile Include="../../src/Passenger.App/Godot/GodotLiveReads.cs" Link="App/GodotLiveReads.cs" />
+  </ItemGroup>
+
   <!-- What a program's output says of its serving, from its lines alone, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Run/ListeningLines.cs" Link="App/ListeningLines.cs" />

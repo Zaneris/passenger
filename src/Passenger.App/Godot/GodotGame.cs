@@ -449,6 +449,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
                 MonitorsChanged?.Invoke(this, EventArgs.Empty);
                 if (moved)
                 {
+                    besideScene = null;
                     TreeChanged?.Invoke(this, EventArgs.Empty);
                 }
                 break;
@@ -721,13 +722,19 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     private async Task<List<object?>> AskAsync(string call, object?[] arguments, Func<Task>? then)
     {
         UiThread.Check();
-        GodotNode tree = await SceneTreeAsync();
-        List<GodotNode> all = [.. tree.All()];
-        string scene = tree.Children.Select(c => c.SceneFile).FirstOrDefault(f => f.Length > 0 && all.Count(n => n.SceneFile == f) == 1)
-            ?? throw new LiveAppException($"{Name} has no scene open once under its root, beside which Passenger's helper comes into the game");
+        string? scene = besideScene;
+        GodotNode? tree = null;
+        if (scene is null || bringing is null)
+        {
+            tree = await SceneTreeAsync();
+            List<GodotNode> all = [.. tree.All()];
+            scene = tree.Children.Select(c => c.SceneFile).FirstOrDefault(f => f.Length > 0 && all.Count(n => n.SceneFile == f) == 1)
+                ?? throw new LiveAppException($"{Name} has no scene open once under its root, beside which Passenger's helper comes into the game");
+        }
         await SendAsync(GodotWords.LiveSetRoot, GodotAgent.PathOf("/root"), scene);
         await SendAsync(GodotWords.LiveNodePath, GodotAgent.PathOf($"../{GodotAgent.NodeName}"), AgentPath);
-        if (bringing is null && !tree.Children.Any(GodotAgent.Is))
+        // Brought in only once the game knows the path its script is set through, or the script goes nowhere.
+        if (bringing is null && tree is not null && !tree.Children.Any(GodotAgent.Is))
         {
             bringing = BringAsync();
         }
@@ -753,7 +760,17 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             {
                 await then();
             }
-            List<object?> said = await Answer(asked.Task, $"Passenger's helper's {call}");
+            List<object?> said;
+            try
+            {
+                said = await Answer(asked.Task, $"Passenger's helper's {call}");
+            }
+            catch (LiveAppException)
+            {
+                besideScene = null;
+                throw;
+            }
+            besideScene = scene;
             return said[1] is true ? said[2..]
                 : throw new LiveAppException(said is [_, _, string why, ..] ? why : $"Passenger's helper in {Name} did not say why it could not");
         }
@@ -761,6 +778,20 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         {
             agentAsked.Remove(ask);
         }
+    }
+
+    /// <summary>The scene the helper last answered beside, while the game's count of nodes has stood since: the next ask goes
+    /// there without asking for the tree, which a game of many nodes sends at a cost.</summary>
+    private string? besideScene;
+
+    /// <summary>The values of scripts' members in the nodes that run them (or a script they run is based on), through
+    /// Passenger's helper: for each script asked of, how many nodes run it and the members of the one chosen, else of the
+    /// only one, as one message of the game's; a <see cref="LiveAppException"/> where the helper could not read them.</summary>
+    public async Task<IReadOnlyList<GodotScriptRead>> ScriptValuesAsync(IReadOnlyList<GodotScriptAsk> asks)
+    {
+        List<object?> asked = [.. asks.Select(a => (object?)new List<object?> { a.Script, (long)a.Chosen, new List<object?>(a.Names) })];
+        List<object?> said = await AskAsync("values", asked);
+        return GodotScriptRead.Read(said, asks) ?? throw new LiveAppException($"Passenger's helper in {Name} answered with values Passenger could not read");
     }
 
     /// <summary>Has the game make Passenger's helper beside the scene its live editing names, its script the file written.</summary>

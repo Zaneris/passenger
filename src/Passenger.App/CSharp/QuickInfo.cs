@@ -315,6 +315,27 @@ internal sealed class QuickInfo
         }
     }
 
+    /// <summary>What the card says of a line-end annotation the pointer rests on (a running game's value), added to the card;
+    /// false where it says nothing of it.</summary>
+    public Func<LineAnnotation, IHoverCard, bool>? AnnotationCard { get; set; }
+
+    /// <summary>The card for a line-end annotation the pointer rests on (<see cref="AnnotationCard"/>), hung under its line;
+    /// none where nothing is said of it.</summary>
+    public void ShowAnnotation(LineAnnotation annotation, Point point)
+    {
+        hovering?.Cancel();
+        ForgetValues();
+        hoverCard.Clear();
+        TextSnapshot text = Editor.Document.Snapshot;
+        if (completing() || annotation.Line >= text.LineCount || AnnotationCard?.Invoke(annotation, hoverCard) != true)
+        {
+            hoverCard.IsVisible = false;
+            return;
+        }
+        hoverCard.IsVisible = true;
+        popups.Place(hoverCard, new Point(point.X, Editor.PointOf(text.GetLineStart(annotation.Line)).Y), above: false);
+    }
+
     /// <summary>The card for what the gutter shows beside a line the pointer rests on (<see cref="GutterWords"/>), hung under
     /// the line; none where it says nothing.</summary>
     public void ShowGutter(int line, Point point)

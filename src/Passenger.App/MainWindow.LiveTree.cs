@@ -32,6 +32,12 @@ public partial class MainWindow
     /// <summary>The binding values after the .axaml lines shown, which an agent's debug_state reads as the editor shows them.</summary>
     internal BindingValuesController BindingValues => bindingValues!;
 
+    /// <summary>A running Godot game's values after its scripts' members in the code.</summary>
+    private Godot.GodotLiveValues? godotValues;
+
+    /// <summary>A running Godot game's values after the members of the scripts shown.</summary>
+    public Godot.GodotLiveValues GodotValues => godotValues!;
+
     /// <summary>Avalonia's renderer debug overlays in the apps Run, Debug and Profile launch.</summary>
     private OverlaysCommands? overlays;
 
@@ -40,6 +46,7 @@ public partial class MainWindow
         liveTree = new LiveTreeController(new LiveTreeParts(Dock, actions!, text => status.Text = text, NavigateTo, Editors, (name, changes) => Assist.ApplyFileChangesAsync(name, changes),
             (popup, from) => popups.Show(popup, popups.PointIn(from, new Avalonia.Point(0, from.Bounds.Height + 4))), () => popups.Close()));
         bindingValues = new BindingValuesController(Editors, liveTree);
+        godotValues = new Godot.GodotLiveValues(Editors, liveTree) { On = settings.GodotLiveValues };
         overlays = new OverlaysCommands(new OverlaysParts(Bottom, actions!, text => status.Text = text));
         overlays.Bind(session);
         gameAudio = new Godot.GameAudioCommands(new Godot.GameAudioParts(Bottom.Debug.GameAudio, actions!, text => status.Text = text, () => AgentsOwn));

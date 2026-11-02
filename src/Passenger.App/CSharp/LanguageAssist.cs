@@ -188,6 +188,11 @@ internal interface IHoverCard
 
     /// <summary>A file the code names, previewed: by its words where it cannot be shown.</summary>
     void AddPreview(FilePreview preview) => AddText(preview.Words);
+
+    /// <summary>A chart and what goes with it (its legend), drawn where the card is drawn and passed over where it is words.</summary>
+    void AddChart(Avalonia.Controls.Control chart)
+    {
+    }
 }
 
 /// <summary>What a file a path in the code names is: a picture, a sound, a scene.</summary>

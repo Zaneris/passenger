@@ -388,6 +388,13 @@ public sealed partial class CodeEditor
             return;
         }
         TextSnapshot text = document.Snapshot;
+        if (AnnotationAt(hoverAt) is { } annotation && annotation.Line < text.LineCount)
+        {
+            hovering = true;
+            LineSpan rested = text.GetLine(annotation.Line);
+            Hovered?.Invoke(this, new HoverEventArgs(rested.Start + rested.Length, hoverAt, annotation: annotation));
+            return;
+        }
         (int line, int row) = Rows.LineOfRow(RowAtY(hoverAt.Y));
         if (line < 0 || line >= text.LineCount)
         {

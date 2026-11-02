@@ -226,6 +226,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// line; null for the one found (<see cref="Passenger.Core.GodotExecutables"/>).</summary>
     public string? GodotExecutable { get; init; }
 
+    /// <summary>Whether a running Godot game's values show after its scripts' members in the code.</summary>
+    public bool GodotLiveValues { get; init; } = true;
+
     /// <summary>ESLint's "Run for files" at first.</summary>
     public const string DefaultEslintFiles = "**/*.{js,ts,jsx,tsx,cjs,cts,mjs,mts,html,vue}";
 

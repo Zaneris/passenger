@@ -1,7 +1,7 @@
 extends Node
-## Passenger's helper in a game it debugs: where the nodes are, input given as a person gives it, and the frames the game
-## has run. Each call's first argument is its ask, answered by a passenger:said message of the ask, whether it was done,
-## and what it came to.
+## Passenger's helper in a game it debugs: where the nodes are, input given as a person gives it, the frames the game
+## has run, and the values of its scripts' members. Each call's first argument is its ask, answered by a passenger:said
+## message of the ask, whether it was done, and what it came to.
 
 const SAID := "passenger:said"
 const SHIFT := 1
@@ -11,6 +11,10 @@ const META := 8
 
 ## The frames the game has run, once counted (-1 before): every frame its tree processes, the game's own pause among them.
 var _frame := -1
+## The nodes running each script by its path (a script's base scripts' paths too), each by its id: made once a values call
+## first asks, then kept as nodes come and go.
+var _scripted = {}
+var _indexed = false
 ## The ask a frame stepped answers, or 0.
 var _stepping := 0
 ## Whether the frame stepped ends the step itself, where no frame is drawn for Godot to end it at.
@@ -326,3 +330,99 @@ func step(ask: int, ends_step: bool) -> void:
     _counting()
     _stepping = ask
     _ends_step = ends_step
+
+
+func _index(node: Node) -> void:
+    if node == self or typeof(_scripted) != TYPE_DICTIONARY:
+        return
+    var script = node.get_script()
+    while script is Script:
+        var path: String = script.resource_path
+        if not path.is_empty():
+            if not _scripted.has(path):
+                _scripted[path] = {}
+            _scripted[path][node.get_instance_id()] = node
+        script = script.get_base_script()
+
+
+func _unindex(node: Node) -> void:
+    if typeof(_scripted) != TYPE_DICTIONARY:
+        return
+    var script = node.get_script()
+    while script is Script:
+        if _scripted.has(script.resource_path):
+            _scripted[script.resource_path].erase(node.get_instance_id())
+        script = script.get_base_script()
+
+
+func _index_under(node: Node) -> void:
+    _index(node)
+    for child in node.get_children():
+        _index_under(child)
+
+
+## A value as a hint's words say it where it is not sent itself: a node by its name and class, a resource by its file,
+## another object by its class, a container by its first items and its size.
+func _described(value: Variant) -> String:
+    if typeof(value) == TYPE_OBJECT:
+        if not is_instance_valid(value):
+            return "freed"
+        if value is Node:
+            return "%s (%s)" % [value.name, value.get_class()]
+        if value is Resource and not value.resource_path.is_empty():
+            return value.resource_path
+        return "<%s>" % value.get_class()
+    if typeof(value) == TYPE_DICTIONARY:
+        return str(value).left(200) if value.size() <= 4 else "{%d entries}" % value.size()
+    if value.size() <= 6:
+        return str(value).left(200)
+    return "%s, …] (%d items)" % [str(value.slice(0, 6)).trim_suffix("]").left(200), value.size()]
+
+
+## A member's value as sent: [] for one the node does not hold, [value], [words, 1] for an object or a container, or
+## [path, 2, node] for a node path and the node it reaches ("" for none).
+func _value(node: Node, name: String) -> Array:
+    if not name in node:
+        return []
+    var value = node.get(name)
+    var kind := typeof(value)
+    if kind == TYPE_OBJECT or kind >= TYPE_DICTIONARY:
+        return [_described(value), 1]
+    if kind == TYPE_NODE_PATH:
+        var reached: Node = node.get_node_or_null(value) if not value.is_empty() else null
+        return [value, 2, _described(reached) if reached != null else ""]
+    if kind == TYPE_STRING:
+        return [value.left(200)]
+    return [value]
+
+
+## For each script asked of (its path, the id of the node chosen or 0, the members named): how many nodes run it, the node
+## read (the one chosen where it runs the script, else the only one, else none), its name, and each member's value.
+func values(ask: int, asks: Array) -> void:
+    # Godot reads the debugger's messages between a script's lines, so a call can come while this node's members are still
+    # being made, which then makes them again: the nodes are listed again once that is so.
+    if not _indexed or typeof(_scripted) != TYPE_DICTIONARY:
+        _indexed = true
+        _scripted = {}
+        _index_under(get_tree().root)
+        if not get_tree().node_added.is_connected(_index):
+            get_tree().node_added.connect(_index)
+            get_tree().node_removed.connect(_unindex)
+    var answers: Array = []
+    for asked in asks:
+        var nodes: Dictionary = _scripted.get(asked[0], {})
+        var found = null
+        if nodes.has(asked[1]):
+            found = nodes[asked[1]]
+        elif nodes.size() == 1:
+            found = nodes.values()[0]
+        var read: Array = []
+        if is_instance_valid(found):
+            for name in asked[2]:
+                read.append(_value(found, name))
+            answers.append([nodes.size(), found.get_instance_id(), String(found.name), read])
+        else:
+            for name in asked[2]:
+                read.append([])
+            answers.append([nodes.size(), 0, "", read])
+    _say(ask, true, [answers])

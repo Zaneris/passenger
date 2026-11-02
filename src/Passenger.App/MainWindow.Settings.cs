@@ -110,6 +110,7 @@ public partial class MainWindow
         }
         ApplyAnalysis();
         session.CSharp?.Hints = (next.ParameterHints, next.TypeHints);
+        godotValues?.On = next.GodotLiveValues;
         session.Web?.UseNode(next.NodeInterpreter);
         session.Web?.UseTools();
         session.Web?.UseDockerHub(next.DockerHubTags);

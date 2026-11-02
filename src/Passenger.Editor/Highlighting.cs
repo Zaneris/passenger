@@ -90,12 +90,15 @@ public enum TokenKind
 }
 
 /// <summary>Where the pointer rested: the offset under it and the point, in the editor's coordinates, and the inlay
-/// hint it rests on, if any, which the card describes rather than the code.</summary>
-public sealed class HoverEventArgs(int offset, Avalonia.Point point, InlayHint? hint = null) : EventArgs
+/// hint or the line-end annotation it rests on, if any, which the card describes rather than the code.</summary>
+public sealed class HoverEventArgs(int offset, Avalonia.Point point, InlayHint? hint = null, LineAnnotation? annotation = null) : EventArgs
 {
     public int Offset { get; } = offset;
     public Avalonia.Point Point { get; } = point;
     public InlayHint? Hint { get; } = hint;
+
+    /// <summary>The annotation after a line's code the pointer rests on; its offset is the end of that line.</summary>
+    public LineAnnotation? Annotation { get; } = annotation;
 }
 
 /// <summary>A coloured stretch of a document, in its offsets.</summary>

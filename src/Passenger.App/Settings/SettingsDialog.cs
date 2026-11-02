@@ -359,6 +359,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.DockerHubTags);
         Add(Declared.BuildKitChecks);
         Add(Declared.GodotExecutable);
+        Add(Declared.GodotLiveValues);
 
         Add(Declared.TerminalFontSize);
         Add(Declared.TerminalFontFamily);

@@ -269,6 +269,7 @@ public partial class MainWindow
         profiler?.Rebind();
         liveTree?.Bind(next);
         bindingValues?.Bind(next);
+        godotValues?.Bind(next);
         overlays?.Bind(next);
         gameAudio?.Bind(next);
         BindVcs(next);

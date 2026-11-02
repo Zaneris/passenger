@@ -127,6 +127,8 @@ internal sealed partial class InfoCard : Border, IHoverCard
 
     void IHoverCard.AddText(string text) => AddText(text);
 
+    public void AddChart(Control chart) => parts.Children.Add(chart);
+
     /// <summary>A file's preview: a picture drawn small (decoded off the window's thread), a sound with a button that plays
     /// it, a scene's top nodes in the code's font, each over its words.</summary>
     public void AddPreview(FilePreview preview)

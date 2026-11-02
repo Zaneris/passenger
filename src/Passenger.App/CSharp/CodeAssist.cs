@@ -89,6 +89,11 @@ public sealed class CodeAssist
                 // A value's card in use (its keys, its menu, a value being typed) stays over what else the pointer rests on.
                 if (editor == Editor && !quickInfo.ValuesInUse)
                 {
+                    if (e.Annotation is { } annotation)
+                    {
+                        quickInfo.ShowAnnotation(annotation, e.Point);
+                        return;
+                    }
                     IdeErrors.Observe(e.Hint is { } hint ? quickInfo.ShowHint(hint, e.Point) : quickInfo.Show(e.Offset, e.Point));
                 }
             };
@@ -241,6 +246,13 @@ public sealed class CodeAssist
     {
         get => quickInfo.DebuggerValue;
         set => quickInfo.DebuggerValue = value;
+    }
+
+    /// <summary>What the hover card says of a line-end annotation of the file shown (<see cref="QuickInfo.AnnotationCard"/>).</summary>
+    internal Func<LineAnnotation, IHoverCard, bool>? AnnotationCard
+    {
+        get => quickInfo.AnnotationCard;
+        set => quickInfo.AnnotationCard = value;
     }
 
     /// <summary>What the gutter's hover says beside a line of the file shown (<see cref="QuickInfo.GutterWords"/>).</summary>

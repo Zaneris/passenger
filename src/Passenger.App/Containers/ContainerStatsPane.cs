@@ -45,8 +45,8 @@ public sealed class ContainerStatsPane : DockPanel
 
     private readonly Func<ContainerEngine> engine;
     private readonly StackPanel table = new() { Margin = new Thickness(8, 6) };
-    private readonly Sparkline cpu = new(TokenKeys.Link);
-    private readonly Sparkline memory = new(TokenKeys.Test_Passed);
+    private readonly Sparkline cpu = new(Kept, fromZero: true, fromRight: false, TokenKeys.Link);
+    private readonly Sparkline memory = new(Kept, fromZero: true, fromRight: false, TokenKeys.Test_Passed);
     private readonly TextBlock waiting = new() { Classes = { StyleClasses.EmptyText }, Text = "Waiting for the engine's first reading…" };
     private readonly Dictionary<string, ContainerStatsSample> latest = new(StringComparer.Ordinal);
     private Process? streaming;
@@ -332,57 +332,5 @@ public sealed class ContainerStatsPane : DockPanel
         name.Classes.Add(StyleClasses.Muted);
         Border frame = new() { Classes = { StyleClasses.Framed }, Child = line };
         return new DockPanel { [Grid.ColumnProperty] = column, Margin = new Thickness(column == 0 ? 0 : 4, 0, column == 0 ? 4 : 0, 0), Children = { name, frame } };
-    }
-
-    /// <summary>A line of the last readings, scaled to the highest of them (at least 1), in a token's colour.</summary>
-    private sealed class Sparkline(string brush) : Control
-    {
-        private readonly List<double> values = [];
-
-        public int Count => values.Count;
-
-        public void Add(double value)
-        {
-            values.Add(value);
-            if (values.Count > Kept)
-            {
-                values.RemoveAt(0);
-            }
-            InvalidateVisual();
-        }
-
-        public void Clear()
-        {
-            values.Clear();
-            InvalidateVisual();
-        }
-
-        public override void Render(DrawingContext context)
-        {
-            if (values.Count < 2 || !this.TryFindResource(brush, ActualThemeVariant, out object? found) || found is not IBrush colour)
-            {
-                return;
-            }
-            double top = Math.Max(1, values.Max());
-            Rect area = new Rect(Bounds.Size).Deflate(4);
-            StreamGeometry path = new();
-            using (StreamGeometryContext draw = path.Open())
-            {
-                for (int i = 0; i < values.Count; i++)
-                {
-                    Point at = new(area.Left + (area.Width * i / (Kept - 1)), area.Bottom - (area.Height * values[i] / top));
-                    if (i == 0)
-                    {
-                        draw.BeginFigure(at, isFilled: false);
-                    }
-                    else
-                    {
-                        draw.LineTo(at);
-                    }
-                }
-                draw.EndFigure(isClosed: false);
-            }
-            context.DrawGeometry(null, new Pen(colour, 1.5), path);
-        }
     }
 }
