@@ -281,7 +281,10 @@ Projects in `src/`; `find_symbol` finds the rest:
   only counted (`Git.StoredAtAsync`, `StoredRead`), never `git show` decoded as UTF-8; every git call but a clone runs
   through `Git.RunAsync<T>` (over `ChildProcesses.RunAsync<T>`, a failed read ending the child); paths reach git on its
   input (`Git.OnFilesAsync`), never its command line; git's questions (a login, a passphrase) reach the window only
-  through `GitAskPass` (`VcsController.AskerOf`).
+  through `GitAskPass` (`VcsController.AskerOf`), GPG's through Passenger's own gpg with loopback pinentry
+  (`GpgLoopback`, `gpg.program` by `-c`); a commit's signature is read for the Log's rows shown (`CommitSignatures`,
+  `Git.SignaturesAsync`), never by `%G?` in its own read, which runs a verifier per signed commit, a failure to sign
+  said by `SigningFailure`.
 - `Passenger.Dap`, `Passenger.Debugger` (+`.Interop`), `Passenger.DebugAdapter`: Passenger's own debugger behind its own
   DAP, in a process of its own under `debugger/`. `Passenger.ContainerTools` (`passenger-tools`) runs inside a Linux
   container, self-contained, carried only in the release's archives.
@@ -384,15 +387,18 @@ Projects in `src/`; `find_symbol` finds the rest:
   project's game and editor through `GodotLaunch` (one of GDScript alone a `ProjectModel.OfScriptGame` that only Run,
   Debug and Profile see, `ProjectSession.RunProjects`, never in `Projects`), on the Godot `GodotExecutables` finds, its
   copies `GameCopies` ("Name #k", Debug tabs grouped as `DebugTab.Copy`, Stop ending the group), the offer of Passenger
-  as Godot's script editor made once per folder (`MainWindow.OfferGodotEditor`), a launched game's remote debugger
-  `GodotGame`, a Live Tree source beside `LiveApp` (its value editors `GodotValueCells`, an `ILiveValueCells`, from
-  `GodotHints`; Keep `GodotKeep`; a run's errors pinned to lines `GodotErrorPins` through `ErrorPinColumn`, its console
-  folded `GodotConsoleFold`; a running game's member values at their lines' ends `GodotLiveValues`, into
-  `OpenDocument.LiveValues` through the helper's `values` call, members from `GodotMembers`; `ILiveTreeSource`,
-  `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's build skipped while
-  what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`; on Windows a build's
-  first step lets go of the Avalonia previewers holding its output (`BuildRunController.LettingGo`); a console's lines
-  are heard one stream at a time (`ConsoleWritten`).
+  as Godot's script editor made once per folder (`MainWindow.OfferGodotEditor`), its Publish its export
+  (`GodotExportDialog`, `BuildRunController.ExportGodotAsync`), templates installed only from a `.tpz` the person picks
+  (`GodotExports.Install`; a test's named by `PASSENGER_TEST_GODOT_TEMPLATES`, into the run's own Godot folders), its
+  page a view of its project.godot (`GodotProjectPages`, `GodotPageViewer`) over Workspace's readers, a launched game's
+  remote debugger `GodotGame`, a Live Tree source beside `LiveApp` (its value editors `GodotValueCells`, an
+  `ILiveValueCells`, from `GodotHints`; Keep `GodotKeep`; a run's errors pinned to lines `GodotErrorPins` through
+  `ErrorPinColumn`, its console folded `GodotConsoleFold`; a running game's member values at their lines' ends
+  `GodotLiveValues`, into `OpenDocument.LiveValues` through the helper's `values` call, members from `GodotMembers`;
+  `ILiveTreeSource`, `ProjectSession.LiveSource`), its protocol `GodotVariant`/`GodotMessages`), `UpToDate` (a launch's
+  build skipped while what its last build read and wrote stands, a build under way waited out first), `TogetherBuild`;
+  on Windows a build's first step lets go of the Avalonia previewers holding its output
+  (`BuildRunController.LettingGo`); a console's lines are heard one stream at a time (`ConsoleWritten`).
 - **Runs of services.** `ServiceRun` is the one model (`ContainerRun`, `AspireAppRun` its kinds): Debug, Attach,
   Restart and Profile of a service are written once (`BuildRunController.Services.cs`). One start at a time
   (`TakeStartAsync`); Stop ends every session and recording before the programs go.
@@ -574,7 +580,8 @@ site-shots` retakes its images.
   members are still being made (`_made`, its last member); a tree asked since its last making that lacks it brings it in
   again (`GodotGame.brought`). A typed member refuses an untyped Array or Dictionary set through the debugger, so a
   value sent back keeps the element types the game sent (`GodotArray`, `GodotDictionary.KeyType`); a resource loaded
-  from a file comes by its path alone, its id from the helper's `held` (`GodotGame.HeldAsync`). Its .NET host rolls
+  from a file comes by its path alone, its id from the helper's `held` (`GodotGame.HeldAsync`). A macOS export of an
+  arm64 or universal game refuses a project without `textures/vram_compression/import_etc2_astc`. Its .NET host rolls
   forward only to released runtimes, so a new game's framework is one it can run (`GodotGames.Runnable`). An agent's
   input and layout reach a game through Passenger's helper node (`PassengerAgent.gd`, brought in by live editing;
   `PassengerTools.Godot.cs`).
@@ -672,7 +679,8 @@ pass is `Ui.Hold(time, why)`, `Ui.Stall` or `Waiting.For`. Every limit is writte
 it started scale by `PASSENGER_WAIT_SCALE`. `FLAKES.md` records each CI failure's cause.
 
 **Isolation.** A run keeps to its own folder (`TestRun`): the IDE's state, logs and sockets, every test folder
-(`TestFolders.Create`), shells' history, an empty Git configuration, NuGet's home on macOS and Linux, MSBuild's node
+(`TestFolders.Create`), shells' history, an empty Git configuration (no ssh-agent, `SSH_AUTH_SOCK` unset; GnuPG's home
+the run's; a signing test's keys its own, `TestSshKeys`, `TestGpgKeys`), NuGet's home on macOS and Linux, MSBuild's node
 salt, container labels, user secrets (`TestRun.UserSecrets`), dotnet new's templates, Aspire's HOME and CLI, Godot's
 user folders (`PASSENGER_GODOT_HOME`, `GodotUserFolders`: every Godot a window starts takes the window's), the person's
 own Godot folders held untouched by `PersonsGodot`, which fails a test or run that writes them. It never reaches
