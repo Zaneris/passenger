@@ -57,6 +57,10 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     /// for it rather than making a second.</summary>
     private Task? bringing;
 
+    /// <summary>How many times the game has been told to make the helper: a scene tree asked before the last of them may
+    /// predate it, so only one asked since says the helper is gone.</summary>
+    private int brought;
+
     /// <summary>The id under which the game's live editing knows the path of Passenger's helper (<see cref="GodotAgent"/>).</summary>
     private const long AgentPath = 7046;
 
@@ -582,13 +586,18 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     private static TimeSpan AnswerLimit => LiveApp.AnswerLimit;
 
     /// <summary>The game's scene tree now, its root Window first.</summary>
-    public async Task<GodotNode> SceneTreeAsync()
+    public async Task<GodotNode> SceneTreeAsync() => (await TreeOfBringingAsync()).Tree;
+
+    /// <summary>The game's scene tree now, and how many times the helper had been made when it was asked
+    /// (<see cref="brought"/>), which a question shared with an earlier one dates from that one.</summary>
+    private async Task<(GodotNode Tree, int Brought)> TreeOfBringingAsync()
     {
         UiThread.Check();
         TaskCompletionSource<GodotNode?> asked = treeAsked is { Task.IsCompleted: false } pending ? pending
-            : treeAsked = new TaskCompletionSource<GodotNode?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            : treeAsked = new TaskCompletionSource<GodotNode?>(brought, TaskCreationOptions.RunContinuationsAsynchronously);
         await AskingAsync(asked.Task, GodotWords.RequestSceneTree);
-        return await Answer(asked.Task, "with its scene tree") ?? throw new LiveAppException($"{Name} sent a scene tree Passenger could not read");
+        GodotNode tree = await Answer(asked.Task, "with its scene tree") ?? throw new LiveAppException($"{Name} sent a scene tree Passenger could not read");
+        return (tree, (int)asked.Task.AsyncState!);
     }
 
     /// <summary>Sends a question whose answer is waited for after: where it cannot be sent, no one waits for that answer, and
@@ -723,9 +732,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     }
 
     /// <summary>Asks Passenger's helper in the game (<see cref="GodotAgent"/>) to run one of its calls, bringing it in first
-    /// once, where the game's tree lacks it: through the live editing of a scene open once under the root, a node made beside
-    /// it and its script set from <see cref="GodotAgent.Written"/>. What it answered after its ask and done; a
-    /// <see cref="LiveAppException"/> saying why it did not do it.</summary>
+    /// where the game's tree lacks it (again, once the game has freed it): through the live editing of a scene open once under
+    /// the root, a node made beside it and its script set from <see cref="GodotAgent.Written"/>. What it answered after its ask
+    /// and done; a <see cref="LiveAppException"/> saying why it did not do it.</summary>
     public Task<List<object?>> AskAsync(string call, params object?[] arguments) => AskAsync(call, arguments, null);
 
     /// <summary>Asks the helper as <see cref="AskAsync(string, object?[])"/> does, sending <paramref name="then"/>'s message
@@ -734,10 +743,11 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     {
         UiThread.Check();
         string? scene = besideScene;
-        GodotNode? tree = null;
+        (GodotNode Tree, int Brought)? asked = null;
         if (scene is null || bringing is null)
         {
-            tree = await SceneTreeAsync();
+            asked = await TreeOfBringingAsync();
+            GodotNode tree = asked.Value.Tree;
             List<GodotNode> all = [.. tree.All()];
             scene = tree.Children.Select(c => c.SceneFile).FirstOrDefault(f => f.Length > 0 && all.Count(n => n.SceneFile == f) == 1)
                 ?? throw new LiveAppException($"{Name} has no scene open once under its root, beside which Passenger's helper comes into the game");
@@ -745,15 +755,15 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
         await SendAsync(GodotWords.LiveSetRoot, GodotAgent.PathOf("/root"), scene);
         await SendAsync(GodotWords.LiveNodePath, GodotAgent.PathOf($"../{GodotAgent.NodeName}"), AgentPath);
         // Brought in only once the game knows the path its script is set through, or the script goes nowhere.
-        if (bringing is null && tree is not null && !tree.Children.Any(GodotAgent.Is))
+        if (asked is ({ } lacking, int since) && !lacking.Children.Any(GodotAgent.Is) && (bringing is null || (bringing.IsCompleted && since == brought)))
         {
             bringing = BringAsync();
         }
-        if (bringing is { } brought)
+        if (bringing is { } coming)
         {
             try
             {
-                await brought;
+                await coming;
             }
             catch (Exception unwritten) when (unwritten is IOException or UnauthorizedAccessException)
             {
@@ -762,8 +772,8 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             }
         }
         long ask = ++asks;
-        TaskCompletionSource<List<object?>> asked = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        agentAsked[ask] = asked;
+        TaskCompletionSource<List<object?>> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        agentAsked[ask] = answer;
         try
         {
             // Through the one call the helper guards every other with.
@@ -775,7 +785,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
             List<object?> said;
             try
             {
-                said = await Answer(asked.Task, $"Passenger's helper's {call}");
+                said = await Answer(answer.Task, $"Passenger's helper's {call}");
             }
             catch (LiveAppException)
             {
@@ -810,9 +820,16 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IDisposable
     private async Task BringAsync()
     {
         string script = await BackgroundWork.Run(GodotAgent.Written);
-        await SendAsync(GodotWords.LiveCreateNode, GodotAgent.PathOf(".."), "Node", GodotAgent.NodeName);
-        // Godot's own paths part their folders with '/' on every system.
-        await SendAsync(GodotWords.LiveNodePropertyResource, AgentPath, "script", script.Replace('\\', '/'));
+        try
+        {
+            await SendAsync(GodotWords.LiveCreateNode, GodotAgent.PathOf(".."), "Node", GodotAgent.NodeName);
+            // Godot's own paths part their folders with '/' on every system.
+            await SendAsync(GodotWords.LiveNodePropertyResource, AgentPath, "script", script.Replace('\\', '/'));
+        }
+        finally
+        {
+            brought++;
+        }
     }
 
     /// <summary>Whether Godot's runtime node selection is set up in the game, which takes its setup once.</summary>

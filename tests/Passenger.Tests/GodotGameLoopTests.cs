@@ -3,6 +3,7 @@ using Passenger.App;
 using Passenger.App.Godot;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
+using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -144,6 +145,54 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
         }
     }
 
+    /// <summary>A game that frees Passenger's helper partway (Main frees the node of root's once told to) has it brought in
+    /// again by the next call: the frame count is answered after the free, the values shown in main.gd climb on, and the game
+    /// holds one helper, not a second made beside the first.</summary>
+    [AvaloniaFact]
+    public void A_game_that_frees_the_helper_has_it_brought_in_again_by_the_next_count_and_the_live_values()
+    {
+        MainWindow window = Open();
+        try
+        {
+            GodotGame running = Start(window);
+            window.OpenFile(Path.Combine(game.Folder, "main.gd"));
+            OpenDocument script = window.EditorArea.Active!;
+            int frames = Array.FindIndex(File.ReadAllText(Path.Combine(game.Folder, "main.gd")).Split('\n'), l => l.StartsWith("var frames", StringComparison.Ordinal));
+            Ui.WaitFor(() => Frames(script, frames) is not null, () => $"the frame count's value in main.gd ({Hints(script)}; {window.GodotValues.Unread})", TimeSpan.FromMinutes(1));
+            Assert.NotNull(Ui.AwaitPumped(running.TryCountAsync(), "the count before the helper is freed", TimeSpan.FromMinutes(1)));
+
+            GodotNode before = Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree", TimeSpan.FromMinutes(1));
+            GodotNode main = before.All().First(n => n.Name == "Main");
+            double nodes = running.Monitors!.Nodes;
+            Ui.AwaitPumped(running.SetPropertyAsync(main.Id, "free_helper", true), "Main told to free the helper", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => Run(window).Contains("helper freed", StringComparison.Ordinal), () => $"the game to free the helper ({Run(window)[^Math.Min(400, Run(window).Length)..]})", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => running.Monitors?.Nodes < nodes, () => $"the game's count of nodes to drop from {nodes} with the helper freed ({running.Monitors?.Nodes})", TimeSpan.FromMinutes(1));
+            long? shown = Frames(script, frames);
+
+            long? counted = Ui.AwaitPumped(running.TryCountAsync(), "the count after the helper was freed", TimeSpan.FromMinutes(1));
+            Assert.True(counted >= 1, $"The count asked after the game freed the helper went unanswered ({window.Status}; {window.GodotValues.Unread})");
+            Ui.WaitFor(() => Frames(script, frames) > shown, () => $"main.gd's frame count to climb past {shown} once the helper was brought in again ({Hints(script)}; {window.GodotValues.Unread})",
+                TimeSpan.FromMinutes(1));
+            GodotNode after = Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree with the helper back", TimeSpan.FromMinutes(1));
+            string[] helpers = [.. after.Children.Where(c => c.Name.Contains(GodotAgent.NodeName, StringComparison.Ordinal) || c.Type.EndsWith("passenger_agent.gd", StringComparison.Ordinal))
+                .Select(c => $"{c.Name} ({c.Type})")];
+            Assert.True(helpers.Length == 1 && after.Children.Any(GodotAgent.Is), $"The game holds {helpers.Length} helpers once it was brought in again: {string.Join(", ", helpers)}");
+            Assert.False(Run(window).Contains("passenger_agent.gd", StringComparison.Ordinal), $"Passenger's helper raised errors in the game:\n{Run(window)}");
+            Stop(window);
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>The frame count main.gd's line (from zero) shows, or null.</summary>
+    private static long? Frames(OpenDocument document, int line) =>
+        document.LiveValues.Where(a => a.Line == line).Select(a => a.Text).FirstOrDefault() is { } hint && hint.StartsWith("frames: ", StringComparison.Ordinal)
+            && long.TryParse(hint["frames: ".Length..], System.Globalization.CultureInfo.InvariantCulture, out long count) ? count : null;
+
+    private static string Hints(OpenDocument document) => string.Join("; ", document.LiveValues.Select(a => $"line {a.Line + 1}: {a.Text}"));
+
     /// <summary>A window on the project, no C# language server, the Godot editors it starts for GDScript keeping the run's user folders.</summary>
     private MainWindow Open()
     {
@@ -206,8 +255,9 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
     }
 
     /// <summary>A Godot 4 project of GDScript alone named Arena at 20 frames a second: its Main node prints each frame it
-    /// runs; under it a ColorRect Box at 100,100 to 150,150 with a script of its own, and a 3D world whose camera looks at a
-    /// Crate's collision box from ten units away, the Crate a group in Godot's editor with a script of its own.</summary>
+    /// runs, and frees Passenger's helper once its free_helper is set; under it a ColorRect Box at 100,100 to 150,150 with a
+    /// script of its own, and a 3D world whose camera looks at a Crate's collision box from ten units away, the Crate a group
+    /// in Godot's editor with a script of its own.</summary>
     public sealed class Game
     {
         public Game()
@@ -217,7 +267,9 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
             Homes = GodotTests.Game.Home(Path.Combine(Folder, "..", Path.GetFileName(Folder) + "-home"));
             File.WriteAllText(Path.Combine(Folder, "project.godot"), "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Arena\"\n"
                 + "run/main_scene=\"res://main.tscn\"\nconfig/features=PackedStringArray(\"4.7\")\nrun/max_fps=20\n");
-            File.WriteAllText(Path.Combine(Folder, "main.gd"), "extends Node\n\nvar frames := 0\n\n\nfunc _process(_delta: float) -> void:\n\tframes += 1\n\tprint(\"frame \", frames)\n");
+            File.WriteAllText(Path.Combine(Folder, "main.gd"), "extends Node\n\nvar frames := 0\nvar free_helper := false\n\n\nfunc _process(_delta: float) -> void:\n\tframes += 1\n"
+                + "\tprint(\"frame \", frames)\n\tif free_helper:\n\t\tfree_helper = false\n\t\tvar helper := get_tree().root.get_node_or_null(\"PassengerAgent\")\n"
+                + "\t\tif helper != null:\n\t\t\thelper.queue_free()\n\t\t\tprint(\"helper freed\")\n");
             File.WriteAllText(Path.Combine(Folder, "box.gd"), "extends ColorRect\n");
             File.WriteAllText(Path.Combine(Folder, "crate.gd"), "extends StaticBody3D\n");
             File.WriteAllText(Path.Combine(Folder, "main.tscn"), """
