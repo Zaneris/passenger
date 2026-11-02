@@ -22,6 +22,9 @@ public sealed class BrowserRefresh : IDisposable
     /// <summary>The middleware's file, under the SDK's dotnet-watch tool.</summary>
     private const string Middleware = "Microsoft.AspNetCore.Watch.BrowserRefresh.dll";
 
+    /// <summary>The private half of the key a build makes beside the browser tools it serves.</summary>
+    private const string PrivateKey = "browser-tools-key.private.json";
+
     /// <summary>Where the app forwards the page's requests from .NET 11, and what it asks there.</summary>
     private const string Routes = "/_framework/dotnet-browser-tools";
     private const string Settings = Routes + "/hot-reload-settings.json";
@@ -56,7 +59,8 @@ public sealed class BrowserRefresh : IDisposable
 
     /// <summary>The refresh for a web app's plan and the plan that loads the SDK's middleware into it, read off the window's
     /// thread; or, where the browser cannot be kept up, null and why (the SDK with no browser refresh, a build that made no
-    /// key, an app on a .NET older than the middleware's 6); null and nothing said for any other program.</summary>
+    /// browser tools or lost their key, an app on a .NET older than the middleware's 6); null and nothing said for any other
+    /// program.</summary>
     public static async Task<(BrowserRefresh? Refresh, LaunchPlan Plan, string? Said)> ForAsync(LaunchPlan plan)
     {
         if (plan.Web is not { } web || plan.Project is not { } project)
@@ -77,10 +81,17 @@ public sealed class BrowserRefresh : IDisposable
         string? keyFile = null;
         if (forwarded == true)
         {
-            keyFile = Path.Combine(web.Intermediate, "dotnet-watch", "browser-tools-key.private.json");
-            if (!await BackgroundWork.Run(() => File.Exists(keyFile)))
+            (string? tools, bool keyed) = await BackgroundWork.Run(() => BrowserToolsOf(web.Intermediate));
+            if (tools is null)
             {
-                return (null, plan, $"Hot Reload: the browser is not kept up: {name}'s build made no browser tools key ({PathNames.Shown(keyFile, Path.GetDirectoryName(project))}), which a Debug build makes");
+                return (null, plan, $"Hot Reload: the browser is not kept up: {name}'s build made no browser tools for its pages, which the SDK makes in a build "
+                    + "whose EnableHotReloadInRuntimeConfigDevFile is true, as a Debug build's is unless the project sets it to false");
+            }
+            keyFile = Path.Combine(tools, PrivateKey);
+            if (!keyed)
+            {
+                return (null, plan, $"Hot Reload: the browser is not kept up: the key {name}'s build made for its browser tools is gone "
+                    + $"({PathNames.Shown(keyFile, Path.GetDirectoryName(project))}): build {name} again");
             }
         }
         BrowserRefresh refresh = new(project, web, forwarded == true ? null : RSA.Create(2048), keyFile);
@@ -100,6 +111,23 @@ public sealed class BrowserRefresh : IDisposable
             environment[AspNetCoreVariables.AutoReloadProvider] = $"http://{address}/";
         }
         return (refresh, plan with { Environment = environment }, null);
+    }
+
+    /// <summary>Where the browser tools the app's build made for its pages are, as the build's own map of what the app serves
+    /// says (a Blazor Web App's are its WebAssembly client's), and whether the key made with them is there; no folder where
+    /// the build made none, or wrote no map.</summary>
+    private static (string? Folder, bool Keyed) BrowserToolsOf(string intermediate)
+    {
+        byte[] manifest;
+        try
+        {
+            manifest = File.ReadAllBytes(Path.Combine(intermediate, DevelopmentAssets.FileName));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return (null, false);
+        }
+        return DevelopmentAssets.Read(manifest)?.BrowserTools is { } folder ? (folder, File.Exists(Path.Combine(folder, PrivateKey))) : (null, false);
     }
 
     /// <summary>A list variable with <paramref name="first"/> first, the values the program's environment gives (else

@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 namespace Passenger.Tests;
 
 /// <summary>The SDK's browser refresh client as a page runs it, with no browser: from .NET 11's SDK, the settings and the
-/// configuration module the app serves (its build's public key), then a connection the app forwards, its session begun
+/// configuration module the app serves (its build's public key, or its WebAssembly client's), then a connection the app forwards, its session begun
 /// with the page's secret read back; before 11, the script the middleware serves (Passenger's address and key) and a
 /// connection to Passenger. Either way the secret goes encrypted with the key, as the connection's subprotocol.</summary>
 internal sealed class RefreshClient : IAsyncDisposable
@@ -56,8 +56,7 @@ internal sealed class RefreshClient : IAsyncDisposable
         {
             using JsonDocument told = JsonDocument.Parse(await settings.Content.ReadAsStringAsync());
             Assert.True(told.RootElement.GetProperty("hotReload").GetBoolean(), $"The app's forwarded settings say no Hot Reload: {told.RootElement}");
-            string module = await http.GetStringAsync(new Uri($"{origin}/_framework/Microsoft.NET.Sdk.BlazorWeb.DotNetWatch.BrowserTools.Config.js"));
-            key = Regex.Match(module, "publicKey: '([^']+)'").Groups[1].Value;
+            key = Regex.Match(await ConfigurationAsync(http, origin), "publicKey: '([^']+)'").Groups[1].Value;
             address = new Uri($"ws://localhost:{port}/_framework/dotnet-browser-tools/connect");
         }
         else
@@ -84,6 +83,22 @@ internal sealed class RefreshClient : IAsyncDisposable
         }
         client.listening = client.ListenAsync();
         return client;
+    }
+
+    /// <summary>The configuration module the app serves its pages: a server-rendered app's own, else (a Blazor Web App with
+    /// WebAssembly components) its client's, which the page's WebAssembly runtime loads.</summary>
+    private static async Task<string> ConfigurationAsync(HttpClient http, string origin)
+    {
+        foreach (string sdk in (string[])["BlazorWeb", "WebAssembly"])
+        {
+            using HttpResponseMessage module = await http.GetAsync(new Uri($"{origin}/_framework/Microsoft.NET.Sdk.{sdk}.DotNetWatch.BrowserTools.Config.js"));
+            if (module.IsSuccessStatusCode)
+            {
+                return await module.Content.ReadAsStringAsync();
+            }
+        }
+        Assert.Fail("The app serves no browser tools configuration module, so no page connects");
+        return string.Empty;
     }
 
     private async Task ListenAsync()

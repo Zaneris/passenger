@@ -49,6 +49,12 @@
     <Compile Include="../../src/Passenger.App/Debugging/WebAssemblyValues.cs" Link="App/WebAssemblyValues.cs" />
   </ItemGroup>
 
+  <!-- What a web app's build says it serves while it is developed, read as JSON alone, compiled in since its project is the
+       app's. -->
+  <ItemGroup>
+    <Compile Include="../../src/Passenger.App/Debugging/DevelopmentAssets.cs" Link="App/DevelopmentAssets.cs" />
+  </ItemGroup>
+
   <!-- Where an AppHost's dashboard is called from where it listens, compiled in since its project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Aspire/DashboardAddress.cs" Link="App/DashboardAddress.cs" />
