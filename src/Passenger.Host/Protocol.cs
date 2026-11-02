@@ -106,6 +106,13 @@ public static class HostJson
 /// <summary>The SDK the host loaded: its folder (MSBuild's) and version.</summary>
 public sealed record HostReady(string Sdk, string Version);
 
+/// <summary>What the host's first line says, past the SDK's version, when the SDK a folder picks is newer than the runtime
+/// the host runs on, whose MSBuild only a host on a runtime as new loads.</summary>
+public static class HostWords
+{
+    public const string NewerSdk = "is newer than the runtime the project host runs on";
+}
+
 /// <summary>Projects to evaluate, with the global properties they are evaluated with (the solution's).</summary>
 public sealed record EvaluateParams(IReadOnlyList<string> Projects, IReadOnlyDictionary<string, string> Properties);
 

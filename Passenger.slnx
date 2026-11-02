@@ -9,6 +9,7 @@
     <Project Path="src/Passenger.Debugger/Passenger.Debugger.csproj" />
     <Project Path="src/Passenger.Debugger.Interop/Passenger.Debugger.Interop.csproj" />
     <Project Path="src/Passenger.Editor/Passenger.Editor.csproj" />
+    <Project Path="src/Passenger.Helper/Passenger.Helper.csproj" />
     <Project Path="src/Passenger.Host/Passenger.Host.csproj" />
     <Project Path="src/Passenger.Inspector/Passenger.Inspector.csproj" />
     <Project Path="src/Passenger.Inspector.Wpf/Passenger.Inspector.Wpf.csproj" />

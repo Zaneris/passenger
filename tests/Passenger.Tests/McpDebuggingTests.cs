@@ -5,6 +5,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Passenger.App.Mcp;
 using Passenger.Core;
+using Passenger.Lsp;
 
 namespace Passenger.Tests;
 
@@ -153,6 +154,35 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         string framework = (await Call(client, McpTools.SymbolInfo, new() { ["path"] = "Sum.csproj", ["line"] = 4, ["column"] = 8 })).GetString()!.ReplaceLineEndings("\n");
         Assert.True(framework.StartsWith($"TargetFramework = {TestProjects.Framework}\nMSBuild property, set in Sum.csproj, line 4", StringComparison.Ordinal),
             $"symbol_info on a project file's property did not say its value and where it was set: {framework}");
+    }
+
+    /// <summary>Passenger's own helpers, Roslyn's server, the project host and the debug adapter, run on the very runtime
+    /// Passenger runs on, whatever runtimes the machine has: a published Passenger's carried one (its own folder), so
+    /// nothing of Passenger's needs the machine's .NET. Run against an installed Passenger too (McpRig.ExecutableVariable).</summary>
+    [Fact]
+    public async Task Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on()
+    {
+        await TakeFolderAsync();
+        await using McpClient client = await Start(["--mcp", Folder]);
+        Assert.Contains((await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" })).EnumerateArray(), d => d.GetProperty("code").GetString() == "CS0219");
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 4 });
+        Assert.Equal("paused", (await Call(client, McpTools.DebugStart)).GetProperty("state").GetString());
+        Process passenger = LastPassenger();
+        string? own = DotnetProcesses.RuntimeFolder(passenger.Id);
+        Assert.True(own is not null, $"Passenger's own runtime (process {passenger.Id}) could not be read.{Said()}");
+        IReadOnlyList<DotnetProcess> under = DotnetProcesses.Under(passenger.Id);
+        foreach ((string helper, string assembly) in new[]
+        {
+            ("Roslyn's server", RoslynServerFolder.Assembly), ("The project host", "Passenger.Host.dll"), ("The debug adapter", "Passenger.DebugAdapter.dll"),
+        })
+        {
+            DotnetProcess[] found = [.. under.Where(p => p.CommandLine.Contains(assembly, StringComparison.OrdinalIgnoreCase))];
+            Assert.True(found.Length == 1, $"{helper} is not among the .NET processes Passenger started: {string.Join(" | ", under.Select(p => p.CommandLine))}");
+            string? runtime = DotnetProcesses.RuntimeFolder(found[0].Id);
+            Assert.True(runtime is not null && PathNames.Same(runtime, own),
+                $"{helper} (process {found[0].Id}, {found[0].CommandLine}) runs on the runtime in {runtime}, not the one Passenger runs on in {own}");
+        }
+        await Call(client, McpTools.Stop);
     }
 
     /// <summary>A local a million characters long is shown to an agent as its first few thousand, saying its length and the

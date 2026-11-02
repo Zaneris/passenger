@@ -69,8 +69,14 @@
     <ProjectReference Include="../Passenger.Xaml/Passenger.Xaml.csproj" />
     <ProjectReference Include="../Passenger.Profiler/Passenger.Profiler.csproj" />
     <ProjectReference Include="../Passenger.Dap/Passenger.Dap.csproj" />
-    <!-- Built first and carried, never linked: the adapter runs in its own process. -->
-    <ProjectReference Include="../Passenger.DebugAdapter/Passenger.DebugAdapter.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <!-- Built first and carried, never linked: the adapter runs in its own process, on the runtime Passenger runs on (the
+         helper host's), so a publish builds it for its system but carries no runtime of its own. -->
+    <ProjectReference Include="../Passenger.DebugAdapter/Passenger.DebugAdapter.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="SelfContained;PublishReadyToRun" />
+    <!-- Built first, for a publish's system on its runtime pack, and carried beside the app, never linked: Passenger's helpers
+         run in it (ChildProcesses.HelperCommand). -->
+    <ProjectReference Include="../Passenger.Helper/Passenger.Helper.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="PublishReadyToRun" />
     <!-- Built first and carried under inspector/, never linked: an Avalonia app Passenger debugs loads it (LiveTree/LiveApp.cs).
          It is built once for every platform, as Avalonia's assemblies it is compiled against are the same on each. -->
     <ProjectReference Include="../Passenger.Inspector/Passenger.Inspector.csproj" ReferenceOutputAssembly="false" Private="false"
@@ -92,8 +98,9 @@
     <ProjectReference Include="../Passenger.UpdateHandlers/Passenger.UpdateHandlers.csproj" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
     <Compile Include="../Passenger.UpdateHandlers/Wire.cs" Link="Debugging/UpdateHandlersWire.cs" />
-    <!-- Built first and carried under host/, never linked: MSBuild's evaluation runs in its own process on the machine's
-         dotnet (Passenger.Workspace's ProjectHost.cs), so it is built for none of the systems the app is published for. -->
+    <!-- Built first and carried under host/, never linked: MSBuild's evaluation runs in its own process on the runtime
+         Passenger runs on (Passenger.Workspace's ProjectHost.cs), so it is built for none of the systems the app is
+         published for. -->
     <ProjectReference Include="../Passenger.Host/Passenger.Host.csproj" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
     <!-- Built first and carried under wpfpreview/ on Windows, never linked: WPF's previewer runs in its own process on a
@@ -282,10 +289,24 @@
     </ItemGroup>
   </Target>
 
+  <!-- The helper host becomes this project's output beside the app: its apphost, assembly, .deps.json and
+       runtimeconfig.json, the runtime they name being the app's own in a publish (the same runtime pack's). -->
+  <Target Name="IncludeHelperHost" BeforeTargets="AssignTargetPaths">
+    <MSBuild Projects="../Passenger.Helper/Passenger.Helper.csproj" Targets="GetHelperHost"
+             RemoveProperties="PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="HelperHostFile" />
+    </MSBuild>
+    <ItemGroup>
+      <None Include="@(HelperHostFile)" Link="%(HelperHostFile.Filename)%(HelperHostFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
   <!-- The debug adapter's output becomes this project's output items under debugger/, so every project that
        references this one gets it beside its own binaries. -->
   <Target Name="IncludeDebugAdapter" BeforeTargets="AssignTargetPaths">
-    <MSBuild Projects="../Passenger.DebugAdapter/Passenger.DebugAdapter.csproj" Targets="GetTargetPath" BuildInParallel="$(BuildInParallel)">
+    <MSBuild Projects="../Passenger.DebugAdapter/Passenger.DebugAdapter.csproj" Targets="GetTargetPath"
+             RemoveProperties="SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
       <Output TaskParameter="TargetOutputs" ItemName="DebugAdapterAssembly" />
     </MSBuild>
     <PropertyGroup>

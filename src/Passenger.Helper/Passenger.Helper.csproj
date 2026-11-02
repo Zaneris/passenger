@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Passenger's helper host (passenger-helper): what runs Passenger's own helper programs (Roslyn's server, the project
+       host, the debug adapter) on the runtime Passenger runs on, never the machine's. Carried beside Passenger as its
+       apphost, assembly, .deps.json and runtimeconfig.json alone: built for a publish's system it is self-contained on the
+       same runtime pack, so its apphost finds the runtime Passenger carries beside it, and its .deps.json names that
+       runtime and nothing else of the folder. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>passenger-helper</AssemblyName>
+    <RootNamespace>Passenger.Helper</RootNamespace>
+    <SelfContained Condition="'$(RuntimeIdentifier)' != ''">true</SelfContained>
+  </PropertyGroup>
+
+  <!-- The four files Passenger carries of it: what it runs as and is run by, without the runtime a self-contained build
+       copies beside them. -->
+  <Target Name="GetHelperHost" DependsOnTargets="GetTargetPath" Returns="@(HelperHostFile)">
+    <ItemGroup>
+      <HelperHostFile Include="$(TargetDir)$(TargetName).dll;$(TargetDir)$(TargetName).deps.json;$(TargetDir)$(TargetName).runtimeconfig.json" />
+      <HelperHostFile Include="$(TargetDir)$(TargetName)$(_NativeExecutableExtension)" />
+    </ItemGroup>
+  </Target>
+</Project>

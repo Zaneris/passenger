@@ -73,10 +73,18 @@ public static partial class Dotnet
         return string.Empty;
     }
 
+    /// <summary>A test's stand-in for the search <see cref="Host"/> makes, a machine with no .NET's throwing what the search
+    /// throws; null for the search itself.</summary>
+    public static Func<string>? HostSearch { get; set; }
+
     /// <summary>The <c>dotnet</c> that runs this app (framework-dependent, its runtime three folders under the host), else
     /// one on DOTNET_ROOT or the PATH, else where the installers put it.</summary>
     public static string Host()
     {
+        if (HostSearch is { } standIn)
+        {
+            return standIn();
+        }
         ShellEnvironment.Ready();
         string name = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
         string runtime = RuntimeEnvironment.GetRuntimeDirectory();

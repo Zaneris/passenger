@@ -46,9 +46,9 @@ public sealed class DebugSession : IAsyncDisposable
         engineLog = kept ?? Path.Combine(TestRun.Root, $"engine-{Guid.NewGuid():N}.log");
         // The symbols it decompiles go where the run's IDE keeps them (its state folder's), unless a test names a folder.
         string symbols = symbolCache ?? Passenger.App.Debugging.DebugSession.SymbolCache;
-        List<string> arguments = [path, AdapterFlags.Interpreter, AdapterFlags.EngineLogging + engineLog, AdapterFlags.SymbolCache + symbols];
+        List<string> arguments = [AdapterFlags.Interpreter, AdapterFlags.EngineLogging + engineLog, AdapterFlags.SymbolCache + symbols];
         // Started as the IDE starts it, so a test run that is killed leaves no adapter or program behind.
-        ProcessStartInfo start = ChildProcesses.DotnetCommand(arguments);
+        ProcessStartInfo start = ChildProcesses.HelperCommand(path, arguments);
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;

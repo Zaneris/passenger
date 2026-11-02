@@ -4,7 +4,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>Passenger.DebugAdapter</RootNamespace>
-    <!-- Run by the machine's dotnet, whichever runtime is newest there. -->
+    <!-- Run by Passenger's helper host, on the runtime Passenger runs on, or by any dotnet whose runtime is as new. -->
     <RollForward>Major</RollForward>
   </PropertyGroup>
 

@@ -305,7 +305,9 @@ said=$(plutil -extract CFBundleShortVersionString raw -o - "$plist")
 [ "$said" = "$version" ] || fail "the app's Info.plist says version $said, not $version"
 said=$(plutil -extract CFBundleVersion raw -o - "$plist")
 [ "$said" = "$build" ] || fail "the app's Info.plist says build $said, not $build"
-for part in roslyn/Microsoft.CodeAnalysis.LanguageServer.dll roslyn-extension/Passenger.Roslyn.Extension.dll debugger/Passenger.DebugAdapter.dll LICENSE.txt THIRD-PARTY-NOTICES.txt; do
+for part in roslyn/Microsoft.CodeAnalysis.LanguageServer.dll roslyn-extension/Passenger.Roslyn.Extension.dll debugger/Passenger.DebugAdapter.dll \
+    debugger/libdbgshim.dylib passenger-helper passenger-helper.dll passenger-helper.deps.json passenger-helper.runtimeconfig.json \
+    LICENSE.txt THIRD-PARTY-NOTICES.txt; do
     [ -f "$shipped/Contents/MacOS/$part" ] || fail "the app has no $part"
 done
 for part in web/passenger/prettier.cjs web/passenger/docker-hub.cjs web/schemas/compose-spec.json; do

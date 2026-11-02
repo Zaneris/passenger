@@ -3,7 +3,7 @@ using Passenger.Core;
 namespace Passenger.UnitTests.Core;
 
 /// <summary>A .NET program's own assembly is read from its command line one way, for the name Attach to Process shows and
-/// for the container tools' look at whether it is a Release build.</summary>
+/// for the container tools' look at whether it is a Release build: the dotnet host's, or Passenger's helper host's.</summary>
 public sealed class DotnetProcessTests
 {
     [Theory]
@@ -13,6 +13,10 @@ public sealed class DotnetProcessTests
     [InlineData("dotnet", "dotnet watch run", null, "dotnet")]
     [InlineData("Shop.Api", "\"/app/my app/Shop.Api\" --verbose", "/app/my app/Shop.Api.dll", "Shop.Api")]
     [InlineData("Passenger.Tests.exe", "C:\\work\\Passenger.Tests.exe", "C:\\work\\Passenger.Tests.dll", "Passenger.Tests")]
+    [InlineData("passenger-helper", "/opt/passenger/passenger-helper /opt/passenger/host/Passenger.Host.dll --folder /src", "/opt/passenger/host/Passenger.Host.dll", "Passenger.Host")]
+    [InlineData("dotnet", "dotnet exec --fx-version 11.0.0 /work/passenger-helper.dll /work/roslyn/Microsoft.CodeAnalysis.LanguageServer.dll --stdio",
+        "/work/roslyn/Microsoft.CodeAnalysis.LanguageServer.dll", "Microsoft.CodeAnalysis.LanguageServer")]
+    [InlineData("passenger-helper.exe", "\"C:\\Passenger\\passenger-helper.exe\" C:\\Passenger\\debugger\\Passenger.DebugAdapter.dll", "C:\\Passenger\\debugger\\Passenger.DebugAdapter.dll", "Passenger.DebugAdapter")]
     public void A_programs_assembly_and_name_come_from_its_command_line(string name, string commandLine, string? assembly, string program)
     {
         DotnetProcess process = new(1, name, commandLine, "me", IsMine: true);

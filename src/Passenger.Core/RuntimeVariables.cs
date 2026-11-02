@@ -29,6 +29,10 @@ public static class RuntimeVariables
     /// <summary>"1" lets the host roll a program forward onto a prerelease runtime when no release one will do.</summary>
     public const string RollForwardToPrerelease = "DOTNET_ROLL_FORWARD_TO_PRERELEASE";
 
+    /// <summary>The .NET command line a build's tools and the SDK's own programs run under, as the command line gives it to
+    /// MSBuild.</summary>
+    public const string HostPath = "DOTNET_HOST_PATH";
+
     /// <summary>"1" has WPF record where in its XAML each object was made (VisualDiagnostics.GetXamlSourceInfo) and
     /// raise BindingDiagnostics.BindingFailed; read as WPF first loads XAML, so it stays in the environment.</summary>
     public const string XamlDiagnosticsSourceInfo = "ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO";

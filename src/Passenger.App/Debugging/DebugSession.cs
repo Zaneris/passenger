@@ -118,7 +118,7 @@ public sealed class DebugSession
     /// <summary>Why a start failed that was stopped (Stop, Detach, the window's close) before it was done.</summary>
     public const string StoppedStarting = "the session was stopped as it started";
 
-    /// <summary>The debug adapter the app carries, beside it in debugger/, which dotnet runs.</summary>
+    /// <summary>The debug adapter the app carries, beside it in debugger/, which the helper host runs.</summary>
     public static string AdapterPath => Path.Combine(AppContext.BaseDirectory, "debugger", "Passenger.DebugAdapter.dll");
 
     /// <summary>How the adapter starts: beside the app, or where the program is (a container's, over docker exec).</summary>
@@ -138,7 +138,7 @@ public sealed class DebugSession
             {
                 throw new FileNotFoundException("The debug adapter is not beside the app", path);
             }
-            List<string> arguments = [path, AdapterFlags.Interpreter, AdapterFlags.SymbolCache + SymbolCache];
+            List<string> arguments = [AdapterFlags.Interpreter, AdapterFlags.SymbolCache + SymbolCache];
             if (AdapterEnvironment.EngineLog is { } engineLog)
             {
                 arguments.Add(AdapterFlags.EngineLogging + engineLog);
@@ -147,7 +147,8 @@ public sealed class DebugSession
             {
                 arguments.Add(AdapterFlags.Remote);
             }
-            start = ChildProcesses.DotnetCommand(arguments);
+            // On the runtime Passenger runs on: the program it debugs may run on another, or carry its own.
+            start = ChildProcesses.HelperCommand(path, arguments);
         }
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;

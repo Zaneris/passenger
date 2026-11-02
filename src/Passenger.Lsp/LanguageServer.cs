@@ -406,14 +406,15 @@ public sealed class LanguageServer : IAsyncDisposable
         Directory.CreateDirectory(logFolder);
         List<string> arguments =
         [
-            server, "--stdio", "--logLevel", "Information", "--telemetryLevel", "off",
+            "--stdio", "--logLevel", "Information", "--telemetryLevel", "off",
             "--extensionLogDirectory", logFolder, "--clientProcessId", Environment.ProcessId.ToString(),
         ];
         if (File.Exists(RoslynExtension.Assembly))
         {
             arguments.AddRange(["--extension", RoslynExtension.Assembly]);
         }
-        ProcessStartInfo start = ChildProcesses.DotnetCommand(arguments);
+        // On the runtime Passenger runs on, whatever the machine has: with no .NET at all, a lone file still has its help.
+        ProcessStartInfo start = ChildProcesses.NamingDotnet(ChildProcesses.HelperCommand(server, arguments));
         // A server's MSBuild nodes are its own: a restart ends them, which would cut short a build that took one up.
         start.Environment[MSBuildNames.NodeHandshakeSalt] += $"-server-{Interlocked.Increment(ref started)}";
         // The server's restore takes no properties, and off Windows a WPF project restores only with this (NETSDK1100).
